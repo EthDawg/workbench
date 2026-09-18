@@ -1,11 +1,11 @@
 ---
-name: build-readback-deck
-description: Build a faithful slide deck from a Workbench Readback session folder containing ordered screenshots and linked narration.
+name: build-snap-and-talk-deck
+description: Build a faithful slide deck from a Workbench Snap & Talk session folder containing ordered screenshots and linked narration.
 ---
 
-# Build a Workbench Readback deck
+# Build a Workbench Snap & Talk deck
 
-Create a 16:9 PowerPoint `.pptx` from the Readback session in this folder.
+Create a 16:9 PowerPoint `.pptx` from the Snap & Talk session in this folder.
 
 ## Source of truth
 

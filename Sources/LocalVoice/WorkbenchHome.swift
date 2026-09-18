@@ -14,7 +14,7 @@ struct WorkbenchHome: View {
     @State private var photoBackdrop: PhotoBackdropRequest?
     private let navItems: [(String, String, String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
-        ("speak", "Read aloud", "speaker.wave.2"), ("readback", "Readback", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
+        ("speak", "Read aloud", "speaker.wave.2"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
         ("present", "Present a device", "iphone"), ("history", "Recent transcripts", "clock"),
         ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
         ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
@@ -81,7 +81,7 @@ struct WorkbenchHome: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     card("Dictate", "A thought, ready to use.", "mic.fill", model.preferences.dictationShortcut.label) { model.page = "dictate" }
                     card("Read aloud", "Hear a draft. Save a reading.", "speaker.wave.2.fill", "Mac voices included") { model.page = "speak" }
-                    card("Readback", "Capture a screen. Narrate the why.", "rectangle.and.pencil.and.ellipsis", model.preferences.shortcut(4).label) { model.page = "readback" }
+                    card("Snap & Talk", "Capture a screen. Narrate the why.", "rectangle.and.pencil.and.ellipsis", model.preferences.shortcut(4).label) { model.page = "readback" }
                     card("Annotate", "Point, draw and return to your demo.", "pencil.tip.crop.circle", "Live screen tools") { model.page = "annotate" }
                     card("Present a device", "Your phone, ready for an audience.", "iphone", "Saved scenes and branding") { model.page = "present" }
                 }
@@ -172,7 +172,7 @@ struct WorkbenchQuickPanel: View {
             }.buttonStyle(.borderedProminent).controlSize(.large)
                 .disabled(!model.ready || (model.phase != .idle && model.phase != .recording && model.phase != .requesting) || model.rendering)
             quick("Read aloud", "speaker.wave.2") { open("speak") }
-            quick(readback.isRecording ? "Stop readback narration" : "Readback session", "rectangle.and.pencil.and.ellipsis") {
+            quick(readback.isRecording ? "Stop Snap & Talk narration" : "Snap & Talk session", "rectangle.and.pencil.and.ellipsis") {
                 if readback.isRecording { readback.stopNarration() } else { open("readback") }
             }
             quick("Draw on screen", "pencil.tip") { draw() }

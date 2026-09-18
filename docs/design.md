@@ -9,7 +9,7 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 | `LocalVoice` executable target | App shell plus existing voice workflows, reading, cleanup, delivery and resources | `main.swift`, `WorkbenchHome.swift`, `AppModel.swift` |
 | `StageKit` library target | Drawing, boards, timer, scene library and device video preview | Public `StageKitController`; internal `AppCoordinator` |
 | `RecognitionEngine` actor | Selected recognition provider, preparation and one transcription at a time | `RecognitionProviders.swift` |
-| `ReadbackModel` | Pointer-display capture, narration, portable session manifests, recovery and sequential transcription | `ReadbackModel.swift`, `ReadbackView.swift` |
+| `ReadbackModel` | Snap & Talk pointer-display capture, narration, portable session manifests, recovery and sequential transcription | `ReadbackModel.swift`, `ReadbackView.swift` |
 | `KeyboardCoachModel` | Combined shortcut catalogue, assignment, conflict feedback and safe practice | `KeyboardCoach.swift`; persistence/suspension closures supplied by the host |
 | App Intents | Audio-file transcription returning a typed text result | `Shortcuts.swift` |
 
@@ -41,7 +41,7 @@ The two modules still have their own internal `Workbench.swift` style helpers an
 
 Carbon registers global keys. Local event handling supports app-focused use. The unified coach receives both modules' assignments and suspends both registrations while recording or practising a shortcut. Validation covers duplicates, a deliberate set of common Mac commands and a temporary OS registration probe. Preference updates must retain the previous value on failure. Practice counts complete key-down/key-up pairs, rejects repeats as extra repetitions, and restores registrations on cancellation, selection change, window deactivation or disappearance. Current-layout labels sit on an ANSI drawing; this is not a physical-keyboard detector or another-app shortcut scanner.
 
-Readback has its own editable shortcut. A first press captures only the display containing the pointer through ScreenCaptureKit, with the pointer included, before starting AVFoundation microphone recording. A second press commits the WAV into the user-chosen session folder and queues it through the shared recognition engine. Screenshots and audio commit before transcription, so another section can begin while recognition proceeds sequentially. Interrupted recordings remain visible as unfinished sections; queued work resumes from saved audio after relaunch. The manifest owns ordering, while UUID directories keep reordering non-destructive. Replacement archives prior media inside the section, and deletion moves the whole section into the session's `trash` directory until explicitly emptied.
+Snap & Talk has its own editable shortcut. A first press captures only the display containing the pointer through ScreenCaptureKit, with the pointer included, before starting AVFoundation microphone recording. A second press commits the WAV into the user-chosen session folder and queues it through the shared recognition engine. Screenshots and audio commit before transcription, so another section can begin while recognition proceeds sequentially. Interrupted recordings remain visible as unfinished sections; queued work resumes from saved audio after relaunch. The manifest owns ordering, while UUID directories keep reordering non-destructive. Replacement archives prior media inside the section, and deletion moves the whole section into the session's `trash` directory until explicitly emptied.
 
 Speech flow:
 
@@ -97,7 +97,7 @@ No Services implementation, Share extension, private iPhone Mirroring integratio
 | Stage preferences | `com.ethdawg.workbench.preview.stage` defaults suite |
 | Appearance | Shared `com.ethdawg.workbench.preview` suite |
 | Speko key | Keychain service derived from the current bundle ID; not copied from a legacy app |
-| Readback sessions | User-chosen Finder folders containing `session.json`, media, transcripts, recovery files and the bundled deck skill |
+| Snap & Talk sessions | User-chosen Finder folders containing `session.json`, media, transcripts, recovery files and the bundled deck skill |
 
 Non-Preview files use `Application Support/Workbench`; identity and preference domains drop the `.preview` suffix.
 

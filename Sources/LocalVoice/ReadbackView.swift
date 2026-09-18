@@ -1,4 +1,6 @@
 import AppKit
+import Combine
+import StageKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -23,7 +25,7 @@ struct ReadbackView: View {
 
     private var recentSessions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("READBACK SESSIONS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text("SNAP & TALK SESSIONS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
             Button { model.createSession() } label: { Label("New session…", systemImage: "folder.badge.plus") }
                 .buttonStyle(.borderedProminent).disabled(model.isRecording)
             Button { model.openSession() } label: { Label("Open folder…", systemImage: "folder") }
@@ -54,7 +56,7 @@ struct ReadbackView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("Start a narrated readback", systemImage: "rectangle.and.pencil.and.ellipsis")
+            Label("Start a Snap & Talk session", systemImage: "rectangle.and.pencil.and.ellipsis")
         } description: {
             Text("Create a named Finder folder, then use one shortcut to capture the display under your pointer and narrate it.")
         } actions: {
@@ -86,10 +88,6 @@ struct ReadbackView: View {
                         }
                         ForEach(Array(model.activeSections.enumerated()), id: \.element.id) { index, section in
                             sectionCard(section, number: index + 1)
-                                .onDrag {
-                                    draggingSection = section.id
-                                    return NSItemProvider(object: section.id.uuidString as NSString)
-                                }
                                 .onDrop(of: [UTType.text], delegate: ReadbackSectionDropDelegate(target: section.id, model: model, dragging: $draggingSection))
                         }
                     }
@@ -102,7 +100,7 @@ struct ReadbackView: View {
     private var header: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.manifest?.title ?? "Readback").font(.title2.weight(.semibold))
+                Text(model.manifest?.title ?? "Snap & Talk").font(.title2.weight(.semibold))
                 Text(model.sessionURL?.path ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
@@ -153,7 +151,7 @@ struct ReadbackView: View {
                 }
             }
             HStack {
-                Toggle("Show narration HUD", isOn: $model.showHUD).toggleStyle(.switch)
+                Toggle("Show Snap & Talk HUD", isOn: $model.showHUD).toggleStyle(.switch)
                 Spacer()
                 Text("Original audio and transcript are kept locally.").font(.caption).foregroundStyle(.secondary)
             }
@@ -174,6 +172,19 @@ struct ReadbackView: View {
 
     private func sectionCard(_ section: ReadbackSection, number: Int) -> some View {
         HStack(alignment: .top, spacing: 16) {
+            VStack(spacing: 5) {
+                Image(systemName: "line.3.horizontal").font(.system(size: 17, weight: .semibold))
+                Text("DRAG").font(.system(size: 8, weight: .bold)).tracking(0.6)
+            }.foregroundStyle(.secondary).frame(width: 36, height: 58)
+                .background(.quaternary.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
+                .contentShape(Rectangle())
+                .onDrag {
+                    draggingSection = section.id
+                    return NSItemProvider(object: section.id.uuidString as NSString)
+                }
+                .help("Drag section \(number) to reorder")
+                .accessibilityLabel("Drag section \(number) to reorder")
             VStack(alignment: .leading, spacing: 7) {
                 ZStack(alignment: .topLeading) {
                     ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
@@ -189,12 +200,14 @@ struct ReadbackView: View {
                     Label(section.status.title, systemImage: statusSymbol(section.status))
                         .font(.callout.weight(.semibold)).foregroundStyle(section.status == .failed ? .orange : .primary)
                     Spacer()
+                    Button { model.deleteSection(section.id) } label: { Label("Trash", systemImage: "trash") }
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .disabled(model.isRecording || model.isCapturing || [.queued, .transcribing].contains(section.status))
+                        .help("Move this section to Recently Deleted")
                     Menu {
                         Button("Replace screenshot…") { Task { await model.replaceScreenshot(section.id) } }
                         Button("Re-record narration") { model.startNarration(for: section.id) }
                         Button("Redo screenshot and narration…") { Task { await model.redoBoth(section.id) } }
-                        Divider()
-                        Button("Move to Recently Deleted", role: .destructive) { model.deleteSection(section.id) }
                     } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
                         .disabled(model.isRecording || model.isCapturing || [.queued, .transcribing].contains(section.status))
                 }
@@ -264,7 +277,7 @@ private struct ReadbackThumbnail: View {
             } else {
                 Image(systemName: "photo.badge.exclamationmark").font(.title).foregroundStyle(.secondary)
             }
-        }.accessibilityLabel("Readback screenshot")
+        }.accessibilityLabel("Snap & Talk screenshot")
     }
 }
 
@@ -281,43 +294,198 @@ private struct ReadbackSectionDropDelegate: DropDelegate {
 
 struct ReadbackHUDView: View {
     @ObservedObject var model: ReadbackModel
+    @ObservedObject var controls: CaptureHUDControls
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    private var size: NSSize { controls.isExpanded ? CaptureHUDLayout.expanded : CaptureHUDLayout.compact }
+
     var body: some View {
+        HStack(spacing: 8) {
+            PanelDragHandle(accessibilityLabel: "Drag Snap & Talk panel; named positions are available in options")
+                .frame(width: 24, height: 40)
+            if controls.isExpanded { expandedRecording }
+            else { compactRecording }
+        }.padding(.horizontal, 12)
+            .frame(width: size.width, height: size.height)
+            .background {
+                if reduceTransparency { RoundedRectangle(cornerRadius: 18).fill(Color(nsColor: .windowBackgroundColor)) }
+                else { RoundedRectangle(cornerRadius: 18).fill(.regularMaterial) }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(0.12)))
+            .transaction { $0.animation = nil }
+            .tint(Workbench.accent).workbenchTheme()
+    }
+
+    private var compactRecording: some View {
         HStack(spacing: 12) {
-            Group {
-                if let image = model.recordingThumbnail { Image(nsImage: image).resizable().scaledToFill() }
-                else { Image(systemName: "camera.viewfinder").font(.title2) }
-            }.frame(width: 92, height: 56).clipped().background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
-            VStack(alignment: .leading, spacing: 4) {
-                HStack { Circle().fill(.red).frame(width: 7, height: 7); Text("Narrating screenshot").font(.callout.weight(.semibold)) }
-                Text(time(model.recordingElapsed)).font(.title3.monospacedDigit())
-                Text("\(model.shortcutLabel) to stop").font(.caption).foregroundStyle(.secondary)
+            Image(systemName: "mic.fill").foregroundStyle(.red).accessibilityLabel("Recording narration")
+            VStack(alignment: .leading, spacing: 5) {
+                Text(time(model.recordingElapsed)).font(.system(size: 14, weight: .medium, design: .monospaced)).monospacedDigit()
+                    .accessibilityLabel("\(Int(model.recordingElapsed)) seconds recorded; five minute limit")
+                CaptureLevelMeter(level: model.recordingLevel).frame(width: 62, height: 9)
             }
             Spacer(minLength: 0)
-        }.padding(12).frame(width: 330, height: 82)
-            .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.14)))
-            .shadow(radius: 14, y: 6).workbenchTheme()
+            stopButton
+            expansionButton
+        }
+    }
+
+    private var expandedRecording: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                Image(systemName: "mic.fill").foregroundStyle(.red)
+                Text("Recording Snap & Talk").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 2)
+                Text("\(time(model.recordingElapsed)) / 5:00").font(.system(size: 12, design: .monospaced)).monospacedDigit()
+                stopButton
+                expansionButton
+            }
+            HStack(spacing: 7) {
+                CaptureLevelMeter(level: model.recordingLevel).frame(width: 56, height: 12)
+                Text(model.recordingLevel < 0.03 && model.recordingElapsed >= 6 ? "Low microphone level" : "Microphone on")
+                    .font(.system(size: 12)).foregroundStyle(model.recordingLevel < 0.03 && model.recordingElapsed >= 6 ? Color.orange : Color.secondary)
+            }
+            Text("Narrating the captured screen. Use \(model.shortcutLabel) again to stop and save.")
+                .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+            HStack {
+                Button("Cancel") { model.cancelNarration() }.buttonStyle(.bordered).controlSize(.small)
+                    .accessibilityLabel("Cancel narration and keep the screenshot")
+                Spacer(minLength: 0)
+                CapturePositionMenu(controls: controls, accessibilityName: "Snap & Talk panel options")
+            }
+        }
+    }
+
+    private var stopButton: some View {
+        Button { model.stopNarration() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "stop.fill").font(.system(size: 8))
+                Text("Stop")
+            }.frame(minWidth: 42, minHeight: 28)
+        }.buttonStyle(.borderedProminent).controlSize(.small)
+            .accessibilityLabel("Stop narration, save and transcribe")
+    }
+
+    private var expansionButton: some View {
+        Button { controls.isExpanded.toggle() } label: {
+            Image(systemName: controls.isExpanded ? "chevron.down" : "chevron.up").frame(width: 28, height: 28)
+        }.buttonStyle(.plain)
+            .accessibilityLabel(controls.isExpanded ? "Collapse narration controls" : "Expand narration controls")
+            .help(controls.isExpanded ? "Show compact narration controls" : "Show details, Cancel and position options")
     }
 }
 
 @MainActor
-final class ReadbackHUDController {
-    private var panel: NSPanel?
-    func update(_ model: ReadbackModel) {
-        guard model.isRecording, model.showHUD else { hide(); return }
-        if panel == nil {
-            let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
-            panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.ignoresMouseEvents = true; panel.contentViewController = NSHostingController(rootView: ReadbackHUDView(model: model))
-            self.panel = panel
-        }
-        let size = NSSize(width: 330, height: 82)
-        let screen = model.recordingScreenFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        let origin = NSPoint(x: screen.midX - size.width / 2, y: screen.minY + 26)
-        panel?.setFrame(NSRect(origin: origin, size: size), display: true)
-        panel?.orderFrontRegardless()
+final class ReadbackHUDController: NSWindowController, NSWindowDelegate, FloatingHUDDragController {
+    private let positionKey = "snapTalkPanelOrigin.v1"
+    private let anchorKey = "snapTalkPanelAnchor.v1"
+    private let controls = CaptureHUDControls()
+    private weak var model: ReadbackModel?
+    private var positioning = false
+    private var dragging = false
+    private let snapGuide = FloatingControlGuideController()
+    private var observations = Set<AnyCancellable>()
+
+    init(model: ReadbackModel) {
+        let panel = CapturePanel(contentRect: NSRect(origin: .zero, size: CaptureHUDLayout.compact),
+                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        super.init(window: panel)
+        self.model = model
+        let savedAnchor = UserDefaults.standard.string(forKey: anchorKey).flatMap(FloatingControlAnchor.init(rawValue:))
+        controls.anchor = savedAnchor ?? (UserDefaults.standard.string(forKey: positionKey) == nil ? .bottom : nil)
+        controls.resize = { [weak self, weak model] in if let model { self?.update(model) } }
+        controls.choosePosition = { [weak self] in self?.choosePosition($0) }
+        panel.title = "Workbench Snap & Talk"
+        panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
+        panel.isMovable = true; panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.contentView = CaptureHostingView(rootView: ReadbackHUDView(model: model, controls: controls))
+        panel.delegate = self
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.cancelDragging(); self?.position() }
+            .store(in: &observations)
     }
-    func hide() { panel?.orderOut(nil) }
-    func shutdown() { panel?.orderOut(nil); panel?.contentView = nil; panel = nil }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func update(_ model: ReadbackModel) {
+        guard let window else { return }
+        guard model.isRecording, model.showHUD else {
+            window.orderOut(nil); cancelDragging(); controls.isExpanded = false
+            return
+        }
+        let size = controls.isExpanded ? CaptureHUDLayout.expanded : CaptureHUDLayout.compact
+        if !window.isVisible { place(size: size, restoreSaved: true) }
+        else if window.frame.size != size { place(size: size, restoreSaved: false) }
+        window.orderFrontRegardless()
+    }
+
+    func position() {
+        guard let window else { return }
+        place(size: window.frame.size, restoreSaved: !window.isVisible)
+    }
+
+    private var preferredScreen: NSRect? {
+        if let target = model?.recordingScreenFrame,
+           let screen = NSScreen.screens.first(where: { $0.frame.intersects(target) }) {
+            return screen.visibleFrame
+        }
+        return (NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main)?.visibleFrame
+    }
+
+    private func place(size: NSSize, restoreSaved: Bool) {
+        guard let window, let preferred = preferredScreen else { return }
+        let saved = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString)
+        let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: size) } : window.frame
+        setFrame(CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
+                                         screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred))
+        savePosition()
+    }
+
+    private func choosePosition(_ anchor: FloatingControlAnchor) {
+        controls.anchor = anchor
+        guard let window else { return }
+        place(size: window.frame.size, restoreSaved: false)
+    }
+
+    private func setFrame(_ frame: NSRect) {
+        positioning = true
+        window?.setFrame(frame, display: true, animate: false)
+        positioning = false
+    }
+
+    private func savePosition() {
+        guard let window else { return }
+        UserDefaults.standard.set(NSStringFromPoint(window.frame.origin), forKey: positionKey)
+        if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
+        else { UserDefaults.standard.removeObject(forKey: anchorKey) }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        guard !positioning, !dragging, window?.isVisible == true else { return }
+        savePosition()
+    }
+
+    func beginDragging() { dragging = true; previewDragging() }
+
+    func cancelDragging() { dragging = false; snapGuide.hide() }
+
+    func previewDragging() {
+        guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
+        let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+        let anchor = FloatingControlGeometry.nearestAnchor(to: window.frame, in: screen)
+        snapGuide.show(controlFrame: window.frame, visibleFrame: screen, activeAnchor: anchor, below: window)
+    }
+
+    func finishDragging() {
+        defer { cancelDragging() }
+        guard dragging, let window, let preferred = preferredScreen else { return }
+        let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+        controls.anchor = FloatingControlGeometry.nearestAnchor(to: window.frame, in: screen)
+        let frame = controls.anchor.map { FloatingControlGeometry.frame(anchor: $0, size: window.frame.size, visibleFrame: screen) }
+            ?? FloatingControlGeometry.clamp(window.frame, to: screen)
+        setFrame(frame); savePosition()
+    }
+
+    func shutdown() { cancelDragging(); window?.orderOut(nil); window?.contentView = nil; close() }
 }

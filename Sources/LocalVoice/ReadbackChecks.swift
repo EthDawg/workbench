@@ -1,3 +1,4 @@
+import Carbon
 import Foundation
 
 enum ReadbackChecks {
@@ -22,7 +23,7 @@ enum ReadbackChecks {
         let manifestMode = try FileManager.default.attributesOfItem(atPath: root.appendingPathComponent(ReadbackStore.manifestName).path)[.posixPermissions] as? NSNumber
         try check(rootMode?.intValue == 0o700 && manifestMode?.intValue == 0o600, "new session metadata is private to the user")
         let skill = try String(contentsOf: root.appendingPathComponent("SKILL.md"), encoding: .utf8)
-        try check(skill.contains("name: build-readback-deck") && skill.contains("speaker notes verbatim"), "skill preserves the agreed deck contract")
+        try check(skill.contains("name: build-snap-and-talk-deck") && skill.contains("speaker notes verbatim"), "skill preserves the agreed deck contract")
         try check(manifest.formatVersion == 1 && manifest.title == "Synthetic review" && manifest.sections.isEmpty, "new manifest is versioned and empty")
 
         let firstID = UUID(), secondID = UUID()
@@ -64,7 +65,10 @@ enum ReadbackChecks {
         var moved = loaded.sections[0]
         moved.moveFiles(from: firstDirectory, to: "trash/\(firstID.uuidString.lowercased())")
         try check(moved.screenshot.hasPrefix("trash/") && moved.directory.hasPrefix("trash/"), "recoverable deletion keeps linked paths together")
-        try check(VoicePreferences().shortcut(4).enabled && VoicePreferences().shortcut(4) != VoicePreferences().shortcut(1), "readback has a separate default shortcut")
+        try check(VoicePreferences().shortcut(4).keyCode == UInt32(kVK_ANSI_Backslash) && VoicePreferences().shortcut(4) != VoicePreferences().shortcut(1), "Snap & Talk defaults to Control-Option-Backslash")
+        var legacyPreferences = VoicePreferences()
+        legacyPreferences.readbackShortcut = VoicePreferences.legacyReadbackShortcut
+        try check(VoicePreferences.migratingLegacyDefaults(legacyPreferences).shortcut(4) == VoicePreferences.defaultReadbackShortcut, "the conflicting legacy Control-Option-R default migrates")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
 }

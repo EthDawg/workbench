@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ = WorkbenchSettings.shared
         model = AppModel()
         readback = ReadbackModel(engine: model.engine)
-        readbackHUD = ReadbackHUDController()
+        readbackHUD = ReadbackHUDController(model: readback)
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") })
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
@@ -55,13 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.start()
         model.microphoneStartFailure = { [weak self] target in
             guard let self else { return "Workbench is unavailable." }
-            if self.readback.isRecording || self.readback.hasPendingTranscriptions { return "Finish the current Readback narration and transcription queue before starting ordinary dictation." }
+            if self.readback.isRecording || self.readback.hasPendingTranscriptions { return "Finish the current Snap & Talk narration and transcription queue before starting ordinary dictation." }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil)
                 ? nil : "To enter text on your phone, use its keyboard or Dictation button. Mac dictation works in a Mac text field."
         }
         readback.mayBeginCapture = { [weak self] in
             guard let self else { return "Workbench is unavailable." }
-            return self.model.phase == .idle && !self.model.rendering ? nil : "Finish the current dictation or reading before starting Readback narration."
+            return self.model.phase == .idle && !self.model.rendering ? nil : "Finish the current dictation or reading before starting Snap & Talk narration."
         }
         readback.onEditShortcut = { [weak self] in self?.navigate("shortcuts") }
         keyboard = KeyboardCoachModel(entries: shortcutEntries(), update: { [weak self] id, shortcut in guard let self else { return "Workbench is unavailable." }; return self.saveShortcut(id, shortcut) }, suspend: { [weak self] suspended in
@@ -114,10 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             else if down, id == 4 {
                 self.readback.refreshPermissionState()
                 if self.readback.sessionURL == nil {
-                    self.readback.notice = "Create or open a Readback session before using the capture shortcut."
+                    self.readback.notice = "Create or open a Snap & Talk session before using the capture shortcut."
                     self.navigate("readback")
                 } else if !self.readback.permissionsReady {
-                    self.readback.notice = "Readback needs Screen Recording and Microphone access first."
+                    self.readback.notice = "Snap & Talk needs Screen Recording and Microphone access first."
                     self.navigate("readback")
                 } else { Task { await self.readback.toggleCapture() } }
             }
@@ -204,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
-        menu.addItem(withTitle: "Readback sessions", action: #selector(showReadback), keyEquivalent: "")
+        menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
         let savePrompt = menu.addItem(withTitle: "Save clipboard as prompt…", action: #selector(saveClipboardPrompt), keyEquivalent: "s")
         savePrompt.keyEquivalentModifierMask = [.command, .shift]
         windows.submenu = menu; main.addItem(windows); NSApp.mainMenu = main; NSApp.windowsMenu = menu
@@ -223,7 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
             menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "")
             menu.addItem(withTitle: "Recent transcripts…", action: #selector(showHistory), keyEquivalent: "")
-            menu.addItem(withTitle: "Readback sessions…", action: #selector(showReadback), keyEquivalent: "")
+            menu.addItem(withTitle: "Snap & Talk sessions…", action: #selector(showReadback), keyEquivalent: "")
             menu.addItem(withTitle: "Saved resources…", action: #selector(showLibrary), keyEquivalent: "")
             menu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
             menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
@@ -284,8 +284,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .delivering: symbol = "arrow.up.doc"; state = "Delivering text"
         case .cancelling: symbol = "xmark.circle"; state = "Cancelling"
         case .idle:
-            if readback?.isRecording == true { symbol = "rectangle.and.pencil.and.ellipsis"; state = "Recording readback narration" }
-            else if (readback?.pendingTranscriptionCount ?? 0) > 0 { symbol = "waveform"; state = "Processing readback narration" }
+            if readback?.isRecording == true { symbol = "rectangle.and.pencil.and.ellipsis"; state = "Recording Snap & Talk narration" }
+            else if (readback?.pendingTranscriptionCount ?? 0) > 0 { symbol = "waveform"; state = "Processing Snap & Talk narration" }
             else {
                 symbol = receipt?.isClipboardCurrent == true ? "doc.on.clipboard" : "square.stack.3d.up"
                 state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
@@ -317,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
     func shortcutEntries() -> [ShortcutEntry] {
-        let voiceEntries = [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Readback capture")].map { id, title in
+        let voiceEntries = [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Snap & Talk")].map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
         }
         let entries = voiceEntries + stage.shortcutDescriptors.map { entry in

@@ -78,7 +78,7 @@ enum ReadbackStore {
         if fm.fileExists(atPath: root.path) {
             let contents = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
             if contents.contains(where: { $0.lastPathComponent == manifestName }) {
-                throw ReadbackError.message("That folder is already a Readback session. Open it instead.")
+                throw ReadbackError.message("That folder is already a Snap & Talk session. Open it instead.")
             }
             guard contents.isEmpty else {
                 throw ReadbackError.message("Choose a new or empty folder so existing files are never replaced.")
@@ -102,7 +102,7 @@ enum ReadbackStore {
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let manifest = try decoder.decode(ReadbackManifest.self, from: data)
         guard manifest.formatVersion == ReadbackManifest.currentFormat else {
-            throw ReadbackError.message("This Readback session uses format \(manifest.formatVersion), but this Workbench supports format \(ReadbackManifest.currentFormat). The folder was not changed.")
+            throw ReadbackError.message("This Snap & Talk session uses format \(manifest.formatVersion), but this Workbench supports format \(ReadbackManifest.currentFormat). The folder was not changed.")
         }
         for section in manifest.sections {
             _ = try safeURL(root: root, relative: section.directory)
@@ -155,14 +155,14 @@ enum ReadbackStore {
     }
 
     private static func writeCompanionFiles(at root: URL, title: String) throws {
-        let skillSource = Bundle.module.url(forResource: "SKILL", withExtension: "md", subdirectory: "build-readback-deck")
+        let skillSource = Bundle.module.url(forResource: "SKILL", withExtension: "md", subdirectory: "build-snap-and-talk-deck")
         guard let skillSource else { throw ReadbackError.message("The slide-building skill is missing from this Workbench build.") }
         try FileManager.default.copyItem(at: skillSource, to: root.appendingPathComponent("SKILL.md"))
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: root.appendingPathComponent("SKILL.md").path)
         let readme = """
         # \(title)
 
-        This is a portable Workbench Readback session. `session.json` owns section order and links each screenshot to its original audio, original transcript and editable narration. Deleted sections stay recoverable under `trash/` until Recently Deleted is emptied in Workbench.
+        This is a portable Workbench Snap & Talk session. `session.json` owns section order and links each screenshot to its original audio, original transcript and editable narration. Deleted sections stay recoverable under `trash/` until Recently Deleted is emptied in Workbench.
 
         Give this folder to an agent together with `SKILL.md` to create a 16:9 PowerPoint with one uncropped screenshot per slide and the edited narration in speaker notes. The skill deliberately does not invent titles, summaries or other content.
 
@@ -219,6 +219,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var isRecording = false
     @Published private(set) var recordingSectionID: UUID?
     @Published private(set) var recordingElapsed = 0.0
+    @Published private(set) var recordingLevel = 0.0
     @Published private(set) var recordingThumbnail: NSImage?
     @Published private(set) var recordingScreenFrame: CGRect?
     @Published private(set) var pendingTranscriptionCount = 0
@@ -278,15 +279,15 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func createSession() {
         guard !isRecording else { notice = "Finish the current narration before creating another session."; return }
         let panel = NSSavePanel()
-        panel.title = "Create Readback Session"
+        panel.title = "Create Snap & Talk Session"
         panel.prompt = "Create Session"
         panel.nameFieldLabel = "Session name:"
-        panel.nameFieldStringValue = "New Readback"
+        panel.nameFieldStringValue = "New Snap & Talk"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let title = url.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
-            let created = try ReadbackStore.create(at: url, title: title.isEmpty ? "Readback" : title)
+            let created = try ReadbackStore.create(at: url, title: title.isEmpty ? "Snap & Talk" : title)
             setCurrent(url: url, manifest: created)
             Task { await preflightPermissions() }
         } catch { notice = error.localizedDescription }
@@ -295,7 +296,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func openSession() {
         guard !isRecording else { notice = "Finish the current narration before switching sessions."; return }
         let panel = NSOpenPanel()
-        panel.title = "Open Readback Session"
+        panel.title = "Open Snap & Talk Session"
         panel.prompt = "Open Session"
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -328,8 +329,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             _ = await AVCaptureDevice.requestAccess(for: .audio)
             microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         }
-        if permissionsReady { notice = "Readback is ready. Move the pointer to the display you want and use \(shortcutLabel)." }
-        else { notice = "Allow Screen Recording and Microphone access before using the Readback shortcut." }
+        if permissionsReady { notice = "Snap & Talk is ready. Move the pointer to the display you want and use \(shortcutLabel)." }
+        else { notice = "Allow Screen Recording and Microphone access before using the Snap & Talk shortcut." }
         stateChanged()
     }
 
@@ -349,8 +350,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func captureNewSection(fromEditor: Bool) async {
         guard !isCapturing, !isRecording else { return }
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
-        guard let root = sessionURL, var current = manifest else { notice = "Create or open a Readback session first."; stateChanged(); return }
-        guard permissionsReady else { notice = "Readback needs Screen Recording and Microphone access first."; stateChanged(); return }
+        guard let root = sessionURL, var current = manifest else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
+        guard permissionsReady else { notice = "Snap & Talk needs Screen Recording and Microphone access first."; stateChanged(); return }
         isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
         do {
             let capture = try await captureScreen(fromEditor: fromEditor)
@@ -387,7 +388,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private func startNarration(root: URL, sectionID: UUID) throws {
         guard microphonePermission == .authorized else { throw ReadbackError.message("Microphone access is off.") }
         guard var current = try? ReadbackStore.load(from: root), let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else {
-            throw ReadbackError.message("The Readback section is no longer available.")
+            throw ReadbackError.message("The Snap & Talk section is no longer available.")
         }
         let folder = try ReadbackStore.safeURL(root: root, relative: current.sections[index].directory)
         let pending = folder.appendingPathComponent("narration-pending-\(UUID().uuidString).wav")
@@ -397,7 +398,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         capture.delegate = self; capture.isMeteringEnabled = true
         guard capture.prepareToRecord(), capture.record() else { throw ReadbackError.message("The microphone could not start. Check that an input device is connected.") }
         recorder = capture; recordingContext = RecordingContext(root: root, sectionID: sectionID, pendingURL: pending)
-        recordingElapsed = 0; peakPower = -160; isRecording = true; recordingSectionID = sectionID
+        recordingElapsed = 0; recordingLevel = 0; peakPower = -160; isRecording = true; recordingSectionID = sectionID
         current.sections[index].status = .recording; current.sections[index].failure = nil
         try ReadbackStore.save(current, at: root); publish(current, for: root)
         notice = "Narrating section \(current.sections.filter { $0.deletedAt == nil }.firstIndex(where: { $0.id == sectionID }).map { $0 + 1 } ?? 1). Use \(shortcutLabel) again to stop."
@@ -406,6 +407,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 guard let self, let recorder = self.recorder else { return }
                 recorder.updateMeters(); self.recordingElapsed = recorder.currentTime
                 self.peakPower = max(self.peakPower, recorder.peakPower(forChannel: 0))
+                self.recordingLevel = max(0, min(1, Double(recorder.averagePower(forChannel: 0) + 55) / 55))
                 if self.recordingElapsed >= 300 { self.stopNarration() }
                 self.stateChanged()
             }
@@ -417,7 +419,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard isRecording, let context = recordingContext else { return }
         let duration = recorder?.currentTime ?? recordingElapsed
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
-        isRecording = false; recordingSectionID = nil; recordingContext = nil
+        isRecording = false; recordingSectionID = nil; recordingContext = nil; recordingLevel = 0
         do {
             guard duration >= 0.35, peakPower > -55 else {
                 try? FileManager.default.removeItem(at: context.pendingURL)
@@ -449,7 +451,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard let context = recordingContext else { return }
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
         try? FileManager.default.removeItem(at: context.pendingURL)
-        isRecording = false; recordingSectionID = nil; recordingContext = nil
+        isRecording = false; recordingSectionID = nil; recordingContext = nil; recordingLevel = 0
         markNeedsNarration(root: context.root, sectionID: context.sectionID, message: "Narration was cancelled. The screenshot and any earlier narration were kept.")
     }
 
