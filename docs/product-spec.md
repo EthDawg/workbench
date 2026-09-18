@@ -15,6 +15,7 @@ Make frequent Mac tasks easy to start, understand and leave. Local dictation is 
 | Apple's iPhone Mirroring | Apple's separate app and supported input mechanisms | Open that app; no embedded control or microphone forwarding |
 | Explain a browser demo | Browser owns page input; explicit Workbench overlay edit mode | Annotation and saved persona, move/size/lock/hide |
 | Hear a draft | Reading engine, not microphone capture | Read, pause, resume, stop, export |
+| Narrate a screen for later slides | Display under the pointer, then Mac microphone | Capture once with the pointer, retain linked audio/transcripts, order and revise sections |
 | Take a break | Timer session | Duration, start/pause/resume, hide |
 | Chain an audio workflow | Shortcuts Record Audio owns recording/cancel | Transcribe with Workbench receives a file and returns text |
 
@@ -27,6 +28,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Surface | Activation | Owns | Closing/focus |
 | --- | --- | --- | --- |
 | App window | Open app/menu/configured shortcut | Drafts, history, models, settings, scenes/personas, keyboard practice | Ordinary editing focus; close does not quit or delete saved work |
+| Readback editor | App navigation; dedicated global shortcut captures outside it | User-chosen session folder, ordered screenshots, narration and recovery | Closing or switching sessions does not delete work; queued transcription resumes from saved audio |
 | One menu bar entry | Click/configured shortcut | Discover and launch jobs; truthful status | Transient launcher, not a universal persistent mode picker |
 | Dictation HUD | Explicit Mac capture/preview; completion or error | Current recording and result, compact/expanded | Stop completes; cancellation is explicit; closing options or collapsing preserves audio and paste target |
 | Presentation tile | Workbench presentation is active | Device presentation only | Starts collapsed: phone icon, divider, chevron. Click or Command-/ opens. Escape closes open controls first, otherwise ends presentation |

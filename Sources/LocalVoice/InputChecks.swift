@@ -19,7 +19,7 @@ enum InputChecks {
         _ = keys.handle(event(.keyUp, modifiers: []))
         guard events == ["1:true", "1:false"] else { throw VoiceError.message("Shortcut press/release or repeat handling failed: \(events)") }
         let competing = VoiceHotkeys(); competing.register(preferences)
-        guard competing.failures.count == 3 else { throw VoiceError.message("Conflicting shortcuts were not reported") }
+        guard competing.failures.count == 4 else { throw VoiceError.message("Conflicting shortcuts were not reported") }
         competing.unregister(); keys.unregister(); competing.register(preferences)
         guard competing.failures.isEmpty else { throw VoiceError.message("Shortcuts were not released") }
         competing.unregister()

@@ -50,6 +50,7 @@ struct VoiceShortcutSettings: View {
             ShortcutControl(model: model, id: 1, title: "Dictation")
             ShortcutControl(model: model, id: 2, title: "Quick controls")
             ShortcutControl(model: model, id: 3, title: "Demo library")
+            ShortcutControl(model: model, id: 4, title: "Readback capture")
             Text("Escape cancels. Delete turns a shortcut off. Existing shortcuts stay unchanged if a combination is unavailable.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Restore default shortcuts") { model.onResetShortcuts?() }

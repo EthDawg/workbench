@@ -7,13 +7,14 @@ struct WorkbenchHome: View {
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var keyboard: KeyboardCoachModel
+    @ObservedObject var readback: ReadbackModel
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var photoBackdrop: PhotoBackdropRequest?
     private let navItems: [(String, String, String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
-        ("speak", "Read aloud", "speaker.wave.2"), ("annotate", "Annotate", "pencil.tip"),
+        ("speak", "Read aloud", "speaker.wave.2"), ("readback", "Readback", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
         ("present", "Present a device", "iphone"), ("history", "Recent transcripts", "clock"),
         ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
         ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
@@ -38,11 +39,12 @@ struct WorkbenchHome: View {
             Group {
                 switch model.page {
                 case "home": welcome
+                case "readback": ReadbackView(model: readback)
                 case "annotate": stage.controlsView
                 case "present": stage.scenesView
                 case "shortcuts": KeyboardCoachView(model: keyboard)
                 case "models": ScrollView { VStack(alignment: .leading, spacing: 28) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering) { ready, message in
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
@@ -79,6 +81,7 @@ struct WorkbenchHome: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     card("Dictate", "A thought, ready to use.", "mic.fill", model.preferences.dictationShortcut.label) { model.page = "dictate" }
                     card("Read aloud", "Hear a draft. Save a reading.", "speaker.wave.2.fill", "Mac voices included") { model.page = "speak" }
+                    card("Readback", "Capture a screen. Narrate the why.", "rectangle.and.pencil.and.ellipsis", model.preferences.shortcut(4).label) { model.page = "readback" }
                     card("Annotate", "Point, draw and return to your demo.", "pencil.tip.crop.circle", "Live screen tools") { model.page = "annotate" }
                     card("Present a device", "Your phone, ready for an audience.", "iphone", "Saved scenes and branding") { model.page = "present" }
                 }
@@ -153,6 +156,7 @@ struct WorkbenchHome: View {
 
 struct WorkbenchQuickPanel: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var readback: ReadbackModel
     var open: (String) -> Void
     var draw: () -> Void
     var timer: () -> Void
@@ -168,6 +172,9 @@ struct WorkbenchQuickPanel: View {
             }.buttonStyle(.borderedProminent).controlSize(.large)
                 .disabled(!model.ready || (model.phase != .idle && model.phase != .recording && model.phase != .requesting) || model.rendering)
             quick("Read aloud", "speaker.wave.2") { open("speak") }
+            quick(readback.isRecording ? "Stop readback narration" : "Readback session", "rectangle.and.pencil.and.ellipsis") {
+                if readback.isRecording { readback.stopNarration() } else { open("readback") }
+            }
             quick("Draw on screen", "pencil.tip") { draw() }
             quick("Present a device", "iphone") { open("present") }
             quick("Persona overlay…", "person.crop.rectangle") { personas() }

@@ -44,12 +44,24 @@ struct VoicePreferences: Codable, Equatable {
     var controlsShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_V))
     // Optional decoding preserves pre-library preferences without resetting dictation.
     var libraryShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+    // Optional decoding preserves preferences written before Readback sessions existed.
+    var readbackShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_R))
     var restoreClipboard = true
     func shortcut(_ id: UInt32) -> VoiceShortcut {
-        switch id { case 1: dictationShortcut; case 3: libraryShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_J)); default: controlsShortcut }
+        switch id {
+        case 1: dictationShortcut
+        case 3: libraryShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+        case 4: readbackShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_R))
+        default: controlsShortcut
+        }
     }
     mutating func setShortcut(_ shortcut: VoiceShortcut, for id: UInt32) {
-        switch id { case 1: dictationShortcut = shortcut; case 3: libraryShortcut = shortcut; default: controlsShortcut = shortcut }
+        switch id {
+        case 1: dictationShortcut = shortcut
+        case 3: libraryShortcut = shortcut
+        case 4: readbackShortcut = shortcut
+        default: controlsShortcut = shortcut
+        }
     }
     static let key = "voicePreferences.v2"
     static func load() -> VoicePreferences {

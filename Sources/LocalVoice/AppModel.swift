@@ -50,7 +50,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var preferences = VoicePreferences.load() {
         didSet {
             preferences.save()
-            if oldValue.dictationShortcut != preferences.dictationShortcut || oldValue.controlsShortcut != preferences.controlsShortcut || oldValue.libraryShortcut != preferences.libraryShortcut { onShortcutsChanged?() }
+            if oldValue.dictationShortcut != preferences.dictationShortcut || oldValue.controlsShortcut != preferences.controlsShortcut || oldValue.libraryShortcut != preferences.libraryShortcut || oldValue.readbackShortcut != preferences.readbackShortcut { onShortcutsChanged?() }
         }
     }
     @Published var rawTranscript = ""
