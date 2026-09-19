@@ -24,7 +24,7 @@ An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a se
 | **Dictate** | Record speech or import audio; keep original and cleaned text, a dictionary and recent transcripts; copy or optionally paste into the original field. |
 | **Read aloud** | Listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key. |
 | **Annotate** | Draw, highlight, add shapes/text, emphasise the pointer and use saved boards over a live presentation. |
-| **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer. QuickTime and iPhone Mirroring can be opened separately. |
+| **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer that remembers where you placed it. QuickTime and iPhone Mirroring can be opened separately. |
 | **Saved resources** | Keep searchable prompts, web links and references to local decks, videos and other files. |
 | **Keyboard** | See all Workbench assignments, change or disable them, and practise on a virtual keyboard without activating tools. |
 

@@ -26,6 +26,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published var timerRunning = false
     @Published var timerProgress: Double = 1
     @Published var timerFinished = false
+    @Published private(set) var timerPlacementAnchor: FloatingControlAnchor?
+    @Published private(set) var timerPlacementNotice: String?
     @Published var shortcutFailures: [Action: String] = [:]
     @Published var recordingAction: Action?
     @Published var selectedTab = "Present"
@@ -53,6 +55,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var previousApplication: NSRunningApplication?
     private var palette: NSPanel?
     private var timerWindow: NSPanel?
+    private var adjustingTimerFrame = false
+    private var timerLiveResizing = false
     private var boardSavePanel: NSSavePanel?
     @Published private(set) var boardExportInProgress = false
     private var shuttingDown = false
@@ -63,6 +67,11 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published private(set) var timerSessionStarted = false
     private var storageBlocked = false
     private let archiveURL: URL
+    private let availableTimerDisplays: () -> [BreakTimerDisplay]
+    private let fallbackTimerDisplayID: () -> String?
+    private lazy var timerPlacement = BreakTimerPlacementStore(
+        url: archiveURL.deletingLastPathComponent().appendingPathComponent("break-timer-placement.json")
+    )
     var displayCount: Int { panels.count }
     var hasPersistentMenuItem: Bool { statusItem?.isVisible == true && statusItem?.button != nil }
     var currentScreen: NSScreen { NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.screens.first! }
@@ -72,11 +81,21 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() { return CFUUIDCreateString(nil, uuid) as String }
         return String(id)
     }
-    init(settings: SettingsStore = SettingsStore(), archiveURL: URL? = nil, embedded: Bool = false, migrationFailure: String? = nil) {
+    init(settings: SettingsStore = SettingsStore(), archiveURL: URL? = nil, embedded: Bool = false,
+         migrationFailure: String? = nil, timerDisplays: (() -> [BreakTimerDisplay])? = nil,
+         timerFallbackID: (() -> String?)? = nil) {
         self.settings = settings
         self.embedded = embedded
         self.migrationFailure = migrationFailure
         self.storageBlocked = migrationFailure != nil
+        self.availableTimerDisplays = timerDisplays ?? {
+            NSScreen.screens.map { BreakTimerDisplay(id: AppCoordinator.displayID($0), visibleFrame: $0.visibleFrame) }
+        }
+        self.fallbackTimerDisplayID = timerFallbackID ?? {
+            let screens = NSScreen.screens
+            let screen = screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? screens.first
+            return screen.map(AppCoordinator.displayID)
+        }
         let testRoot = ProcessInfo.processInfo.environment["WORKBENCH_STAGE_DATA_DIR"] ?? ProcessInfo.processInfo.environment["STAGEMARK_DATA_DIR"]
         self.archiveURL = archiveURL ?? testRoot.map { URL(fileURLWithPath: $0).appendingPathComponent("boards.json") }
             ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("boards.json")
@@ -84,6 +103,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func start() {
         shuttingDown = false
+        timerPlacementAnchor = timerPlacement.value.position.anchor
+        timerPlacementNotice = timerPlacement.notice
         do {
             let archive = try BoardStorage.load(from: archiveURL)
             boardHistory = archive.displays.mapValues(CanvasHistory.init)
@@ -128,7 +149,10 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
-    @objc private func screensChanged() { rebuildScreens() }
+    @objc private func screensChanged() {
+        rebuildScreens()
+        if timerWindow?.isVisible == true { restoreTimerPosition() }
+    }
     @objc private func keyboardLayoutChanged() { objectWillChange.send() }
     @objc private func willSleep() { escape(); effectTimer?.invalidate(); effectTimer = nil; saveBoards() }
     @objc private func didWake() { rebuildScreens(); updateCountdown(); refreshEffects() }
@@ -524,6 +548,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         countdownTimer?.invalidate(); countdownTimer = nil; updateCountdown()
     }
     func hideTimer() { timerWindow?.orderOut(nil) }
+    func setTimerPosition(_ anchor: FloatingControlAnchor) {
+        guard let timerWindow, let display = timerDisplay(containing: timerWindow.frame) else { return }
+        timerPlacement.setAnchor(anchor, on: display)
+        timerPlacementAnchor = timerPlacement.value.position.anchor
+        timerPlacementNotice = timerPlacement.notice
+        restoreTimerPosition(fallbackID: display.id)
+    }
     private func ensureCountdownTimer() {
         guard countdownTimer == nil else { return }
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.updateCountdown() }
@@ -549,12 +580,55 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             panel.level = .floating; panel.hidesOnDeactivate = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.minSize = NSSize(width: 360, height: 240); panel.isReleasedWhenClosed = false
-            panel.isMovableByWindowBackground = true
+            panel.isMovableByWindowBackground = true; panel.delegate = self
             panel.contentView = NSHostingView(rootView: BreakTimerView(app: self, settings: settings)); timerWindow = panel
         }
-        let screen = currentScreen.visibleFrame
-        timerWindow?.setFrameOrigin(CGPoint(x: screen.midX - (timerWindow?.frame.width ?? 570) / 2, y: screen.midY - (timerWindow?.frame.height ?? 330) / 2))
+        restoreTimerPosition()
         timerWindow?.alphaValue = settings.value.timerOpacity; timerWindow?.orderFrontRegardless()
+    }
+    private func timerDisplay(containing frame: NSRect) -> BreakTimerDisplay? {
+        let displays = availableTimerDisplays()
+        let overlapping = displays.max { overlap(frame, $0.visibleFrame) < overlap(frame, $1.visibleFrame) }
+        if let overlapping, overlap(frame, overlapping.visibleFrame) > 0 { return overlapping }
+        let fallbackID = fallbackTimerDisplayID()
+        return displays.first(where: { $0.id == fallbackID }) ?? displays.first
+    }
+    private func overlap(_ lhs: NSRect, _ rhs: NSRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        return intersection.isNull ? 0 : intersection.width * intersection.height
+    }
+    private func restoreTimerPosition(fallbackID: String? = nil) {
+        guard let timerWindow else { return }
+        guard let destination = timerPlacement.value.destination(
+            size: timerWindow.frame.size, displays: availableTimerDisplays(), fallbackID: fallbackID ?? fallbackTimerDisplayID()
+        ) else { return }
+        adjustingTimerFrame = true
+        timerWindow.setFrame(destination.frame, display: true)
+        // AppKit may apply its own screen constraint when the panel is ordered
+        // front and deliver that move after setFrame returns. Keep restoration
+        // moves out of the persisted user-drag path through the next run-loop turn.
+        DispatchQueue.main.async { [weak self] in self?.adjustingTimerFrame = false }
+    }
+    private func recordTimerPosition() {
+        guard let timerWindow, !adjustingTimerFrame, !timerLiveResizing,
+              let display = timerDisplay(containing: timerWindow.frame) else { return }
+        timerPlacement.move(to: timerWindow.frame, on: display)
+        timerPlacementAnchor = timerPlacement.value.position.anchor
+        timerPlacementNotice = timerPlacement.notice
+    }
+    func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === timerWindow else { return }
+        recordTimerPosition()
+    }
+    func windowWillStartLiveResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === timerWindow else { return }
+        timerLiveResizing = true
+    }
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === timerWindow else { return }
+        timerLiveResizing = false
+        if timerPlacement.value.position.anchor == nil { recordTimerPosition() }
+        else { restoreTimerPosition(fallbackID: timerDisplay(containing: window.frame)?.id) }
     }
     func beginRecording(_ action: Action) {
         if embedded, let onOpenShortcuts { onOpenShortcuts(); return }
