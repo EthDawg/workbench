@@ -4,7 +4,9 @@ A saved persona is reusable finished artwork or an editable portrait card. A **g
 
 ## Quick: show one card
 
-Open **Personas and overlays…** in the Workbench menu. Import or paste finished artwork, or choose a starter portrait and edit its visible label/colour. **Show one card** preserves the simple one-card workflow. The nearby controls provide Hide, Lock and Size; a prepared group's candidates remain scoped to that group. A shown card never changes merely because you browse another library item.
+Open **Personas and overlays…** in the Workbench menu. Import or paste finished artwork, or choose a starter portrait and edit its visible label/colour. **Show one card** preserves the simple one-card workflow. The nearby controls provide Hide, Lock and Size; a prepared group's candidates remain scoped to that group, while **All saved** offers one card at a time from the frozen saved list. A shown card never changes merely because you browse another library item.
+
+From any app, press **Control–Option–I** to show or hide the selected persona. Press **Control–Option–Left Arrow** or **Control–Option–Right Arrow** to flip through the current prepared group, or through all saved personas when no group is selected. These three defaults are editable and practisable under **Keyboard**. If no card is visible, either arrow shortcut first shows the current persona; it never starts a multi-overlay session.
 
 ## Prepare several overlays
 
@@ -26,7 +28,7 @@ The compact tile shows a stack-of-cards icon and visible count. **Click** opens 
 - **Save this layout for next time** explicitly saves the current group's arrangement. A conflicting preparation change is reported instead of overwritten. Other groups' temporary changes are not implicitly saved.
 - **End overlays** removes all of this session's cards and controls. It keeps saved personas/layouts, leaves browser tabs and other apps alone, and does not restore desktop wallpaper. Unsaved live placement changes are temporary.
 
-The menu-bar panel also exposes controls, Previous/Next, Hide/Show and End while a multiple-overlay session exists. **Keyboard shortcuts** includes the same five actions. They are off by default; assign and practise combinations in Workbench's existing conflict-checking interface. Stream Deck can send a configured hotkey; there is no special Stream Deck integration. No global Escape, browser-tab shortcut or hover-only action is added. Explicit keyboard focus selects the tile; Space opens its native menu.
+The menu-bar panel also exposes controls, Previous/Next, Hide/Show and End while a multiple-overlay session exists. **Keyboard shortcuts** includes the same five actions. They remain off by default so they do not collide with the three enabled single-persona shortcuts; assign and practise combinations in Workbench's existing conflict-checking interface. Stream Deck can send a configured hotkey; there is no special Stream Deck integration. No global Escape, browser-tab shortcut or hover-only action is added. Explicit keyboard focus selects the tile; Space opens its native menu.
 
 ## Before sharing and after presenting
 
@@ -47,6 +49,8 @@ This increment adds no cloud sync for overlay groups, browser extension, DOM/tab
 ## Validation status
 
 At source `163f30a` on `feature/multiple-persona-overlays`, the integrated scene suite passed **88 tests / 2,367 assertions**. A sandboxed run could not access existing display/private-pasteboard checks; the normal-desktop rerun passed. The broader StageKit CI-mode suite also passed **114 tests / 2,533 assertions**, excluding its live menu-bar popover check. Its previous all-shortcuts-enabled assertion now checks the five new opt-in actions are disabled while existing defaults remain enabled. Nine new session tests cover independent copies, bounded snapshots, paused switching, frozen images, conflict-aware saving, old/future archives, empty-set return and safe visible feedback.
+
+The later single-persona shortcut increment adds a focused mode with **5 tests / 76 assertions** covering the three enabled defaults, conflict-safe migration, frozen ungrouped cycling, show/hide lifecycle and read-only cycling without writes. The changed persona cases also pass inside the broader scene run; this working source has not yet been installed as a signed Preview or physically exercised with the three global keys.
 
 Focused native QA used a disposable library and bundled fictional portraits. Preparation, Duplicate, named positioning, explicit Save, unsaved Done/Keep editing, sequence inspection/Cancel and Start after dismissal passed. The live menu was opened by click and explicit keyboard focus/Space. Hiding one copy, Hide all, changing sets while paused, returning and Show again retained the intended visibility mask. A native receipt recorded three click-through artwork windows and one control tile. See `site/assets/guide/overlays-preparation-actual.png` and its provenance record.
 

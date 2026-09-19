@@ -78,11 +78,11 @@ final class PersonaHUDController: NSWindowController {
         material.wantsLayer = true; material.layer?.cornerRadius = 12; material.layer?.masksToBounds = true
         panel.contentView = material
         legacyContent = material
-        configureButton(previous, symbol: "chevron.left", label: "Previous persona in prepared group", action: #selector(previousPersona))
-        configureButton(next, symbol: "chevron.right", label: "Next persona in prepared group", action: #selector(nextPersona))
+        configureButton(previous, symbol: "chevron.left", label: "Previous available persona", action: #selector(previousPersona))
+        configureButton(next, symbol: "chevron.right", label: "Next available persona", action: #selector(nextPersona))
         configureButton(dismiss, symbol: "xmark", label: "Hide persona and controls", action: #selector(hidePersona))
         picker.target = self; picker.action = #selector(choosePersona)
-        picker.setAccessibilityLabel("Choose a persona in the prepared group")
+        picker.setAccessibilityLabel("Choose an available persona")
         picker.cell?.lineBreakMode = .byTruncatingTail
         options.setAccessibilityLabel("Persona options")
         let row = NSStackView(views: [dragHandle, previous, picker, next, options, dismiss])
@@ -124,10 +124,10 @@ final class PersonaHUDController: NSWindowController {
         if let index = items.firstIndex(where: { $0.id == selectedID }) { picker.selectItem(at: index) }
         previous.isEnabled = items.count > 1; next.isEnabled = items.count > 1
         picker.isEnabled = items.count > 1
-        picker.setAccessibilityLabel(items.count > 1 ? "Choose a persona in the prepared group" : "Displayed persona")
+        picker.setAccessibilityLabel(items.count > 1 ? "Choose an available persona" : "Displayed persona")
         picker.setAccessibilityHelp(items.count > 1
-            ? "Only the prepared group's \(items.count) personas are available."
-            : "Only the displayed persona is available. Prepare a group to switch personas.")
+            ? "\(items.count) personas were frozen when this card was shown."
+            : "Only the displayed persona is available.")
         rebuildOptions()
         if window?.isVisible != true { position(near: artwork); window?.orderFrontRegardless() }
     }

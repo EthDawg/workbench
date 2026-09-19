@@ -198,6 +198,9 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     func perform(_ action: Action) {
         if action.isOverlayAction {
             switch action {
+            case .personaToggle: demoScenes.personas.toggleQuickPersona()
+            case .personaNext: demoScenes.personas.stepQuickPersona(1)
+            case .personaPrevious: demoScenes.personas.stepQuickPersona(-1)
             case .overlayControls: demoScenes.personas.focusOverlayControls()
             case .overlayNext: demoScenes.personas.performOverlayAction(.stepGroup(1))
             case .overlayPrevious: demoScenes.personas.performOverlayAction(.stepGroup(-1))

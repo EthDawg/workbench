@@ -43,11 +43,11 @@ struct PersonaLibraryView: View {
                 Button("Done") { leavePreparation(dismissLibrary: true) }.keyboardShortcut(.cancelAction)
             }
             if !preparingPresentation {
-                Text("Show one card, or prepare several overlays and the groups you want to switch between.")
+                Text("Show one card and flip through personas, or prepare several overlays and the groups you want to switch between.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Picker("Group", selection: Binding(get: { library.activeGroupID }, set: { library.prepareGroup($0) })) {
-                        Text("All saved · no live switching").tag(UUID?.none)
+                        Text("All saved · one at a time").tag(UUID?.none)
                         ForEach(library.groups) { group in Text(group.name).tag(Optional(group.id)) }
                     }.disabled(library.isReadOnly)
                     Button("New…") { groupName = ""; creatingGroup = true }.disabled(library.isReadOnly)
@@ -136,6 +136,8 @@ struct PersonaLibraryView: View {
                                         Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
                                     }.fixedSize()
                                 }
+                                Text("⌃⌥I shows or hides this card. ⌃⌥← and ⌃⌥→ flip through the current group, or all saved personas.")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {
                                 HStack {
