@@ -31,6 +31,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Dictation HUD | Explicit Mac capture/preview; completion or error | Current recording and result, compact/expanded | Stop completes; cancellation is explicit; closing options or collapsing preserves audio and paste target |
 | Presentation tile | Workbench presentation is active | Device presentation only | Starts collapsed: phone icon, divider, chevron. Click or Command-/ opens. Escape closes open controls first, otherwise ends presentation |
 | Persona overlay | Explicit Show over browser | Audience-visible finished artwork | Drag or Position menu; lock enables click-through; hidden on app launch |
+| Break timer | Explicit timer action/shortcut | One countdown session and its separate window | Drag or choose one of eight Position menu anchors; Hide/close keeps the countdown and placement |
 | Annotation layer | Explicit drawing action/shortcut | Marks over the current screen | Escape leaves drawing; existing clear/undo semantics remain |
 
 The mobile tile contains no Dictate, Read aloud, cleanup modes or model downloads. Presentation does not redefine a global voice shortcut. Reject new Mac microphone capture when the presentation is the intended input surface; an explicitly selected Mac text field remains a separate job.
@@ -52,7 +53,7 @@ Snapshot cleanup configuration for each capture. Changes cannot silently alter a
 
 Compact/expanded views share one operation state. Resizing preserves the chosen anchor. Each job remembers its own placement and recovers within visible display bounds after screen changes. Dragging near a corner or edge centre previews a snap destination; release snaps. Eight named positions in a menu provide the same result without dragging. Guides only appear during drag.
 
-Presentation defaults to right edge centre; persona to bottom right; dictation to bottom centre above the Dock. User choices override defaults. Use native buttons/menus, system type/materials, accessible names, contrast/reduced-transparency fallback and Reduce Motion. Keyboard opening focuses controls; mouse recording actions preserve the destination. Source selection closes presentation controls before opening the chooser.
+Presentation defaults to right edge centre; persona to bottom right; dictation to bottom centre above the Dock; the break timer initially centres. User choices override defaults. The timer reopens at its normalized dragged position or named anchor and resolves that placement onto an available visible display after display or scale changes. Use native buttons/menus, system type/materials, accessible names, contrast/reduced-transparency fallback and Reduce Motion. Named timer movement is immediate rather than animated. Keyboard opening focuses controls; mouse recording actions preserve the destination. Source selection closes presentation controls before opening the chooser.
 
 ## Sharing
 
@@ -68,6 +69,7 @@ Implement contextual presentation controls, compact/expanded recording HUD, shar
 - Exercise compact/expanded states, Stop/cancel/results, frozen capture settings and focus.
 - Exercise click-only presentation, keyboard opening/Escape, source/reconnect and persona rendering.
 - Geometry tests cover anchors, negative display origins, removed displays, snap thresholds and resizing.
+- Break-timer checks cover drag and named-position persistence, corrupt/future-data preservation, display recovery and keyboard-accessible Position actions.
 - Test refinement with a loopback fixture, failures, cancellation and original preservation. Report actual model/hardware testing separately.
 - Inspect native UI using synthetic data. Real phone, physical unplug and meeting receiver checks are distinct claims.
 - Deploy the tested guide to the existing Vercel project, publish source and a signed Preview archive with checksum, and update installed Preview while preserving data. Use the explicit distribution workflow and report notarization, upload, tester availability and App Review separately; none is implied by a successful compile.

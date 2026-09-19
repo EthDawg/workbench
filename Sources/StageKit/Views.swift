@@ -451,10 +451,24 @@ struct BreakTimerView: View {
                     .overlay(alignment: .leading) { GeometryReader { bar in Capsule().fill(inkAccent).frame(width: bar.size.width * app.timerProgress) } }.frame(maxWidth: 300)
                 Text(app.timerFinished ? "Ready to continue" : app.timerRunning ? "" : "Paused")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
+                if let notice = app.timerPlacementNotice {
+                    Text(notice).font(.system(size: 10)).foregroundStyle(.orange).multilineTextAlignment(.center)
+                        .accessibilityLabel("Timer position: \(notice)")
+                }
                 Spacer(minLength: 8)
                 HStack(spacing: 18) {
                     Button { if app.timerFinished { app.startTimer() } else { app.pauseResumeTimer() } } label: { Label(app.timerFinished ? "Restart" : app.timerRunning ? "Pause" : "Resume", systemImage: app.timerRunning ? "pause.fill" : "play.fill") }
                     Button("Reset") { app.resetTimer() }
+                    Menu {
+                        ForEach(FloatingControlAnchor.allCases) { anchor in
+                            Button { app.setTimerPosition(anchor) } label: {
+                                if app.timerPlacementAnchor == anchor { Label(anchor.title, systemImage: "checkmark") }
+                                else { Text(anchor.title) }
+                            }
+                        }
+                    } label: { Label("Position", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
+                        .accessibilityLabel("Timer position")
+                        .accessibilityHint("Choose one of eight positions on the current display.")
                     Button("Hide") { app.hideTimer() }
                 }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(controlsVisible ? 0.8 : 0.3))
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
