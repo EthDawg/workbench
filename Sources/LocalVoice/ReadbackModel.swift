@@ -69,6 +69,40 @@ enum ReadbackError: LocalizedError {
     }
 }
 
+enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
+    case claude
+    case chatGPT
+    case codex
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .claude: "Claude"
+        case .chatGPT: "ChatGPT"
+        case .codex: "Codex"
+        }
+    }
+
+    var bundleIdentifiers: [String] {
+        switch self {
+        case .claude: ["com.anthropic.claudefordesktop", "com.anthropic.claude"]
+        case .chatGPT: ["com.openai.chat", "com.openai.codex"]
+        case .codex: ["com.openai.codex", "com.openai.chat"]
+        }
+    }
+
+    func prompt(for sessionURL: URL) -> String {
+        """
+        Use the `SKILL.md` in this Workbench Snap & Talk session folder as the task instructions.
+
+        Session folder: \(sessionURL.standardizedFileURL.path)
+
+        Read `session.json`, use only files inside the session folder, and build the requested slide deck. Keep the original session and any `template.pptx` unchanged. Keep the work local unless I explicitly authorize an external upload or service.
+        """
+    }
+}
+
 enum ReadbackStore {
     static let manifestName = "session.json"
 
@@ -164,7 +198,9 @@ enum ReadbackStore {
 
         This is a portable Workbench Snap & Talk session. `session.json` owns section order and links each screenshot to its original audio, original transcript and editable narration. Deleted sections stay recoverable under `trash/` until Recently Deleted is emptied in Workbench.
 
-        Give this folder to an agent together with `SKILL.md` to create a 16:9 PowerPoint with one uncropped screenshot per slide and the edited narration in speaker notes. The skill deliberately does not invent titles, summaries or other content.
+        Give this folder to an agent together with `SKILL.md` to create a 16:9 PowerPoint with one uncropped screenshot per slide, concise narration-grounded titles and supporting copy on the slide, and the complete edited narration verbatim in speaker notes.
+
+        Workbench's Hand off menu copies a ready-to-paste prompt, reveals this folder and opens an installed Claude, ChatGPT or Codex app. Workbench does not upload or submit the session for you.
 
         Keep this folder private when its screenshots or narration contain sensitive information.
         """
@@ -320,6 +356,32 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func revealSession() { if let sessionURL { NSWorkspace.shared.activateFileViewerSelecting([sessionURL]) } }
+
+    func handOff(to target: ReadbackHandoffTarget) {
+        guard let sessionURL else { notice = "Create or open a Snap & Talk session first."; return }
+        guard TextDelivery.copy(target.prompt(for: sessionURL)) != nil else {
+            notice = "The handoff prompt could not be copied. The session was not sent anywhere."
+            stateChanged()
+            return
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting([sessionURL])
+        guard let applicationURL = target.bundleIdentifiers.lazy.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first else {
+            notice = "Handoff prompt copied and the session shown in Finder. Open \(target.title), add this folder, then paste the prompt. Nothing was uploaded."
+            stateChanged()
+            return
+        }
+
+        notice = "Handoff prompt copied and \(target.title) is opening. Give it access to this folder, then paste the prompt. Nothing was uploaded."
+        stateChanged()
+        NSWorkspace.shared.openApplication(at: applicationURL, configuration: .init()) { [weak self] _, error in
+            guard let error else { return }
+            Task { @MainActor in
+                self?.notice = "\(target.title) could not open: \(error.localizedDescription) The prompt is copied and the session is shown in Finder. Nothing was uploaded."
+                self?.stateChanged()
+            }
+        }
+    }
 
     func preflightPermissions() async {
         screenPermissionGranted = CGPreflightScreenCaptureAccess()

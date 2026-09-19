@@ -24,6 +24,15 @@ enum ReadbackChecks {
         try check(rootMode?.intValue == 0o700 && manifestMode?.intValue == 0o600, "new session metadata is private to the user")
         let skill = try String(contentsOf: root.appendingPathComponent("SKILL.md"), encoding: .utf8)
         try check(skill.contains("name: build-snap-and-talk-deck") && skill.contains("speaker notes verbatim"), "skill preserves the agreed deck contract")
+        try check(skill.contains("template.pptx") && skill.contains("visible title") && skill.contains("supporting copy"), "skill describes the optional template and visible narration-grounded copy")
+        let readme = try String(contentsOf: root.appendingPathComponent("README.md"), encoding: .utf8)
+        try check(readme.contains("complete edited narration verbatim") && readme.contains("does not upload or submit"), "portable README explains slide copy and local handoff")
+        let handoffRoot = root.appendingPathComponent("Folder with spaces", isDirectory: true)
+        for target in ReadbackHandoffTarget.allCases {
+            let prompt = target.prompt(for: handoffRoot)
+            try check(prompt.contains("SKILL.md") && prompt.contains("session.json") && prompt.contains(handoffRoot.path), "\(target.title) handoff identifies the portable session")
+            try check(prompt.contains("Keep the original session") && prompt.contains("Keep the work local"), "\(target.title) handoff preserves originals and external-service consent")
+        }
         try check(manifest.formatVersion == 1 && manifest.title == "Synthetic review" && manifest.sections.isEmpty, "new manifest is versioned and empty")
 
         let firstID = UUID(), secondID = UUID()

@@ -107,6 +107,17 @@ struct ReadbackView: View {
             if model.pendingTranscriptionCount > 0 {
                 Label("\(model.pendingTranscriptionCount) processing", systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
             }
+            Menu {
+                ForEach(ReadbackHandoffTarget.allCases) { target in
+                    Button { model.handOff(to: target) } label: {
+                        Label(target.title, systemImage: target == .claude ? "sparkles" : "bubble.left.and.text.bubble.right")
+                    }
+                }
+            } label: {
+                Label("Hand off…", systemImage: "arrow.up.forward.app")
+            }
+            .disabled(model.isRecording)
+            .help("Copy an agent prompt, reveal this session in Finder and open the chosen app")
             Button("Show in Finder") { model.revealSession() }
             Button("Close session") { model.closeSession() }.disabled(model.isRecording)
         }.padding(.horizontal, 24).padding(.vertical, 16)
