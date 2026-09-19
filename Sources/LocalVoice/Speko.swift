@@ -6,6 +6,66 @@ enum ReadingProvider: String, CaseIterable {
     case speko = "Speko · online"
 }
 
+struct SpekoVoice: Codable, Hashable, Identifiable, Sendable {
+    struct Route: Codable, Hashable, Sendable {
+        let provider: String
+        let model: String
+        let voice: String
+    }
+
+    let id: String
+    let name: String
+    let vendor: String
+    let gender: String?
+    let accent: String?
+    let languages: [String]
+    let useWith: Route
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, vendor, gender, accent, languages
+        case useWith = "use_with"
+    }
+
+    var detail: String {
+        [vendor.capitalized, accent, gender].compactMap { value in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }.joined(separator: " · ")
+    }
+
+    var requestSignature: String {
+        "\(useWith.provider)|\(useWith.model)|\(useWith.voice)"
+    }
+
+    func validated() throws -> SpekoVoice {
+        let required = [id, name, vendor, useWith.provider, useWith.model, useWith.voice]
+        guard required.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 512 }),
+              [gender, accent].compactMap({ $0 }).allSatisfy({ $0.count <= 512 }),
+              languages.count <= 100,
+              languages.allSatisfy({ !$0.isEmpty && $0.count <= 128 }) else {
+            throw VoiceError.message("Speko returned an invalid voice catalogue.")
+        }
+        return self
+    }
+}
+
+enum SpekoVoicePreference {
+    private static let key = "readingProvider.spekoVoice.v1"
+
+    static func load(defaults: UserDefaults = .standard) -> SpekoVoice? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(SpekoVoice.self, from: data).validated()
+    }
+
+    static func save(_ voice: SpekoVoice?, defaults: UserDefaults = .standard) {
+        guard let voice, let data = try? JSONEncoder().encode(voice) else {
+            defaults.removeObject(forKey: key)
+            return
+        }
+        defaults.set(data, forKey: key)
+    }
+}
+
 enum SpekoKeychain {
     static var service: String { (Bundle.main.bundleIdentifier ?? "com.ethdawg.localvoice.development") + ".speko" }
     static var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "api-key"] }
@@ -48,10 +108,103 @@ private final class SpekoSessionDelegate: NSObject, URLSessionTaskDelegate {
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 
+enum SpekoVoiceCatalog {
+    struct Page: Decodable {
+        let data: [SpekoVoice]
+        let nextCursor: String?
+
+        enum CodingKeys: String, CodingKey {
+            case data
+            case nextCursor = "next_cursor"
+        }
+    }
+
+    static let maximumResponseBytes = 2 * 1024 * 1024
+    static let maximumVoices = 1_000
+
+    static func request(key: String, cursor: String? = nil) throws -> URLRequest {
+        var components = URLComponents(string: "https://api.speko.dev/v1/tts/voices")!
+        components.queryItems = [
+            URLQueryItem(name: "language", value: "en"),
+            URLQueryItem(name: "min_chars_per_call", value: "5000"),
+            URLQueryItem(name: "sort", value: "name"),
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        if let cursor { components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
+        guard let url = components.url else { throw VoiceError.message("The Speko voice catalogue URL could not be prepared.") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return request
+    }
+
+    static func decode(_ data: Data) throws -> Page {
+        guard !data.isEmpty, data.count <= maximumResponseBytes else {
+            throw VoiceError.message("Speko returned an empty or oversized voice catalogue.")
+        }
+        do {
+            let page = try JSONDecoder().decode(Page.self, from: data)
+            _ = try page.data.map { try $0.validated() }
+            if let cursor = page.nextCursor,
+               cursor.isEmpty || cursor.count > 2_048 {
+                throw VoiceError.message("Speko returned an invalid voice catalogue.")
+            }
+            return page
+        } catch let error as VoiceError {
+            throw error
+        } catch {
+            throw VoiceError.message("Speko returned an invalid voice catalogue.")
+        }
+    }
+
+    static func validate(_ response: HTTPURLResponse) throws {
+        switch response.statusCode {
+        case 200...299: break
+        case 401, 403: throw VoiceError.message("Speko rejected this key or its catalogue access. Check your API key and account permissions.")
+        case 429: throw VoiceError.message("Speko is rate-limiting voice catalogue requests. Wait before refreshing.")
+        default: throw VoiceError.message("Speko could not load its voice catalogue (HTTP \(response.statusCode)).")
+        }
+        guard response.mimeType == "application/json", response.expectedContentLength <= maximumResponseBytes else {
+            throw VoiceError.message("Speko returned an unsupported voice catalogue response.")
+        }
+    }
+
+    static func load(key: String) async throws -> [SpekoVoice] {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        configuration.timeoutIntervalForResource = 60
+        let session = URLSession(configuration: configuration, delegate: SpekoSessionDelegate(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+
+        var voices: [SpekoVoice] = []
+        var cursor: String?
+        var seenCursors: Set<String> = []
+        repeat {
+            try Task.checkCancellation()
+            let (data, response) = try await session.data(for: request(key: key, cursor: cursor))
+            guard let http = response as? HTTPURLResponse else { throw VoiceError.message("Speko returned an invalid voice catalogue response.") }
+            try validate(http)
+            let page = try decode(data)
+            voices.append(contentsOf: page.data)
+            guard voices.count <= maximumVoices else { throw VoiceError.message("Speko returned too many voices to display safely.") }
+            cursor = page.nextCursor
+            if let cursor, !seenCursors.insert(cursor).inserted {
+                throw VoiceError.message("Speko repeated a voice catalogue page.")
+            }
+        } while cursor != nil
+
+        var seen: Set<String> = []
+        return voices.filter { seen.insert($0.id).inserted }
+    }
+}
+
 enum SpekoRenderer {
     static let maximumCharacters = 5_000
     static let maximumAudioBytes = 64 * 1024 * 1024
-    static func request(text: String, key: String) throws -> URLRequest {
+    static func request(text: String, key: String, voice: SpekoVoice? = nil) throws -> URLRequest {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= maximumCharacters else {
             throw VoiceError.message("Keep each Speko reading between 1 and 5,000 characters.")
         }
@@ -60,10 +213,15 @@ enum SpekoRenderer {
         request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "routing": ["mode": "auto", "objective": "balanced"], "input": text,
             "audio": ["encoding": "pcm_s16le", "sample_rate_hz": 24000, "channels": 1]
-        ])
+        ]
+        if let voice = try voice?.validated() {
+            body["routing"] = ["mode": "explicit", "provider": voice.useWith.provider, "model": voice.useWith.model]
+            body["voice"] = voice.useWith.voice
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
     static func validate(_ response: HTTPURLResponse) throws {
@@ -87,14 +245,14 @@ enum SpekoRenderer {
         data.append(Data("data".utf8)); number(UInt32(pcm.count)); data.append(pcm)
         return data
     }
-    static func render(text: String, key: String) async throws -> URL {
+    static func render(text: String, key: String, voice: SpekoVoice? = nil) async throws -> URL {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil; configuration.httpCookieStorage = nil
         configuration.timeoutIntervalForResource = 120
         let session = URLSession(configuration: configuration, delegate: SpekoSessionDelegate(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         do {
-            let (stream, response) = try await session.bytes(for: request(text: text, key: key))
+            let (stream, response) = try await session.bytes(for: request(text: text, key: key, voice: voice))
             guard let http = response as? HTTPURLResponse else { throw VoiceError.message("Speko returned an invalid response.") }
             try validate(http)
             var pcm = Data()

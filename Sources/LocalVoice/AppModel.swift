@@ -79,18 +79,80 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var elapsed = 0.0
     @Published var level = 0.0
     @Published var readingProvider = ReadingProvider(rawValue: UserDefaults.standard.string(forKey: "readingProvider.v1") ?? "") ?? .mac {
-        didSet { UserDefaults.standard.set(readingProvider.rawValue, forKey: "readingProvider.v1"); stopPlayback() }
+        didSet {
+            UserDefaults.standard.set(readingProvider.rawValue, forKey: "readingProvider.v1")
+            stopPlayback()
+            if readingProvider == .speko { Task { await refreshSpekoVoices() } }
+        }
     }
+    @Published var selectedSpekoVoice = SpekoVoicePreference.load() {
+        didSet {
+            guard oldValue != selectedSpekoVoice else { return }
+            SpekoVoicePreference.save(selectedSpekoVoice)
+            invalidateAudio()
+        }
+    }
+    @Published private(set) var spekoVoices: [SpekoVoice] = []
+    @Published private(set) var loadingSpekoVoices = false
+    @Published private(set) var spekoVoiceNotice = ""
+    private var spekoVoiceRefreshID: UUID?
     @Published var keyNotice = SpekoKeychain.hasKey ? "Key ready in Keychain." : "Add your own key to use Speko."
     private var readingTask: Task<Void, Never>?
     var readingLimit: Int { readingProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000 }
+    var displayedSpekoVoices: [SpekoVoice] {
+        guard let selectedSpekoVoice, !spekoVoices.contains(where: { $0.id == selectedSpekoVoice.id }) else { return spekoVoices }
+        return [selectedSpekoVoice] + spekoVoices
+    }
     func saveSpekoKey(_ key: String) {
-        do { try SpekoKeychain.save(key); invalidateAudio(); keyNotice = "Key saved in Keychain." }
+        do {
+            try SpekoKeychain.save(key)
+            invalidateAudio()
+            keyNotice = "Key saved in Keychain."
+            Task { await refreshSpekoVoices(force: true) }
+        }
         catch { self.error = error.localizedDescription }
     }
     func removeSpekoKey() {
-        do { try SpekoKeychain.remove(); readingProvider = .mac; invalidateAudio(); keyNotice = "Key removed. Using Mac voices." }
+        do {
+            try SpekoKeychain.remove()
+            readingProvider = .mac
+            spekoVoiceRefreshID = nil
+            loadingSpekoVoices = false
+            spekoVoices = []
+            selectedSpekoVoice = nil
+            spekoVoiceNotice = ""
+            invalidateAudio()
+            keyNotice = "Key removed. Using Mac voices."
+        }
         catch { self.error = error.localizedDescription }
+    }
+    func selectSpekoVoice(id: String?) {
+        selectedSpekoVoice = id.flatMap { id in displayedSpekoVoices.first(where: { $0.id == id }) }
+    }
+    func refreshSpekoVoices(force: Bool = false) async {
+        guard readingProvider == .speko, (!loadingSpekoVoices || force), !rendering else { return }
+        guard SpekoKeychain.hasKey else {
+            spekoVoiceNotice = "Save your Speko key to browse voices."
+            return
+        }
+        let refreshID = UUID()
+        spekoVoiceRefreshID = refreshID
+        loadingSpekoVoices = true
+        spekoVoiceNotice = "Loading English voices…"
+        defer {
+            if spekoVoiceRefreshID == refreshID { loadingSpekoVoices = false }
+        }
+        do {
+            let voices = try await SpekoVoiceCatalog.load(key: SpekoKeychain.read())
+            try Task.checkCancellation()
+            guard spekoVoiceRefreshID == refreshID, readingProvider == .speko, SpekoKeychain.hasKey else { return }
+            spekoVoices = voices
+            spekoVoiceNotice = voices.isEmpty ? "Speko returned no English voices that support a 5,000-character reading." : "\(voices.count) voices available."
+        } catch is CancellationError {
+            if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = "" }
+        } catch {
+            if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = error.localizedDescription }
+        }
     }
     private func invalidateAudio() { stopPlayback(); AudioRenderer.remove(audioURL); audioURL = nil; audioSignature = "" }
     func cancelReading() { readingTask?.cancel(); status = "Reading cancelled. Speko may still bill text already accepted." }
@@ -453,7 +515,10 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         catch { fail(error.localizedDescription) }
     }
 
-    private var signature: String { "\(readingProvider.rawValue)|\(voice)|\(Int(rate))|\(speechText)" }
+    private var signature: String {
+        let selectedVoice = readingProvider == .speko ? selectedSpekoVoice?.requestSignature ?? "automatic" : voice
+        return "\(readingProvider.rawValue)|\(selectedVoice)|\(Int(rate))|\(speechText)"
+    }
     var canSeekReading: Bool { !rendering && (playing || paused) && player != nil && audioDuration.isFinite && audioDuration > 0 }
     func seekReading(to seconds: TimeInterval) {
         guard canSeekReading, seconds.isFinite, let player else { return }
@@ -503,14 +568,14 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     private func generateAudio() async throws -> URL {
         if let audioURL, signature == audioSignature { return audioURL }
         rendering = true; error = nil
-        let text = speechText, selectedVoice = voice, selectedRate = Int(rate), originalSignature = signature
+        let text = speechText, selectedVoice = voice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = Int(rate), originalSignature = signature
         guard text.count <= readingLimit else { throw VoiceError.message("This reading is too long for the selected provider.") }
         let url: URL
         if readingProvider == .speko {
             let key = try SpekoKeychain.read()
             cloudRequestActive = true
             defer { cloudRequestActive = false }
-            url = try await SpekoRenderer.render(text: text, key: key)
+            url = try await SpekoRenderer.render(text: text, key: key, voice: selectedSpekoVoice)
         } else {
             url = try await Task.detached(priority: .userInitiated) { try AudioRenderer.render(text: text, voice: selectedVoice, rate: selectedRate) }.value
         }
