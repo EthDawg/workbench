@@ -4,6 +4,13 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--colour-accessibility-only"] {
+            let suite = CoreTests(), before = assertionFailures
+            suite.testInkColourAccessibilityDescriptions()
+            if assertionFailures == before { print("PASS ink colour accessibility descriptions") }
+            print("1 tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--backdrop-fixture"] {
             _ = NSApplication.shared
             BackdropReplacementFixture().run()
@@ -17,7 +24,7 @@ struct TestRunner {
         let boardPresentationOnly = args == ["--board-presentation-only"]
         let backdropOnly = args == ["--backdrop-only"]
         guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture]")
+            print("Usage: StageMarkTests [--ci | --colour-accessibility-only | --scenes-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture]")
             exit(2)
         }
         let scenesOnly = args == ["--scenes-only"]
@@ -128,6 +135,7 @@ struct TestRunner {
             ("shortcut uniqueness", suite.testDefaultShortcutsAreUniqueAndComplete),
             ("settings persistence and bounds", suite.testPreferencesPersistAndClamp),
             ("settings recovery", suite.testCorruptPreferencesArePreservedForRecovery),
+            ("ink colour accessibility descriptions", suite.testInkColourAccessibilityDescriptions),
             ("actual rendering for every tool", suite.testAllToolsRenderToRealPixels),
             ("native mouse handlers and text commit", integration.testActualMouseHandlersAndTextCommit),
             ("first stroke after activation", integration.testFirstStrokeAfterActivationReachesInactiveCanvas),
