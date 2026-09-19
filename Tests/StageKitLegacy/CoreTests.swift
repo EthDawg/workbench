@@ -87,6 +87,24 @@ final class CoreTests: XCTestCase {
         canvas.undo(); XCTAssertTrue(canvas.annotations.isEmpty)
         canvas.redo(); XCTAssertEqual(canvas.annotations, [new])
     }
+    func testScreenshotHandoffStateAndFadePause() {
+        var state = ScreenshotHandoffState()
+        XCTAssertTrue(state.begin(at: 100, autoFade: true))
+        XCTAssertTrue(state.isActive)
+        XCTAssertFalse(state.begin(at: 101, autoFade: true), "A second capture cannot replace the active handoff")
+        XCTAssertEqual(state.finish(at: 103), 3)
+        XCTAssertFalse(state.isActive)
+        XCTAssertEqual(state.finish(at: 104), nil, "A late duplicate completion is ignored")
+
+        var ink = Annotation(tool: .pen, color: .coral, width: 4, points: [InkPoint(.zero)])
+        ink.created = 90
+        let history = CanvasHistory([ink])
+        history.pauseFade(by: 3)
+        XCTAssertEqual(history.annotations.first?.created, 93)
+
+        XCTAssertTrue(state.begin(at: 200, autoFade: false))
+        XCTAssertEqual(state.finish(at: 205), nil, "A handoff must not age-shift ink when auto-fade is off")
+    }
     func testCountdownPauseResumeAndSleep() {
         let start = Date(timeIntervalSince1970: 1000)
         var timer = Countdown(); timer.start(seconds: 300, now: start)
