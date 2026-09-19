@@ -83,6 +83,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
     @Published var keyNotice = SpekoKeychain.hasKey ? "Key ready in Keychain." : "Add your own key to use Speko."
     private var readingTask: Task<Void, Never>?
+    private var readingGenerationID: UUID?
     var readingLimit: Int { readingProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000 }
     func saveSpekoKey(_ key: String) {
         do { try SpekoKeychain.save(key); invalidateAudio(); keyNotice = "Key saved in Keychain." }
@@ -93,7 +94,19 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         catch { self.error = error.localizedDescription }
     }
     private func invalidateAudio() { stopPlayback(); AudioRenderer.remove(audioURL); audioURL = nil; audioSignature = "" }
-    func cancelReading() { readingTask?.cancel(); status = "Reading cancelled. Speko may still bill text already accepted." }
+    func cancelReading() {
+        guard readingGenerationActive else { return }
+        let mayBeBilled = readingProvider == .speko
+        let task = readingTask
+        readingGenerationID = nil
+        readingTask = nil
+        readingGenerationActive = false
+        cloudRequestActive = false
+        rendering = false
+        task?.cancel()
+        status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
+    }
+    @Published private(set) var readingGenerationActive = false
     @Published var cloudRequestActive = false
     @Published var rendering = false
     @Published var playing = false
@@ -480,13 +493,23 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
             playing = true; paused = false; status = "Reading aloud."; return
         }
         stopPlayback()
+        let generationID = UUID()
+        readingGenerationID = generationID
         rendering = true
         readingTask = Task {
-            defer { rendering = false; readingTask = nil }
+            defer {
+                if readingGenerationID == generationID {
+                    rendering = false; readingGenerationActive = false; cloudRequestActive = false
+                    readingTask = nil; readingGenerationID = nil
+                }
+            }
             do {
-                let url = try await generateAudio()
+                let url = try await generateAudio(generationID: generationID)
                 try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
                 let activePlayer = try AVAudioPlayer(contentsOf: url); activePlayer.delegate = self
+                try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
                 guard activePlayer.play() else { throw VoiceError.message("Audio could not play. Check your Mac's audio output.") }
                 player = activePlayer
                 let invocation = UUID(); playbackID = invocation
@@ -497,24 +520,37 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                         self.playbackTime = activePlayer.currentTime
                     }
                 }
-            } catch { if !(error is CancellationError) { self.error = error.localizedDescription } }
+            } catch {
+                if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
+            }
         }
     }
-    private func generateAudio() async throws -> URL {
+    private func generateAudio(generationID: UUID) async throws -> URL {
         if let audioURL, signature == audioSignature { return audioURL }
-        rendering = true; error = nil
-        let text = speechText, selectedVoice = voice, selectedRate = Int(rate), originalSignature = signature
-        guard text.count <= readingLimit else { throw VoiceError.message("This reading is too long for the selected provider.") }
+        guard readingGenerationID == generationID else { throw CancellationError() }
+        rendering = true; readingGenerationActive = true; error = nil
+        let text = speechText, selectedVoice = voice, selectedRate = Int(rate), selectedProvider = readingProvider, originalSignature = signature
+        let limit = selectedProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000
+        guard text.count <= limit else { throw VoiceError.message("This reading is too long for the selected provider.") }
+        defer {
+            if readingGenerationID == generationID {
+                readingGenerationActive = false; cloudRequestActive = false
+            }
+        }
         let url: URL
-        if readingProvider == .speko {
+        if selectedProvider == .speko {
             let key = try SpekoKeychain.read()
             cloudRequestActive = true
-            defer { cloudRequestActive = false }
             url = try await SpekoRenderer.render(text: text, key: key)
         } else {
-            url = try await Task.detached(priority: .userInitiated) { try AudioRenderer.render(text: text, voice: selectedVoice, rate: selectedRate) }.value
+            url = try await AudioRenderer.renderCancellable(text: text, voice: selectedVoice, rate: selectedRate)
         }
-        do { try Task.checkCancellation() } catch { AudioRenderer.remove(url); throw error }
+        do {
+            try Task.checkCancellation()
+            guard readingGenerationID == generationID else { throw CancellationError() }
+        } catch {
+            AudioRenderer.remove(url); throw error
+        }
         AudioRenderer.remove(audioURL); audioURL = url; audioSignature = originalSignature
         return url
     }
@@ -522,15 +558,27 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         guard !rendering, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let generationID = UUID()
+        readingGenerationID = generationID
         rendering = true
         readingTask = Task {
-            defer { rendering = false; readingTask = nil }
+            defer {
+                if readingGenerationID == generationID {
+                    rendering = false; readingGenerationActive = false; cloudRequestActive = false
+                    readingTask = nil; readingGenerationID = nil
+                }
+            }
             do {
-                let url = try await generateAudio()
+                let url = try await generateAudio(generationID: generationID)
                 try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
                 try await Task.detached { try AudioRenderer.export(url, to: destination) }.value
-                rendering = false; status = "Audio saved to \(destination.lastPathComponent)."
-            } catch { if !(error is CancellationError) { self.error = error.localizedDescription } }
+                try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
+                status = "Audio saved to \(destination.lastPathComponent)."
+            } catch {
+                if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
+            }
         }
     }
     func stopPlayback() {

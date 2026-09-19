@@ -189,7 +189,7 @@ struct VoiceQuickControls: View {
             Text(model.speechText.isEmpty ? "Paste or type a longer passage in the editor." : model.speechText).lineLimit(9).foregroundStyle(.secondary)
             HStack {
                 Button(model.playing ? "Pause" : model.paused ? "Resume" : "Listen") { model.listen() }.disabled(model.speechText.isEmpty || model.rendering || model.phase != .idle)
-                if model.cloudRequestActive { Button("Cancel request") { model.cancelReading() } }
+                if model.readingGenerationActive { Button("Cancel generation") { model.cancelReading() } }
                 if model.playing || model.paused { Button("Stop") { model.stopPlayback() } }
                 Spacer(); Button("Edit text…") { model.onShowEditor?("speak") }
             }
