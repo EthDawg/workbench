@@ -43,6 +43,13 @@ struct CaptureHistoryView: View {
                                         Button("Original") { original = item }
                                         Button("Read aloud") { model.speechText = item.text; model.page = "speak" }
                                         Button("Save prompt") { model.savePrompt(item.text) }
+                                        Menu("Export…") {
+                                            Button("Cleaned text…") { model.exportCapture(item, version: .cleaned) }
+                                            Button("Original wording…") { model.exportCapture(item, version: .original) }
+                                        }.menuStyle(.borderlessButton).fixedSize()
+                                            .accessibilityLabel("Export this transcript")
+                                            .accessibilityHint("Choose cleaned text or original wording")
+                                            .help("Export cleaned text or original wording")
                                     }
                                     Spacer()
                                     if !compact {

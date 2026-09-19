@@ -33,6 +33,24 @@ struct StateStore {
     }
 }
 
+enum TranscriptExportVersion: String {
+    case cleaned = "Cleaned text"
+    case original = "Original wording"
+}
+
+enum TranscriptExport {
+    static let defaultFilename = "Workbench Transcript.txt"
+    static func text(for capture: Transcript, version: TranscriptExportVersion) -> String {
+        version == .original ? capture.rawText ?? capture.text : capture.text
+    }
+    static func data(for capture: Transcript, version: TranscriptExportVersion) -> Data {
+        Data(text(for: capture, version: version).utf8)
+    }
+    static func write(_ capture: Transcript, version: TranscriptExportVersion, to destination: URL) throws {
+        try data(for: capture, version: version).write(to: destination, options: .atomic)
+    }
+}
+
 enum AudioRenderer {
     static func render(text: String, voice: String, rate: Int) throws -> URL {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceError.message("Add some text first.") }
