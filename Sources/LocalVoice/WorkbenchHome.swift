@@ -153,6 +153,7 @@ struct WorkbenchHome: View {
 
 struct WorkbenchQuickPanel: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var stage: StageKitController
     var open: (String) -> Void
     var draw: () -> Void
     var timer: () -> Void
@@ -170,7 +171,20 @@ struct WorkbenchQuickPanel: View {
             quick("Read aloud", "speaker.wave.2") { open("speak") }
             quick("Draw on screen", "pencil.tip") { draw() }
             quick("Present a device", "iphone") { open("present") }
-            quick("Persona overlay…", "person.crop.rectangle") { personas() }
+            quick("Personas and overlays…", "person.crop.rectangle") { personas() }
+            if stage.hasOverlaySession {
+                HStack {
+                    Button { model.onCloseMenu?(); stage.focusOverlayControls() } label: { Image(systemName: "rectangle.on.rectangle") }
+                        .accessibilityLabel("Focus overlay controls")
+                    Button { model.onCloseMenu?(); stage.stepOverlaySet(-1) } label: { Image(systemName: "chevron.left") }
+                        .accessibilityLabel("Previous prepared overlay set").disabled(!stage.canStepOverlays)
+                    Button { model.onCloseMenu?(); stage.stepOverlaySet(1) } label: { Image(systemName: "chevron.right") }
+                        .accessibilityLabel("Next prepared overlay set").disabled(!stage.canStepOverlays)
+                    Button(stage.areOverlaysPaused ? "Show again" : "Hide all") { model.onCloseMenu?(); stage.toggleOverlayVisibility() }
+                    Spacer()
+                    Button("End") { model.onCloseMenu?(); stage.endOverlays() }.accessibilityLabel("End overlays")
+                }.buttonStyle(.bordered).controlSize(.regular)
+            }
             quick("Break timer", "timer") { timer() }
             Divider()
             HStack { Button("Open Workbench") { open("home") }; Spacer(); Button { open("shortcuts") } label: { Image(systemName: "keyboard") }.accessibilityLabel("Keyboard shortcuts") }

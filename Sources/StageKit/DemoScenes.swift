@@ -349,7 +349,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if scene.hand != nil && handImage(for: scene) == nil { notice = SceneError.missingHand.localizedDescription; return }
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
-        personas.hideOverlay()
+        personas.pauseOverlaySession()
         onBeginPresentation?()
         let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, mode: mode)
         presenter.onEnd = { [weak self] in self?.presentation = nil; self?.objectWillChange.send(); self?.show() }

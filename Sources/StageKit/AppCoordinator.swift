@@ -184,6 +184,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         refreshWindows(); refreshEffects(); updateStatus()
     }
     func handleHotkey(_ action: Action, down: Bool) {
+        if action.isOverlayAction { if down { perform(action) }; return }
         guard recordingAction == nil, !boardExportInProgress else { return }
         if down && action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool {
@@ -195,6 +196,20 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         } else if down { perform(action) }
     }
     func perform(_ action: Action) {
+        if action.isOverlayAction {
+            switch action {
+            case .personaToggle: demoScenes.personas.toggleQuickPersona()
+            case .personaNext: demoScenes.personas.stepQuickPersona(1)
+            case .personaPrevious: demoScenes.personas.stepQuickPersona(-1)
+            case .overlayControls: demoScenes.personas.focusOverlayControls()
+            case .overlayNext: demoScenes.personas.performOverlayAction(.stepGroup(1))
+            case .overlayPrevious: demoScenes.personas.performOverlayAction(.stepGroup(-1))
+            case .overlayVisibility: demoScenes.personas.performOverlayAction(.pauseResume)
+            case .overlayEnd: demoScenes.personas.hideOverlay()
+            default: break
+            }
+            return
+        }
         guard !boardExportInProgress else { return }
         if action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool { startDrawing(selected, latched: true); return }

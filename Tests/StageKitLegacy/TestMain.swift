@@ -4,6 +4,11 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--persona-session-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.overlay-review" {
+            _ = NSApplication.shared
+            PersonaSessionFixture().run()
+            return
+        }
         if args == ["--backdrop-fixture"] {
             _ = NSApplication.shared
             BackdropReplacementFixture().run()
@@ -16,15 +21,16 @@ struct TestRunner {
         }
         let boardPresentationOnly = args == ["--board-presentation-only"]
         let backdropOnly = args == ["--backdrop-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture]")
+        let personaQuickOnly = args == ["--persona-quick-only"]
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly else {
+            print("Usage: StageMarkTests [--ci | --scenes-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture]")
             exit(2)
         }
         let scenesOnly = args == ["--scenes-only"]
         let hostedCI = args == ["--ci"]
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly { NSApp.finishLaunching() }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
         let suite = CoreTests()
         let integration = IntegrationTests()
         let scenes = SceneTests()
@@ -36,6 +42,7 @@ struct TestRunner {
         let viewportFit = ViewportFitTests()
         let logoImport = LogoImportTests()
         let personas = PersonaTests()
+        let personaSessions = PersonaSessionTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let sceneSync = SceneSyncAdapterTests()
@@ -58,6 +65,15 @@ struct TestRunner {
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),
             ("presentation window and fullscreen lifecycle", presentationLifecycle.testModeChangesKeepPresentationAndEndClosesOnce),
             ("presentation transition interruption and failure recovery", presentationLifecycle.testEndDuringNativeTransitionsAndFailureRecovery),
+            ("persona sessions: empty return and visible feedback", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
+            ("persona sessions: opt-in archive migration", personaSessions.testOptInMigrationBacksUpExactArchiveAndPreservesLegacyPlacement),
+            ("persona sessions: independent placed copies", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
+            ("persona sessions: paused switching and frozen scope", personaSessions.testPausedGroupSwitchKeepsLayoutsAndFrozenAllowedScope),
+            ("persona sessions: frozen artwork and failed start", personaSessions.testFrozenArtworkSurvivesLibraryEditsAndFailedReplacementStart),
+            ("persona sessions: explicit conflict-aware layout save", personaSessions.testSaveLayoutIsExplicitAtomicAndRejectsChangedPreparation),
+            ("persona sessions: read-only and busy state", personaSessions.testReadOnlySessionsAndInteractionGuardsNeverWriteOrTrapOverlays),
+            ("persona sessions: invalid and future archive preservation", personaSessions.testInvalidLayoutsAndFutureArchivePreserveOriginalBytes),
+            ("persona sessions: bounded replacement preflight", personaSessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
             ("floating: AllTargetsAreDistinctFiniteAndBounded", floating.testAllTargetsAreDistinctFiniteAndBounded),
             ("floating: GuideLayoutPreservesTargetsAndFlipsDisplayCoordinates", floating.testGuideLayoutPreservesTargetsAndFlipsDisplayCoordinates),
             ("floating: GuideStateClearsWhenDragOrDisplayEnds", floating.testGuideStateClearsWhenDragOrDisplayEnds),
@@ -154,7 +170,15 @@ struct TestRunner {
             ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
         ], at: 5)
         tests.insert(contentsOf: backdropTests, at: 5)
-        if backdropOnly {
+        if personaQuickOnly {
+            tests = [
+                ("persona quick shortcuts and default keys", suite.testDefaultShortcutsAreUniqueAndComplete),
+                ("persona quick shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
+                ("persona quick frozen selection", personas.testLiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames),
+                ("persona quick overlay cycling and lifecycle", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona quick read-only cycling", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement)
+            ]
+        } else if backdropOnly {
             tests = backdropTests
         } else if boardPresentationOnly {
             tests = Array(tests.prefix(5))
@@ -165,7 +189,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }

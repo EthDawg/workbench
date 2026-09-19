@@ -6,8 +6,10 @@ private final class PersonaPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-final class PersonaOverlayController: NSWindowController {
+final class PersonaOverlayController: NSWindowController, PersonaSessionDisplaying {
     var onPlacementChange: ((PersonaOverlayState) -> Void)?
+    var onSelection: (() -> Void)?
+    var frame: CGRect? { window?.frame }
     private var state = PersonaOverlayState()
     private let artwork = PersonaArtworkView()
     private var screenChanges: AnyCancellable?
@@ -22,17 +24,28 @@ final class PersonaOverlayController: NSWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = artwork
         artwork.onFinishDragging = { [weak self] in self?.finishDragging() }
+        artwork.onSelection = { [weak self] in self?.onSelection?() }
         screenChanges = NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: RunLoop.main).sink { [weak self] _ in
                 guard let self, self.window?.isVisible == true else { return }
+                self.artwork.cancelDragging()
                 self.position(); self.onPlacementChange?(self.state)
             }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func show(image: NSImage, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
+    func show(image: NSImage, name: String, state: PersonaOverlayState, animated: Bool = false) -> PersonaOverlayState {
+        let wasVisible = window?.isVisible == true
         configure(image: image, name: name, state: state)
+        let fade = animated && !wasVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        window?.alphaValue = fade ? 0 : 1
         window?.orderFrontRegardless()
+        if fade {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.16
+                window?.animator().alphaValue = 1
+            }
+        }
         return self.state
     }
     func configure(image: NSImage, name: String, state: PersonaOverlayState) {
@@ -44,8 +57,8 @@ final class PersonaOverlayController: NSWindowController {
         window?.ignoresMouseEvents = state.locked
         position()
     }
-    func hide() { window?.orderOut(nil) }
-    func shutdown() { hide(); screenChanges = nil; onPlacementChange = nil }
+    func hide() { artwork.cancelDragging(); window?.orderOut(nil); window?.alphaValue = 1 }
+    func shutdown() { hide(); screenChanges = nil; onPlacementChange = nil; onSelection = nil }
 
     private static func screenID(_ screen: NSScreen) -> UInt32? {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
@@ -90,6 +103,7 @@ final class PersonaOverlayController: NSWindowController {
 private final class PersonaArtworkView: NSView {
     var image: NSImage? { didSet { needsDisplay = true } }
     var onFinishDragging: (() -> Void)?
+    var onSelection: (() -> Void)?
     private var anchor: CGPoint?
     private var startingOrigin: CGPoint?
 
@@ -107,6 +121,7 @@ private final class PersonaArtworkView: NSView {
     }
     override func mouseDown(with event: NSEvent) {
         guard let window, !window.ignoresMouseEvents else { return }
+        onSelection?()
         anchor = window.convertPoint(toScreen: event.locationInWindow)
         startingOrigin = window.frame.origin
     }
@@ -118,7 +133,8 @@ private final class PersonaArtworkView: NSView {
     }
     override func mouseUp(with event: NSEvent) {
         if anchor != nil { onFinishDragging?() }
-        anchor = nil; startingOrigin = nil
+        cancelDragging()
     }
+    func cancelDragging() { anchor = nil; startingOrigin = nil }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 }

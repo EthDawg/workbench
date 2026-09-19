@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import ImageIO
 import UniformTypeIdentifiers
+import CryptoKit
 
 struct SavedPersona: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -69,16 +70,22 @@ struct PersonaGroup: Codable, Identifiable, Equatable {
     var personaIDs: [UUID] = []
     var suggestedSceneID: UUID? = nil
     var suggestedLogoID: UUID? = nil
+    var overlays: [PersonaOverlayItem]? = nil
+    var publicLabel: String? = nil
 }
 
 /// Only these deliberately prepared candidates can appear in live controls.
 /// Reconciliation can remove candidates, but never adds or reorders them.
 struct PersonaLiveSelection: Equatable {
-    let groupID: UUID
+    let groupID: UUID?
     private(set) var candidateIDs: [UUID]
     private(set) var currentID: UUID?
     init(group: PersonaGroup, selectedID: UUID?) {
         groupID = group.id; candidateIDs = group.personaIDs
+        currentID = selectedID.flatMap { candidateIDs.contains($0) ? $0 : nil }
+    }
+    init(personaIDs: [UUID], selectedID: UUID?) {
+        groupID = nil; candidateIDs = personaIDs
         currentID = selectedID.flatMap { candidateIDs.contains($0) ? $0 : nil }
     }
     mutating func select(_ id: UUID) {
@@ -91,8 +98,11 @@ struct PersonaLiveSelection: Equatable {
         self.currentID = candidateIDs[destination]
     }
     mutating func reconcile(group: PersonaGroup?, existingIDs: Set<UUID>) {
-        guard let group, group.id == groupID else { candidateIDs = []; currentID = nil; return }
-        let allowed = Set(group.personaIDs).intersection(existingIDs)
+        let allowed: Set<UUID>
+        if let groupID {
+            guard let group, group.id == groupID else { candidateIDs = []; currentID = nil; return }
+            allowed = Set(group.personaIDs).intersection(existingIDs)
+        } else { allowed = existingIDs }
         candidateIDs.removeAll { !allowed.contains($0) }
         if let currentID, !candidateIDs.contains(currentID) { self.currentID = nil }
     }
@@ -104,13 +114,15 @@ struct PersonaArchive: Codable {
     var selectedID: UUID?
     var groups: [PersonaGroup] = []
     var activeGroupID: UUID?
+    var preparedGroupIDs: [UUID] = []
 
     init(version: Int = 2, items: [SavedPersona] = [], selectedID: UUID? = nil,
-         groups: [PersonaGroup] = [], activeGroupID: UUID? = nil) {
+         groups: [PersonaGroup] = [], activeGroupID: UUID? = nil, preparedGroupIDs: [UUID] = []) {
         self.version = version; self.items = items; self.selectedID = selectedID
         self.groups = groups; self.activeGroupID = activeGroupID
+        self.preparedGroupIDs = preparedGroupIDs
     }
-    private enum CodingKeys: String, CodingKey { case version, items, selectedID, groups, activeGroupID }
+    private enum CodingKeys: String, CodingKey { case version, items, selectedID, groups, activeGroupID, preparedGroupIDs }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decode(Int.self, forKey: .version)
@@ -118,26 +130,38 @@ struct PersonaArchive: Codable {
         selectedID = try values.decodeIfPresent(UUID.self, forKey: .selectedID)
         groups = try values.decodeIfPresent([PersonaGroup].self, forKey: .groups) ?? []
         activeGroupID = try values.decodeIfPresent(UUID.self, forKey: .activeGroupID)
+        preparedGroupIDs = try values.decodeIfPresent([UUID].self, forKey: .preparedGroupIDs) ?? []
     }
 
     func validated() throws -> PersonaArchive {
-        guard [1, 2].contains(version), items.count <= 10_000, groups.count <= 1_000,
+        guard [1, 2, 3].contains(version), items.count <= 10_000, groups.count <= 1_000,
               Set(items.map(\.id)).count == items.count,
               Set(items.map(\.image)).count == items.count,
               Set(groups.map(\.id)).count == groups.count,
               selectedID == nil || items.contains(where: { $0.id == selectedID }),
               activeGroupID == nil || groups.contains(where: { $0.id == activeGroupID }),
-              version != 1 || (groups.isEmpty && activeGroupID == nil && items.allSatisfy { $0.card == nil })
+              version != 1 || (groups.isEmpty && activeGroupID == nil && items.allSatisfy { $0.card == nil }),
+              version == 3 || (preparedGroupIDs.isEmpty && groups.allSatisfy { $0.overlays == nil && $0.publicLabel == nil }),
+              preparedGroupIDs.count <= PersonaSessionController.maximumGroups,
+              Set(preparedGroupIDs).count == preparedGroupIDs.count,
+              Set(preparedGroupIDs).isSubset(of: Set(groups.map(\.id)))
         else { throw PersonaError.invalidSettings }
         _ = try items.map { try $0.validated() }
         let ids = Set(items.map(\.id))
-        for group in groups {
+        var result = self
+        for (index, group) in groups.enumerated() {
             guard !group.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   group.name.count <= 160, group.name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
                   group.personaIDs.count <= 1_000, Set(group.personaIDs).count == group.personaIDs.count,
                   Set(group.personaIDs).isSubset(of: ids) else { throw PersonaError.invalidSettings }
+            result.groups[index].publicLabel = try PersonaSessionLabels.validated(group.publicLabel)
+            if let overlays = group.overlays {
+                guard overlays.count <= PersonaSessionController.maximumOverlays,
+                      Set(overlays.map(\.id)).count == overlays.count else { throw PersonaError.invalidSettings }
+                result.groups[index].overlays = try overlays.map { try $0.validated(allowed: Set(group.personaIDs)) }
+            }
         }
-        return self
+        return result
     }
 }
 
@@ -202,12 +226,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
     @Published private(set) var groups: [PersonaGroup] = []
     @Published private(set) var activeGroupID: UUID?
     @Published private(set) var liveSelection: PersonaLiveSelection?
+    @Published private(set) var preparedGroupIDs: [UUID] = []
+    @Published private(set) var sessionState = PersonaSessionViewState()
     @Published var selectedID: UUID? { didSet { if !applyingArchive { select(previous: oldValue) } } }
     @Published var notice: String?
     @Published private(set) var overlayVisible = false
     @Published private(set) var overlayLocked = false
     @Published private(set) var overlayWidth = 0.16
     var onShow: (() -> Void)?
+    var mayBeginInteraction: (() -> Bool)?
+    private var sessionFeedback: String?
     var selected: SavedPersona? { items.first { $0.id == selectedID } }
     var activeGroup: PersonaGroup? { groups.first { $0.id == activeGroupID } }
     var visibleItems: [SavedPersona] {
@@ -223,13 +251,23 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private var overlay: PersonaOverlayController?
     private var hud: PersonaHUDController?
     private var displayedID: UUID?
+    private var displayedImage: NSImage?
+    private var displayedLabel: String?
+    private var liveImages: [UUID: NSImage] = [:]
+    private var liveLabels: [UUID: String] = [:]
+    private var session: PersonaSessionController?
+    private let sessionPanelFactory: (() -> any PersonaSessionDisplaying)?
+    private let sessionHUDEnabled: Bool
+    private var archiveVersion = 2
     private let imageCache = NSCache<NSString, NSImage>()
     private var applyingArchive = false
     private var libraryURL: URL { root.appendingPathComponent("persona-library.json") }
     private var overlayURL: URL { root.appendingPathComponent("persona-overlay.json") }
 
-    init(root: URL, readOnlyReason: String? = nil) {
+    init(root: URL, readOnlyReason: String? = nil, sessionPanelFactory: (() -> any PersonaSessionDisplaying)? = nil, sessionHUDEnabled: Bool = true) {
         self.root = root; self.readOnlyReason = readOnlyReason
+        self.sessionPanelFactory = sessionPanelFactory
+        self.sessionHUDEnabled = sessionHUDEnabled
         super.init()
         imageCache.totalCostLimit = 128 * 1024 * 1024
         applyingArchive = true
@@ -240,6 +278,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 let archive = try JSONDecoder().decode(PersonaArchive.self, from: libraryData).validated()
                 items = archive.items; selectedID = archive.selectedID
                 groups = archive.groups; activeGroupID = archive.activeGroupID
+                preparedGroupIDs = archive.preparedGroupIDs; archiveVersion = max(2, archive.version)
             }
         } catch { self.readOnlyReason = readOnlyReason ?? error.localizedDescription }
         do {
@@ -352,7 +391,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
         let changed = items.filter { $0.id != id }
         do {
             var next = archive; next.items = changed; next.selectedID = selectedID == id ? nil : selectedID
-            for index in next.groups.indices { next.groups[index].personaIDs.removeAll { $0 == id } }
+            for index in next.groups.indices {
+                next.groups[index].personaIDs.removeAll { $0 == id }
+                next.groups[index].overlays?.removeAll { $0.personaID == id }
+            }
             try commit(next)
             // Scenes may still reference this file. Removing a library entry is
             // never permission to delete its image from the shared scene folder.
@@ -371,7 +413,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard writable() else { throw PersonaError.invalidSettings }
         let group = PersonaGroup(name: name.trimmingCharacters(in: .whitespacesAndNewlines), personaIDs: members)
         var next = archive; next.groups.append(group); next.activeGroupID = group.id; next.selectedID = members.first
-        try commit(next); hideOverlay(); notice = nil; return group.id
+        try commit(next); if session == nil { hideOverlay() }; notice = nil; return group.id
     }
     func renameGroup(_ id: UUID, name: String) {
         guard writable(), let index = groups.firstIndex(where: { $0.id == id }) else { return }
@@ -381,6 +423,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     func removeGroup(_ id: UUID) {
         guard writable() else { return }
         var next = archive; next.groups.removeAll { $0.id == id }
+        next.preparedGroupIDs.removeAll { $0 == id }
         if activeGroupID == id { next.activeGroupID = nil; next.selectedID = nil }
         do { try commit(next); notice = "Group removed. Its personas, images and scenes are kept." }
         catch { notice = error.localizedDescription }
@@ -389,11 +432,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard writable(), id == nil || groups.contains(where: { $0.id == id }) else { return }
         var next = archive; next.activeGroupID = id
         next.selectedID = id.flatMap { target in groups.first { $0.id == target }?.personaIDs.first }
-        do { try commit(next); hideOverlay(); notice = nil } catch { notice = error.localizedDescription }
+        do { try commit(next); if session == nil { hideOverlay() }; notice = nil } catch { notice = error.localizedDescription }
     }
     func setGroupMembers(_ members: [UUID], in id: UUID) {
         guard writable(), let index = groups.firstIndex(where: { $0.id == id }) else { return }
         var next = archive; next.groups[index].personaIDs = members
+        next.groups[index].overlays?.removeAll { !members.contains($0.personaID) }
         if activeGroupID == id, let selectedID, !members.contains(selectedID) { next.selectedID = nil }
         do { try commit(next); notice = nil } catch { notice = error.localizedDescription }
     }
@@ -404,48 +448,227 @@ final class PersonaLibrary: NSObject, ObservableObject {
         setGroupMembers(members, in: group.id)
     }
 
+    func saveGroupLayout(_ id: UUID, overlays: [PersonaOverlayItem], publicLabel: String?, expected: PersonaGroup? = nil) throws {
+        guard writable(), let index = groups.firstIndex(where: { $0.id == id }) else { throw PersonaSessionError.missingGroup }
+        let current = groups[index]
+        if let expected {
+            guard expected.id == id, expected.personaIDs == current.personaIDs,
+                  expected.overlays == current.overlays, expected.publicLabel == current.publicLabel
+            else { throw PersonaSessionError.changedLayout }
+        }
+        guard overlays.count <= PersonaSessionController.maximumOverlays else { throw PersonaSessionError.tooManyOverlays }
+        var next = archive; next.version = 3
+        next.groups[index].overlays = try overlays.map { try $0.validated(allowed: Set(current.personaIDs)) }
+        next.groups[index].publicLabel = try PersonaSessionLabels.validated(publicLabel)
+        try commit(next); notice = nil
+    }
+
+    func savePreparedGroups(_ ids: [UUID]) throws {
+        guard writable() else { throw PersonaError.invalidSettings }
+        var next = archive; next.version = 3; next.preparedGroupIDs = ids
+        try commit(next); notice = nil
+    }
+
+    /// All images and allowed groups are validated before replacing a live session.
+    /// No image files or prepared layouts are written by Start.
+    func startOverlaySession(groupIDs: [UUID], initialGroupID: UUID, softReveal: Bool = false) throws {
+        guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
+        guard !groupIDs.isEmpty, Set(groupIDs).count == groupIDs.count,
+              groupIDs.contains(initialGroupID) else { throw PersonaSessionError.missingGroup }
+        guard groupIDs.count <= PersonaSessionController.maximumGroups else { throw PersonaSessionError.tooManyOverlays }
+        let chosen = try groupIDs.map { id -> PersonaGroup in
+            guard let group = groups.first(where: { $0.id == id }) else { throw PersonaSessionError.missingGroup }
+            guard let overlays = group.overlays, !overlays.isEmpty else { throw PersonaSessionError.needsSelection }
+            return group
+        }
+        let allowed = Set(chosen.flatMap(\.personaIDs))
+        guard allowed.count <= PersonaSessionController.maximumCandidates else { throw PersonaSessionError.tooManyCandidates }
+        var frozen: [UUID: NSImage] = [:], cost = 0
+        for id in allowed {
+            guard let item = items.first(where: { $0.id == id }), let image = renderedImage(for: item),
+                  let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { throw PersonaSessionError.missingArtwork }
+            cost += cg.bytesPerRow * cg.height
+            guard cost <= PersonaSessionController.maximumImageBytes else { throw PersonaSessionError.tooManyCandidates }
+            frozen[id] = NSImage(cgImage: cg, size: image.size)
+        }
+        let snapshots = try chosen.enumerated().map { index, group -> PersonaPreparedSessionGroup in
+            let candidates = try group.personaIDs.enumerated().map { ordinal, id -> PersonaSessionCandidate in
+                guard let item = items.first(where: { $0.id == id }), let image = frozen[id] else { throw PersonaSessionError.missingArtwork }
+                let label = try PersonaSessionLabels.validated(item.card?.label) ?? "Persona \(ordinal + 1)"
+                return PersonaSessionCandidate(id: id, label: label, image: image)
+            }
+            return PersonaPreparedSessionGroup(source: group,
+                label: try PersonaSessionLabels.validated(group.publicLabel) ?? "Set \(index + 1)",
+                candidates: candidates, overlays: group.overlays ?? [])
+        }
+        let proposed = try PersonaSessionController(groups: snapshots, initialGroupID: initialGroupID,
+            canSave: !isReadOnly, softReveal: softReveal, makePanel: sessionPanelFactory ?? { PersonaOverlayController() })
+        hideOverlay()
+        session = proposed
+        proposed.onChange = { [weak self] in self?.refreshSessionState() }
+        notice = nil
+        onShow?()
+        proposed.start()
+    }
+
+    func pauseOverlaySession() {
+        if let session { session.pause() }
+        else { hideOverlay() }
+    }
+    func resumeOverlaySession() throws {
+        guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
+        session?.resume()
+    }
+    func endOverlaySession() {
+        session?.onChange = nil; session?.end(); session = nil
+        sessionFeedback = nil
+        sessionState = PersonaSessionViewState(); overlayVisible = false; hud?.hide()
+        overlay?.hide(); liveSelection = nil; displayedID = nil
+        displayedImage = nil; displayedLabel = nil; liveImages.removeAll(); liveLabels.removeAll()
+    }
+    func saveSessionLayout() throws {
+        guard let session, let source = session.currentSource else { throw PersonaSessionError.missingGroup }
+        try saveGroupLayout(source.id, overlays: session.currentLayout, publicLabel: source.publicLabel, expected: source)
+        if let saved = groups.first(where: { $0.id == source.id }) { session.markSaved(saved) }
+    }
+    func performOverlayAction(_ action: PersonaSessionAction) {
+        guard let session else { return }
+        sessionFeedback = nil
+        do {
+            switch action {
+            case .selectGroup(let id):
+                guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }; try session.selectGroup(id)
+            case .stepGroup(let offset):
+                guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }; try session.stepGroup(offset)
+            case .selectInstance(let id): session.selectInstance(id)
+            case .add(let id):
+                guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }; _ = try session.addOverlay(personaID: id)
+            case .replace(let instanceID, let personaID):
+                guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }; try session.replace(instanceID, personaID: personaID)
+            case .remove(let id): session.removeOverlay(id)
+            case .move(let id, let offset): session.move(id, by: offset)
+            case .visible(let id, let value):
+                if value && mayBeginInteraction?() == false { throw PersonaSessionInteractionError.busy }
+                session.setVisible(value, for: id)
+            case .locked(let id, let value): session.setLocked(value, for: id)
+            case .width(let id, let value): session.setWidth(value, for: id)
+            case .position(let id, let x, let y): session.setPosition(x: x, y: y, for: id)
+            case .pauseResume: if session.phase == .paused { try resumeOverlaySession() } else { pauseOverlaySession() }
+            case .saveLayout: try saveSessionLayout(); sessionFeedback = "Layout saved for next time."
+            case .dismissFeedback: break
+            case .end: endOverlaySession()
+            }
+        } catch {
+            notice = error.localizedDescription
+            // The floating surface must never expose a file path or private
+            // group name from a storage error. Details stay in preparation.
+            if error is PersonaSessionInteractionError {
+                sessionFeedback = "Finish recording or keyboard practice first."
+            } else if error as? PersonaSessionError == .changedLayout {
+                sessionFeedback = "Layout not saved: preparation changed. Review it in Personas."
+            } else {
+                sessionFeedback = "That change could not be completed. Review it in Personas."
+            }
+        }
+        refreshSessionState()
+    }
+    private func refreshSessionState() {
+        guard let session else { return }
+        sessionState = session.state; sessionState.feedback = sessionFeedback
+        overlayVisible = session.visibleCount > 0
+        if let selected = sessionState.selectedInstance { overlayLocked = selected.locked; overlayWidth = selected.width }
+        if sessionState.phase == .idle { endOverlaySession() }
+        else { refreshHUD() }
+    }
+
     func stepLivePersona(_ offset: Int) {
         guard var next = liveSelection else { return }
         next.step(offset)
         if let id = next.currentID { selectLivePersona(id) }
     }
     func selectLivePersona(_ id: UUID) {
-        guard writable(), var session = liveSelection, session.candidateIDs.contains(id),
-              let item = items.first(where: { $0.id == id }), renderedImage(for: item) != nil else { return }
-        do {
-            try commit(items, selection: id)
-            session.select(id); liveSelection = session; displayedID = id; refreshOverlay()
-        } catch { notice = error.localizedDescription }
+        guard var session = liveSelection, session.candidateIDs.contains(id),
+              let image = liveImages[id] else { return }
+        if !isReadOnly {
+            do { try commit(items, selection: id) }
+            catch { notice = error.localizedDescription; return }
+        }
+        session.select(id); liveSelection = session; displayedID = id
+        displayedImage = image; displayedLabel = liveLabels[id]; refreshOverlay()
     }
-    func focusOverlayControls() { hud?.focusControls() }
+    func focusOverlayControls() {
+        guard mayBeginInteraction?() != false else { notice = PersonaSessionInteractionError.busy.localizedDescription; return }
+        hud?.focusControls()
+    }
+
+    func toggleQuickPersona() {
+        guard session == nil else {
+            notice = "End the prepared overlay session before showing one floating persona."
+            return
+        }
+        if overlayVisible { hideOverlay() } else { showOverlay() }
+    }
+
+    func stepQuickPersona(_ offset: Int) {
+        guard session == nil else {
+            notice = "Use Previous or Next prepared overlay set during a multi-overlay presentation."
+            return
+        }
+        guard overlayVisible else { showOverlay(); return }
+        stepLivePersona(offset)
+    }
 
     func showOverlay() {
-        guard let selected, let image = renderedImage(for: selected) else { notice = PersonaError.unreadableImage.localizedDescription; return }
-        if let group = activeGroup, !group.personaIDs.contains(selected.id) { notice = "Choose a persona in the prepared group."; return }
+        guard mayBeginInteraction?() != false else { notice = PersonaSessionInteractionError.busy.localizedDescription; return }
+        let candidateIDs = activeGroup?.personaIDs ?? items.map(\.id)
+        guard let initialID = selectedID.flatMap({ candidateIDs.contains($0) ? $0 : nil }) ?? candidateIDs.first,
+              let selected = items.first(where: { $0.id == initialID }),
+              let image = renderedImage(for: selected) else {
+            notice = items.isEmpty ? "Add a persona before showing a floating card." : PersonaError.unreadableImage.localizedDescription
+            return
+        }
+        guard candidateIDs.count <= PersonaSessionController.maximumCandidates else { notice = PersonaSessionError.tooManyCandidates.localizedDescription; return }
+        var frozenImages: [UUID: NSImage] = [:], frozenLabels: [UUID: String] = [:], bytes = 0
+        for id in candidateIDs {
+            guard let item = items.first(where: { $0.id == id }), let rendered = renderedImage(for: item),
+                  let cg = rendered.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                notice = PersonaSessionError.missingArtwork.localizedDescription; return
+            }
+            bytes += cg.bytesPerRow * cg.height
+            guard bytes <= PersonaSessionController.maximumImageBytes else { notice = PersonaSessionError.tooManyCandidates.localizedDescription; return }
+            frozenImages[id] = NSImage(cgImage: cg, size: rendered.size); frozenLabels[id] = publicLabel(for: item)
+        }
+        endOverlaySession()
         liveSelection = activeGroup.map { PersonaLiveSelection(group: $0, selectedID: selected.id) }
+            ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: selected.id)
         displayedID = selected.id
+        liveImages = frozenImages; liveLabels = frozenLabels
+        displayedImage = liveImages[selected.id] ?? image; displayedLabel = publicLabel(for: selected)
         if overlay == nil {
             overlay = PersonaOverlayController()
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
         }
-        let placed = overlay?.show(image: image, name: publicLabel(for: selected), state: overlayState)
+        let placed = overlay?.show(image: displayedImage ?? image, name: displayedLabel ?? "Floating persona", state: overlayState)
         overlayVisible = true
         if let placed { updateOverlay(placed) }
         refreshHUD()
         onShow?()
     }
-    func hideOverlay() { overlay?.hide(); hud?.hide(); overlayVisible = false; liveSelection = nil; displayedID = nil }
+    func hideOverlay() { endOverlaySession() }
     func shutdown() { hideOverlay(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects() }
 
     func setOverlayLocked(_ locked: Bool) {
+        if let session, let id = session.selectedInstanceID { session.setLocked(locked, for: id); return }
         var state = overlayState; state.locked = locked; updateOverlay(state)
     }
     func setOverlayWidth(_ width: Double) {
         guard width.isFinite else { return }
+        if let session, let id = session.selectedInstanceID { session.setWidth(width, for: id); return }
         var state = overlayState; state.width = min(0.40, max(0.06, width)); updateOverlay(state)
     }
     func setOverlayPosition(x: Double, y: Double) {
         guard x.isFinite, y.isFinite else { return }
+        if let session, let id = session.selectedInstanceID { session.setPosition(x: x, y: y, for: id); return }
         var state = overlayState; state.x = min(1, max(0, x)); state.y = min(1, max(0, y)); updateOverlay(state)
     }
 
@@ -459,9 +682,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
         refreshOverlay()
     }
     private func refreshOverlay() {
+        if session != nil { return }
         guard overlayVisible else { return }
-        guard let selected = items.first(where: { $0.id == displayedID }), let image = renderedImage(for: selected) else { hideOverlay(); return }
-        overlay?.configure(image: image, name: publicLabel(for: selected), state: overlayState)
+        guard items.contains(where: { $0.id == displayedID }), let image = displayedImage else { hideOverlay(); return }
+        overlay?.configure(image: image, name: displayedLabel ?? "Floating persona", state: overlayState)
         refreshHUD()
     }
     private func publicLabel(for persona: SavedPersona) -> String {
@@ -469,36 +693,55 @@ final class PersonaLibrary: NSObject, ObservableObject {
         return label.isEmpty ? "Floating persona" : label
     }
     private func refreshHUD() {
+        if let session, session.phase != .idle {
+            guard sessionHUDEnabled else { return }
+            if hud == nil { hud = PersonaHUDController(root: root, allowsSaving: !isReadOnly) }
+            hud?.showSession(viewModel: PersonaSessionHUDModel(state: sessionState,
+                perform: { [weak self] in self?.performOverlayAction($0) }), near: session.selectedFrame)
+            return
+        }
         guard overlayVisible, let current = displayedID else { hud?.hide(); return }
         // Browsing the preparation library never changes a running overlay.
         // Ungrouped artwork gets the same controls, scoped to that one item.
         let candidateIDs = liveSelection?.candidateIDs ?? [current]
         if hud == nil {
             let controls = PersonaHUDController(root: root, allowsSaving: !isReadOnly)
-            controls.onSelect = { [weak self] in self?.selectLivePersona($0) }
-            controls.onStep = { [weak self] in self?.stepLivePersona($0) }
-            controls.onHide = { [weak self] in self?.hideOverlay() }
-            controls.onLock = { [weak self] in self?.setOverlayLocked($0) }
-            controls.onSizeChange = { [weak self] delta in guard let self else { return }; self.setOverlayWidth(self.overlayWidth + delta) }
             if let message = controls.notice { notice = message }
             hud = controls
         }
+        hud?.onSelect = { [weak self] in self?.selectLivePersona($0) }
+        hud?.onStep = { [weak self] in self?.stepLivePersona($0) }
+        hud?.onHide = { [weak self] in self?.hideOverlay() }
+        hud?.onLock = { [weak self] in self?.setOverlayLocked($0) }
+        hud?.onSizeChange = { [weak self] delta in guard let self else { return }; self.setOverlayWidth(self.overlayWidth + delta) }
         let candidates = candidateIDs.enumerated().compactMap { index, id -> PersonaHUDItem? in
-            guard let persona = items.first(where: { $0.id == id }) else { return nil }
-            return PersonaHUDItem.make(persona: persona, ordinal: index + 1, image: renderedImage(for: persona))
+            guard items.contains(where: { $0.id == id }) else { return nil }
+            let label = liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)"
+            return PersonaHUDItem(id: id, label: label, image: liveImages[id])
         }
         hud?.show(items: candidates, selectedID: current, locked: overlayLocked, near: overlay?.window?.frame)
     }
-    private var archive: PersonaArchive { PersonaArchive(items: items, selectedID: selectedID, groups: groups, activeGroupID: activeGroupID) }
+    private var archive: PersonaArchive { PersonaArchive(version: archiveVersion, items: items, selectedID: selectedID, groups: groups, activeGroupID: activeGroupID, preparedGroupIDs: preparedGroupIDs) }
     private func commit(_ items: [SavedPersona], selection: UUID?) throws {
         var next = archive; next.items = items; next.selectedID = selection; try commit(next)
     }
     private func commit(_ proposed: PersonaArchive) throws {
         let next = try proposed.validated()
+        if next.version == 3, archiveVersion < 3, let libraryData {
+            guard try PersonaStorage.read(libraryURL) == libraryData else { throw PersonaError.changedOnDisk }
+            let hash = SHA256.hash(data: libraryData).map { String(format: "%02x", $0) }.joined()
+            let backup = root.appendingPathComponent("persona-library.before-overlays-\(hash).json")
+            if let existing = try PersonaStorage.read(backup) {
+                guard existing == libraryData else { throw PersonaError.changedOnDisk }
+            } else { try libraryData.write(to: backup, options: .withoutOverwriting) }
+            guard try PersonaStorage.read(backup) == libraryData else { throw PersonaError.changedOnDisk }
+        }
         libraryData = try PersonaStorage.write(next, to: libraryURL, expected: libraryData)
         applyingArchive = true
         items = next.items; selectedID = next.selectedID; groups = next.groups; activeGroupID = next.activeGroupID
+        preparedGroupIDs = next.preparedGroupIDs; archiveVersion = next.version
         applyingArchive = false
+        session?.reconcile(availableGroups: groups, existingPersonas: Set(items.map(\.id)))
         if var session = liveSelection {
             session.reconcile(group: activeGroup, existingIDs: Set(items.map(\.id)))
             liveSelection = session

@@ -13,6 +13,8 @@ enum Action: String, CaseIterable, Codable, Identifiable {
     case pen, highlighter, arrow, line, rectangle, ellipse, text, eraser
     case clear, undo, redo, whiteboard, blackboard, pointer, fade, timer, controls, scenes
     case color1, color2, color3, color4, color5, color6
+    case personaToggle, personaNext, personaPrevious
+    case overlayControls, overlayNext, overlayPrevious, overlayVisibility, overlayEnd
     var id: String { rawValue }
     var tool: DrawingTool? { DrawingTool(rawValue: rawValue) }
     var title: String {
@@ -26,6 +28,14 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         case .timer: return "Break timer"
         case .controls: return "Open drawing controls"
         case .scenes: return "Demo scenes"
+        case .personaToggle: return "Show or hide one persona"
+        case .personaNext: return "Next floating persona"
+        case .personaPrevious: return "Previous floating persona"
+        case .overlayControls: return "Focus overlay controls"
+        case .overlayNext: return "Next prepared overlay set"
+        case .overlayPrevious: return "Previous prepared overlay set"
+        case .overlayVisibility: return "Hide or show presentation overlays"
+        case .overlayEnd: return "End presentation overlays"
         case .color1, .color2, .color3, .color4, .color5, .color6: return "Colour \(rawValue.last!)"
         default: return rawValue.capitalized
         }
@@ -56,10 +66,21 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         case .color4: key = kVK_ANSI_4
         case .color5: key = kVK_ANSI_5
         case .color6: key = kVK_ANSI_6
+        case .personaToggle: key = kVK_ANSI_I
+        case .personaNext: key = kVK_RightArrow
+        case .personaPrevious: key = kVK_LeftArrow
+        case .overlayControls: key = kVK_ANSI_I
+        case .overlayNext: key = kVK_RightArrow
+        case .overlayPrevious: key = kVK_LeftArrow
+        case .overlayVisibility: key = kVK_ANSI_U
+        case .overlayEnd: key = kVK_ANSI_J
         }
         let shifted = self == .redo || rawValue.hasPrefix("color")
-        return Shortcut(keyCode: UInt32(key), modifiers: UInt32(controlKey | optionKey | (shifted ? shiftKey : 0)))
+        return Shortcut(keyCode: UInt32(key), modifiers: UInt32(controlKey | optionKey | (shifted ? shiftKey : 0)), enabled: !isPresentationOverlayAction)
     }
+    var isPersonaAction: Bool { [.personaToggle, .personaNext, .personaPrevious].contains(self) }
+    var isPresentationOverlayAction: Bool { [.overlayControls, .overlayNext, .overlayPrevious, .overlayVisibility, .overlayEnd].contains(self) }
+    var isOverlayAction: Bool { isPersonaAction || isPresentationOverlayAction }
 }
 
 struct Shortcut: Codable, Equatable, Hashable {
@@ -169,7 +190,8 @@ final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if let data = defaults.data(forKey: "preferences.v1") {
+        let savedData = defaults.data(forKey: "preferences.v1")
+        if let data = savedData {
             do { value = try JSONDecoder().decode(Preferences.self, from: data); value.validate() }
             catch { value = Preferences(); notice = "Saved settings could not be read. Defaults are in use; the original settings have been preserved."; defaults.set(data, forKey: "preferences.recovery") }
         } else { value = Preferences() }
@@ -181,6 +203,21 @@ final class SettingsStore: ObservableObject {
             }
             value = migrated
             defaults.set(2, forKey: "preferences.schema")
+        }
+        if savedData != nil, defaults.integer(forKey: "preferences.schema") < 3 {
+            var migrated = value
+            for action in [Action.personaToggle, .personaPrevious, .personaNext] where migrated.shortcuts[action.rawValue] == nil {
+                let candidate = action.defaultShortcut
+                let collides = migrated.shortcuts.values.contains {
+                    $0.enabled && $0.keyCode == candidate.keyCode && $0.modifiers == candidate.modifiers
+                }
+                if collides {
+                    var disabled = candidate; disabled.enabled = false
+                    migrated.shortcuts[action.rawValue] = disabled
+                }
+            }
+            value = migrated
+            defaults.set(3, forKey: "preferences.schema")
         }
     }
     private func save() {

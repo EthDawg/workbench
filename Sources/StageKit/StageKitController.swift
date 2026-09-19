@@ -36,7 +36,10 @@ public final class StageKitController: ObservableObject {
         set { onOpenShortcuts = newValue }
     }
     public var mayBeginInteraction: (() -> Bool)? {
-        didSet { coordinator.mayBeginInteraction = mayBeginInteraction; coordinator.demoScenes.mayBeginInteraction = mayBeginInteraction }
+        didSet {
+            coordinator.mayBeginInteraction = mayBeginInteraction; coordinator.demoScenes.mayBeginInteraction = mayBeginInteraction
+            coordinator.demoScenes.personas.mayBeginInteraction = mayBeginInteraction
+        }
     }
     /// Hide the shell before drawing, starting a timer or presenting a scene.
     public var onBeginActivity: (() -> Void)? {
@@ -72,6 +75,7 @@ public final class StageKitController: ObservableObject {
         coordinator.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         settings.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.demoScenes.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
+        coordinator.demoScenes.personas.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
     }
 
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
@@ -84,6 +88,9 @@ public final class StageKitController: ObservableObject {
     }
     public var isDrawing: Bool { coordinator.isDrawing }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
+    public var hasOverlaySession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
+    public var areOverlaysPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
+    public var canStepOverlays: Bool { coordinator.demoScenes.personas.sessionState.groups.count > 1 }
     public var timerText: String { coordinator.timerText }
     public var isTimerRunning: Bool { coordinator.timerRunning }
     public var notice: String? { coordinator.notice ?? coordinator.settings.notice ?? coordinator.demoScenes.notice }
@@ -104,6 +111,10 @@ public final class StageKitController: ObservableObject {
     public func showTimer() { coordinator.toggleTimer() }
     public func showScenes() { coordinator.showDemoScenes() }
     public func showPersonas() { coordinator.demoScenes.showPersonas() }
+    public func focusOverlayControls() { coordinator.demoScenes.personas.focusOverlayControls() }
+    public func stepOverlaySet(_ offset: Int) { coordinator.demoScenes.personas.performOverlayAction(.stepGroup(offset)) }
+    public func toggleOverlayVisibility() { coordinator.demoScenes.personas.performOverlayAction(.pauseResume) }
+    public func endOverlays() { coordinator.demoScenes.personas.hideOverlay() }
     public func endPresentation() { coordinator.demoScenes.endPresentation(); coordinator.demoScenes.personas.hideOverlay(); coordinator.hideTimer(); coordinator.escape() }
     public func escape() { coordinator.escape() }
     public func performShortcut(id: String) {

@@ -14,140 +14,191 @@ struct PersonaLibraryView: View {
     @State private var choosingStarter = false
     @State private var starterToEdit: SavedPersona?
     @State private var showAfterDismiss = false
+    @State private var preparingPresentation = false
+    @State private var startPreparedAfterDismiss: (groupIDs: [UUID], softReveal: Bool)?
+    @State private var resumeAfterDismiss = false
+    @State private var unsavedPresentationLayout = false
+    @State private var confirmingDiscard = false
+    @State private var dismissAfterDiscard = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Personas").font(.title2.bold())
+                if preparingPresentation {
+                    Button { leavePreparation(dismissLibrary: false) } label: { Label("Personas", systemImage: "chevron.left") }
+                }
+                Text(preparingPresentation ? "Prepare presentation" : "Personas").font(.title2.bold())
                 Spacer()
-                Menu("Add persona") {
-                    Button("Choose a starter portrait…") { library.hideOverlay(); choosingStarter = true }
-                    Divider()
-                    Button("Import portrait for an editable card…") {
-                        library.hideOverlay()
-                        library.importImage(card: PersonaCardStyle()) { editingCard = $0 }
-                    }
-                    Button("Import finished card…") { library.importImage() }
-                    Button("Paste finished image") { library.pasteImage() }
-                }.disabled(library.isReadOnly)
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
-            }
-            Text("Prepare a group before presenting. Floating controls show only its members; customer group names stay here.")
-                .font(.callout).foregroundStyle(.secondary)
-            HStack {
-                Picker("Group", selection: Binding(get: { library.activeGroupID }, set: { library.prepareGroup($0) })) {
-                    Text("All saved · no live switching").tag(UUID?.none)
-                    ForEach(library.groups) { group in Text(group.name).tag(Optional(group.id)) }
-                }.disabled(library.isReadOnly)
-                Button("New…") { library.hideOverlay(); groupName = ""; creatingGroup = true }.disabled(library.isReadOnly)
-                    .accessibilityLabel("Create persona group")
-                if let group = library.activeGroup {
-                    Menu("Edit group") {
-                        Button("Choose members…") { library.hideOverlay(); editingGroup = group }
-                        Button("Rename…") { library.hideOverlay(); groupName = group.name; renamingGroup = true }
-                        Button("Remove group", role: .destructive) { library.removeGroup(group.id) }
+                if !preparingPresentation {
+                    Menu("Add persona") {
+                        Button("Choose a starter portrait…") { choosingStarter = true }
+                        Divider()
+                        Button("Import portrait for an editable card…") {
+                            library.importImage(card: PersonaCardStyle()) { editingCard = $0 }
+                        }
+                        Button("Import finished card…") { library.importImage() }
+                        Button("Paste finished image") { library.pasteImage() }
                     }.disabled(library.isReadOnly)
                 }
+                Button("Done") { leavePreparation(dismissLibrary: true) }.keyboardShortcut(.cancelAction)
             }
-            HStack(alignment: .top, spacing: 20) {
-                List(selection: $library.selectedID) {
-                    ForEach(library.visibleItems) { persona in
-                        HStack(spacing: 10) {
-                            thumbnail(persona, width: 52, height: 54)
-                            Text(persona.name).lineLimit(2)
-                        }.padding(.vertical, 4).tag(persona.id)
-                            .contextMenu {
-                                Button("Rename library item…") { library.hideOverlay(); renaming = persona.id; name = persona.name }.disabled(library.isReadOnly)
-                                Button("Remove from saved personas") { library.remove(persona.id) }.disabled(library.isReadOnly)
-                                if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: persona.id) {
-                                    Divider()
-                                    Button("Move earlier") { library.moveMember(persona.id, by: -1) }.disabled(library.isReadOnly || index == 0)
-                                    Button("Move later") { library.moveMember(persona.id, by: 1) }.disabled(library.isReadOnly || index == group.personaIDs.count - 1)
-                                }
-                            }
-                    }
-                }.frame(width: 250, height: 360).overlay {
-                    if library.visibleItems.isEmpty {
-                        VStack(spacing: 10) {
-                            Text(library.activeGroup == nil ? "Your saved personas appear here." : "Choose this group's members.")
-                                .multilineTextAlignment(.center).foregroundStyle(.secondary)
-                            if let group = library.activeGroup {
-                                Button("Choose members…") { editingGroup = group }.disabled(library.isReadOnly)
-                            }
-                        }.padding()
+            if !preparingPresentation {
+                Text("Show one card and flip through personas, or prepare several overlays and the groups you want to switch between.")
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Picker("Group", selection: Binding(get: { library.activeGroupID }, set: { library.prepareGroup($0) })) {
+                        Text("All saved · one at a time").tag(UUID?.none)
+                        ForEach(library.groups) { group in Text(group.name).tag(Optional(group.id)) }
+                    }.disabled(library.isReadOnly)
+                    Button("New…") { groupName = ""; creatingGroup = true }.disabled(library.isReadOnly)
+                        .accessibilityLabel("Create persona group")
+                    if let group = library.activeGroup {
+                        Menu("Edit group") {
+                            Button("Choose members…") { editingGroup = group }
+                            Button("Rename…") { groupName = group.name; renamingGroup = true }
+                            Button("Remove group", role: .destructive) { library.removeGroup(group.id) }
+                        }.disabled(library.isReadOnly)
                     }
                 }
-                VStack(alignment: .leading, spacing: 12) {
-                    if let selected = library.selected {
-                        thumbnail(selected, width: 265, height: 155)
-                            .frame(maxWidth: .infinity)
-                        Text(selected.name).font(.headline).lineLimit(2)
-                        if selected.card != nil {
-                            Button("Edit visible label and colour…") { library.hideOverlay(); editingCard = selected }.disabled(library.isReadOnly)
-                        } else {
-                            Text("Finished artwork stays as imported. For editable text and colour, add a portrait without baked labels.")
-                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: 20) {
+                    List(selection: $library.selectedID) {
+                        ForEach(library.visibleItems) { persona in
+                            HStack(spacing: 10) {
+                                thumbnail(persona, width: 52, height: 54)
+                                Text(persona.name).lineLimit(2)
+                            }.padding(.vertical, 4).tag(persona.id)
+                                .contextMenu {
+                                    Button("Rename library item…") { renaming = persona.id; name = persona.name }.disabled(library.isReadOnly)
+                                    Button("Remove from saved personas") { library.remove(persona.id) }.disabled(library.isReadOnly)
+                                    if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: persona.id) {
+                                        Divider()
+                                        Button("Move earlier") { library.moveMember(persona.id, by: -1) }.disabled(library.isReadOnly || index == 0)
+                                        Button("Move later") { library.moveMember(persona.id, by: 1) }.disabled(library.isReadOnly || index == group.personaIDs.count - 1)
+                                    }
+                                }
                         }
-                        HStack {
-                            Button(library.overlayVisible ? "Hide floating persona" : "Show over browser") {
-                                if library.overlayVisible { library.hideOverlay() }
-                                else { showAfterDismiss = true; dismiss() }
-                            }.disabled(!library.overlayVisible && library.renderedImage(for: selected) == nil)
-                            if let onChoose {
-                                Button("Use in scene") { onChoose(selected); dismiss() }
-                                    .disabled(library.renderedImage(for: selected) == nil)
+                    }.frame(width: 250, height: 360).overlay {
+                        if library.visibleItems.isEmpty {
+                            VStack(spacing: 10) {
+                                Text(library.activeGroup == nil ? "Your saved personas appear here." : "Choose this group's members.")
+                                    .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                                if let group = library.activeGroup {
+                                    Button("Choose members…") { editingGroup = group }.disabled(library.isReadOnly)
+                                }
+                            }.padding()
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let selected = library.selected {
+                            thumbnail(selected, width: 265, height: 155)
+                                .frame(maxWidth: .infinity)
+                            Text(selected.name).font(.headline).lineLimit(2)
+                            if selected.card != nil {
+                                Button("Edit visible label and colour…") { editingCard = selected }.disabled(library.isReadOnly)
+                            } else {
+                                Text("Finished artwork stays as imported. For editable text and colour, add a portrait without baked labels.")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
-                        }
-                        Toggle("Lock artwork · clicks pass through", isOn: Binding(
-                            get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
-                        HStack(spacing: 8) {
-                            Text("Size")
-                            Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
-                                .accessibilityLabel("Floating persona size")
-                            Menu("Position") {
-                                Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
-                                Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
-                                Button("Top right") { library.setOverlayPosition(x: 0.98, y: 0.98) }
-                                Divider()
-                                Button("Left centre") { library.setOverlayPosition(x: 0.02, y: 0.5) }
-                                Button("Right centre") { library.setOverlayPosition(x: 0.98, y: 0.5) }
-                                Divider()
-                                Button("Bottom left") { library.setOverlayPosition(x: 0.02, y: 0.02) }
-                                Button("Bottom centre") { library.setOverlayPosition(x: 0.5, y: 0.02) }
-                                Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
-                            }.fixedSize()
-                        }
-                        if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {
                             HStack {
-                                Text("Group order \(index + 1) of \(group.personaIDs.count)").font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                Button { library.moveMember(selected.id, by: -1) } label: { Image(systemName: "arrow.up") }
-                                    .accessibilityLabel("Move earlier in group").disabled(library.isReadOnly || index == 0)
-                                Button { library.moveMember(selected.id, by: 1) } label: { Image(systemName: "arrow.down") }
-                                    .accessibilityLabel("Move later in group").disabled(library.isReadOnly || index == group.personaIDs.count - 1)
+                                if library.sessionState.phase == .idle {
+                                    Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
+                                        if library.overlayVisible { library.hideOverlay() }
+                                        else { showAfterDismiss = true; dismiss() }
+                                    }.disabled(!library.overlayVisible && library.renderedImage(for: selected) == nil)
+                                } else {
+                                    if library.sessionState.phase == .paused {
+                                        Button("Resume overlays") { resumeAfterDismiss = true; dismiss() }
+                                    } else { Button("Hide all") { library.pauseOverlaySession() } }
+                                    Button("End overlays") { library.endOverlaySession() }
+                                }
+                                if let onChoose {
+                                    Button("Use in scene") { onChoose(selected); dismiss() }
+                                        .disabled(library.renderedImage(for: selected) == nil)
+                                }
                             }
+                            if library.sessionState.phase == .idle {
+                                Toggle("Lock artwork · clicks pass through", isOn: Binding(
+                                    get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
+                                HStack(spacing: 8) {
+                                    Text("Size")
+                                    Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
+                                        .accessibilityLabel("Floating persona size")
+                                    Menu("Position") {
+                                        Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
+                                        Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
+                                        Button("Top right") { library.setOverlayPosition(x: 0.98, y: 0.98) }
+                                        Divider()
+                                        Button("Left centre") { library.setOverlayPosition(x: 0.02, y: 0.5) }
+                                        Button("Right centre") { library.setOverlayPosition(x: 0.98, y: 0.5) }
+                                        Divider()
+                                        Button("Bottom left") { library.setOverlayPosition(x: 0.02, y: 0.02) }
+                                        Button("Bottom centre") { library.setOverlayPosition(x: 0.5, y: 0.02) }
+                                        Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
+                                    }.fixedSize()
+                                }
+                                Text("⌃⌥I shows or hides this card. ⌃⌥← and ⌃⌥→ flip through the current group, or all saved personas.")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {
+                                HStack {
+                                    Text("Group order \(index + 1) of \(group.personaIDs.count)").font(.caption).foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button { library.moveMember(selected.id, by: -1) } label: { Image(systemName: "arrow.up") }
+                                        .accessibilityLabel("Move earlier in group").disabled(library.isReadOnly || index == 0)
+                                    Button { library.moveMember(selected.id, by: 1) } label: { Image(systemName: "arrow.down") }
+                                        .accessibilityLabel("Move later in group").disabled(library.isReadOnly || index == group.personaIDs.count - 1)
+                                }
+                            }
+                        } else {
+                            Image(systemName: "person.crop.rectangle.stack").font(.system(size: 38)).foregroundStyle(.secondary)
+                            Text("Choose or import a persona").font(.headline)
+                            Text("Use the same saved image over your browser or inside a mobile scene.")
+                                .font(.callout).foregroundStyle(.secondary)
                         }
-                    } else {
-                        Image(systemName: "person.crop.rectangle.stack").font(.system(size: 38)).foregroundStyle(.secondary)
-                        Text("Choose or import a persona").font(.headline)
-                        Text("Use the same saved image over your browser or inside a mobile scene.")
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    if library.overlayVisible {
-                        Button("Focus floating controls for keyboard") { library.focusOverlayControls() }
-                    }
-                }.frame(width: 320, alignment: .leading)
+                        if library.overlayVisible || library.sessionState.phase != .idle {
+                            Button("Focus floating controls for keyboard") { library.focusOverlayControls() }
+                        }
+                    }.frame(width: 320, alignment: .leading)
+                }
+                HStack {
+                    Text("Need several overlays at once?").font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Prepare presentation…") { preparingPresentation = true }
+                        .disabled(library.isReadOnly)
+                }
+            } else {
+                PersonaPresentationPreparation(library: library, onStart: { ids, softReveal in
+                    startPreparedAfterDismiss = (ids, softReveal); dismiss()
+                }, onResume: { resumeAfterDismiss = true; dismiss() },
+                   onManageGroups: { leavePreparation(dismissLibrary: false) },
+                   onDraftChanged: { unsavedPresentationLayout = $0 })
             }
             if let notice = library.notice {
                 Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Whole-screen sharing includes the floating artwork and its controls. Use a persona in a scene when sharing that presentation window.")
+            Text("Whole-screen sharing includes preparation and floating controls. Use a persona in a scene when sharing that presentation window.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(24).frame(width: 660).background(Workbench.background).workbenchTheme()
+        }.padding(24).frame(width: preparingPresentation ? 780 : 660).background(Workbench.background).workbenchTheme()
             .onDisappear {
-                guard showAfterDismiss else { return }
-                showAfterDismiss = false
-                library.showOverlay()
+                if let request = startPreparedAfterDismiss {
+                    startPreparedAfterDismiss = nil
+                    do { if let first = request.groupIDs.first {
+                        try library.startOverlaySession(groupIDs: request.groupIDs, initialGroupID: first, softReveal: request.softReveal)
+                    } }
+                    catch { reportLaunchFailure(error, resuming: false) }
+                } else if resumeAfterDismiss {
+                    resumeAfterDismiss = false
+                    do { try library.resumeOverlaySession() } catch { reportLaunchFailure(error, resuming: true) }
+                } else if showAfterDismiss {
+                    showAfterDismiss = false; library.showOverlay()
+                }
+            }
+            .confirmationDialog("Discard the unsaved layout?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                Button("Discard changes", role: .destructive) {
+                    unsavedPresentationLayout = false
+                    if dismissAfterDiscard { dismiss() } else { preparingPresentation = false }
+                }
+                Button("Keep editing", role: .cancel) { }
             }
             .sheet(item: $editingCard) { PersonaCardEditor(library: library, persona: $0) }
             .sheet(isPresented: $choosingStarter, onDismiss: {
@@ -174,6 +225,25 @@ struct PersonaLibraryView: View {
                 Button("Save") { if let id = library.activeGroupID { library.renameGroup(id, name: groupName) } }
                 Button("Cancel", role: .cancel) { }
             }
+    }
+
+    private func reportLaunchFailure(_ error: Error, resuming: Bool) {
+        let message = error.localizedDescription
+        library.notice = message
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = resuming ? "Couldn’t resume overlays" : "Couldn’t start overlays"
+            alert.informativeText = message
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    private func leavePreparation(dismissLibrary: Bool) {
+        if preparingPresentation && unsavedPresentationLayout {
+            dismissAfterDiscard = dismissLibrary; confirmingDiscard = true
+        } else if dismissLibrary { dismiss() } else { preparingPresentation = false }
     }
 
     @ViewBuilder private func thumbnail(_ persona: SavedPersona, width: CGFloat, height: CGFloat) -> some View {

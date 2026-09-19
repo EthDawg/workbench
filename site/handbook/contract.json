@@ -3,8 +3,8 @@
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
   "reviewedOn": "2026-09-15",
-  "implementationRevision": "48c00dcdb363b1241cac5da69697af6a5f24dca9",
-  "scope": "Presentation preparation, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
+  "implementationRevision": "163f30ae8be700452a213e8942b8223653c73b18",
+  "scope": "Presentation preparation, independently managed native overlays, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
     "proposed": "A product contract for review and implementation. No corresponding feature is promised in the current download."
@@ -96,6 +96,16 @@
       "limit": "Mac editor and galleries remain still. iOS animates only the active visible scene preview. PNG/Photos exports stay still; no Live Photo export or continuous iOS Home Screen animation. Reduce Motion, disabled animated-image autoplay, low power and high thermal state suppress animation. Device video and meeting receivers need separate validation.",
       "source": "Sources/StageKit/MovingSceneView.swift",
       "evidence": "79 native Mac scene tests / 2251 assertions and 72 shared-module tests passed. Actual isolated Mac office captures changed only the window sky; fixed room/desk pixels were identical. Native compositor and UIKit poster parity checked for all three rigs. See /scenes/ambient/ for the current source and delivery evidence."
+    },
+    {
+      "id": "persona-session",
+      "name": "Present several native overlays",
+      "status": "implemented",
+      "entry": "Personas and overlays → Prepare presentation → Demo groups → Start overlays",
+      "effect": "Show several independently placed cards, switch among explicitly prepared sets, and Hide/Show/End through one click-based native tile. Live images, labels and allowed choices are frozen; layout saving is explicit.",
+      "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
+      "source": "Sources/StageKit/PersonaSession.swift",
+      "evidence": "88 integrated native Mac scene tests /2367 assertions and 114 StageKit CI-mode tests /2533 assertions passed (live menu-bar popover check excluded). Native keyboard focus and click menu, per-card hide, paused set switching, return and restoration checked with disposable artwork. Signed local Preview 20260914204356 installed; signature, preparation entry and disabled optional shortcuts verified. Source and delivery limits are in /personas/."
     }
   ],
   "events": [
@@ -138,6 +148,22 @@
       "stops": "App-owned recording, playback, presentation, drawing, timers and monitors.",
       "keeps": "Saved work, retained desktop output files and recovery records. A still picture set through macOS remains set.",
       "check": "App-rendered desktop motion stops on Quit; the native still remains. Do not restart in the background or restore wallpaper silently."
+    },
+    {
+      "id": "hide-overlays",
+      "label": "Hide all overlays temporarily",
+      "status": "implemented",
+      "stops": "Visibility of all current session artwork. The small tile remains available.",
+      "keeps": "Prepared sets, frozen artwork and each copy's visibility choice. Changing sets while paused stays hidden.",
+      "check": "Show again restores the selected set without reviving copies individually hidden earlier."
+    },
+    {
+      "id": "end-overlays",
+      "label": "End overlays",
+      "status": "implemented",
+      "stops": "Every window and the control tile belonging to the overlay session.",
+      "keeps": "Saved groups, layouts, original images, unrelated apps and the desktop picture.",
+      "check": "Live changes are temporary unless explicitly saved. Quit also ends the session; launch never restarts it."
     }
   ],
   "acceptance": [
@@ -225,6 +251,14 @@
       "capabilities": [
         "scene-motion",
         "wallpaper-motion"
+      ]
+    },
+    {
+      "id": "multiple-overlays",
+      "test": "Start two independently placed copies; hide one, pause all, switch away and back, then resume. Preserve exact visibility and frozen audience labels/images. Failed start must retain the old view; conflicting Save must preserve preparation and show a safe notice. Test temporary edits, exact preupgrade backup and old/future files. Native capture and hardware shortcuts need their own receiving-device checks.",
+      "status": "passed-unit-and-focused-native",
+      "capabilities": [
+        "persona-session"
       ]
     }
   ],

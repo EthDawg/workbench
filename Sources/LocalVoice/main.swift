@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.isReleasedWhenClosed = false; window.center()
         capturePanel = CapturePanelController(model: model)
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+        popover.contentViewController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
             self?.resumeTarget { _ in self?.stage.draw() }
         }, timer: { [weak self] in self?.closeControls(); self?.stage.showTimer() }, personas: { [weak self] in
             self?.closeControls(); self?.stage.showPersonas()

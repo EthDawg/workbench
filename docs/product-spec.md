@@ -62,9 +62,11 @@ Whole-display sharing includes visible overlays. Browser-tab capture excludes se
 
 Showing a persona always provides nearby Hide, Lock and Size controls, including an older or ungrouped image. **Focus floating controls** provides keyboard access. An ungrouped overlay has one candidate: the displayed persona. It never gains access to the rest of the library through the floating picker or previous/next buttons.
 
-For a prepared group, freeze the allowed candidates when the overlay is shown. Browsing another library item does not change the displayed artwork or expand that set. Preparing a different group ends the display session; showing again uses that group's selection. The controls use public card labels, never private saved names. Hiding also ends the display session. Removing the displayed persona hides its overlay and controls. Read-only library browsing and temporary placement must not write the saved archive.
+For a prepared group, freeze allowed candidates and rendered artwork when showing the overlay. An ungrouped card stays scoped to itself. The [persona contract](personas.md) additionally defines explicitly prepared multiple-overlay sessions: ordered groups, independent placed copies, a compact click menu, reversible Hide all, explicit layout saves and End. Browsing or editing preparation cannot silently change a running session. Removing an item only subtracts affected copies. Read-only browsing and temporary placement must not write the archive.
 
-The ungrouped-controls correction is a source update awaiting a new Preview build. The release record must distinguish its code and regression checks from an installed or published app.
+Multiple-overlay sessions and device scenes have distinct owners. Starting a device scene pauses independent overlays; they do not reappear until explicitly resumed. Mobile's single placed persona and native image exports remain unchanged. Five optional global overlay actions share the existing Keyboard Coach; they start disabled. Native menu keyboard focus and click routes remain available.
+
+The previous public Preview and a newly installed source build are separate releases. The persona contract and its actual verification record must identify which behavior was built, installed, tested and published.
 
 ## Scope
 
