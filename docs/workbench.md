@@ -15,7 +15,7 @@ The separate native **iOS/iPadOS 26+ Preview** carries these useful jobs into ph
 | Explain a screen | Live drawing, pointer emphasis, boards and a clear return to the demo | A meeting app owns distribution to the audience. |
 | Present a device | USB video preview in a saved scene, branding, readable controls and a break timer | QuickTime and iPhone Mirroring remain separate Apple apps. |
 | Enjoy a desktop | A distinct wallpaper journey: still-image baseline, independent settings and optional future motion | Direct wallpaper management is proposed; current Preview applies a rendered scene as a still. Use native OS support and preserve later manual changes. |
-| Reuse an item | Searchable prompts, links and file references already supported by the library | No tenant management, browser-profile rotation or team knowledge system. |
+| Reuse an item | Searchable prompts, links and file references, with explicit Quick Look for supported local files | No tenant management, browser-profile rotation or team knowledge system. |
 
 Screenshot capture/markup, Services and Share extensions are possible later improvements. Their native equivalents are the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
