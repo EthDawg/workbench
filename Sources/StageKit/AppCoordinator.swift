@@ -31,6 +31,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published var selectedTab = "Present"
     @Published var quickTab = QuickTab.draw
     @Published private(set) var quickControlsVisible = false
+    @Published private(set) var screenshotHandoffActive = false
     @Published var notice: String?
     @Published var launchAtLogin = false
     var activeDisplayID: String?
@@ -54,6 +55,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var palette: NSPanel?
     private var timerWindow: NSPanel?
     private var boardSavePanel: NSSavePanel?
+    private var screenshotHandoff = ScreenshotHandoffState()
+    var screenshotLauncher: ScreenshotLauncher = SystemScreenshot.launch
     @Published private(set) var boardExportInProgress = false
     private var shuttingDown = false
     private var recorderMonitor: Any?
@@ -154,7 +157,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     private var activeHistory: CanvasHistory? { history(for: activeDisplayID ?? currentID) }
     func startDrawing(_ selected: DrawingTool, latched: Bool) {
-        guard !boardExportInProgress else { return }
+        guard !boardExportInProgress, !screenshotHandoffActive else { return }
         guard mayBeginInteraction?() != false else { notice = "Finish your current recording or keyboard practice before drawing."; return }
         onBeginActivity?()
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
@@ -177,6 +180,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
     }
     func escape() {
+        if screenshotHandoffActive { return }
         if boardExportInProgress { boardSavePanel?.cancel(nil); return }
         if recordingAction != nil { finishRecording(); return }
         if quickControlsVisible { hideQuickControls(); return }
@@ -184,7 +188,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         refreshWindows(); refreshEffects(); updateStatus()
     }
     func handleHotkey(_ action: Action, down: Bool) {
-        guard recordingAction == nil, !boardExportInProgress else { return }
+        guard recordingAction == nil, !boardExportInProgress, !screenshotHandoffActive else { return }
         if down && action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool {
             if down {
@@ -195,7 +199,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         } else if down { perform(action) }
     }
     func perform(_ action: Action) {
-        guard !boardExportInProgress else { return }
+        guard !boardExportInProgress, !screenshotHandoffActive else { return }
         if action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool { startDrawing(selected, latched: true); return }
         switch action {
@@ -220,11 +224,12 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         }
     }
     func clearCanvas() {
+        guard !screenshotHandoffActive else { return }
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
         activeHistory?.clear(); canvasChanged()
     }
     func toggleBoard(_ style: BoardStyle) {
-        guard !boardExportInProgress, mayBeginInteraction?() != false else { return }
+        guard !boardExportInProgress, !screenshotHandoffActive, mayBeginInteraction?() != false else { return }
         hideQuickControls()
         let id = currentID
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
@@ -299,6 +304,34 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             refreshWindows(); refreshPalette(); refreshEffects()
         }
     }
+    func openScreenshot() {
+        guard !screenshotHandoffActive, !boardExportInProgress, mayBeginInteraction?() != false,
+              screenshotHandoff.begin(at: Date.timeIntervalSinceReferenceDate, autoFade: settings.value.autoFade) else { return }
+        onBeginActivity?()
+        for canvas in canvases.values {
+            canvas.finishStroke(); canvas.commitText()
+            canvas.pointerVisible = false; canvas.ripples.removeAll(); canvas.laserTrail.removeAll()
+            canvas.needsDisplay = true
+        }
+        screenshotHandoffActive = true
+        isDrawing = false; latched = false; heldAction = nil
+        hideQuickControls(); mainWindow?.orderOut(nil); palette?.orderOut(nil)
+        refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+        screenshotLauncher { [weak self] error in
+            DispatchQueue.main.async { self?.finishScreenshotHandoff(error: error) }
+        }
+    }
+    private func finishScreenshotHandoff(error: Error?) {
+        guard screenshotHandoffActive else { return }
+        if let duration = screenshotHandoff.finish(at: Date.timeIntervalSinceReferenceDate) {
+            overlayHistory.values.forEach { $0.pauseFade(by: duration) }
+        }
+        screenshotHandoffActive = false
+        notice = error.map { "Screenshot could not open: \($0.localizedDescription)" }
+            ?? "Screenshot closed. Your annotations are still available; choose a drawing tool to continue."
+        for canvas in canvases.values { canvas.needsDisplay = true }
+        refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+    }
     func settingsChanged() {
         if !shortcutsSuspended && recordingAction == nil && registeredShortcuts != settings.value.shortcuts {
             registerShortcuts()
@@ -315,24 +348,24 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             return
         }
         for (id, panel) in panels {
-            let intercept = isDrawing || boards[id] != nil
+            let intercept = !screenshotHandoffActive && (isDrawing || boards[id] != nil)
             panel.ignoresMouseEvents = !intercept
             panel.invalidateCursorRects(for: canvases[id]!)
             let hasInk = !(history(for: id)?.annotations.isEmpty ?? true)
             if intercept || hasInk || pointerEnabled { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
         }
-        hotkeys.setEscapeEnabled(!shortcutsSuspended && (isDrawing || !boards.isEmpty))
+        hotkeys.setEscapeEnabled(!shortcutsSuspended && !screenshotHandoffActive && (isDrawing || !boards.isEmpty))
     }
     private func refreshEffects() {
-        let fadeActive = settings.value.autoFade && overlayHistory.values.contains { !$0.annotations.isEmpty }
-        let needsTimer = pointerEnabled || isDrawing || fadeActive || (!boards.isEmpty && settings.value.boardPalette == .autoHide)
+        let fadeActive = !screenshotHandoffActive && settings.value.autoFade && overlayHistory.values.contains { !$0.annotations.isEmpty }
+        let needsTimer = !screenshotHandoffActive && (pointerEnabled || isDrawing || fadeActive || (!boards.isEmpty && settings.value.boardPalette == .autoHide))
         if needsTimer && effectTimer == nil {
             let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tickEffects() }
             timer.tolerance = 0.003; RunLoop.main.add(timer, forMode: .common); effectTimer = timer
         } else if !needsTimer { effectTimer?.invalidate(); effectTimer = nil }
     }
     private func registerClick() {
-        guard pointerEnabled && !isDrawing else { return }
+        guard !screenshotHandoffActive, pointerEnabled && !isDrawing else { return }
         lastClick = Date.timeIntervalSinceReferenceDate
         guard settings.value.clickRipple, let canvas = canvases[currentID] else { return }
         canvas.ripples.append(ClickRipple(location: canvas.localPoint(NSEvent.mouseLocation), began: lastClick))
@@ -347,7 +380,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         var hasFadingInk = false
         for (id, canvas) in canvases {
             let inside = canvas.screenFrame.contains(mouse)
-            let show = visible && inside && pointerEnabled && !isDrawing
+            let show = !screenshotHandoffActive && visible && inside && pointerEnabled && !isDrawing
             let visibilityChanged = canvas.pointerVisible != show
             canvas.pointerVisible = show
             let hadEffects = !canvas.ripples.isEmpty || !canvas.laserTrail.isEmpty
@@ -356,7 +389,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             if prefs.pointerStyle == .laser && inside && moved && show { canvas.laserTrail.append((canvas.localPoint(mouse), now)) }
             if moved || visibilityChanged || hadEffects { canvas.movePointer(canvas.localPoint(mouse)) }
             if tool == .text && isDrawing && inside { canvas.updateFloatingText() }
-            if prefs.autoFade, boards[id] == nil, let history = overlayHistory[id], !history.annotations.isEmpty {
+            if !screenshotHandoffActive, prefs.autoFade, boards[id] == nil, let history = overlayHistory[id], !history.annotations.isEmpty {
                 hasFadingInk = true
                 let fading = history.annotations.filter { now - $0.created >= prefs.fadeDelay }
                 for annotation in fading { canvas.setNeedsDisplay(annotation.bounds) }

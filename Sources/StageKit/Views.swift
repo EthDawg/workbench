@@ -230,7 +230,8 @@ struct ControlCenter: View {
                 boardCard(.black, title: "Blackboard", action: .blackboard)
             }
             BoardExportButtons(app: app)
-            Text("Copy or save an open board as an image. Its background and drawings are included; other apps are excluded.")
+            ScreenshotHandoffButton(app: app)
+            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. The palette and pointer hide during selection. Shortcut: Shift-Command-5.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 18) {
                 Toggle("Keep board drawings separate from the screen", isOn: $settings.value.separateBoards).disabled(!app.boards.isEmpty)
@@ -409,6 +410,8 @@ struct DrawingPalette: View {
             Menu {
                 Button("Copy board") { app.copyBoard() }
                 Button("Save board PNG…") { app.saveBoardPNG() }
+                Divider()
+                Button("Open Screenshot…") { app.openScreenshot() }
             } label: {
                 Image(systemName: "square.and.arrow.up").frame(width: 28, height: 32)
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
@@ -429,6 +432,18 @@ struct BoardExportButtons: View {
             Button { app.copyBoard() } label: { Label("Copy board", systemImage: "doc.on.doc") }
             Button { app.saveBoardPNG() } label: { Label("Save board PNG…", systemImage: "square.and.arrow.down") }
         }.disabled(!app.canExportBoard)
+    }
+}
+
+struct ScreenshotHandoffButton: View {
+    @ObservedObject var app: AppCoordinator
+    var body: some View {
+        Button { app.openScreenshot() } label: {
+            Label("Open Screenshot…", systemImage: "camera.viewfinder")
+        }
+        .disabled(app.screenshotHandoffActive)
+        .help("Open Apple Screenshot and keep visible Workbench annotations in place")
+        .accessibilityHint("Hides Workbench controls and pauses annotation fading while Apple Screenshot is open")
     }
 }
 

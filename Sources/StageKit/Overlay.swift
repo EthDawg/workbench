@@ -127,7 +127,7 @@ final class AnnotationView: NSView {
             dirtyRect.fill()
         }
         let time = Date.timeIntervalSinceReferenceDate
-        let fade: Double? = settings.autoFade && board == nil ? settings.fadeDelay : nil
+        let fade: Double? = settings.autoFade && board == nil && !app.screenshotHandoffActive ? settings.fadeDelay : nil
         for annotation in history?.annotations ?? [] where annotation.bounds.intersects(dirtyRect) {
             InkRenderer.draw(annotation, opacity: annotation.opacity(at: time, fadeDelay: fade))
         }
