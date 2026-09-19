@@ -86,6 +86,7 @@ Record simulator model/OS and actual test results in the PR. Physical speech ava
 | App lifecycle, menu bar and shared navigation | `Sources/LocalVoice/main.swift`, `WorkbenchHome.swift` |
 | Dictation, recent captures and delivery | `Sources/LocalVoice/AppModel.swift`, `CaptureHistoryView.swift`, `TextDelivery.swift` |
 | Recording HUD and clipboard receipts | `Sources/LocalVoice/CapturePanel.swift`, `ClipboardReceipt.swift`, `ClipboardReceiptChecks.swift` |
+| Narrated Snap & Talk screen sessions | `Sources/LocalVoice/ReadbackModel.swift`, `ReadbackView.swift`, `ReadbackChecks.swift` |
 | Recognition selection and transport | `Sources/LocalVoice/RecognitionProviders.swift`, `ModelSettingsView.swift`, `ProviderChecks.swift` |
 | Cleanup and regression cases | `Sources/LocalVoice/Cleanup.swift`, `CleanupChecks.swift` |
 | Unified keyboard assignment and practice | `Sources/LocalVoice/KeyboardCoach.swift`, `KeyboardCoachChecks.swift` |

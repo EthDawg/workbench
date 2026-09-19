@@ -39,7 +39,7 @@ final class VoiceHotkeys {
     }
     func register(_ preferences: VoicePreferences) {
         unregister(); failures = [:]
-        for id in [UInt32(1), UInt32(2), UInt32(3)] where preferences.shortcut(id).enabled {
+        for id in [UInt32(1), UInt32(2), UInt32(3), UInt32(4)] where preferences.shortcut(id).enabled {
             let shortcut = preferences.shortcut(id)
             var reference: EventHotKeyRef?
             let code = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: 0x4C564F49, id: id), GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &reference)

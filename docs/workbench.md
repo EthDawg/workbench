@@ -12,12 +12,13 @@ The separate native **iOS/iPadOS 26+ Preview** carries these useful jobs into ph
 | --- | --- | --- |
 | Speak → text | Capture/import, recognition, optional cleanup, original wording, history and safe delivery | Other apps own the note, message or document made from the result. |
 | Text → speech | Mac reading voices, playback/export and optional online reading | Keep provider setup explicit; do not turn the utility into a general agent platform. |
+| Screen → Snap & Talk | Capture the display under the pointer, retain linked local audio/transcripts and prepare an ordered portable session | Screen Recording and Microphone access are explicit; slide generation does not silently reinterpret narration. |
 | Explain a screen | Live drawing, pointer emphasis, boards and a clear return to the demo | A meeting app owns distribution to the audience. |
 | Present a device | USB video preview in a saved scene, branding, readable controls and a break timer | QuickTime and iPhone Mirroring remain separate Apple apps. |
 | Enjoy a desktop | A distinct wallpaper journey: still-image baseline, independent settings and optional future motion | Direct wallpaper management is proposed; current Preview applies a rendered scene as a still. Use native OS support and preserve later manual changes. |
 | Reuse an item | Searchable prompts, links and file references already supported by the library | No tenant management, browser-profile rotation or team knowledge system. |
 
-Screenshot capture/markup, Services and Share extensions are possible later improvements. Their native equivalents are the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+Ad-hoc screenshot markup, Services and Share extensions are possible later improvements. Snap & Talk uses deliberate whole-display captures for a named narrated session; it is not a general capture editor. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
 ## One app, several ways in
 
@@ -45,7 +46,7 @@ Normal application menus, buttons and editable shortcuts remain available togeth
 ## Interaction rules
 
 - Start microphones and device sessions through an explicit action. Request access when the feature needs it and explain a denied permission in context.
-- Keep one owner for an active operation. Model selection cannot change an in-flight request. The host coordinates recording, drawing and keyboard practice so they do not accidentally trigger each other.
+- Keep one owner for an active microphone operation. Model selection cannot change an in-flight request. The host coordinates ordinary dictation, Snap & Talk narration, drawing and keyboard practice so they do not accidentally trigger each other. Snap & Talk may queue saved audio while the next section records; recognition remains sequential.
 - Keyboard is one catalogue across modules. Duplicate assignments and common Mac command conflicts are explained. Failed registration must not silently replace a usable combination.
 - Keyboard practice pauses Workbench global actions, consumes practice key presses, counts complete press/release repetitions and restores actions when it ends or the window loses focus. It does not claim a complete inventory of other apps' shortcuts.
 - Capture the original app and field before dictation. Paste only when they remain valid; otherwise copy. Never press Return or submit a message. Restore the previous clipboard only after confirmed insertion while Workbench still owns the clipboard change.
