@@ -316,6 +316,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
+        case "--check-integrations":
+            try await MainActor.run { try IntegrationChecks.run() }
+        case "--check-speko":
+            try SpekoChecks.run()
         case "--check-refinement":
             try LocalRefinementChecks.run(); try await LocalRefinementChecks.runTransportChecks()
         case "--check-input":
@@ -353,7 +357,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine.transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-integrations | --check-speko | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }

@@ -3,6 +3,102 @@ import AVFoundation
 import AppIntents
 import UniformTypeIdentifiers
 
+enum SpekoChecks {
+    @discardableResult
+    static func run(printResult: Bool = true) throws -> Int {
+        var count = 0
+        func check(_ value: Bool, _ name: String) throws {
+            guard value else { throw VoiceError.message("Speko check failed: " + name) }
+            count += 1
+        }
+        let http = try SpekoRenderer.request(text: "Synthetic reading.", key: "synthetic-key")
+        let body = try JSONSerialization.jsonObject(with: http.httpBody!) as! [String: Any]
+        try check(http.url?.absoluteString == "https://router.speko.dev/v1/tts/speech" && http.httpMethod == "POST", "fixed HTTPS endpoint")
+        try check(http.value(forHTTPHeaderField: "Authorization") == "Bearer synthetic-key" && body["input"] as? String == "Synthetic reading.", "explicit reading and key only")
+        try check(body["voice"] == nil && body["messages"] == nil && body["history"] == nil, "automatic mode omits provider-specific voice and history")
+        let catalogueJSON = """
+        {
+          "data": [{
+            "id": "cartesia:voice-1",
+            "name": "Synthetic narrator",
+            "vendor": "cartesia",
+            "gender": "neutral",
+            "accent": "New Zealand",
+            "languages": ["en-NZ", "en"],
+            "use_with": {"provider": "cartesia", "model": "sonic-3.5", "voice": "voice-1"}
+          }],
+          "next_cursor": null
+        }
+        """
+        let page = try SpekoVoiceCatalog.decode(Data(catalogueJSON.utf8))
+        let selectedVoice = page.data[0]
+        try check(page.data.count == 1 && selectedVoice.name == "Synthetic narrator" && selectedVoice.useWith.model == "sonic-3.5", "voice catalogue decodes its explicit route")
+        let catalogueRequest = try SpekoVoiceCatalog.request(key: "synthetic-key")
+        try check(catalogueRequest.url?.host == "api.speko.dev" && catalogueRequest.url?.path == "/v1/tts/voices", "voice catalogue uses the fixed Speko API endpoint")
+        try check(catalogueRequest.value(forHTTPHeaderField: "Authorization") == "Bearer synthetic-key"
+            && catalogueRequest.url?.query?.contains("language=en") == true
+            && catalogueRequest.url?.query?.contains("min_chars_per_call=5000") == true, "voice catalogue requests suitable English voices with the key")
+        let catalogueResponse = HTTPURLResponse(url: catalogueRequest.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        try SpekoVoiceCatalog.validate(catalogueResponse)
+        try check(true, "JSON voice catalogue response accepted")
+        for status in [301, 401, 403, 429, 500] {
+            let response = HTTPURLResponse(url: catalogueRequest.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+            var rejected = false
+            do { try SpekoVoiceCatalog.validate(response) } catch { rejected = true }
+            try check(rejected, "voice catalogue HTTP \(status) rejected")
+        }
+        let wrongCatalogueType = HTTPURLResponse(url: catalogueRequest.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "text/html"])!
+        var wrongCatalogueTypeRejected = false
+        do { try SpekoVoiceCatalog.validate(wrongCatalogueType) } catch { wrongCatalogueTypeRejected = true }
+        try check(wrongCatalogueTypeRejected, "non-JSON voice catalogue rejected")
+        let oversizedCatalogue = HTTPURLResponse(url: catalogueRequest.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json", "Content-Length": String(SpekoVoiceCatalog.maximumResponseBytes + 1)])!
+        var oversizedCatalogueRejected = false
+        do { try SpekoVoiceCatalog.validate(oversizedCatalogue) } catch { oversizedCatalogueRejected = true }
+        try check(oversizedCatalogueRejected, "oversized voice catalogue rejected before download")
+        let explicit = try SpekoRenderer.request(text: "Synthetic reading.", key: "synthetic-key", voice: selectedVoice)
+        let explicitBody = try JSONSerialization.jsonObject(with: explicit.httpBody!) as! [String: Any]
+        let explicitRoute = explicitBody["routing"] as? [String: String]
+        try check(explicitBody["voice"] as? String == "voice-1"
+            && explicitRoute?["mode"] == "explicit"
+            && explicitRoute?["provider"] == "cartesia"
+            && explicitRoute?["model"] == "sonic-3.5", "selected voice pins its compatible provider and model")
+        let defaultsName = "Workbench.SpekoVoiceChecks." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: defaultsName)!
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        SpekoVoicePreference.save(selectedVoice, defaults: defaults)
+        try check(SpekoVoicePreference.load(defaults: defaults) == selectedVoice, "selected Speko voice survives reload")
+        SpekoVoicePreference.save(nil, defaults: defaults)
+        try check(SpekoVoicePreference.load(defaults: defaults) == nil, "automatic Speko voice clears the saved explicit route")
+        let invalidCatalogue = catalogueJSON.replacingOccurrences(of: "\"voice\": \"voice-1\"", with: "\"voice\": \"\"")
+        var invalidVoiceRejected = false
+        do { _ = try SpekoVoiceCatalog.decode(Data(invalidCatalogue.utf8)) } catch { invalidVoiceRejected = true }
+        try check(invalidVoiceRejected, "invalid catalogue routes are rejected")
+        let next = try SpekoRenderer.request(text: "Synthetic reading.", key: "synthetic-key")
+        try check(http.value(forHTTPHeaderField: "Idempotency-Key") != next.value(forHTTPHeaderField: "Idempotency-Key"), "distinct user actions have distinct request IDs")
+        for text in ["", "   ", String(repeating: "a", count: 5001)] {
+            var rejected = false
+            do { _ = try SpekoRenderer.request(text: text, key: "synthetic-key") } catch { rejected = true }
+            try check(rejected, "invalid length rejected before network")
+        }
+        for status in [301, 400, 401, 402, 403, 429, 500] {
+            let response = HTTPURLResponse(url: http.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/octet-stream"])!
+            var rejected = false; do { try SpekoRenderer.validate(response) } catch { rejected = true }
+            try check(rejected, "HTTP \(status) rejected")
+        }
+        for type in ["text/html", "application/json", "audio/mpeg"] {
+            let response = HTTPURLResponse(url: http.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": type])!
+            var rejected = false; do { try SpekoRenderer.validate(response) } catch { rejected = true }
+            try check(rejected, "unexpected content rejected")
+        }
+        for pcm in [Data(), Data([1])] {
+            var rejected = false; do { _ = try SpekoRenderer.wav(pcm) } catch { rejected = true }
+            try check(rejected, "empty or partial sample rejected")
+        }
+        if printResult { print("SPEKO_CHECKS_OK: \(count) checks (synthetic; no network or credentials)") }
+        return count
+    }
+}
+
 enum IntegrationChecks {
     @MainActor static func run() throws {
         var count = 0
@@ -29,32 +125,7 @@ enum IntegrationChecks {
         try check(request.id == third && results.count == 2, "late callback cannot affect next invocation")
         request.finish(id: third, result: .failure(VoiceError.message("Microphone unavailable")))
         try check(results.count == 3 && request.id == nil, "errors release request")
-        let http = try SpekoRenderer.request(text: "Synthetic reading.", key: "synthetic-key")
-        let body = try JSONSerialization.jsonObject(with: http.httpBody!) as! [String: Any]
-        try check(http.url?.absoluteString == "https://router.speko.dev/v1/tts/speech" && http.httpMethod == "POST", "fixed HTTPS endpoint")
-        try check(http.value(forHTTPHeaderField: "Authorization") == "Bearer synthetic-key" && body["input"] as? String == "Synthetic reading.", "explicit reading and key only")
-        try check(body["voice"] == nil && body["messages"] == nil && body["history"] == nil, "no provider-specific voice or transcript history")
-        let next = try SpekoRenderer.request(text: "Synthetic reading.", key: "synthetic-key")
-        try check(http.value(forHTTPHeaderField: "Idempotency-Key") != next.value(forHTTPHeaderField: "Idempotency-Key"), "distinct user actions have distinct request IDs")
-        for text in ["", "   ", String(repeating: "a", count: 5001)] {
-            var rejected = false
-            do { _ = try SpekoRenderer.request(text: text, key: "synthetic-key") } catch { rejected = true }
-            try check(rejected, "invalid length rejected before network")
-        }
-        for status in [301, 400, 401, 402, 403, 429, 500] {
-            let response = HTTPURLResponse(url: http.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/octet-stream"])!
-            var rejected = false; do { try SpekoRenderer.validate(response) } catch { rejected = true }
-            try check(rejected, "HTTP \(status) rejected")
-        }
-        for type in ["text/html", "application/json", "audio/mpeg"] {
-            let response = HTTPURLResponse(url: http.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": type])!
-            var rejected = false; do { try SpekoRenderer.validate(response) } catch { rejected = true }
-            try check(rejected, "unexpected content rejected")
-        }
-        for pcm in [Data(), Data([1])] {
-            var rejected = false; do { _ = try SpekoRenderer.wav(pcm) } catch { rejected = true }
-            try check(rejected, "empty or partial sample rejected")
-        }
+        count += try SpekoChecks.run(printResult: false)
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("LocalVoice-check-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
