@@ -26,7 +26,8 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         case .timer: return "Break timer"
         case .controls: return "Open drawing controls"
         case .scenes: return "Demo scenes"
-        case .color1, .color2, .color3, .color4, .color5, .color6: return "Colour \(rawValue.last!)"
+        case .color1, .color2, .color3, .color4, .color5, .color6:
+            return InkColor.presetName(at: Int(String(rawValue.last!))! - 1) + " colour"
         default: return rawValue.capitalized
         }
     }
