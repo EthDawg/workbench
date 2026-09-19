@@ -31,6 +31,23 @@ enum CoreChecks {
         let later = Transcript(text: "Same words", seconds: 4, rawText: "Same words")
         let captures = TranscriptHistory.adding(later, to: [earlier])
         try check(captures.count == 2 && captures[0].id == later.id && captures[1].id == earlier.id, "repeated words remain distinct captures in newest-first order")
+        let exportCapture = Transcript(text: "Cleaned café\nSecond line", seconds: 2, rawText: "Original café\nsecond line")
+        try check(TranscriptExport.text(for: exportCapture, version: .cleaned) == exportCapture.text
+                  && TranscriptExport.text(for: exportCapture, version: .original) == exportCapture.rawText,
+                  "single-capture export keeps cleaned and original wording distinct")
+        let legacyCapture = Transcript(text: "Saved legacy wording", seconds: 1)
+        try check(TranscriptExport.text(for: legacyCapture, version: .original) == legacyCapture.text,
+                  "original export falls back to saved text for older captures")
+        let exportURL = directory.appendingPathComponent("export.txt")
+        try TranscriptExport.write(exportCapture, version: .cleaned, to: exportURL)
+        try check(String(decoding: try Data(contentsOf: exportURL), as: UTF8.self) == exportCapture.text,
+                  "plain-text export preserves UTF-8 Unicode and line breaks")
+        try check(TranscriptExport.defaultFilename == "Workbench Transcript.txt"
+                  && !TranscriptExport.defaultFilename.localizedCaseInsensitiveContains("café"),
+                  "transcript export filename does not reveal captured words")
+        try rejects("transcript export reports filesystem write errors") {
+            try TranscriptExport.write(exportCapture, version: .cleaned, to: directory.appendingPathComponent("missing/export.txt"))
+        }
         var many: [Transcript] = []
         for i in 0...TranscriptHistory.limit { many = TranscriptHistory.adding(Transcript(text: "Capture \(i)", seconds: 1), to: many) }
         try check(many.count == TranscriptHistory.limit && many.first?.text == "Capture 100" && many.last?.text == "Capture 1", "bounded history retains the newest 100 captures")
