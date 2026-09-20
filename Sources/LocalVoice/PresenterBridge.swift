@@ -276,8 +276,7 @@ final class PresenterModel: ObservableObject {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let destination = root.appendingPathComponent(PresenterWire.hostName + ".json")
         // Switching editions is an explicit Enable action, never an automatic launch write.
-        let manifest: [String: Any] = ["name": PresenterWire.hostName, "description": "Workbench saved destinations", "path": executable.path,
-                                      "type": "stdio", "allowed_origins": ["chrome-extension://\(PresenterWire.extensionID)/"]]
+        let manifest = PresenterWire.nativeHostManifest(executablePath: executable.path)
         let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: destination, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
