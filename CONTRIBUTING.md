@@ -10,9 +10,7 @@ The separate [iOS/iPadOS 26+ Preview](docs/ios-preview.md) uses native phone/tab
 
 The canonical repository is **[`EthDawg/workbench`](https://github.com/EthDawg/workbench)** and the development base is **`main`**. Start new changes from `main` and target it in your PR. StageKit and the native mobile target are included here; a separate Voice or StageMark checkout is unnecessary. The former `local-voice` repository URL redirects here, preserving existing issues, PRs and releases.
 
-Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contributor. His next contribution is **Mac screenshot capture and image annotation**. [Issue #18](https://github.com/EthDawg/workbench/issues/18) contains the earlier native Screenshot handoff idea; use it to coordinate the first slice and engine choice, which remain open. Device video capture already belongs to **Present a device**, and mobile already has its own imported-image markup workflow.
-
-Start with `Sources/StageKit/StageKitController.swift` for the Mac boundary, `Overlay.swift` and `Core.swift` for ink/history, and `BoardExport.swift` for existing board rendering. Board export does not capture the desktop underneath. Keep the existing app lifecycle and preserve original images. This handoff reserves the implementation for Matt; it does not add the feature or settle its design.
+Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contributor. His September contributions include native Screenshot handoff, Snap & Talk, accessibility, transcript export, reading cancellation, Speko voices, Quick Look and timer placement. See the [integration acceptance checklist](docs/releases/2026-09-20-integration-preview.md) for their combined testing scope. Screenshot handoff launches Apple's capture tool; capturing and editing the resulting image inside Workbench remains a separate possible follow-up to [issue #18](https://github.com/EthDawg/workbench/issues/18).
 
 Repository collaborators can push their own feature branches after accepting their GitHub invitation. No fork or shared credentials are needed. The working agreement below remains a proposal for Ethan and Matt to agree.
 
@@ -28,7 +26,7 @@ Repository collaborators can push their own feature branches after accepting the
 
 Use an Apple Silicon Mac, macOS 14+, Swift 6.2+ and the macOS 26 SDK. The deployment target and build SDK are different: optional newer Apple features need the newer SDK to compile. Full Xcode is required for App Intents metadata; Command Line Tools support source development.
 
-Clone the current source. Choose a short branch name for your contribution; Matt can use `feature/screenshot-annotation` in place of the example below.
+Clone the current source. Choose a short branch name for your contribution.
 
 Before running the tests, quit Workbench, Workbench Preview and earlier Voice/StageMark copies. The suite probes exclusive global shortcuts even in its CI mode; another running copy will cause a real registration conflict.
 

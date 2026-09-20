@@ -2,6 +2,12 @@
 
 This candidate brings Matt's nine contributions together with the pending persona, scene-motion, phone-route and Chrome-destination work. It is for hands-on acceptance before the next public release. The public download remains Preview 3 until a new archive is separately notarized, verified and published.
 
+## Start here
+
+Open **Workbench Preview** from Applications. Check that your existing saved work is present, then use a new disposable Snap & Talk session for the first test. Capture and narrate two sections, cancel a rerecord, and reopen the session. Next try Screenshot, Quick Look and timer positioning. The remaining rows cover focused acceptance when those features matter to your workflow.
+
+In Keyboard, **Switch to** and **Snap & Talk** must appear as separate actions. Existing custom shortcuts are preserved; use the displayed combination rather than assuming the default. Do not run another Workbench channel while testing global shortcuts.
+
 ## What to try
 
 Use disposable text, files and a non-confidential screen. Run only Workbench Preview while testing its global shortcuts.
@@ -24,9 +30,10 @@ For Snap & Talk, macOS may require Screen Recording and Microphone permission. C
 ## Review fixes included
 
 - Confines portable Snap & Talk sections and their files to the matching section directory, rejecting malformed paths and symlinks before destructive operations.
-- Preserves transcription completed during screenshot capture and restores earlier narration when rerecording is cancelled.
+- Preserves transcription completed during screenshot capture and restores earlier narration when rerecording is cancelled. Dictate and Snap & Talk reserve microphone ownership across asynchronous capture; refused retries retain the previous files.
 - Bounds Speko catalogue downloads while receiving data and limits pagination independently of voice count.
 - Preserves distinct history action labels, export recovery, Quick Look ownership and immediate timer placement.
+- Preserves native iPhone/iPad insertion during rapid typing after cleanup, while retiring stale Undo and keeping the original text.
 - Resolves the shared shortcut identity collision between Chrome Switch to and Snap & Talk, retaining independent saved preferences.
 
 ## Release sequence
