@@ -26,15 +26,17 @@ struct TestRunner {
         }
         let boardPresentationOnly = args == ["--board-presentation-only"]
         let backdropOnly = args == ["--backdrop-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
+        let personaQuickOnly = args == ["--persona-quick-only"]
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly else {
+            print("Usage: StageMarkTests [--ci | --scenes-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
+
             exit(2)
         }
         let scenesOnly = args == ["--scenes-only"]
         let hostedCI = args == ["--ci"]
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly { NSApp.finishLaunching() }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
         let suite = CoreTests()
         let integration = IntegrationTests()
         let scenes = SceneTests()
@@ -182,7 +184,15 @@ struct TestRunner {
             ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
         ], at: 5)
         tests.insert(contentsOf: backdropTests, at: 5)
-        if backdropOnly {
+        if personaQuickOnly {
+            tests = [
+                ("persona quick shortcuts and default keys", suite.testDefaultShortcutsAreUniqueAndComplete),
+                ("persona quick shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
+                ("persona quick frozen selection", personas.testLiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames),
+                ("persona quick overlay cycling and lifecycle", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona quick read-only cycling", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement)
+            ]
+        } else if backdropOnly {
             tests = backdropTests
         } else if boardPresentationOnly {
             tests = Array(tests.prefix(5))
@@ -193,7 +203,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }

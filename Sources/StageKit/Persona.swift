@@ -78,11 +78,15 @@ struct PersonaGroup: Codable, Identifiable, Equatable {
 /// Only these deliberately prepared candidates can appear in live controls.
 /// Reconciliation can remove candidates, but never adds or reorders them.
 struct PersonaLiveSelection: Equatable {
-    let groupID: UUID
+    let groupID: UUID?
     private(set) var candidateIDs: [UUID]
     private(set) var currentID: UUID?
     init(group: PersonaGroup, selectedID: UUID?) {
         groupID = group.id; candidateIDs = group.personaIDs
+        currentID = selectedID.flatMap { candidateIDs.contains($0) ? $0 : nil }
+    }
+    init(personaIDs: [UUID], selectedID: UUID?) {
+        groupID = nil; candidateIDs = personaIDs
         currentID = selectedID.flatMap { candidateIDs.contains($0) ? $0 : nil }
     }
     mutating func select(_ id: UUID) {
@@ -95,8 +99,11 @@ struct PersonaLiveSelection: Equatable {
         self.currentID = candidateIDs[destination]
     }
     mutating func reconcile(group: PersonaGroup?, existingIDs: Set<UUID>) {
-        guard let group, group.id == groupID else { candidateIDs = []; currentID = nil; return }
-        let allowed = Set(group.personaIDs).intersection(existingIDs)
+        let allowed: Set<UUID>
+        if let groupID {
+            guard let group, group.id == groupID else { candidateIDs = []; currentID = nil; return }
+            allowed = Set(group.personaIDs).intersection(existingIDs)
+        } else { allowed = existingIDs }
         candidateIDs.removeAll { !allowed.contains($0) }
         if let currentID, !candidateIDs.contains(currentID) { self.currentID = nil }
     }
@@ -581,17 +588,35 @@ final class PersonaLibrary: NSObject, ObservableObject {
         if let id = next.currentID { selectLivePersona(id) }
     }
     func selectLivePersona(_ id: UUID) {
-        guard writable(), var session = liveSelection, session.candidateIDs.contains(id),
+        guard var session = liveSelection, session.candidateIDs.contains(id),
               let image = liveImages[id] else { return }
-        do {
-            try commit(items, selection: id)
-            session.select(id); liveSelection = session; displayedID = id
-            displayedImage = image; displayedLabel = liveLabels[id]; refreshOverlay()
-        } catch { notice = error.localizedDescription }
+        if !isReadOnly {
+            do { try commit(items, selection: id) }
+            catch { notice = error.localizedDescription; return }
+        }
+        session.select(id); liveSelection = session; displayedID = id
+        displayedImage = image; displayedLabel = liveLabels[id]; refreshOverlay()
     }
     func focusOverlayControls() {
         guard mayBeginInteraction?() != false else { notice = PersonaSessionInteractionError.busy.localizedDescription; return }
         hud?.focusControls()
+    }
+
+    func toggleQuickPersona() {
+        guard session == nil else {
+            notice = "End the prepared overlay session before showing one floating persona."
+            return
+        }
+        if overlayVisible { hideOverlay() } else { showOverlay() }
+    }
+
+    func stepQuickPersona(_ offset: Int) {
+        guard session == nil else {
+            notice = "Use Previous or Next prepared overlay set during a multi-overlay presentation."
+            return
+        }
+        guard overlayVisible else { showOverlay(); return }
+        stepLivePersona(offset)
     }
 
     /// Dismissed preparation views must receive the failure, because notice is
@@ -602,10 +627,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
     private func showOverlayChecked() throws {
         guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
-        guard let selected, let image = renderedImage(for: selected) else { throw PersonaError.unreadableImage }
-        if let group = activeGroup, !group.personaIDs.contains(selected.id) { throw PersonaError.outsidePreparedGroup }
-        let candidateIDs = activeGroup?.personaIDs ?? [selected.id]
+        let candidateIDs = activeGroup?.personaIDs ?? items.map(\.id)
+        guard let initialID = selectedID.flatMap({ candidateIDs.contains($0) ? $0 : nil }) ?? candidateIDs.first,
+              let selected = items.first(where: { $0.id == initialID }),
+              let image = renderedImage(for: selected) else { throw PersonaError.unreadableImage }
         guard candidateIDs.count <= PersonaSessionController.maximumCandidates else { throw PersonaSessionError.tooManyCandidates }
+
         var frozenImages: [UUID: NSImage] = [:], frozenLabels: [UUID: String] = [:], bytes = 0
         for id in candidateIDs {
             guard let item = items.first(where: { $0.id == id }), let rendered = renderedImage(for: item),
@@ -618,6 +645,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
         endOverlaySession()
         liveSelection = activeGroup.map { PersonaLiveSelection(group: $0, selectedID: selected.id) }
+            ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: selected.id)
         displayedID = selected.id
         liveImages = frozenImages; liveLabels = frozenLabels
         displayedImage = liveImages[selected.id] ?? image; displayedLabel = publicLabel(for: selected)

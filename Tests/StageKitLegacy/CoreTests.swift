@@ -138,6 +138,9 @@ final class CoreTests: XCTestCase {
         let optIn: Set<Action> = [.overlayControls, .overlayNext, .overlayPrevious, .overlayVisibility, .overlayEnd]
         XCTAssertTrue(optIn.allSatisfy { !prefs.shortcut(for: $0).enabled }, "New overlay keys must not take over existing app shortcuts")
         XCTAssertTrue(Action.allCases.filter { !optIn.contains($0) }.allSatisfy { prefs.shortcut(for: $0).enabled }, "Existing shortcut defaults stay enabled")
+        XCTAssertEqual(prefs.shortcut(for: .personaToggle).label, "⌃⌥I")
+        XCTAssertEqual(prefs.shortcut(for: .personaPrevious).label, "⌃⌥←")
+        XCTAssertEqual(prefs.shortcut(for: .personaNext).label, "⌃⌥→")
     }
     func testPreferencesPersistAndClamp() throws {
         let suite = "StageMarkTests.\(UUID().uuidString)"
@@ -151,6 +154,27 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(reread.value.lineWidth, 20)
         XCTAssertEqual(reread.value.color, .mint)
         XCTAssertEqual(reread.value.activation, .toggle)
+    }
+    func testPersonaShortcutMigrationPreservesExistingOverlayKeys() throws {
+        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var previous = Preferences()
+        previous.shortcuts.removeValue(forKey: Action.personaToggle.rawValue)
+        previous.shortcuts.removeValue(forKey: Action.personaPrevious.rawValue)
+        previous.shortcuts.removeValue(forKey: Action.personaNext.rawValue)
+        previous.shortcuts[Action.overlayControls.rawValue] = Shortcut(
+            keyCode: Action.personaToggle.defaultShortcut.keyCode,
+            modifiers: Action.personaToggle.defaultShortcut.modifiers,
+            enabled: true)
+        defaults.set(try JSONEncoder().encode(previous), forKey: "preferences.v1")
+        defaults.set(2, forKey: "preferences.schema")
+        let migrated = SettingsStore(defaults: defaults)
+        XCTAssertFalse(migrated.value.shortcut(for: .personaToggle).enabled,
+            "A new default must not take over an existing enabled assignment")
+        XCTAssertTrue(migrated.value.shortcut(for: .personaPrevious).enabled)
+        XCTAssertTrue(migrated.value.shortcut(for: .personaNext).enabled)
+        XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 3)
     }
     func testCorruptPreferencesArePreservedForRecovery() {
         let suite = "StageMarkTests.\(UUID().uuidString)"
