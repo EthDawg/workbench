@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
-  "reviewedOn": "2026-09-15",
-  "implementationRevision": "ec2f9611281f8e14d9431ec88c5447c5f274de93",
-  "scope": "Presentation preparation, independently managed native overlays, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
+  "reviewedOn": "2026-09-20",
+  "implementationRevision": "1014c938893eabdcbba8eb1485d4844e7757ac3a",
+  "scope": "Presentation preparation, independently managed native overlays, independent break-timer placement, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
     "proposed": "A product contract for review and implementation. No corresponding feature is promised in the current download."
@@ -116,6 +116,16 @@
       "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
       "source": "Sources/StageKit/PersonaSession.swift",
       "evidence": "88 integrated native Mac scene tests /2367 assertions and 114 StageKit CI-mode tests /2533 assertions passed (live menu-bar popover check excluded). Native keyboard focus and click menu, per-card hide, paused set switching, return and restoration checked with disposable artwork. Signed local Preview 20260914204356 installed; signature, preparation entry and disabled optional shortcuts verified. Source and delivery limits are in /personas/."
+    },
+    {
+      "id": "break-timer-placement",
+      "name": "Remember the separate break timer position",
+      "status": "implemented",
+      "entry": "Break timer → drag or Position",
+      "effect": "Snap on drag release; persist a free normalized position or one of eight anchors and recover on an available display after hiding, closing or restarting.",
+      "limit": "Countdown and presentation remain independent. Corrupt, future or concurrently changed placement files are preserved. Physical display removal, VoiceOver and meeting receivers remain acceptance checks.",
+      "source": "Sources/StageKit/BreakTimerPlacement.swift",
+      "evidence": "Focused synthetic persistence checks: 19 assertions. Native AppKit timer hide/reopen and release-time snapping: 11 assertions. See docs/verification/2026-09-20-contribution-integration.md for combined-candidate results."
     }
   ],
   "events": [
@@ -311,6 +321,14 @@
       "status": "passed-source-and-unit",
       "capabilities": [
         "persona-session"
+      ]
+    },
+    {
+      "id": "timer-position-recovery",
+      "test": "Drag near an anchor and release; verify the visible frame matches the saved anchor before hide/reopen. Exercise free and named placement with changed synthetic display bounds and preserved corrupt/future/concurrent records. Physical displays and receiver view remain unverified.",
+      "status": "passed-native-isolated",
+      "capabilities": [
+        "break-timer-placement"
       ]
     }
   ],
