@@ -1,0 +1,29 @@
+DRAFT: DO NOT SUBMIT until the bracketed evidence fields are completed and this text is verified against the selected build.
+
+Workbench, iPhone/iPad: [exact selected product name, version and build]. Verify every feature and service statement below against that build before use.
+
+1. PHYSICAL-DEVICE DEMONSTRATION
+[Recording attachment/link, device models, OS versions/builds, capture date and QA result. The recording must begin with launching this exact candidate and show the main journeys below. Complete iPhone and iPad testing; do not substitute Simulator footage.]
+
+2. PURPOSE AND AUDIENCE
+Workbench is a general-purpose utility for people who want to turn speech into reusable text, listen to text, annotate their own images and prepare visual scenes or wallpapers. It is available to individual users; no employer membership or private tenant is required. The mobile app works on its own for these core tasks. Optional scene/photo handoff uses the user's Mac.
+
+3. SETUP AND MAIN FEATURES
+No Workbench registration or login is required for local tools. There is no in-app purchase or paid feature in this mobile build.
+- Tools > Dictate: choose a supported speech language, prepare Apple's speech assets if prompted, allow the microphone, record, stop, review and save. Reopen the result in Saved. Speech availability depends on device/language and installed assets.
+- Tools > Read aloud: enter text, select an installed Apple voice, then play/pause/stop.
+- Tools > Mark up: choose an image, draw/undo, save and share a rendered copy.
+- Tools > Scenes: start with a bundled picture, edit the layout, save and reopen. A device frame here is a placement preview, not a live phone feed.
+- Tools > Wallpapers: choose an image, adjust crop and Save to Photos. Finish wallpaper installation using Apple's Photos/Settings workflow.
+- Saved reopens the user's work. About links to privacy and help.
+Sample reading text: "The blue notebook is on the desk." Bundled scene starters allow testing without customer files.
+Optional personal iCloud sync requires the reviewer's own Apple Account with iCloud available. Enable scene sync on the participating devices to test handoff. Do not provide us with Apple Account credentials. Local editing does not require sync. [Add the verified paired-device result and exact current Mac companion/setup instructions.]
+
+4. EXTERNAL SERVICES
+Speech uses Apple's SpeechAnalyzer/SpeechTranscriber and may need an explicit Apple speech-asset download. Reading uses Apple system voices. Photo/scene handoff uses the user's private CloudKit database when enabled. Photos, Files, camera and sharing use Apple system interfaces. The mobile target does not use OpenAI, Claude, Speko, Mac Parakeet, configurable transcription servers, ads, analytics, or a developer-hosted account/content service. Help links open the Workbench website hosted on Vercel, GitHub and Apple's support site externally. Generative artwork creation is a development process, not a runtime mobile AI service.
+
+5. REGIONS
+Workbench does not deliberately change its feature set by storefront region. Apple speech languages, device support, installed voices and iCloud availability can differ; identical speech/service availability worldwide is not claimed.
+
+6. CONTENT AND REGULATED USE
+This is a productivity/creative utility, not a regulated medical or financial service. User imports are private local content or personal iCloud data, not a public community feed. There is no Workbench account-creation/deletion or public reporting/blocking flow in this build. [Complete the bundled artwork/dependency rights check and attach any applicable permission/provenance documents. Do not claim ownership or authorisation that has not been verified.]
