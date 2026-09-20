@@ -107,9 +107,18 @@ This does not argue for the "larger shared framework" that `design.md` rightly r
 
 ### The mobile fact
 
-`Mobile/` contains **zero** references to the `Workbench` token enum. The mobile root applies `.tint(Color.accentColor)` — which tints with the system accent, i.e. the person's macOS/iOS accent colour, default blue. The Mac tints with `Workbench.accent`, a deep green in light mode and a mint in dark.
+`Mobile/` contains **zero** references to the `Workbench` token enum, but it is not unbranded. It carries its own `AccentColor.colorset`, wired up through `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME` in `scripts/mobile-project.py`. The mobile root's `.tint(Color.accentColor)` therefore resolves to that asset, not to the system blue.
 
-Mac and iOS therefore render different brand colours today. Mobile correctly uses iOS grouped-background semantics, which should stay; it is the accent and the radius/type scales that should be shared.
+The two definitions agree in dark mode and disagree in light:
+
+| | Light | Dark |
+| --- | --- | --- |
+| Mac, `Workbench.accent` (Swift literal) | sRGB `0.04, 0.43, 0.32` | sRGB `0.43, 0.89, 0.73` |
+| iOS, `AccentColor.colorset` (JSON) | sRGB `0.16, 0.43, 0.36` | sRGB `0.43, 0.89, 0.73` |
+
+So Workbench ships two slightly different greens in light mode, one per platform. Whether that is a deliberate platform adjustment or a drift nobody noticed is not recorded anywhere, which is the actual problem: the same brand value is written twice, in two formats, in two files that have no link and no check between them.
+
+Mobile's use of iOS grouped-background semantics is correct and should stay. It is the accent value and the radius/type scales that want a single source.
 
 ## Components
 
