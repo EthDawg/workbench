@@ -4,7 +4,7 @@ This is submission copy and a release handoff, not evidence of store approval or
 
 ## Existing store identity
 
-Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; protocol, saved destinations and profile storage are unchanged.
+Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The store ZIP omits the development-only `key`; uploading it updates the existing item under Google’s assigned signing identity. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; protocol, saved destinations and profile storage are unchanged.
 
 After installing the matching companion, choose **Repair Chrome connection** in **Saved resources → Chrome destinations** to refresh an existing native host registration. A store installation has separate extension storage and requires its own explicit profile pairing. Live store-installed pairing and the dashboard's submission/approval/publication status remain separate acceptance checks.
 
@@ -102,3 +102,9 @@ Provide the exact public native build URL and its supported macOS version in the
 - [Privacy fields](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy): single purpose, minimum permissions, remote-code declaration and data-use disclosures.
 - [Privacy policy requirement](https://developer.chrome.com/docs/webstore/program-policies/privacy): an accurate publicly accessible privacy policy for handled user data.
 - [Limited Use](https://developer.chrome.com/docs/webstore/program-policies/limited-use): use only for the disclosed purpose and publish an affirmative policy statement.
+
+## Package correction — 20 September 2026
+
+The first 0.1.1 ZIP was rejected because its retained development `key` did not match the existing store item. The packager now removes only that field from the ZIP and leaves source bytes, the stable unpacked identity and all other runtime files unchanged. The corrected ZIP SHA-256 is `7d9b5b868a23fc593e30bae939946aeaa1ec22d0be5249d682f4b1f93fbf3fcf`. The maintainer handoff names it `WorkbenchPreview-Chrome-0.1.1-store.zip` to distinguish it from the rejected archive. All nine packaging and 64 browser tests pass, including an assertion that the packaged manifest differs only by the omitted key and source identity stays intact. Dashboard acceptance still needs verification.
+
+Google documents the manifest key’s [development identity purpose](https://developer.chrome.com/docs/extensions/reference/manifest/key). Continue updating the existing item; never use this correction to create a new listing or overwrite the unpacked source identity.
