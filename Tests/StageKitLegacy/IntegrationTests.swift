@@ -217,6 +217,14 @@ final class IntegrationTests: XCTestCase {
         settings.value.onboardingComplete = true; settings.value.autoFade = true; settings.value.fadeDelay = 3
         let app = AppCoordinator(settings: settings, archiveURL: directory.appendingPathComponent("boards.json"), embedded: true)
         app.start(); defer { app.shutdown() }
+        func waitForScreenshotCompletion() {
+            // Completion is dispatched to the main queue. Wait for its state
+            // transition instead of assuming it runs within 50 ms under load.
+            let deadline = Date().addingTimeInterval(2)
+            while app.screenshotHandoffActive && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            }
+        }
         let display = app.currentID
         var ink = Annotation(tool: .arrow, color: .coral, width: 5,
                              points: [InkPoint(CGPoint(x: 60, y: 80)), InkPoint(CGPoint(x: 180, y: 160))])
@@ -245,7 +253,7 @@ final class IntegrationTests: XCTestCase {
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         finishScreenshot?()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        waitForScreenshotCompletion()
         XCTAssertFalse(app.screenshotHandoffActive)
         let preserved = app.history(for: display)?.annotations.first
         XCTAssertNotNil(preserved)
@@ -260,7 +268,7 @@ final class IntegrationTests: XCTestCase {
             completion(NSError(domain: "ScreenshotFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Synthetic launch failure"]))
         }
         app.openScreenshot()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        waitForScreenshotCompletion()
         XCTAssertFalse(app.screenshotHandoffActive)
         XCTAssertTrue(app.notice?.contains("Synthetic launch failure") == true)
         XCTAssertTrue(recoveredControls, "A launch failure must reopen the host controls so its notice can be read")
@@ -271,7 +279,7 @@ final class IntegrationTests: XCTestCase {
         app.history(for: display)?.append(boardInk)
         let boardIDs = app.history(for: display)?.annotations.map(\.id)
         app.openScreenshot()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        waitForScreenshotCompletion()
         XCTAssertEqual(app.boards[display], .white, "Recovery must preserve the visible board")
         XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), boardIDs, "Recovery must preserve board ink")
     }
