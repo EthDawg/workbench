@@ -90,7 +90,7 @@ Provide the exact public native build URL and its supported macOS version in the
 - 128px icon: `BrowserExtension/icons/icon128.png`; 16/32/48px icons are also packaged.
 - Small promotional image: `BrowserExtension/store/promo-440x280.png`, 440×280 pixels, derived from the existing Workbench icon. It is branding artwork, not a screenshot.
 - Required screenshot: capture the actual packaged extension with synthetic destinations at **1280×800** or **640×400**. No screenshot is fabricated by the packager. The final changed popup still needs visual/live verification.
-- The installed Mac candidate is 2.0.0 build `20260914230155`, Developer ID signed with the existing Production CloudKit capability. It is not yet notarized or publicly downloadable; public Preview 3 lacks the browser companion.
+- The companion is publicly available as [Workbench 2.0 Preview 4](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.4), build `20260920065909`. It is Developer ID signed, notarized, stapled and retains Production CloudKit. The published ZIP was downloaded back and hash-verified. It includes the browser companion and exact existing store identity; older Preview 3 does not.
 - Verify developer registration, contact verification and the current dashboard distribution/review requirements.
 - Uploading a draft, submitting for review, approval and publication are separate states. Preserve this distinction in the release record.
 
