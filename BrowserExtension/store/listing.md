@@ -86,7 +86,7 @@ Provide the exact public native build URL and its supported macOS version in the
 
 ## Store assets and remaining publication work
 
-- ZIP: `dist/WorkbenchPreview-Chrome-0.1.0.zip`, generated from the explicit 12-file runtime allowlist.
+- ZIP: `dist/WorkbenchPreview-Chrome-0.1.1.zip`, generated from the explicit 12-file runtime allowlist.
 - 128px icon: `BrowserExtension/icons/icon128.png`; 16/32/48px icons are also packaged.
 - Small promotional image: `BrowserExtension/store/promo-440x280.png`, 440×280 pixels, derived from the existing Workbench icon. It is branding artwork, not a screenshot.
 - Required screenshot: capture the actual packaged extension with synthetic destinations at **1280×800** or **640×400**. No screenshot is fabricated by the packager. The final changed popup still needs visual/live verification.

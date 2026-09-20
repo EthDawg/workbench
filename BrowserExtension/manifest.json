@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Workbench Preview",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Save named destinations and return to the right Chrome profile. Requires the Workbench Preview companion for macOS.",
   "homepage_url": "https://workbench-mac.vercel.app/",
   "icons": {

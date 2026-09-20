@@ -40,7 +40,7 @@ These tests do not establish live Chrome/native integration. Dogfood the matchin
 
 ## Prepare the Chrome Web Store package
 
-Run `python3 scripts/package-chrome.py` from the repository root. The reproducible archive is `dist/WorkbenchPreview-Chrome-0.1.0.zip`; the manifest sits at ZIP root. The script validates manifest capabilities, local asset references, exact icon dimensions and ZIP readback. Its fixed runtime allowlist excludes tests, development metadata, source artwork, listing copy and private or unrecognised files. `--check` validates without writing, and `--output` selects another ZIP destination.
+Run `python3 scripts/package-chrome.py` from the repository root. The reproducible archive is `dist/WorkbenchPreview-Chrome-0.1.1.zip`; the manifest sits at ZIP root. The script validates manifest capabilities, local asset references, exact icon dimensions and ZIP readback. Its fixed runtime allowlist excludes tests, development metadata, source artwork, listing copy and private or unrecognised files. `--check` validates without writing, and `--output` selects another ZIP destination.
 
 Run `python3 BrowserExtension/tests/package_test.py` for the packaging regressions; they also run in the ordinary `scripts/test.sh` suite. CI builds the allowlisted ZIP and retains it as the `workbench-chrome-preview` artifact. Store copy, reviewer steps, permissions reasons and remaining publication requirements live in [store/listing.md](store/listing.md). [privacy.html](privacy.html) is the in-product privacy page; [the public-policy draft](store/privacy-policy-draft.md) must also be published on the companion website before submission.
 
