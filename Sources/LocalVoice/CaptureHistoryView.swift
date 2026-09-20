@@ -63,6 +63,13 @@ struct CaptureHistoryView: View {
                                             .accessibilityLabel(CaptureHistoryAccessibility.label("Read aloud", context: accessibilityContext))
                                         Button("Save prompt") { model.savePrompt(item.text) }
                                             .accessibilityLabel(CaptureHistoryAccessibility.label("Save prompt", context: accessibilityContext))
+                                        Menu("Export…") {
+                                            Button("Cleaned text…") { model.exportCapture(item, version: .cleaned) }
+                                            Button("Original wording…") { model.exportCapture(item, version: .original) }
+                                        }.menuStyle(.borderlessButton).fixedSize()
+                                            .accessibilityLabel(CaptureHistoryAccessibility.label("Export transcript", context: accessibilityContext))
+                                            .accessibilityHint("Choose cleaned text or original wording")
+                                            .help("Export cleaned text or original wording")
                                     }
                                     Spacer()
                                     if !compact {

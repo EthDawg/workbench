@@ -595,6 +595,22 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         do { try transcript.write(to: url, atomically: true, encoding: .utf8); status = "Transcript saved." }
         catch { fail(error.localizedDescription) }
     }
+    func exportCapture(_ item: Transcript, version: TranscriptExportVersion) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = TranscriptExport.defaultFilename
+        panel.title = "Export saved transcript"
+        panel.message = version == .original
+            ? "Save the original recognised wording as a UTF-8 text file."
+            : "Save the cleaned transcript as a UTF-8 text file."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try TranscriptExport.write(item, version: version, to: url)
+            status = "\(version.rawValue) saved to \(url.lastPathComponent)."
+        } catch {
+            self.error = "Could not save this transcript. \(error.localizedDescription)"
+        }
+    }
 
     private var signature: String { "\(readingProvider.rawValue)|\(voice)|\(Int(rate))|\(speechText)" }
     var canSeekReading: Bool { !rendering && (playing || paused) && player != nil && audioDuration.isFinite && audioDuration > 0 }
