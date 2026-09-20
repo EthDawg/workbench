@@ -13,6 +13,12 @@ enum FloatingToolbarChecks {
             guard condition else { throw VoiceError.message("Native toolbar: " + name) }
             count += 1
         }
+        func matches(_ actual: NSRect, _ expected: NSRect) -> Bool {
+            // AppKit aligns native window origins to pixels; pure geometry can
+            // put a centred pill at a half-point on an odd-height visible frame.
+            zip([actual.minX, actual.minY, actual.width, actual.height],
+                [expected.minX, expected.minY, expected.width, expected.height]).allSatisfy { abs($0 - $1) <= 1 }
+        }
         let model = AppModel()
         model.ready = true; model.floatingToolbarVisible = true
         let readback = ReadbackModel(engine: model.engine)
@@ -121,6 +127,18 @@ enum FloatingToolbarChecks {
         controls.choosePosition?(.bottom)
         try await settle(FloatingToolbarDisclosure.collapsed.size)
         try check(controls.anchor == .bottom, "changing edges during a snap settles at the latest orientation")
+        controls.choosePosition?(.left)
+        let pendingDestination = FloatingControlGeometry.frame(anchor: .left,
+            size: FloatingToolbarDisclosure.collapsed.size(at: .left), visibleFrame: NSScreen.main!.visibleFrame)
+        let savedOrigin = NSPointFromString(UserDefaults.standard.string(forKey: "capturePanelOrigin.v1")!)
+        let savedSize = NSSizeFromString(UserDefaults.standard.string(forKey: "capturePanelSize.v1")!)
+        try check(NSRect(origin: savedOrigin, size: savedSize) == pendingDestination,
+                  "snap destination and display are saved before its first animation frame")
+        model.floatingToolbarVisible = false; controller.update(model: model)
+        model.floatingToolbarVisible = true; controller.update(model: model)
+        try await settle(FloatingToolbarDisclosure.collapsed.size(at: .left))
+        try check(matches(controller.window!.frame, pendingDestination),
+                  "hiding during a snap restores the selected destination instead of the old one: actual \(controller.window!.frame), expected \(pendingDestination)")
         controls.expandToolbar()
         try await settle(FloatingToolbarDisclosure.expanded.size)
         controller.beginDragging()
@@ -129,8 +147,8 @@ enum FloatingToolbarChecks {
         let destination = FloatingToolbarDocking.anchor(for: controller.window!.frame, in: screen)
         controller.previewDragging(); controller.finishDragging()
         try await settle(FloatingToolbarDisclosure.expanded.size)
-        try check(controls.anchor == destination && controller.window!.frame == FloatingControlGeometry.frame(
-            anchor: destination, size: FloatingToolbarDisclosure.expanded.size, visibleFrame: screen),
+        try check(controls.anchor == destination && matches(controller.window!.frame, FloatingControlGeometry.frame(
+            anchor: destination, size: FloatingToolbarDisclosure.expanded.size, visibleFrame: screen)),
                   "arbitrary mid-screen drop lands in the previewed named slot")
         controls.choosePosition?(.bottom)
         try await settle(FloatingToolbarDisclosure.expanded.size)
@@ -162,8 +180,8 @@ enum FloatingToolbarChecks {
             dictate: {}, snap: {}, draw: {}, present: {}, controls: restoredControls, monitorsPointer: false)
         restored.update(model: model)
         let restoredAnchor = FloatingToolbarDocking.anchor(for: legacyFrame, in: screen)
-        try check(restoredControls.anchor == restoredAnchor && restored.window!.frame == FloatingControlGeometry.frame(
-            anchor: restoredAnchor, size: restoredControls.preferredToolbarSize, visibleFrame: screen),
+        try check(restoredControls.anchor == restoredAnchor && matches(restored.window!.frame, FloatingControlGeometry.frame(
+            anchor: restoredAnchor, size: restoredControls.preferredToolbarSize, visibleFrame: screen)),
                   "legacy free placement restores into its nearest named dock")
         restored.close()
         print("FLOATING_TOOLBAR_NATIVE_OK: \(count) checks passed")

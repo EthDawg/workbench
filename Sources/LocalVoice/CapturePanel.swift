@@ -212,7 +212,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true,
             dictation: Self.showsDictation(model), narration: readback?.isRecording == true)
         if surface != self.surface {
+            let destination = animationTarget
             cancelAnimation()
+            if let destination { setFrame(destination) }
             self.surface = surface
             controls.suspendToolbar()
             releaseKeyboardFocus()
@@ -324,6 +326,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         guard let window, animationTarget != frame else { return }
         cancelAnimation()
         positioning = true
+        // Capture/hide can interrupt a snap. Preserve the selected destination,
+        // including its display, before the first animation frame is scheduled.
+        savePosition(frame)
         guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
             controls.toolbarSize = frame.size
             window.setFrame(frame, display: true, animate: false)
@@ -354,10 +359,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
     }
 
-    private func savePosition() {
-        guard let window else { return }
-        UserDefaults.standard.set(NSStringFromPoint(window.frame.origin), forKey: positionKey)
-        UserDefaults.standard.set(NSStringFromSize(window.frame.size), forKey: sizeKey)
+    private func savePosition(_ destination: NSRect? = nil) {
+        guard let frame = destination ?? window?.frame else { return }
+        UserDefaults.standard.set(NSStringFromPoint(frame.origin), forKey: positionKey)
+        UserDefaults.standard.set(NSStringFromSize(frame.size), forKey: sizeKey)
         if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
         else { UserDefaults.standard.removeObject(forKey: anchorKey) }
     }
