@@ -364,4 +364,3 @@ struct ReadbackHUDView: View {
             .help(controls.isExpanded ? "Show compact narration controls" : "Show details, Cancel and position options")
     }
 }
-
