@@ -6,7 +6,8 @@ import SwiftUI
 
 /// Mouse controls preserve the original application's focus and paste target.
 final class CapturePanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var allowsKeyboardFocus = false
+    override var canBecomeKey: Bool { allowsKeyboardFocus }
     override var canBecomeMain: Bool { false }
 }
 
@@ -16,6 +17,76 @@ final class CaptureHostingView<Content: View>: NSHostingView<Content> {
 
 @MainActor
 final class CaptureHUDControls: ObservableObject {
+    @Published private(set) var toolbarDisclosure: FloatingToolbarDisclosure
+    private(set) var toolbarInteraction: FloatingToolbarInteraction
+    private let defaults: UserDefaults
+    private var collapseTask: Task<Void, Never>?
+    private weak var trackingMenu: NSMenu?
+    var pointerInside: (() -> Bool)?
+    var releaseKeyboardFocus: (() -> Void)?
+    var focusFirstControl: (() -> Void)?
+    private static let pinnedKey = "floatingToolbarExpanded.v1"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let interaction = FloatingToolbarInteraction(pinned: defaults.bool(forKey: Self.pinnedKey))
+        toolbarInteraction = interaction; toolbarDisclosure = interaction.disclosure
+    }
+    func hover(_ inside: Bool) {
+        // SwiftUI can send an exit while its content is replaced during resize.
+        if !inside, pointerInside?() == true { return }
+        collapseTask?.cancel()
+        if inside { toolbarInteraction.enter(); refreshToolbar() }
+        else { toolbarInteraction.leave(); scheduleCollapse() }
+    }
+    func expandToolbar() {
+        collapseTask?.cancel(); toolbarInteraction.pinned = true
+        toolbarInteraction.suppressHoverUntilExit = false
+        defaults.set(true, forKey: Self.pinnedKey); refreshToolbar()
+    }
+    func collapseToolbar() {
+        collapseTask?.cancel()
+        toolbarInteraction.hovered = pointerInside?() ?? toolbarInteraction.hovered
+        toolbarInteraction.collapse()
+        defaults.set(false, forKey: Self.pinnedKey)
+        releaseKeyboardFocus?(); refreshToolbar()
+    }
+    func focusToolbar() {
+        collapseTask?.cancel(); toolbarInteraction.keyboardFocused = true; refreshToolbar()
+    }
+    func unfocusToolbar() {
+        toolbarInteraction.keyboardFocused = false
+        if toolbarInteraction.canCollapse { scheduleCollapse() } else { refreshToolbar() }
+    }
+    func beginMenu(_ menu: NSMenu) {
+        collapseTask?.cancel(); trackingMenu = menu; toolbarInteraction.menuOpen = true
+    }
+    func endMenu() {
+        trackingMenu = nil; toolbarInteraction.menuOpen = false
+        hover(pointerInside?() ?? false)
+    }
+    func setDragging(_ value: Bool) {
+        collapseTask?.cancel(); toolbarInteraction.dragging = value
+        if !value { hover(pointerInside?() ?? false) }
+    }
+    func suspendToolbar() {
+        collapseTask?.cancel(); trackingMenu?.cancelTracking()
+        toolbarInteraction.suspend(); refreshToolbar()
+    }
+    private func refreshToolbar() {
+        let next = toolbarInteraction.disclosure
+        guard next != toolbarDisclosure else { return }
+        toolbarDisclosure = next; resize?()
+    }
+    private func scheduleCollapse() {
+        guard toolbarInteraction.canCollapse else { return }
+        collapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled, let self, self.toolbarInteraction.canCollapse else { return }
+            if self.pointerInside?() == true { self.toolbarInteraction.enter() }
+            self.refreshToolbar()
+        }
+    }
     @Published var isExpanded = false {
         didSet { if oldValue != isExpanded { resize?() } }
     }
@@ -28,6 +99,7 @@ final class CaptureHUDControls: ObservableObject {
 final class CapturePanelController: NSWindowController, NSWindowDelegate, FloatingHUDDragController {
     private let positionKey = "capturePanelOrigin.v1"
     private let anchorKey = "capturePanelAnchor.v2"
+    private let sizeKey = "capturePanelSize.v1"
     private let controls = CaptureHUDControls()
     private weak var model: AppModel?
     private weak var readback: ReadbackModel?
@@ -36,6 +108,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var dragging = false
     private let snapGuide = FloatingControlGuideController()
     private var observations = Set<AnyCancellable>()
+    private var surface: FloatingToolbarSurface = .hidden
+    private var keyboardTarget: TextDelivery.Target?
 
     init(model: AppModel, readback: ReadbackModel, stage: StageKitController,
          dictate: @escaping () -> Void, snap: @escaping () -> Void,
@@ -49,6 +123,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.anchor = savedAnchor ?? (UserDefaults.standard.string(forKey: positionKey) == nil ? .bottom : nil)
         controls.resize = { [weak self, weak model] in if let model { self?.update(model: model) } }
         controls.choosePosition = { [weak self] in self?.choosePosition($0) }
+        controls.pointerInside = { [weak panel] in panel?.frame.contains(NSEvent.mouseLocation) == true }
+        controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         panel.title = "Workbench floating toolbar"
         panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
         panel.isMovable = true
@@ -84,12 +160,17 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible,
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true,
             dictation: Self.showsDictation(model), narration: readback?.isRecording == true)
+        if surface != self.surface {
+            self.surface = surface
+            controls.suspendToolbar()
+            releaseKeyboardFocus()
+        }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging()
             controls.isExpanded = false
             return
         }
-        let size = surface == .tools ? FloatingToolbar.size : CaptureHUDLayout.size(
+        let size = surface == .tools ? controls.toolbarDisclosure.size : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
             preview: model.previewingPanel, expanded: controls.isExpanded)
         if !window.isVisible { place(size: size, restoreSaved: true) }
@@ -100,6 +181,43 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     static func showsDictation(_ model: AppModel) -> Bool {
         model.previewingPanel || model.phase != .idle || model.captureFailure != nil ||
             (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil)
+    }
+
+    func focusToolbar() {
+        guard let model, let panel = window as? CapturePanel else { return }
+        let target = TextDelivery.capture()
+        model.floatingToolbarVisible = true
+        update(model: model)
+        guard surface == .tools else { return }
+        keyboardTarget = target
+        controls.focusToolbar()
+        panel.allowsKeyboardFocus = true
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async { [weak self, weak panel] in
+            guard let self, panel?.allowsKeyboardFocus == true, self.surface == .tools else { return }
+            self.controls.focusFirstControl?()
+        }
+    }
+
+    func targetForDictation() -> TextDelivery.Target? {
+        let target = window?.isKeyWindow == true ? keyboardTarget : TextDelivery.capture()
+        releaseKeyboardFocus()
+        return target
+    }
+
+    private func releaseKeyboardFocus() {
+        guard let panel = window as? CapturePanel, panel.allowsKeyboardFocus else { return }
+        let target = keyboardTarget
+        panel.allowsKeyboardFocus = false
+        panel.resignKey()
+        target?.app.activate(options: [])
+        keyboardTarget = nil
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        (window as? CapturePanel)?.allowsKeyboardFocus = false
+        keyboardTarget = nil; controls.unfocusToolbar()
     }
 
     func position(reset: Bool = false) {
@@ -115,7 +233,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private func place(size: NSSize, restoreSaved: Bool) {
         guard let window, let preferred = preferredScreen else { return }
         let saved = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString)
-        let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: size) } : window.frame
+        let savedSize = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString) ?? size
+        let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: savedSize) } : window.frame
         setFrame(CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
                                          screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred))
         savePosition()
@@ -136,6 +255,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private func savePosition() {
         guard let window else { return }
         UserDefaults.standard.set(NSStringFromPoint(window.frame.origin), forKey: positionKey)
+        UserDefaults.standard.set(NSStringFromSize(window.frame.size), forKey: sizeKey)
         if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
         else { UserDefaults.standard.removeObject(forKey: anchorKey) }
     }
@@ -145,13 +265,17 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         savePosition()
     }
 
-    func beginDragging() { dragging = true; previewDragging() }
+    func beginDragging() { dragging = true; controls.setDragging(true); previewDragging() }
 
-    func cancelDragging() { dragging = false; snapGuide.hide() }
+    func cancelDragging() {
+        let wasDragging = dragging
+        dragging = false; snapGuide.hide()
+        if wasDragging { controls.setDragging(false) }
+    }
 
     func windowWillClose(_ notification: Notification) { cancelDragging() }
 
-    override func close() { cancelDragging(); super.close() }
+    override func close() { controls.suspendToolbar(); cancelDragging(); releaseKeyboardFocus(); super.close() }
 
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }

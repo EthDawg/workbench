@@ -1,0 +1,26 @@
+# Compact floating toolbar · 21 September 2026
+
+Follow-up to merged #62 and the remaining #56 acceptance. This change implements quiet idle disclosure and a contextual dictation mode chooser; it does not close the outstanding hardware acceptance in #56.
+
+## Behavior
+
+- A 76 × 28 point resting indicator expands on hover to 368 × 60 quick actions. Click/Expand pins the 480 × 116 full tools. Collapse and expansion are remembered independently of show/hide and recording detail.
+- Pointer exit allows 450 ms to reach controls. Re-entry cancels collapse; native menu tracking, keyboard interaction and dragging retain controls. Explicit collapse suppresses re-opening only while the pointer remains inside.
+- Change mode uses Original/Light/Natural cleanup preferences and native checkmarks. Native menu highlight is navigation. The current recording retains its captured configuration.
+- Dictation and Snap & Talk show configured shortcut information, including disabled/failed bindings. Stop, processing, failure and receipt surfaces retain their existing lifecycle; screenshot acquisition hides the complete shared window.
+- Ordinary pointer use preserves external focus. Window → Focus floating toolbar explicitly focuses the native action menu; Space/Return opens it, arrows navigate and Escape leaves. This command only focuses idle tools. All idle actions and Change mode are also available from this menu.
+- Anchored resizing preserves the display/edge. Free placement saves both origin and size so relaunch can restore its centre even if it last exited while hover-expanded.
+
+## Verification in progress
+
+- Debug build passed. Package suite: 107 tests, zero failures.
+- Focused toolbar checks cover transient disclosure, exit grace/re-entry, menu and drag holds, keyboard transitions, saved expansion, honest shortcuts and all eight anchor positions.
+- Core regression checks passed, including frozen capture settings, capture geometry, keyboard, clipboard receipts, cleanup and integration checks.
+- The actual debug app runs in a disposable bundle with separate preferences and storage. Native inspection verified quiet and expanded layouts, main-window closure, and Original/Natural mode selection. Keyboard inspection exposed a focus issue; the repair explicitly focuses a native button containing all actions.
+- Final native checks, release packaging and hosted CI are recorded below when complete.
+
+No live user library was replaced. No public release, notarization, website deployment or mobile behavior change is part of this PR. Physical hover/mouse motion, crowded/notched menu bars, multiple displays, VoiceOver narration and live microphone-to-field delivery need their own observations; deterministic checks are not claims of those hardware results.
+
+## Design reference
+
+The [Superwhisper recording-window guide](https://superwhisper.com/docs/get-started/interface-rec-window) documents persistent mini controls and hover disclosure. [Wispr Flow's bar guide](https://docs.wisprflow.ai/articles/1790396454-move-and-dock-the-flow-bar-on-desktop) describes a resting status bubble. Workbench keeps its own operation model and visible Stop action. These are interaction references, not competitor assets copied into the app.

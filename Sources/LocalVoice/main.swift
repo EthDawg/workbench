@@ -240,6 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
         menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
@@ -281,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel.update(model: model)
     }
     @objc func toggleFloatingToolbar() { model.floatingToolbarVisible.toggle() }
+    @objc func focusFloatingToolbar() { capturePanel.focusToolbar() }
     @objc func restoreMenuBarIcon() {
         statusItem.isVisible = true
         updateRecordingUI()
@@ -316,7 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func toolbarDictation() {
         // The toolbar is nonactivating. Capture the current field at the click,
         // never reuse an old popover target for a later toolbar operation.
-        let target = TextDelivery.capture()
+        let target = capturePanel.targetForDictation()
         model.toggleRecording(target: target)
     }
     func toolbarSnap() {
@@ -433,10 +435,13 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-presenter":
             try await PresenterChecks.run()
         case "--check-core":
+            try await FloatingToolbarChecks.run()
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
+        case "--check-floating-toolbar":
+            try await FloatingToolbarChecks.run()
         case "--check-reading-cancellation":
             try await AudioRendererCancellationChecks.run()
         case "--check-library":
