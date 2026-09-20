@@ -11,6 +11,8 @@ struct DemoScene: Codable, Identifiable, Equatable {
     var backgroundX = 0.5
     var backgroundY = 0.5
     var zoom = 1.0
+    var gentleMotion: Bool? = nil
+    var ambience: SceneAmbience? = nil
     var showsPhone = true
     var phoneX = 0.5
     var phoneY = 0.5
@@ -22,12 +24,13 @@ struct DemoScene: Codable, Identifiable, Equatable {
     /// Local edit provenance, deliberately absent from portable/legacy JSON.
     var libraryRevision: UUID? = nil
     private enum CodingKeys: String, CodingKey {
-        case id, name, background, backgroundX, backgroundY, zoom, showsPhone,
+        case id, name, background, backgroundX, backgroundY, zoom, gentleMotion, ambience, showsPhone,
              phoneX, phoneY, phoneHeight, logo, viewport, hand, persona
     }
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.name == rhs.name && lhs.background == rhs.background &&
         lhs.backgroundX == rhs.backgroundX && lhs.backgroundY == rhs.backgroundY && lhs.zoom == rhs.zoom &&
+        lhs.gentleMotion == rhs.gentleMotion && lhs.ambience == rhs.ambience &&
         lhs.showsPhone == rhs.showsPhone && lhs.phoneX == rhs.phoneX && lhs.phoneY == rhs.phoneY &&
         lhs.phoneHeight == rhs.phoneHeight && lhs.logo == rhs.logo && lhs.viewport == rhs.viewport &&
         lhs.hand == rhs.hand && lhs.persona == rhs.persona
@@ -41,6 +44,7 @@ struct DemoScene: Codable, Identifiable, Equatable {
               [backgroundX, backgroundY, zoom, phoneX, phoneY, phoneHeight].allSatisfy(\.isFinite)
         else { throw SceneError.invalidScene }
         var value = self
+        value.ambience = try ambience?.validated()
         value.logo = try logo?.validated()
         value.viewport = try viewport?.validated()
         value.hand = try hand?.validated()
@@ -80,7 +84,7 @@ enum SceneStorage {
     static func load(_ url: URL) throws -> [DemoScene] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let archive = try JSONDecoder().decode(SceneArchive.self, from: Data(contentsOf: url))
-        guard archive.version == 1 else { throw SceneError.futureVersion }
+        guard (1...2).contains(archive.version), archive.version == 2 || archive.scenes.allSatisfy({ $0.ambience == nil }) else { throw SceneError.futureVersion }
         guard Set(archive.scenes.map(\.id)).count == archive.scenes.count else { throw SceneError.invalidScene }
         return try archive.scenes.map { try $0.validated() }
     }
@@ -88,7 +92,7 @@ enum SceneStorage {
         let checked = try scenes.map { try $0.validated() }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(SceneArchive(scenes: checked)).write(to: url, options: .atomic)
+        try encoder.encode(SceneArchive(version: checked.contains(where: { $0.ambience != nil }) ? 2 : 1, scenes: checked)).write(to: url, options: .atomic)
     }
 }
 
@@ -108,10 +112,11 @@ enum SceneRenderer {
         return CGRect(x: left ? margin : size.width - margin - width,
                       y: top ? size.height - margin - height : margin, width: width, height: height)
     }
-    static func draw(_ scene: DemoScene, image: NSImage, size: CGSize, logoImage: NSImage? = nil, handImage: NSImage? = nil, personaImage: NSImage? = nil) {
+    static func draw(_ scene: DemoScene, image: NSImage, size: CGSize, logoImage: NSImage? = nil, handImage: NSImage? = nil, personaImage: NSImage? = nil, drawsBackground: Bool = true) {
         let bounds = CGRect(origin: .zero, size: size)
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: bounds).addClip()
+        if drawsBackground {
         NSColor.windowBackgroundColor.setFill(); bounds.fill()
         let scale = max(size.width / image.size.width, size.height / image.size.height) * scene.zoom
         let fitted = CGSize(width: image.size.width * scale, height: image.size.height * scale)
@@ -119,6 +124,7 @@ enum SceneRenderer {
                               y: (size.height - fitted.height) * scene.backgroundY,
                               width: fitted.width, height: fitted.height),
                    from: .zero, operation: .sourceOver, fraction: 1)
+        }
         if scene.showsPhone, let hand = scene.hand, let handImage {
             HandRenderer.draw(hand, image: handImage, device: phoneRect(scene, in: size))
         }
@@ -226,6 +232,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var sceneSync: MacSceneSync?
     private var window: NSWindow?
     private var presentation: DemoPresentation?
+    let desktopMotion = MainActor.assumeIsolated { DesktopMotionController() }
     var onOpen: (() -> Void)?
     var onBeginPresentation: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
@@ -342,9 +349,9 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if scene.hand != nil && handImage(for: scene) == nil { notice = SceneError.missingHand.localizedDescription; return }
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
-        personas.hideOverlay()
+        personas.pauseOverlaySession()
         onBeginPresentation?()
-        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), screen: targetScreen, root: root, mode: mode)
+        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, mode: mode)
         presenter.onEnd = { [weak self] in self?.presentation = nil; self?.objectWillChange.send(); self?.show() }
         presentation = presenter
         objectWillChange.send()
@@ -354,7 +361,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func endPresentation() { presentation?.end() }
     func shutdown() {
         personas.shutdown()
-        MainActor.assumeIsolated { sceneSync?.shutdown() }
+        MainActor.assumeIsolated { desktopMotion.stop(); sceneSync?.shutdown() }
         presentation?.onEnd = nil; presentation?.end(); presentation = nil
         window?.orderOut(nil); window?.contentView = nil; window?.delegate = nil; window = nil
         imageCache.removeAllObjects()
@@ -466,7 +473,33 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         return filename
     }
     func useStarter(_ starter: SceneStarter, directory: URL = SceneStarters.directory) throws {
-        try addImage(starter.url(in: directory), name: starter.name)
+        guard let preset = starter.ambientPreset else {
+            try addImage(starter.url(in: directory), name: starter.name); return
+        }
+        guard !storageBlocked else { throw SceneError.storageBlocked }
+        let assets = directory.deletingLastPathComponent().appendingPathComponent("AmbientScenes")
+        let filename = try copyImage(starter.url(in: directory))
+        do {
+            try MainActor.assumeIsolated {
+                guard let adapter = sceneSync else { throw SceneError.storageBlocked }
+                let plate = try adapter.library.importAsset(Data(contentsOf: assets.appendingPathComponent(preset + ".png")))
+                let detail = try adapter.library.importAsset(Data(contentsOf: assets.appendingPathComponent(starter.detailFilename)))
+                var scene = DemoScene(name: starter.name, background: filename)
+                scene.ambience = SceneAmbience(preset: preset, cleanPlate: plate, detail: detail)
+                scene.gentleMotion = true; scene.showsPhone = false; scene.viewport = myDevice ?? .phone
+                try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = nil
+            }
+        } catch { try? FileManager.default.removeItem(at: root.appendingPathComponent(filename)); throw error }
+    }
+    func ambienceImages(for scene: DemoScene) -> AmbientSceneImages? {
+        guard let recipe = scene.ambience, (try? recipe.validated()) != nil else { return nil }
+        func read(_ asset: String) -> CGImage? {
+            let url = root.appendingPathComponent("scene-asset-" + asset.dropLast(".image".count) + ".png")
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        }
+        guard let cleanPlate = read(recipe.cleanPlate), let detail = read(recipe.detail) else { return nil }
+        return AmbientSceneImages(preset: recipe.preset, cleanPlate: cleanPlate, detail: detail)
     }
     func logoImage(for scene: DemoScene) -> NSImage? {
         guard let logo = scene.logo, (try? logo.validated()) != nil else { return nil }
@@ -684,12 +717,14 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
     #if !APP_STORE
-    func applyDesktop() {
+    func applyDesktop(animate: Bool = false) {
         guard systemIntegrationEnabled else { return }
         guard !desktopBusy else { return }
         desktopBusy = true
         do {
             guard let scene = selected, let image = image(for: scene), let screen = targetScreen else { throw SceneError.noScene }
+            let logo = logoImage(for: scene), hand = handImage(for: scene), persona = personaImage(for: scene)
+            let ambientImages = ambienceImages(for: scene)
             let workspace = NSWorkspace.shared
             let screenID = AppCoordinator.displayID(screen)
             let output = root.appendingPathComponent("desktop-\(UUID().uuidString).png")
@@ -709,6 +744,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             try JSONEncoder().encode(snapshots).write(to: snapshotURL, options: .atomic)
             hasDesktopSnapshot = true
             notice = "Applying the scene to this display…"
+            MainActor.assumeIsolated { desktopMotion.stop() }
             try workspace.setDesktopImageURL(output, for: screen, options: [.imageScaling: NSImageScaling.scaleAxesIndependently.rawValue])
             DesktopImageVerification.confirm(output, read: { workspace.desktopImageURL(for: screen) }) { [weak self] confirmed in
                 guard let self else { return }
@@ -722,7 +758,16 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
                         snapshots[index].appliedURL = output; snapshots[index].pendingURL = nil
                         try JSONEncoder().encode(snapshots).write(to: self.snapshotURL, options: .atomic)
                     }
-                    self.notice = "\(scene.name) is on this display. Restore desktop brings your previous picture back."
+                    if animate {
+                        let started = MainActor.assumeIsolated {
+                            self.desktopMotion.start(scene: scene, backdrop: image, logo: logo, hand: hand, persona: persona,
+                                                     screen: screen, expectedStill: output, ambience: ambientImages)
+                        }
+                        self.notice = started ? "Gentle desktop motion is on. Stop motion or quit Workbench to keep the still picture."
+                            : "The still picture is applied. Motion could not start on this display."
+                    } else {
+                        self.notice = "\(scene.name) is on this display. Restore desktop brings your previous picture back."
+                    }
                 } catch { self.notice = error.localizedDescription }
             }
         } catch { desktopBusy = false; notice = error.localizedDescription }
@@ -730,6 +775,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     func restoreDesktop() {
         guard systemIntegrationEnabled else { return }
         guard !desktopBusy else { return }
+        MainActor.assumeIsolated { desktopMotion.stop() }
         desktopBusy = true
         do {
             let snapshots = try JSONDecoder().decode([DesktopSnapshot].self, from: Data(contentsOf: snapshotURL))

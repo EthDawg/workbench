@@ -88,8 +88,8 @@ public enum SceneSyncError: LocalizedError, Equatable {
     }
     private func commit(_ next: SceneLibraryArchive) throws {
         guard !storageBlocked else { throw SceneDocumentError.storageBlocked }
-        _ = try next.validated() // Unsupported input is not a broken local store.
-        do { try store.save(next); archive = next; publish() }
+        let next = try next.preparedForSaving() // Unsupported input is not a broken local store.
+        do { archive = try store.save(next); publish() }
         catch {
             storageBlocked = true; cancelScheduledSync(); automaticSyncSuspended = true
             generation = UUID(); transport?.cancel(); isBusy = false; isEnabled = false

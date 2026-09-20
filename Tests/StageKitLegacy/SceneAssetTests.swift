@@ -41,7 +41,7 @@ final class SceneAssetTests {
         XCTAssertEqual(adopted.id, original.id); XCTAssertEqual(adopted.name, original.name)
         XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent(adopted.background)), try Data(contentsOf: root.appendingPathComponent(original.background)))
         XCTAssertEqual(try Data(contentsOf: archive), before, "Opening a new app version must not seed or rewrite user data")
-        XCTAssertEqual(SceneStarters.all.count, 8)
+        XCTAssertEqual(SceneStarters.all.count, 11)
         XCTAssertFalse(SceneStarters.all.contains { $0.id == "operations-field" })
         for starter in SceneStarters.all {
             try model.useStarter(starter, directory: resources)

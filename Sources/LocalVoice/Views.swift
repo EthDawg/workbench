@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var selectedCorrection = ""
     @State private var correctionSeed = ""
     @State private var correctionDraft = ""
+    @State private var confirmingRecoveryDiscard = false
     var body: some View {
         HStack(spacing: 0) {
             if !embedded { sidebar }
@@ -62,6 +63,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshPermissions() }
         .sheet(isPresented: $showCorrection) {
             RememberCorrectionView(model: model, heard: correctionSeed, draft: correctionDraft)
+        }
+        .confirmationDialog("Discard capture recovery?", isPresented: $confirmingRecoveryDiscard, titleVisibility: .visible) {
+            Button("Discard recovery", role: .destructive) { model.discardCaptureRecovery() }
+            Button("Keep recovery", role: .cancel) { }
+        } message: {
+            Text("This removes the kept recording and its pending save. Your current draft stays open. Copy or Save text first if you need another copy.")
         }
         .modifier(CorrectionSelectionObserver(transcript: model.transcript,
             active: model.page == "dictate" && !showCorrection, selection: $selectedCorrection))
@@ -170,9 +177,18 @@ struct ContentView: View {
                 Button("Save text…") { model.exportTranscript() }.disabled(model.transcript.isEmpty)
                 Button("Save prompt") { model.savePrompt(model.transcript) }.disabled(model.transcript.isEmpty)
                 Spacer()
-                if model.canRetry { Button("Retry transcription") { model.retryTranscription() } }
+                if model.canRetry { Button(model.retryCaptureLabel) { model.retryTranscription() }.help(model.retryCaptureHelp) }
                 Button { model.importAudio() } label: { Label("Import audio…", systemImage: "arrow.up.doc") }.disabled(!model.ready || model.phase != .idle)
             }.controlSize(.large)
+            if model.hasCaptureRecovery && model.phase == .idle {
+                HStack {
+                    Text("A capture is kept for recovery.").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Show recovery files") { model.showCaptureRecoveryFiles() }
+                    Button("Discard recovery…", role: .destructive) { confirmingRecoveryDiscard = true }
+                        .disabled(!model.canDiscardCaptureRecovery)
+                }.font(.caption)
+            }
             Text(model.preferences.delivery == .paste ? "Automatic paste returns to your starting text field. Up to 5 minutes per recording." : "Finished transcripts are copied. Paste with ⌘V. Up to 5 minutes per recording.")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
         }
@@ -227,7 +243,7 @@ struct ContentView: View {
             HStack(spacing: 12) {
                 Button { model.listen() } label: { Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill") }
                     .buttonStyle(PrimaryButton()).disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.phase != .idle || model.speechText.count > model.readingLimit)
-                if model.cloudRequestActive { Button("Cancel request") { model.cancelReading() } }
+                if model.readingGenerationActive { Button("Cancel generation") { model.cancelReading() } }
                 if model.playing || model.paused { Button("Stop") { model.stopPlayback() } }
                 Spacer()
                 Button { model.saveAudio() } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }.disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.speechText.count > model.readingLimit)

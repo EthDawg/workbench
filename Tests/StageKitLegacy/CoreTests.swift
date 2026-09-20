@@ -4,6 +4,13 @@ final class CoreTests: XCTestCase {
     func stroke(_ tool: DrawingTool = .pen, from: CGPoint = .zero, to: CGPoint = CGPoint(x: 100, y: 100), created: Double = 100) -> Annotation {
         Annotation(tool: tool, color: .coral, width: 4, points: [InkPoint(from), InkPoint(to)], created: created)
     }
+
+    func testInkColourAccessibilityDescriptions() {
+        XCTAssertEqual(InkColor.presets.map(\.accessibilityDescription), ["Coral", "Amber", "Mint", "Blue", "Violet", "White"])
+        XCTAssertEqual(InkColor(0.1, 0.2, 0.3).accessibilityDescription, "Custom #19334C")
+        XCTAssertEqual([Action.color1, .color2, .color3, .color4, .color5, .color6].map(\.title),
+                       ["Coral colour", "Amber colour", "Mint colour", "Blue colour", "Violet colour", "White colour"])
+    }
     func testLineHitTestingUsesSegmentsNotBoundingBox() {
         let line = stroke(.line)
         XCTAssertTrue(line.hitTest(CGPoint(x: 50, y: 52)))
@@ -87,6 +94,24 @@ final class CoreTests: XCTestCase {
         canvas.undo(); XCTAssertTrue(canvas.annotations.isEmpty)
         canvas.redo(); XCTAssertEqual(canvas.annotations, [new])
     }
+    func testScreenshotHandoffStateAndFadePause() {
+        var state = ScreenshotHandoffState()
+        XCTAssertTrue(state.begin(at: 100, autoFade: true))
+        XCTAssertTrue(state.isActive)
+        XCTAssertFalse(state.begin(at: 101, autoFade: true), "A second capture cannot replace the active handoff")
+        XCTAssertEqual(state.finish(at: 103), 3)
+        XCTAssertFalse(state.isActive)
+        XCTAssertEqual(state.finish(at: 104), nil, "A late duplicate completion is ignored")
+
+        var ink = Annotation(tool: .pen, color: .coral, width: 4, points: [InkPoint(.zero)])
+        ink.created = 90
+        let history = CanvasHistory([ink])
+        history.pauseFade(by: 3)
+        XCTAssertEqual(history.annotations.first?.created, 93)
+
+        XCTAssertTrue(state.begin(at: 200, autoFade: false))
+        XCTAssertEqual(state.finish(at: 205), nil, "A handoff must not age-shift ink when auto-fade is off")
+    }
     func testCountdownPauseResumeAndSleep() {
         let start = Date(timeIntervalSince1970: 1000)
         var timer = Countdown(); timer.start(seconds: 300, now: start)
@@ -134,7 +159,13 @@ final class CoreTests: XCTestCase {
         let shortcuts = Action.allCases.map { prefs.shortcut(for: $0) }
         XCTAssertEqual(Set(shortcuts).count, Action.allCases.count)
         XCTAssertEqual(DrawingTool.allCases.count, Action.allCases.filter { $0.tool != nil }.count)
-        XCTAssertTrue(shortcuts.allSatisfy { $0.modifiers != 0 && $0.enabled })
+        XCTAssertTrue(shortcuts.allSatisfy { $0.modifiers != 0 })
+        let optIn: Set<Action> = [.overlayControls, .overlayNext, .overlayPrevious, .overlayVisibility, .overlayEnd]
+        XCTAssertTrue(optIn.allSatisfy { !prefs.shortcut(for: $0).enabled }, "New overlay keys must not take over existing app shortcuts")
+        XCTAssertTrue(Action.allCases.filter { !optIn.contains($0) }.allSatisfy { prefs.shortcut(for: $0).enabled }, "Existing shortcut defaults stay enabled")
+        XCTAssertEqual(prefs.shortcut(for: .personaToggle).label, "⌃⌥I")
+        XCTAssertEqual(prefs.shortcut(for: .personaPrevious).label, "⌃⌥←")
+        XCTAssertEqual(prefs.shortcut(for: .personaNext).label, "⌃⌥→")
     }
     func testPreferencesPersistAndClamp() throws {
         let suite = "StageMarkTests.\(UUID().uuidString)"
@@ -148,6 +179,27 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(reread.value.lineWidth, 20)
         XCTAssertEqual(reread.value.color, .mint)
         XCTAssertEqual(reread.value.activation, .toggle)
+    }
+    func testPersonaShortcutMigrationPreservesExistingOverlayKeys() throws {
+        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var previous = Preferences()
+        previous.shortcuts.removeValue(forKey: Action.personaToggle.rawValue)
+        previous.shortcuts.removeValue(forKey: Action.personaPrevious.rawValue)
+        previous.shortcuts.removeValue(forKey: Action.personaNext.rawValue)
+        previous.shortcuts[Action.overlayControls.rawValue] = Shortcut(
+            keyCode: Action.personaToggle.defaultShortcut.keyCode,
+            modifiers: Action.personaToggle.defaultShortcut.modifiers,
+            enabled: true)
+        defaults.set(try JSONEncoder().encode(previous), forKey: "preferences.v1")
+        defaults.set(2, forKey: "preferences.schema")
+        let migrated = SettingsStore(defaults: defaults)
+        XCTAssertFalse(migrated.value.shortcut(for: .personaToggle).enabled,
+            "A new default must not take over an existing enabled assignment")
+        XCTAssertTrue(migrated.value.shortcut(for: .personaPrevious).enabled)
+        XCTAssertTrue(migrated.value.shortcut(for: .personaNext).enabled)
+        XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 3)
     }
     func testCorruptPreferencesArePreservedForRecovery() {
         let suite = "StageMarkTests.\(UUID().uuidString)"

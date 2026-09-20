@@ -83,6 +83,7 @@ enum MobileSceneImageLayer { case background, logo, persona }
             switch layer {
             case .background:
                 scene.background = asset; scene.backgroundX = 0.5; scene.backgroundY = 0.5; scene.zoom = 1
+                scene.ambience = nil; scene.gentleMotion = nil
             case .logo:
                 var layer = scene.logo ?? SceneLogoLayer(image: asset); layer.image = asset; scene.logo = layer
             case .persona:
@@ -144,6 +145,8 @@ struct MobileSceneEditor: View {
     @EnvironmentObject private var store: MobileStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityPlayAnimatedImages) private var animatedImagesEnabled
     @StateObject private var editor = MobileSceneEditingSession()
     @State private var selection: PhotosPickerItem?
     @State private var choosingPhoto = false
@@ -159,6 +162,11 @@ struct MobileSceneEditor: View {
     @State private var recovered: MobileImageProject?
     @State private var recovering = false
     @State private var personaCard: ScenePersonaCardRequest?
+    @State private var previewPaused = false
+    @State private var previewVisible = false
+    @State private var editingCrop = false
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @State private var thermalState = ProcessInfo.processInfo.thermalState
 
     var body: some View {
         ScrollView { editorContent.padding(20).frame(maxWidth: 760).frame(maxWidth: .infinity) }
@@ -166,10 +174,14 @@ struct MobileSceneEditor: View {
             .navigationTitle("Edit scene").navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true).toolbar(.hidden, for: .tabBar)
             .toolbar { editorToolbar }
-            .onAppear { editor.connect(library: scenes, sceneID: sceneID) }
+            .onAppear { editor.connect(library: scenes, sceneID: sceneID); refreshMotionConditions() }
             .onReceive(scenes.$records) { editor.observe($0) }
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange).receive(on: RunLoop.main)) { _ in refreshMotionConditions() }
+            .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification).receive(on: RunLoop.main)) { _ in refreshMotionConditions() }
             .onDisappear { photoGeneration = UUID(); photoTask?.cancel(); busy = false; editor.finishForDisappearance() }
-            .onChange(of: scenePhase) { _, phase in if phase != .active { _ = editor.flush() } }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { _ = editor.flush() } else { refreshMotionConditions() }
+            }
             .photosPicker(isPresented: $choosingPhoto, selection: $selection, matching: .images, preferredItemEncoding: .current)
             .onChange(of: selection) { _, item in if let item { openPhoto(item) } }
             .sheet(item: $share, onDismiss: removeExport) { item in MobileImageShareSheet(url: item.url) }
@@ -196,11 +208,15 @@ struct MobileSceneEditor: View {
     @ViewBuilder private var editorContent: some View {
         if let draft = editor.draft {
             VStack(alignment: .leading, spacing: 22) {
-                SceneThumbnail(scene: draft, store: scenes).aspectRatio(16.0 / 9, contentMode: .fit)
+                SceneThumbnail(scene: draft, store: scenes, motionPlaying: motionPlayback.isPlaying).aspectRatio(16.0 / 9, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                Text("The device frame marks the live screen on your Mac.").font(.footnote).foregroundStyle(.secondary)
+                    .onScrollVisibilityChange(threshold: 0.05) { previewVisible = $0 }
+                    .onDisappear { previewVisible = false }
+                Text(draft.showsPhone ? "The device frame marks the live screen on your Mac."
+                     : "Turn on Device frame to prepare a device presentation.").font(.footnote).foregroundStyle(.secondary)
                 nameSection
                 Button("Replace backdrop", systemImage: "photo") { choose(.background) }.buttonStyle(.bordered).disabled(busy)
+                motionSection
                 deviceSection
                 cropSection
                 layerSection
@@ -210,6 +226,33 @@ struct MobileSceneEditor: View {
         } else {
             ContentUnavailableView("Scene unavailable", systemImage: "photo", description: Text(editor.notice ?? "Return to Scenes to choose another."))
         }
+    }
+    private func refreshMotionConditions() {
+        lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled; thermalState = ProcessInfo.processInfo.thermalState
+    }
+    private var motionPlayback: SceneMotionPlayback {
+        SceneMotionPlayback(requested: editor.draft?.gentleMotion == true, paused: previewPaused,
+            editingCrop: editingCrop, visible: previewVisible && !busy && !choosingPhoto && share == nil && !cloudSettings && personaCard == nil && !recovering,
+            active: scenePhase == .active, reduceMotion: reduceMotion, animatedImagesEnabled: animatedImagesEnabled, lowPower: lowPower, thermalState: thermalState)
+    }
+    private var motionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Gentle motion", isOn: Binding(get: { editor.draft?.gentleMotion == true }, set: { enabled in
+                editor.edit { $0.gentleMotion = enabled ? true : nil }; previewPaused = false
+            })).accessibilityIdentifier("scene.gentleMotion")
+            if editor.draft?.gentleMotion == true {
+                Button(previewPaused ? "Play preview" : "Pause preview", systemImage: previewPaused ? "play.fill" : "pause.fill") {
+                    previewPaused.toggle()
+                }.buttonStyle(.bordered).frame(minHeight: 44).accessibilityIdentifier("scene.motionPlayback")
+                Text(motionPlayback.isPlaying && editor.draft?.ambience != nil
+                     ? "Clouds or leaves move gently. Your device, logo and persona stay still."
+                     : motionPlayback.explanation).font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text(editor.draft?.ambience == nil ? "A slow, subtle zoom when you present this scene."
+                     : "Clouds or leaves move gently. The rest of your scene stays still.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }.padding(16).background(.background, in: RoundedRectangle(cornerRadius: 16))
     }
     private var nameSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -242,7 +285,7 @@ struct MobileSceneEditor: View {
         }
     }
     private var cropSection: some View {
-        DisclosureGroup("Crop backdrop") {
+        DisclosureGroup("Crop backdrop", isExpanded: $editingCrop) {
             VStack(spacing: 14) {
                 LabeledContent("Horizontal") { Slider(value: field(\.backgroundX, fallback: 0.5), in: 0...1).accessibilityLabel("Backdrop horizontal position") }
                 LabeledContent("Vertical") { Slider(value: field(\.backgroundY, fallback: 0.5), in: 0...1).accessibilityLabel("Backdrop vertical position") }

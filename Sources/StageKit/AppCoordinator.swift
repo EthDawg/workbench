@@ -26,11 +26,14 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published var timerRunning = false
     @Published var timerProgress: Double = 1
     @Published var timerFinished = false
+    @Published private(set) var timerPlacementAnchor: FloatingControlAnchor?
+    @Published private(set) var timerPlacementNotice: String?
     @Published var shortcutFailures: [Action: String] = [:]
     @Published var recordingAction: Action?
     @Published var selectedTab = "Present"
     @Published var quickTab = QuickTab.draw
     @Published private(set) var quickControlsVisible = false
+    @Published private(set) var screenshotHandoffActive = false
     @Published var notice: String?
     @Published var launchAtLogin = false
     var activeDisplayID: String?
@@ -53,7 +56,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var previousApplication: NSRunningApplication?
     private var palette: NSPanel?
     private var timerWindow: NSPanel?
+    private var adjustingTimerFrame = false
+    private var timerLiveResizing = false
+    private var timerMoveSettlement: Timer?
+    private var timerFrameRevision = 0
     private var boardSavePanel: NSSavePanel?
+    private var screenshotHandoff = ScreenshotHandoffState()
+    var screenshotLauncher: ScreenshotLauncher = SystemScreenshot.launch
     @Published private(set) var boardExportInProgress = false
     private var shuttingDown = false
     private var recorderMonitor: Any?
@@ -63,6 +72,11 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published private(set) var timerSessionStarted = false
     private var storageBlocked = false
     private let archiveURL: URL
+    private let availableTimerDisplays: () -> [BreakTimerDisplay]
+    private let fallbackTimerDisplayID: () -> String?
+    private lazy var timerPlacement = BreakTimerPlacementStore(
+        url: archiveURL.deletingLastPathComponent().appendingPathComponent("break-timer-placement.json")
+    )
     var displayCount: Int { panels.count }
     var hasPersistentMenuItem: Bool { statusItem?.isVisible == true && statusItem?.button != nil }
     var currentScreen: NSScreen { NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.screens.first! }
@@ -72,11 +86,21 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() { return CFUUIDCreateString(nil, uuid) as String }
         return String(id)
     }
-    init(settings: SettingsStore = SettingsStore(), archiveURL: URL? = nil, embedded: Bool = false, migrationFailure: String? = nil) {
+    init(settings: SettingsStore = SettingsStore(), archiveURL: URL? = nil, embedded: Bool = false,
+         migrationFailure: String? = nil, timerDisplays: (() -> [BreakTimerDisplay])? = nil,
+         timerFallbackID: (() -> String?)? = nil) {
         self.settings = settings
         self.embedded = embedded
         self.migrationFailure = migrationFailure
         self.storageBlocked = migrationFailure != nil
+        self.availableTimerDisplays = timerDisplays ?? {
+            NSScreen.screens.map { BreakTimerDisplay(id: AppCoordinator.displayID($0), visibleFrame: $0.visibleFrame) }
+        }
+        self.fallbackTimerDisplayID = timerFallbackID ?? {
+            let screens = NSScreen.screens
+            let screen = screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? screens.first
+            return screen.map(AppCoordinator.displayID)
+        }
         let testRoot = ProcessInfo.processInfo.environment["WORKBENCH_STAGE_DATA_DIR"] ?? ProcessInfo.processInfo.environment["STAGEMARK_DATA_DIR"]
         self.archiveURL = archiveURL ?? testRoot.map { URL(fileURLWithPath: $0).appendingPathComponent("boards.json") }
             ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("boards.json")
@@ -84,6 +108,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func start() {
         shuttingDown = false
+        timerPlacementAnchor = timerPlacement.value.position.anchor
+        timerPlacementNotice = timerPlacement.notice
         do {
             let archive = try BoardStorage.load(from: archiveURL)
             boardHistory = archive.displays.mapValues(CanvasHistory.init)
@@ -109,6 +135,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func shutdown() {
         shuttingDown = true
+        timerMoveSettlement?.invalidate(); timerMoveSettlement = nil
         boardSavePanel?.cancel(nil); boardSavePanel = nil
         demoScenes.shutdown()
         hideQuickControls()
@@ -128,7 +155,10 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
-    @objc private func screensChanged() { rebuildScreens() }
+    @objc private func screensChanged() {
+        rebuildScreens()
+        if timerWindow?.isVisible == true { restoreTimerPosition() }
+    }
     @objc private func keyboardLayoutChanged() { objectWillChange.send() }
     @objc private func willSleep() { escape(); effectTimer?.invalidate(); effectTimer = nil; saveBoards() }
     @objc private func didWake() { rebuildScreens(); updateCountdown(); refreshEffects() }
@@ -154,7 +184,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     private var activeHistory: CanvasHistory? { history(for: activeDisplayID ?? currentID) }
     func startDrawing(_ selected: DrawingTool, latched: Bool) {
-        guard !boardExportInProgress else { return }
+        guard !boardExportInProgress, !screenshotHandoffActive else { return }
         guard mayBeginInteraction?() != false else { notice = "Finish your current recording or keyboard practice before drawing."; return }
         onBeginActivity?()
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
@@ -177,6 +207,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
     }
     func escape() {
+        if screenshotHandoffActive { return }
         if boardExportInProgress { boardSavePanel?.cancel(nil); return }
         if recordingAction != nil { finishRecording(); return }
         if quickControlsVisible { hideQuickControls(); return }
@@ -184,6 +215,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         refreshWindows(); refreshEffects(); updateStatus()
     }
     func handleHotkey(_ action: Action, down: Bool) {
+        guard !screenshotHandoffActive else { return }
+        if action.isOverlayAction { if down { perform(action) }; return }
         guard recordingAction == nil, !boardExportInProgress else { return }
         if down && action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool {
@@ -195,6 +228,21 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         } else if down { perform(action) }
     }
     func perform(_ action: Action) {
+        guard !screenshotHandoffActive else { return }
+        if action.isOverlayAction {
+            switch action {
+            case .personaToggle: demoScenes.personas.toggleQuickPersona()
+            case .personaNext: demoScenes.personas.stepQuickPersona(1)
+            case .personaPrevious: demoScenes.personas.stepQuickPersona(-1)
+            case .overlayControls: demoScenes.personas.focusOverlayControls()
+            case .overlayNext: demoScenes.personas.performOverlayAction(.stepGroup(1))
+            case .overlayPrevious: demoScenes.personas.performOverlayAction(.stepGroup(-1))
+            case .overlayVisibility: demoScenes.personas.performOverlayAction(.pauseResume)
+            case .overlayEnd: demoScenes.personas.hideOverlay()
+            default: break
+            }
+            return
+        }
         guard !boardExportInProgress else { return }
         if action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool { startDrawing(selected, latched: true); return }
@@ -220,11 +268,12 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         }
     }
     func clearCanvas() {
+        guard !screenshotHandoffActive else { return }
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
         activeHistory?.clear(); canvasChanged()
     }
     func toggleBoard(_ style: BoardStyle) {
-        guard !boardExportInProgress, mayBeginInteraction?() != false else { return }
+        guard !boardExportInProgress, !screenshotHandoffActive, mayBeginInteraction?() != false else { return }
         hideQuickControls()
         let id = currentID
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
@@ -299,6 +348,35 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             refreshWindows(); refreshPalette(); refreshEffects()
         }
     }
+    func openScreenshot() {
+        guard !screenshotHandoffActive, !boardExportInProgress, mayBeginInteraction?() != false,
+              screenshotHandoff.begin(at: Date.timeIntervalSinceReferenceDate, autoFade: settings.value.autoFade) else { return }
+        onBeginActivity?()
+        for canvas in canvases.values {
+            canvas.finishStroke(); canvas.commitText()
+            canvas.pointerVisible = false; canvas.ripples.removeAll(); canvas.laserTrail.removeAll()
+            canvas.needsDisplay = true
+        }
+        screenshotHandoffActive = true
+        isDrawing = false; latched = false; heldAction = nil
+        hideQuickControls(); mainWindow?.orderOut(nil); palette?.orderOut(nil)
+        refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+        screenshotLauncher { [weak self] error in
+            DispatchQueue.main.async { self?.finishScreenshotHandoff(error: error) }
+        }
+    }
+    private func finishScreenshotHandoff(error: Error?) {
+        guard screenshotHandoffActive else { return }
+        if let duration = screenshotHandoff.finish(at: Date.timeIntervalSinceReferenceDate) {
+            overlayHistory.values.forEach { $0.pauseFade(by: duration) }
+        }
+        screenshotHandoffActive = false
+        notice = error.map { "Screenshot could not open: \($0.localizedDescription)" }
+            ?? "Screenshot closed. Your annotations are still available; choose a drawing tool to continue."
+        for canvas in canvases.values { canvas.needsDisplay = true }
+        refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+        if error != nil { showControls(tab: "Drawing", preservingCanvas: true) }
+    }
     func settingsChanged() {
         if !shortcutsSuspended && recordingAction == nil && registeredShortcuts != settings.value.shortcuts {
             registerShortcuts()
@@ -315,24 +393,24 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             return
         }
         for (id, panel) in panels {
-            let intercept = isDrawing || boards[id] != nil
+            let intercept = !screenshotHandoffActive && (isDrawing || boards[id] != nil)
             panel.ignoresMouseEvents = !intercept
             panel.invalidateCursorRects(for: canvases[id]!)
             let hasInk = !(history(for: id)?.annotations.isEmpty ?? true)
             if intercept || hasInk || pointerEnabled { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
         }
-        hotkeys.setEscapeEnabled(!shortcutsSuspended && (isDrawing || !boards.isEmpty))
+        hotkeys.setEscapeEnabled(!shortcutsSuspended && !screenshotHandoffActive && (isDrawing || !boards.isEmpty))
     }
     private func refreshEffects() {
-        let fadeActive = settings.value.autoFade && overlayHistory.values.contains { !$0.annotations.isEmpty }
-        let needsTimer = pointerEnabled || isDrawing || fadeActive || (!boards.isEmpty && settings.value.boardPalette == .autoHide)
+        let fadeActive = !screenshotHandoffActive && settings.value.autoFade && overlayHistory.values.contains { !$0.annotations.isEmpty }
+        let needsTimer = !screenshotHandoffActive && (pointerEnabled || isDrawing || fadeActive || (!boards.isEmpty && settings.value.boardPalette == .autoHide))
         if needsTimer && effectTimer == nil {
             let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tickEffects() }
             timer.tolerance = 0.003; RunLoop.main.add(timer, forMode: .common); effectTimer = timer
         } else if !needsTimer { effectTimer?.invalidate(); effectTimer = nil }
     }
     private func registerClick() {
-        guard pointerEnabled && !isDrawing else { return }
+        guard !screenshotHandoffActive, pointerEnabled && !isDrawing else { return }
         lastClick = Date.timeIntervalSinceReferenceDate
         guard settings.value.clickRipple, let canvas = canvases[currentID] else { return }
         canvas.ripples.append(ClickRipple(location: canvas.localPoint(NSEvent.mouseLocation), began: lastClick))
@@ -347,7 +425,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         var hasFadingInk = false
         for (id, canvas) in canvases {
             let inside = canvas.screenFrame.contains(mouse)
-            let show = visible && inside && pointerEnabled && !isDrawing
+            let show = !screenshotHandoffActive && visible && inside && pointerEnabled && !isDrawing
             let visibilityChanged = canvas.pointerVisible != show
             canvas.pointerVisible = show
             let hadEffects = !canvas.ripples.isEmpty || !canvas.laserTrail.isEmpty
@@ -356,7 +434,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             if prefs.pointerStyle == .laser && inside && moved && show { canvas.laserTrail.append((canvas.localPoint(mouse), now)) }
             if moved || visibilityChanged || hadEffects { canvas.movePointer(canvas.localPoint(mouse)) }
             if tool == .text && isDrawing && inside { canvas.updateFloatingText() }
-            if prefs.autoFade, boards[id] == nil, let history = overlayHistory[id], !history.annotations.isEmpty {
+            if !screenshotHandoffActive, prefs.autoFade, boards[id] == nil, let history = overlayHistory[id], !history.annotations.isEmpty {
                 hasFadingInk = true
                 let fading = history.annotations.filter { now - $0.created >= prefs.fadeDelay }
                 for annotation in fading { canvas.setNeedsDisplay(annotation.bounds) }
@@ -457,12 +535,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if embedded { onOpenScenes?(); return }
         demoScenes.show()
     }
-    func showControls(tab: String? = nil) {
+    func showControls(tab: String? = nil, preservingCanvas: Bool = false) {
         if let frontmost = NSWorkspace.shared.frontmostApplication,
            frontmost.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             previousApplication = frontmost
         }
-        hideQuickControls(); escape()
+        hideQuickControls()
+        if !preservingCanvas { escape() }
         if let tab { selectedTab = tab }
         if embedded {
             if tab == "Shortcuts", let onOpenShortcuts { onOpenShortcuts() }
@@ -524,6 +603,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         countdownTimer?.invalidate(); countdownTimer = nil; updateCountdown()
     }
     func hideTimer() { timerWindow?.orderOut(nil) }
+    func setTimerPosition(_ anchor: FloatingControlAnchor) {
+        guard let timerWindow, let display = timerDisplay(containing: timerWindow.frame) else { return }
+        timerPlacement.setAnchor(anchor, on: display)
+        timerPlacementAnchor = timerPlacement.value.position.anchor
+        timerPlacementNotice = timerPlacement.notice
+        restoreTimerPosition(fallbackID: display.id)
+    }
     private func ensureCountdownTimer() {
         guard countdownTimer == nil else { return }
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.updateCountdown() }
@@ -549,12 +635,73 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             panel.level = .floating; panel.hidesOnDeactivate = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.minSize = NSSize(width: 360, height: 240); panel.isReleasedWhenClosed = false
-            panel.isMovableByWindowBackground = true
+            panel.isMovableByWindowBackground = true; panel.delegate = self
             panel.contentView = NSHostingView(rootView: BreakTimerView(app: self, settings: settings)); timerWindow = panel
         }
-        let screen = currentScreen.visibleFrame
-        timerWindow?.setFrameOrigin(CGPoint(x: screen.midX - (timerWindow?.frame.width ?? 570) / 2, y: screen.midY - (timerWindow?.frame.height ?? 330) / 2))
+        restoreTimerPosition()
         timerWindow?.alphaValue = settings.value.timerOpacity; timerWindow?.orderFrontRegardless()
+    }
+    private func timerDisplay(containing frame: NSRect) -> BreakTimerDisplay? {
+        let displays = availableTimerDisplays()
+        let overlapping = displays.max { overlap(frame, $0.visibleFrame) < overlap(frame, $1.visibleFrame) }
+        if let overlapping, overlap(frame, overlapping.visibleFrame) > 0 { return overlapping }
+        let fallbackID = fallbackTimerDisplayID()
+        return displays.first(where: { $0.id == fallbackID }) ?? displays.first
+    }
+    private func overlap(_ lhs: NSRect, _ rhs: NSRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        return intersection.isNull ? 0 : intersection.width * intersection.height
+    }
+    private func restoreTimerPosition(fallbackID: String? = nil) {
+        guard let timerWindow else { return }
+        guard let destination = timerPlacement.value.destination(
+            size: timerWindow.frame.size, displays: availableTimerDisplays(), fallbackID: fallbackID ?? fallbackTimerDisplayID()
+        ) else { return }
+        timerMoveSettlement?.invalidate(); timerMoveSettlement = nil
+        timerFrameRevision += 1
+        let revision = timerFrameRevision
+        adjustingTimerFrame = true
+        timerWindow.setFrame(destination.frame, display: true)
+        // AppKit may apply its own screen constraint when the panel is ordered
+        // front and deliver that move after setFrame returns. Keep restoration
+        // moves out of the persisted user-drag path through the next run-loop turn.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.timerFrameRevision == revision else { return }
+            self.adjustingTimerFrame = false
+        }
+    }
+    private func recordTimerPosition() {
+        guard let timerWindow, !adjustingTimerFrame, !timerLiveResizing,
+              let display = timerDisplay(containing: timerWindow.frame) else { return }
+        timerPlacement.move(to: timerWindow.frame, on: display)
+        timerPlacementAnchor = timerPlacement.value.position.anchor
+        timerPlacementNotice = timerPlacement.notice
+    }
+    func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === timerWindow else { return }
+        guard !adjustingTimerFrame, !timerLiveResizing, timerMoveSettlement == nil else { return }
+        // didMove also arrives during a drag. Wait for release before persisting
+        // and snapping, so the panel does not fight the user's pointer.
+        let settlement = Timer(timeInterval: 0.03, repeats: true) { [weak self] timer in
+            guard let self, !self.shuttingDown else { timer.invalidate(); return }
+            guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+            timer.invalidate(); self.timerMoveSettlement = nil
+            guard !self.adjustingTimerFrame, !self.timerLiveResizing else { return }
+            self.recordTimerPosition()
+            self.restoreTimerPosition()
+        }
+        timerMoveSettlement = settlement
+        RunLoop.main.add(settlement, forMode: .common)
+    }
+    func windowWillStartLiveResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === timerWindow else { return }
+        timerLiveResizing = true
+    }
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === timerWindow else { return }
+        timerLiveResizing = false
+        if timerPlacement.value.position.anchor == nil { recordTimerPosition() }
+        restoreTimerPosition(fallbackID: timerDisplay(containing: window.frame)?.id)
     }
     func beginRecording(_ action: Action) {
         if embedded, let onOpenShortcuts { onOpenShortcuts(); return }

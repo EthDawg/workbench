@@ -50,6 +50,7 @@ struct VoiceShortcutSettings: View {
             ShortcutControl(model: model, id: 1, title: "Dictation")
             ShortcutControl(model: model, id: 2, title: "Quick controls")
             ShortcutControl(model: model, id: 3, title: "Demo library")
+            ShortcutControl(model: model, id: 4, title: "Snap & Talk")
             Text("Escape cancels. Delete turns a shortcut off. Existing shortcuts stay unchanged if a combination is unavailable.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Restore default shortcuts") { model.onResetShortcuts?() }
@@ -189,7 +190,7 @@ struct VoiceQuickControls: View {
             Text(model.speechText.isEmpty ? "Paste or type a longer passage in the editor." : model.speechText).lineLimit(9).foregroundStyle(.secondary)
             HStack {
                 Button(model.playing ? "Pause" : model.paused ? "Resume" : "Listen") { model.listen() }.disabled(model.speechText.isEmpty || model.rendering || model.phase != .idle)
-                if model.cloudRequestActive { Button("Cancel request") { model.cancelReading() } }
+                if model.readingGenerationActive { Button("Cancel generation") { model.cancelReading() } }
                 if model.playing || model.paused { Button("Stop") { model.stopPlayback() } }
                 Spacer(); Button("Edit text…") { model.onShowEditor?("speak") }
             }

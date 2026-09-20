@@ -18,16 +18,45 @@ final class WorkbenchUITests: XCTestCase {
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         for _ in 0..<6 {
             if element.exists && element.isHittable { return }
-            let scroll = app.scrollViews.firstMatch
-            if scroll.exists {
+            let identifier = element.identifier.isEmpty ? element.label : element.identifier
+            let candidates = app.scrollViews.containing(element.elementType, identifier: identifier).allElementsBoundByIndex
+            if let scroll = candidates.max(by: { $0.frame.height < $1.frame.height }) {
                 // Scroll through the outside margin, away from PencilKit ink,
                 // image crop gestures and editable text in the content area.
                 let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.8))
                 let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.2))
                 start.press(forDuration: 0.01, thenDragTo: end)
-            } else { app.swipeUp() }
+            } else {
+                XCTFail("No page contains \(identifier)", file: file, line: line)
+                return
+            }
         }
         XCTAssertTrue(element.isHittable, "The control must be reachable by scrolling", file: file, line: line)
+    }
+
+    private func beginEditing(_ editor: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 10), .completed, "Wait for speech availability checking to release the editor", file: file, line: line)
+        reveal(editor, in: app, file: file, line: line)
+        editor.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "Tapping the editor must open the native keyboard", file: file, line: line)
+    }
+
+    private func typeInitialDraft(_ text: String, into editor: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        beginEditing(editor, in: app, file: file, line: line)
+        // Establish exact cleanup input through the native keyboard. Keep the
+        // separate rapid later-typing regression as a single bulk insertion.
+        var entered = ""
+        for character in text {
+            editor.typeText(String(character))
+            entered.append(character)
+            XCTAssertEqual(editor.value as? String, entered, "Verify every native input character before testing cleanup", file: file, line: line)
+        }
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5), file: file, line: line)
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), file: file, line: line)
+        XCTAssertEqual(editor.value as? String, text, "Ending editing must preserve the exact cleanup input", file: file, line: line)
     }
 
     private func selectTab(_ label: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
@@ -100,10 +129,7 @@ final class WorkbenchUITests: XCTestCase {
         app.buttons["tool.dictate"].tap()
         let draft = app.textViews["dictate.draft"]
         XCTAssertTrue(draft.waitForExistence(timeout: 5))
-        reveal(draft, in: app)
-        draft.tap(); draft.typeText(original)
-        let done = app.buttons["Done"]
-        if done.exists && done.isHittable { done.tap() }
+        typeInitialDraft(original, into: draft, in: app)
         let cleanup = app.buttons["Clean up"]
         reveal(cleanup, in: app); cleanup.tap()
         XCTAssertEqual(draft.value as? String, cleaned)
@@ -126,9 +152,8 @@ final class WorkbenchUITests: XCTestCase {
         app.buttons["tool.dictate"].tap()
         let draft = app.textViews["dictate.draft"]
         XCTAssertTrue(draft.waitForExistence(timeout: 5))
-        reveal(draft, in: app); draft.tap(); draft.typeText(original)
+        typeInitialDraft(original, into: draft, in: app)
         let done = app.buttons["Done"]
-        if done.exists && done.isHittable { done.tap() }
         let cleanup = app.buttons["Clean up"]
         reveal(cleanup, in: app); cleanup.tap()
         XCTAssertEqual(draft.value as? String, cleaned)
@@ -139,9 +164,11 @@ final class WorkbenchUITests: XCTestCase {
 
         cleanup.tap()
         let addition = "Bring the drawings. "
-        reveal(draft, in: app); draft.tap(); draft.typeText(addition)
+        beginEditing(draft, in: app)
+        draft.typeKey(XCUIKeyboardKey.leftArrow.rawValue, modifierFlags: .command)
+        draft.typeText(addition)
         let edited = draft.value as? String ?? ""
-        XCTAssertTrue(edited.contains(addition))
+        XCTAssertTrue(edited.contains(addition), "Native typing must insert the complete addition before testing Undo; actual draft: \(edited)")
         XCTAssertEqual(edited.replacingOccurrences(of: addition, with: ""), cleaned)
         if done.exists && done.isHittable { done.tap() }
         // Exercise the old destructive action if it remains available. The fixed
@@ -166,15 +193,14 @@ final class WorkbenchUITests: XCTestCase {
         app.buttons["tool.dictate"].tap()
         let draft = app.textViews["dictate.draft"]
         XCTAssertTrue(draft.waitForExistence(timeout: 5))
-        reveal(draft, in: app); draft.tap(); draft.typeText("Um, bring the drawings.")
+        typeInitialDraft("Um, bring the drawings.", into: draft, in: app)
         let done = app.buttons["Done"]
-        if done.exists && done.isHittable { done.tap() }
         let cleanup = app.buttons["Clean up"]
         reveal(cleanup, in: app); cleanup.tap()
         let cleaned = "Bring the drawings."
         XCTAssertEqual(draft.value as? String, cleaned)
         XCTAssertTrue(app.buttons["Undo cleanup"].exists)
-        reveal(draft, in: app); draft.tap(); draft.typeText("X")
+        beginEditing(draft, in: app); draft.typeText("X")
         let mutated = draft.value as? String ?? ""
         XCTAssertTrue(mutated.contains("X"))
         XCTAssertEqual(mutated.replacingOccurrences(of: "X", with: ""), cleaned)
@@ -182,6 +208,29 @@ final class WorkbenchUITests: XCTestCase {
         XCTAssertEqual(draft.value as? String, cleaned)
         if done.exists && done.isHittable { done.tap() }
         XCTAssertFalse(app.buttons["Undo cleanup"].exists, "Returning to identical text must not revive a stale cleanup snapshot")
+    }
+
+    func testConsecutiveCharactersAfterCleanupPreserveInsertionPoint() {
+        let app = launchIsolatedApp()
+        app.buttons["tool.dictate"].tap()
+        let draft = app.textViews["dictate.draft"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 5))
+        typeInitialDraft("Um, bring the drawings.", into: draft, in: app)
+        let cleanup = app.buttons["Clean up"]
+        reveal(cleanup, in: app); cleanup.tap()
+        let cleaned = "Bring the drawings."
+        XCTAssertEqual(draft.value as? String, cleaned)
+        beginEditing(draft, in: app)
+        // Keep the software keyboard active and observe the first insertion.
+        // Hardware keyboard shortcuts are a separate input path.
+        // Retiring Undo must preserve that native insertion point for the next.
+        draft.typeText("1")
+        let afterFirst = draft.value as? String ?? ""
+        XCTAssertEqual(afterFirst.count, cleaned.count + 1)
+        XCTAssertEqual(afterFirst.replacingOccurrences(of: "1", with: ""), cleaned)
+        XCTAssertFalse(app.buttons["Undo cleanup"].exists)
+        draft.typeText("2")
+        XCTAssertEqual(draft.value as? String, afterFirst.replacingOccurrences(of: "1", with: "12"), "Retiring cleanup Undo must not move the native insertion point")
     }
 
     func testIndependentWallpaperEntryCanCreateAndReopenAStarter() {

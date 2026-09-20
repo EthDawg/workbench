@@ -14,7 +14,7 @@ test('human and agent views preserve every capability status and evidence bounda
   }
   for (const item of contract.events) for (const key of ['stops', 'keeps', 'check']) assert.ok(brief.includes(item[key]));
   for (const item of contract.acceptance) assert.ok(brief.includes(item.test));
-  assert.equal(contract.capabilities.find(item=>item.id==='wallpaper-motion').status,'proposed');
+  assert.equal(contract.capabilities.find(item=>item.id==='wallpaper-motion').status,'implemented');
   assert.equal(contract.capabilities.find(item=>item.id==='wallpaper-entry').status,'proposed');
   assert.ok(!/<!-- [A-Z_]+ -->/.test(html));
 });

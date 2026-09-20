@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var menuTarget: TextDelivery.Target?
     var stage: StageKitController!
     var keyboard: KeyboardCoachModel!
+    var presenterPanel: PresenterPanelController!
+    var readback: ReadbackModel!
+    var readbackHUD: ReadbackHUDController!
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
@@ -27,15 +30,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Workbench.preparePreviewData(component: "LocalVoice", files: ["state.json", "demo-library.json"])
         _ = WorkbenchSettings.shared
         model = AppModel()
+        readback = ReadbackModel(engine: model.engine)
+        readbackHUD = ReadbackHUDController(model: readback)
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") })
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
-            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended
+            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
         }
         stage.onEditShortcuts = { [weak self] in self?.navigate("shortcuts") }
         stage.onBeginActivity = { [weak self] in
             guard let self else { return }
             self.closeControls()
+            self.presenterPanel?.hide()
             self.model.previewingPanel = false
             self.model.dismissCaptureFailure()
             self.model.clipboardReceipt.dismissHUD()
@@ -43,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         stage.validateExternalShortcut = { [weak self] code, modifiers in
             guard let self else { return nil }
-            for id in [UInt32(1), 2, 3] {
+            for id in [UInt32(1), 2, 3, 4, 5] {
                 let saved = self.model.preferences.shortcut(id)
                 if saved.enabled && saved.keyCode == code && saved.modifiers == modifiers { return "Already used by a Workbench voice action." }
             }
@@ -52,16 +58,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.start()
         model.microphoneStartFailure = { [weak self] target in
             guard let self else { return "Workbench is unavailable." }
+            if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil)
                 ? nil : "To enter text on your phone, use its keyboard or Dictation button. Mac dictation works in a Mac text field."
         }
+        readback.mayBeginCapture = { [weak self] in
+            guard let self else { return "Workbench is unavailable." }
+            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended ? nil : "Finish the current dictation or reading before starting Snap & Talk narration."
+        }
+        readback.onEditShortcut = { [weak self] in self?.navigate("shortcuts") }
         keyboard = KeyboardCoachModel(entries: shortcutEntries(), update: { [weak self] id, shortcut in guard let self else { return "Workbench is unavailable." }; return self.saveShortcut(id, shortcut) }, suspend: { [weak self] suspended in
             guard let self else { return }
             self.shortcutsSuspended = suspended
             if suspended { self.hotkeys.unregister(); self.stage.escape(); self.stage.setShortcutsSuspended(true) }
             else { self.stage.setShortcutsSuspended(false); self.registerShortcuts(); self.keyboard.replaceEntries(self.shortcutEntries()) }
         })
-        window = NSWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard)))
+        let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback)))
+        homeWindow.onHide = { [weak self] in self?.model.library.closePreview() }
+        window = homeWindow
         window.title = Workbench.displayName
         window.setContentSize(NSSize(width: 1180, height: 800))
         window.minSize = NSSize(width: 1050, height: 730)
@@ -69,16 +83,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false; window.center()
         capturePanel = CapturePanelController(model: model)
+        presenterPanel = PresenterPanelController(model: model.presenter, setup: { [weak self] in self?.navigate("library") })
+        model.onShowPresenter = { [weak self] in self?.showPresenter() }
+        model.presenter.mayActivate = { [weak self] in
+            guard let self else { return false }
+            return self.model.phase == .idle && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
+        }
+        model.library.switchBrowser = { [weak self] id in
+            self?.model.presenter.activate(id) { [weak self] reply in
+                if reply.ok != true { self?.showPresenter() }
+            }
+        }
+        model.presenter.onSwitch = { [weak self] in
+            self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
+        }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+        popover.contentViewController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
             self?.resumeTarget { _ in self?.stage.draw() }
         }, timer: { [weak self] in self?.closeControls(); self?.stage.showTimer() }, personas: { [weak self] in
             self?.closeControls(); self?.stage.showPersonas()
         }))
-        popover.contentSize = NSSize(width: 370, height: 400)
+        popover.contentSize = NSSize(width: 370, height: 440)
         model.onPhaseChange = { [weak self] in
             guard let self else { return }
-            if self.model.phase != .idle { self.keyboard?.stopInteraction(); self.stage.escape() }
+            if self.model.phase != .idle { self.presenterPanel?.hide(); self.keyboard?.stopInteraction(); self.stage.escape() }
             self.updateRecordingUI()
         }
         model.onShortcutsChanged = { [weak self] in self?.registerShortcuts() }
@@ -95,14 +123,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.model.preferences.dictationShortcut = VoicePreferences().dictationShortcut
             self.model.preferences.controlsShortcut = VoicePreferences().controlsShortcut
             self.model.preferences.libraryShortcut = VoicePreferences().libraryShortcut
+            self.model.preferences.presenterShortcut = VoicePreferences().presenterShortcut
+            self.model.preferences.readbackShortcut = VoicePreferences().readbackShortcut
         }
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
         hotkeys.onKey = { [weak self] id, down in
             guard let self else { return }
             if id == 1 { self.model.shortcutChanged(down: down) }
             else if down, id == 3 { self.model.showLibrary() }
+            else if down, id == 4 { self.showPresenter() }
+            else if down, id == 5 {
+                self.readback.refreshPermissionState()
+                if self.readback.sessionURL == nil {
+                    self.readback.notice = "Create or open a Snap & Talk session before using the capture shortcut."
+                    self.navigate("readback")
+                } else if !self.readback.permissionsReady {
+                    self.readback.notice = "Snap & Talk needs Screen Recording and Microphone access first."
+                    self.navigate("readback")
+                } else { Task { await self.readback.toggleCapture() } }
+            }
             else if down { self.toggleControls() }
         }
+        readback.onStateChange = { [weak self] in
+            guard let self else { return }
+            self.readbackHUD.update(self.readback)
+            self.updateRecordingUI()
+        }
+        readback.onHideForEditorCapture = { [weak self] in self?.window.orderOut(nil) }
+        readback.onRestoreAfterEditorCapture = { [weak self] in self?.showWindow() }
         navigationObserver = NotificationCenter.default.addObserver(forName: .workbenchNavigate, object: nil, queue: .main) { [weak self] notification in
             guard let page = notification.object as? String else { return }
             Task { @MainActor in self?.navigate(page) }
@@ -131,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func registerShortcuts() {
         guard model.editingShortcut == nil, !shortcutsSuspended else { return }
         hotkeys.register(model.preferences); model.shortcutFailures = hotkeys.failures
+        readback?.setShortcutFailure(hotkeys.failures[5])
     }
     func editShortcut(_ id: UInt32) {
         guard model.phase == .idle else { return }
@@ -147,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             else if shortcut.modifiers & UInt32(controlKey | optionKey | cmdKey) == 0 {
                 self.model.shortcutRecordingMessage = "Include Control, Option, or Command."; return nil
             }
-            if shortcut.enabled && [UInt32(1), 2, 3].contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Voice."; return nil }
+            if shortcut.enabled && [UInt32(1), 2, 3, 4, 5].contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Workbench."; return nil }
             var candidate = self.model.preferences
             candidate.setShortcut(shortcut, for: id)
             self.hotkeys.register(candidate)
@@ -184,6 +233,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
+        menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
+        menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
         let savePrompt = menu.addItem(withTitle: "Save clipboard as prompt…", action: #selector(saveClipboardPrompt), keyEquivalent: "s")
         savePrompt.keyEquivalentModifierMask = [.command, .shift]
         windows.submenu = menu; main.addItem(windows); NSApp.mainMenu = main; NSApp.windowsMenu = menu
@@ -202,7 +253,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
             menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "")
             menu.addItem(withTitle: "Recent transcripts…", action: #selector(showHistory), keyEquivalent: "")
+            menu.addItem(withTitle: "Snap & Talk sessions…", action: #selector(showReadback), keyEquivalent: "")
             menu.addItem(withTitle: "Saved resources…", action: #selector(showLibrary), keyEquivalent: "")
+            menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
             menu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
             menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
             menu.addItem(.separator()); menu.addItem(withTitle: "Quit Workbench", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -262,8 +315,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .delivering: symbol = "arrow.up.doc"; state = "Delivering text"
         case .cancelling: symbol = "xmark.circle"; state = "Cancelling"
         case .idle:
-            symbol = receipt?.isClipboardCurrent == true ? "doc.on.clipboard" : "square.stack.3d.up"
-            state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
+            if readback?.isRecording == true { symbol = "rectangle.and.pencil.and.ellipsis"; state = "Recording Snap & Talk narration" }
+            else if (readback?.pendingTranscriptionCount ?? 0) > 0 { symbol = "waveform"; state = "Processing Snap & Talk narration" }
+            else {
+                symbol = receipt?.isClipboardCurrent == true ? "doc.on.clipboard" : "square.stack.3d.up"
+                state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
+            }
         }
         statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Workbench · " + state)
         statusItem?.button?.toolTip = "Workbench · " + state + " · " + model.preferences.controlsShortcut.label
@@ -272,7 +329,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
     @objc func showHistory() { model.page = "history"; showWindow() }
+    @objc func showReadback() { model.page = "readback"; showWindow() }
     @objc func showLibrary() { model.showLibrary() }
+    @objc func showPresenter() {
+        guard model.phase == .idle, !shortcutsSuspended else { return }
+        stage.escape(); closeControls(); presenterPanel.show()
+    }
     @objc func saveClipboardPrompt() {
         guard let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { model.showLibrary(); model.library.notice = "Copy some text first."; return }
         model.savePrompt(text)
@@ -280,17 +342,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func showWindow() { closeControls(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Workbench", .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development", .credits: NSAttributedString(string: "Everyday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
+    func applicationDidBecomeActive(_ notification: Notification) { readback?.refreshPermissionState() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         NSApp.servicesProvider = nil
-        keyboard?.stopInteraction(); stage?.shutdown(); model?.shutdown(); hotkeys.unregister()
+        presenterPanel?.hide(); model?.presenter.stop()
+        keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); readbackHUD?.shutdown(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
     }
     func navigate(_ page: String) {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
     func shortcutEntries() -> [ShortcutEntry] {
-        let voiceEntries = [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources")].map { id, title in
+        let voiceEntries = [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk")].map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
         }
         let entries = voiceEntries + stage.shortcutDescriptors.map { entry in
@@ -320,10 +384,21 @@ func runCLI(_ args: [String]) async -> Int32 {
     do {
         let engine = RecognitionEngine()
         switch args.first {
+        case "--check-presenter":
+            try await PresenterChecks.run()
         case "--check-core":
             try CorrectionRuleChecks.run()
-            try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
+            try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
+            try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
+        case "--check-reading-cancellation":
+            try await AudioRendererCancellationChecks.run()
+        case "--check-library":
+            try DemoLibraryChecks.run()
+            try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
+        case "--check-quick-look-panel":
+            let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
+            try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }
         case "--check-reading-service":
             try await MainActor.run { try ReadSelectionChecks.run() }
         case "--check-reading-service-native":
@@ -341,10 +416,16 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
+        case "--check-integrations":
+            try await MainActor.run { try IntegrationChecks.run() }
+        case "--check-speko":
+            try SpekoChecks.run()
         case "--check-refinement":
             try LocalRefinementChecks.run(); try await LocalRefinementChecks.runTransportChecks()
         case "--check-input":
             try await MainActor.run { try InputChecks.run() }
+        case "--check-readback":
+            try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks()
         case "--check-cleanup":
             try CleanupChecks.run()
             let result = await CleanupEngine().clean(CleanupChecks.example, style: .natural)
@@ -378,13 +459,19 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine.transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
 }
 
-if CommandLine.arguments.count > 1, CommandLine.arguments[1].hasPrefix("--") {
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fixture", CommandLine.arguments[2].hasPrefix("/tmp/wb-presenter-fixture-") {
+    MainActor.assumeIsolated {
+        let app = NSApplication.shared; app.setActivationPolicy(.regular)
+        let delegate = PresenterFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
+        app.delegate = delegate; app.run()
+    }
+} else if CommandLine.arguments.count > 1, CommandLine.arguments[1].hasPrefix("--") {
     Task { let code = await runCLI(Array(CommandLine.arguments.dropFirst())); exit(code) }
     RunLoop.main.run()
 } else {

@@ -31,6 +31,41 @@ enum CoreChecks {
         let later = Transcript(text: "Same words", seconds: 4, rawText: "Same words")
         let captures = TranscriptHistory.adding(later, to: [earlier])
         try check(captures.count == 2 && captures[0].id == later.id && captures[1].id == earlier.id, "repeated words remain distinct captures in newest-first order")
+        let firstAccessibleCapture = Transcript(date: Date(timeIntervalSince1970: 1_700_000_000), text: "Same words", seconds: 2)
+        let secondAccessibleCapture = Transcript(date: Date(timeIntervalSince1970: 1_700_000_001), text: "Same words", seconds: 2)
+        let firstContext = CaptureHistoryAccessibility.context(for: firstAccessibleCapture, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!)
+        let secondContext = CaptureHistoryAccessibility.context(for: secondAccessibleCapture, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!)
+        let firstCopyLabel = CaptureHistoryAccessibility.label("Copy", context: firstContext)
+        let secondCopyLabel = CaptureHistoryAccessibility.label("Copy", context: secondContext)
+        try check(firstCopyLabel != secondCopyLabel && firstCopyLabel.hasPrefix("Copy, captured "), "history actions identify otherwise identical captures by date and time")
+        try check(!firstCopyLabel.contains(firstAccessibleCapture.text), "history action labels do not expose transcript contents")
+        let simultaneous = Transcript(date: firstAccessibleCapture.date, text: "Same words", seconds: 2)
+        let subsecond = Transcript(date: firstAccessibleCapture.date.addingTimeInterval(0.1), text: "Same words", seconds: 2)
+        let sameSecond = [firstAccessibleCapture, simultaneous, subsecond]
+        let uniqueLabels = sameSecond.map { CaptureHistoryAccessibility.context(for: $0, history: sameSecond, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!) }
+        try check(Set(uniqueLabels).count == 3, "history labels distinguish exact-time and subsecond captures without transcript contents")
+        var combinedPreferences = VoicePreferences()
+        combinedPreferences.setShortcut(VoiceShortcut(keyCode: 18), for: 4)
+        combinedPreferences.setShortcut(VoiceShortcut(keyCode: 19), for: 5)
+        let restoredPreferences = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(combinedPreferences))
+        try check(restoredPreferences.shortcut(4).keyCode == 18 && restoredPreferences.shortcut(5).keyCode == 19, "Chrome and Snap & Talk shortcut assignments remain independent through save and reload")
+        let exportCapture = Transcript(text: "Cleaned café\nSecond line", seconds: 2, rawText: "Original café\nsecond line")
+        try check(TranscriptExport.text(for: exportCapture, version: .cleaned) == exportCapture.text
+                  && TranscriptExport.text(for: exportCapture, version: .original) == exportCapture.rawText,
+                  "single-capture export keeps cleaned and original wording distinct")
+        let legacyCapture = Transcript(text: "Saved legacy wording", seconds: 1)
+        try check(TranscriptExport.text(for: legacyCapture, version: .original) == legacyCapture.text,
+                  "original export falls back to saved text for older captures")
+        let exportURL = directory.appendingPathComponent("export.txt")
+        try TranscriptExport.write(exportCapture, version: .cleaned, to: exportURL)
+        try check(String(decoding: try Data(contentsOf: exportURL), as: UTF8.self) == exportCapture.text,
+                  "plain-text export preserves UTF-8 Unicode and line breaks")
+        try check(TranscriptExport.defaultFilename == "Workbench Transcript.txt"
+                  && !TranscriptExport.defaultFilename.localizedCaseInsensitiveContains("café"),
+                  "transcript export filename does not reveal captured words")
+        try rejects("transcript export reports filesystem write errors") {
+            try TranscriptExport.write(exportCapture, version: .cleaned, to: directory.appendingPathComponent("missing/export.txt"))
+        }
         var many: [Transcript] = []
         for i in 0...TranscriptHistory.limit { many = TranscriptHistory.adding(Transcript(text: "Capture \(i)", seconds: 1), to: many) }
         try check(many.count == TranscriptHistory.limit && many.first?.text == "Capture 100" && many.last?.text == "Capture 1", "bounded history retains the newest 100 captures")
@@ -55,5 +90,25 @@ enum CoreChecks {
         try check(TextRules.wordCount(" one\n two\tthree ") == 3, "word count handles mixed whitespace")
         try check(time(65.8) == "1:05" && time(-1) == "0:00", "recording duration formatting")
         print("CORE_CHECKS_OK: \(passed) checks passed")
+    }
+}
+
+enum AudioRendererCancellationChecks {
+    static func run() async throws {
+        let task = Task {
+            try await AudioRenderer.runCancellable("/bin/sleep", ["30"])
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let cancellationStarted = Date()
+        task.cancel()
+        var reportedCancellation = false
+        do { try await task.value }
+        catch is CancellationError { reportedCancellation = true }
+        guard reportedCancellation else { throw VoiceError.message("CHECK FAILED: cancelled renderer reports cancellation") }
+        guard Date().timeIntervalSince(cancellationStarted) < 2 else {
+            throw VoiceError.message("CHECK FAILED: cancelled renderer terminates its child process promptly")
+        }
+        try await AudioRenderer.runCancellable("/usr/bin/true", [])
+        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated and a later render can start")
     }
 }

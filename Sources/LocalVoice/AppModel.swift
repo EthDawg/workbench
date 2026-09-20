@@ -15,6 +15,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     func transcribeForShortcut(_ url: URL, id: UUID = UUID()) async throws -> String {
         guard ready else { throw VoiceError.message("Open Workbench and finish preparing the speech model, then run this shortcut again.") }
         guard phase == .idle, !rendering else { throw VoiceError.message("Workbench is busy. Finish the current recording or reading first.") }
+        guard !captureRecovery.hasRecovery else { throw CaptureRecoveryError.pending }
         let file = try AVAudioFile(forReading: url)
         let duration = Double(file.length) / file.processingFormat.sampleRate
         guard duration > 0, duration <= 1800 else { throw VoiceError.message("Choose an audio recording up to 30 minutes long.") }
@@ -50,7 +51,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var preferences = VoicePreferences.load() {
         didSet {
             preferences.save()
-            if oldValue.dictationShortcut != preferences.dictationShortcut || oldValue.controlsShortcut != preferences.controlsShortcut || oldValue.libraryShortcut != preferences.libraryShortcut { onShortcutsChanged?() }
+            if oldValue.dictationShortcut != preferences.dictationShortcut || oldValue.controlsShortcut != preferences.controlsShortcut || oldValue.libraryShortcut != preferences.libraryShortcut || oldValue.presenterShortcut != preferences.presenterShortcut || oldValue.readbackShortcut != preferences.readbackShortcut { onShortcutsChanged?() }
         }
     }
     @Published var rawTranscript = ""
@@ -79,21 +80,96 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var elapsed = 0.0
     @Published var level = 0.0
     @Published var readingProvider = ReadingProvider(rawValue: UserDefaults.standard.string(forKey: "readingProvider.v1") ?? "") ?? .mac {
-        didSet { UserDefaults.standard.set(readingProvider.rawValue, forKey: "readingProvider.v1"); stopPlayback() }
+        didSet {
+            UserDefaults.standard.set(readingProvider.rawValue, forKey: "readingProvider.v1")
+            stopPlayback()
+            if readingProvider == .speko { Task { await refreshSpekoVoices() } }
+        }
     }
+    @Published var selectedSpekoVoice = SpekoVoicePreference.load() {
+        didSet {
+            guard oldValue != selectedSpekoVoice else { return }
+            SpekoVoicePreference.save(selectedSpekoVoice)
+            invalidateAudio()
+        }
+    }
+    @Published private(set) var spekoVoices: [SpekoVoice] = []
+    @Published private(set) var loadingSpekoVoices = false
+    @Published private(set) var spekoVoiceNotice = ""
+    private var spekoVoiceRefreshID: UUID?
     @Published var keyNotice = SpekoKeychain.hasKey ? "Key ready in Keychain." : "Add your own key to use Speko."
     private var readingTask: Task<Void, Never>?
+    private var readingGenerationID: UUID?
     var readingLimit: Int { readingProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000 }
+    var displayedSpekoVoices: [SpekoVoice] {
+        guard let selectedSpekoVoice, !spekoVoices.contains(where: { $0.id == selectedSpekoVoice.id }) else { return spekoVoices }
+        return [selectedSpekoVoice] + spekoVoices
+    }
     func saveSpekoKey(_ key: String) {
-        do { try SpekoKeychain.save(key); invalidateAudio(); keyNotice = "Key saved in Keychain." }
+        do {
+            try SpekoKeychain.save(key)
+            invalidateAudio()
+            keyNotice = "Key saved in Keychain."
+            Task { await refreshSpekoVoices(force: true) }
+        }
         catch { self.error = error.localizedDescription }
     }
     func removeSpekoKey() {
-        do { try SpekoKeychain.remove(); readingProvider = .mac; invalidateAudio(); keyNotice = "Key removed. Using Mac voices." }
+        do {
+            try SpekoKeychain.remove()
+            readingProvider = .mac
+            spekoVoiceRefreshID = nil
+            loadingSpekoVoices = false
+            spekoVoices = []
+            selectedSpekoVoice = nil
+            spekoVoiceNotice = ""
+            invalidateAudio()
+            keyNotice = "Key removed. Using Mac voices."
+        }
         catch { self.error = error.localizedDescription }
     }
+    func selectSpekoVoice(id: String?) {
+        selectedSpekoVoice = id.flatMap { id in displayedSpekoVoices.first(where: { $0.id == id }) }
+    }
+    func refreshSpekoVoices(force: Bool = false) async {
+        guard readingProvider == .speko, (!loadingSpekoVoices || force), !rendering else { return }
+        guard SpekoKeychain.hasKey else {
+            spekoVoiceNotice = "Save your Speko key to browse voices."
+            return
+        }
+        let refreshID = UUID()
+        spekoVoiceRefreshID = refreshID
+        loadingSpekoVoices = true
+        spekoVoiceNotice = "Loading English voices…"
+        defer {
+            if spekoVoiceRefreshID == refreshID { loadingSpekoVoices = false }
+        }
+        do {
+            let voices = try await SpekoVoiceCatalog.load(key: SpekoKeychain.read())
+            try Task.checkCancellation()
+            guard spekoVoiceRefreshID == refreshID, readingProvider == .speko, SpekoKeychain.hasKey else { return }
+            spekoVoices = voices
+            spekoVoiceNotice = voices.isEmpty ? "Speko returned no English voices that support a 5,000-character reading." : "\(voices.count) voices available."
+        } catch is CancellationError {
+            if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = "" }
+        } catch {
+            if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = error.localizedDescription }
+        }
+    }
     private func invalidateAudio() { stopPlayback(); AudioRenderer.remove(audioURL); audioURL = nil; audioSignature = "" }
-    func cancelReading() { readingTask?.cancel(); status = "Reading cancelled. Speko may still bill text already accepted." }
+    func cancelReading() {
+        guard readingGenerationActive else { return }
+        let mayBeBilled = readingProvider == .speko
+        let task = readingTask
+        readingGenerationID = nil
+        readingTask = nil
+        readingGenerationActive = false
+        cloudRequestActive = false
+        rendering = false
+        task?.cancel()
+        status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
+    }
+    @Published private(set) var readingGenerationActive = false
     @Published var cloudRequestActive = false
     @Published var rendering = false
     @Published var playing = false
@@ -103,10 +179,19 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
+    var retryCaptureLabel: String { captureRecovery.pending?.capture == nil ? "Retry transcription" : "Retry saving" }
+    var retryCaptureHelp: String { captureRecovery.pending?.capture == nil ? "Retry the captured audio" : "Save the recognized text without transcribing or pasting again" }
+    var hasCaptureRecovery: Bool { captureRecovery.hasRecovery }
+    var canDiscardCaptureRecovery: Bool { phase == .idle && captureRecovery.pending != nil && captureRecovery.problem == nil }
+    private let captureRecovery = CaptureRecoveryStore(directory: Workbench.supportDirectory(component: "LocalVoice").appendingPathComponent("CaptureRecovery", isDirectory: true))
+    // The focused acceptance harness injects only the state write, never live input or delivery.
+    var captureStateWriter: ((SavedState) throws -> Void)?
     let engine = RecognitionEngine()
     let cleanupEngine = CleanupEngine()
     let store = StateStore()
     let library = DemoLibraryModel()
+    lazy var presenter = PresenterModel(library: library)
+    var onShowPresenter: (() -> Void)?
     let photoHandoff = PhotoHandoffModel(directory: Workbench.supportDirectory(component: "PhotoHandoff"), platform: "Mac")
     private var photoHandoffRefresh: Task<Void, Never>?
     private var photoHandoffActivation: AnyCancellable?
@@ -173,6 +258,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         voices = preferred.filter { voices.contains($0) } + voices.filter { !preferred.contains($0) }
         if !voices.contains(voice), let first = voices.first { voice = first }
         loaded = true
+        restoreCaptureRecovery()
         Task { await prepare() }
     }
 
@@ -237,6 +323,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         if phase == .requesting { cancelRecording(); return }
         if phase == .recording { stopRecording(); return }
         guard phase == .idle, ready, !rendering else { return }
+        guard admitNewCapture() else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
             captureFailure = reason; status = reason; return
@@ -277,9 +364,11 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         guard granted else {
             fail("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow \(Workbench.displayName)."); return
         }
+        var startedAudio: URL?
         do {
-            if let old = recordURL { try? FileManager.default.removeItem(at: old) }
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("LocalVoice-recording-\(UUID().uuidString).wav")
+            let url = try captureRecovery.beginRecording()
+            startedAudio = url
+            recordURL = url
             let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16000, AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
             let capture = try AVAudioRecorder(url: url, settings: settings)
             capture.delegate = self; capture.isMeteringEnabled = true
@@ -298,7 +387,15 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                     if self.elapsed >= 300 { self.stopRecording() }
                 }
             }
-        } catch { fail(error.localizedDescription) }
+        } catch {
+            // A failed start has no usable capture; never clear a prior recovery.
+            if let url = startedAudio, let pending = captureRecovery.pending, pending.capture == nil,
+               url.lastPathComponent == pending.audioFilename {
+                do { try captureRecovery.clear(pending.id); recordURL = nil }
+                catch { self.error = error.localizedDescription }
+            }
+            fail(error.localizedDescription)
+        }
     }
 
     func stopRecording() {
@@ -306,7 +403,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         let duration = recorder?.currentTime ?? elapsed
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
         guard duration >= 0.35, peakPower > -55 else {
-            try? FileManager.default.removeItem(at: url); recordURL = nil
+            discardRecordingRecovery()
             fail("No clear speech was captured. Check your microphone and try again."); return
         }
         transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
@@ -321,8 +418,10 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         shortcutRequest.cancel()
         recordingAttempt = nil
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
-        if let url = recordURL { try? FileManager.default.removeItem(at: url) }; recordURL = nil
-        phase = .idle; level = 0; status = "Recording discarded."; onPhaseChange?()
+        let discarded = discardRecordingRecovery()
+        phase = .idle; level = 0
+        status = discarded ? "Recording discarded." : "Recording stopped. Recovery files could not be discarded; open Workbench to review them."
+        onPhaseChange?()
     }
 
     func cancelCurrentCapture() {
@@ -337,6 +436,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
 
     func importAudio() {
         guard phase == .idle, ready else { return }
+        guard admitNewCapture() else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.audio]; panel.canChooseDirectories = false
         panel.message = "Choose an audio file up to 30 minutes. Your selected speech engine will transcribe it."
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -344,6 +444,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
     func importAudio(_ url: URL) {
         guard phase == .idle, ready else { return }
+        guard admitNewCapture() else { return }
         do {
             let file = try AVAudioFile(forReading: url)
             let duration = Double(file.length) / file.processingFormat.sampleRate
@@ -352,7 +453,16 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         } catch { fail("Could not read this audio file. \(error.localizedDescription)") }
     }
     func retryTranscription() {
-        guard phase == .idle, let url = recordURL else { return }
+        guard phase == .idle else { return }
+        if captureRecovery.pending?.capture != nil {
+            // A failed request is over. Never replay a previous app target or
+            // Shortcuts continuation when the user only asked to retry saving.
+            if savePendingCapture() { status = "Capture saved. Copy or paste the text when you’re ready." }
+            return
+        }
+        guard let url = recordURL else { return }
+        guard ready else { captureFailure = "Wait for the speech model to finish preparing, then retry transcription."; onPhaseChange?(); return }
+        destination = nil
         transcribe(url, duration: elapsed, temporary: true)
     }
 
@@ -396,11 +506,8 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                 if let shortcutID, shortcutRequest.id != shortcutID { throw CancellationError() }
                 let result = TextRules.apply(cleaned.text, replacements: settings.replacements)
                 guard !result.isEmpty else { throw VoiceError.message("No speech was recognised. Try speaking closer to the microphone.") }
-                rawTranscript = raw; transcript = result
-                cleanupMethod = cleaned.method
-                history = TranscriptHistory.adding(Transcript(text: result, seconds: duration, rawText: raw, cleanupMethod: cleaned.method), to: history)
-                // Commit the capture before focus restoration or clipboard delivery can suspend this task.
-                saveNow()
+                guard try commitRecognizedCapture(raw: raw, text: result, seconds: duration,
+                    method: cleaned.method, ownedAudio: temporary ? url : nil, invocation: invocation) else { return }
                 accessibilityGranted = AXIsProcessTrusted()
                 if let shortcutID {
                     status = "Transcript returned to Shortcuts."
@@ -408,21 +515,132 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                 } else {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
                     let outcome = await TextDelivery.deliver(result, target: destination, mode: settings.preferences.delivery, restoreClipboard: settings.preferences.restoreClipboard)
+                    guard transcriptionID == invocation else { return }
                     status = outcome.message
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
                 }
-                if temporary { try? FileManager.default.removeItem(at: url); recordURL = nil }
                 phase = .idle; onPhaseChange?()
             } catch {
                 guard transcriptionID == invocation else { return }
                 if Task.isCancelled || error is CancellationError {
                     if let shortcutID { shortcutRequest.finish(id: shortcutID, result: .failure(error)) }
-                    if temporary { try? FileManager.default.removeItem(at: url); recordURL = nil }
-                    phase = .idle; status = "Transcription cancelled. No text was added."; onPhaseChange?(); return
+                    let discarded = !temporary || discardRecordingRecovery()
+                    phase = .idle
+                    status = discarded ? "Transcription cancelled. No text was added." : "Transcription cancelled. Recovery files are still kept; open Workbench to review them."
+                    onPhaseChange?(); return
                 }
                 canRetry = temporary && shortcutID == nil; fail("Transcription failed. \(error.localizedDescription)")
             }
         }
+    }
+
+    private func admitNewCapture() -> Bool {
+        guard captureRecovery.hasRecovery else { return true }
+        let message = captureRecovery.problem?.localizedDescription ?? "A previous capture is kept. Use \(retryCaptureLabel) before starting another capture."
+        captureFailure = message; error = message; status = message; onPhaseChange?(); return false
+    }
+
+    /// No asynchronous boundary occurs between the generation check and commit.
+    /// The ID survives retries, so writing again cannot create a second capture.
+    private func commitRecognizedCapture(raw: String, text: String, seconds: Double, method: String,
+                                         ownedAudio: URL?, invocation: UUID) throws -> Bool {
+        try Task.checkCancellation()
+        guard transcriptionID == invocation else { throw CancellationError() }
+        let id = ownedAudio != nil ? (captureRecovery.pending?.id ?? UUID()) : UUID()
+        let capture = Transcript(id: id, text: text, seconds: seconds, rawText: raw, cleanupMethod: method)
+        let record = CaptureRecoveryRecord(id: id, audioFilename: ownedAudio?.lastPathComponent, capture: capture)
+        _ = try record.validated()
+        guard captureRecovery.pending == nil || captureRecovery.pending?.id == id else { throw CaptureRecoveryError.pending }
+        if let ownedAudio {
+            guard try captureRecovery.audioURL(for: record)?.standardizedFileURL == ownedAudio.standardizedFileURL else { throw CaptureRecoveryError.invalid }
+        }
+        rawTranscript = raw; transcript = text; cleanupMethod = method
+        // retain keeps the result in memory even when the independent journal fails.
+        do { try captureRecovery.retain(record) }
+        catch {
+            guard captureRecovery.pending?.capture?.id == capture.id else { throw error }
+            // The result is in memory; report any journal failure alongside the state write below.
+        }
+        return savePendingCapture()
+    }
+
+    @discardableResult private func savePendingCapture() -> Bool {
+        guard loaded, let record = captureRecovery.pending, let capture = record.capture else { return false }
+        var journalError: Error?
+        do { try captureRecovery.retain(record) } catch { journalError = error }
+        let nextHistory = TranscriptHistory.adding(capture, to: history)
+        let state = SavedState(draft: transcript, speechText: speechText, history: nextHistory,
+                               replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript)
+        do {
+            if let captureStateWriter { try captureStateWriter(state) } else { try store.save(state) }
+        } catch {
+            canRetry = true
+            let recovery = journalError == nil ? "The recovery copy is kept." : "Recovery text could not be written either. Copy or Save text before quitting. Your existing audio files are kept."
+            fail("Could not save this capture. \(recovery) Use Retry saving. No text was sent. \(error.localizedDescription)")
+            captureFailure = self.error; onPhaseChange?(); return false
+        }
+        history = nextHistory
+        do { try captureRecovery.clear(record.id) }
+        catch {
+            canRetry = true
+            fail("Text saved, but capture recovery could not be cleared. Use Retry saving; the saved capture will not be duplicated. No text was sent. \(error.localizedDescription)")
+            captureFailure = self.error; onPhaseChange?(); return false
+        }
+        recordURL = nil; canRetry = false; captureFailure = nil; error = nil
+        onPhaseChange?(); return true
+    }
+
+    private func restoreCaptureRecovery() {
+        do {
+            guard let record = try captureRecovery.load() else { return }
+            var preservedSavedDraft = false
+            if let capture = record.capture {
+                // A crash after commit but before journal cleanup must not send
+                // text again or replace a newer draft on the next launch.
+                if history.contains(where: { $0.id == capture.id && $0.text == capture.text && $0.rawText == capture.rawText }) {
+                    try captureRecovery.clear(record.id); return
+                }
+                let recoveredOriginal = capture.rawText ?? capture.text
+                // Ordinary draft saves can succeed after the capture commit
+                // failed, without adding its history ID. Keep that saved draft;
+                // the immutable recovered capture can still be saved separately.
+                preservedSavedDraft = !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && (transcript != capture.text || rawTranscript != recoveredOriginal)
+                if !preservedSavedDraft {
+                    rawTranscript = recoveredOriginal; transcript = capture.text
+                    cleanupMethod = capture.cleanupMethod ?? "Original"
+                }
+            }
+            recordURL = try captureRecovery.audioURL(for: record, requireExists: record.capture == nil)
+            if let recordURL, let file = try? AVAudioFile(forReading: recordURL) {
+                elapsed = Double(file.length) / file.processingFormat.sampleRate
+            }
+            canRetry = true
+            let message = record.capture == nil ? "A recording was recovered. Use Retry transcription."
+                : (preservedSavedDraft ? "An unsaved capture was recovered. Your saved draft is unchanged. Retry saving adds the capture to Recent transcripts without pasting."
+                   : "An unsaved capture was recovered. Use Retry saving; text will not be pasted automatically.")
+            captureFailure = message; status = message
+        } catch { self.error = error.localizedDescription; captureFailure = self.error; status = "Capture recovery needs attention." }
+    }
+
+    @discardableResult private func discardRecordingRecovery() -> Bool {
+        guard let record = captureRecovery.pending, record.capture == nil else { return !captureRecovery.hasRecovery }
+        do { try captureRecovery.clear(record.id); recordURL = nil; canRetry = false; return true }
+        catch { self.error = error.localizedDescription; captureFailure = self.error; return false }
+    }
+
+    /// Called only after the normal Dictate view's explicit confirmation. The
+    /// draft stays open; no imported URL can enter the recovery store's deletion.
+    func discardCaptureRecovery() {
+        guard canDiscardCaptureRecovery, let record = captureRecovery.pending else { return }
+        do {
+            try captureRecovery.clear(record.id)
+            recordURL = nil; canRetry = false; captureFailure = nil; error = nil
+            status = "Recovery discarded. Your current draft is kept."; onPhaseChange?()
+        } catch { self.error = error.localizedDescription; captureFailure = self.error; onPhaseChange?() }
+    }
+    func showCaptureRecoveryFiles() {
+        if !NSWorkspace.shared.open(captureRecovery.directory) { error = "The CaptureRecovery folder could not be opened." }
     }
 
     func copyTranscript() {
@@ -493,8 +711,28 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         do { try transcript.write(to: url, atomically: true, encoding: .utf8); status = "Transcript saved." }
         catch { fail(error.localizedDescription) }
     }
+    func exportCapture(_ item: Transcript, version: TranscriptExportVersion) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = TranscriptExport.defaultFilename
+        panel.title = "Export saved transcript"
+        panel.message = version == .original
+            ? "Save the original recognised wording as a UTF-8 text file."
+            : "Save the cleaned transcript as a UTF-8 text file."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try TranscriptExport.write(item, version: version, to: url)
+            self.error = nil
+            status = "\(version.rawValue) saved to \(url.lastPathComponent)."
+        } catch {
+            self.error = "Could not save this transcript. \(error.localizedDescription)"
+        }
+    }
 
-    private var signature: String { "\(readingProvider.rawValue)|\(voice)|\(Int(rate))|\(speechText)" }
+    private var signature: String {
+        let selectedVoice = readingProvider == .speko ? selectedSpekoVoice?.requestSignature ?? "automatic" : voice
+        return "\(readingProvider.rawValue)|\(selectedVoice)|\(Int(rate))|\(speechText)"
+    }
     var canSeekReading: Bool { !rendering && (playing || paused) && player != nil && audioDuration.isFinite && audioDuration > 0 }
     func seekReading(to seconds: TimeInterval) {
         guard canSeekReading, seconds.isFinite, let player else { return }
@@ -521,13 +759,23 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
             playing = true; paused = false; status = "Reading aloud."; return
         }
         stopPlayback()
+        let generationID = UUID()
+        readingGenerationID = generationID
         rendering = true
         readingTask = Task {
-            defer { rendering = false; readingTask = nil }
+            defer {
+                if readingGenerationID == generationID {
+                    rendering = false; readingGenerationActive = false; cloudRequestActive = false
+                    readingTask = nil; readingGenerationID = nil
+                }
+            }
             do {
-                let url = try await generateAudio()
+                let url = try await generateAudio(generationID: generationID)
                 try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
                 let activePlayer = try AVAudioPlayer(contentsOf: url); activePlayer.delegate = self
+                try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
                 guard activePlayer.play() else { throw VoiceError.message("Audio could not play. Check your Mac's audio output.") }
                 player = activePlayer
                 let invocation = UUID(); playbackID = invocation
@@ -538,24 +786,37 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                         self.playbackTime = activePlayer.currentTime
                     }
                 }
-            } catch { if !(error is CancellationError) { self.error = error.localizedDescription } }
+            } catch {
+                if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
+            }
         }
     }
-    private func generateAudio() async throws -> URL {
+    private func generateAudio(generationID: UUID) async throws -> URL {
         if let audioURL, signature == audioSignature { return audioURL }
-        rendering = true; error = nil
-        let text = speechText, selectedVoice = voice, selectedRate = Int(rate), originalSignature = signature
-        guard text.count <= readingLimit else { throw VoiceError.message("This reading is too long for the selected provider.") }
+        guard readingGenerationID == generationID else { throw CancellationError() }
+        rendering = true; readingGenerationActive = true; error = nil
+        let text = speechText, selectedVoice = voice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = Int(rate), selectedProvider = readingProvider, originalSignature = signature
+        let limit = selectedProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000
+        guard text.count <= limit else { throw VoiceError.message("This reading is too long for the selected provider.") }
+        defer {
+            if readingGenerationID == generationID {
+                readingGenerationActive = false; cloudRequestActive = false
+            }
+        }
         let url: URL
-        if readingProvider == .speko {
+        if selectedProvider == .speko {
             let key = try SpekoKeychain.read()
             cloudRequestActive = true
-            defer { cloudRequestActive = false }
-            url = try await SpekoRenderer.render(text: text, key: key)
+            url = try await SpekoRenderer.render(text: text, key: key, voice: selectedSpekoVoice)
         } else {
-            url = try await Task.detached(priority: .userInitiated) { try AudioRenderer.render(text: text, voice: selectedVoice, rate: selectedRate) }.value
+            url = try await AudioRenderer.renderCancellable(text: text, voice: selectedVoice, rate: selectedRate)
         }
-        do { try Task.checkCancellation() } catch { AudioRenderer.remove(url); throw error }
+        do {
+            try Task.checkCancellation()
+            guard readingGenerationID == generationID else { throw CancellationError() }
+        } catch {
+            AudioRenderer.remove(url); throw error
+        }
         AudioRenderer.remove(audioURL); audioURL = url; audioSignature = originalSignature
         return url
     }
@@ -563,15 +824,27 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         guard !rendering, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let generationID = UUID()
+        readingGenerationID = generationID
         rendering = true
         readingTask = Task {
-            defer { rendering = false; readingTask = nil }
+            defer {
+                if readingGenerationID == generationID {
+                    rendering = false; readingGenerationActive = false; cloudRequestActive = false
+                    readingTask = nil; readingGenerationID = nil
+                }
+            }
             do {
-                let url = try await generateAudio()
+                let url = try await generateAudio(generationID: generationID)
                 try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
                 try await Task.detached { try AudioRenderer.export(url, to: destination) }.value
-                rendering = false; status = "Audio saved to \(destination.lastPathComponent)."
-            } catch { if !(error is CancellationError) { self.error = error.localizedDescription } }
+                try Task.checkCancellation()
+                guard readingGenerationID == generationID else { throw CancellationError() }
+                status = "Audio saved to \(destination.lastPathComponent)."
+            } catch {
+                if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
+            }
         }
     }
     func stopPlayback() {
@@ -654,5 +927,12 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         do { try store.save(SavedState(draft: transcript, speechText: speechText, history: history, replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript)) }
         catch { self.error = "Could not save this session. \(error.localizedDescription)" }
     }
-    func shutdown() { photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel(); shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; clipboardReceipt.clear(); cancelRecording(); stopPlayback(); saveNow(); AudioRenderer.remove(audioURL); if let recordURL { try? FileManager.default.removeItem(at: recordURL) } }
+    func shutdown() {
+        photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
+        shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
+        clipboardReceipt.clear(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
+        stopPlayback(); saveNow(); AudioRenderer.remove(audioURL)
+        // Quit stops work. Only a durable capture commit or explicit Cancel may
+        // delete the owned audio/journal; the next launch discovers unfinished work.
+    }
 }

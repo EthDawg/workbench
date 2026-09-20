@@ -3,7 +3,8 @@
 
 No saved user state, general clipboard, URL launch or model is used by checks.
 --native-fixture builds a separate synthetic app for manual Return/IME checks;
-it does not launch it. Its injected Copy/Open actions only update a visible log.
+it does not launch it. Its injected Copy/Open actions only update a visible log;
+Quick Look uses only the fixture's disposable local file.
 """
 
 import argparse
@@ -15,7 +16,8 @@ import time
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "DemoLibraryView.swift")]
+SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "DemoLibraryView.swift", "DemoQuickLook.swift")]
+SOURCES.append(PROJECT / "Sources/PresenterKit/PresenterProtocol.swift")
 
 DEPENDENCIES = r'''
 import AppKit
@@ -43,11 +45,17 @@ struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { Fix
     @Published var preferences = FixturePreferences()
     @Published var showingPhonePhotos = false
     let photoHandoff = FixturePhotoHandoff()
+    let presenter = FixturePresenter()
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
 }
 // Photo arrival is covered by its own shared-module and UI checks. This recall
 // fixture deliberately keeps cloud and handoff dependencies out of its scope.
 final class FixturePhotoHandoff {}
+final class FixturePresenter {}
+struct ChromeConnectionView: View {
+    let presenter: FixturePresenter
+    var body: some View { EmptyView() }
+}
 struct PhotoHandoffView: View {
     let handoff: FixturePhotoHandoff
     var onUseAsBackdrop: ((URL, String) -> Void)?
@@ -235,7 +243,7 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
     copied = []
     for source in SOURCES:
         path = directory / source.name
-        path.write_text(source.read_text())
+        path.write_text(source.read_text().replace("import PresenterKit\n", ""))
         copied.append(path)
     dependencies = directory / "FixtureDependencies.swift"
     dependencies.write_text(DEPENDENCIES)
@@ -262,7 +270,7 @@ if args.native_fixture:
         "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
     }))
     print(f"Disposable native app (not launched): {app}")
-    print("Check search Return, result-list Return, changed selection, no results, editor newlines, IME confirmation and copy failure/retry.")
+    print("Check search Return, result-list Return, Quick Look/Escape, changed selection, no results, editor newlines, IME confirmation and copy failure/retry.")
     print("Copy/Open are simulated and visible below the actual Saved resources view. No live library is loaded.")
 else:
     with tempfile.TemporaryDirectory(prefix="workbench-library-recall-", dir="/private/tmp") as temporary:

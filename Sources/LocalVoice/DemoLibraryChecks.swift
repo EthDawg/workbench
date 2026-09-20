@@ -1,4 +1,20 @@
-import Foundation
+import AppKit
+import QuickLookUI
+
+@MainActor
+private final class DemoLibraryPreviewSpy: DemoResourcePreviewing {
+    var onClose: (() -> Void)?
+    var succeeds = true
+    private(set) var shown: [(url: URL, title: String)] = []
+
+    @discardableResult func show(url: URL, title: String) -> Bool {
+        guard succeeds else { return false }
+        shown.append((url, title))
+        return true
+    }
+
+    func close() { onClose?() }
+}
 
 enum DemoLibraryChecks {
     static func run() throws {
@@ -25,6 +41,17 @@ enum DemoLibraryChecks {
         try check(store.load() == [prompt, link, file], "library metadata and multiline prompts survive restart")
         try check(file.fileAvailable, "local availability is checked against a readable file")
         try check(file.canOpenFile, "ordinary document can open in its default app")
+        try check(file.canPreviewFile, "ordinary text file is eligible for Quick Look")
+        for suffix in ["png", "pdf", "mov"] {
+            let previewURL = directory.appendingPathComponent("Synthetic.\(suffix)")
+            try Data("synthetic".utf8).write(to: previewURL)
+            let preview = DemoResource(kind: .file, title: suffix.uppercased(), content: previewURL.path)
+            try check(preview.canPreviewFile, "\(suffix) file is eligible for Quick Look")
+        }
+        let unsupportedURL = directory.appendingPathComponent("Synthetic.bin")
+        try Data([0, 1, 2, 3]).write(to: unsupportedURL)
+        try check(!DemoResource(kind: .file, title: "Binary", content: unsupportedURL.path).canPreviewFile,
+                  "unknown binary file is not falsely advertised as previewable")
         var renamedResource = file
         renamedResource.bookmark = try fileURL.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil)
         let renamedURL = directory.appendingPathComponent("Renamed walkthrough.txt")
@@ -70,9 +97,11 @@ enum DemoLibraryChecks {
         var oldPreferences = VoicePreferences(); oldPreferences.dictationShortcut.keyCode = 42; oldPreferences.restoreClipboard = false
         var oldJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(oldPreferences)) as! [String: Any]
         oldJSON.removeValue(forKey: "libraryShortcut")
+        oldJSON.removeValue(forKey: "readbackShortcut")
         let migrated = try JSONDecoder().decode(VoicePreferences.self, from: JSONSerialization.data(withJSONObject: oldJSON))
         try check(migrated.dictationShortcut == oldPreferences.dictationShortcut && !migrated.restoreClipboard, "adding library shortcut preserves older voice settings")
         try check(migrated.shortcut(3) == VoicePreferences().shortcut(3), "older preferences receive only the new library shortcut default")
+        try check(migrated.shortcut(5) == VoicePreferences().shortcut(5), "older preferences receive the new readback shortcut default")
         var disabled = migrated; var shortcut = disabled.shortcut(3); shortcut.enabled = false; disabled.setShortcut(shortcut, for: 3)
         let roundtrip = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(disabled))
         try check(!roundtrip.shortcut(3).enabled, "disabled library shortcut stays disabled after restart")
@@ -114,6 +143,163 @@ enum DemoLibraryChecks {
         }
         model.newPrompt("Next prompt")
         guard model.draft?.content == "Next prompt" && model.draftNotice == nil else { throw VoiceError.message("Prompt creation did not resume after finishing the editor") }
-        print("DEMO_LIBRARY_MODEL_CHECKS_OK: selection, exact file paths, and unfinished drafts preserved; prompt creation resumes after dismissal")
+
+        let previewDirectory = directory.appendingPathComponent("quick-look")
+        let previewStore = DemoLibraryStore(directory: previewDirectory)
+        try FileManager.default.createDirectory(at: previewDirectory, withIntermediateDirectories: true)
+        let oldURL = previewDirectory.appendingPathComponent("Preview before rename.txt")
+        let movedURL = previewDirectory.appendingPathComponent("Preview after rename.txt")
+        try Data("Synthetic preview text".utf8).write(to: oldURL)
+        var previewItem = DemoResource(kind: .file, title: "Preview fixture", content: oldURL.path)
+        previewItem.bookmark = try oldURL.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let unsupportedURL = previewDirectory.appendingPathComponent("Unsupported.bin")
+        try Data([0, 1, 2, 3]).write(to: unsupportedURL)
+        let unsupported = DemoResource(kind: .file, title: "Unsupported fixture", content: unsupportedURL.path)
+        try previewStore.save([previewItem, unsupported])
+        try FileManager.default.moveItem(at: oldURL, to: movedURL)
+
+        let previewer = DemoLibraryPreviewSpy()
+        var accessStarts = 0, accessStops = 0
+        let previewModel = DemoLibraryModel(
+            store: previewStore,
+            previewer: previewer,
+            makePreviewAccess: { url in
+                DemoResourcePreviewAccess(url: url, start: { _ in accessStarts += 1; return true }, stop: { _ in accessStops += 1 })
+            }
+        )
+        previewModel.query = "Preview fixture"
+        let selectionBeforePreview = previewModel.selection
+        guard let resolvedPreview = previewModel.selected else { throw VoiceError.message("Quick Look fixture did not resolve after rename") }
+        previewModel.preview(resolvedPreview)
+        guard previewer.shown.last?.url.resolvingSymlinksInPath() == movedURL.resolvingSymlinksInPath(),
+              previewModel.previewingResourceID == resolvedPreview.id,
+              accessStarts == 1, accessStops == 0 else {
+            throw VoiceError.message("Quick Look did not retain access to the resolved file for the panel lifetime")
+        }
+        guard previewModel.query == "Preview fixture", previewModel.selection == selectionBeforePreview else {
+            throw VoiceError.message("Opening Quick Look changed library search or selection")
+        }
+        guard let refreshedPath = previewModel.resources.first(where: { $0.id == resolvedPreview.id })?.content,
+              URL(fileURLWithPath: refreshedPath).resolvingSymlinksInPath() == movedURL.resolvingSymlinksInPath() else {
+            throw VoiceError.message("Quick Look did not refresh a moved file bookmark")
+        }
+        previewer.close()
+        guard previewModel.previewingResourceID == nil, accessStops == 1,
+              previewModel.query == "Preview fixture", previewModel.selection == selectionBeforePreview else {
+            throw VoiceError.message("Closing Quick Look did not release access while preserving library context")
+        }
+
+        previewModel.query = "Unsupported fixture"
+        guard let unsupportedItem = previewModel.selected else { throw VoiceError.message("Unsupported Quick Look fixture was not selectable") }
+        let shownBeforeFailure = previewer.shown.count
+        previewModel.preview(unsupportedItem)
+        guard previewer.shown.count == shownBeforeFailure,
+              previewModel.previewingResourceID == nil,
+              previewModel.error?.contains("does not support") == true,
+              accessStarts == 2, accessStops == 2 else {
+            throw VoiceError.message("Unsupported Quick Look input reported success or retained access")
+        }
+
+        try FileManager.default.removeItem(at: unsupportedURL)
+        previewModel.preview(unsupportedItem)
+        guard previewer.shown.count == shownBeforeFailure,
+              previewModel.error?.contains("unavailable") == true,
+              accessStarts == 3, accessStops == 3 else {
+            throw VoiceError.message("Missing Quick Look input did not report recovery or release access")
+        }
+
+        previewModel.query = "Preview fixture"
+        guard let retryItem = previewModel.selected else { throw VoiceError.message("Quick Look retry fixture was not selectable") }
+        previewer.succeeds = false
+        previewModel.preview(retryItem)
+        guard previewModel.previewingResourceID == nil,
+              previewModel.error?.contains("could not open") == true,
+              accessStarts == 4, accessStops == 4 else {
+            throw VoiceError.message("Failed Quick Look presentation retained scoped access")
+        }
+        previewer.succeeds = true
+        previewModel.preview(retryItem)
+        guard previewModel.previewingResourceID == retryItem.id, accessStarts == 5, accessStops == 4 else {
+            throw VoiceError.message("Quick Look did not recover after a presentation failure")
+        }
+        previewModel.remove(retryItem)
+        guard previewModel.previewingResourceID == nil, accessStops == 5 else {
+            throw VoiceError.message("Removing a previewed resource did not close Quick Look and release access")
+        }
+        print("DEMO_LIBRARY_MODEL_CHECKS_OK: selection, drafts, Quick Look lifecycle, moved bookmarks, failures, and access release passed")
+    }
+
+    @MainActor static func runQuickLookPanelChecks(_ urls: [URL]) throws {
+        guard !urls.isEmpty else { throw VoiceError.message("Choose at least one synthetic file to preview.") }
+        let application = NSApplication.shared
+        application.setActivationPolicy(.accessory)
+        application.finishLaunching()
+        let owner = WorkbenchHomeWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320),
+                             styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        owner.isReleasedWhenClosed = false
+        owner.title = "Workbench Quick Look check"
+        owner.center()
+        owner.makeKeyAndOrderFront(nil)
+        defer { owner.close() }
+
+        let presenter = DemoQuickLookPresenter()
+        var closeCount = 0
+        presenter.onClose = { closeCount += 1 }
+        for url in urls {
+            guard FileManager.default.isReadableFile(atPath: url.path), DemoResourcePreviewPolicy.supports(url) else {
+                throw VoiceError.message("Quick Look fixture is unavailable or unsupported: \(url.lastPathComponent)")
+            }
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size <= 50_000_000 else { throw VoiceError.message("Quick Look fixture is too large: \(url.lastPathComponent)") }
+            let before = try Data(contentsOf: url)
+            let expectedCloseCount = closeCount + 1
+            guard presenter.show(url: url, title: "Synthetic \(url.lastPathComponent)") else {
+                throw VoiceError.message("Quick Look panel did not open for \(url.lastPathComponent)")
+            }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15))
+            guard let panel = presenter.panel, panel.isVisible,
+                  let preview = panel.contentView as? QLPreviewView,
+                  (preview.previewItem as? NSURL)?.filePathURL?.resolvingSymlinksInPath() == url.resolvingSymlinksInPath() else {
+                throw VoiceError.message("Quick Look panel did not retain the requested file: \(url.lastPathComponent)")
+            }
+            panel.cancelOperation(nil)
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            guard presenter.panel == nil, closeCount == expectedCloseCount, owner.isVisible,
+                  try Data(contentsOf: url) == before else {
+                throw VoiceError.message("Escape did not close only Quick Look or the source changed: \(url.lastPathComponent)")
+            }
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchPreviewLifecycle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DemoLibraryStore(directory: directory)
+        let item = DemoResource(kind: .file, title: "Owner lifecycle fixture", content: urls[0].path)
+        try store.save([item])
+        var accessStarts = 0, accessStops = 0
+        let model = DemoLibraryModel(store: store, previewer: presenter, makePreviewAccess: { url in
+            DemoResourcePreviewAccess(url: url, start: { _ in accessStarts += 1; return true }, stop: { _ in accessStops += 1 })
+        })
+        model.query = "Owner lifecycle"
+        owner.onHide = { model.closePreview() }
+        // Stage activity and Chrome switching both order Home out. The close
+        // button uses close(), and minimization must also release the preview.
+        let hideActions: [(String, () -> Void)] = [
+            ("activity or browser handoff", { owner.orderOut(nil) }),
+            ("Home close", { owner.close() }),
+            ("Home minimize", { owner.miniaturize(nil) })
+        ]
+        for (name, hide) in hideActions {
+            owner.makeKeyAndOrderFront(nil); owner.makeMain()
+            model.preview(item)
+            guard presenter.panel?.isVisible == true, model.previewingResourceID == item.id else {
+                throw VoiceError.message("Quick Look lifecycle fixture did not open before \(name)")
+            }
+            hide()
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            guard presenter.panel == nil, model.previewingResourceID == nil, accessStarts == accessStops,
+                  model.selection == item.id, model.query == "Owner lifecycle" else {
+                throw VoiceError.message("\(name) did not close Quick Look, release access, and preserve selection")
+            }
+        }
+        print("QUICK_LOOK_PANEL_CHECKS_OK: \(urls.count) native previews, Escape, and three owner lifecycle paths released access")
     }
 }

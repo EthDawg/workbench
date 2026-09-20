@@ -9,7 +9,7 @@ Review date: 13 September 2026. Scope: the existing Workbench categories, not ne
 | Read aloud | Apple Read & Speak, TextEdit Speech; Speech Central | TextEdit's Start/Stop Speaking was exercised on synthetic notes. Apple's richer accessibility controller and Speech Central were read in official docs. Workbench adds reusable audio/export; seeking is a useful missing control. No narration-quality comparison was run. |
 | Annotation / screenshots | Apple Screenshot/Markup; DemoPro, Presentify, ScreenBrush | Official docs and Workbench renderer/input source were reviewed. DemoPro/Presentify lean on native capture; ScreenBrush documents snapshot export/editing. Existing Workbench drawing is broad enough to prioritise getting a board image out. Commercial annotation apps were not installed or exercised in this pass. |
 | Device presentation | QuickTime, iPhone Mirroring; Reflector, DeskPad | Official docs and native Workbench window/capture code were reviewed. Apple's apps had been opened in the earlier native pass. Normal window sharing is a useful composition point; no Teams/Zoom receiver, physical phone or competitor capture benchmark was completed in this increment. |
-| Saved resources | Finder Quick Look; Raycast actions, file search, Quicklinks | Finder Quick Look was exercised on a synthetic text file. Raycast was researched through official docs. Source review found the more immediate gap: search selection lacked a Return action, and clipboard failure could report success. |
+| Saved resources | Finder and Quick Look; Raycast actions, file search, Quicklinks | Finder Quick Look was exercised on a synthetic text file. Workbench now uses Apple's native Quick Look view for an explicit, non-modifying preview after resolving the saved bookmark. Raycast was researched through official docs. |
 
 Wispr Flow and Superwhisper were already explored through their installed settings and replacement forms. That separate [dictation comparison](dictation-comparison.md) records versions and limits. Its next two ideas are now [contextual insertion #14](https://github.com/EthDawg/workbench/issues/14) and [first successful dictation #15](https://github.com/EthDawg/workbench/issues/15).
 
@@ -19,8 +19,8 @@ Wispr Flow and Superwhisper were already explored through their installed settin
 | --- | --- | --- | --- |
 | Read aloud | Scrub/skip existing audio; import an explicit selection through macOS Services | [Cancel local and remote generation consistently #16](https://github.com/EthDawg/workbench/issues/16) | [Validate installed selected-text handoff #17](https://github.com/EthDawg/workbench/issues/17) |
 | Annotation / screenshots | Copy board or save its PNG | [Native Screenshot handoff with ink preserved #18](https://github.com/EthDawg/workbench/issues/18) | [Select/move an annotation with Undo #19](https://github.com/EthDawg/workbench/issues/19) |
-| Device presentation | Present in a resizable window; leaving fullscreen keeps it active | [One fresh branded scene snapshot #20](https://github.com/EthDawg/workbench/issues/20) | [Remember break-timer placement #21](https://github.com/EthDawg/workbench/issues/21) |
-| Saved resources | Return performs the selected copy/open action; truthful copy feedback | [Explicit native Quick Look #22](https://github.com/EthDawg/workbench/issues/22) | [Review shared-library import changes #23](https://github.com/EthDawg/workbench/issues/23) |
+| Device presentation | Present in a resizable window; leaving fullscreen keeps it active; remember the break timer's dragged or named position | [One fresh branded scene snapshot #20](https://github.com/EthDawg/workbench/issues/20) | Validate the separate timer in a receiving meeting view |
+| Saved resources | Return performs the selected copy/open action; truthful copy feedback; explicit native Quick Look | [Review shared-library import changes #23](https://github.com/EthDawg/workbench/issues/23) | Validate exchange demand before adding another library feature |
 
 These are priorities within each job, not a promise that every idea will ship. Personas and the break timer remain parts of presenting. Logo discovery and stock motion backgrounds remain asset-library work, outside these four targeted improvements.
 
@@ -42,9 +42,13 @@ The scene editor offers **Present in window** beside the existing fullscreen act
 
 Select the scene window in the meeting app when that suits the session. This provides a possible sharing surface, not a guarantee about Teams/Zoom capture. Controls inside the scene may be captured. Floating personas, annotation windows and the separate timer must not be promised inside that single-window share. Verify on a receiving device before a live meeting.
 
+The separate break-timer window remembers either a free dragged position or one of the shared eight named anchors. Reopening resolves the placement on its saved display when available and falls back within a current visible display after disconnection, resolution or scale changes. Its keyboard-accessible Position menu moves immediately without animation. Only placement and display identity are stored; the countdown and appearance keep their existing owners. Corrupt, future or concurrently changed placement files are preserved, with a usable session-only default and visible notice.
+
 ### Saved resources
 
 Return in search or the focused results list performs the current selected item's visible primary action: copy a prompt or open a link/file. It acts only on a valid selection. It does not intercept multiline editing, a sheet, IME marked text, modified keys or held repeats. Buttons retain the same actions and labels. Copy reports a failed pasteboard write honestly; retry can recover. No automatic paste, focus switching, clipboard watching or additional indexer is added.
+
+Quick Look is a separate explicit action for an available, non-executable local file. Workbench resolves and, when needed, refreshes the saved bookmark, then displays the original through a native `QLPreviewView`; it does not copy or modify the file. Supported images, PDFs, text and movies share the same panel. The app holds security-scoped access until the panel closes and releases it on close, removal or navigation. Missing files keep the existing Locate file recovery. Unknown or unsupported types report that no preview is available instead of claiming success. Escape closes only the preview panel and leaves library selection and search intact. Movies do not autoplay.
 
 ## Checks and evidence
 
@@ -52,7 +56,11 @@ Focused tests execute actual production playback methods with a synthetic audio 
 
 Native playback QA used the exact production strip/buttons and methods in a temporary in-memory app with a bundled 45-second silent WAV. Pause, accessible slider increment, ±15 skip, Resume and Stop were exercised; audio loads stayed at one. This verifies controls and audio reuse, not audible voice quality or provider generation.
 
-Native library QA used the actual view/model with synthetic resources and simulated copy/open effects. Search Return and list Return each produced one selected action; failed copy reported failure, retry recovered, no-match Return did nothing, and Return inside a multiline editor inserted a line without invoking the resource. Cancel preserved the original. Policy checks cover marked-text composition. The selected-text Service still requires an installed-package pass from TextEdit and a supported browser, plus VoiceOver review; these are not inferred from selector or metadata checks.
+Native library QA used the actual view/model with synthetic resources and simulated copy/open effects. Search Return and list Return each produced one selected action; failed copy reported failure, retry recovered, no-match Return did nothing, and Return inside a multiline editor inserted a line without invoking the resource. Cancel preserved the original. Focused Quick Look checks cover image/PDF/text/movie eligibility, unknown and missing inputs, moved bookmark refresh, failed presentation, retry and exact access release while preserving search and selection. A native panel smoke test opened real text, PNG, PDF and MP4 fixtures, verified their bytes were unchanged and invoked Escape on each panel while its owner stayed visible. The `APP_STORE` bookmark path compiles separately; a signed sandbox runtime, multilingual IME and VoiceOver session remain unverified.
+
+Break-timer checks use synthetic display frames for free/named placement, screen removal, resolution changes, restart, future/corrupt files and concurrent-write preservation. A native AppKit panel check exercises the actual timer window, Position action, saved file, hide and reopen lifecycle. Physical multi-display removal, a VoiceOver session and receiving meeting views remain unverified.
+
+The selected-text Service still requires an installed-package pass from TextEdit and a supported browser, plus VoiceOver review; these are not inferred from selector or metadata checks.
 
 The release record adds final build/regression and native board/window evidence. Keep hardware and meeting receiver acceptance separate from fixtures. No private draft, library, microphone sample or competitor transcript was replaced or published.
 
@@ -65,5 +73,6 @@ The release record adds final build/regression and native board/window evidence.
 - [QuickTime connected-device recording](https://support.apple.com/en-au/guide/quicktime-player/qtp356b55534/mac), [iPhone Mirroring](https://support.apple.com/en-au/120421) — distinct Apple device workflows.
 - [Reflector screenshots/recording](https://www.airsquirrels.com/reflector/features/recording), [DeskPad](https://github.com/Stengo/DeskPad) — adjacent presentation approaches, not promised Workbench capabilities.
 - [Raycast actions](https://manual.raycast.com/action-panel), [file search](https://manual.raycast.com/file-search), [Quicklinks](https://manual.raycast.com/quicklinks) — contextual primary action, preview and reusable references.
+- [Apple QLPreviewView](https://developer.apple.com/documentation/quicklookui/qlpreviewview) — the native embedded Quick Look surface and its window-lifetime closure contract.
 
 Native board/window QA saved a real PNG after Save → Cancel → retry, then checked its top/bottom text, arrow and highlighter. Window → fullscreen → window kept the scene and control tile alive; the controls still opened afterward. These used a synthetic saved scene without a camera. A standard opaque native titlebar was then retained for readable window titles against arbitrary scenes.

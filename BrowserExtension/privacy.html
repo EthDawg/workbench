@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy and permissions — Workbench Preview for Chrome</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body class="privacy-page">
+  <header><img class="mark" src="icons/icon48.png" width="34" height="34" alt=""><div><strong>Workbench Preview for Chrome</strong><p class="eyebrow">Privacy and permissions · 15 September 2026</p></div></header>
+  <main>
+    <h1>Your destinations stay on your device.</h1>
+    <p>Workbench Preview for Chrome saves named web destinations and returns to them in their paired Chrome profiles. It requires the matching <a href="https://workbench-mac.vercel.app/" target="_blank" rel="noopener noreferrer">Workbench Preview companion for macOS</a>. Ethan Harley publishes this open-source extension.</p>
+
+    <h2>What the extension handles</h2>
+    <p>The extension handles the destination names and Chrome profile labels you enter, a generated profile identifier, the addresses you choose to save, and temporary tab/window identifiers used to focus a destination. Opening the popup reads the current tab’s address locally so you can review it. Query parameters and fragments are removed before an address is saved or sent to the companion. Usernames and passwords embedded in an address are rejected.</p>
+    <p>To find a saved destination, the extension checks permitted tabs’ current or pending addresses. It does not read page content, forms, passwords, cookies or browsing history. It does not sign in, rotate passwords or confirm which account is authenticated. Page titles are not used as destination names.</p>
+
+    <h2>Where this data goes</h2>
+    <p>Chrome stores the profile label, generated identifier and pairing state locally in that profile. Tab bindings and an unfinished save draft stay in Chrome’s session storage. A permission-step draft can be restored for 15 minutes; an expired draft is not used and may remain in session storage until overwritten or the browser session ends.</p>
+    <p>The extension sends chosen names, saved addresses and profile labels to the local Workbench companion through Chrome’s native-messaging connection. The companion owns the canonical Saved resources records on your Mac and returns the destination list to your connected Chrome profiles. Browser destinations are not part of Workbench’s optional photo or scene sync.</p>
+    <p>This feature has no developer-operated data server, analytics, advertising, sale of data or transmission of destination records to Ethan Harley or other third parties. Chrome Sync is not used for these records. When you open a destination, Chrome contacts that website normally; the website’s own policies apply. Visiting the companion website or support links also makes a normal web request to that provider.</p>
+    <p>Workbench’s use of data received through Chrome APIs complies with the Chrome Web Store User Data Policy, including its Limited Use requirements.</p>
+
+    <h2>Why Chrome asks for permissions</h2>
+    <ul>
+      <li><strong>Communicate with cooperating native applications:</strong> connects only to the Workbench native host so Saved resources can route a destination to its paired profile.</li>
+      <li><strong>Current tab access:</strong> reads its address when you open Workbench, so you can review and save that tab.</li>
+      <li><strong>Local storage:</strong> keeps profile pairing, session tab bindings and a temporary save draft.</li>
+      <li><strong>Alarms:</strong> attempts to reconnect a paired profile after the companion disconnects. It never retries an opening command automatically.</li>
+      <li><strong>Optional access to a site:</strong> requested only when you choose to allow that site. It lets Workbench identify and focus its saved tabs. A new subdomain needs a new grant. Although Chrome describes this as site access, the extension uses tab addresses and does not inspect or change the page.</li>
+    </ul>
+    <p>Incognito is disabled. The extension does not request unrestricted tab-history, cookie, password, scripting or content-script access.</p>
+
+    <h2>Your controls and deletion</h2>
+    <p>Review the exact saved address and choose an audience-safe name before saving. Manage site access or remove the extension in Chrome’s extension settings. Removing the extension removes its Chrome-managed local data; closing Chrome clears session data. Saved resources in the Mac companion is separate: removing the extension does not delete those records. Manage those saved items in Workbench. Device backups follow your own system settings.</p>
+    <p>For privacy questions, use <a href="https://github.com/EthDawg/workbench/issues" target="_blank" rel="noopener noreferrer">Workbench support</a>. Issues are public, so leave out private destinations and customer details. Use <a href="https://github.com/EthDawg/workbench/security/advisories/new" target="_blank" rel="noopener noreferrer">private vulnerability reporting</a> for security-sensitive concerns.</p>
+  </main>
+  <footer><a href="https://workbench-mac.vercel.app/privacy.html" target="_blank" rel="noopener noreferrer">Workbench privacy policy ↗</a><span>Workbench Preview 0.1</span></footer>
+</body>
+</html>

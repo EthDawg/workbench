@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public struct SceneSyncAccount: Codable, Equatable, Sendable {
     public var container: String
@@ -44,7 +45,8 @@ public struct SceneLibraryArchive: Codable, Equatable, Sendable {
     public var adoptedLegacyIDs: [String] = []
     public init() {}
     public func validated() throws -> Self {
-        guard format == "workbench-scene-library", version == 1 else { throw SceneDocumentError.futureVersion }
+        guard format == "workbench-scene-library", (1...2).contains(version),
+              version >= 2 || !records.contains(where: { $0.scene.ambience != nil }) else { throw SceneDocumentError.futureVersion }
         guard records.count <= 1000, Set(records.map(\.id)).count == records.count,
               adoptedLegacyIDs.count <= 2000, adoptedLegacyIDs.allSatisfy({ $0.count <= 240 }),
               (engineState?.count ?? 0) <= 8_000_000, !syncEnabled || account != nil else {
@@ -60,6 +62,15 @@ public struct SceneLibraryArchive: Codable, Equatable, Sendable {
         }
         return self
     }
+    /// Only an explicit local commit may advance the format. Decoding a v1 file
+    /// containing a recipe remains invalid, and future formats never downgrade.
+    func preparedForSaving(minimumVersion: Int = 1) throws -> Self {
+        guard format == "workbench-scene-library", (1...2).contains(version),
+              (1...2).contains(minimumVersion) else { throw SceneDocumentError.futureVersion }
+        var next = self
+        next.version = max(max(version, minimumVersion), records.contains(where: { $0.scene.ambience != nil }) ? 2 : 1)
+        return try next.validated()
+    }
 }
 
 /// One local manifest is authoritative. Assets are immutable and written before
@@ -71,13 +82,14 @@ public final class SceneLibraryStore {
     public var assetsDirectory: URL { directory.appendingPathComponent("Assets", isDirectory: true) }
     public static let maximumManifestBytes = 24_000_000
     private var expectedBytes: Data?
+    private var expectedVersion = 1
     private var loaded = false
     public init(directory: URL) { self.directory = directory }
 
     public func load() throws -> SceneLibraryArchive {
         let bytes = try readManifest()
         let value = try bytes.map { try JSONDecoder().decode(SceneLibraryArchive.self, from: $0).validated() } ?? SceneLibraryArchive()
-        expectedBytes = bytes; loaded = true
+        expectedBytes = bytes; expectedVersion = value.version; loaded = true
         return value
     }
     private func readManifest() throws -> Data? {
@@ -89,15 +101,53 @@ public final class SceneLibraryStore {
               (values.fileSize ?? Int.max) <= Self.maximumManifestBytes else { throw SceneDocumentError.storageBlocked }
         return try Data(contentsOf: manifest)
     }
-    public func save(_ archive: SceneLibraryArchive) throws {
+    @discardableResult public func save(_ archive: SceneLibraryArchive) throws -> SceneLibraryArchive {
         guard loaded else { throw SceneDocumentError.storageBlocked }
+        let persisted = try archive.preparedForSaving(minimumVersion: expectedVersion)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        let bytes = try encoder.encode(archive.validated())
+        let bytes = try encoder.encode(persisted)
         guard bytes.count <= Self.maximumManifestBytes else { throw SceneDocumentError.invalid("The scene library is full. Export work before adding more scenes.") }
-        guard try readManifest() == expectedBytes else { throw SceneDocumentError.concurrentChange }
+        try checkDirectory(directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Serialize cooperating writers, without waiting on another process.
+        // The expected-byte check still detects stale or external writers.
+        let lock = directory.appendingPathComponent(".scene-library-write.lock")
+        let descriptor = open(lock.path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { throw SceneDocumentError.storageBlocked }
+        defer { close(descriptor) }
+        var attributes = stat()
+        guard fstat(descriptor, &attributes) == 0, attributes.st_mode & S_IFMT == S_IFREG,
+              attributes.st_nlink == 1 else { throw SceneDocumentError.storageBlocked }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { throw SceneDocumentError.concurrentChange }
+        defer { flock(descriptor, LOCK_UN) }
+        guard try readManifest() == expectedBytes else { throw SceneDocumentError.concurrentChange }
+        if expectedVersion == 1, persisted.version == 2, let original = expectedBytes {
+            try preserveVersionOneManifest(original)
+        }
+        // A legacy client does not participate in the lock. Check again after
+        // installing the immutable backup before replacing the manifest.
+        guard try readManifest() == expectedBytes else { throw SceneDocumentError.concurrentChange }
         try bytes.write(to: manifest, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        expectedBytes = bytes
+        expectedBytes = bytes; expectedVersion = persisted.version
+        return persisted
+    }
+    private func preserveVersionOneManifest(_ bytes: Data) throws {
+        let backup = directory.appendingPathComponent("scene-library-v1-" + SceneAsset.digest(bytes) + ".json")
+        func existingMatches() throws -> Bool {
+            try rejectSymbolicLink(backup)
+            guard FileManager.default.fileExists(atPath: backup.path) else { return false }
+            let values = try backup.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true,
+                  values.fileSize == bytes.count, bytes.count <= Self.maximumManifestBytes,
+                  try Data(contentsOf: backup) == bytes else { throw SceneDocumentError.storageBlocked }
+            return true
+        }
+        if try existingMatches() { return }
+        let staged = directory.appendingPathComponent(".scene-library-backup-" + UUID().uuidString)
+        try bytes.write(to: staged, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        defer { try? FileManager.default.removeItem(at: staged) }
+        do { try FileManager.default.linkItem(at: staged, to: backup) }
+        catch { guard try existingMatches() else { throw error } }
     }
     public func assetURL(_ name: String) throws -> URL {
         guard SceneAsset.isName(name) else { throw SceneDocumentError.missingAsset }
@@ -157,7 +207,7 @@ public enum SceneRevisionMerge {
                                account: SceneSyncAccount, conflictID: UUID = UUID()) throws {
         var next = archive
         try apply(remote, into: &next, account: account, conflictID: conflictID)
-        archive = try next.validated()
+        archive = try next.preparedForSaving()
     }
     private static func apply(_ remote: SavedSceneRecord, into archive: inout SceneLibraryArchive,
                               account: SceneSyncAccount, conflictID: UUID) throws {

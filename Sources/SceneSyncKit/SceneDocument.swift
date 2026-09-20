@@ -24,6 +24,10 @@ public struct PortableScene: Codable, Equatable, Identifiable, Sendable {
     public var backgroundX = 0.5
     public var backgroundY = 0.5
     public var zoom = 1.0
+    /// Opt-in photograph motion. Absent in older documents means still.
+    public var gentleMotion: Bool? = nil
+    /// Optional local image rig; background remains its complete still poster.
+    public var ambience: SceneAmbience? = nil
     public var showsPhone = true
     public var phoneX = 0.5
     public var phoneY = 0.5
@@ -44,6 +48,7 @@ public struct PortableScene: Codable, Equatable, Identifiable, Sendable {
     }
     public var assets: Set<String> {
         Set([background, logo?.image, hand?.image, persona?.image, persona?.card?.portrait].compactMap { $0 } + (retainedAssets ?? []))
+            .union(ambience?.assets ?? [])
     }
     public func validated() throws -> Self {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 160,
@@ -53,7 +58,7 @@ public struct PortableScene: Codable, Equatable, Identifiable, Sendable {
               (legacyMobileProject?.count ?? 0) <= 8_000_000, (retainedAssets?.count ?? 0) <= 6 else {
             throw SceneDocumentError.invalid("The scene contains unsupported settings. Its original has been kept.")
         }
-        try viewport?.validate(); try logo?.validate(); try hand?.validate(); try persona?.validate()
+        try viewport?.validate(); try logo?.validate(); try hand?.validate(); try persona?.validate(); try ambience?.validate()
         return self
     }
 }
@@ -164,9 +169,12 @@ public struct ScenePackage: Codable, Equatable, Sendable {
     public var scene: PortableScene
     public var assets: [String: Data]
     public static let maximumBytes = 100_000_000
-    public init(scene: PortableScene, assets: [String: Data]) { self.scene = scene; self.assets = assets }
+    public init(scene: PortableScene, assets: [String: Data]) {
+        self.scene = scene; self.assets = assets; version = scene.ambience == nil ? 1 : 2
+    }
     public func validated() throws -> Self {
-        guard format == "workbench-scene", version == 1 else { throw SceneDocumentError.futureVersion }
+        guard format == "workbench-scene", (1...2).contains(version),
+              version >= 2 || scene.ambience == nil else { throw SceneDocumentError.futureVersion }
         _ = try scene.validated()
         guard Set(assets.keys) == scene.assets, assets.count <= 12,
               assets.values.reduce(0, { $0 + $1.count }) <= 90_000_000 else { throw SceneDocumentError.missingAsset }

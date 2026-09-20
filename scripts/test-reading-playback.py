@@ -26,9 +26,11 @@ def extract(start: str, end: str) -> str:
 
 
 seek_methods = extract("    var canSeekReading: Bool", "\n    func listen()")
+cancel_method = extract("    func cancelReading()", "\n    @Published private(set) var readingGenerationActive")
 methods = "\n".join([
     seek_methods,
-    extract("    func listen()", "\n    private func generateAudio()"),
+    cancel_method,
+    extract("    func listen()", "\n    private func generateAudio(generationID:"),
     extract("    func stopPlayback()", "\n    nonisolated func audioRecorderEncodeErrorDidOccur"),
 ])
 
@@ -45,6 +47,7 @@ model_fixture = r'''
 import Foundation
 
 enum VoiceError: Error { case message(String) }
+enum ReadingProvider { case mac, speko }
 final class AVAudioPlayer {
     struct Format { let sampleRate = 16000.0 }
     let format = Format()
@@ -77,10 +80,24 @@ final class AVAudioPlayer {
     var signature = "Unchanged fixture reading"
     var audioSignature = "Unchanged fixture reading"
     var readingTask: Task<Void, Never>?
+    var readingGenerationID: UUID?
+    var readingGenerationActive = false
+    var cloudRequestActive = false
+    var readingProvider = ReadingProvider.mac
     var generationCalls = 0
-    func generateAudio() async throws -> URL {
+    var suspendNextGeneration = false
+    var generationContinuation: CheckedContinuation<URL, Never>?
+    func generateAudio(generationID: UUID) async throws -> URL {
         generationCalls += 1
-        return URL(fileURLWithPath: "/private/tmp/synthetic-fixture-not-read.wav")
+        readingGenerationActive = true
+        defer {
+            if readingGenerationID == generationID { readingGenerationActive = false }
+        }
+        if suspendNextGeneration {
+            suspendNextGeneration = false
+            return await withCheckedContinuation { generationContinuation = $0 }
+        }
+        return URL(fileURLWithPath: "/private/tmp/synthetic-fixture-\(generationCalls)-not-read.wav")
     }
     __EXACT_METHODS__
 }
@@ -199,6 +216,46 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
                   "Failed resume cannot claim to be playing or retain an unusable seek control")
         try check(model.error?.contains("could not resume") == true && model.generationCalls == callsBeforeResume,
                   "Failed resume reports the error without regenerating or retrying")
+
+        let delayed = AppModelPlaybackHarness()
+        delayed.suspendNextGeneration = true
+        delayed.listen()
+        while delayed.generationContinuation == nil { await Task.yield() }
+        let staleTask = delayed.readingTask
+        try check(delayed.rendering && delayed.readingGenerationActive,
+                  "A slow local generation exposes the same cancellable state as a remote request")
+        delayed.cancelReading()
+        try check(!delayed.rendering && !delayed.readingGenerationActive && delayed.readingTask == nil,
+                  "Cancel immediately restores truthful idle generation state")
+        try check(delayed.status == "Reading generation cancelled.",
+                  "Local cancellation does not show the Speko billing warning")
+        delayed.listen(); await delayed.readingTask?.value
+        let replacement = delayed.player
+        let replacementStatus = delayed.status
+        try check(delayed.generationCalls == 2 && replacement != nil && delayed.playing,
+                  "A new reading can start while the cancelled provider finishes late")
+        delayed.generationContinuation?.resume(returning: URL(fileURLWithPath: "/private/tmp/stale-fixture-not-read.wav"))
+        delayed.generationContinuation = nil
+        await staleTask?.value
+        try check(delayed.player === replacement && delayed.playing && delayed.status == replacementStatus,
+                  "A cancelled late completion cannot replace newer playback or status")
+
+        let remote = AppModelPlaybackHarness()
+        remote.readingProvider = .speko
+        remote.suspendNextGeneration = true
+        remote.listen()
+        while remote.generationContinuation == nil { await Task.yield() }
+        let remoteTask = remote.readingTask
+        remote.cancelReading()
+        try check(!remote.rendering && !remote.readingGenerationActive && remote.readingTask == nil,
+                  "A delayed remote request reaches the same truthful idle state")
+        try check(remote.status.contains("may still bill"),
+                  "Remote cancellation retains the provider billing warning")
+        remote.generationContinuation?.resume(returning: URL(fileURLWithPath: "/private/tmp/stale-remote-fixture-not-read.wav"))
+        remote.generationContinuation = nil
+        await remoteTask?.value
+        try check(remote.player == nil && !remote.playing && remote.status.contains("cancelled"),
+                  "A delayed remote completion cannot start playback after cancellation")
         print("READING_PLAYBACK_MODEL_OK: \(count) checks")
     }
 }
@@ -209,6 +266,7 @@ import Foundation
 import AVFoundation
 
 enum VoiceError: Error { case message(String) }
+enum ReadingProvider { case mac, speko }
 @MainActor final class RealPlayerHarness: NSObject, AVAudioPlayerDelegate {
     enum Phase { case idle }
     var phase: Phase = .idle
@@ -225,7 +283,11 @@ enum VoiceError: Error { case message(String) }
     var signature = "Synthetic reading"
     var audioSignature = "Synthetic reading"
     var readingTask: Task<Void, Never>?
-    func generateAudio() async throws -> URL {
+    var readingGenerationID: UUID?
+    var readingGenerationActive = false
+    var cloudRequestActive = false
+    var readingProvider = ReadingProvider.mac
+    func generateAudio(generationID: UUID) async throws -> URL {
         fatalError("Seeking must never call the renderer")
     }
     __EXACT_METHODS__

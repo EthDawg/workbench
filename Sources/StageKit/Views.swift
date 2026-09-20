@@ -166,7 +166,12 @@ struct ControlCenter: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
             }.surface()
             VStack(spacing: 20) {
-                HStack { Text("Ink colour"); Spacer(); swatches; ColorPicker("Custom", selection: colorBinding(\Preferences.color), supportsOpacity: false).labelsHidden().help("Custom ink colour") }
+                HStack {
+                    Text("Ink colour"); Spacer(); swatches
+                    ColorPicker("Custom", selection: colorBinding(\Preferences.color), supportsOpacity: false)
+                        .labelsHidden().accessibilityLabel("Custom ink colour")
+                        .accessibilityValue(settings.value.color.accessibilityDescription).help("Custom ink colour")
+                }
                 sliderRow("Line width", value: $settings.value.lineWidth, range: 1...20, suffix: "pt")
                 sliderRow("Highlighter", value: $settings.value.highlighterWidth, range: 8...60, suffix: "pt")
                 sliderRow("Text size", value: $settings.value.fontSize, range: 12...96, suffix: "pt")
@@ -230,7 +235,8 @@ struct ControlCenter: View {
                 boardCard(.black, title: "Blackboard", action: .blackboard)
             }
             BoardExportButtons(app: app)
-            Text("Copy or save an open board as an image. Its background and drawings are included; other apps are excluded.")
+            ScreenshotHandoffButton(app: app)
+            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. The palette and pointer hide during selection.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 18) {
                 Toggle("Keep board drawings separate from the screen", isOn: $settings.value.separateBoards).disabled(!app.boards.isEmpty)
@@ -311,7 +317,10 @@ struct ControlCenter: View {
                 Button { settings.value.color = color } label: {
                     Circle().fill(Color(nsColor: color.nsColor)).frame(width: 18, height: 18)
                         .padding(3).overlay(Circle().stroke(settings.value.color == color ? .white : .clear, lineWidth: 1.5))
-                }.buttonStyle(.plain).accessibilityLabel("Ink colour \(index + 1)")
+                }.buttonStyle(.plain)
+                    .accessibilityLabel("\(color.accessibilityDescription) ink colour")
+                    .accessibilityValue(settings.value.color == color ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(settings.value.color == color ? .isSelected : [])
             }
         }
     }
@@ -401,7 +410,10 @@ struct DrawingPalette: View {
                 Button { settings.value.color = color } label: {
                     Circle().fill(Color(nsColor: color.nsColor)).frame(width: 15, height: 15).padding(3)
                         .overlay(Circle().stroke(settings.value.color == color ? .white : .clear))
-                }.buttonStyle(.plain).help("Colour \(index + 1)").accessibilityLabel("Colour \(index + 1)")
+                }.buttonStyle(.plain).help(color.accessibilityDescription)
+                    .accessibilityLabel("\(color.accessibilityDescription) ink colour")
+                    .accessibilityValue(settings.value.color == color ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(settings.value.color == color ? .isSelected : [])
             }
             Divider().frame(height: 24).padding(.horizontal, 3)
             Button { app.perform(.undo) } label: { Image(systemName: "arrow.uturn.backward").frame(width: 25, height: 32) }.help("Undo").accessibilityLabel("Undo")
@@ -409,6 +421,8 @@ struct DrawingPalette: View {
             Menu {
                 Button("Copy board") { app.copyBoard() }
                 Button("Save board PNG…") { app.saveBoardPNG() }
+                Divider()
+                Button("Open Screenshot…") { app.openScreenshot() }
             } label: {
                 Image(systemName: "square.and.arrow.up").frame(width: 28, height: 32)
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
@@ -432,6 +446,18 @@ struct BoardExportButtons: View {
     }
 }
 
+struct ScreenshotHandoffButton: View {
+    @ObservedObject var app: AppCoordinator
+    var body: some View {
+        Button { app.openScreenshot() } label: {
+            Label("Open Screenshot…", systemImage: "camera.viewfinder")
+        }
+        .disabled(app.screenshotHandoffActive)
+        .help("Open Apple Screenshot and keep visible Workbench annotations in place")
+        .accessibilityHint("Hides Workbench controls and pauses annotation fading while Apple Screenshot is open")
+    }
+}
+
 struct BreakTimerView: View {
     @ObservedObject var app: AppCoordinator
     @ObservedObject var settings: SettingsStore
@@ -451,10 +477,24 @@ struct BreakTimerView: View {
                     .overlay(alignment: .leading) { GeometryReader { bar in Capsule().fill(inkAccent).frame(width: bar.size.width * app.timerProgress) } }.frame(maxWidth: 300)
                 Text(app.timerFinished ? "Ready to continue" : app.timerRunning ? "" : "Paused")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
+                if let notice = app.timerPlacementNotice {
+                    Text(notice).font(.system(size: 10)).foregroundStyle(.orange).multilineTextAlignment(.center)
+                        .accessibilityLabel("Timer position: \(notice)")
+                }
                 Spacer(minLength: 8)
                 HStack(spacing: 18) {
                     Button { if app.timerFinished { app.startTimer() } else { app.pauseResumeTimer() } } label: { Label(app.timerFinished ? "Restart" : app.timerRunning ? "Pause" : "Resume", systemImage: app.timerRunning ? "pause.fill" : "play.fill") }
                     Button("Reset") { app.resetTimer() }
+                    Menu {
+                        ForEach(FloatingControlAnchor.allCases) { anchor in
+                            Button { app.setTimerPosition(anchor) } label: {
+                                if app.timerPlacementAnchor == anchor { Label(anchor.title, systemImage: "checkmark") }
+                                else { Text(anchor.title) }
+                            }
+                        }
+                    } label: { Label("Position", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
+                        .accessibilityLabel("Timer position")
+                        .accessibilityHint("Choose one of eight positions on the current display.")
                     Button("Hide") { app.hideTimer() }
                 }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(controlsVisible ? 0.8 : 0.3))
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)

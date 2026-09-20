@@ -1,0 +1,25 @@
+{
+  "capturedOn": "2026-09-15",
+  "kind": "actual native Mac screenshot via computer controls",
+  "host": "Disposable native QA host using production StageKit views and session owner",
+  "personalData": false,
+  "image": "overlays-preparation-actual.png",
+  "sha256": "59e2a8b5eb1546e89dc6462c5fb29edea2d34f8798dae5db2dfebe0f564e80e9",
+  "content": "Two bundled fictional portrait cards, private group names explicitly synthetic",
+  "nativeChecks": [
+    "prepare and duplicate a copy",
+    "unsaved Done prompts; Keep editing preserves draft",
+    "position duplicate at top centre; Save layout",
+    "inspect prepared group sequence; Cancel",
+    "Start dismisses preparation",
+    "keyboard focus and Space open native menu",
+    "hide one card; pause; switch set; return; resume retains mask",
+    "three independent click-through artwork windows and one HUD recorded"
+  ],
+  "remaining": [
+    "receiving Teams and Zoom participant",
+    "physical configured hotkeys",
+    "VoiceOver and multiple displays",
+    "public binary release and App Store"
+  ]
+}

@@ -103,6 +103,9 @@ import PhotoHandoffKit
         }
         Self.rewriteImages(&object) { names[$0] ?? $0 }
         var portable = try JSONDecoder().decode(PortableScene.self, from: JSONSerialization.data(withJSONObject: object))
+        // Rig references stay canonical hashes, unlike the native poster cache
+        // filename. A deliberate clear must not resurrect the previous recipe.
+        portable.ambience = checked.ambience
         portable.groupID = previous?.groupID; portable.legacyMobileProject = previous?.legacyMobileProject
         portable.retainedAssets = previous?.retainedAssets
         if replacingCard { portable.persona?.card = card }

@@ -85,7 +85,7 @@ final class DemoModeTests {
         var state = CaptureRecovery()
         XCTAssertTrue(state.candidate(in: [camera]) == nil, "Never auto-open a webcam")
         XCTAssertTrue(state.candidate(in: [phone, other]) == nil, "Ambiguous devices require selection")
-        XCTAssertEqual(state.candidate(in: [phone, camera]), "phone")
+        XCTAssertTrue(state.candidate(in: [phone, camera]) == nil, "First use requires an explicit source choice; muxed media is not phone identity")
         let first = state.select(phone.id)
         XCTAssertTrue(state.candidate(in: [other, camera]) == nil, "Disconnect cannot switch to another person's device")
         XCTAssertEqual(state.candidate(in: [phone, other]), "phone")

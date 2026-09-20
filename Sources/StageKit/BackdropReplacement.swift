@@ -2,6 +2,7 @@ import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
+import SceneSyncKit
 
 enum BackdropReplacementError: LocalizedError {
     case noChange, sceneMissing, staleScene, imageChanged, closed
@@ -21,11 +22,15 @@ struct SceneBackdrop: Equatable {
     var x: Double
     var y: Double
     var zoom: Double
+    var ambience: SceneAmbience?
+    var gentleMotion: Bool?
     init(_ scene: DemoScene) {
         image = scene.background; x = scene.backgroundX; y = scene.backgroundY; zoom = scene.zoom
+        ambience = scene.ambience; gentleMotion = scene.gentleMotion
     }
     func applying(to scene: DemoScene) throws -> DemoScene {
         var next = scene
+        if scene.background != image { next.ambience = nil; next.gentleMotion = nil }
         next.background = image; next.backgroundX = x; next.backgroundY = y; next.zoom = zoom
         return try next.validated()
     }

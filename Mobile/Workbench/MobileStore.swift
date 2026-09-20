@@ -35,6 +35,24 @@ import ImageIO
         return change { state in state.texts.removeAll { $0.id == saved.id }; state.texts.insert(saved, at: 0) } ? saved.id : nil
     }
 
+    /// Paste replaces the whole editor. Keep the previous draft and install its
+    /// replacement in one disk transaction before the view changes either value.
+    @discardableResult func replaceDraftWithPaste(_ text: String, preserving draft: String,
+                                                  original: String, savedID: UUID?) -> Bool {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard text.count <= 50_000 else { error = "Choose a passage under 50,000 characters. Your draft is unchanged."; return false }
+        return change { state in
+            if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                var saved = state.texts.first { $0.id == savedID }
+                    ?? MobileText(title: "", original: original.isEmpty ? draft : original, text: draft)
+                saved.title = String(draft.split(whereSeparator: \.isNewline).first.map(String.init)?.prefix(80) ?? "Saved text")
+                saved.text = draft; saved.modified = Date()
+                state.texts.removeAll { $0.id == saved.id }; state.texts.insert(saved, at: 0)
+            }
+            state.draft = text; state.draftOriginal = text
+        }
+    }
+
     func image(_ project: MobileImageProject, maxPixels: Int = 2400) -> UIImage? { imageAsset(project.asset, maxPixels: maxPixels) }
     func imageAsset(_ name: String, maxPixels: Int = 2400) -> UIImage? {
         guard let url = disk.assetURL(name), let source = CGImageSourceCreateWithURL(url as CFURL, nil),

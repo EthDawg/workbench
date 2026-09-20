@@ -37,6 +37,8 @@ struct VoiceShortcut: Codable, Equatable {
     }
 }
 struct VoicePreferences: Codable, Equatable {
+    static let defaultReadbackShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_Backslash))
+    static let legacyReadbackShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_R))
     var cleanup = CleanupStyle.light
     var capture = CaptureMode.toggle
     var delivery = DeliveryMode.paste
@@ -44,16 +46,38 @@ struct VoicePreferences: Codable, Equatable {
     var controlsShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_V))
     // Optional decoding preserves pre-library preferences without resetting dictation.
     var libraryShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+    var presenterShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_G))
+    // Optional decoding preserves preferences written before Snap & Talk sessions existed.
+    var readbackShortcut: VoiceShortcut? = VoicePreferences.defaultReadbackShortcut
     var restoreClipboard = true
     func shortcut(_ id: UInt32) -> VoiceShortcut {
-        switch id { case 1: dictationShortcut; case 3: libraryShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_J)); default: controlsShortcut }
+        switch id {
+        case 1: dictationShortcut
+        case 4: presenterShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_G))
+        case 3: libraryShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+        case 5: readbackShortcut ?? Self.defaultReadbackShortcut
+        default: controlsShortcut
+        }
     }
     mutating func setShortcut(_ shortcut: VoiceShortcut, for id: UInt32) {
-        switch id { case 1: dictationShortcut = shortcut; case 3: libraryShortcut = shortcut; default: controlsShortcut = shortcut }
+        switch id {
+        case 1: dictationShortcut = shortcut
+        case 4: presenterShortcut = shortcut
+        case 3: libraryShortcut = shortcut
+        case 5: readbackShortcut = shortcut
+        default: controlsShortcut = shortcut
+        }
     }
     static let key = "voicePreferences.v2"
+    static func migratingLegacyDefaults(_ preferences: VoicePreferences) -> VoicePreferences {
+        var preferences = preferences
+        if preferences.readbackShortcut == legacyReadbackShortcut {
+            preferences.readbackShortcut = defaultReadbackShortcut
+        }
+        return preferences
+    }
     static func load() -> VoicePreferences {
-        if let data = UserDefaults.standard.data(forKey: key), let saved = try? JSONDecoder().decode(Self.self, from: data) { return saved }
+        if let data = UserDefaults.standard.data(forKey: key), let saved = try? JSONDecoder().decode(Self.self, from: data) { return migratingLegacyDefaults(saved) }
         return VoicePreferences()
     }
     func save() { if let data = try? JSONEncoder().encode(self) { UserDefaults.standard.set(data, forKey: Self.key) } }

@@ -21,6 +21,8 @@ BIN_DIR="$(swift build -c release --show-bin-path --disable-sandbox)"
 APP_DIR="$PACKAGE_DIR/Workbench.app"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BIN_DIR/LocalVoice" "$APP_DIR/Contents/MacOS/Workbench"
+cp "$BIN_DIR/WorkbenchBrowserHost" "$APP_DIR/Contents/MacOS/WorkbenchBrowserHost"
+ditto "$PROJECT_DIR/BrowserExtension" "$APP_DIR/Contents/Resources/BrowserExtension"
 for bundle in "$BIN_DIR"/*.bundle; do
     [ -e "$bundle" ] || continue
     ditto "$bundle" "$APP_DIR/Contents/Resources/$(basename "$bundle")"
@@ -32,6 +34,7 @@ if [ ! -f "$PROJECT_DIR/scripts/AppIcon.icns" ]; then
 fi
 cp "$PROJECT_DIR/scripts/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 ditto "$PROJECT_DIR/Resources/SceneBackdrops" "$APP_DIR/Contents/Resources/SceneBackdrops"
+ditto "$PROJECT_DIR/Resources/AmbientScenes" "$APP_DIR/Contents/Resources/AmbientScenes"
 ditto "$PROJECT_DIR/Resources/PersonaPortraits" "$APP_DIR/Contents/Resources/PersonaPortraits"
 bash "$PROJECT_DIR/scripts/app-intents.sh" "$APP_DIR"
 codesign --force --deep --sign - "$APP_DIR"

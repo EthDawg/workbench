@@ -69,7 +69,8 @@ final class ViewportFitTests {
         let previewLayer = AVCaptureVideoPreviewLayer()
         let liveView = DemoStageSurfaceView(previewLayer: previewLayer)
         liveView.frame = CGRect(origin: .zero, size: size)
-        liveView.scene = scene; liveView.layout()
+        liveView.configure(scene: scene, backdrop: backdrop, logo: nil, hand: nil, persona: nil)
+        liveView.viewportScene = scene; liveView.layout()
         // CALayer derives its frame from bounds and position, which can add
         // floating-point rounding even when the same rectangle was assigned.
         XCTAssertEqual(previewLayer.frame.minX, geometry.screen.minX, accuracy: 0.00001)

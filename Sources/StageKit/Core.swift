@@ -34,6 +34,14 @@ struct InkColor: Codable, Equatable, Hashable {
     static let white = InkColor(1, 1, 1)
     static let black = InkColor(0.09, 0.11, 0.16)
     static let presets = [coral, amber, mint, blue, violet, white]
+    static let presetNames = ["Coral", "Amber", "Mint", "Blue", "Violet", "White"]
+    static func presetName(at index: Int) -> String { presetNames.indices.contains(index) ? presetNames[index] : "Colour \(index + 1)" }
+    var presetName: String? { Self.presets.firstIndex(of: self).map(Self.presetName(at:)) }
+    var hex: String {
+        func byte(_ value: Double) -> Int { Int(min(1, max(0, value)) * 255) }
+        return String(format: "#%02X%02X%02X", byte(r), byte(g), byte(b))
+    }
+    var accessibilityDescription: String { presetName ?? "Custom \(hex)" }
 }
 
 struct InkPoint: Codable, Equatable {
@@ -174,6 +182,16 @@ final class CanvasHistory {
         // Expired ink must not be resurrected by an unrelated undo.
         undoStack = undoStack.map { $0.filter { $0.opacity(at: time, fadeDelay: delay) > 0 } }
         redoStack = redoStack.map { $0.filter { $0.opacity(at: time, fadeDelay: delay) > 0 } }
+    }
+    func pauseFade(by duration: TimeInterval) {
+        guard duration.isFinite, duration > 0 else { return }
+        func shifted(_ values: [Annotation]) -> [Annotation] {
+            values.map { value in var copy = value; copy.created += duration; return copy }
+        }
+        annotations = shifted(annotations)
+        undoStack = undoStack.map(shifted)
+        redoStack = redoStack.map(shifted)
+        if let transaction { self.transaction = shifted(transaction) }
     }
 }
 
