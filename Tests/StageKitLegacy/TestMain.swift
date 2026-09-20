@@ -27,6 +27,29 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--scene-media-only"] {
+            _ = NSApplication.shared
+            let media = SceneMediaTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("logo browser addresses and inline validation", media.testSearchAndImageAddressesStayBounded),
+                ("logo browser bounded download validation", media.testDownloadsRejectOversizeHTMLAndInvalidBytes),
+                ("logo browser request cancellation", media.testDownloadCancellationStopsTheOwnedRequest),
+                ("logo browser explicit captured-scene save", media.testWebLogoPreviewAndExplicitSavePreserveOtherScenes),
+                ("editor motion suppression and drag pause", media.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
+                ("editor drag revision preservation", SceneSyncAdapterTests().testCanvasDragCommitsOnceAndRejectsInterveningRevision),
+                ("ambient poster orientation and clipping", AmbientSceneTests().testMovingSceneViewMatchesPosterOrientationAndClipsCloudsToWindow),
+                ("ambient missing artwork and ordinary-photo playback", AmbientSceneTests().testMissingRigAssetKeepsCompletePosterAndDoesNotBecomePhotoZoom),
+                ("motion exports stay still", GentleMotionTests().testMotionDoesNotChangeStillExport),
+                ("motion transparent photograph base", GentleMotionTests().testTransparentPhotographKeepsStillBase)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-session-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.overlay-review" {
             _ = NSApplication.shared
             PersonaSessionFixture().run()
@@ -90,8 +113,9 @@ struct TestRunner {
         let backdropOnly = args == ["--backdrop-only"]
         let personaQuickOnly = args == ["--persona-quick-only"]
         let screenshotStateOnly = args == ["--screenshot-state-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
+        let sceneListOnly = args == ["--scene-list-only"]
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly || sceneListOnly else {
+            print("Usage: StageMarkTests [--ci | --scenes-only | --scene-list-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
 
             exit(2)
         }
@@ -100,7 +124,7 @@ struct TestRunner {
         if !screenshotStateOnly {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
-            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
+            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !sceneListOnly { NSApp.finishLaunching() }
         }
         let suite = CoreTests()
         let integration = IntegrationTests()
@@ -114,12 +138,23 @@ struct TestRunner {
         let ambientScenes = AmbientSceneTests()
         let viewportFit = ViewportFitTests()
         let logoImport = LogoImportTests()
+        let sceneMedia = SceneMediaTests()
         let personas = PersonaTests()
         let personaSessions = PersonaSessionTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
+        let sceneList = SceneListTests()
+        let sceneListTests: [(String, () throws -> Void)] = [
+            ("scene list filtered selection", sceneList.testSelectionFiltersAndNeverTargetsHiddenScenes),
+            ("scene list atomic confirmed deletion and preserved images", sceneList.testConfirmedBulkDeletionIsOneCommitAndPreservesEveryImage),
+            ("scene list stale and failed deletion preservation", sceneList.testStaleOrFailedBulkDeletionKeepsWholeSelection),
+            ("scene list rename search and stale snapshots", sceneList.testRenameReconcilesSearchAndRejectsStaleSnapshots),
+            ("scene list drag selection and stale token rejection", sceneList.testDragReordersSelectionAndRejectsStaleOrForeignTokens),
+            ("scene list keyboard focus ownership", sceneList.testDeleteAndReturnBelongOnlyToFocusedTable),
+            ("scene list native inline rename commit and cancel", sceneList.testInlineRenameUsesFieldEditorAndCommitsOrCancels)
+        ]
         let workbench = WorkbenchModuleTests()
         let boardExport = BoardExportTests()
         let presentationLifecycle = PresentationLifecycleTests()
@@ -180,6 +215,11 @@ struct TestRunner {
             ("logo native WebP decoding and alpha", logoImport.testWebPAndTransparentPadding),
             ("logo image orientation and rejection", logoImport.testOrientationAndInvalidImages),
             ("logo paste image and file persistence", logoImport.testPasteImageAndFilePersistence),
+            ("logo browser addresses and inline validation", sceneMedia.testSearchAndImageAddressesStayBounded),
+            ("logo browser bounded download validation", sceneMedia.testDownloadsRejectOversizeHTMLAndInvalidBytes),
+            ("logo browser request cancellation", sceneMedia.testDownloadCancellationStopsTheOwnedRequest),
+            ("logo browser explicit captured-scene save", sceneMedia.testWebLogoPreviewAndExplicitSavePreserveOtherScenes),
+            ("editor motion suppression and drag pause", sceneMedia.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
             ("persona starter: CatalogHasStableUniqueBundleNamesAndEditableLabels", personaStarters.testCatalogHasStableUniqueBundleNamesAndEditableLabels),
             ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", personaStarters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
@@ -261,7 +301,10 @@ struct TestRunner {
             ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
         ], at: 5)
         tests.insert(contentsOf: backdropTests, at: 5)
-        if personaQuickOnly {
+        tests.insert(contentsOf: sceneListTests, at: 5)
+        if sceneListOnly {
+            tests = sceneListTests
+        } else if personaQuickOnly {
             tests = [
                 ("persona quick shortcuts and default keys", suite.testDefaultShortcutsAreUniqueAndComplete),
                 ("persona quick shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
@@ -282,7 +325,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly && !sceneListOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }

@@ -15,6 +15,18 @@ enum CaptureHUDChecks {
             count += 1
         }
         let main = NSRect(x: 0, y: 30, width: 1440, height: 870)
+        try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: false, dictation: false, narration: false) == .tools,
+                  "finishing an operation returns to the persistent tools")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false) == .hidden,
+                  "an explicit idle-toolbar dismissal remains respected")
+        for enabled in [true, false] {
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: true, narration: false) == .dictation,
+                      "dictation controls remain visible even with idle tools hidden")
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: false, narration: true) == .narration,
+                      "narration reuses the same operation surface")
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: true, dictation: true, narration: true) == .hidden,
+                      "screen acquisition temporarily hides all shared controls")
+        }
         let left = NSRect(x: -1920, y: -400, width: 1920, height: 1080)
         let screens = [main, left]
         for screen in screens {

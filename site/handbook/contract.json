@@ -113,7 +113,7 @@
       "status": "implemented",
       "entry": "Choose a starter → Window light, Campus breeze or Coastal sky. Gentle motion in scene settings; Pause/Play in presentation controls or the iOS editor preview.",
       "effect": "For ordinary photos, an optional 3.5% zoom. Three authored starters instead move clouds or branches while the architecture and foreground remain still. Complete posters, clean plates and details travel in version 2 packages; the prior library manifest is preserved before upgrade.",
-      "limit": "Mac editor and galleries remain still. iOS animates only the active visible scene preview. PNG/Photos exports stay still; no Live Photo export or continuous iOS Home Screen animation. Reduce Motion, disabled animated-image autoplay, low power and high thermal state suppress animation. Device video and meeting receivers need separate validation.",
+      "limit": "The visible active Mac editor previews enabled motion, with Play/Pause and a reason when paused. Drag, layout controls and sheets pause it. Galleries remain still. iOS animates only the active visible scene preview. PNG/Photos exports stay still; no Live Photo export or continuous iOS Home Screen animation. Reduce Motion, disabled animated-image autoplay, low power and high thermal state suppress animation. Device video and meeting receivers need separate validation.",
       "source": "Sources/StageKit/MovingSceneView.swift",
       "evidence": "79 native Mac scene tests / 2251 assertions and 72 shared-module tests passed. Actual isolated Mac office captures changed only the window sky; fixed room/desk pixels were identical. Native compositor and UIKit poster parity checked for all three rigs. See /scenes/ambient/ for the current source and delivery evidence."
     },
@@ -121,7 +121,7 @@
       "id": "persona-session",
       "name": "Present several native overlays",
       "status": "implemented",
-      "entry": "Personas and overlays → Prepare presentation → Demo groups → Start overlays",
+      "entry": "Overlay cards → Arrange overlays → Demo groups → Start overlays",
       "effect": "Show several independently placed cards, switch among explicitly prepared sets, and Hide/Show/End through one click-based native tile. Live images, labels and allowed choices are frozen; layout saving is explicit.",
       "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
       "source": "Sources/StageKit/PersonaSession.swift",

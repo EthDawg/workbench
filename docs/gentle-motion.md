@@ -10,7 +10,8 @@ For an ordinary photograph, the optional treatment is: the photograph slowly gro
 
 | Surface | Entry and behaviour | What remains still |
 | --- | --- | --- |
-| Mac presentation, non-App-Store build | Enable Gentle motion in the scene editor. Present in a window or full screen; click the compact tile for Pause/Play. | Editor crop/positioning, foreground artwork and PNG export. |
+| Mac scene editor | Enable Gentle motion; eligible starters play while the editor is visible and active. Pause/Play affects only the current preview. A visible message explains system or editing pauses. | Crop/positioning while adjusting, foreground artwork and PNG export. |
+| Mac presentation, non-App-Store build | Present in a window or full screen; click the compact tile for Pause/Play. Presentation playback remains independent of editor focus. | Foreground artwork and PNG export. |
 | iPhone/iPad scene preparation | Enable Gentle motion. Pause/Play preview changes only this viewing session; the saved preference travels with the editable scene. | Gallery thumbnails, crop editing and foreground layers. |
 | Mac desktop, non-App-Store build | More beside the presentation buttons → Use as animated desktop. Verify a native rendered still, then start an independent click-through layer on that display. Pause/Resume/Stop appear in the scene window. | The applied PNG, recovery records and the saved scene. Quit or Stop removes the layer; the native still remains. |
 | iPhone/iPad wallpaper | Save the composed still to Photos. Follow the linked Apple instructions for an eligible Spatial Scene or an existing eligible Live Photo. | Workbench exports a PNG. It neither creates a Live Photo nor installs a Lock Screen or Home Screen wallpaper. |
