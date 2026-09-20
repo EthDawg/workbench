@@ -2,6 +2,12 @@
 
 This is submission copy and a release handoff, not evidence of store approval or publication. Confirm the public Mac companion download and privacy page contain this feature before submitting.
 
+## Existing store identity
+
+Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The store ZIP omits the development-only `key`; uploading it updates the existing item under Google’s assigned signing identity. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; protocol, saved destinations and profile storage are unchanged.
+
+After installing the matching companion, choose **Repair Chrome connection** in **Saved resources → Chrome destinations** to refresh an existing native host registration. A store installation has separate extension storage and requires its own explicit profile pairing. Live store-installed pairing and the dashboard's submission/approval/publication status remain separate acceptance checks.
+
 ## Store fields
 
 **Name:** Workbench Preview
@@ -76,15 +82,15 @@ Use the live dashboard’s exact definitions. This extension handles user data, 
 5. Close the destination tab and activate again to open the saved URL. For multiple tabs with the same saved URL after losing the remembered binding, the extension asks which tab to use rather than choosing silently.
 6. Update the destination from its own profile to another synthetic site. Review the old/new URLs and grant that site before saving.
 
-Provide the exact public native build URL and its supported macOS version in the submission notes. Store-assigned extension identity must match the native host allowlist before a store-installed build can connect.
+Provide the exact public native build URL and its supported macOS version in the submission notes. The companion must include the exact store origin `chrome-extension://alckfplchkdcjdlhlnhanonkelljnioj/` in both registration and host validation; verify the installed registration and store-installed pairing before submission.
 
 ## Store assets and remaining publication work
 
-- ZIP: `dist/WorkbenchPreview-Chrome-0.1.0.zip`, generated from the explicit 12-file runtime allowlist.
+- ZIP: `dist/WorkbenchPreview-Chrome-0.1.1.zip`, generated from the explicit 12-file runtime allowlist.
 - 128px icon: `BrowserExtension/icons/icon128.png`; 16/32/48px icons are also packaged.
 - Small promotional image: `BrowserExtension/store/promo-440x280.png`, 440×280 pixels, derived from the existing Workbench icon. It is branding artwork, not a screenshot.
 - Required screenshot: capture the actual packaged extension with synthetic destinations at **1280×800** or **640×400**. No screenshot is fabricated by the packager. The final changed popup still needs visual/live verification.
-- The installed Mac candidate is 2.0.0 build `20260914230155`, Developer ID signed with the existing Production CloudKit capability. It is not yet notarized or publicly downloadable; public Preview 3 lacks the browser companion.
+- The companion is publicly available as [Workbench 2.0 Preview 4](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.4), build `20260920065909`. It is Developer ID signed, notarized, stapled and retains Production CloudKit. The published ZIP was downloaded back and hash-verified. It includes the browser companion and exact existing store identity; older Preview 3 does not.
 - Verify developer registration, contact verification and the current dashboard distribution/review requirements.
 - Uploading a draft, submitting for review, approval and publication are separate states. Preserve this distinction in the release record.
 
@@ -96,3 +102,9 @@ Provide the exact public native build URL and its supported macOS version in the
 - [Privacy fields](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy): single purpose, minimum permissions, remote-code declaration and data-use disclosures.
 - [Privacy policy requirement](https://developer.chrome.com/docs/webstore/program-policies/privacy): an accurate publicly accessible privacy policy for handled user data.
 - [Limited Use](https://developer.chrome.com/docs/webstore/program-policies/limited-use): use only for the disclosed purpose and publish an affirmative policy statement.
+
+## Package correction — 20 September 2026
+
+The first 0.1.1 ZIP was rejected because its retained development `key` did not match the existing store item. The packager now removes only that field from the ZIP and leaves source bytes, the stable unpacked identity and all other runtime files unchanged. The corrected ZIP SHA-256 is `7d9b5b868a23fc593e30bae939946aeaa1ec22d0be5249d682f4b1f93fbf3fcf`. The maintainer handoff names it `WorkbenchPreview-Chrome-0.1.1-store.zip` to distinguish it from the rejected archive. All nine packaging and 64 browser tests pass, including an assertion that the packaged manifest differs only by the omitted key and source identity stays intact. Dashboard acceptance still needs verification.
+
+Google documents the manifest key’s [development identity purpose](https://developer.chrome.com/docs/extensions/reference/manifest/key). Continue updating the existing item; never use this correction to create a new listing or overwrite the unpacked source identity.

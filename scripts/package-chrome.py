@@ -2,7 +2,9 @@
 """Validate and reproducibly ZIP the Chrome adapter's explicit runtime allowlist.
 
 No build dependencies, source minification, network access or account actions.
-The manifest stays at ZIP root. Development files and store artwork are excluded.
+The manifest stays at ZIP root. Its development-only key is omitted so an update
+uses the existing Web Store item's signing identity. Source files are untouched.
+Development files and store artwork are excluded.
 """
 
 import argparse
@@ -144,6 +146,10 @@ def validate(source):
 
 def package(source, output):
     manifest, identity, files = validate(source)
+    # Keep the stable unpacked identity in source; the existing store item owns
+    # a different signing key. Including our development key rejects its update.
+    store_manifest = {key: value for key, value in manifest.items() if key != "key"}
+    files["manifest.json"] = (json.dumps(store_manifest, indent=2) + "\n").encode("utf-8")
     output = Path(output).absolute()
     require(output.suffix == ".zip" and not output.is_symlink(), "Output must be a regular .zip destination.")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -167,7 +173,8 @@ def package(source, output):
         temporary_path.unlink(missing_ok=True)
     checksum = hashlib.sha256(output.read_bytes()).hexdigest()
     return {"artifact": str(output), "name": manifest["name"], "version": manifest["version"],
-            "unpacked_extension_id": identity, "files": list(RUNTIME_FILES), "bytes": output.stat().st_size,
+            "unpacked_extension_id": identity, "manifest_key_omitted": True,
+            "files": list(RUNTIME_FILES), "bytes": output.stat().st_size,
             "sha256": checksum}
 
 
