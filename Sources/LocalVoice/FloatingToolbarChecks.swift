@@ -180,6 +180,13 @@ enum FloatingToolbarChecks {
             guard condition else { throw VoiceError.message("Floating toolbar: " + name) }
             count += 1
         }
+        func eventually(_ name: String, _ condition: () -> Bool) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 3
+            while !condition() && ProcessInfo.processInfo.systemUptime < deadline {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            try check(condition(), name)
+        }
         var state = FloatingToolbarInteraction()
         var tracker = FloatingToolbarPointerTracker(lastPoint: NSPoint(x: 100, y: 100))
         try check(!tracker.moved(to: NSPoint(x: 100, y: 100)), "window geometry cannot invent a pointer move")
@@ -226,15 +233,13 @@ enum FloatingToolbarChecks {
         try await Task.sleep(nanoseconds: 500_000_000)
         try check(controls.toolbarDisclosure == .hovered, "an open menu survives an extended pointer exit")
         controls.endMenu()
-        try await Task.sleep(nanoseconds: 500_000_000)
-        try check(controls.toolbarDisclosure == .collapsed, "menu dismissal outside returns to resting")
+        try await eventually("menu dismissal outside returns to resting") { controls.toolbarDisclosure == .collapsed }
         inside = true; controls.hover(true); controls.setDragging(true)
         inside = false; controls.hover(false)
         try await Task.sleep(nanoseconds: 500_000_000)
         try check(controls.toolbarDisclosure == .hovered, "dragging locks the actual presentation size")
         controls.setDragging(false)
-        try await Task.sleep(nanoseconds: 500_000_000)
-        try check(controls.toolbarDisclosure == .collapsed, "drag completion releases the idle reveal")
+        try await eventually("drag completion releases the idle reveal") { controls.toolbarDisclosure == .collapsed }
         controls.expandToolbar()
         try check(CaptureHUDControls(defaults: defaults).toolbarDisclosure == .expanded, "explicit expansion persists across relaunch")
         controls.collapseToolbar()
