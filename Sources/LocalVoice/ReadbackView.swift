@@ -165,7 +165,8 @@ struct ReadbackView: View {
                 }
             }
             HStack {
-                Toggle("Show Snap & Talk HUD", isOn: $model.showHUD).toggleStyle(.switch)
+                Text("Stop and Cancel stay available in the floating recording controls.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Text("Original audio and transcript are kept locally.").font(.caption).foregroundStyle(.secondary)
             }
@@ -362,120 +363,4 @@ struct ReadbackHUDView: View {
             .accessibilityLabel(controls.isExpanded ? "Collapse narration controls" : "Expand narration controls")
             .help(controls.isExpanded ? "Show compact narration controls" : "Show details, Cancel and position options")
     }
-}
-
-@MainActor
-final class ReadbackHUDController: NSWindowController, NSWindowDelegate, FloatingHUDDragController {
-    private let positionKey = "snapTalkPanelOrigin.v1"
-    private let anchorKey = "snapTalkPanelAnchor.v1"
-    private let controls = CaptureHUDControls()
-    private weak var model: ReadbackModel?
-    private var positioning = false
-    private var dragging = false
-    private let snapGuide = FloatingControlGuideController()
-    private var observations = Set<AnyCancellable>()
-
-    init(model: ReadbackModel) {
-        let panel = CapturePanel(contentRect: NSRect(origin: .zero, size: CaptureHUDLayout.compact),
-                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        super.init(window: panel)
-        self.model = model
-        let savedAnchor = UserDefaults.standard.string(forKey: anchorKey).flatMap(FloatingControlAnchor.init(rawValue:))
-        controls.anchor = savedAnchor ?? (UserDefaults.standard.string(forKey: positionKey) == nil ? .bottom : nil)
-        controls.resize = { [weak self, weak model] in if let model { self?.update(model) } }
-        controls.choosePosition = { [weak self] in self?.choosePosition($0) }
-        panel.title = "Workbench Snap & Talk"
-        panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
-        panel.isMovable = true; panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = CaptureHostingView(rootView: ReadbackHUDView(model: model, controls: controls))
-        panel.delegate = self
-        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.cancelDragging(); self?.position() }
-            .store(in: &observations)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func update(_ model: ReadbackModel) {
-        guard let window else { return }
-        guard model.isRecording, model.showHUD else {
-            window.orderOut(nil); cancelDragging(); controls.isExpanded = false
-            return
-        }
-        let size = controls.isExpanded ? CaptureHUDLayout.expanded : CaptureHUDLayout.compact
-        if !window.isVisible { place(size: size, restoreSaved: true) }
-        else if window.frame.size != size { place(size: size, restoreSaved: false) }
-        window.orderFrontRegardless()
-    }
-
-    func position() {
-        guard let window else { return }
-        place(size: window.frame.size, restoreSaved: !window.isVisible)
-    }
-
-    private var preferredScreen: NSRect? {
-        if let target = model?.recordingScreenFrame,
-           let screen = NSScreen.screens.first(where: { $0.frame.intersects(target) }) {
-            return screen.visibleFrame
-        }
-        return (NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main)?.visibleFrame
-    }
-
-    private func place(size: NSSize, restoreSaved: Bool) {
-        guard let window, let preferred = preferredScreen else { return }
-        let saved = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString)
-        let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: size) } : window.frame
-        setFrame(CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
-                                         screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred))
-        savePosition()
-    }
-
-    private func choosePosition(_ anchor: FloatingControlAnchor) {
-        controls.anchor = anchor
-        guard let window else { return }
-        place(size: window.frame.size, restoreSaved: false)
-    }
-
-    private func setFrame(_ frame: NSRect) {
-        positioning = true
-        window?.setFrame(frame, display: true, animate: false)
-        positioning = false
-    }
-
-    private func savePosition() {
-        guard let window else { return }
-        UserDefaults.standard.set(NSStringFromPoint(window.frame.origin), forKey: positionKey)
-        if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
-        else { UserDefaults.standard.removeObject(forKey: anchorKey) }
-    }
-
-    func windowDidMove(_ notification: Notification) {
-        guard !positioning, !dragging, window?.isVisible == true else { return }
-        savePosition()
-    }
-
-    func beginDragging() { dragging = true; previewDragging() }
-
-    func cancelDragging() { dragging = false; snapGuide.hide() }
-
-    func previewDragging() {
-        guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
-        let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        let anchor = FloatingControlGeometry.nearestAnchor(to: window.frame, in: screen)
-        snapGuide.show(controlFrame: window.frame, visibleFrame: screen, activeAnchor: anchor, below: window)
-    }
-
-    func finishDragging() {
-        defer { cancelDragging() }
-        guard dragging, let window, let preferred = preferredScreen else { return }
-        let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        controls.anchor = FloatingControlGeometry.nearestAnchor(to: window.frame, in: screen)
-        let frame = controls.anchor.map { FloatingControlGeometry.frame(anchor: $0, size: window.frame.size, visibleFrame: screen) }
-            ?? FloatingControlGeometry.clamp(window.frame, to: screen)
-        setFrame(frame); savePosition()
-    }
-
-    func shutdown() { cancelDragging(); window?.orderOut(nil); window?.contentView = nil; close() }
 }

@@ -88,6 +88,15 @@ public final class StageKitController: ObservableObject {
     }
     public var isDrawing: Bool { coordinator.isDrawing }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
+    public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }
+    public func presentSelectedScene() {
+        if coordinator.demoScenes.selected == nil { onOpenScenes?() }
+        else {
+            coordinator.demoScenes.startDemo(mode: .windowed)
+            if !coordinator.demoScenes.isPresenting { onOpenScenes?() }
+        }
+    }
+    public func endDeviceScene() { coordinator.demoScenes.endPresentation() }
     public var hasOverlaySession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
     public var areOverlaysPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
     public var canStepOverlays: Bool { coordinator.demoScenes.personas.sessionState.groups.count > 1 }

@@ -10,13 +10,29 @@ enum Workbench {
         return !NSRunningApplication.runningApplications(withBundleIdentifier: String(identifier.dropLast(".preview".count))).isEmpty
     }
     static var displayName: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? name }
-    static var suiteDomain: String { "com.ethdawg.workbench" + (isPreview ? ".preview" : "") }
+    // Only debug QA bundles opt into disposable storage. Release builds ignore
+    // the marker, and normal Preview/production data and migration stay intact.
+    static var fixtureRoot: URL? {
+        #if DEBUG
+        if let path = Bundle.main.object(forInfoDictionaryKey: "WorkbenchFixtureRoot") as? String,
+           path.hasPrefix("/private/tmp/workbench-usability-"), !path.contains("..") {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        #endif
+        return nil
+    }
+    static var suiteDomain: String {
+        if fixtureRoot != nil { return Bundle.main.bundleIdentifier ?? "local.workbench.usability-qa" }
+        return "com.ethdawg.workbench" + (isPreview ? ".preview" : "")
+    }
     static func supportDirectory(component: String) -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        if let fixtureRoot { return fixtureRoot.appendingPathComponent(component, isDirectory: true) }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(isPreview ? "Workbench Preview" : "Workbench", isDirectory: true)
             .appendingPathComponent(component, isDirectory: true)
     }
     static func preparePreviewData(component: String, files: [String]) {
+        guard fixtureRoot == nil else { return }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let destination = supportDirectory(component: component)
         // A complete component directory is the import boundary: never merge a later

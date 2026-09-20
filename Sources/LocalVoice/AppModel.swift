@@ -59,6 +59,9 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var editingShortcut: UInt32?
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
+    @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
+    }
     @Published var shortcutFailures: [UInt32: String] = [:]
     @Published var quickTab = "Dictate"
     @Published var page = "home"

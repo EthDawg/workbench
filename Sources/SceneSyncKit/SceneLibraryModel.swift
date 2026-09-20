@@ -132,6 +132,22 @@ public enum SceneSyncError: LocalizedError, Equatable {
         guard !archive.records[i].isDeleted else { return }
         var next = archive; next.records[i].isDeleted = true; next.records[i].revision = UUID(); next.records[i].modified = Date(); try commit(next); authoredChangeCommitted()
     }
+    /// Confirmed selections are one transaction. Any stale member rejects the
+    /// entire deletion; immutable assets and active presentation copies remain.
+    public func delete(expectedRevisions: [UUID: UUID]) throws {
+        try ensureWritable()
+        guard !expectedRevisions.isEmpty else { return }
+        let selected = archive.records.filter { expectedRevisions[$0.id] != nil }
+        guard selected.count == expectedRevisions.count,
+              selected.allSatisfy({ !$0.isDeleted && expectedRevisions[$0.id] == $0.revision })
+        else { throw SceneDocumentError.concurrentChange }
+        var next = archive
+        let now = Date()
+        for i in next.records.indices where expectedRevisions[next.records[i].id] != nil {
+            next.records[i].isDeleted = true; next.records[i].revision = UUID(); next.records[i].modified = now
+        }
+        try commit(next); authoredChangeCommitted()
+    }
     @discardableResult public func duplicate(id: UUID) throws -> SavedSceneRecord {
         guard let record = archive.records.first(where: { $0.id == id }) else { throw SceneDocumentError.invalid("This scene is no longer available.") }
         var scene = record.scene; scene.id = UUID(); scene.name = String(scene.name.prefix(150)) + " · copy"
@@ -150,10 +166,12 @@ public enum SceneSyncError: LocalizedError, Equatable {
     }
     public func hasAdoptedLegacySource(_ sourceID: String) -> Bool { archive.adoptedLegacyIDs.contains(sourceID) }
     /// Order is a local library preference; it does not create authored scene revisions.
-    public func reorder(ids: [UUID]) throws {
+    public func reorder(ids: [UUID], expectedOrder: [UUID]? = nil) throws {
         try ensureWritable()
         let live = archive.records.filter { !$0.isDeleted }
+        if let expectedOrder, expectedOrder != live.map(\.id) { throw SceneDocumentError.concurrentChange }
         guard ids.count == live.count, Set(ids).count == ids.count, Set(ids) == Set(live.map(\.id)) else { throw SceneDocumentError.concurrentChange }
+        guard ids != live.map(\.id) else { return }
         let indexed = Dictionary(uniqueKeysWithValues: live.map { ($0.id, $0) })
         var next = archive; next.records = ids.compactMap { indexed[$0] } + archive.records.filter(\.isDeleted)
         try commit(next)

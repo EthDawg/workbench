@@ -296,9 +296,6 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var shortcutFailure: String?
     @Published var notice: String?
-    @Published var showHUD = UserDefaults.standard.object(forKey: "readback.showHUD.v1") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(showHUD, forKey: "readback.showHUD.v1"); stateChanged() }
-    }
     @Published private(set) var transcriptDrafts: [UUID: String] = [:]
 
     var onStateChange: (() -> Void)?
@@ -717,8 +714,10 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private func captureScreen(fromEditor: Bool) async throws -> ReadbackScreenshot {
         if fromEditor {
             onHideForEditorCapture?()
-            try? await Task.sleep(nanoseconds: 250_000_000)
         }
+        // isCapturing synchronously hides the shared toolbar for every entry
+        // point. Give WindowServer a frame before acquiring the display.
+        try await Task.sleep(nanoseconds: 250_000_000)
         defer { if fromEditor { onRestoreAfterEditorCapture?() } }
         return try await captureDisplay()
     }

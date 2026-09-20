@@ -86,18 +86,31 @@ final class BreakTimerPlacementTests {
         XCTAssertEqual(app.timerPlacementAnchor, .topLeft, "Hiding and reopening must preserve the named position")
         XCTAssertTrue(window.isVisible)
         XCTAssertNotNil(window.contentView)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+        // Restoration releases its move guard on the main queue. A fixed sleep
+        // can expire before that turn on a loaded hosted Mac; moving then is
+        // correctly treated as restoration rather than as a released drag.
+        var restorationSettled = false
+        DispatchQueue.main.async { restorationSettled = true }
+        waitForNativeState { restorationSettled }
+        XCTAssertTrue(restorationSettled, "The restoration main-queue turn must complete before simulating a drag")
         let target = FloatingControlGeometry.frame(anchor: .bottomRight, size: window.frame.size, visibleFrame: testDisplay.visibleFrame)
         window.setFrameOrigin(NSPoint(x: target.minX - 8, y: target.minY + 8))
-        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        waitForNativeState { app.timerPlacementAnchor == .bottomRight && window.frame == target }
         XCTAssertEqual(app.timerPlacementAnchor, .bottomRight)
         XCTAssertEqual(window.frame, target, "Releasing a drag near an anchor must visibly snap immediately")
         let snapped = try Data(contentsOf: placementURL)
         let savedDrag = try JSONDecoder().decode(BreakTimerPlacement.self, from: snapped)
         XCTAssertEqual(savedDrag.position.anchor, .bottomRight)
         app.hideTimer(); app.toggleTimer()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        waitForNativeState { window.frame == target }
         XCTAssertEqual(window.frame, target, "The saved anchor must match the visible position before and after reopening")
         XCTAssertEqual(try Data(contentsOf: placementURL), snapped, "Programmatic restoration must not rewrite the user placement")
+    }
+
+    private func waitForNativeState(_ ready: () -> Bool) {
+        let deadline = Date().addingTimeInterval(2)
+        while !ready() && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
     }
 }
