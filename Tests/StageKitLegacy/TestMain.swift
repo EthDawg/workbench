@@ -4,6 +4,29 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--scene-media-only"] {
+            _ = NSApplication.shared
+            let media = SceneMediaTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("logo browser addresses and inline validation", media.testSearchAndImageAddressesStayBounded),
+                ("logo browser bounded download validation", media.testDownloadsRejectOversizeHTMLAndInvalidBytes),
+                ("logo browser request cancellation", media.testDownloadCancellationStopsTheOwnedRequest),
+                ("logo browser explicit captured-scene save", media.testWebLogoPreviewAndExplicitSavePreserveOtherScenes),
+                ("editor motion suppression and drag pause", media.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
+                ("editor drag revision preservation", SceneSyncAdapterTests().testCanvasDragCommitsOnceAndRejectsInterveningRevision),
+                ("ambient poster orientation and clipping", AmbientSceneTests().testMovingSceneViewMatchesPosterOrientationAndClipsCloudsToWindow),
+                ("ambient missing artwork and ordinary-photo playback", AmbientSceneTests().testMissingRigAssetKeepsCompletePosterAndDoesNotBecomePhotoZoom),
+                ("motion exports stay still", GentleMotionTests().testMotionDoesNotChangeStillExport),
+                ("motion transparent photograph base", GentleMotionTests().testTransparentPhotographKeepsStillBase)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-session-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.overlay-review" {
             _ = NSApplication.shared
             PersonaSessionFixture().run()
@@ -91,6 +114,7 @@ struct TestRunner {
         let ambientScenes = AmbientSceneTests()
         let viewportFit = ViewportFitTests()
         let logoImport = LogoImportTests()
+        let sceneMedia = SceneMediaTests()
         let personas = PersonaTests()
         let personaSessions = PersonaSessionTests()
         let personaStarters = PersonaStarterTests()
@@ -166,6 +190,11 @@ struct TestRunner {
             ("logo native WebP decoding and alpha", logoImport.testWebPAndTransparentPadding),
             ("logo image orientation and rejection", logoImport.testOrientationAndInvalidImages),
             ("logo paste image and file persistence", logoImport.testPasteImageAndFilePersistence),
+            ("logo browser addresses and inline validation", sceneMedia.testSearchAndImageAddressesStayBounded),
+            ("logo browser bounded download validation", sceneMedia.testDownloadsRejectOversizeHTMLAndInvalidBytes),
+            ("logo browser request cancellation", sceneMedia.testDownloadCancellationStopsTheOwnedRequest),
+            ("logo browser explicit captured-scene save", sceneMedia.testWebLogoPreviewAndExplicitSavePreserveOtherScenes),
+            ("editor motion suppression and drag pause", sceneMedia.testMotionPolicyReportsSuppressionAndCanvasPausesForEditing),
             ("persona starter: CatalogHasStableUniqueBundleNamesAndEditableLabels", personaStarters.testCatalogHasStableUniqueBundleNamesAndEditableLabels),
             ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", personaStarters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),

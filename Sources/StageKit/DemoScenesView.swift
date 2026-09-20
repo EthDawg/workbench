@@ -6,6 +6,12 @@ struct DemoScenesView: View {
     @State private var removalRequest: SceneRemovalRequest?
     @State private var choosingStarter = false
     @State private var choosingLogo = false
+    @State private var searchingLogo = false
+    @State private var logoSceneID: UUID?
+    @State private var previewPaused = false
+    @State private var previewMotionState = SceneMotionState.off
+    @State private var adjustingLayout = false
+    @State private var resizingDevice = false
     @State private var creatingTextLogo = false
     @State private var textLogoName = "Your company"
     @State private var backdropReplacement: BackdropReplacement?
@@ -48,7 +54,12 @@ struct DemoScenesView: View {
                             .accessibilityLabel("Scene options")
                     }
                     if let image = model.image(for: scene) {
-                        SceneCanvas(scene: scene, image: image, logoImage: model.logoImage(for: scene), handImage: model.handImage(for: scene), personaImage: model.personaImage(for: scene), editable: !model.isSceneReadOnly(scene)) { value in
+                        SceneCanvas(scene: scene, image: image, logoImage: model.logoImage(for: scene), handImage: model.handImage(for: scene), personaImage: model.personaImage(for: scene), editable: !model.isSceneReadOnly(scene),
+                                    paused: previewPaused, editing: adjustingLayout || resizingDevice,
+                                    covered: searchingLogo || choosingLogo || choosingStarter || backdropReplacement != nil || model.choosingPersonas,
+                                    loadAmbience: model.ambienceImages, motionChanged: { state in
+                            DispatchQueue.main.async { if model.selectedID == scene.id { previewMotionState = state } }
+                        }) { value in
                             model.update(value) ? model.scenes.first(where: { $0.id == value.id }) : nil
                         }
                             .frame(width: previewSize(in: editor.size).width, height: previewSize(in: editor.size).height)
@@ -56,6 +67,7 @@ struct DemoScenesView: View {
                             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.12)))
                             .accessibilityLabel("Scene preview. Drag the phone or persona to position it; drag the background to crop it.")
                             .frame(maxWidth: .infinity)
+                            .onChange(of: scene.id) { _, _ in previewPaused = false; adjustingLayout = false; resizingDevice = false }
                         HStack {
                             Text("Drag to position · saved on release")
                             Spacer()
@@ -67,7 +79,7 @@ struct DemoScenesView: View {
                             Toggle("Device frame", isOn: binding(\.showsPhone)).toggleStyle(.switch)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text("Device size").font(.caption).foregroundStyle(.secondary)
-                                Slider(value: binding(\.phoneHeight), in: ViewportGeometry.heightRange).disabled(!scene.showsPhone)
+                                Slider(value: binding(\.phoneHeight), in: ViewportGeometry.heightRange, onEditingChanged: { resizingDevice = $0 }).disabled(!scene.showsPhone)
                                     .accessibilityLabel("Device size")
                             }
                             Button("Maximise") {
@@ -75,16 +87,24 @@ struct DemoScenesView: View {
                             }.disabled(!scene.showsPhone).help("Fill the available height while keeping the whole frame visible")
                         }
                         #if !APP_STORE
-                        HStack {
+                        HStack(spacing: 12) {
                             Toggle("Gentle motion", isOn: Binding(get: { scene.gentleMotion == true }, set: { enabled in
-                                var value = model.selected ?? scene; value.gentleMotion = enabled ? true : nil; model.update(value)
+                                var value = model.selected ?? scene; value.gentleMotion = enabled ? true : nil; model.update(value); previewPaused = false
                             }))
-                            Text(scene.ambience == nil ? "Moves the photo when presenting. Exports stay still." : "Moves only the natural details. Exports stay still.").font(.caption).foregroundStyle(.secondary)
+                            if scene.gentleMotion == true {
+                                Button { previewPaused.toggle() } label: {
+                                    Label(previewPaused ? "Play preview" : "Pause preview", systemImage: previewPaused ? "play.fill" : "pause.fill")
+                                }
+                                Text(previewMotionState.description).font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("Preview and present with motion. Exports stay still.").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
                         }
                         #endif
                         logoControls(scene)
                         personaControls(scene)
-                        DisclosureGroup("Adjust layout") {
+                        DisclosureGroup("Adjust layout", isExpanded: $adjustingLayout) {
                         VStack(alignment: .leading, spacing: 16) {
                             HStack {
                                 Text("Backdrop zoom").font(.caption).foregroundStyle(.secondary)
@@ -209,6 +229,12 @@ struct DemoScenesView: View {
             }
         }
         .sheet(isPresented: $choosingLogo) { SavedLogoGallery(model: model) }
+        .sheet(isPresented: $searchingLogo) {
+            LogoBrowser { image in
+                guard let id = logoSceneID else { throw SceneError.noScene }
+                try model.addLogo(image, to: id)
+            }
+        }
         .sheet(isPresented: $model.choosingPersonas) {
             if let id = model.personaSceneID {
                 PersonaLibraryView(library: model.personas, onChoose: { persona in
@@ -364,6 +390,7 @@ struct DemoScenesView: View {
     }
     private func logoMenu(_ title: String) -> some View {
         Menu(title) {
+            Button("Find on the web…") { logoSceneID = model.selectedID; searchingLogo = true }
             Button("Choose image…") { model.importLogo() }
             Button("Saved logos…") { choosingLogo = true }.disabled(model.savedLogos.isEmpty)
             Button("Create text logo…") { creatingTextLogo = true }
@@ -398,47 +425,83 @@ private struct SceneCanvas: NSViewRepresentable {
     let handImage: NSImage?
     let personaImage: NSImage?
     let editable: Bool
+    let paused: Bool
+    let editing: Bool
+    let covered: Bool
+    let loadAmbience: (DemoScene) -> AmbientSceneImages?
+    let motionChanged: (SceneMotionState) -> Void
     let update: (DemoScene) -> DemoScene?
     func makeNSView(context: Context) -> SceneCanvasView { SceneCanvasView() }
     func updateNSView(_ view: SceneCanvasView, context: Context) {
-        view.receive(scene); view.image = image; view.logoImage = logoImage; view.handImage = handImage; view.personaImage = personaImage; view.update = update; view.editable = editable; view.needsDisplay = true
+        view.motionChanged = motionChanged
+        view.previewPaused = paused; view.layoutEditing = editing; view.previewCovered = covered
+        view.receive(scene, loadAmbience: loadAmbience)
+        view.image = image; view.logoImage = logoImage; view.handImage = handImage; view.personaImage = personaImage; view.update = update; view.editable = editable
+        view.refreshPreview()
     }
+    static func dismantleNSView(_ view: SceneCanvasView, coordinator: ()) { view.stopPreview() }
 }
 
 final class SceneCanvasView: NSView {
     var scene: DemoScene?
-    var image: NSImage?
-    var logoImage: NSImage?
-    var handImage: NSImage?
-    var personaImage: NSImage?
+    var image: NSImage? { didSet { refreshPreview() } }
+    var logoImage: NSImage? { didSet { refreshPreview() } }
+    var handImage: NSImage? { didSet { refreshPreview() } }
+    var personaImage: NSImage? { didSet { refreshPreview() } }
     var update: ((DemoScene) -> DemoScene?)?
     var editable = true
+    var previewPaused = false { didSet { refreshPreview() } }
+    var layoutEditing = false { didSet { refreshPreview() } }
+    var previewCovered = false { didSet { refreshPreview() } }
+    var motionChanged: ((SceneMotionState) -> Void)?
+    private let preview = MovingSceneView()
+    private let handles = SceneCanvasHandles()
+    private var ambience: AmbientSceneImages?
+    private(set) var isDragging = false
+    var motionState: SceneMotionState { preview.motionState }
     private var origin = CGPoint.zero
     private var initial: DemoScene?
     private var dragPreview: DemoScene?
-    func receive(_ value: DemoScene) {
-        if scene?.id != value.id { initial = nil; dragPreview = nil }
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        preview.requiresActiveApplication = true
+        addSubview(preview); addSubview(handles)
+        preview.motionStateChanged = { [weak self] state in self?.motionChanged?(state) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
+    override func layout() {
+        super.layout(); preview.frame = bounds; handles.frame = bounds
+        preview.needsLayout = true; handles.needsDisplay = true
+    }
+    func receive(_ value: DemoScene, loadAmbience: ((DemoScene) -> AmbientSceneImages?)? = nil) {
+        if scene?.id != value.id { initial = nil; dragPreview = nil; isDragging = false }
+        if scene?.id != value.id || scene?.ambience != value.ambience || scene?.background != value.background {
+            ambience = loadAmbience?(value)
+        }
         scene = value
+        refreshPreview()
+    }
+    func refreshPreview() {
+        guard let value = dragPreview ?? scene, let image else { return }
+        preview.configure(scene: value, backdrop: image, logo: logoImage, hand: handImage, persona: personaImage, ambience: ambience)
+        preview.motionSuspension = (isDragging || layoutEditing) ? .editing : previewCovered ? .covered : previewPaused ? .paused : nil
+        #if !APP_STORE
+        preview.motionRequested = value.gentleMotion == true
+        #endif
+        handles.scene = value; handles.needsDisplay = true
+    }
+    func stopPreview() {
+        preview.motionRequested = false; preview.motionStateChanged = nil
     }
     private var movingPhone = false
     private var movingPersona = false
     private var resizingWidth = false
     private var resizingSize = false
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func draw(_ dirtyRect: NSRect) {
-        guard let scene = dragPreview ?? scene, let image else { return }
-        SceneRenderer.draw(scene, image: image, size: bounds.size, logoImage: logoImage, handImage: handImage, personaImage: personaImage)
-        if scene.showsPhone {
-            let rect = SceneRenderer.phoneRect(scene, in: bounds.size)
-            NSColor.controlAccentColor.setFill()
-            for point in [CGPoint(x: rect.maxX, y: rect.midY), CGPoint(x: rect.maxX, y: rect.minY)] {
-                NSBezierPath(ovalIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)).fill()
-            }
-        }
-    }
     override func mouseDown(with event: NSEvent) {
         guard editable else { return }
-        origin = convert(event.locationInWindow, from: nil); initial = scene
+        origin = convert(event.locationInWindow, from: nil); initial = scene; isDragging = true; refreshPreview()
         movingPersona = false
         if let scene {
             if let persona = scene.persona, let personaImage {
@@ -480,18 +543,32 @@ final class SceneCanvasView: NSView {
             if overflowX > 1 { draft.backgroundX -= delta.x / overflowX }
             if overflowY > 1 { draft.backgroundY -= delta.y / overflowY }
         }
-        dragPreview = try? draft.validated(); needsDisplay = true
+        dragPreview = try? draft.validated(); refreshPreview()
     }
     override func mouseUp(with event: NSEvent) {
-        let pending = dragPreview; dragPreview = nil; initial = nil
+        let pending = dragPreview; dragPreview = nil; initial = nil; isDragging = false
         // Commit once per drag. The captured revision rejects an intervening
         // remote edit, and large immutable pictures are not rehashed per pixel.
         if let pending, let saved = update?(pending) { scene = saved }
-        needsDisplay = true
+        refreshPreview()
     }
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil { dragPreview = nil; initial = nil }
+        if newWindow == nil { dragPreview = nil; initial = nil; isDragging = false; preview.motionRequested = false }
         super.viewWillMove(toWindow: newWindow)
+    }
+}
+
+private final class SceneCanvasHandles: NSView {
+    var scene: DemoScene?
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let scene, scene.showsPhone else { return }
+        let rect = SceneRenderer.phoneRect(scene, in: bounds.size)
+        NSColor.controlAccentColor.setFill()
+        for point in [CGPoint(x: rect.maxX, y: rect.midY), CGPoint(x: rect.maxX, y: rect.minY)] {
+            NSBezierPath(ovalIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)).fill()
+        }
     }
 }
 

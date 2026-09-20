@@ -602,7 +602,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             try addLogo(LogoImport.read(pasteboard), to: sceneID)
         } catch { notice = error.localizedDescription }
     }
-    private func addLogo(_ imported: LogoImport.Image, to sceneID: UUID) throws {
+    func addLogo(_ imported: LogoImport.Image, to sceneID: UUID) throws {
         guard !storageBlocked else { throw SceneError.storageBlocked }
         guard var scene = scenes.first(where: { $0.id == sceneID }) else { throw SceneError.noScene }
         let filename = UUID().uuidString + ".png"
