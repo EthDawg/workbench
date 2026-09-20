@@ -1,8 +1,60 @@
 import AppKit
 import StageKit
+import SwiftUI
 
 @MainActor
 enum FloatingToolbarChecks {
+    /// Render the production views only from the existing disposable debug app.
+    /// No microphone, capture, paste, shortcuts or live user library is involved.
+    static func render(to directory: URL) throws {
+        guard Workbench.fixtureRoot != nil else {
+            throw VoiceError.message("Toolbar rendering requires the disposable debug QA bundle.")
+        }
+        let model = AppModel()
+        model.ready = true
+        let readback = ReadbackModel(engine: model.engine)
+        let stage = StageKitController(onOpenControls: {}, onOpenScenes: {})
+        let collapsed = CaptureHUDControls(), hovered = CaptureHUDControls(), expanded = CaptureHUDControls()
+        collapsed.collapseToolbar(); hovered.hover(true); expanded.expandToolbar()
+        func toolbar(_ controls: CaptureHUDControls) -> some View {
+            FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls,
+                dictate: {}, snap: {}, draw: {}, present: {})
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for appearance in [WorkbenchSettings.Appearance.light, .dark] {
+            WorkbenchSettings.shared.setAppearance(appearance)
+            let root = VStack(alignment: .leading, spacing: 18) {
+                Text("Workbench · floating controls").font(.system(size: 20, weight: .semibold))
+                HStack(spacing: 20) {
+                    Text("At rest").frame(width: 90, alignment: .leading)
+                    toolbar(collapsed)
+                }
+                HStack(spacing: 20) {
+                    Text("On hover").frame(width: 90, alignment: .leading)
+                    toolbar(hovered)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Expanded · stays open")
+                    toolbar(expanded)
+                }
+                Text("Actual native views · synthetic idle state").font(.caption).foregroundStyle(.secondary)
+            }.font(.system(size: 12)).padding(28).frame(width: 580, height: 386, alignment: .topLeading)
+                .background(Color(nsColor: .windowBackgroundColor)).workbenchTheme()
+            let view = NSHostingView(rootView: root)
+            view.frame = NSRect(x: 0, y: 0, width: 580, height: 386)
+            view.layoutSubtreeIfNeeded()
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                throw VoiceError.message("Toolbar bitmap allocation failed")
+            }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+                throw VoiceError.message("Toolbar PNG encoding failed")
+            }
+            try png.write(to: directory.appendingPathComponent("toolbar-" + appearance.rawValue.lowercased() + ".png"))
+        }
+        print("FLOATING_TOOLBAR_RENDER_OK: " + directory.path)
+    }
+
     static func run() async throws {
         var count = 0
         func check(_ condition: Bool, _ name: String) throws {

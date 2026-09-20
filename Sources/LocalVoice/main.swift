@@ -442,6 +442,14 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
         case "--check-floating-toolbar":
             try await FloatingToolbarChecks.run()
+        case "--render-floating-toolbar-fixture":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-floating-toolbar-fixture OUTPUT_DIRECTORY") }
+            try await MainActor.run {
+                _ = NSApplication.shared
+                NSApp.setActivationPolicy(.prohibited)
+                NSApp.finishLaunching()
+                try FloatingToolbarChecks.render(to: URL(fileURLWithPath: args[1]))
+            }
         case "--check-reading-cancellation":
             try await AudioRendererCancellationChecks.run()
         case "--check-library":
