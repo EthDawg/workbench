@@ -26,6 +26,29 @@ struct TestRunner {
             BoardPresentationFixture().run()
             return
         }
+        if args == ["--timer-placement-only"] {
+            let timerPlacement = BreakTimerPlacementTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
+                ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--timer-placement-native"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            do { try BreakTimerPlacementTests().testNativeTimerReopensAtItsSavedAnchor() }
+            catch { assertionFailures += 1; fputs("FAIL timer native close and reopen placement: \(error)\n", stderr) }
+            fputs("1 native timer placement test · \(assertionCount) assertions · \(assertionFailures) failures\n", stderr)
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--phone-guide-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.phone-route-review" {
             _ = NSApplication.shared
             PhonePresentationFixture().run()
@@ -62,6 +85,7 @@ struct TestRunner {
         let personaSessions = PersonaSessionTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
+        let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
         let workbench = WorkbenchModuleTests()
         let boardExport = BoardExportTests()
@@ -114,6 +138,9 @@ struct TestRunner {
             ("sceneSync: CanvasDragCommitsOnceAndRejectsInterveningRevision", sceneSync.testCanvasDragCommitsOnceAndRejectsInterveningRevision),
             ("floating controls anchors bounds and resize", floating.testAnchorsBoundsAndResize),
             ("floating controls snap and display recovery", floating.testSnapThresholdsAndDisplayRecovery),
+            ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
+            ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles),
+            ("timer native close and reopen placement", timerPlacement.testNativeTimerReopensAtItsSavedAnchor),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
