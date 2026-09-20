@@ -1,0 +1,16 @@
+.ambient-gallery{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:32px}
+.ambient-gallery figure{margin:0;min-width:0}
+.ambient-gallery figure:first-child{grid-column:1/-1}
+.ambient-guide .ambient-gallery img{aspect-ratio:1672/941;object-fit:contain;background:#eef2ee}
+.ambient-guide .ambient-gallery figure:first-child img{max-height:660px}
+.ambient-guide .ambient-gallery figcaption{display:flex;align-items:baseline;gap:18px;margin-top:16px;max-width:none}
+.ambient-gallery h3{margin:0 0 5px;font-size:23px;color:var(--ink)}
+.ambient-gallery p{margin:0;font-size:15px;color:var(--muted)}
+.ambient-number{font-size:12px;font-weight:600;color:#56786b;flex-shrink:0}
+.ambient-guide .bridge p{margin:0}
+.ambient-guide .ambient-disclosure{padding:0 20px 20px;color:var(--ink)}
+.ambient-disclosure>p:first-child{margin-top:0}
+.ambient-disclosure>p:last-child{margin-bottom:0}
+.ambient-disclosure .table-wrap{margin:20px 0}
+@media(max-width:650px){.ambient-gallery{grid-template-columns:1fr;gap:28px}.ambient-gallery figure:first-child{grid-column:auto}.ambient-guide .ambient-gallery figcaption{gap:12px}.ambient-guide .ambient-disclosure{padding:0 16px 16px}.ambient-gallery h3{font-size:21px}}
+@media print{.ambient-gallery{display:block}.ambient-gallery figure{margin-bottom:24px;break-inside:avoid}}

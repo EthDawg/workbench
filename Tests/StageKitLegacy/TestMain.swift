@@ -4,6 +4,18 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--persona-session-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.overlay-review" {
+            _ = NSApplication.shared
+            PersonaSessionFixture().run()
+            return
+        }
+        if args == ["--colour-accessibility-only"] {
+            let suite = CoreTests(), before = assertionFailures
+            suite.testInkColourAccessibilityDescriptions()
+            if assertionFailures == before { print("PASS ink colour accessibility descriptions") }
+            print("1 tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--backdrop-fixture"] {
             _ = NSApplication.shared
             BackdropReplacementFixture().run()
@@ -14,27 +26,75 @@ struct TestRunner {
             BoardPresentationFixture().run()
             return
         }
+        if args == ["--timer-placement-only"] {
+            let timerPlacement = BreakTimerPlacementTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
+                ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--screenshot-native-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            do { try IntegrationTests().testScreenshotHandoffPreservesInkAndSuspendsInput() }
+            catch { assertionFailures += 1; print("FAIL screenshot native handoff: \(error)") }
+            print("1 tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--timer-placement-native"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            do { try BreakTimerPlacementTests().testNativeTimerReopensAtItsSavedAnchor() }
+            catch { assertionFailures += 1; fputs("FAIL timer native close and reopen placement: \(error)\n", stderr) }
+            fputs("1 native timer placement test · \(assertionCount) assertions · \(assertionFailures) failures\n", stderr)
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--phone-guide-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.phone-route-review" {
+            _ = NSApplication.shared
+            PhonePresentationFixture().run()
+            return
+        }
         let boardPresentationOnly = args == ["--board-presentation-only"]
         let backdropOnly = args == ["--backdrop-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture]")
+        let personaQuickOnly = args == ["--persona-quick-only"]
+        let screenshotStateOnly = args == ["--screenshot-state-only"]
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly else {
+            print("Usage: StageMarkTests [--ci | --scenes-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
+
             exit(2)
         }
         let scenesOnly = args == ["--scenes-only"]
         let hostedCI = args == ["--ci"]
-        _ = NSApplication.shared
-        NSApp.setActivationPolicy(.accessory)
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly { NSApp.finishLaunching() }
+        if !screenshotStateOnly {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
+        }
         let suite = CoreTests()
         let integration = IntegrationTests()
         let scenes = SceneTests()
         let assets = SceneAssetTests()
         let demo = DemoModeTests()
+        let phonePresentation = PhonePresentationTests()
+        let desktopMotion = DesktopMotionTests()
+        let gentleMotion = GentleMotionTests()
+        let ambientScenes = AmbientSceneTests()
         let viewportFit = ViewportFitTests()
         let logoImport = LogoImportTests()
         let personas = PersonaTests()
+        let personaSessions = PersonaSessionTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
+        let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
         let workbench = WorkbenchModuleTests()
         let boardExport = BoardExportTests()
@@ -55,6 +115,22 @@ struct TestRunner {
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),
             ("presentation window and fullscreen lifecycle", presentationLifecycle.testModeChangesKeepPresentationAndEndClosesOnce),
             ("presentation transition interruption and failure recovery", presentationLifecycle.testEndDuringNativeTransitionsAndFailureRecovery),
+            ("phone: restricted versus denied video access", phonePresentation.testRestrictedCameraGuidanceDoesNotOfferUserPermissionToggle),
+            ("phone: explicit first source selection", phonePresentation.testFirstCaptureRequiresExplicitSelectionEvenForMuxedHint),
+            ("phone: handoff waits for capture and window", phonePresentation.testNativeHandoffWaitsForBothCaptureAndWindowInEitherOrder),
+            ("phone: handoff launch and ordinary close ownership", phonePresentation.testHandoffKeepsFirstRequestAndDoesNotRetryFailedLaunchOrOrdinaryClose),
+            ("phone: handoff native transition failure", phonePresentation.testHandoffWaitsThroughFailedNativeTransitionAndRepeatedEnd),
+            ("phone: capture release retains pending handoff", phonePresentation.testCaptureStopCompletionRetainsHandoffAfterPresenterRelease),
+            ("persona sessions: empty return and visible feedback", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
+            ("persona sessions: opt-in archive migration", personaSessions.testOptInMigrationBacksUpExactArchiveAndPreservesLegacyPlacement),
+            ("persona sessions: independent placed copies", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
+            ("persona sessions: paused switching and frozen scope", personaSessions.testPausedGroupSwitchKeepsLayoutsAndFrozenAllowedScope),
+            ("persona sessions: frozen artwork and failed start", personaSessions.testFrozenArtworkSurvivesLibraryEditsAndFailedReplacementStart),
+            ("persona sessions: explicit conflict-aware layout save", personaSessions.testSaveLayoutIsExplicitAtomicAndRejectsChangedPreparation),
+            ("persona sessions: read-only and busy state", personaSessions.testReadOnlySessionsAndInteractionGuardsNeverWriteOrTrapOverlays),
+            ("persona sessions: invalid and future archive preservation", personaSessions.testInvalidLayoutsAndFutureArchivePreserveOriginalBytes),
+            ("persona sessions: bounded replacement preflight", personaSessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
+            ("persona: visible single-card launch failure", personaSessions.testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput),
             ("floating: AllTargetsAreDistinctFiniteAndBounded", floating.testAllTargetsAreDistinctFiniteAndBounded),
             ("floating: GuideLayoutPreservesTargetsAndFlipsDisplayCoordinates", floating.testGuideLayoutPreservesTargetsAndFlipsDisplayCoordinates),
             ("floating: GuideStateClearsWhenDragOrDisplayEnds", floating.testGuideStateClearsWhenDragOrDisplayEnds),
@@ -71,6 +147,9 @@ struct TestRunner {
             ("sceneSync: CanvasDragCommitsOnceAndRejectsInterveningRevision", sceneSync.testCanvasDragCommitsOnceAndRejectsInterveningRevision),
             ("floating controls anchors bounds and resize", floating.testAnchorsBoundsAndResize),
             ("floating controls snap and display recovery", floating.testSnapThresholdsAndDisplayRecovery),
+            ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
+            ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles),
+            ("timer native close and reopen placement", timerPlacement.testNativeTimerReopensAtItsSavedAnchor),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
@@ -86,6 +165,8 @@ struct TestRunner {
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
             ("persona scene attachment transparency and missing-file recovery", personas.testSceneAttachmentTransparencyAndMissingFile),
             ("persona native window focus lock drag and visibility", personas.testNativeOverlayWindowAndDragLifecycle),
+            ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+            ("persona read-only HUD browsing and placement", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement),
             ("desktop verification waits for macOS and times out safely", scenes.testDesktopVerificationWaitsForMacOSAndStopsAtTimeout),
             ("scene search keeps customer selection consistent", scenes.testSceneSearchSelectsOnlyMatchingCustomers),
             ("desktop recovery across interrupted scene switch", scenes.testDesktopRecoverySurvivesInterruptedSwitch),
@@ -120,6 +201,7 @@ struct TestRunner {
             ("undo clear", suite.testClearIsUndoableAndEmptyClearDoesNotAddHistory),
             ("bounded history", suite.testHistoryIsBounded),
             ("fade lifecycle", suite.testFadeTimingAndExpiredInkCannotResurrect),
+            ("Screenshot handoff state and fade pause", suite.testScreenshotHandoffStateAndFadePause),
             ("countdown pause resume sleep", suite.testCountdownPauseResumeAndSleep),
             ("countdown formatting", suite.testCountdownRoundingAndHours),
             ("board persistence", suite.testBoardPersistenceRoundTripAndSeparateDisplays),
@@ -128,17 +210,43 @@ struct TestRunner {
             ("shortcut uniqueness", suite.testDefaultShortcutsAreUniqueAndComplete),
             ("settings persistence and bounds", suite.testPreferencesPersistAndClamp),
             ("settings recovery", suite.testCorruptPreferencesArePreservedForRecovery),
+            ("ink colour accessibility descriptions", suite.testInkColourAccessibilityDescriptions),
             ("actual rendering for every tool", suite.testAllToolsRenderToRealPixels),
             ("native mouse handlers and text commit", integration.testActualMouseHandlersAndTextCommit),
             ("first stroke after activation", integration.testFirstStrokeAfterActivationReachesInactiveCanvas),
             ("native drawing lifecycle and board isolation", integration.testDrawingLifecycleAndBoardIsolation),
+            ("Screenshot handoff preserves ink and suspends input", integration.testScreenshotHandoffPreservesInkAndSuspendsInput),
             ("global shortcut registration and release", integration.testShortcutRegistrationAndRelease)
         ]
+        tests.insert(contentsOf: [
+            ("ambient starter exact assets duplicate and reopen", ambientScenes.testAllStartersKeepExactPortableAssetsThroughDuplicateAndReopen),
+            ("ambient crop replacement and original preservation", ambientScenes.testCropKeepsRecipeAndReplacementClearsItWithoutRemovingOriginals),
+            ("ambient stale recipe draft rejection", ambientScenes.testStaleCropAndSceneDraftRejectAnInterveningRecipeChange),
+            ("ambient native scene poster orientation and window mask", ambientScenes.testMovingSceneViewMatchesPosterOrientationAndClipsCloudsToWindow),
+            ("ambient missing detail poster fallback", ambientScenes.testMissingRigAssetKeepsCompletePosterAndDoesNotBecomePhotoZoom),
+            ("motion legacy and portable settings", gentleMotion.testLegacyAndPortableSceneMotion),
+            ("motion export pixels stay still", gentleMotion.testMotionDoesNotChangeStillExport),
+            ("motion foreground remains transparent", gentleMotion.testForegroundExcludesPhotograph),
+            ("motion transparent photo keeps still base", gentleMotion.testTransparentPhotographKeepsStillBase),
+            ("desktop ownership and spaces", desktopMotion.testDesktopOwnershipLossCannotResumeOrFollowAnotherSpace),
+            ("desktop sleep and pause independence", desktopMotion.testDesktopSleepReasonsAndPauseRemainIndependent),
+            ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
+        ], at: 5)
         tests.insert(contentsOf: backdropTests, at: 5)
-        if backdropOnly {
+        if personaQuickOnly {
+            tests = [
+                ("persona quick shortcuts and default keys", suite.testDefaultShortcutsAreUniqueAndComplete),
+                ("persona quick shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
+                ("persona quick frozen selection", personas.testLiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames),
+                ("persona quick overlay cycling and lifecycle", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona quick read-only cycling", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement)
+            ]
+        } else if backdropOnly {
             tests = backdropTests
         } else if boardPresentationOnly {
             tests = Array(tests.prefix(5))
+        } else if screenshotStateOnly {
+            tests = [("Screenshot handoff state and fade pause", suite.testScreenshotHandoffStateAndFadePause)]
         } else if scenesOnly {
             tests = Array(tests.prefix { $0.0 != "line hit testing" })
         } else if hostedCI {
@@ -146,7 +254,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }

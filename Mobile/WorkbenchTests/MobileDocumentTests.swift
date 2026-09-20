@@ -508,6 +508,52 @@ final class MobileDocumentTests: XCTestCase {
     }
 
     @MainActor
+    func testPasteKeepsPreviousDraftAndOriginalInOneCommit() throws {
+        let directory = try temporaryDirectory()
+        let store = MobileStore(directory: directory)
+        XCTAssertTrue(store.change { $0.draft = "Earlier edited words"; $0.draftOriginal = "Earlier original" })
+        XCTAssertTrue(store.replaceDraftWithPaste("New pasted words", preserving: "Earlier edited words", original: "Earlier original", savedID: nil))
+        XCTAssertEqual(store.document.draft, "New pasted words")
+        XCTAssertEqual(store.document.draftOriginal, "New pasted words")
+        XCTAssertEqual(store.document.texts.count, 1)
+        let saved = try XCTUnwrap(store.document.texts.first)
+        XCTAssertEqual(saved.text, "Earlier edited words")
+        XCTAssertEqual(saved.original, "Earlier original")
+        XCTAssertEqual(try store.disk.load(), store.document)
+        // Updating an existing saved capture must retain identity and original.
+        XCTAssertTrue(store.replaceDraftWithPaste("Second paste", preserving: "Latest manual edit", original: "Should not replace original", savedID: saved.id))
+        XCTAssertEqual(store.document.texts.count, 1)
+        XCTAssertEqual(store.document.texts.first?.id, saved.id)
+        XCTAssertEqual(store.document.texts.first?.original, "Earlier original")
+        XCTAssertEqual(store.document.texts.first?.text, "Latest manual edit")
+        XCTAssertEqual(MobileStore(directory: directory).document, store.document)
+    }
+
+    @MainActor
+    func testPasteFailureOrEmptyPayloadKeepsDraftAndLibraryUntouched() throws {
+        let root = try temporaryDirectory()
+        let directory = root.appendingPathComponent("PasteLibrary")
+        let store = MobileStore(directory: directory)
+        XCTAssertTrue(store.change { $0.draft = "Keep me"; $0.draftOriginal = "Original words" })
+        let before = store.document
+        XCTAssertFalse(store.replaceDraftWithPaste("  ", preserving: "Keep me", original: "Original words", savedID: nil))
+        XCTAssertFalse(store.replaceDraftWithPaste(String(repeating: "x", count: 50_001), preserving: "Keep me", original: "Original words", savedID: nil))
+        XCTAssertEqual(store.document, before)
+        let bytes = try Data(contentsOf: store.disk.manifest)
+        let retained = root.appendingPathComponent("PasteRetained")
+        try FileManager.default.moveItem(at: directory, to: retained)
+        try Data("blocked directory".utf8).write(to: directory)
+        XCTAssertFalse(store.replaceDraftWithPaste("Replacement", preserving: "Keep me", original: "Original words", savedID: nil))
+        XCTAssertEqual(store.document, before)
+        XCTAssertEqual(try Data(contentsOf: retained.appendingPathComponent("library.json")), bytes)
+        try FileManager.default.removeItem(at: directory)
+        try FileManager.default.moveItem(at: retained, to: directory)
+        XCTAssertTrue(store.replaceDraftWithPaste("Replacement", preserving: "Keep me", original: "Original words", savedID: nil))
+        XCTAssertEqual(store.document.texts.count, 1)
+        XCTAssertEqual(try store.disk.load().texts.first?.text, "Keep me")
+    }
+
+    @MainActor
     func testFailedDiskCommitDoesNotPublishNewState() throws {
         let root = try temporaryDirectory()
         let directory = root.appendingPathComponent("Library")

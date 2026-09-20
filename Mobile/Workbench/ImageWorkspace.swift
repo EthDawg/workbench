@@ -316,7 +316,11 @@ struct MobileImageWorkspace: View {
                 }
             }
             if kind == .wallpaper {
-                Text("Apple’s wallpaper picker handles the final crop, clock and widgets.").font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Workbench saves a still picture. Apple’s wallpaper picker handles the final crop, clock and widgets.")
+                    Text("On supported iPhones, an eligible photo can use Apple’s Spatial Scene effect on the Lock Screen. Look for Spatial Scene in the wallpaper picker; it may not be available for this picture.")
+                    Link("Apple’s wallpaper guide", destination: URL(string: "https://support.apple.com/102638")!)
+                }.font(.caption).foregroundStyle(.secondary)
             }
         }
     }

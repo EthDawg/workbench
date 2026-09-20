@@ -12,7 +12,7 @@ struct SceneStarterGallery: View {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Choose a starting point").font(.title2.weight(.semibold))
-                    Text("Make it yours with a customer logo and a name.").foregroundStyle(.secondary)
+                    Text("A picture for your desktop, or the starting point for a presentation.").foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button(organizing ? "Done organising" : "Organise") { organizing.toggle() }
@@ -81,7 +81,10 @@ private struct SceneStarterCard: View {
                         .overlay(Image(systemName: "photo"))
                 }
                 HStack {
-                    Text(starter.name).font(.subheadline.weight(.medium))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(starter.name).font(.subheadline.weight(.medium))
+                        if starter.ambientPreset != nil { Label("Quiet motion", systemImage: "wind").font(.caption).foregroundStyle(.secondary) }
+                    }
                     Spacer(minLength: 4)
                     Image(systemName: "plus.circle.fill").foregroundStyle(Workbench.accent)
                 }.padding(12)

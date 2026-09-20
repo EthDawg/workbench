@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workbench Preview destinations</title>
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body>
+  <header>
+    <img class="mark" src="icons/icon48.png" width="34" height="34" alt="">
+    <div><h1>Workbench <span class="preview-label">Preview</span></h1><p class="eyebrow">Your next destination</p></div>
+    <span id="connection-state" class="connection">Connecting…</span>
+  </header>
+  <main>
+    <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+    <section id="setup" aria-labelledby="setup-heading" hidden>
+      <div class="companion-note">
+        <strong>Requires Workbench Preview for macOS.</strong>
+        <p>Install the companion and enable Chrome connection in Saved resources.</p>
+        <a href="https://workbench-mac.vercel.app/" target="_blank" rel="noopener noreferrer">Get the Mac companion ↗</a>
+      </div>
+      <h2 id="setup-heading">Name this Chrome profile</h2>
+      <p>Choose a name you will recognise while presenting. Connect Workbench in each profile you use.</p>
+      <p class="data-note">Your chosen names, profile labels and saved addresses stay on this device and are shared with the local Workbench app. No passwords or page content are read. <a href="privacy.html" target="_blank" rel="noopener noreferrer">Privacy &amp; permissions</a></p>
+      <form id="connect-form">
+        <label for="profile-name">Profile name</label>
+        <input id="profile-name" name="profileName" placeholder="e.g. Manager profile" maxlength="80" required autocomplete="off">
+        <button class="primary full" type="submit">Connect profile <span aria-hidden="true">↗</span></button>
+      </form>
+    </section>
+    <section id="paired" aria-labelledby="destinations-heading" hidden>
+      <div class="section-heading"><h2 id="destinations-heading">Destinations</h2><button id="refresh" class="text-button" type="button">Refresh</button></div>
+      <label class="sr-only" for="search">Search destinations</label>
+      <input id="search" type="search" placeholder="Find a destination…" autocomplete="off">
+      <p id="empty" class="empty" hidden>No destinations yet. Save a tab below to make your first shortcut.</p>
+      <ul id="destinations" class="destinations" aria-label="Saved destinations"></ul>
+      <div id="offline" class="offline" hidden>
+        <p>Open Workbench and enable Chrome connection in Saved resources, then Retry.</p>
+        <button id="retry" class="secondary" type="button">Retry connection</button>
+      </div>
+      <details id="save-details">
+        <summary>Save or update this tab <span aria-hidden="true">+</span></summary>
+        <form id="save-form">
+          <p class="caption">Saving in <strong id="save-profile"></strong></p>
+          <label for="save-mode">Destination</label>
+          <select id="save-mode"><option value="">Create a new destination</option></select>
+          <label for="destination-title">Audience-safe name</label>
+          <input id="destination-title" maxlength="80" placeholder="e.g. Manager" required autocomplete="off">
+          <div id="old-address" class="address-block" hidden><span class="address-label">Previous address</span><code id="old-url"></code></div>
+          <div class="address-block"><span id="new-address-label" class="address-label">Address to save</span><code id="current-url"></code></div>
+          <p id="stripped" class="caption" hidden>Query parameters and the fragment were removed from this address.</p>
+          <p id="tab-unavailable" class="caption" hidden>Open a regular web tab in this profile, then reopen Workbench.</p>
+          <p id="permission-step" class="caption" hidden>First allow this site. Chrome closes this popup for permission; reopen Workbench to finish saving. Your draft stays here.</p>
+          <button id="save-button" class="primary full" type="submit">Save destination</button>
+        </form>
+      </details>
+    </section>
+  </main>
+  <footer><span id="current-profile">Chrome connection</span><a href="privacy.html" target="_blank" rel="noopener noreferrer">Privacy &amp; permissions</a></footer>
+</body>
+</html>

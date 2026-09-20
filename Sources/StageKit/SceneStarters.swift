@@ -7,9 +7,12 @@ struct SceneStarter: Identifiable {
     let id: String
     var name: String
     let group: String
-    var filename: String { "stagemark-\(id).png" }
+    var ambientPreset: String? { ["window-light", "campus-breeze", "coastal-sky"].contains(id) ? id : nil }
+    var detailFilename: String { id == "campus-breeze" ? "eucalyptus.png" : "clouds.png" }
+    var filename: String { ambientPreset == nil ? "stagemark-\(id).png" : id + "-poster.png" }
     func url(in directory: URL = SceneStarters.directory) -> URL {
-        directory.appendingPathComponent(filename)
+        (ambientPreset == nil ? directory : directory.deletingLastPathComponent().appendingPathComponent("AmbientScenes"))
+            .appendingPathComponent(filename)
     }
     func thumbnail() -> NSImage? {
         guard let source = CGImageSourceCreateWithURL(url() as CFURL, nil),
@@ -27,6 +30,9 @@ enum SceneStarters {
         (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("SceneBackdrops")
     }
     static let all: [SceneStarter] = [
+        .init(id: "window-light", name: "Window light", group: "Quiet motion"),
+        .init(id: "campus-breeze", name: "Campus breeze", group: "Quiet motion"),
+        .init(id: "coastal-sky", name: "Coastal sky", group: "Quiet motion"),
         .init(id: "office-professional", name: "Office & professional", group: "Everyday settings"),
         .init(id: "care-service", name: "Care & service", group: "Everyday settings"),
         .init(id: "higher-education-campus", name: "Higher education campus", group: "Australian sectors"),

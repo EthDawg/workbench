@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import UniformTypeIdentifiers
+import PresenterKit
 
 enum DemoResourceKind: String, Codable, CaseIterable {
     case prompt = "Prompt", link = "Link", file = "File"
@@ -18,9 +19,10 @@ struct DemoResource: Codable, Identifiable, Equatable {
     var favorite = false
     var modified = Date()
     var bookmark: Data?
+    var browserTarget: BrowserTarget?
 
     var group: String { [product, persona].filter { !$0.isEmpty }.joined(separator: " · ") }
-    var primaryActionTitle: String { switch kind { case .prompt: "Copy prompt"; case .link: "Open link"; case .file: "Open file" } }
+    var primaryActionTitle: String { switch kind { case .prompt: "Copy prompt"; case .link: browserTarget == nil ? "Open link" : "Switch to tab"; case .file: "Open file" } }
     var primaryActionAvailable: Bool {
         switch kind {
         case .prompt: return !content.isEmpty
@@ -66,7 +68,16 @@ struct DemoResource: Codable, Identifiable, Equatable {
             && values?.contentType?.conforms(to: .script) != true
             && values?.contentType?.conforms(to: .application) != true
     }
+    var canPreviewFile: Bool {
+        guard let url = fileURL else { return false }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        return FileManager.default.isReadableFile(atPath: url.path) && DemoResourcePreviewPolicy.supports(url)
+    }
     var validationMessage: String? {
+        if let target = browserTarget, kind != .link || !target.isValid || !PresenterURL.validName(title) || PresenterURL.canonical(content) != content {
+            return "A Chrome destination needs a short name and a complete web address without a query, fragment or credentials. Reconnect a changed tenant from its Chrome profile."
+        }
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Give this resource a name." }
         if title.count > 200 || product.count > 200 || persona.count > 200 { return "Keep names under 200 characters." }
         if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return kind == .file ? "Choose a local file." : (kind == .prompt ? "Add some text." : "Add a web address.") }
@@ -87,6 +98,31 @@ struct DemoResource: Codable, Identifiable, Equatable {
             if $0.modified != $1.modified { return $0.modified > $1.modified }
             return $0.id.uuidString < $1.id.uuidString
         }
+    }
+}
+
+enum DemoResourcePreviewPolicy {
+    /// LaunchServices supplies richer types in the app. The extension fallback
+    /// keeps the core checks deterministic when that service is unavailable.
+    private static let fallbackExtensions: Set<String> = [
+        "aac", "aif", "aiff", "avi", "bmp", "csv", "doc", "docx", "flac", "gif", "heic", "heif",
+        "htm", "html", "jpeg", "jpg", "json", "key", "log", "m4a", "m4v", "markdown", "md", "mov",
+        "mp3", "mp4", "numbers", "pages", "pdf", "png", "ppt", "pptx", "rtf", "svg", "tif", "tiff",
+        "tsv", "txt", "wav", "webp", "xls", "xlsx", "xml", "yaml", "yml"
+    ]
+
+    static func supports(_ url: URL) -> Bool {
+        guard !FileManager.default.isExecutableFile(atPath: url.path) else { return false }
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentTypeKey])
+        guard values?.isDirectory != true,
+              values?.contentType?.conforms(to: .executable) != true,
+              values?.contentType?.conforms(to: .script) != true,
+              values?.contentType?.conforms(to: .application) != true else { return false }
+        if let type = values?.contentType {
+            return type.conforms(to: .content) || type.conforms(to: .image)
+                || type.conforms(to: .audio) || type.conforms(to: .movie)
+        }
+        return fallbackExtensions.contains(url.pathExtension.lowercased())
     }
 }
 
@@ -118,6 +154,7 @@ struct DemoLibraryStore {
         let resources = items.map { item -> DemoResource in
             var item = item
             if portable {
+                item.browserTarget = nil
                 if item.kind == .file, let resolved = item.fileURL { item.content = resolved.path }
                 item.bookmark = nil
             }
@@ -135,6 +172,7 @@ struct DemoLibraryStore {
         for var item in incoming where ids.insert(item.id).inserted {
             // Bookmarks are a local access grant, never accepted from an exchange file.
             item.bookmark = nil
+            item.browserTarget = nil
             merged.append(item)
         }
         try validate(merged)
@@ -145,6 +183,13 @@ struct DemoLibraryStore {
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= Self.byteLimit else { throw VoiceError.message("The saved library exceeds the 16 MB limit.") }
         return try Self.decode(Data(contentsOf: url))
+    }
+    func currentData() throws -> Data? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= Self.byteLimit else {
+            throw VoiceError.message("The saved library exceeds the 16 MB limit.")
+        }
+        return try Data(contentsOf: url)
     }
     func save(_ items: [DemoResource]) throws {
         let data = try Self.encoded(items)
@@ -165,16 +210,27 @@ final class DemoLibraryModel: ObservableObject {
     @Published var notice: String?
     @Published var error: String?
     @Published private(set) var savingDisabled = false
+    @Published private(set) var previewingResourceID: UUID?
     let store: DemoLibraryStore
     private let copyText: (String) -> Int?
     private let openURL: (URL) -> Bool
+    private var savedData: Data?
+    var switchBrowser: ((UUID) -> Void)?
+    private let previewer: DemoResourcePreviewing
+    private let makePreviewAccess: (URL) -> DemoResourcePreviewAccess
+    private var previewAccess: DemoResourcePreviewAccess?
     init(store: DemoLibraryStore = DemoLibraryStore(),
          copyText: ((String) -> Int?)? = nil,
-         openURL: ((URL) -> Bool)? = nil) {
+         openURL: ((URL) -> Bool)? = nil,
+         previewer: DemoResourcePreviewing? = nil,
+         makePreviewAccess: ((URL) -> DemoResourcePreviewAccess)? = nil) {
         self.store = store
         self.copyText = copyText ?? { TextDelivery.copy($0) }
         self.openURL = openURL ?? { NSWorkspace.shared.open($0) }
-        do { resources = try store.load(); reconcileSelection() }
+        self.previewer = previewer ?? DemoQuickLookPresenter()
+        self.makePreviewAccess = makePreviewAccess ?? { DemoResourcePreviewAccess(url: $0) }
+        self.previewer.onClose = { [weak self] in self?.finishPreview() }
+        do { savedData = try store.currentData(); resources = try savedData.map(DemoLibraryStore.decode) ?? []; reconcileSelection() }
         catch { self.error = "The library could not be read. Saving is paused to preserve it. \(error.localizedDescription)"; savingDisabled = true }
     }
     var matches: [DemoResource] { DemoResource.matching(resources, query: query, favoritesOnly: favoritesOnly) }
@@ -194,6 +250,7 @@ final class DemoLibraryModel: ObservableObject {
         item.persona = item.persona.trimmingCharacters(in: .whitespacesAndNewlines)
         if item.kind == .link { item.content = item.content.trimmingCharacters(in: .whitespacesAndNewlines) }
         item.modified = Date()
+        if previewingResourceID == item.id { closePreview() }
         var next = resources
         if let index = next.firstIndex(where: { $0.id == item.id }) { next[index] = item } else { next.append(item) }
         guard commit(next) else { return false }
@@ -201,7 +258,10 @@ final class DemoLibraryModel: ObservableObject {
     }
     @discardableResult private func commit(_ next: [DemoResource]) -> Bool {
         guard !savingDisabled else { return false }
-        do { try store.save(next); resources = next; error = nil; return true }
+        do {
+            guard try store.currentData() == savedData else { throw VoiceError.message("The library changed outside this window. Reopen Workbench before saving; the newer file is preserved.") }
+            try store.save(next); savedData = try store.currentData(); resources = next; error = nil; return true
+        }
         catch { self.error = error.localizedDescription; return false }
     }
     func favorite(_ item: DemoResource) {
@@ -209,6 +269,7 @@ final class DemoLibraryModel: ObservableObject {
         if let index = resources.firstIndex(where: { $0.id == item.id }) { var next = resources; next[index] = item; commit(next) }
     }
     func remove(_ item: DemoResource) {
+        if previewingResourceID == item.id { closePreview() }
         if commit(resources.filter { $0.id != item.id }) { notice = "Removed from the library. The original file is unchanged." }
     }
     /// Both the visible button and keyboard recall act on the current filtered selection.
@@ -244,6 +305,10 @@ final class DemoLibraryModel: ObservableObject {
     }
     func open(_ item: DemoResource, reveal: Bool = false) {
         if item.kind == .link {
+            if item.browserTarget != nil {
+                guard let switchBrowser else { error = "Open the complete Workbench app to switch to this Chrome destination."; return }
+                switchBrowser(item.id); return
+            }
             guard let url = item.webURL else { error = "This web link is not valid."; return }
             if !openURL(url) { error = "No application could open this link." }
             return
@@ -254,20 +319,59 @@ final class DemoLibraryModel: ObservableObject {
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         guard FileManager.default.isReadableFile(atPath: url.path) else { error = "This file is unavailable. Connect its drive or use Locate file to reconnect it."; return }
         guard reveal || item.canOpenFile else { error = "Applications and executable files can be inspected with Show in Finder."; return }
-        if resolved.stale || item.content != url.path {
-            do {
-                var updated = item; updated.content = url.path
-                #if APP_STORE
-                let options: URL.BookmarkCreationOptions = [.withSecurityScope]
-                #else
-                let options: URL.BookmarkCreationOptions = [.minimalBookmark]
-                #endif
-                updated.bookmark = try url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil)
-                if let index = resources.firstIndex(where: { $0.id == item.id }) { var next = resources; next[index] = updated; commit(next) }
-            } catch { self.error = "Saved file access could not be refreshed. Use Locate file before the next demo." }
-        }
+        _ = refreshFileReference(item, resolved: resolved)
         if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         else if !openURL(url) { error = "No application could open this file. Use Show in Finder to choose one." }
+    }
+    func preview(_ item: DemoResource) {
+        closePreview()
+        guard item.kind == .file, let resolved = item.resolvedFile else {
+            error = "Locate this file again before previewing it."
+            return
+        }
+        let url = resolved.url
+        let access = makePreviewAccess(url)
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            error = "This file is unavailable. Connect its drive or use Locate file to reconnect it."
+            return
+        }
+        guard DemoResourcePreviewPolicy.supports(url) else {
+            error = "Quick Look does not support this file type here. Use Show in Finder or open it in its usual app."
+            return
+        }
+        previewAccess = access
+        previewingResourceID = item.id
+        guard previewer.show(url: url, title: item.title) else {
+            finishPreview()
+            error = "Quick Look could not open this file. Use Show in Finder or try its usual app."
+            return
+        }
+        if !savingDisabled { error = nil }
+        _ = refreshFileReference(item, resolved: resolved)
+    }
+    func closePreview() { previewer.close() }
+    private func finishPreview() {
+        previewAccess?.release()
+        previewAccess = nil
+        previewingResourceID = nil
+    }
+    @discardableResult private func refreshFileReference(_ item: DemoResource, resolved: (url: URL, stale: Bool)) -> Bool {
+        guard resolved.stale || item.content != resolved.url.path else { return true }
+        do {
+            var updated = item; updated.content = resolved.url.path
+            #if APP_STORE
+            let options: URL.BookmarkCreationOptions = [.withSecurityScope]
+            #else
+            let options: URL.BookmarkCreationOptions = [.minimalBookmark]
+            #endif
+            updated.bookmark = try resolved.url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil)
+            guard let index = resources.firstIndex(where: { $0.id == item.id }) else { return true }
+            var next = resources; next[index] = updated
+            return commit(next)
+        } catch {
+            self.error = "Saved file access could not be refreshed. Use Locate file before the next demo."
+            return false
+        }
     }
     func exportLibrary() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Workbench Demo Library.json"
@@ -283,7 +387,9 @@ final class DemoLibraryModel: ObservableObject {
         do {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= DemoLibraryStore.byteLimit else { throw VoiceError.message("Choose a library smaller than 16 MB.") }
-            let incoming = try DemoLibraryStore.decode(Data(contentsOf: url))
+            let incoming = try DemoLibraryStore.decode(Data(contentsOf: url)).map { item in
+                var copy = item; copy.browserTarget = nil; return copy
+            }
             let next = try DemoLibraryStore.merging(incoming, into: resources)
             let added = next.count - resources.count
             if commit(next) { notice = "Added \(added) resources. Existing resources kept. Files on another Mac may need Locate file." }

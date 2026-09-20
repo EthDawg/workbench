@@ -12,6 +12,8 @@ struct MobileScenesView: View {
     @State private var choosingSceneFile = false
     @State private var camera = false
     @State private var choosingArrivals = false
+    @State private var choosingStarters = false
+    @State private var starterID: UUID?
     @State private var cloudSettings = false
     @State private var opened = false
     @State private var busy = false
@@ -30,17 +32,13 @@ struct MobileScenesView: View {
                     Button("Camera", systemImage: "camera") { requestCamera() }.buttonStyle(.borderedProminent)
                     Button("Photos", systemImage: "photo") { choosingPhotos = true }.buttonStyle(.bordered)
                 }.controlSize(.large).disabled(busy)
-                Menu {
-                    ForEach(MobileBackdropPalette.allCases) { palette in
-                        Button(palette.rawValue) { createStarter(palette) }
-                    }
-                    if !handoff.photos.isEmpty {
-                        Button("From photo handoff…") { choosingArrivals = true }
-                    }
-                } label: {
+                Button { choosingStarters = true } label: {
                     Label("Start with a picture", systemImage: "rectangle.on.rectangle")
                         .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.disabled(busy)
+                if !handoff.photos.isEmpty {
+                    Button("From photo handoff…") { choosingArrivals = true }.disabled(busy)
+                }
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing-handoff") {
                     Button("Use sample photo") { create(PhotoHandoffPreview.sampleData(), name: "Sample scene") }
@@ -115,6 +113,13 @@ struct MobileScenesView: View {
                 }.ignoresSafeArea()
             }
             .sheet(isPresented: $cloudSettings) { MobileSceneSyncSettings() }
+            .sheet(isPresented: $choosingStarters, onDismiss: {
+                if let starterID { selectedID = starterID; self.starterID = nil; editing = true }
+            }) {
+                AmbientStarterGallery { record in
+                    starterID = record.id; notice = nil; choosingStarters = false
+                }
+            }
             .sheet(isPresented: $choosingArrivals) {
                 NavigationStack {
                     List(handoff.photos) { photo in
@@ -149,12 +154,6 @@ struct MobileScenesView: View {
             if granted, UIApplication.shared.applicationState == .active { camera = true }
             else { notice = "Camera access is off. You can allow Workbench in Settings or choose Photos." }
         }
-    }
-    private func createStarter(_ palette: MobileBackdropPalette) {
-        let image = palette == .coast ? UIImage(named: "Coast") ?? MobileImageRenderer.starter(palette, portrait: false)
-            : MobileImageRenderer.starter(palette, portrait: false)
-        guard let data = image.pngData() else { return }
-        create(data, name: palette.rawValue)
     }
     private func create(_ data: Data, name: String) {
         do {
@@ -226,9 +225,13 @@ struct MobileSceneSyncSettings: View {
 struct SceneThumbnail: View {
     let scene: PortableScene
     @ObservedObject var store: SceneLibraryModel
+    var motionPlaying = false // Gallery and exported previews stay still by default.
     @State private var images: [String: UIImage] = [:]
     @State private var loading = true
-    private var visibleAssets: Set<String> { Set([scene.background, scene.logo?.image, scene.persona?.image].compactMap { $0 }) }
+    private var visibleAssets: Set<String> {
+        Set([scene.background, scene.logo?.image, scene.persona?.image].compactMap { $0 })
+            .union(motionPlaying ? scene.ambience?.assets ?? [] : [])
+    }
     private var assetKey: String { store.directory.path + ":" + visibleAssets.sorted().joined(separator: ",") }
     var body: some View {
         GeometryReader { geometry in
@@ -258,13 +261,17 @@ struct SceneThumbnail: View {
     }
     @ViewBuilder private func backdrop(in size: CGSize) -> some View {
         if let background = images[scene.background] {
-            let scale = max(size.width / background.size.width, size.height / background.size.height) * scene.zoom
-            let width = background.size.width * scale, height = background.size.height * scale
-            Image(uiImage: background).resizable().frame(width: width, height: height)
-                .position(x: width / 2 + (size.width - width) * scene.backgroundX,
-                          y: height / 2 + (size.height - height) * (1 - scene.backgroundY))
+            let rig = motionImages
+            SceneMotionPreview(image: background, x: scene.backgroundX, y: scene.backgroundY,
+                zoom: scene.zoom, playing: motionPlaying && (scene.ambience == nil || rig != nil), ambience: rig)
+                .frame(width: size.width, height: size.height)
         } else if loading { ProgressView().tint(.white) }
         else { Image(systemName: "photo").foregroundStyle(.white.opacity(0.5)) }
+    }
+    private var motionImages: SceneMotionImages? {
+        guard motionPlaying, let rig = scene.ambience,
+              let clean = images[rig.cleanPlate], let detail = images[rig.detail] else { return nil }
+        return SceneMotionImages(preset: rig.preset, cleanPlate: clean, detail: detail)
     }
     @ViewBuilder private func device(in size: CGSize) -> some View {
         if scene.showsPhone {

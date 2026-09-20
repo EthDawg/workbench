@@ -34,15 +34,22 @@ final class PhotoHandoffUITests: XCTestCase {
         XCTFail("No actionable tab has the exact label \(label)")
     }
 
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         for _ in 0..<8 {
             if element.exists && element.isHittable { return }
-            let scroll = app.scrollViews.firstMatch
+            // SwiftUI's keyboard toolbar is also a ScrollView. Scroll the page
+            // containing this control, never whichever scroll view appears first.
+            let identifier = element.identifier.isEmpty ? element.label : element.identifier
+            let candidates = app.scrollViews.containing(element.elementType, identifier: identifier).allElementsBoundByIndex
+            guard let scroll = candidates.max(by: { $0.frame.height < $1.frame.height }) else {
+                XCTFail("No page contains \(identifier)", file: file, line: line)
+                return
+            }
             let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.8))
             let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.2))
             start.press(forDuration: 0.01, thenDragTo: end)
         }
-        XCTAssertTrue(element.isHittable)
+        XCTAssertTrue(element.isHittable, "The control must be reachable by scrolling its page", file: file, line: line)
     }
 
     private func screenshot(_ title: String, app: XCUIApplication) {
@@ -64,13 +71,23 @@ final class PhotoHandoffUITests: XCTestCase {
         name.typeText("Fixture whiteboard")
         XCTAssertEqual(name.value as? String, "Fixture whiteboard")
         let done = app.buttons["Done"]
-        if done.exists && done.isHittable { done.tap() }
+        XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "Done must dismiss the keyboard before scrolling")
         XCTAssertFalse(app.buttons["handoff.send"].isEnabled)
         screenshot("Synthetic photo preview - cloud disabled", app: app)
         let keep = app.buttons["handoff.keep"]
-        reveal(keep, in: app); keep.tap()
+        reveal(keep, in: app)
+        XCTAssertTrue(keep.isEnabled, "Keep must be available before the native tap")
+        keep.tap()
         let notice = app.staticTexts["handoff.notice"]
-        XCTAssertTrue(notice.waitForExistence(timeout: 10))
+        let kept = notice.waitForExistence(timeout: 10)
+        if !kept {
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "Photo state after Keep produced no notice"
+            hierarchy.lifetime = .keepAlways; add(hierarchy)
+            screenshot("Photo state after Keep produced no notice", app: app)
+        }
+        XCTAssertTrue(kept)
         XCTAssertEqual(notice.label, "Original kept on this device.")
         app.navigationBars.buttons.firstMatch.tap()
 

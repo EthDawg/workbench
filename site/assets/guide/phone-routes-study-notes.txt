@@ -1,0 +1,8 @@
+Generated design study, 15 September 2026. Not a shipping screen.
+
+Brief: separate Show a phone, Voice conversation and Control from Mac; make native route selection understandable without introducing a new Workbench wireless receiver.
+
+First image rejected: invented Wi-Fi support and incorrect voice-audio arrows.
+Corrective edit: Workbench USB is video only; voice input belongs to the physical phone; distinguish agent replies from meeting microphone and shared-audio paths; Apple Mirroring has no iPhone mic/camera; direct phone sharing uses Teams/Zoom screen broadcast.
+
+Remaining simplification: the study says Heard on iPhone beneath Reply to audience. Actual reply output depends on the selected route; phone-speaker audibility does not prove the audience receives it. The published guide uses a separate explicit rehearsal. The product uses an ordinary route picker and native sheet, not three simultaneous panels. The native screenshot is implementation evidence.

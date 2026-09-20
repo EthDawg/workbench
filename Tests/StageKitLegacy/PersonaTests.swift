@@ -265,6 +265,130 @@ final class PersonaTests {
         XCTAssertThrowsError(try PersonaCardStyle(background: InkColor(.nan, 0, 0)).validated())
     }
 
+    private func hudControls() -> (NSWindow, NSPopUpButton, NSPopUpButton, [NSButton])? {
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        guard let window = NSApp.windows.first(where: { $0.title == "Persona controls" && $0.isVisible }),
+              let content = window.contentView else { return nil }
+        let views = descendants(content)
+        guard let picker = views.compactMap({ $0 as? NSPopUpButton }).first(where: { !$0.pullsDown }),
+              let options = views.compactMap({ $0 as? NSPopUpButton }).first(where: { $0.pullsDown }) else { return nil }
+        return (window, picker, options, views.compactMap { $0 as? NSButton })
+    }
+
+    private func invoke(_ item: NSMenuItem?) {
+        guard let item, let action = item.action else { XCTAssertTrue(false, "Expected a native menu action"); return }
+        XCTAssertTrue(NSApp.sendAction(action, to: item.target, from: item))
+    }
+
+    func testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("Private preparation name.png"); try fixture().write(to: source)
+        let library = PersonaLibrary(root: root.appendingPathComponent("library")); defer { library.shutdown() }
+        let first = try library.addImage(source)
+        let second = try library.addImage(source, card: PersonaCardStyle(label: "Site manager"))
+        library.selectedID = first.id
+        let previousKey = NSApp.keyWindow, frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        library.showOverlay()
+        XCTAssertTrue(library.overlayVisible)
+        XCTAssertEqual(library.liveSelection?.candidateIDs, [first.id, second.id])
+        guard let (window, picker, options, buttons) = hudControls() else {
+            XCTAssertTrue(false, "An ungrouped displayed persona needs its own visible native controls"); return
+        }
+        XCTAssertTrue(NSApp.keyWindow === previousKey)
+        XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, frontmost)
+        XCTAssertFalse(window.canBecomeKey); XCTAssertFalse(window.canBecomeMain)
+        XCTAssertEqual(picker.itemTitles, ["Persona 1", "Site manager"], "Private library names must never become HUD labels")
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, first.id)
+        XCTAssertTrue(picker.isEnabled)
+        XCTAssertTrue(buttons.filter { $0.toolTip?.contains("available persona") == true }.allSatisfy(\.isEnabled))
+
+        library.selectedID = second.id
+        XCTAssertTrue(library.overlayVisible, "Browsing another item must keep the displayed persona and controls")
+        XCTAssertEqual(library.selectedID, second.id)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, first.id)
+        library.stepQuickPersona(1)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, second.id)
+        library.stepQuickPersona(-1)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, first.id)
+        invoke(options.item(withTitle: "Lock artwork · clicks pass through"))
+        XCTAssertTrue(library.overlayLocked)
+        let oldWidth = library.overlayWidth
+        invoke(options.item(withTitle: "Larger persona"))
+        XCTAssertEqual(library.overlayWidth, oldWidth + 0.02, accuracy: 0.0001)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, first.id)
+        library.remove(second.id)
+        XCTAssertTrue(library.overlayVisible, "Removing a browsed item must keep the original displayed item")
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, first.id)
+        guard let hide = buttons.first(where: { $0.toolTip == "Hide persona and controls" }) else {
+            XCTAssertTrue(false, "Expected the native Hide control"); return
+        }
+        hide.performClick(nil)
+        XCTAssertFalse(library.overlayVisible); XCTAssertFalse(window.isVisible)
+        library.selectedID = first.id
+        library.toggleQuickPersona(); XCTAssertTrue(library.overlayVisible)
+        library.toggleQuickPersona(); XCTAssertFalse(library.overlayVisible)
+        library.showOverlay()
+        XCTAssertTrue(window.isVisible)
+        library.remove(first.id)
+        XCTAssertFalse(library.overlayVisible); XCTAssertFalse(window.isVisible)
+
+        // Prepared sessions retain their own frozen membership when preparation
+        // selection changes or a new member is added after showing the artwork.
+        let a = try library.addImage(source), b = try library.addImage(source), outside = try library.addImage(source)
+        let group = try library.createGroup(name: "Private group", members: [a.id, b.id])
+        library.showOverlay()
+        library.selectedID = b.id
+        library.setGroupMembers([a.id, b.id, outside.id], in: group)
+        XCTAssertEqual(picker.itemArray.compactMap { $0.representedObject as? UUID }, [a.id, b.id])
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, a.id)
+        library.selectLivePersona(outside.id)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, a.id)
+        library.stepLivePersona(1)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, b.id)
+        library.remove(b.id)
+        XCTAssertFalse(library.overlayVisible); XCTAssertFalse(window.isVisible)
+    }
+
+    func testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("portrait.png"); try fixture().write(to: source)
+        let store = root.appendingPathComponent("library"), seed = PersonaLibrary(root: root.appendingPathComponent("library"))
+        let first = try seed.addImage(source), second = try seed.addImage(source)
+        seed.selectedID = first.id; seed.shutdown()
+        func storedFiles() throws -> [String: Data] {
+            try Dictionary(uniqueKeysWithValues: FileManager.default.contentsOfDirectory(atPath: store.path).map {
+                ($0, try Data(contentsOf: store.appendingPathComponent($0)))
+            })
+        }
+        let original = try storedFiles()
+        let library = PersonaLibrary(root: store, readOnlyReason: "Synthetic read-only library"); defer { library.shutdown() }
+        XCTAssertTrue(library.isReadOnly)
+        library.showOverlay()
+        guard let (window, picker, options, _) = hudControls() else {
+            XCTAssertTrue(false, "Read-only browsing still needs working floating controls"); return
+        }
+        library.selectedID = second.id
+        XCTAssertTrue(library.overlayVisible)
+        XCTAssertEqual(picker.itemArray.compactMap { $0.representedObject as? UUID }, [first.id, second.id])
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, first.id)
+        library.stepLivePersona(1)
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, second.id)
+        invoke(options.item(withTitle: "Lock artwork · clicks pass through"))
+        invoke(options.item(withTitle: "Larger persona"))
+        invoke(options.item(withTitle: "Control position")?.submenu?.items.last)
+        XCTAssertTrue(library.overlayLocked); XCTAssertEqual(library.overlayWidth, 0.18, accuracy: 0.0001)
+        XCTAssertEqual(try storedFiles(), original, "Read-only HUD actions must not create position files or modify originals")
+        library.hideOverlay(); XCTAssertFalse(window.isVisible)
+        library.showOverlay()
+        XCTAssertEqual(picker.itemArray.compactMap { $0.representedObject as? UUID }, [first.id, second.id])
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, second.id)
+        library.selectedID = nil
+        XCTAssertTrue(library.overlayVisible, "Clearing preparation selection must not discard the displayed item")
+        XCTAssertEqual(picker.selectedItem?.representedObject as? UUID, second.id)
+        library.shutdown(); XCTAssertFalse(window.isVisible)
+        XCTAssertEqual(try storedFiles(), original)
+    }
+
     func testNativeOverlayWindowAndDragLifecycle() throws {
         let controller = PersonaOverlayController()
         defer { controller.shutdown() }

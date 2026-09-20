@@ -18,6 +18,25 @@ import UIKit
         let name = try library.importAsset(image())
         return try library.create(PortableScene(name: "Synthetic scene", background: name))
     }
+    func testGentleMotionPersistsThroughEditorSaveReopenAndCopyWithoutChangingCrop() throws {
+        let library = try library(), record = try fixture(library)
+        let editor = MobileSceneEditingSession(); editor.connect(library: library, sceneID: record.id)
+        XCTAssertNil(editor.draft?.gentleMotion)
+        editor.edit { $0.backgroundX = 0.19; $0.backgroundY = 0.73; $0.zoom = 1.6; $0.gentleMotion = true }
+        XCTAssertTrue(editor.flush())
+        let reopened = SceneLibraryModel(directory: library.directory)
+        let saved = try XCTUnwrap(reopened.records.first)
+        XCTAssertEqual(saved.scene.gentleMotion, true)
+        XCTAssertEqual(saved.scene.backgroundX, 0.19); XCTAssertEqual(saved.scene.backgroundY, 0.73)
+        XCTAssertEqual(saved.scene.zoom, 1.6); XCTAssertEqual(saved.scene.background, record.scene.background)
+        let copy = try reopened.duplicate(id: saved.id)
+        XCTAssertEqual(copy.scene.gentleMotion, true)
+        let editingCopy = MobileSceneEditingSession(); editingCopy.connect(library: reopened, sceneID: copy.id)
+        editingCopy.edit { $0.gentleMotion = nil }; XCTAssertTrue(editingCopy.flush())
+        XCTAssertNil(editingCopy.draft?.gentleMotion)
+        XCTAssertEqual(reopened.records.first(where: { $0.id == saved.id })?.scene.gentleMotion, true)
+        editor.finishForDisappearance(); editingCopy.finishForDisappearance()
+    }
     func testActivityGuardRemainsUntilEveryActiveEditorHasSaved() throws {
         let library = try library(), first = try fixture(library), second = try fixture(library)
         let one = MobileSceneEditingSession(), two = MobileSceneEditingSession()

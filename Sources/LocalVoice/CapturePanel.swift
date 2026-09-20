@@ -25,7 +25,7 @@ final class CaptureHUDControls: ObservableObject {
 }
 
 @MainActor
-final class CapturePanelController: NSWindowController, NSWindowDelegate {
+final class CapturePanelController: NSWindowController, NSWindowDelegate, FloatingHUDDragController {
     private let positionKey = "capturePanelOrigin.v1"
     private let anchorKey = "capturePanelAnchor.v2"
     private let controls = CaptureHUDControls()
@@ -150,18 +150,27 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate {
     }
 }
 
+@MainActor
+protocol FloatingHUDDragController: AnyObject {
+    func beginDragging()
+    func cancelDragging()
+    func previewDragging()
+    func finishDragging()
+}
+
 struct PanelDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> DragHandleView { DragHandleView() }
+    var accessibilityLabel = "Drag dictation panel; named positions are also available in options"
+    func makeNSView(context: Context) -> DragHandleView { DragHandleView(accessibilityLabel: accessibilityLabel) }
     func updateNSView(_ nsView: DragHandleView, context: Context) {}
 }
 
 final class DragHandleView: NSView {
     private var anchor: NSPoint?
     private var startingOrigin: NSPoint?
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    init(accessibilityLabel: String) {
+        super.init(frame: .zero)
         setAccessibilityElement(true); setAccessibilityRole(.image)
-        setAccessibilityLabel("Drag dictation panel; named positions are also available in options")
+        setAccessibilityLabel(accessibilityLabel)
         toolTip = "Drag to move. Release near an edge guide to snap."
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -170,21 +179,21 @@ final class DragHandleView: NSView {
         guard let window else { return }
         anchor = window.convertPoint(toScreen: event.locationInWindow)
         startingOrigin = window.frame.origin
-        (window.windowController as? CapturePanelController)?.beginDragging()
+        (window.windowController as? FloatingHUDDragController)?.beginDragging()
     }
     override func mouseDragged(with event: NSEvent) {
         guard let window, let anchor, let startingOrigin else { return }
         let point = window.convertPoint(toScreen: event.locationInWindow)
         window.setFrameOrigin(NSPoint(x: startingOrigin.x + point.x - anchor.x, y: startingOrigin.y + point.y - anchor.y))
-        (window.windowController as? CapturePanelController)?.previewDragging()
+        (window.windowController as? FloatingHUDDragController)?.previewDragging()
     }
     override func mouseUp(with event: NSEvent) {
-        (window?.windowController as? CapturePanelController)?.finishDragging()
+        (window?.windowController as? FloatingHUDDragController)?.finishDragging()
         anchor = nil; startingOrigin = nil
     }
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
-            (window?.windowController as? CapturePanelController)?.cancelDragging()
+            (window?.windowController as? FloatingHUDDragController)?.cancelDragging()
             anchor = nil; startingOrigin = nil
         }
         super.viewWillMove(toWindow: newWindow)
@@ -330,9 +339,10 @@ struct RecordingOverlay: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 4) {
                 if model.canRetry {
-                    Button { model.retryTranscription() } label: { Text("Retry").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.borderedProminent).help("Retry the captured audio")
-                } else {
+                    Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
+                        .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
+                }
+                if !model.canRetry || model.hasCaptureRecovery {
                     Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
                         Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
                     }.buttonStyle(.bordered)
@@ -388,7 +398,7 @@ struct RecordingOverlay: View {
     }
 }
 
-private struct CaptureLevelMeter: View {
+struct CaptureLevelMeter: View {
     let level: Double
     var body: some View {
         HStack(spacing: 3) {
@@ -437,9 +447,10 @@ private struct CaptureReceiptView: View {
     }
 }
 
-private struct CapturePositionMenu: View {
+struct CapturePositionMenu: View {
     @ObservedObject var controls: CaptureHUDControls
     var settings: (() -> Void)? = nil
+    var accessibilityName = "Dictation panel options"
     var body: some View {
         Menu {
             Section("Position") {
@@ -458,6 +469,6 @@ private struct CapturePositionMenu: View {
         } label: {
             Image(systemName: "ellipsis").frame(width: 28, height: 32)
         }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .accessibilityLabel("Dictation panel options").help("Position and options")
+            .accessibilityLabel(accessibilityName).help("Position and options")
     }
 }

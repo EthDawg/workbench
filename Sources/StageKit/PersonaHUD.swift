@@ -48,12 +48,20 @@ final class PersonaHUDController: NSWindowController {
     private var placement = PersonaHUDPlacement()
     private var savedData: Data?
     private let url: URL
+    private let allowsSaving: Bool
     private var storageBlocked = false
     private var screens: AnyCancellable?
     private var guides: FloatingControlGuideController?
+    private var legacyContent: NSView?
+    private var sessionContent: NSView?
+    private var sessionModel: PersonaSessionHUDModel?
+    private var sessionMenu: NSMenu?
+    private let sessionButton = NSButton()
+    private let sessionDragHandle = PersonaHUDDragHandle()
 
-    init(root: URL) {
+    init(root: URL, allowsSaving: Bool = true) {
         url = root.appendingPathComponent("persona-controls.json")
+        self.allowsSaving = allowsSaving
         let panel = PersonaHUDPanel(contentRect: CGRect(x: 0, y: 0, width: 332, height: 44),
             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: panel)
@@ -61,7 +69,7 @@ final class PersonaHUDController: NSWindowController {
             savedData = try PersonaStorage.read(url)
             if let savedData { placement = try JSONDecoder().decode(PersonaHUDPlacement.self, from: savedData).validated() }
         } catch { storageBlocked = true; notice = "The previous persona control position is preserved. This session uses a temporary position." }
-        panel.title = "Persona controls"; panel.isFloatingPanel = true; panel.level = .floating
+        panel.title = "Persona controls"; panel.isFloatingPanel = true; panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.hidesOnDeactivate = false; panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -69,11 +77,12 @@ final class PersonaHUDController: NSWindowController {
         material.material = .popover; material.blendingMode = .behindWindow; material.state = .active
         material.wantsLayer = true; material.layer?.cornerRadius = 12; material.layer?.masksToBounds = true
         panel.contentView = material
-        configureButton(previous, symbol: "chevron.left", label: "Previous persona in prepared group", action: #selector(previousPersona))
-        configureButton(next, symbol: "chevron.right", label: "Next persona in prepared group", action: #selector(nextPersona))
+        legacyContent = material
+        configureButton(previous, symbol: "chevron.left", label: "Previous available persona", action: #selector(previousPersona))
+        configureButton(next, symbol: "chevron.right", label: "Next available persona", action: #selector(nextPersona))
         configureButton(dismiss, symbol: "xmark", label: "Hide persona and controls", action: #selector(hidePersona))
         picker.target = self; picker.action = #selector(choosePersona)
-        picker.setAccessibilityLabel("Choose a persona in the prepared group")
+        picker.setAccessibilityLabel("Choose an available persona")
         picker.cell?.lineBreakMode = .byTruncatingTail
         options.setAccessibilityLabel("Persona options")
         let row = NSStackView(views: [dragHandle, previous, picker, next, options, dismiss])
@@ -91,7 +100,7 @@ final class PersonaHUDController: NSWindowController {
         dragHandle.onEnd = { [weak self] in self?.finishDrag() }
         screens = NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: RunLoop.main).sink { [weak self] _ in
-                guard let self else { return }; self.hideGuides(); self.dragHandle.cancel()
+                guard let self else { return }; self.hideGuides(); self.dragHandle.cancel(); self.sessionDragHandle.cancel()
                 if self.window?.isVisible == true { self.position(near: nil) }
             }
     }
@@ -99,6 +108,11 @@ final class PersonaHUDController: NSWindowController {
 
     func show(items: [PersonaHUDItem], selectedID: UUID, locked: Bool, near artwork: CGRect?) {
         guard !items.isEmpty, items.contains(where: { $0.id == selectedID }) else { hide(); return }
+        if sessionModel != nil || window?.contentView !== legacyContent {
+            sessionMenu?.cancelTracking(); sessionMenu = nil; sessionModel = nil
+            window?.contentView = legacyContent
+            resizeControl(width: 332)
+        }
         self.locked = locked
         picker.removeAllItems()
         for item in items {
@@ -109,13 +123,18 @@ final class PersonaHUDController: NSWindowController {
         }
         if let index = items.firstIndex(where: { $0.id == selectedID }) { picker.selectItem(at: index) }
         previous.isEnabled = items.count > 1; next.isEnabled = items.count > 1
-        picker.setAccessibilityHelp("Only the prepared group's \(items.count) personas are available.")
+        picker.isEnabled = items.count > 1
+        picker.setAccessibilityLabel(items.count > 1 ? "Choose an available persona" : "Displayed persona")
+        picker.setAccessibilityHelp(items.count > 1
+            ? "\(items.count) personas were frozen when this card was shown."
+            : "Only the displayed persona is available.")
         rebuildOptions()
         if window?.isVisible != true { position(near: artwork); window?.orderFrontRegardless() }
     }
     func hide() {
         picker.menu?.cancelTracking(); options.menu?.cancelTracking()
-        dragHandle.cancel(); hideGuides(); window?.orderOut(nil)
+        sessionMenu?.cancelTracking(); sessionMenu = nil; sessionModel = nil
+        dragHandle.cancel(); sessionDragHandle.cancel(); hideGuides(); window?.orderOut(nil)
         (window as? PersonaHUDPanel)?.keyboardMode = false
     }
     func shutdown() {
@@ -126,7 +145,127 @@ final class PersonaHUDController: NSWindowController {
     /// Called only through an explicit keyboard-access control in preparation.
     func focusControls() {
         guard let panel = window as? PersonaHUDPanel, panel.isVisible else { return }
-        panel.keyboardMode = true; panel.makeKey(); panel.makeFirstResponder(picker)
+        panel.keyboardMode = true; panel.makeKey()
+        panel.makeFirstResponder(sessionModel == nil ? (picker.isEnabled ? picker : options) : sessionButton)
+    }
+
+    /// A deliberately small, click-based entry to native menu navigation. The
+    /// model contains only the explicitly prepared audience-safe session.
+    func showSession(viewModel: PersonaSessionHUDModel, near artwork: CGRect?) {
+        guard viewModel.state.phase != .idle else { hide(); return }
+        sessionModel = viewModel
+        if sessionContent == nil {
+            let material = NSVisualEffectView(frame: CGRect(x: 0, y: 0, width: 124, height: 44))
+            material.material = .popover; material.blendingMode = .behindWindow; material.state = .active
+            material.wantsLayer = true; material.layer?.cornerRadius = 12; material.layer?.masksToBounds = true
+            sessionButton.isBordered = false; sessionButton.bezelStyle = .regularSquare
+            sessionButton.font = .systemFont(ofSize: 13, weight: .medium); sessionButton.imagePosition = .imageLeading
+            sessionButton.target = self; sessionButton.action = #selector(openSessionMenu)
+            sessionButton.setAccessibilityIdentifier("persona.session.controls")
+            let row = NSStackView(views: [sessionDragHandle, sessionButton])
+            row.orientation = .horizontal; row.alignment = .centerY; row.spacing = 2
+            row.translatesAutoresizingMaskIntoConstraints = false; material.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: material.leadingAnchor, constant: 5),
+                row.trailingAnchor.constraint(equalTo: material.trailingAnchor, constant: -8),
+                row.centerYAnchor.constraint(equalTo: material.centerYAnchor),
+                sessionDragHandle.widthAnchor.constraint(equalToConstant: 20),
+                sessionDragHandle.heightAnchor.constraint(equalToConstant: 32),
+                sessionButton.heightAnchor.constraint(equalToConstant: 34)
+            ])
+            sessionDragHandle.onDrag = { [weak self] in self?.previewDrag() }
+            sessionDragHandle.onEnd = { [weak self] in self?.finishDrag() }
+            sessionContent = material
+        }
+        window?.contentView = sessionContent
+        let paused = viewModel.state.phase == .paused
+        let visible = viewModel.state.instances.filter(\.visible).count
+        sessionButton.title = viewModel.state.feedback != nil ? "Notice  ›" : (paused ? "Hidden  ›" : "\(visible)  ›")
+        sessionButton.image = NSImage(systemSymbolName: viewModel.state.feedback != nil ? "info.circle" : (paused ? "eye.slash" : "rectangle.on.rectangle"), accessibilityDescription: nil)
+        sessionButton.setAccessibilityLabel(viewModel.state.feedback ?? (paused ? "Overlays hidden. Open presentation controls" : "\(visible) overlays shown. Open presentation controls"))
+        sessionButton.toolTip = "Click for sets, artwork, Hide all and End. Keyboard: focus, then Space."
+        resizeControl(width: paused || viewModel.state.feedback != nil ? 142 : 116)
+        if window?.isVisible != true { position(near: artwork); window?.orderFrontRegardless() }
+    }
+
+    private func resizeControl(width: CGFloat) {
+        guard let window, window.frame.width != width else { return }
+        let current = window.frame
+        let screen = screen(near: current)
+        window.setContentSize(CGSize(width: width, height: 44))
+        if let screen {
+            let frame = placement.position.anchor.map {
+                FloatingControlGeometry.frame(anchor: $0, size: window.frame.size, visibleFrame: screen.visibleFrame)
+            } ?? FloatingControlGeometry.clamp(CGRect(origin: current.origin, size: window.frame.size), to: screen.visibleFrame)
+            window.setFrame(frame, display: true)
+        }
+    }
+
+    @objc private func openSessionMenu() {
+        guard let model = sessionModel else { return }
+        let state = model.state
+        let menu = NSMenu(title: "Overlay controls"); menu.autoenablesItems = false
+        func command(_ title: String, _ action: PersonaSessionAction, enabled: Bool = true, checked: Bool = false) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: #selector(performSessionCommand(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = action; item.isEnabled = enabled; item.state = checked ? .on : .off
+            return item
+        }
+        func submenu(_ title: String, _ children: [NSMenuItem]) {
+            let root = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let list = NSMenu(title: title); list.autoenablesItems = false; children.forEach { list.addItem($0) }
+            root.submenu = list; menu.addItem(root)
+        }
+        let currentIndex = state.groups.firstIndex { $0.id == state.currentGroupID } ?? 0
+        let heading = NSMenuItem(title: "Set \(currentIndex + 1) of \(state.groups.count)", action: nil, keyEquivalent: "")
+        heading.isEnabled = false; menu.addItem(heading)
+        if let feedback = state.feedback {
+            let receipt = NSMenuItem(title: feedback, action: nil, keyEquivalent: "")
+            receipt.isEnabled = false; menu.addItem(receipt)
+            menu.addItem(command("Dismiss notice", .dismissFeedback)); menu.addItem(.separator())
+        }
+        if state.groups.count > 1 {
+            menu.addItem(command("Previous set", .stepGroup(-1)))
+            menu.addItem(command("Next set", .stepGroup(1)))
+            submenu("Choose set", state.groups.map { command($0.label, .selectGroup($0.id), checked: $0.id == state.currentGroupID) })
+        }
+        menu.addItem(.separator())
+        submenu("Choose overlay", state.instances.enumerated().map { index, item in
+            command("\(index + 1). \(item.label)\(item.visible ? "" : " · hidden")", .selectInstance(item.id), checked: item.id == state.selectedInstanceID)
+        })
+        if let item = state.instances.first(where: { $0.id == state.selectedInstanceID }) {
+            menu.addItem(command(item.visible ? "Hide selected overlay" : "Show selected overlay", .visible(item.id, !item.visible)))
+            menu.addItem(command("Lock selected · clicks pass through", .locked(item.id, !item.placement.locked), checked: item.placement.locked))
+            let positions: [(String, Double, Double)] = [("Top left", 0.02, 0.98), ("Top centre", 0.5, 0.98), ("Top right", 0.98, 0.98), ("Left centre", 0.02, 0.5), ("Right centre", 0.98, 0.5), ("Bottom left", 0.02, 0.02), ("Bottom centre", 0.5, 0.02), ("Bottom right", 0.98, 0.02)]
+            submenu("Position selected", positions.map { command($0.0, .position(item.id, $0.1, $0.2)) })
+            submenu("Size and order", [
+                command("Smaller", .width(item.id, item.placement.width - 0.02), enabled: item.placement.width > 0.06),
+                command("Larger", .width(item.id, item.placement.width + 0.02), enabled: item.placement.width < 0.4),
+                .separator(),
+                command("Bring forward", .move(item.id, 1)), command("Send backward", .move(item.id, -1)),
+                command("Add another copy", .add(item.personaID), enabled: state.instances.count < 8),
+                command("Remove from this set", .remove(item.id))
+            ])
+            submenu("Replace selected", state.candidates.map { command($0.label, .replace(instanceID: item.id, personaID: $0.id), checked: $0.id == item.personaID) })
+        }
+        submenu("Add overlay", state.candidates.map { command($0.label, .add($0.id), enabled: state.instances.count < 8) })
+        menu.addItem(.separator())
+        menu.addItem(command(state.phase == .paused ? "Show again" : "Hide all temporarily", .pauseResume))
+        menu.addItem(command("Save this layout for next time", .saveLayout, enabled: state.hasUnsavedLayout && state.canSaveLayout))
+        let positions = NSMenu(title: "Control position"); positions.autoenablesItems = false
+        for anchor in FloatingControlAnchor.allCases {
+            let option = NSMenuItem(title: anchor.title, action: #selector(choosePosition(_:)), keyEquivalent: "")
+            option.target = self; option.representedObject = anchor.rawValue
+            option.state = placement.position.anchor == anchor ? .on : .off; positions.addItem(option)
+        }
+        let position = NSMenuItem(title: "Control position", action: nil, keyEquivalent: ""); position.submenu = positions; menu.addItem(position)
+        menu.addItem(.separator()); menu.addItem(command("End overlays", .end))
+        sessionMenu = menu
+        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sessionButton.bounds.maxY + 4), in: sessionButton)
+        sessionMenu = nil
+    }
+    @objc private func performSessionCommand(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? PersonaSessionAction else { return }
+        sessionModel?.perform(action)
     }
 
     private func configureButton(_ button: NSButton, symbol: String, label: String, action: Selector) {
@@ -198,7 +337,7 @@ final class PersonaHUDController: NSWindowController {
     }
     private func hideGuides() { MainActor.assumeIsolated { guides?.hide() } }
     private func save() {
-        guard !storageBlocked else { return }
+        guard allowsSaving, !storageBlocked else { return }
         do { savedData = try PersonaStorage.write(placement.validated(), to: url, expected: savedData) }
         catch { storageBlocked = true; notice = "Persona controls could not save their position. The previous file is preserved." }
     }

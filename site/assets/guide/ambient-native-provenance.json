@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-15",
+  "source": "48c00dc",
+  "kind": "Actual native UI screenshots, disposable data, not generated mockups",
+  "Mac": "Isolated AppKit host with production StageKit/SceneSyncKit; screenshots preceded the final photo-icon and accessibility-autoplay copy correction",
+  "iPhone": "iPhone 17 Pro, iOS 26.5 Simulator; final 48c00dc source; --ui-testing disables cloud and isolates storage",
+  "motionCheck": {
+    "captureSize": [
+      1100,
+      752
+    ],
+    "changedBounds": [
+      592,
+      128,
+      1100,
+      272
+    ],
+    "roomChanged": null,
+    "deskChanged": null,
+    "skyChanged": [
+      12,
+      43,
+      510,
+      187
+    ]
+  },
+  "notTested": [
+    "physical phone",
+    "paired scene receiving",
+    "Teams/Zoom audience",
+    "native wallpaper replacement this increment",
+    "multi-display",
+    "energy"
+  ],
+  "files": {
+    "ambient-office-mac-actual.png": "182c0c8c27b27d2b13e9b4626b68fb02ab524aa47571e1095540642fff16d047",
+    "ambient-iphone-editor-actual.png": "b0e5da9ab8107b0d841238eaf5597053b3dfd631e6c89df04779533a31525949",
+    "ambient-iphone-gallery-actual.png": "db78050ad57256a87bbbdaac5be34cba15487219dbbe66642ba21d8a4fb80390",
+    "ambient-campus-mac-actual.png": "6dc10146442a54b099ad88debf3163fc1de4339f307b632b91ff6e9ce44977d7"
+  }
+}

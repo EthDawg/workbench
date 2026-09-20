@@ -7,7 +7,7 @@
 
 [Product guide](https://workbench-mac.vercel.app/guide/) · [Contribute](CONTRIBUTING.md) · [Issues](https://github.com/EthDawg/workbench/issues) · [Project website](https://workbench-mac.vercel.app)
 
-Workbench brings Voice and StageMark into **one native app, one home window and one menu-bar icon**. Dictate a thought, read a draft, draw over a live demo, or give a connected phone a presentation scene. The aim is a useful baseline that improves with better models and small, dependable workflows.
+Workbench brings Voice and StageMark into **one native app, one home window and one menu-bar icon**. Dictate a thought, capture and narrate a screen, read a draft, draw over a live demo, or give a connected phone a presentation scene. The aim is a useful baseline that improves with better models and small, dependable workflows.
 
 **Workbench is the active project, developed on `main` in this repository.** Feature descriptions below describe its implementation, not proof of a published release or successful testing on every supported Mac. The [acceptance record](docs/unification.md) tracks the remaining verification. Older Voice/StageMark releases and their validation records describe those separate apps; StageMark is retained as an archive.
 
@@ -22,26 +22,36 @@ An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a se
 | Capability | What it does |
 | --- | --- |
 | **Dictate** | Record speech or import audio; keep original and cleaned text, a dictionary and recent transcripts; copy or optionally paste into the original field. |
-| **Read aloud** | Listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key. |
+| **Read aloud** | Listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key, with automatic routing or a chosen compatible voice. |
+| **Snap & Talk** | Capture the display under the pointer, record linked narration, and keep an ordered portable session for slide generation. |
 | **Annotate** | Draw, highlight, add shapes/text, emphasise the pointer and use saved boards over a live presentation. |
-| **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer. QuickTime and iPhone Mirroring can be opened separately. |
-| **Saved resources** | Keep searchable prompts, web links and references to local decks, videos and other files. |
+| **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer that remembers where you placed it. QuickTime and iPhone Mirroring can be opened separately. |
+| **Saved resources** | Keep searchable prompts, web links and references to local decks, videos and other files; inspect supported local files in Quick Look before opening them. |
+| **Switch to** | In this development build, return to a named demo tab in its paired Chrome profile from any app. [Setup and evidence](docs/presenter-direction.md). |
 | **Keyboard** | See all Workbench assignments, change or disable them, and practise on a virtual keyboard without activating tools. |
 
 The core app requires no account or subscription. Built-in Parakeet recognition and Mac reading work locally after their initial setup. Optional integrations have their own setup and privacy boundaries.
+
+## Current integration candidate
+
+The [September contribution Preview checklist](docs/releases/2026-09-20-integration-preview.md) explains what changed and what to test. This source includes pending release work; it does not change the public Preview 3 download.
 
 ## First use
 
 1. Open **Workbench Preview** and choose an action from Home. **Models** prepares the default Parakeet recognizer; its first download can take several minutes.
 2. Try **Dictate** with a short, disposable sentence. Microphone access is requested when recording needs it. Copy works without Accessibility; automatic paste is an optional setting.
-3. Open **Keyboard** to see or practise a shortcut. The defaults include **Control–Option–Space** for dictation, **Control–Option–V** for quick controls and **Control–Option–J** for saved resources.
+3. Open **Keyboard** to see or practise a shortcut. The defaults include **Control–Option–Space** for dictation, **Control–Option–Backslash** for Snap & Talk, **Control–Option–V** for quick controls, **Control–Option–J** for saved resources and **Control–Option–G** for Switch to in this development build.
 4. For a mobile demo, choose **Present a device**, prepare a scene and select an available source. Workbench's device view is video-only. iPhone Mirroring runs in Apple's own window; Workbench does not embed or control it.
 
 The menu-bar icon provides quick access while another app is active. The normal window is for editing and setup. Closing it leaves the utility available; **Quit Workbench** stops the app. **Open Workbench at login** is optional in Settings.
 
 During dictation, a draggable compact panel keeps the microphone level, elapsed time and **Stop** visible. Expand it for details, cancellation and named positions. Drag toward a corner or edge centre to snap. Changing size or position keeps the same recording and destination. Processing can be cancelled before the transcript is saved. The result shows **Ready to paste**, a confirmed destination, or **Paste unconfirmed**; review uncertain insertion before pasting again. Pin the receipt if useful. A clipboard cue remains in quick controls until that copied text is replaced. Only Workbench transcript copies are tracked, using clipboard change counts; other clipboard contents are not collected.
 
+In **Snap & Talk**, create or reopen an ordinary Finder folder and grant Screen Recording and Microphone access. Move the pointer to the intended display and press **Control–Option–Backslash**: Workbench captures that whole display with the pointer, then starts narration. Press it again to save the original WAV and queue transcription. More captures can begin while earlier narration transcribes. The visual editor supports transcript editing, independent screenshot/narration replacement, drag reordering and recoverable deletion. Each folder includes `session.json`, `README.md` and a `SKILL.md` that asks a compatible agent to create a 16:9 PowerPoint with an uncropped screenshot, concise narration-grounded slide copy and the full edited narration in speaker notes. **Hand off…** copies a ready prompt, reveals the folder and opens Claude, ChatGPT or Codex when installed; you still grant folder access and paste, so Workbench does not upload the session. Screen capture can contain sensitive information; inspect the folder before sharing it.
+
 During a phone presentation, a small phone-icon tile starts at the right edge centre. Click it or press **⌘/** for source, reconnect, position and end controls. **Esc** closes open controls first; a further **Esc** ends the presentation. Hovering is not required. Type and use Dictation on the physical phone: the Mac preview is video-only. These controls appear in whole-display sharing; verify individual-window capture with your meeting app.
+
+In **Annotate**, **Open Screenshot…** hands off to Apple Screenshot without reading the display itself. Workbench commits the current stroke, hides its palette and pointer, makes the canvas click-through, and pauses auto-fade until Apple Screenshot closes. Use a region or entire-display capture to include visible ink. A single-window capture may omit Workbench's separate annotation layer. **Copy board** and **Save board PNG…** remain the controls-only-free export for an open whiteboard or blackboard.
 
 Import a finished transparent image in **Personas** to show a movable, resizable card over a browser. Lock it to pass clicks through. Add the same persona to a saved mobile scene. A separate native overlay is not included in browser-tab sharing. See the [interaction specification](docs/product-spec.md) and [persona guide](docs/personas.md).
 
@@ -54,7 +64,7 @@ Keyboard recording and practice temporarily suspend Workbench's global shortcuts
 | **Parakeet on this Mac** | Default English recognizer, using FluidAudio and a downloaded Core ML model | On-device inference; no server or API key. |
 | **Local model server** | You run a compatible server and supply its full transcription URL and model ID | Loopback addresses only. Workbench does not install the server or bundle a Whisper model. The server may itself forward audio; inspect its configuration. |
 | **Mac voices** | Installed macOS reading voices, with pace control | Local text-to-speech and audio export. |
-| **Speko** | Optional personal account and Keychain-stored API key | Explicit readings send text online and may be billed. |
+| **Speko TTS** | Optional personal account and Keychain-stored API key | Browse compatible English voices, keep balanced automatic routing or pin a voice; explicit readings send text online and may be billed. Speko STT is not a Workbench recognition choice yet. |
 
 Model settings apply to the next request; the active request keeps its original provider. There is no automatic cloud fallback. A valid local-server configuration is not a successful connectivity or model test—the first real transcription checks those. See [model setup and limits](docs/model-providers.md).
 
@@ -104,10 +114,13 @@ Prepare an editable scene on iPhone or iPad and present it on Mac. New scenes ke
 
 The [visual scene guide](https://workbench-mac.vercel.app/scenes/) includes generated design studies and actual native screenshots. The [scene contract](docs/research/personal-scenes.md) owns persistence, migration, conflict rules and current evidence. Mac upload has succeeded; a complete paired scene round trip remains unverified. The notarized Mac Preview 3 includes this implementation. iOS upload, tester distribution and App Review are separate stages; see the [mobile release record](docs/ios-preview.md#release-preparation--14-september-2026).
 
+The newer local Preview adds **Window light, Campus breeze and Coastal sky**: three original starter pictures with optional, localized cloud or foliage motion. [The ambient scene guide](https://workbench-mac.vercel.app/scenes/ambient/) shows the artwork, native captures and Apple platform boundaries; [the implementation record](docs/research/ambient-scenes.md) owns the research and remaining acceptance checks. Motion runs inside Workbench on iPhone/iPad and in app-owned presentation or desktop layers on Mac. Export stays still. These starters are not in the public Preview 3 download; editable exchange requires updated apps that support scene format v2.
+
 ## Data, privacy and recovery
 
 - **Transcripts:** originals, drafts, dictionary, reading preferences and the last 100 captures are stored locally. Cleanup is optional: Original, deterministic Light, or guarded Natural editing using available Apple Intelligence or a configured local Ollama model. Saved dictionary replacements apply to delivered text in every cleanup mode; the recogniser's original remains available. Cleanup checks cannot prove meaning is unchanged.
 - **Capture and delivery:** microphone capture is explicitly started and limited to five minutes; imported audio to 30 minutes. Automatic paste checks the original app/field, excludes secure fields and never presses Return. If delivery cannot be confirmed, the transcript stays on the clipboard. Imported originals are not modified.
+- **Snap & Talk sessions:** each user-chosen folder keeps screenshots, original narration audio, original/edited transcripts and recoverable deleted sections. Workbench captures only the display under the pointer, includes the pointer and requires macOS Screen Recording access. The bundled slide skill keeps generation local unless the user explicitly chooses an external service.
 - **Resources:** the library stores prompts, links, notes and local file references, not copies of media or a password vault. Its JSON import preserves existing entries and skips matching IDs. Exported paths may need reconnecting on another Mac. Unreadable data is preserved rather than overwritten.
 - **Models and services:** setup downloads Parakeet from FluidInference's Hugging Face hosting. Recognition uses the selected local engine or user-managed loopback server. Speko sends only explicitly submitted readings online. Downstream Shortcuts actions may sync their results elsewhere.
 - **Presentation:** the device preview does not record video or microphone audio. Share its presentation window through your meeting app. QuickTime and iPhone Mirroring have their own requirements, permissions and lifecycle.

@@ -207,6 +207,82 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(app.history(for: display)?.annotations.isEmpty == true)
         XCTAssertTrue(app.panels.values.allSatisfy { $0.ignoresMouseEvents })
     }
+    func testScreenshotHandoffPreservesInkAndSuspendsInput() throws {
+        _ = NSApplication.shared
+        let suite = "WorkbenchScreenshotHandoff.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
+        let settings = SettingsStore(defaults: defaults)
+        settings.value.onboardingComplete = true; settings.value.autoFade = true; settings.value.fadeDelay = 3
+        let app = AppCoordinator(settings: settings, archiveURL: directory.appendingPathComponent("boards.json"), embedded: true)
+        app.start(); defer { app.shutdown() }
+        func waitForScreenshotCompletion() {
+            // Completion is dispatched to the main queue. Wait for its state
+            // transition instead of assuming it runs within 50 ms under load.
+            let deadline = Date().addingTimeInterval(2)
+            while app.screenshotHandoffActive && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            }
+        }
+        let display = app.currentID
+        var ink = Annotation(tool: .arrow, color: .coral, width: 5,
+                             points: [InkPoint(CGPoint(x: 60, y: 80)), InkPoint(CGPoint(x: 180, y: 160))])
+        ink.created = Date.timeIntervalSinceReferenceDate - 1
+        app.history(for: display)?.append(ink)
+        app.startDrawing(.pen, latched: true)
+        app.pointerEnabled = true; app.canvases[display]?.pointerVisible = true
+        var finishScreenshot: (() -> Void)?
+        var launches = 0
+        app.screenshotLauncher = { completion in
+            launches += 1
+            finishScreenshot = { completion(nil) }
+        }
+
+        app.openScreenshot()
+        XCTAssertEqual(launches, 1)
+        XCTAssertTrue(app.screenshotHandoffActive)
+        XCTAssertFalse(app.isDrawing)
+        XCTAssertTrue(app.panels.values.allSatisfy(\.ignoresMouseEvents), "Screenshot selection must receive input instead of the annotation canvas")
+        XCTAssertFalse(app.canvases[display]?.pointerVisible ?? true, "The Workbench pointer is excluded from the screenshot handoff")
+        XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), [ink.id])
+        app.startDrawing(.rectangle, latched: true); app.perform(.clear); app.escape()
+        XCTAssertTrue(app.screenshotHandoffActive, "Workbench Escape must not close or mutate the Apple Screenshot session")
+        XCTAssertFalse(app.isDrawing)
+        XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), [ink.id], "Capture selection cannot erase visible ink")
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        finishScreenshot?()
+        waitForScreenshotCompletion()
+        XCTAssertFalse(app.screenshotHandoffActive)
+        let preserved = app.history(for: display)?.annotations.first
+        XCTAssertNotNil(preserved)
+        XCTAssertEqual(preserved?.id, ink.id)
+        if let preserved { XCTAssertGreaterThan(preserved.created, ink.created, "Auto-fade time must pause while Screenshot is open") }
+        app.startDrawing(.rectangle, latched: true)
+        XCTAssertTrue(app.isDrawing, "Drawing must be usable again after Screenshot closes")
+
+        var recoveredControls = false
+        app.onOpenControls = { recoveredControls = true }
+        app.screenshotLauncher = { completion in
+            completion(NSError(domain: "ScreenshotFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Synthetic launch failure"]))
+        }
+        app.openScreenshot()
+        waitForScreenshotCompletion()
+        XCTAssertFalse(app.screenshotHandoffActive)
+        XCTAssertTrue(app.notice?.contains("Synthetic launch failure") == true)
+        XCTAssertTrue(recoveredControls, "A launch failure must reopen the host controls so its notice can be read")
+        XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), [ink.id], "A failed launch must not clear annotations")
+        app.toggleBoard(.white)
+        let boardInk = Annotation(tool: .pen, color: .coral, width: 3,
+                                  points: [InkPoint(CGPoint(x: 20, y: 20)), InkPoint(CGPoint(x: 80, y: 70))])
+        app.history(for: display)?.append(boardInk)
+        let boardIDs = app.history(for: display)?.annotations.map(\.id)
+        app.openScreenshot()
+        waitForScreenshotCompletion()
+        XCTAssertEqual(app.boards[display], .white, "Recovery must preserve the visible board")
+        XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), boardIDs, "Recovery must preserve board ink")
+    }
     func testShortcutRegistrationAndRelease() {
         _ = NSApplication.shared
         let manager = HotkeyManager()

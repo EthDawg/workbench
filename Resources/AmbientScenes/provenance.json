@@ -1,0 +1,62 @@
+{
+  "created": "2026-09-15",
+  "kind": "Original fictional stock scenes and cutouts generated for Workbench",
+  "generator": "built-in image_gen tool",
+  "sourceFiles": {
+    "window-light.png": "exec-e5daad39-1abb-4476-86ff-fce35b9d45ad.png",
+    "campus-breeze.png": "exec-515651a6-dc4d-478a-bf33-8219e470d6e5.png",
+    "coastal-sky.png": "exec-ec33e4e3-51c5-4360-9513-aad528483e77.png",
+    "clouds.png": "exec-8a7a63a0-8f3f-4f27-bbac-2199ce4cbe20.png",
+    "eucalyptus.png": "exec-4529e82e-3dd6-463d-ae50-08ae88eb1ac8.png"
+  },
+  "notes": [
+    "No Apple aerials or competitor artwork copied.",
+    "Posters are deterministic native compositor exports from these same clean plates and alpha details.",
+    "The discarded first foliage output and concept sheet are studies; final alpha detail is the refined eucalyptus.png."
+  ],
+  "sha256": {
+    "window-light.png": "401a013b4ec99d94418fab24c62dedb4c169cd84dc5f851f4b23dae22b7fd61d",
+    "campus-breeze.png": "3ad570a845f990e8801da6b0b30b65d3f57b009b55637503fe007f7debd17ec9",
+    "coastal-sky.png": "f28600557959c52b472a5fad5e0ed3a804fad4f5d49889ba285f19732b5e677b",
+    "clouds.png": "546d1f8199bb2c736a708dc3b76684b21669a96e220a3d4160a140416420c8e2",
+    "eucalyptus.png": "111cbf103c8894354296e9c4727bcff588e6dd957c1dbed366481247f983f330"
+  },
+  "posters": {
+    "renderer": "Sources/SceneSyncKit/AmbientPhotoLayer.swift makePoster",
+    "note": "Baked using the native production compositor; same authored crop/placement. No AI regeneration of these posters."
+  },
+  "finalFiles": {
+    "campus-breeze-poster.png": {
+      "sha256": "f0ad98138cc5b18ef00a151d9222c019561cb1394d611f9cc442d64a7f6b89aa",
+      "bytes": 3087652
+    },
+    "campus-breeze.png": {
+      "sha256": "3ad570a845f990e8801da6b0b30b65d3f57b009b55637503fe007f7debd17ec9",
+      "bytes": 2285299
+    },
+    "clouds.png": {
+      "sha256": "546d1f8199bb2c736a708dc3b76684b21669a96e220a3d4160a140416420c8e2",
+      "bytes": 1113551
+    },
+    "coastal-sky-poster.png": {
+      "sha256": "e20063d27dcb943c50300fd5c06916b5f7b738825a4651403621096cad783f6a",
+      "bytes": 2832914
+    },
+    "coastal-sky.png": {
+      "sha256": "f28600557959c52b472a5fad5e0ed3a804fad4f5d49889ba285f19732b5e677b",
+      "bytes": 2255082
+    },
+    "eucalyptus.png": {
+      "sha256": "111cbf103c8894354296e9c4727bcff588e6dd957c1dbed366481247f983f330",
+      "bytes": 2106941
+    },
+    "window-light-poster.png": {
+      "sha256": "c10bbfb66457ce36b7a265faaad76576d8633cdcb41a10a0223a1e69be201525",
+      "bytes": 2644751
+    },
+    "window-light.png": {
+      "sha256": "401a013b4ec99d94418fab24c62dedb4c169cd84dc5f851f4b23dae22b7fd61d",
+      "bytes": 2080423
+    }
+  }
+}

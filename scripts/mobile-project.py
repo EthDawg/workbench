@@ -44,6 +44,7 @@ for name, folder, product_type, extension in [
         files += [MOBILE / folder / "Info.plist", MOBILE / folder / "PrivacyInfo.xcprivacy"]
         files += sorted((MOBILE / folder).glob("*.xcassets"))
         files += [ROOT / "Resources/PersonaPortraits"]
+        files += [ROOT / "Resources/AmbientScenes"]
     for path in files:
         relative = str(path.relative_to(ROOT)) if path.is_relative_to(MOBILE) else "../" + str(path.relative_to(ROOT))
         if relative.startswith("Mobile/"): relative = relative.removeprefix("Mobile/")

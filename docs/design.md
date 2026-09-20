@@ -9,14 +9,21 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 | `LocalVoice` executable target | App shell plus existing voice workflows, reading, cleanup, delivery and resources | `main.swift`, `WorkbenchHome.swift`, `AppModel.swift` |
 | `StageKit` library target | Drawing, boards, timer, scene library and device video preview | Public `StageKitController`; internal `AppCoordinator` |
 | `RecognitionEngine` actor | Selected recognition provider, preparation and one transcription at a time | `RecognitionProviders.swift` |
+| `ReadbackModel` | Snap & Talk pointer-display capture, narration, portable session manifests, recovery and sequential transcription | `ReadbackModel.swift`, `ReadbackView.swift` |
 | `KeyboardCoachModel` | Combined shortcut catalogue, assignment, conflict feedback and safe practice | `KeyboardCoach.swift`; persistence/suspension closures supplied by the host |
 | App Intents | Audio-file transcription returning a typed text result | `Shortcuts.swift` |
+| `PresenterKit` / `PresenterModel` | Typed Chrome routing protocol; existing Saved resources remains authoritative | `PresenterProtocol.swift`, `PresenterSocket.swift`, `PresenterBridge.swift` |
+| Chrome/native adapters | Profile-scoped tab targeting, framed transport, transient native picker | `BrowserExtension/`, `WorkbenchBrowserHost`, `PresenterPanel.swift` |
 
 The internal Swift module remains `LocalVoice` to preserve App Intents type/metadata compatibility. Packaging names the installed binary `Workbench`, or `WorkbenchPreview` in Preview. StageKit is linked into it; Workbench does not launch a second StageMark process.
 
 `StageKitController` exposes views, actions, lifecycle and shortcut descriptors rather than its internal coordinator. Host callbacks route navigation, hide Home before presenting and coordinate busy state. StageKit must not create another menu-bar item or terminate the app independently.
 
 The two modules still have their own internal `Workbench.swift` style helpers and share the appearance preference domain. They are not identical mirrored files. Keep their appearance consistent through the [product contract](workbench.md); do not extract a larger shared framework without a concrete need.
+
+## Chrome destination adapter
+
+The [presenter contract](presenter-direction.md#state-and-security-boundaries) owns Chrome/native routing. `DemoResource.browserTarget` is optional and machine-local; imported and exported libraries strip it. No mobile or SceneSyncKit source depends on PresenterKit. The bundled host has no state or command authority of its own; it forwards bounded native-messaging frames over a current-user Unix socket to the app. Each browser installation owns its UUID, site grants and temporary tab bindings. The app owns conflict/error handling and the existing keyboard catalogue owns Switch to. No network listener, Accessibility permission or backend is added.
 
 ## Native iPhone and iPad target
 
@@ -40,6 +47,8 @@ The two modules still have their own internal `Workbench.swift` style helpers an
 
 Carbon registers global keys. Local event handling supports app-focused use. The unified coach receives both modules' assignments and suspends both registrations while recording or practising a shortcut. Validation covers duplicates, a deliberate set of common Mac commands and a temporary OS registration probe. Preference updates must retain the previous value on failure. Practice counts complete key-down/key-up pairs, rejects repeats as extra repetitions, and restores registrations on cancellation, selection change, window deactivation or disappearance. Current-layout labels sit on an ANSI drawing; this is not a physical-keyboard detector or another-app shortcut scanner.
 
+Snap & Talk has its own editable shortcut. A first press captures only the display containing the pointer through ScreenCaptureKit, with the pointer included, before starting AVFoundation microphone recording. A second press commits the WAV into the user-chosen session folder and queues it through the shared recognition engine. Screenshots and audio commit before transcription, so another section can begin while recognition proceeds sequentially. Interrupted recordings remain visible as unfinished sections; queued work resumes from saved audio after relaunch. The manifest owns ordering, while UUID directories keep reordering non-destructive. Replacement archives prior media inside the section, and deletion moves the whole section into the session's `trash` directory until explicitly emptied. Its handoff menu writes only a task prompt to the clipboard, reveals the local folder and opens a chosen installed AI app; the user still grants folder access and submits the prompt, so Workbench never silently uploads session media.
+
 Speech flow:
 
 ```mermaid
@@ -59,7 +68,9 @@ The fixed-size, nonactivating `CapturePanel` exposes recording, processing, canc
 
 `TextDelivery.Outcome` distinguishes a successful copy, confirmed insertion and an attempted but unconfirmed paste. `ClipboardReceiptModel` stores only delivery metadata and the clipboard generation returned by Workbench's write. It checks that generation while a receipt exists, clears stale cues when another copy occurs, and never reads unrelated clipboard text. Automatic receipts expire after eight seconds for copy or four for confirmed paste; still-current clipboard metadata remains in quick controls. Pinning extends the HUD until dismissal or clipboard change. A typed paste-attempt flag prevents duplicate-paste suggestions. The menu-bar icon exposes current readiness after the floating receipt hides.
 
-`PresentationControlsPolicy` starts collapsed and opens only by click or Command-Slash. Escape closes expanded controls first, then ends the presentation on a later press. Source closes the controls before opening its sheet. `FloatingControlGeometry` shares eight anchors, clamping and snap detection with the recording HUD; each job persists its own placement. `CaptureSettings` freezes cleanup configuration, replacements and delivery preferences before recording or file processing. Text refinement is separate from speech recognition and configured in Models. Reduce Motion and Reduce Transparency are honoured. Beginning a StageKit interaction dismisses any voice receipt HUD. Window layering is not a guarantee of exclusion from a screen share. See the [interaction specification](product-spec.md).
+Saved resources keep references to original local files. Their explicit Quick Look action resolves the existing bookmark, rejects missing, executable and unsupported inputs, and presents the source through a native `QLPreviewView` without copying it. A security-scoped access lease is held for the preview panel's lifetime and released when the panel closes, the resource is removed or the library view disappears, or Home hides, closes or minimizes. Escape closes that panel only; search and selection remain owned by the library.
+
+`PresentationControlsPolicy` starts collapsed and opens only by click or Command-Slash. Escape closes expanded controls first, then ends the presentation on a later press. Source closes the controls before opening its sheet. `FloatingControlGeometry` shares eight anchors, clamping and snap detection with the recording HUD; each job persists its own placement. The break timer stores only its normalized free position or named anchor plus display identity in `break-timer-placement.json`; countdown state and appearance remain separate. Missing displays and resolution changes recover through current visible bounds, while corrupt/future placement data is retained and used only as a temporary default. `CaptureSettings` freezes cleanup configuration, replacements and delivery preferences before recording or file processing. Text refinement is separate from speech recognition and configured in Models. Reduce Motion and Reduce Transparency are honoured. Beginning a StageKit interaction dismisses any voice receipt HUD. Window layering is not a guarantee of exclusion from a screen share. See the [interaction specification](product-spec.md).
 
 ## Replaceable recognition and reading
 
@@ -70,7 +81,7 @@ The fixed-size, nonactivating `CapturePanel` exposes recording, processing, canc
 
 There is no fallback from one provider to another. Add an explicit `RecognitionProvider` case and engine dispatch when a new runtime has a clear setup, input, cancellation and availability contract. Do not duplicate recording, history, hotkeys or cleanup inside the adapter. [Provider documentation](model-providers.md) defines limits and tests.
 
-Reading remains separate from recognition. Mac voices use `/usr/bin/say` with an argument array and a temporary UTF-8 input file, `AVAudioPlayer` for playback and `/usr/bin/afconvert` for M4A export. User text is not interpolated into shell commands. Optional Speko reading uses an explicit Keychain-backed key and sends submitted text online; it is not a transcription provider. New reading backends should preserve the same playback/export and explicit-consent boundaries.
+Reading remains separate from recognition. Mac voices use `/usr/bin/say` with an argument array and a temporary UTF-8 input file, `AVAudioPlayer` for playback and `/usr/bin/afconvert` for M4A export. User text is not interpolated into shell commands. Optional Speko reading uses an explicit Keychain-backed key and sends submitted text online. Its voice catalogue is fetched without reading text; Automatic keeps balanced routing, while a selected catalogue entry pins the provider/model/voice tuple Speko marks as compatible. This TTS adapter is not a transcription provider. New reading or recognition backends should preserve their separate playback/capture and explicit-consent boundaries.
 
 Cleanup offers Original, deterministic Light, and optional Natural editing through Apple FoundationModels where available. Natural candidates are checked for ordered factual tokens, numbers and negation; rejected/unavailable edits fall back to Light. These guards reduce specific risks, not prove equivalent meaning. The unedited text stays available.
 
@@ -80,9 +91,17 @@ StageKit's `DemoCapture` uses AVFoundation external-device discovery and a video
 
 `NativePresentationApps` resolves and opens installed QuickTime Player or iPhone Mirroring using `NSWorkspace`. It does not embed, automate or capture those apps. A meeting app can share the selected Workbench or Apple window. A successful launch is not proof of device connection or a successful meeting share.
 
+The shared **Connection & audio…** guide separates picture, voice conversation and Mac control. First source selection is explicit. `PresentationHandoff` joins capture teardown and native window closure before an explicit End preview & open action launches Apple’s app. Restricted video access is distinguished from user-denied access. [The phone route contract](phone-presenting.md) records the flow, native limits and receiver checks.
+
 `TranscribeWithWorkbench` is the existing App Intent. Apple Shortcuts owns `Record Audio`; the intent accepts audio and returns that invocation's text through the normal voice pipeline. It never starts the microphone, copies or submits the result. Full Xcode metadata extraction and native discovery need package-level testing. The final live recording composition must be verified separately from synthetic invocation checks; [earlier integration notes](voice-integrations.md) are historical evidence for the previous Voice version.
 
 No Services implementation, Share extension, private iPhone Mirroring integration or general app-automation bridge is added by this consolidation. Those are future adapters only if a useful workflow justifies them. Windows portability is likewise a future design decision: isolate platform-facing code, but do not promise portability for AppKit, AVFoundation device capture, Carbon or App Intents.
+
+## Capture recovery
+
+`CaptureRecoveryStore` owns one versioned local pending capture in `LocalVoice/CaptureRecovery`, separate from the ordinary draft/history file. It owns only validated UUID-named recording files and a bounded metadata record; imported audio URLs never become deletion targets. A capture must commit to history before normal delivery or Shortcuts success. Failed saving retains raw text, current draft and owned audio. Retry saving uses the same history ID and never replays an old destination or reruns a model. A changed or unreadable journal stays intact and blocks a new capture until reviewed.
+
+Quit stops work and preserves pending recovery. On reopening, an acknowledged journal can be cleared; an unacknowledged capture never replaces a differing nonempty saved draft. Retry adds that immutable capture to Recent transcripts. Confirmed Discard removes only the pending owned files and preserves the current draft. A full disk can block both state and recovery-text writes: the error asks for Copy/Save before quitting and does not claim durable text. Photo and scene sync do not include this recovery folder.
 
 ## Saved state and migration
 
@@ -94,6 +113,7 @@ No Services implementation, Share extension, private iPhone Mirroring integratio
 | Stage preferences | `com.ethdawg.workbench.preview.stage` defaults suite |
 | Appearance | Shared `com.ethdawg.workbench.preview` suite |
 | Speko key | Keychain service derived from the current bundle ID; not copied from a legacy app |
+| Snap & Talk sessions | User-chosen Finder folders containing `session.json`, media, transcripts, recovery files and the bundled deck skill |
 
 Non-Preview files use `Application Support/Workbench`; identity and preference domains drop the `.preview` suffix.
 
@@ -105,6 +125,8 @@ This is one-time migration, not ongoing synchronization or a rollback of user da
 
 `bash scripts/test.sh` composes release-tool regressions, voice/core/library/cleanup/integration/keyboard checks, provider checks and the StageKit harness. `scripts/test-stage.sh --ci` compiles the StageKit tests separately. Provider transport checks exercise a synthetic loopback server; they do not establish transcription quality or compatibility of a real model server.
 
+Speko voice catalogue loading bounds each streamed response to 2 MiB, the complete result to 1,000 voices and each refresh to 20 requests, including empty pages with fresh cursors. Redirects are refused, and cancellation or rejection cancels the owned session. `scripts/test-speko-catalog.py` checks the actual catalogue transport with intercepted synthetic responses, including a body that exceeds its limit without reaching EOF and endlessly paginated empty results. It does not use a real key or establish live provider availability.
+
 `--self-test` uses synthetic Mac speech, the selected recognizer and an M4A round-trip. `--check-input` covers global registration and release behaviour. Live keyboard practice, microphone permission/cancellation, exact-field paste, window focus, physical-device connection, meeting sharing and signed-package migration need their own runtime evidence.
 
 The ordinary build is ad-hoc. `scripts/build.sh --preview` re-signs a distinct Preview archive with Developer ID; `scripts/install.sh` installs it and preserves the previous app ZIP. Neither operation notarizes, publishes, or runs the live acceptance checklist. Full Xcode metadata is enforced by `REQUIRE_APP_INTENTS=1` during packaging. [The current acceptance record](unification.md) and the release's own notes must identify what actually passed.
@@ -114,3 +136,15 @@ Source provenance is in [consolidation-source.md](consolidation-source.md). The 
 ## Portable personal scenes
 
 [The personal scene contract](research/personal-scenes.md) owns the shared model and migration/sync rules. SceneSyncKit separates local commits and portable packages from its CloudKit transport; Mac adapts that model to StageKit while iOS renders it natively. Explicit imports create independent scene IDs, and active presentations use frozen copies. The shared test suite runs both photo and scene targets in CI.
+
+## Gentle photograph motion
+
+`SceneSyncKit/GentlePhotoMotion.swift` supplies compositor parameters and a pure eligibility predicate to both native targets. The optional `gentleMotion` scene field preserves legacy still defaults and travels in existing local/portable scene records. No new asset type or cloud service is involved.
+
+`MovingSceneView` separates the Mac photograph layer from stationary foreground artwork and device video. `DesktopMotionController` owns one explicitly started desktop window, independent of a presentation. `SceneMotionPreview` implements the matching iOS photograph layer; editor playback is transient and galleries/export stay still. The [implementation record](gentle-motion.md) explains lifecycle and validation; the structured visual contract and mobile specification retain capability authority.
+
+The [authored ambient starters](research/ambient-scenes.md) extend those hosts with `SceneSyncKit/AmbientPhotoLayer.swift`. A versioned, allowlisted `SceneAmbience` recipe references an immutable clean plate and transparent detail; its complete poster remains the static fallback and export image. Both targets use the same native layer geometry and still compositor. Rig-bearing libraries/packages use scene format v2, preserve exact pre-migration backups and reject unsupported recipes. This adds no new cloud transport, background service or media runtime. Ordinary photos retain the separate gentle-scale option; authored rigs never combine with whole-photo zoom.
+
+## Prepared Mac overlay sessions
+
+`PersonaLibrary` remains the saved asset/group owner. `PersonaSessionController` in `PersonaSession.swift` owns one bounded live snapshot and a window controller per placed instance. `PersonaHUDController` receives sanitized value state and ID-based actions, never private library/group names. `PersonaPresentationPreparation` owns an explicit draft and saves through the existing archive; v3 preserves an exact pre-upgrade manifest. The shell exposes the same actions through the existing StageKit shortcut catalogue and menu panel. No browser DOM, tab or URL tracking is involved. The [persona contract](personas.md) owns lifecycle, compatibility and verification.

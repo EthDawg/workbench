@@ -1,0 +1,19 @@
+{
+  "kind": "actual-native-screenshot",
+  "capturedOn": "2026-09-14",
+  "sourceRevision": "da4f0f459fc7228977ea1ec270280605880c2119",
+  "file": "scene-recovery-ipad-actual.png",
+  "sha256": "ffb1ff99cdb2b58bdc88d6252be2a2692f95cb6761a154af48ec3da9f55efa5d",
+  "content": "Synthetic test scene and recovered mobile picture; no personal media.",
+  "device": "iPad Pro 13-inch (M5), iOS 26.5 Simulator",
+  "method": "Full native mobile app in a fresh sandbox. Open the package produced by native Mac import/edit/export; recover the mobile original; rename with native Select All; show the two separate saved items.",
+  "evidence": "One native UI test passed, zero failures. Independent saved-data checks preserved original fields and all four image bytes, with the Mac scene unchanged through recovery, rename and relaunch.",
+  "limits": [
+    "Simulator only",
+    "Cloud disabled",
+    "Public file-open handoff; not mobile Files-picker browsing",
+    "No physical-phone or meeting-receiver test",
+    "Not every image layer edited; no Pencil-input test",
+    "Data preservation does not establish full preview parity"
+  ]
+}

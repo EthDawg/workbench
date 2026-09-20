@@ -1,0 +1,91 @@
+{
+  "recorded": "2026-09-15",
+  "files": {
+    "gentle-motion-concept.png": {
+      "sha256": "8ca0d1ce8cc3ae32ccc457694761b6080dd6c9ae2aecb1443bed803aeee78ef9",
+      "sizePixels": [
+        1536,
+        1024
+      ],
+      "kind": "generated concept"
+    },
+    "gentle-motion-mac-actual.png": {
+      "sha256": "16a3d03e5bd00a51df36323c2ff1a29a891a82665c1ad9fc031218babae02c81",
+      "sizePixels": [
+        1100,
+        752
+      ],
+      "kind": "unedited native capture"
+    },
+    "gentle-motion-iphone-actual.png": {
+      "sha256": "377c426b146b380c798a87f9028fb63d0fc97eb10de764342883e015f3e0c383",
+      "sizePixels": [
+        403,
+        865
+      ],
+      "kind": "unedited native capture"
+    },
+    "gentle-mac-motion-a.png": {
+      "sha256": "36e9587a75fcbcb6a61381c60decea872a659954417b75b2a6fcf4bdcee01ba6",
+      "sizePixels": [
+        1100,
+        752
+      ],
+      "kind": "unedited native capture"
+    },
+    "gentle-mac-motion-b.png": {
+      "sha256": "c2fb704304ad25e8c6f6f78dbf613791d672a6f18c53ecaabd02778f61dbc6b3",
+      "sizePixels": [
+        1100,
+        752
+      ],
+      "kind": "unedited native capture"
+    }
+  },
+  "nativeMacCaptureSourceHashes": {
+    "Sources/SceneSyncKit/GentlePhotoMotion.swift": "9e7c9596250d292af7f0b38afb400ef903232efeceb8d28ea5944a714d36cd20",
+    "Sources/StageKit/DemoPresentation.swift": "6c7f7084f95857cfd81a02aaeef7555aba7377a878b4ef2e0dde2e5c02969e01",
+    "Sources/StageKit/DemoScenes.swift": "6ed5167d06f997db9998e6582e2345957f76f5fe22f97aae708dc0cad73041d8",
+    "Sources/StageKit/DesktopMotion.swift": "3e8c6541366aac63a8dc38d1df146abd378d0adde6016a1b0d1a0fe1cd0a6669",
+    "Sources/StageKit/MovingSceneView.swift": "8d3ae519f8da42f312fc7623ff4ee9298db0c48b1d290196b044464f75bcddbe"
+  },
+  "captureSourceNote": "Captured from the feature working tree before the final transparent-photo base-fill correction. Opaque bundled office and synthetic images are unaffected by that correction; the final base fill has a separate render regression test. Isolated host, synthetic library, device capture and cloud off.",
+  "iPhone": "iPhone 17 Pro Simulator, iOS 26.5. Synthetic Coast scene with cloud off. Not a physical-phone release.",
+  "pixelComparison": {
+    "method": "Unedited native window captures at different points in one running presentation; same opaque foreground interior and photographic background crops compared as RGB. Translucent edges deliberately excluded because the moving photo remains visible through them.",
+    "sizePixels": [
+      1100,
+      752
+    ],
+    "checks": {
+      "background": {
+        "cropPixels": [
+          300,
+          250,
+          990,
+          740
+        ],
+        "differenceBoundsWithinCrop": [
+          243,
+          133,
+          690,
+          406
+        ]
+      },
+      "opaqueLogoInterior": {
+        "cropPixels": [
+          150,
+          115,
+          200,
+          125
+        ],
+        "differenceBoundsWithinCrop": null
+      }
+    }
+  },
+  "limits": [
+    "Still captures alone do not demonstrate animation.",
+    "Desktop layer was tested using the existing native wallpaper as its ownership token without setting a new wallpaper.",
+    "No energy, multi-display, physical device-video or meeting receiver validation."
+  ]
+}

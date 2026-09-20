@@ -123,17 +123,21 @@ struct QuickControlsView: View {
                                     .foregroundStyle(color == .white || color == .amber || color == .mint ? Color.black : Color.white)
                             }
                         }.frame(width: 29, height: 25)
-                    }.buttonStyle(.plain).accessibilityLabel("Colour \(index + 1)")
-                        .help("Colour \(index + 1) · \(settings.value.shortcut(for: Action(rawValue: "color\(index + 1)")!).label)")
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel("\(color.accessibilityDescription) ink colour")
+                        .accessibilityValue(settings.value.color == color ? "Selected" : "Not selected")
+                        .accessibilityAddTraits(settings.value.color == color ? .isSelected : [])
+                        .help("\(color.accessibilityDescription) · \(settings.value.shortcut(for: Action(rawValue: "color\(index + 1)")!).label)")
                 }
                 Spacer(minLength: 0)
                 ColorPicker("Custom ink colour", selection: colorBinding(\Preferences.color), supportsOpacity: false)
-                    .labelsHidden().help("Custom ink colour")
+                    .labelsHidden().accessibilityLabel("Custom ink colour")
+                    .accessibilityValue(settings.value.color.accessibilityDescription).help("Custom ink colour")
             }
             HStack {
                 Text("INK COLOUR").font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
                 Spacer()
-                Text(colorHex(settings.value.color)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                Text(settings.value.color.hex).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             }
             Divider()
             VStack(spacing: 1) {
@@ -162,6 +166,9 @@ struct QuickControlsView: View {
                 quickAction(.blackboard, title: "Blackboard", symbol: "rectangle.fill")
             }
             BoardExportButtons(app: app)
+            ScreenshotHandoffButton(app: app)
+            Text("Use a region or display capture to include visible ink. A single-window capture may omit Workbench’s separate annotation layer.")
+                .font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -303,8 +310,5 @@ struct QuickControlsView: View {
     }
     private func colorBinding(_ key: WritableKeyPath<Preferences, InkColor>) -> Binding<Color> {
         Binding(get: { Color(nsColor: settings.value[keyPath: key].nsColor) }, set: { settings.value[keyPath: key] = InkColor(NSColor($0)) })
-    }
-    private func colorHex(_ color: InkColor) -> String {
-        String(format: "#%02X%02X%02X", Int(color.r * 255), Int(color.g * 255), Int(color.b * 255))
     }
 }

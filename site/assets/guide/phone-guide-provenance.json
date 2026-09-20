@@ -1,0 +1,37 @@
+{
+  "capturedOn": "2026-09-15",
+  "platform": "macOS 26.5.1, one display",
+  "kind": "actual native SwiftUI sheet in isolated AppKit host",
+  "fixture": "Tests/StageKitLegacy/PhonePresentationFixture.swift",
+  "sourceRevision": "ec2f9611281f8e14d9431ec88c5447c5f274de93",
+  "sourceSHA256": {
+    "Sources/StageKit/NativePresentationApps.swift": "03a3b308f2d906ebd8473b53f6721447c05ee9ee29289d54f8a066a09a926e02",
+    "Sources/StageKit/DemoPresentation.swift": "43e16f6d8d13c0f44c0ce512d0a9bbdd782d612e3ce032148f81c3ef080efde0",
+    "Sources/StageKit/DemoCapture.swift": "8ccf2cdfe1434fa4e4b846e4710d0122b6408a3a63f761bf714a78e3647e9cf3",
+    "Sources/StageKit/PresentationLifecycle.swift": "d8dc491e883e5ff04b9a09df245cbe1c1f4efaa6db0caab11fdf942fdb8e9332",
+    "Tests/StageKitLegacy/PhonePresentationFixture.swift": "7cdc3f2e9f55e94715c2cb50346b6314b4867369cfe17189f761ad752e0ea8de",
+    "site/assets/guide/phone-guide-actual.png": "aa820a2e570e0e6449baae83eb735e94064e4634360a14423004c57bf070eb26"
+  },
+  "checks": [
+    "Three jobs and all six routes exposed and inspected",
+    "Voice route scroll reaches rehearsal; workplace disclosure reachable",
+    "Route change resets scroll to first instruction",
+    "Escape and Return Done dismiss without app launch",
+    "Apple handoff request returned to host after guide dismissed"
+  ],
+  "boundaries": [
+    "Fake launch callback; no actual device capture, USB cable, account or permission changes",
+    "Physical disconnect, real Apple fallback capture, live duplex agent and meeting receiver remain unverified"
+  ],
+  "fixturePackaging": "Copied only test executable and two built shared modules into disposable bundle; corrected absolute library references to bundled @rpath before final native checks. No installed Preview identity changed.",
+  "installedPreview": {
+    "build": "20260914220342",
+    "runtimeSource": "ec2f9611281f8e14d9431ec88c5447c5f274de93",
+    "checks": [
+      "Developer ID strict verification passed with normal macOS certificate access",
+      "Installed executable SHA256 matches signed archive",
+      "Home to Present a device to Connection & audio to Voice conversation to Done"
+    ],
+    "boundary": "No capture or real Apple-app handoff started during this installed-app inspection; image above remains the isolated-host capture"
+  }
+}

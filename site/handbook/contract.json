@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
-  "reviewedOn": "2026-09-13",
-  "implementationRevision": "aa23605a7be29981988c2106b41b61ac040be2d7",
-  "scope": "Presentation preparation, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
+  "reviewedOn": "2026-09-20",
+  "implementationRevision": "1014c938893eabdcbba8eb1485d4844e7757ac3a",
+  "scope": "Presentation preparation, independently managed native overlays, independent break-timer placement, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
     "proposed": "A product contract for review and implementation. No corresponding feature is promised in the current download."
@@ -13,7 +13,7 @@
     "Each job must be useful on its own. Wallpaper must not require creating a phone presentation.",
     "Reuse an original image by choice. Keep each job's crop, layout and playback settings independent.",
     "Make the first useful action obvious; reveal adjustments in context. Do not require an expert setup screen.",
-    "Presentation is video from a device into a Mac window. It does not send Mac input to the phone or manage a meeting.",
+    "A presentation shows a prepared picture with optional device video in a Mac window. It does not send Mac input to the phone or manage a meeting.",
     "Preserve the person's later manual desktop choice. Ending a presentation is not Restore desktop."
   ],
   "capabilities": [
@@ -32,10 +32,20 @@
       "name": "Present a prepared scene",
       "status": "implemented",
       "entry": "Present full screen / Present in window",
-      "effect": "Show device video within a saved composition in a Mac window, with contextual phone-tile controls.",
+      "effect": "Show a saved composition in a Mac window, optionally with device video. The compact controls use a phone icon when the device is enabled and a picture icon otherwise.",
       "limit": "A meeting app chooses what to share. An audience view, USB recovery and a second display need their own checks.",
       "source": "Sources/StageKit/DemoPresentation.swift",
-      "evidence": "Window/fullscreen transitions and control placement tested locally; this is not receiver-view verification."
+      "evidence": "At da4f0f4, saved name/backdrop/persona edits left a running windowed still unchanged; End/restart adopted them. At 7e45213, the unchanged isolated native host verified all eight expanded positions, a compact-tile drag to Left centre, keyboard reveal and Escape collapse/End through a full-screen transition. Device capture and cloud were off; this is not receiver-view or installed signed-shell verification."
+    },
+    {
+      "id": "phone-routes",
+      "name": "Choose a phone connection and audio route",
+      "status": "implemented",
+      "entry": "Present a device → Connection & audio…; also available in live Source",
+      "effect": "Separate phone picture, voice conversation and Mac control; guide six native routes. Explicit End preview & open releases capture and closes the presentation before launching an installed Apple app.",
+      "limit": "Workbench USB remains video only. The guide does not detect policy, forward a microphone, configure a meeting or establish a working duplex voice route.",
+      "source": "Sources/StageKit/NativePresentationApps.swift",
+      "evidence": "Six phone regressions passed with 45 assertions. Integrated StageKit passed 121 tests / 2,601 assertions. Actual native guide inspection covered all jobs/routes, scroll reset, Escape/Done and dismissal before a fake fallback launch. Physical device and receiver checks remain separate."
     },
     {
       "id": "desktop-still",
@@ -79,13 +89,43 @@
     },
     {
       "id": "wallpaper-motion",
-      "name": "A quiet animated desktop, if wanted",
-      "status": "proposed",
-      "entry": "Optional motion control beside an already useful still wallpaper",
-      "effect": "Explicit local playback, muted, with Pause and a chosen still fallback. Motion must never be required to enjoy the picture.",
-      "limit": "Continuous desktop video is not established by the public image setter. Choose a renderer only after focus, energy, sleep, battery, Reduce Motion, Spaces and sharing experiments.",
-      "source": "docs/background-management.md",
-      "evidence": "No motion implementation or energy benchmark. A mockup is not evidence that a proposed renderer meets these requirements."
+      "name": "Gentle desktop motion, while Workbench is open",
+      "status": "implemented",
+      "entry": "Present a device → More beside the presentation buttons → Use as animated desktop (non-App-Store build)",
+      "effect": "Apply and verify a rendered native still, then show an independent click-through desktop layer. Authored starters move clouds or foliage; ordinary photos use gentle zoom. Foreground artwork stays still. Pause/Resume/Stop controls appear in the scene window.",
+      "limit": "App-owned, one display and the current Space only. Stops on Quit or Space change; checks native wallpaper ownership periodically. A direct photo-only wallpaper picker is still proposed. No video import, Lock Screen installation, automatic login restart or energy claim.",
+      "source": "Sources/StageKit/DesktopMotion.swift",
+      "evidence": "Native isolated Mac host checked desktop-layer Start/Pause/Resume/Stop and presentation-End independence without changing the user’s wallpaper. Ownership, nested sleep and removal policies passed unit checks. Actual native still apply is separately implemented; physical multi-display/Spaces and energy remain unverified. The signed Mac Preview at source 9fe7959 was installed and opened with existing scenes present; the new toggle and desktop menu action were confirmed. It is not notarized or in the public download. The authored starter increment at 48c00dc is installed as signed local Preview build 20260914180524; exact archive/resource identity and new gallery verified. Not notarized or in the public download."
+    },
+    {
+      "id": "scene-motion",
+      "name": "Gentle motion in a prepared scene",
+      "status": "implemented",
+      "entry": "Choose a starter → Window light, Campus breeze or Coastal sky. Gentle motion in scene settings; Pause/Play in presentation controls or the iOS editor preview.",
+      "effect": "For ordinary photos, an optional 3.5% zoom. Three authored starters instead move clouds or branches while the architecture and foreground remain still. Complete posters, clean plates and details travel in version 2 packages; the prior library manifest is preserved before upgrade.",
+      "limit": "Mac editor and galleries remain still. iOS animates only the active visible scene preview. PNG/Photos exports stay still; no Live Photo export or continuous iOS Home Screen animation. Reduce Motion, disabled animated-image autoplay, low power and high thermal state suppress animation. Device video and meeting receivers need separate validation.",
+      "source": "Sources/StageKit/MovingSceneView.swift",
+      "evidence": "79 native Mac scene tests / 2251 assertions and 72 shared-module tests passed. Actual isolated Mac office captures changed only the window sky; fixed room/desk pixels were identical. Native compositor and UIKit poster parity checked for all three rigs. See /scenes/ambient/ for the current source and delivery evidence."
+    },
+    {
+      "id": "persona-session",
+      "name": "Present several native overlays",
+      "status": "implemented",
+      "entry": "Personas and overlays → Prepare presentation → Demo groups → Start overlays",
+      "effect": "Show several independently placed cards, switch among explicitly prepared sets, and Hide/Show/End through one click-based native tile. Live images, labels and allowed choices are frozen; layout saving is explicit.",
+      "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
+      "source": "Sources/StageKit/PersonaSession.swift",
+      "evidence": "88 integrated native Mac scene tests /2367 assertions and 114 StageKit CI-mode tests /2533 assertions passed (live menu-bar popover check excluded). Native keyboard focus and click menu, per-card hide, paused set switching, return and restoration checked with disposable artwork. Signed local Preview 20260914204356 installed; signature, preparation entry and disabled optional shortcuts verified. Source and delivery limits are in /personas/."
+    },
+    {
+      "id": "break-timer-placement",
+      "name": "Remember the separate break timer position",
+      "status": "implemented",
+      "entry": "Break timer → drag or Position",
+      "effect": "Snap on drag release; persist a free normalized position or one of eight anchors and recover on an available display after hiding, closing or restarting.",
+      "limit": "Countdown and presentation remain independent. Corrupt, future or concurrently changed placement files are preserved. Physical display removal, VoiceOver and meeting receivers remain acceptance checks.",
+      "source": "Sources/StageKit/BreakTimerPlacement.swift",
+      "evidence": "Focused synthetic persistence checks: 19 assertions. Native AppKit timer hide/reopen and release-time snapping: 11 assertions. See docs/verification/2026-09-20-contribution-integration.md for combined-candidate results."
     }
   ],
   "events": [
@@ -94,14 +134,14 @@
       "label": "End presentation",
       "status": "implemented",
       "stops": "The presentation window, its device capture, controls and keep-awake activity.",
-      "keeps": "Saved scenes, original assets and any independently applied desktop picture.",
+      "keeps": "Saved scenes, original assets, any independently applied desktop picture and a separately started desktop-motion session.",
       "check": "Do not restore wallpaper, close a meeting, move unrelated windows or change system Stage Manager settings. Check focus returns sensibly; do not promise an exact previous app is always restored."
     },
     {
       "id": "restore-desktop",
       "label": "Restore desktop",
       "status": "implemented",
-      "stops": "Use of Workbench's still output on eligible matched displays, after macOS confirms restoration.",
+      "stops": "The app-owned desktop-motion layer immediately, then use of Workbench’s still output on eligible matched displays after macOS confirms restoration.",
       "keeps": "A later manual picture choice, unmatched recovery records and any active presentation.",
       "check": "Read the current desktop before restoring. A recorded old URL is not authority to overwrite a later user choice."
     },
@@ -109,17 +149,17 @@
       "id": "change-picture",
       "label": "Change a picture in System Settings",
       "status": "implemented",
-      "stops": "Nothing in Workbench automatically. macOS owns the new desktop choice.",
+      "stops": "The desktop-motion layer at its next ownership check if the native picture no longer matches the applied output. macOS owns the new choice.",
       "keeps": "A running presentation and saved compositions. Restoration subsequently skips pictures it no longer owns.",
-      "check": "Do not add a resynchronization daemon. For a future wallpaper manager, recheck observed state before the next explicit apply or restore."
+      "check": "The renderer never reapplies a picture. A five-second timer with tolerance and wake checks verify ownership; unknown state stops the session. Restore still respects later manual choices."
     },
     {
       "id": "pause-motion",
       "label": "Pause wallpaper motion",
-      "status": "proposed",
-      "stops": "The future wallpaper renderer's playback activity.",
-      "keeps": "The chosen still image and independent presentation state.",
-      "check": "No Pause control or empty stub should ship until there is working motion. A still must also cover sleep, missing media and renderer failure; exact automatic-pause rules need measurement."
+      "status": "implemented",
+      "stops": "The desktop layer’s animation and visibility; the underlying native still shows.",
+      "keeps": "The applied still, independent saved scene and any presentation. Resume checks that Workbench still owns the desktop picture.",
+      "check": "Explicit Pause survives sleep/wake. Reduce Motion, Low Power Mode, high thermal state and occlusion separately suppress animation. No automatic login restart."
     },
     {
       "id": "quit",
@@ -127,10 +167,51 @@
       "status": "implemented",
       "stops": "App-owned recording, playback, presentation, drawing, timers and monitors.",
       "keeps": "Saved work, retained desktop output files and recovery records. A still picture set through macOS remains set.",
-      "check": "Future app-rendered motion must stop on Quit and leave the chosen still. Do not restart in the background or restore wallpaper silently."
+      "check": "App-rendered desktop motion stops on Quit; the native still remains. Do not restart in the background or restore wallpaper silently."
+    },
+    {
+      "id": "hide-overlays",
+      "label": "Hide all overlays temporarily",
+      "status": "implemented",
+      "stops": "Visibility of all current session artwork. The small tile remains available.",
+      "keeps": "Prepared sets, frozen artwork and each copy's visibility choice. Changing sets while paused stays hidden.",
+      "check": "Show again restores the selected set without reviving copies individually hidden earlier."
+    },
+    {
+      "id": "end-overlays",
+      "label": "End overlays",
+      "status": "implemented",
+      "stops": "Every window and the control tile belonging to the overlay session.",
+      "keeps": "Saved groups, layouts, original images, unrelated apps and the desktop picture.",
+      "check": "Live changes are temporary unless explicitly saved. Quit also ends the session; launch never restarts it."
+    },
+    {
+      "id": "native-phone-handoff",
+      "label": "End preview and open an Apple app",
+      "status": "implemented",
+      "stops": "This Workbench device presentation, its capture session, observers, controls and keep-awake activity before launching the requested app.",
+      "keeps": "Saved scenes, independently applied wallpaper and other apps. The selected Apple app owns its own device session and meeting sharing remains separate.",
+      "check": "Both capture cleanup and native window closure must finish, in either order, before one app-launch attempt. A visible launch error never silently reacquires capture."
     }
   ],
   "acceptance": [
+    {
+      "id": "presentation-snapshot",
+      "test": "At da4f0f4, start a windowed synthetic still in the native Mac host, change the saved name/backdrop and remove the placed persona, then revisit the running presentation. It stayed unchanged; End/restart adopted the saved changes. Device capture and cloud were off. Live video, incoming sync, fullscreen and receiving-participant behavior remain unverified.",
+      "status": "passed-windowed-still",
+      "capabilities": [
+        "scene-session",
+        "scene-backdrop"
+      ]
+    },
+    {
+      "id": "presentation-controls",
+      "test": "At 7e45213, select each of the eight named positions in an isolated native windowed still presentation; Position and End stayed reachable. Drag the compact tile from Bottom right to Left centre; release kept it collapsed with no guides remaining. Command Slash reopened it. A native full-screen transition retained controls; first Escape collapsed them, second Escape ended and returned to Scenes. Every drag target, guides during drag, multiple displays, VoiceOver, live capture and receiver views remain separate.",
+      "status": "passed-single-display-still",
+      "capabilities": [
+        "scene-session"
+      ]
+    },
     {
       "id": "independent-entry",
       "test": "Set a wallpaper from a fresh session without making a presentation. Complete first dictation without wallpaper setup.",
@@ -190,6 +271,65 @@
       "capabilities": [
         "wallpaper-motion"
       ]
+    },
+    {
+      "id": "gentle-motion-local",
+      "test": "Native Mac windowed motion, Pause, desktop-layer Pause/Resume/Stop and End independence checked using disposable scenes. iPhone Simulator created Coast, enabled motion, paused/resumed and opened still crop controls. The desktop host used the existing native wallpaper as its ownership token and did not replace it. Current source builds pass; full device-video, Lock Screen, multi-display and energy checks remain separate.",
+      "status": "passed-isolated-native-and-simulator",
+      "capabilities": [
+        "scene-motion",
+        "wallpaper-motion"
+      ]
+    },
+    {
+      "id": "multiple-overlays",
+      "test": "Start two independently placed copies; hide one, pause all, switch away and back, then resume. Preserve exact visibility and frozen audience labels/images. Failed start must retain the old view; conflicting Save must preserve preparation and show a safe notice. Test temporary edits, exact preupgrade backup and old/future files. Native capture and hardware shortcuts need their own receiving-device checks.",
+      "status": "passed-unit-and-focused-native",
+      "capabilities": [
+        "persona-session"
+      ]
+    },
+    {
+      "id": "phone-source-and-handoff",
+      "test": "Explicit first choice, exact-ID recovery, restricted versus denied permission guidance, both handoff callback orders, repeated end, native transition failure and capture callback retained beyond presenter release. Use synthetic devices and a stopped capture; no camera prompt.",
+      "status": "passed-source-and-unit",
+      "capabilities": [
+        "scene-session",
+        "phone-routes"
+      ]
+    },
+    {
+      "id": "phone-guide-native",
+      "test": "Open guide before capture. Inspect all three jobs and route picker; scroll to rehearsal/workplace limits, change routes from the bottom, use Escape/Done and request an Apple fallback. Verify dismissal before the fake launch callback. Actual USB fallback release needs physical-device acceptance.",
+      "status": "passed-native-isolated",
+      "capabilities": [
+        "phone-routes"
+      ]
+    },
+    {
+      "id": "phone-voice-duplex",
+      "test": "On an approved Mac and phone, test actual agent microphone, reply monitoring, interruption, reconnect and receiver audibility in Teams and Zoom desktop and browser. Record route and app/OS versions. Ordinary media playback is insufficient.",
+      "status": "not-run",
+      "capabilities": [
+        "phone-routes",
+        "scene-session"
+      ]
+    },
+    {
+      "id": "single-persona-failure",
+      "test": "A selected card in a group with unreadable other artwork returns a visible failure without ending existing output. Busy and oversized groups refuse before mutation. Native post-dismiss alert path is shared with prepared-session Start/Resume.",
+      "status": "passed-source-and-unit",
+      "capabilities": [
+        "persona-session"
+      ]
+    },
+    {
+      "id": "timer-position-recovery",
+      "test": "Drag near an anchor and release; verify the visible frame matches the saved anchor before hide/reopen. Exercise free and named placement with changed synthetic display bounds and preserved corrupt/future/concurrent records. Physical displays and receiver view remain unverified.",
+      "status": "passed-native-isolated",
+      "capabilities": [
+        "break-timer-placement"
+      ]
     }
   ],
   "agentContract": {
@@ -238,6 +378,26 @@
       "title": "Apple: ScreenCaptureKit",
       "url": "https://developer.apple.com/videos/play/wwdc2022/10155/",
       "supports": "Capture selection and filtering affect whether separate windows and overlays are included."
+    },
+    {
+      "title": "Workbench: phone connection and audio",
+      "url": "https://workbench-mac.vercel.app/phone-presenting/",
+      "supports": "Native route comparison, voice rehearsal, safe handoff and current implementation evidence."
+    },
+    {
+      "title": "Apple: iPhone Mirroring",
+      "url": "https://support.apple.com/en-au/120421",
+      "supports": "Hardware/account requirements, locked phone, Mac playback and unavailable iPhone microphone/camera."
+    },
+    {
+      "title": "Apple: QuickTime movie recording",
+      "url": "https://support.apple.com/en-au/guide/quicktime-player/qtp356b55534/mac",
+      "supports": "Connected phone Camera choice and separate audio/monitoring controls."
+    },
+    {
+      "title": "Zoom: iOS screen sharing",
+      "url": "https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0066704",
+      "supports": "Mac cable route and optional Share computer sound for phone audio; not generic agent duplex evidence."
     }
   ]
 }

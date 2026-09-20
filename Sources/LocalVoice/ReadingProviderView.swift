@@ -21,9 +21,44 @@ struct ReadingProviderView: View {
                     Spacer()
                     Link("Speko account ↗", destination: URL(string: "https://platform.speko.ai")!)
                 }.font(.caption).foregroundStyle(.secondary)
-                Text("Automatic voice · balanced routing · up to 5,000 characters per reading")
-                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("VOICE").font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                    HStack {
+                        Picker("Speko voice", selection: Binding<String?>(
+                            get: { model.selectedSpekoVoice?.id },
+                            set: { model.selectSpekoVoice(id: $0) }
+                        )) {
+                            Text("Automatic · balanced route").tag(String?.none)
+                            ForEach(model.displayedSpekoVoices) { voice in
+                                Text(voice.name).tag(Optional(voice.id))
+                            }
+                        }
+                        .frame(maxWidth: 360)
+                        Button { Task { await model.refreshSpekoVoices() } } label: {
+                            Label("Refresh voices", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(model.loadingSpekoVoices || !SpekoKeychain.hasKey)
+                        if model.loadingSpekoVoices { ProgressView().controlSize(.small) }
+                    }
+                    if let voice = model.selectedSpekoVoice {
+                        Text("\(voice.name) · \(voice.detail) · explicit \(voice.useWith.provider) / \(voice.useWith.model)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Automatic voice · balanced routing")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !model.spekoVoiceNotice.isEmpty {
+                        Text(model.spekoVoiceNotice).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Up to 5,000 characters per reading. Speko speech-to-text is not selected here; dictation remains configured separately in Models.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
-        }.disabled(model.rendering).onDisappear { key = "" }
+        }
+        .disabled(model.rendering)
+        .task(id: model.readingProvider) {
+            if model.readingProvider == .speko { await model.refreshSpekoVoices() }
+        }
+        .onDisappear { key = "" }
     }
 }

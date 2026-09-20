@@ -21,6 +21,9 @@
     ],
     [
       "--self-test"
+    ],
+    [
+      "--check-presenter"
     ]
   ]
 }

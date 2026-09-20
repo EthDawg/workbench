@@ -13,13 +13,15 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     private let logo: NSImage?
     private let hand: NSImage?
     private let persona: NSImage?
+    private let ambience: AmbientSceneImages?
     private let screen: NSScreen?
     private let mode: PresentationMode
     private var lifecycle = PresentationLifecycle()
+    private let handoff = PresentationHandoff()
     private var keepAwake: NSObjectProtocol?
-    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, screen: NSScreen?, root: URL, mode: PresentationMode = .fullScreen) {
+    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, mode: PresentationMode = .fullScreen) {
         self.scene = scene; backdrop = image; self.logo = logo; self.hand = hand; self.persona = persona; self.screen = screen
-        self.mode = mode
+        self.mode = mode; self.ambience = ambience
         capture = DemoCapture(root: root)
         controls = PresentationControlsModel(root: root)
         super.init()
@@ -43,7 +45,8 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         }
         window.onReconnect = { [weak self] in self?.capture.reconnect() }
         window.onRevealControls = { [weak self] in self?.controls.revealForKeyboard() }
-        window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, capture: capture, controls: controls) { [weak self] in self?.end() })
+        window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, controls: controls,
+            endAndOpen: { [weak self] in self?.endAndOpen($0) }, end: { [weak self] in self?.end() }))
         self.window = window
         NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
         if mode == .fullScreen { lifecycle.willEnter(); window.toggleFullScreen(nil) }
@@ -52,8 +55,26 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     func bringForward() { NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil) }
     func end() {
         guard !lifecycle.ending, !lifecycle.finished else { return }
-        capture.stop(); releaseKeepAwake()
+        let operation = handoff
+        capture.stop { operation.captureDidStop() }
+        releaseKeepAwake()
         apply(lifecycle.requestEnd())
+    }
+    private func endAndOpen(_ app: NativePresentationApp) {
+        guard !lifecycle.ending, !lifecycle.finished else { return }
+        guard handoff.request({
+            app.open { message in
+                // The source sheet and its parent are now closed, so a message
+                // on that former capture model would be invisible.
+                let alert = NSAlert()
+                alert.messageText = "Could not open \(app.title)"
+                alert.informativeText = message
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+        }) else { return }
+        end()
     }
     private func apply(_ effect: PresentationLifecycle.Effect) {
         switch effect {
@@ -68,9 +89,11 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         guard !lifecycle.finished else { return }
         lifecycle.complete()
         controls.stop()
-        capture.stop(); releaseKeepAwake()
+        releaseKeepAwake()
         window?.delegate = nil; window?.orderOut(nil); window?.contentView = nil; window?.close(); window = nil
+        let operation = handoff
         let callback = onEnd; onEnd = nil; callback?()
+        operation.presentationDidClose()
     }
     private func releaseKeepAwake() {
         if let keepAwake { ProcessInfo.processInfo.endActivity(keepAwake); self.keepAwake = nil }
@@ -201,13 +224,17 @@ private struct DemoStageContent: View {
     let logo: NSImage?
     let hand: NSImage?
     let persona: NSImage?
+    let ambience: AmbientSceneImages?
     @ObservedObject var capture: DemoCapture
     @ObservedObject var controls: PresentationControlsModel
+    let endAndOpen: (NativePresentationApp) -> Void
     let end: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var fitToSource = true
+    @State private var motionPaused = false
     @State private var choosingSource = false
+    @State private var pendingNativeApp: NativePresentationApp?
     @FocusState private var focusedControl: Control?
     private var liveScene: DemoScene {
         var value = scene
@@ -235,7 +262,7 @@ private struct DemoStageContent: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, previewLayer: capture.previewLayer, live: capture.live)
+                DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, previewLayer: capture.previewLayer, live: capture.live, motion: scene.gentleMotion == true && !motionPaused && !reduceMotion)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if controls.policy.isExpanded { controls.close() } }
                 if scene.showsPhone && !capture.live {
@@ -279,7 +306,11 @@ private struct DemoStageContent: View {
                 .onChange(of: controls.focusRequest) { _, _ in
                     focusedControl = controls.policy.isExpanded ? (scene.showsPhone ? .source : .close) : .tile
                 }
-                .sheet(isPresented: $choosingSource) { sourceSheet }
+                .sheet(isPresented: $choosingSource, onDismiss: {
+                    guard let app = pendingNativeApp else { return }
+                    pendingNativeApp = nil
+                    endAndOpen(app)
+                }) { sourceSheet }
         }.ignoresSafeArea()
     }
     private func dragGesture(in size: CGSize) -> some Gesture {
@@ -290,7 +321,7 @@ private struct DemoStageContent: View {
     private func tile(in size: CGSize) -> some View {
         Button { controls.toggleFromTile() } label: {
             HStack(spacing: 0) {
-                Image(systemName: "iphone").font(.system(size: 17, weight: .medium))
+                Image(systemName: scene.showsPhone ? "iphone" : "photo").font(.system(size: 17, weight: .medium))
                     .frame(width: 42, height: 40)
                 Divider().frame(height: 18)
                 Image(systemName: inwardChevron).font(.system(size: 11, weight: .semibold))
@@ -306,7 +337,7 @@ private struct DemoStageContent: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: "iphone")
+                    Image(systemName: scene.showsPhone ? "iphone" : "photo")
                     Text(sourceName).font(.callout.weight(.semibold)).lineLimit(1)
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle()).gesture(dragGesture(in: size))
@@ -324,6 +355,12 @@ private struct DemoStageContent: View {
                         .focused($focusedControl, equals: .reconnect).help("Reconnect device · ⌘R")
                 }
                 Spacer()
+                if scene.gentleMotion == true {
+                    Button { motionPaused.toggle() } label: {
+                        Image(systemName: motionPaused ? "play.fill" : "pause.fill")
+                    }.accessibilityLabel(motionPaused ? "Play background motion" : "Pause background motion")
+                        .help(motionPaused ? "Play background motion" : "Pause background motion")
+                }
             }.frame(height: 28)
             Divider()
             HStack {
@@ -358,12 +395,18 @@ private struct DemoStageContent: View {
             }
             Text("Connect an unlocked iPhone or iPad by USB and trust this Mac. External video sources also work; Android needs a compatible video feed.").foregroundStyle(.secondary)
             if capture.sources.isEmpty { Text("No external sources found.") }
-            ForEach(capture.sources) { source in
-                Button {
-                    capture.select(source.id); choosingSource = false
-                } label: {
-                    HStack { Image(systemName: source.isScreen ? "iphone" : "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
-                }.buttonStyle(.bordered)
+            if !capture.sources.isEmpty {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(capture.sources) { source in
+                            Button {
+                                capture.select(source.id); choosingSource = false
+                            } label: {
+                                HStack { Image(systemName: "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
+                            }.buttonStyle(.bordered)
+                        }
+                    }
+                }.frame(height: min(CGFloat(capture.sources.count) * 36, 160))
             }
             Text(capture.message).font(.caption).foregroundStyle(.secondary)
             Toggle("Match device proportions", isOn: $fitToSource).toggleStyle(.checkbox)
@@ -373,7 +416,11 @@ private struct DemoStageContent: View {
             }
             Button("Refresh devices") { capture.refresh() }
             Divider()
-            NativePresentationApps { capture.reportNotice($0) }
+            NativePresentationApps(onEndAndOpen: { app in
+                guard pendingNativeApp == nil else { return }
+                pendingNativeApp = app
+                choosingSource = false
+            }) { capture.reportNotice($0) }
         }.padding(24).frame(width: 460).onExitCommand { choosingSource = false }
     }
 }
@@ -384,62 +431,39 @@ private struct DemoStageSurface: NSViewRepresentable {
     let logo: NSImage?
     let hand: NSImage?
     let persona: NSImage?
+    let ambience: AmbientSceneImages?
     let previewLayer: AVCaptureVideoPreviewLayer
     let live: Bool
+    let motion: Bool
     func makeNSView(context: Context) -> DemoStageSurfaceView { DemoStageSurfaceView(previewLayer: previewLayer) }
     func updateNSView(_ view: DemoStageSurfaceView, context: Context) {
-        let changed = view.scene != scene || view.backdrop !== image || view.logo !== logo || view.hand !== hand || view.persona !== persona
-        view.scene = scene; view.backdrop = image; view.logo = logo; view.hand = hand; view.persona = persona; view.isLive = live
-        if changed { view.needsDisplay = true; view.needsLayout = true; view.refreshLogo() }
+        view.configure(scene: scene, backdrop: image, logo: logo, hand: hand, persona: persona, ambience: ambience)
+        view.viewportScene = scene; view.isLive = live
+        view.motionRequested = motion; view.needsLayout = true
     }
+    static func dismantleNSView(_ view: DemoStageSurfaceView, coordinator: ()) { view.motionRequested = false }
 }
 
-/// Clip the actual feed with precisely the same inner radius used by the border.
-final class DemoStageSurfaceView: NSView {
-    var scene: DemoScene?
-    var backdrop: NSImage?
-    var logo: NSImage?
-    var hand: NSImage?
-    var persona: NSImage?
+/// Device video remains between its stationary frame and foreground branding.
+final class DemoStageSurfaceView: MovingSceneView {
+    var viewportScene: DemoScene?
     private let videoLayer: AVCaptureVideoPreviewLayer
-    private let branding = DemoStageLogoView()
-    var isLive = false { didSet { videoLayer.isHidden = !isLive || scene?.showsPhone != true } }
+    var isLive = false { didSet { videoLayer.isHidden = !isLive || viewportScene?.showsPhone != true } }
     init(previewLayer: AVCaptureVideoPreviewLayer) {
         videoLayer = previewLayer
-        super.init(frame: .zero); wantsLayer = true
+        super.init(frame: .zero)
         videoLayer.videoGravity = .resizeAspect; videoLayer.masksToBounds = true
         videoLayer.backgroundColor = NSColor.black.cgColor
-        layer?.addSublayer(videoLayer)
-        // Branding is the top scene layer in exports and live presentations.
-        branding.wantsLayer = true; addSubview(branding)
+        insertVideoLayer(videoLayer)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func layout() {
         super.layout()
-        guard let scene else { return }
-        branding.frame = bounds; branding.needsDisplay = true
+        guard let scene = viewportScene else { return }
         let geometry = ViewportGeometry(scene: scene, size: bounds.size)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         videoLayer.frame = geometry.screen; videoLayer.cornerRadius = geometry.innerRadius
         videoLayer.isHidden = !scene.showsPhone || !isLive
         CATransaction.commit()
-    }
-    override func draw(_ dirtyRect: NSRect) {
-        guard let scene, let backdrop else { return }
-        SceneRenderer.draw(scene, image: backdrop, size: bounds.size, handImage: hand)
-    }
-    func refreshLogo() { branding.scene = scene; branding.image = logo; branding.persona = persona; branding.needsDisplay = true }
-}
-
-private final class DemoStageLogoView: NSView {
-    var scene: DemoScene?
-    var image: NSImage?
-    var persona: NSImage?
-    override var isOpaque: Bool { false }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draw(_ dirtyRect: NSRect) {
-        guard let scene else { return }
-        SceneRenderer.drawLogo(scene, size: bounds.size, image: image)
-        SceneRenderer.drawPersona(scene, size: bounds.size, image: persona)
     }
 }

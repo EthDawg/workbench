@@ -5,6 +5,7 @@ import CoreMediaIO
 struct DemoSource: Identifiable, Equatable {
     let id: String
     let name: String
+    /// A muxed-media display hint only; never evidence of phone identity.
     let isScreen: Bool
 }
 
@@ -17,8 +18,21 @@ struct CaptureRecovery {
     func accepts(_ token: Int, source: String) -> Bool { token == generation && source == desiredID }
     func candidate(in sources: [DemoSource]) -> String? {
         if let desiredID { return sources.contains { $0.id == desiredID } ? desiredID : nil }
-        let screens = sources.filter(\.isScreen)
-        return screens.count == 1 ? screens.first?.id : nil
+        // Muxed describes media, not a verified phone screen. Even a single
+        // external source needs the user's first selection; reconnects retain it.
+        return nil
+    }
+}
+
+enum CaptureVideoAccess {
+    static func unavailableMessage(for status: AVAuthorizationStatus) -> String? {
+        switch status {
+        case .restricted:
+            return "Device video access is restricted on this Mac. Use an approved presentation route or ask your IT administrator for help."
+        case .denied:
+            return "Device video access is off. Enable Workbench in System Settings → Privacy & Security → Camera, then choose Reconnect."
+        default: return nil
+        }
     }
 }
 
@@ -109,7 +123,9 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             _ = recovery.select(recovery.desiredID); stopSession(); discover()
         }
     }
-    func stop() {
+    /// Completion runs on main only after this capture queue has released its
+    /// session and recovery observers. A native fallback must wait for it.
+    func stop(completion: (() -> Void)? = nil) {
         // Replace the former live label during the short full-screen exit.
         publish("Ending demo…")
         queue.async { [self] in
@@ -118,6 +134,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
             if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver); self.wakeObserver = nil }
             discoveryObservation = nil; discovery = nil
+            if let completion { DispatchQueue.main.async(execute: completion) }
         }
     }
     private func publish(_ text: String, clear: Bool = true) {
@@ -137,11 +154,6 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
         guard activeID == nil, Date() >= retryAfter else { return }
         if let candidate = recovery.candidate(in: choices) {
-            if recovery.desiredID == nil {
-                _ = recovery.select(candidate)
-                try? JSONEncoder().encode(candidate).write(to: preference, options: .atomic)
-                DispatchQueue.main.async { [weak self] in self?.selectedID = candidate }
-            }
             connect(candidate)
         } else {
             publish(recovery.desiredID == nil ? "Choose a connected device screen. For iPhone or iPad, connect by USB, unlock and trust this Mac." : "Waiting for your selected device. Reconnect it, or choose another source.")
@@ -149,7 +161,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
     private func connect(_ id: String) {
         guard enabled, activeID == nil, let device = devices[id], !waitingForPermission else { return }
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        let authorization = AVCaptureDevice.authorizationStatus(for: .video)
+        switch authorization {
         case .notDetermined:
             waitingForPermission = true
             publish("Allow device video access in the macOS prompt to preview your screen.")
@@ -160,7 +173,8 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             }
             return
         case .denied, .restricted:
-            publish("Device video access is off. Enable Workbench in System Settings → Privacy & Security → Camera, then choose Reconnect.")
+            publish(CaptureVideoAccess.unavailableMessage(for: authorization)
+                ?? "Device video access is unavailable. Choose another approved presentation route.")
             return
         default: break
         }
