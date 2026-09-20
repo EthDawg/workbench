@@ -254,6 +254,8 @@ final class IntegrationTests: XCTestCase {
         app.startDrawing(.rectangle, latched: true)
         XCTAssertTrue(app.isDrawing, "Drawing must be usable again after Screenshot closes")
 
+        var recoveredControls = false
+        app.onOpenControls = { recoveredControls = true }
         app.screenshotLauncher = { completion in
             completion(NSError(domain: "ScreenshotFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Synthetic launch failure"]))
         }
@@ -261,7 +263,17 @@ final class IntegrationTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         XCTAssertFalse(app.screenshotHandoffActive)
         XCTAssertTrue(app.notice?.contains("Synthetic launch failure") == true)
+        XCTAssertTrue(recoveredControls, "A launch failure must reopen the host controls so its notice can be read")
         XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), [ink.id], "A failed launch must not clear annotations")
+        app.toggleBoard(.white)
+        let boardInk = Annotation(tool: .pen, color: .coral, width: 3,
+                                  points: [InkPoint(CGPoint(x: 20, y: 20)), InkPoint(CGPoint(x: 80, y: 70))])
+        app.history(for: display)?.append(boardInk)
+        let boardIDs = app.history(for: display)?.annotations.map(\.id)
+        app.openScreenshot()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(app.boards[display], .white, "Recovery must preserve the visible board")
+        XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), boardIDs, "Recovery must preserve board ink")
     }
     func testShortcutRegistrationAndRelease() {
         _ = NSApplication.shared

@@ -167,7 +167,7 @@ struct QuickControlsView: View {
             }
             BoardExportButtons(app: app)
             ScreenshotHandoffButton(app: app)
-            Text("Use a region or display capture to include visible ink. A single-window capture may omit Workbench’s separate annotation layer. Shortcut: Shift-Command-5.")
+            Text("Use a region or display capture to include visible ink. A single-window capture may omit Workbench’s separate annotation layer.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

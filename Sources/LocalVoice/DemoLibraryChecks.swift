@@ -234,8 +234,9 @@ enum DemoLibraryChecks {
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         application.finishLaunching()
-        let owner = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320),
-                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let owner = WorkbenchHomeWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 320),
+                             styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        owner.isReleasedWhenClosed = false
         owner.title = "Workbench Quick Look check"
         owner.center()
         owner.makeKeyAndOrderFront(nil)
@@ -268,6 +269,37 @@ enum DemoLibraryChecks {
                 throw VoiceError.message("Escape did not close only Quick Look or the source changed: \(url.lastPathComponent)")
             }
         }
-        print("QUICK_LOOK_PANEL_CHECKS_OK: \(urls.count) native previews opened and Escape closed only their panel")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchPreviewLifecycle-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DemoLibraryStore(directory: directory)
+        let item = DemoResource(kind: .file, title: "Owner lifecycle fixture", content: urls[0].path)
+        try store.save([item])
+        var accessStarts = 0, accessStops = 0
+        let model = DemoLibraryModel(store: store, previewer: presenter, makePreviewAccess: { url in
+            DemoResourcePreviewAccess(url: url, start: { _ in accessStarts += 1; return true }, stop: { _ in accessStops += 1 })
+        })
+        model.query = "Owner lifecycle"
+        owner.onHide = { model.closePreview() }
+        // Stage activity and Chrome switching both order Home out. The close
+        // button uses close(), and minimization must also release the preview.
+        let hideActions: [(String, () -> Void)] = [
+            ("activity or browser handoff", { owner.orderOut(nil) }),
+            ("Home close", { owner.close() }),
+            ("Home minimize", { owner.miniaturize(nil) })
+        ]
+        for (name, hide) in hideActions {
+            owner.makeKeyAndOrderFront(nil); owner.makeMain()
+            model.preview(item)
+            guard presenter.panel?.isVisible == true, model.previewingResourceID == item.id else {
+                throw VoiceError.message("Quick Look lifecycle fixture did not open before \(name)")
+            }
+            hide()
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            guard presenter.panel == nil, model.previewingResourceID == nil, accessStarts == accessStops,
+                  model.selection == item.id, model.query == "Owner lifecycle" else {
+                throw VoiceError.message("\(name) did not close Quick Look, release access, and preserve selection")
+            }
+        }
+        print("QUICK_LOOK_PANEL_CHECKS_OK: \(urls.count) native previews, Escape, and three owner lifecycle paths released access")
     }
 }

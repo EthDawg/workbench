@@ -77,3 +77,24 @@ final class DemoResourcePreviewAccess {
 
     deinit { release() }
 }
+
+/// All Home hide paths (Stage activity, browser switching and the close button)
+/// end its transient preview, including the library's security-scoped access.
+final class WorkbenchHomeWindow: NSWindow {
+    var onHide: (() -> Void)?
+
+    override func orderOut(_ sender: Any?) {
+        onHide?()
+        super.orderOut(sender)
+    }
+
+    override func close() {
+        onHide?()
+        super.close()
+    }
+
+    override func miniaturize(_ sender: Any?) {
+        onHide?()
+        super.miniaturize(sender)
+    }
+}

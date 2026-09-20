@@ -236,7 +236,7 @@ struct ControlCenter: View {
             }
             BoardExportButtons(app: app)
             ScreenshotHandoffButton(app: app)
-            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. The palette and pointer hide during selection. Shortcut: Shift-Command-5.")
+            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. The palette and pointer hide during selection.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 18) {
                 Toggle("Keep board drawings separate from the screen", isOn: $settings.value.separateBoards).disabled(!app.boards.isEmpty)

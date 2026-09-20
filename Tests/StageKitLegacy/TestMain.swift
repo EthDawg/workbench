@@ -40,6 +40,15 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--screenshot-native-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            do { try IntegrationTests().testScreenshotHandoffPreservesInkAndSuspendsInput() }
+            catch { assertionFailures += 1; print("FAIL screenshot native handoff: \(error)") }
+            print("1 tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--timer-placement-native"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)

@@ -58,6 +58,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var timerWindow: NSPanel?
     private var adjustingTimerFrame = false
     private var timerLiveResizing = false
+    private var timerMoveSettlement: Timer?
+    private var timerFrameRevision = 0
     private var boardSavePanel: NSSavePanel?
     private var screenshotHandoff = ScreenshotHandoffState()
     var screenshotLauncher: ScreenshotLauncher = SystemScreenshot.launch
@@ -133,6 +135,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func shutdown() {
         shuttingDown = true
+        timerMoveSettlement?.invalidate(); timerMoveSettlement = nil
         boardSavePanel?.cancel(nil); boardSavePanel = nil
         demoScenes.shutdown()
         hideQuickControls()
@@ -372,6 +375,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             ?? "Screenshot closed. Your annotations are still available; choose a drawing tool to continue."
         for canvas in canvases.values { canvas.needsDisplay = true }
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+        if error != nil { showControls(tab: "Drawing", preservingCanvas: true) }
     }
     func settingsChanged() {
         if !shortcutsSuspended && recordingAction == nil && registeredShortcuts != settings.value.shortcuts {
@@ -531,12 +535,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if embedded { onOpenScenes?(); return }
         demoScenes.show()
     }
-    func showControls(tab: String? = nil) {
+    func showControls(tab: String? = nil, preservingCanvas: Bool = false) {
         if let frontmost = NSWorkspace.shared.frontmostApplication,
            frontmost.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             previousApplication = frontmost
         }
-        hideQuickControls(); escape()
+        hideQuickControls()
+        if !preservingCanvas { escape() }
         if let tab { selectedTab = tab }
         if embedded {
             if tab == "Shortcuts", let onOpenShortcuts { onOpenShortcuts() }
@@ -652,12 +657,18 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         guard let destination = timerPlacement.value.destination(
             size: timerWindow.frame.size, displays: availableTimerDisplays(), fallbackID: fallbackID ?? fallbackTimerDisplayID()
         ) else { return }
+        timerMoveSettlement?.invalidate(); timerMoveSettlement = nil
+        timerFrameRevision += 1
+        let revision = timerFrameRevision
         adjustingTimerFrame = true
         timerWindow.setFrame(destination.frame, display: true)
         // AppKit may apply its own screen constraint when the panel is ordered
         // front and deliver that move after setFrame returns. Keep restoration
         // moves out of the persisted user-drag path through the next run-loop turn.
-        DispatchQueue.main.async { [weak self] in self?.adjustingTimerFrame = false }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.timerFrameRevision == revision else { return }
+            self.adjustingTimerFrame = false
+        }
     }
     private func recordTimerPosition() {
         guard let timerWindow, !adjustingTimerFrame, !timerLiveResizing,
@@ -668,7 +679,19 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === timerWindow else { return }
-        recordTimerPosition()
+        guard !adjustingTimerFrame, !timerLiveResizing, timerMoveSettlement == nil else { return }
+        // didMove also arrives during a drag. Wait for release before persisting
+        // and snapping, so the panel does not fight the user's pointer.
+        let settlement = Timer(timeInterval: 0.03, repeats: true) { [weak self] timer in
+            guard let self, !self.shuttingDown else { timer.invalidate(); return }
+            guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+            timer.invalidate(); self.timerMoveSettlement = nil
+            guard !self.adjustingTimerFrame, !self.timerLiveResizing else { return }
+            self.recordTimerPosition()
+            self.restoreTimerPosition()
+        }
+        timerMoveSettlement = settlement
+        RunLoop.main.add(settlement, forMode: .common)
     }
     func windowWillStartLiveResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === timerWindow else { return }
@@ -678,7 +701,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         guard let window = notification.object as? NSWindow, window === timerWindow else { return }
         timerLiveResizing = false
         if timerPlacement.value.position.anchor == nil { recordTimerPosition() }
-        else { restoreTimerPosition(fallbackID: timerDisplay(containing: window.frame)?.id) }
+        restoreTimerPosition(fallbackID: timerDisplay(containing: window.frame)?.id)
     }
     func beginRecording(_ action: Action) {
         if embedded, let onOpenShortcuts { onOpenShortcuts(); return }

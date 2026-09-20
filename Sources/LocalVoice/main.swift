@@ -72,7 +72,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if suspended { self.hotkeys.unregister(); self.stage.escape(); self.stage.setShortcutsSuspended(true) }
             else { self.stage.setShortcutsSuspended(false); self.registerShortcuts(); self.keyboard.replaceEntries(self.shortcutEntries()) }
         })
-        window = NSWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback)))
+        let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback)))
+        homeWindow.onHide = { [weak self] in self?.model.library.closePreview() }
+        window = homeWindow
         window.title = Workbench.displayName
         window.setContentSize(NSSize(width: 1180, height: 800))
         window.minSize = NSSize(width: 1050, height: 730)

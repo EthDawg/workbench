@@ -68,7 +68,7 @@ final class BreakTimerPlacementTests {
             var shortcut = action.defaultShortcut; shortcut.enabled = false
             settings.value.shortcuts[action.rawValue] = shortcut
         }
-        let testDisplay = BreakTimerDisplay(id: "native-test", visibleFrame: NSRect(x: 100, y: 80, width: 1280, height: 800))
+        let testDisplay = BreakTimerDisplay(id: "native-test", visibleFrame: NSScreen.main!.visibleFrame)
         let app = AppCoordinator(settings: settings, archiveURL: root.appendingPathComponent("boards.json"), embedded: true,
                                  timerDisplays: { [testDisplay] }, timerFallbackID: { testDisplay.id })
         app.start(); defer { app.shutdown() }
@@ -86,5 +86,18 @@ final class BreakTimerPlacementTests {
         XCTAssertEqual(app.timerPlacementAnchor, .topLeft, "Hiding and reopening must preserve the named position")
         XCTAssertTrue(window.isVisible)
         XCTAssertNotNil(window.contentView)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+        let target = FloatingControlGeometry.frame(anchor: .bottomRight, size: window.frame.size, visibleFrame: testDisplay.visibleFrame)
+        window.setFrameOrigin(NSPoint(x: target.minX - 8, y: target.minY + 8))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        XCTAssertEqual(app.timerPlacementAnchor, .bottomRight)
+        XCTAssertEqual(window.frame, target, "Releasing a drag near an anchor must visibly snap immediately")
+        let snapped = try Data(contentsOf: placementURL)
+        let savedDrag = try JSONDecoder().decode(BreakTimerPlacement.self, from: snapped)
+        XCTAssertEqual(savedDrag.position.anchor, .bottomRight)
+        app.hideTimer(); app.toggleTimer()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(window.frame, target, "The saved anchor must match the visible position before and after reopening")
+        XCTAssertEqual(try Data(contentsOf: placementURL), snapped, "Programmatic restoration must not rewrite the user placement")
     }
 }
