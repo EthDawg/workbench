@@ -128,7 +128,8 @@ struct TestRunner {
             ("scene list stale and failed deletion preservation", sceneList.testStaleOrFailedBulkDeletionKeepsWholeSelection),
             ("scene list rename search and stale snapshots", sceneList.testRenameReconcilesSearchAndRejectsStaleSnapshots),
             ("scene list drag selection and stale token rejection", sceneList.testDragReordersSelectionAndRejectsStaleOrForeignTokens),
-            ("scene list keyboard focus ownership", sceneList.testDeleteAndReturnBelongOnlyToFocusedTable)
+            ("scene list keyboard focus ownership", sceneList.testDeleteAndReturnBelongOnlyToFocusedTable),
+            ("scene list native inline rename commit and cancel", sceneList.testInlineRenameUsesFieldEditorAndCommitsOrCancels)
         ]
         let workbench = WorkbenchModuleTests()
         let boardExport = BoardExportTests()

@@ -56,6 +56,11 @@ final class SceneListTableView: NSTableView {
     var onRename: (() -> Void)?
     var contextMenu: (() -> NSMenu?)?
 
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        super.mouseDown(with: event)
+    }
+
     @discardableResult func handleListKey(_ event: NSEvent) -> Bool {
         guard window?.firstResponder === self, isEnabled,
               event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
@@ -90,6 +95,7 @@ struct SceneList: NSViewRepresentable {
         table.headerView = nil; table.rowHeight = 34; table.intercellSpacing = NSSize(width: 0, height: 2)
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.style = .sourceList; table.allowsMultipleSelection = true; table.allowsEmptySelection = false
+        table.backgroundColor = .clear
         table.dataSource = context.coordinator; table.delegate = context.coordinator
         table.target = context.coordinator; table.doubleAction = #selector(Coordinator.renameSelected)
         table.registerForDraggedTypes([SceneListDrag.type])
@@ -185,8 +191,9 @@ struct SceneList: NSViewRepresentable {
                   let field = cell.textField else { return }
             editing = selectedRows[0]; editingField = field; cancelledRename = false
             field.isEditable = true; field.isSelectable = true
+            field.cell?.refusesFirstResponder = false
             field.isBezeled = true; field.drawsBackground = true; field.backgroundColor = .textBackgroundColor
-            table.window?.makeFirstResponder(field); field.selectText(nil)
+            table.editColumn(0, row: table.selectedRow, with: nil, select: true)
         }
         func cancelRename() {
             cancelledRename = true

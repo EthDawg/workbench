@@ -236,6 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
         edit.submenu = editMenu; main.addItem(edit)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
+        menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
         menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")

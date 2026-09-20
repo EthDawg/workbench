@@ -152,4 +152,43 @@ final class SceneListTests {
         XCTAssertFalse(table.handleListKey(key(36)))
         XCTAssertEqual(deletes, 2); XCTAssertEqual(renames, 2)
     }
+
+    func testInlineRenameUsesFieldEditorAndCommitsOrCancels() throws {
+        let (root, model, _, _) = try fixture()
+        defer { model.shutdown(); try? FileManager.default.removeItem(at: root) }
+        model.selectedID = model.scenes[0].id
+        let sceneID = model.selectedID
+        let table = SceneListTableView(frame: CGRect(x: 0, y: 0, width: 260, height: 240))
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("scene"))
+        column.width = 260; table.addTableColumn(column); table.headerView = nil
+        let coordinator = SceneList(model: model, onDelete: { _ in }).makeCoordinator()
+        coordinator.table = table; table.dataSource = coordinator; table.delegate = coordinator
+        let window = NSWindow(contentRect: table.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = table
+        defer { window.close() }
+        coordinator.refresh()
+        XCTAssertTrue(window.makeFirstResponder(table))
+        coordinator.renameSelected()
+        guard let cell = table.view(atColumn: 0, row: table.selectedRow, makeIfNecessary: true) as? NSTableCellView,
+              let field = cell.textField, let editor = window.firstResponder as? NSTextView else {
+            XCTAssertTrue(false, "Rename must focus the native field editor, not leave an inert title")
+            return
+        }
+        XCTAssertTrue(field.isEditable)
+        XCTAssertEqual(editor.selectedRange(), NSRange(location: 0, length: "Alpha".count))
+        editor.string = "Renamed inline"
+        XCTAssertTrue(coordinator.control(field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertEqual(model.scenes.first { $0.id == sceneID }?.name, "Renamed inline")
+        XCTAssertTrue(window.firstResponder === table)
+        coordinator.renameSelected()
+        guard let secondCell = table.view(atColumn: 0, row: table.selectedRow, makeIfNecessary: true) as? NSTableCellView,
+              let secondField = secondCell.textField, let secondEditor = window.firstResponder as? NSTextView else {
+            XCTAssertTrue(false, "A saved rename must leave the row editable again")
+            return
+        }
+        secondEditor.string = "Discard this edit"
+        XCTAssertTrue(coordinator.control(secondField, textView: secondEditor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+        XCTAssertEqual(model.scenes.first { $0.id == sceneID }?.name, "Renamed inline")
+        XCTAssertTrue(window.firstResponder === table)
+    }
 }
