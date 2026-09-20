@@ -1,6 +1,6 @@
 # Add hand: recover the assets and finish the native grip
 
-Research and implementation brief, 21 September 2026. Source baseline: [`c692a4b`](https://github.com/EthDawg/workbench/tree/c692a4b), after #62. This PR recovers assets and specifies the remaining work; native integration remains proposed. GitHub issues own implementation work.
+Research and implementation brief, 21 September 2026. Source baseline: [`c692a4b`](https://github.com/EthDawg/workbench/tree/c692a4b), after #62. This PR recovers assets and specifies the remaining work; native integration remains proposed in [implementation issue #70](https://github.com/EthDawg/workbench/issues/70).
 
 ## What was found and why it is useful
 
