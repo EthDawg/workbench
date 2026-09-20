@@ -30,30 +30,42 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private let anchorKey = "capturePanelAnchor.v2"
     private let controls = CaptureHUDControls()
     private weak var model: AppModel?
+    private weak var readback: ReadbackModel?
+    private weak var stage: StageKitController?
     private var positioning = false
     private var dragging = false
     private let snapGuide = FloatingControlGuideController()
     private var observations = Set<AnyCancellable>()
 
-    init(model: AppModel) {
+    init(model: AppModel, readback: ReadbackModel, stage: StageKitController,
+         dictate: @escaping () -> Void, snap: @escaping () -> Void,
+         draw: @escaping () -> Void, present: @escaping () -> Void) {
         let panel = CapturePanel(contentRect: NSRect(origin: .zero, size: CaptureHUDLayout.message),
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: panel)
         self.model = model
+        self.readback = readback; self.stage = stage
         let savedAnchor = UserDefaults.standard.string(forKey: anchorKey).flatMap(FloatingControlAnchor.init(rawValue:))
         controls.anchor = savedAnchor ?? (UserDefaults.standard.string(forKey: positionKey) == nil ? .bottom : nil)
         controls.resize = { [weak self, weak model] in if let model { self?.update(model: model) } }
         controls.choosePosition = { [weak self] in self?.choosePosition($0) }
-        panel.title = "Workbench dictation"
+        panel.title = "Workbench floating toolbar"
         panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
         panel.isMovable = true
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = CaptureHostingView(rootView: RecordingOverlay(model: model, controls: controls))
+        panel.contentView = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
+            stage: stage, controls: controls, dictate: dictate, snap: snap, draw: draw, present: present))
         panel.delegate = self
         // Published emits before assignment; read committed state on the next loop.
         model.clipboardReceipt.$isHUDVisible.combineLatest(model.clipboardReceipt.$receipt)
             .receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
+            .store(in: &observations)
+        model.$floatingToolbarVisible.receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
+            .store(in: &observations)
+        stage.objectWillChange.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
         model.$phase.combineLatest(model.$captureFailure, model.$previewingPanel)
@@ -69,16 +81,25 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     func update(model: AppModel) {
         guard let window else { return }
-        let showsReceipt = model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil
-        guard model.previewingPanel || model.phase != .idle || model.captureFailure != nil || showsReceipt else {
+        let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible,
+            capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true,
+            dictation: Self.showsDictation(model), narration: readback?.isRecording == true)
+        guard surface != .hidden else {
             window.orderOut(nil); cancelDragging()
             controls.isExpanded = false
             return
         }
-        let size = CaptureHUDLayout.size(recording: model.phase == .recording, preview: model.previewingPanel, expanded: controls.isExpanded)
+        let size = surface == .tools ? FloatingToolbar.size : CaptureHUDLayout.size(
+            recording: surface == .narration || model.phase == .recording,
+            preview: model.previewingPanel, expanded: controls.isExpanded)
         if !window.isVisible { place(size: size, restoreSaved: true) }
         else if window.frame.size != size { place(size: size, restoreSaved: false) }
         window.orderFrontRegardless()
+    }
+
+    static func showsDictation(_ model: AppModel) -> Bool {
+        model.previewingPanel || model.phase != .idle || model.captureFailure != nil ||
+            (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil)
     }
 
     func position(reset: Bool = false) {

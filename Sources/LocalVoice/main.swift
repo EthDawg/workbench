@@ -19,7 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var keyboard: KeyboardCoachModel!
     var presenterPanel: PresenterPanelController!
     var readback: ReadbackModel!
-    var readbackHUD: ReadbackHUDController!
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
@@ -31,7 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ = WorkbenchSettings.shared
         model = AppModel()
         readback = ReadbackModel(engine: model.engine)
-        readbackHUD = ReadbackHUDController(model: readback)
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") })
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
@@ -82,7 +80,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false; window.center()
-        capturePanel = CapturePanelController(model: model)
+        capturePanel = CapturePanelController(model: model, readback: readback, stage: stage,
+            dictate: { [weak self] in self?.toolbarDictation() },
+            snap: { [weak self] in self?.toolbarSnap() },
+            draw: { [weak self] in
+                guard let self else { return }
+                if self.stage.isDrawing { self.stage.escape() } else { self.stage.draw() }
+            }, present: { [weak self] in
+                guard let self else { return }
+                if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
+            })
         presenterPanel = PresenterPanelController(model: model.presenter, setup: { [weak self] in self?.navigate("library") })
         model.onShowPresenter = { [weak self] in self?.showPresenter() }
         model.presenter.mayActivate = { [weak self] in
@@ -146,7 +153,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         readback.onStateChange = { [weak self] in
             guard let self else { return }
-            self.readbackHUD.update(self.readback)
             self.updateRecordingUI()
         }
         readback.onHideForEditorCapture = { [weak self] in self?.window.orderOut(nil) }
@@ -232,6 +238,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
+        menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
@@ -242,8 +250,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let helpMenu = NSMenu(title: "Help")
         helpMenu.addItem(withTitle: "Workbench Guide", action: #selector(showGuide), keyEquivalent: "")
         help.submenu = helpMenu; main.addItem(help); NSApp.helpMenu = helpMenu
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = NSStatusItem.AutosaveName("Workbench.MenuBar")
+        // AppKit restores autosaved visibility, including a previously removed
+        // item. Workbench's always-running utility needs an entry point at launch.
+        statusItem.isVisible = true
         statusItem.button?.target = self; statusItem.button?.action = #selector(statusClicked(_:))
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp]); updateRecordingUI()
     }
@@ -251,6 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
             menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
+            menu.addItem(withTitle: model.floatingToolbarVisible ? "Hide floating toolbar" : "Show floating toolbar", action: #selector(toggleFloatingToolbar), keyEquivalent: "")
             menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "")
             menu.addItem(withTitle: "Recent transcripts…", action: #selector(showHistory), keyEquivalent: "")
             menu.addItem(withTitle: "Snap & Talk sessions…", action: #selector(showReadback), keyEquivalent: "")
@@ -263,9 +275,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } else { toggleControls() }
     }
     @objc func toggleControls() { if popover.isShown { closeControls() } else { showControls() } }
+    @objc func showFloatingToolbar() {
+        model.floatingToolbarVisible = true
+        capturePanel.update(model: model)
+    }
+    @objc func toggleFloatingToolbar() { model.floatingToolbarVisible.toggle() }
+    @objc func restoreMenuBarIcon() {
+        statusItem.isVisible = true
+        updateRecordingUI()
+        // A crowded/notched menu bar can conceal a visible status item. The
+        // toolbar is a dependable recovery surface without changing other apps.
+        showFloatingToolbar()
+    }
     @objc func showGuide() { NSWorkspace.shared.open(URL(string: "https://workbench-mac.vercel.app/guide/")!) }
     func showControls() {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem.button, button.window?.isVisible == true else {
+            showFloatingToolbar(); return
+        }
         menuTarget = TextDelivery.capture()
         model.refreshPermissions(); keyboard.stopInteraction(); NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -285,6 +311,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if model.phase == .requesting { closeControls(); model.cancelRecording(); return }
         if model.phase == .recording { closeControls(); model.stopRecording(); return }
         resumeTarget { [weak self] target in self?.model.toggleRecording(target: target) }
+    }
+    func toolbarDictation() {
+        // The toolbar is nonactivating. Capture the current field at the click,
+        // never reuse an old popover target for a later toolbar operation.
+        let target = TextDelivery.capture()
+        model.toggleRecording(target: target)
+    }
+    func toolbarSnap() {
+        readback.refreshPermissionState()
+        guard readback.sessionURL != nil, readback.permissionsReady else {
+            navigate("readback"); return
+        }
+        closeControls(); window.orderOut(nil)
+        Task { await readback.toggleCapture() }
     }
     func pasteLast() {
         paste(model.history.first?.text ?? model.transcript)
@@ -322,7 +362,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
             }
         }
-        statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Workbench · " + state)
+        let icon = NSImage(systemSymbolName: symbol, accessibilityDescription: "Workbench · " + state)
+            ?? NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: "Workbench")
+        icon?.isTemplate = true
+        statusItem?.button?.image = icon
+        statusItem?.button?.setAccessibilityLabel("Workbench · " + state)
         statusItem?.button?.toolTip = "Workbench · " + state + " · " + model.preferences.controlsShortcut.label
         capturePanel?.update(model: model)
     }
@@ -347,7 +391,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         NSApp.servicesProvider = nil
         presenterPanel?.hide(); model?.presenter.stop()
-        keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); readbackHUD?.shutdown(); model?.shutdown(); hotkeys.unregister()
+        capturePanel?.close()
+        keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
     }
     func navigate(_ page: String) {
