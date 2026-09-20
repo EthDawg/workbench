@@ -18,6 +18,8 @@ Use generation actively when seeing alternatives would resolve a decision. For e
 
 For background or collateral work, reuse the original artwork and generation brief. State dimensions, crop, palette, negative space for the device/annotation, and required variants. Keep product labels, logos, sizes and interactive controls editable in their existing owners rather than baking them into a background. Check actual transparency where required. The [background-brief proposal](https://github.com/EthDawg/workbench/issues/65) should start from this material.
 
+The [tenant-branding finisher review](research/tenant-branding-editor.md) adds the last mile: place an existing image into a specific SaaS slot, adjust framing/padding and export semantic filenames. It includes a generated editor concept, its [exact prompt](research/tenant-branding/finisher-concept-prompt.md), official destination specifications and explicit corrections to the illustration. Reuse that decision before generating another general-purpose editor concept.
+
 ### Worked example: the waveform is a design choice
 
 ![Generated recording alternatives with waveform shapes; exploration, not app evidence](../site/assets/guide/voice-experiments.png)

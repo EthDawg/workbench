@@ -2,6 +2,8 @@
 
 Decision and specification · 13 September 2026. This record covers **scene preparation**, within Present a device. The broader product now also recognises persistent wallpaper as a separate job: see the [visual-experience contract](../site/handbook/contract.json). macOS provides its native baseline; a dedicated Workbench wallpaper experience is proposed. The useful Workbench promise is to prepare a composition once, then change its setting without rebuilding it.
 
+For preparing banners, logos and sign-in backgrounds to upload into a SaaS tenant, see the [20 September branding-export proposal](research/tenant-branding-editor.md). It reuses relevant image-preparation primitives but has a different output contract; it does not change the implemented scene replacement behaviour below.
+
 ## What the comparison changed
 
 The existing Add backdrop action creates a new scene. It does not delete the old scene, but choosing a different picture means recreating device placement and branding. Missing-image recovery also directs people to start again. Fixing that editing continuity is more valuable than adding a large catalogue.

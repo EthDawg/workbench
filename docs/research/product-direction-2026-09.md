@@ -81,7 +81,7 @@ Test phone legibility in the final deck. A phone composed inside a scene and the
 
 ## A useful scene brief without a model call
 
-Conditional experiment: [#65](https://github.com/EthDawg/workbench/issues/65). Try the manual brief before adding the action.
+Conditional experiment: [#65](https://github.com/EthDawg/workbench/issues/65). Try the manual brief before adding the action. The complementary [tenant-branding editor review](tenant-branding-editor.md) covers what happens after an image exists: fit/crop, centring/padding, source-labelled destination constraints and semantic exports ready for a SaaS upload. That finishing workflow needs no generation call and is distinct from exporting a presentation scene.
 
 Take dimensions from the chosen output target. Compute clear-space regions from the actual rendered scene at that size; normalized placement values are not automatically generator coordinates. Keep approved logos, labels and personas as separate editable layers.
 
