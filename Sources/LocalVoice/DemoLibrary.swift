@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 import PresenterKit
+import Darwin
 
 enum DemoResourceKind: String, Codable, CaseIterable {
     case prompt = "Prompt", link = "Link", file = "File"
@@ -137,6 +138,22 @@ struct DemoLibraryStore {
     static let byteLimit = 16_000_000
     let url: URL
     init(directory: URL = StateStore().url.deletingLastPathComponent()) { url = directory.appendingPathComponent("demo-library.json") }
+    /// File providers may return short reads without EOF. Consume the complete
+    /// bounded document before decoding, including any data after a valid prefix.
+    static func readBounded(maxBytes: Int = byteLimit, read: (Int) throws -> Data?) throws -> Data {
+        var data = Data()
+        while true {
+            let chunk = try read(min(65_536, maxBytes + 1 - data.count)) ?? Data()
+            if chunk.isEmpty { return data }
+            data.append(chunk)
+            guard data.count <= maxBytes else { throw VoiceError.message("This library is too large to import (16 MB maximum).") }
+        }
+    }
+    static func read(from url: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        return try readBounded { try handle.read(upToCount: $0) }
+    }
     static func decode(_ data: Data) throws -> [DemoResource] {
         guard data.count <= byteLimit else { throw VoiceError.message("This library is too large to import (16 MB maximum).") }
         let document = try JSONDecoder().decode(DemoLibraryDocument.self, from: data)
@@ -182,20 +199,27 @@ struct DemoLibraryStore {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= Self.byteLimit else { throw VoiceError.message("The saved library exceeds the 16 MB limit.") }
-        return try Self.decode(Data(contentsOf: url))
+        return try Self.decode(Self.read(from: url))
     }
     func currentData() throws -> Data? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= Self.byteLimit else {
             throw VoiceError.message("The saved library exceeds the 16 MB limit.")
         }
-        return try Data(contentsOf: url)
+        return try Self.read(from: url)
     }
-    func save(_ items: [DemoResource]) throws {
+    @discardableResult func save(_ items: [DemoResource]) throws -> Data {
         let data = try Self.encoded(items)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try data.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let staged = directory.appendingPathComponent(".library-\(UUID().uuidString).tmp")
+        defer { try? FileManager.default.removeItem(at: staged) }
+        try data.write(to: staged, options: .withoutOverwriting)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: staged.path)
+        // No fallible work follows replacement: a reported write/permission
+        // failure must leave the original library intact.
+        guard rename(staged.path, url.path) == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        return data
     }
 }
 
@@ -211,6 +235,9 @@ final class DemoLibraryModel: ObservableObject {
     @Published var error: String?
     @Published private(set) var savingDisabled = false
     @Published private(set) var previewingResourceID: UUID?
+    @Published private(set) var importReview: DemoLibraryImport?
+    @Published var importChoices: Set<UUID> = []
+    @Published private(set) var importError: String?
     let store: DemoLibraryStore
     private let copyText: (String) -> Int?
     private let openURL: (URL) -> Bool
@@ -240,6 +267,7 @@ final class DemoLibraryModel: ObservableObject {
         if !visible.contains(where: { $0.id == selection }) { selection = visible.first?.id }
     }
     func newPrompt(_ text: String = "") {
+        guard importReview == nil else { return }
         guard draft == nil else { draftNotice = "Save or cancel this resource before starting another prompt."; return }
         draft = DemoResource(title: String(text.split(separator: "\n").first?.prefix(80) ?? ""), content: text)
     }
@@ -260,7 +288,7 @@ final class DemoLibraryModel: ObservableObject {
         guard !savingDisabled else { return false }
         do {
             guard try store.currentData() == savedData else { throw VoiceError.message("The library changed outside this window. Reopen Workbench before saving; the newer file is preserved.") }
-            try store.save(next); savedData = try store.currentData(); resources = next; error = nil; return true
+            savedData = try store.save(next); resources = next; error = nil; return true
         }
         catch { self.error = error.localizedDescription; return false }
     }
@@ -275,7 +303,7 @@ final class DemoLibraryModel: ObservableObject {
     /// Both the visible button and keyboard recall act on the current filtered selection.
     /// Returning true means an action was attempted; copy/open report their own failures.
     @discardableResult func performPrimaryAction() -> Bool {
-        guard draft == nil, let item = selected, item.primaryActionAvailable else { return false }
+        guard draft == nil, importReview == nil, let item = selected, item.primaryActionAvailable else { return false }
         if item.kind == .prompt { copy(item) } else { open(item) }
         return true
     }
@@ -381,18 +409,52 @@ final class DemoLibraryModel: ObservableObject {
         catch { self.error = error.localizedDescription }
     }
     func importLibrary() {
+        guard !savingDisabled, draft == nil, importReview == nil else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.canChooseDirectories = false
-        panel.message = "Add resources from a Workbench library. Existing resources are kept; matching IDs are skipped."
+        panel.message = "Review new and changed resources before importing. Referenced media files are not bundled."
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        prepareImport(from: url)
+    }
+
+    func prepareImport(from url: URL) {
+        guard !savingDisabled, draft == nil, importReview == nil else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= DemoLibraryStore.byteLimit else { throw VoiceError.message("Choose a library smaller than 16 MB.") }
-            let incoming = try DemoLibraryStore.decode(Data(contentsOf: url)).map { item in
-                var copy = item; copy.browserTarget = nil; return copy
-            }
-            let next = try DemoLibraryStore.merging(incoming, into: resources)
-            let added = next.count - resources.count
-            if commit(next) { notice = "Added \(added) resources. Existing resources kept. Files on another Mac may need Locate file." }
+            let data = try DemoLibraryStore.read(from: url)
+            let incoming = try DemoLibraryStore.decode(data)
+            importChoices = []; importError = nil; error = nil; notice = nil
+            importReview = try DemoLibraryImport(incoming: incoming, existing: resources, sourceName: url.lastPathComponent)
+            closePreview()
         } catch { self.error = "Import failed. \(error.localizedDescription)" }
+    }
+
+    func cancelImport() { importReview = nil; importChoices = []; importError = nil }
+
+    func refreshImportReview() {
+        guard let review = importReview, draft == nil else { return }
+        do {
+            let data = try store.currentData()
+            let latest = try data.map(DemoLibraryStore.decode) ?? []
+            let refreshed = try DemoLibraryImport(incoming: review.entries.map(\.incoming), existing: latest, sourceName: review.sourceName)
+            closePreview(); savedData = data; resources = latest; importChoices = []; importError = nil; importReview = refreshed
+        } catch { importError = "The saved library could not be reloaded. \(error.localizedDescription)" }
+    }
+
+    @discardableResult func applyImport() -> Bool {
+        guard !savingDisabled, draft == nil, let review = importReview else { return false }
+        do {
+            guard review.baseline == resources, try store.currentData() == savedData else {
+                throw VoiceError.message("The saved library changed during review. Choose Review again to reload it and reset your choices.")
+            }
+            let next = try review.applying(useIncoming: importChoices)
+            let added = review.count(.new), updated = importChoices.count
+            if next != resources { savedData = try store.save(next); resources = next }
+            notice = added == 0 && updated == 0 ? "No changes needed. Your library was kept." : "Added \(added), updated \(updated). Other resources kept. Use Locate file for unavailable references."
+            error = nil; cancelImport()
+            return true
+        } catch { importError = "Import was not applied. \(error.localizedDescription)"; return false }
     }
 }

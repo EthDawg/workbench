@@ -17,7 +17,7 @@ Wispr Flow and Superwhisper were already explored through their installed settin
 
 | Category | 1 — implemented in this increment | 2 — contributor idea | 3 — contributor idea |
 | --- | --- | --- | --- |
-| Read aloud | Scrub and skip ±15 seconds in existing audio | [Cancel local and remote generation consistently #16](https://github.com/EthDawg/workbench/issues/16) | [Read selected text through a Mac Service #17](https://github.com/EthDawg/workbench/issues/17) |
+| Read aloud | Scrub/skip existing audio; import an explicit selection through macOS Services | [Cancel local and remote generation consistently #16](https://github.com/EthDawg/workbench/issues/16) | [Validate installed selected-text handoff #17](https://github.com/EthDawg/workbench/issues/17) |
 | Annotation / screenshots | Copy board or save its PNG | [Native Screenshot handoff with ink preserved #18](https://github.com/EthDawg/workbench/issues/18) | [Select/move an annotation with Undo #19](https://github.com/EthDawg/workbench/issues/19) |
 | Device presentation | Present in a resizable window; leaving fullscreen keeps it active; remember the break timer's dragged or named position | [One fresh branded scene snapshot #20](https://github.com/EthDawg/workbench/issues/20) | Validate the separate timer in a receiving meeting view |
 | Saved resources | Return performs the selected copy/open action; truthful copy feedback; explicit native Quick Look | [Review shared-library import changes #23](https://github.com/EthDawg/workbench/issues/23) | Validate exchange demand before adding another library feature |
@@ -29,6 +29,8 @@ These are priorities within each job, not a promise that every idea will ship. P
 ### Read aloud
 
 The app's existing reading view owns playback. Back/Forward 15 seconds and a native slider operate on the current `AVAudioPlayer`; neither calls a renderer, provider or network service. Seeking is bounded and preserves paused/playing state. Stop and completion clear active progress. Late callbacks from an old player cannot change a newer reading. Word highlighting is excluded because this pipeline has no word timing data.
+
+**Read Selection in Workbench** is a plain-text macOS Service with no return type. It reads only the request pasteboard supplied by Services and opens the selected text for review; no selection fails rather than consulting the general clipboard, screen or surrounding document. A different existing reading remains intact until Keep current or Replace reading. Importing never starts audio. Provider limits remain visible, and an online Speko request still requires a later explicit Listen or Save audio action.
 
 ### Board export
 
@@ -44,19 +46,25 @@ The separate break-timer window remembers either a free dragged position or one 
 
 ### Saved resources
 
+Library → Import library previews New, Changed and Unchanged items. Each changed ID has an explicit Keep mine / Use incoming choice with both versions visible; the default keeps local work. Apply adds new records and saves selected updates atomically. The review reports unavailable incoming file references because exports contain metadata, not media. Identical re-imports are no-ops, and incoming browser assignments and access bookmarks are discarded. A failed write or a newer outside edit preserves the saved library and leaves the review available for retry or refresh.
+
 Return in search or the focused results list performs the current selected item's visible primary action: copy a prompt or open a link/file. It acts only on a valid selection. It does not intercept multiline editing, a sheet, IME marked text, modified keys or held repeats. Buttons retain the same actions and labels. Copy reports a failed pasteboard write honestly; retry can recover. No automatic paste, focus switching, clipboard watching or additional indexer is added.
 
 Quick Look is a separate explicit action for an available, non-executable local file. Workbench resolves and, when needed, refreshes the saved bookmark, then displays the original through a native `QLPreviewView`; it does not copy or modify the file. Supported images, PDFs, text and movies share the same panel. The app holds security-scoped access until the panel closes and releases it on close, removal or navigation. Missing files keep the existing Locate file recovery. Unknown or unsupported types report that no preview is available instead of claiming success. Escape closes only the preview panel and leaves library selection and search intact. Movies do not autoplay.
 
 ## Checks and evidence
 
-Focused tests execute actual production playback methods with a synthetic audio player plus real `AVAudioPlayer` seek checks, and the actual saved-library model/view with injected effects. Stage tests cover board pixel orientation/background/opacity/export and fullscreen lifecycle transitions.
+The import fixture runs the actual store, comparison and model against synthetic files: 37 checks cover classification, exact notes/IDs, defaults, cancellation, write failure/retry, stale reviews, byte-for-byte no-ops, malformed/future/oversized input, local attachment retention, original-file preservation and bounded reads that reach EOF even when a file provider returns short chunks. Its screenshot renders the production review sheet; it is not a live multi-Mac or VoiceOver acceptance result.
+
+Focused tests execute actual production playback methods with a synthetic audio player plus real `AVAudioPlayer` seek checks, the selected-text provider selector/review policy with exact, empty and long synthetic input, and the actual saved-library model/view with injected effects. Nine isolated checks also exercise the actual selection-to-draft methods, including Keep current, explicit replacement, active generation and unchanged provider/voice settings. The packaged Services declaration and Preview-specific identity are inspected separately; installer tests cover upgrading and rolling back a previous bundle that predates Services. Stage tests cover board pixel orientation/background/opacity/export and fullscreen lifecycle transitions.
 
 Native playback QA used the exact production strip/buttons and methods in a temporary in-memory app with a bundled 45-second silent WAV. Pause, accessible slider increment, ±15 skip, Resume and Stop were exercised; audio loads stayed at one. This verifies controls and audio reuse, not audible voice quality or provider generation.
 
 Native library QA used the actual view/model with synthetic resources and simulated copy/open effects. Search Return and list Return each produced one selected action; failed copy reported failure, retry recovered, no-match Return did nothing, and Return inside a multiline editor inserted a line without invoking the resource. Cancel preserved the original. Focused Quick Look checks cover image/PDF/text/movie eligibility, unknown and missing inputs, moved bookmark refresh, failed presentation, retry and exact access release while preserving search and selection. A native panel smoke test opened real text, PNG, PDF and MP4 fixtures, verified their bytes were unchanged and invoked Escape on each panel while its owner stayed visible. The `APP_STORE` bookmark path compiles separately; a signed sandbox runtime, multilingual IME and VoiceOver session remain unverified.
 
 Break-timer checks use synthetic display frames for free/named placement, screen removal, resolution changes, restart, future/corrupt files and concurrent-write preservation. A native AppKit panel check exercises the actual timer window, Position action, saved file, hide and reopen lifecycle. Physical multi-display removal, a VoiceOver session and receiving meeting views remain unverified.
+
+The selected-text Service still requires an installed-package pass from TextEdit and a supported browser, plus VoiceOver review; these are not inferred from selector or metadata checks.
 
 The release record adds final build/regression and native board/window evidence. Keep hardware and meeting receiver acceptance separate from fixtures. No private draft, library, microphone sample or competitor transcript was replaced or published.
 

@@ -15,6 +15,7 @@ Make frequent Mac tasks easy to start, understand and leave. Local dictation is 
 | Apple's iPhone Mirroring | Apple's separate app and supported input mechanisms | Open that app; no embedded control or microphone forwarding |
 | Explain a browser demo | Browser owns page input; explicit Workbench overlay edit mode | Annotation and saved persona, move/size/lock/hide |
 | Hear a draft | Reading engine, not microphone capture | Read, pause, resume, stop, export |
+| Hear a selection from another Mac app | That app and macOS Services own the explicit selection | Open a review draft; keep or replace an existing reading; wait for Listen |
 | Narrate a screen for later slides | Display under the pointer, then Mac microphone | Capture once with the pointer, retain linked audio/transcripts, order and revise sections |
 | Take a break | Timer session | Duration, start/pause/resume, hide |
 | Chain an audio workflow | Shortcuts Record Audio owns recording/cancel | Transcribe with Workbench receives a file and returns text |
@@ -30,6 +31,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Surface | Activation | Owns | Closing/focus |
 | --- | --- | --- | --- |
 | App window | Open app/menu/configured shortcut | Drafts, history, models, settings, scenes/personas, keyboard practice | Ordinary editing focus; close does not quit or delete saved work |
+| Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read aloud; Keep current or Replace reading resolves a conflict; neither starts playback |
 | Snap & Talk editor | App navigation; dedicated global shortcut captures outside it | User-chosen session folder, ordered screenshots, narration and recovery | Closing or switching sessions does not delete work; queued transcription resumes from saved audio |
 | One menu bar entry | Click/configured shortcut | Discover and launch jobs; truthful status | Transient launcher, not a universal persistent mode picker |
 | Dictation HUD | Explicit Mac capture/preview; completion or error | Current recording and result, compact/expanded | Stop completes; cancellation is explicit; closing options or collapsing preserves audio and paste target |
@@ -44,6 +46,14 @@ Snap & Talk preserves completed narration while the next screenshot captures. Ca
 Snap & Talk's **Hand off** menu is an explicit local bridge, not an agent platform or upload API. It copies a target-neutral task prompt that points to the session's bundled `SKILL.md`, reveals the folder in Finder and opens Claude, ChatGPT or Codex when installed. The user grants the chosen app folder access and pastes the prompt; Workbench neither uploads the screenshots nor submits the request.
 
 The mobile tile contains no Dictate, Read aloud, cleanup modes or model downloads. Presentation does not redefine a global voice shortcut. Reject new Mac microphone capture when the presentation is the intended input surface; an explicitly selected Mac text field remains a separate job.
+
+The selected-text Service preserves the supplied string exactly, including whitespace and line breaks. No selection is an error; it must not read the whole screen, general clipboard, focused window or Accessibility tree to invent input. A selection beyond the active reading provider's limit remains reviewable but Listen and Save audio stay unavailable until it is shortened. Speko disclosure remains visible, and only an explicit Listen or Save audio action may send text online.
+
+## Saved-resource import review
+
+Saved resources → Library → Import library opens a review before changing saved data. Show New, Changed and Unchanged counts, unavailable incoming file references, and an explicit note that files are not bundled. Selecting a changed row exposes both versions of its name, kind, product, persona, text/path, notes and favorite state. Keep mine is the default; Use incoming selects that record for replacement. New records are added on Apply import. Keep library completes a no-op review; Cancel discards the review.
+
+Apply commits all chosen changes together. Invalid, unsupported, oversized or duplicate-ID input cannot mutate the library. A failed save retains review choices for retry. A changed saved file blocks Apply; Review again reloads it and resets decisions. Export/import do not share browser-profile bindings or security bookmarks. Retain local attachments on a metadata-only update of the same destination; changing its path/URL removes the old attachment. Missing files remain references with Locate file recovery.
 
 ## Dictation states
 
@@ -94,6 +104,7 @@ Implement contextual presentation controls, compact/expanded recording HUD, shar
 - Geometry tests cover anchors, negative display origins, removed displays, snap thresholds and resizing.
 - Break-timer checks cover drag and named-position persistence, corrupt/future-data preservation, display recovery and keyboard-accessible Position actions.
 - Test refinement with a loopback fixture, failures, cancellation and original preservation. Report actual model/hardware testing separately.
+- Test Services metadata and selector dispatch with empty, exact and long synthetic selections; verify TextEdit and a supported browser from an installed package, including Keep/Replace and online-provider disclosure.
 - Inspect native UI using synthetic data. Real phone, physical unplug and meeting receiver checks are distinct claims.
 - Deploy the tested guide to the existing Vercel project, publish source and a signed Preview archive with checksum, and update installed Preview while preserving data. Use the explicit distribution workflow and report notarization, upload, tester availability and App Review separately; none is implied by a successful compile.
 
