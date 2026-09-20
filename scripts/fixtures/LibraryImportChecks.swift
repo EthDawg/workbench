@@ -13,7 +13,9 @@ import SwiftUI
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path); try? FileManager.default.removeItem(at: root) }
         let store = DemoLibraryStore(directory: root)
         let first = DemoResource(title: "Follow-up prompt", product: "People", persona: "Hiring manager", content: "Ask about availability.\nKeep it brief.", notes: "My existing preparation notes", favorite: true)
-        let second = DemoResource(kind: .link, title: "Demo portal", content: "https://example.com/demo")
+        let localBrowser = BrowserTarget(profileID: UUID(), profileName: "My profile", machineID: UUID())
+        var second = DemoResource(kind: .link, title: "Demo portal", content: "https://example.com/demo")
+        second.browserTarget = localBrowser
         let fileURL = root.appendingPathComponent("Guide.txt")
         let original = Data("Synthetic original file — retain these bytes.".utf8)
         try original.write(to: fileURL)
@@ -47,6 +49,15 @@ import SwiftUI
         try check(model.draft == nil && !model.performPrimaryAction(), "review blocks background creation and recall")
         model.cancelImport()
         try check(model.importReview == nil && model.resources == initial && Data(contentsOf: store.url) == originalLibrary, "cancel preserves full original library")
+        let keepResult = try review.applying(useIncoming: [])
+        try check(Array(keepResult.prefix(initial.count)) == initial && keepResult.count == 4, "default apply adds new resources and retains every changed local record")
+        var browserEdit = second; browserEdit.notes = "Shared link notes"; browserEdit.browserTarget = BrowserTarget(profileID: UUID(), profileName: "Foreign profile", machineID: UUID())
+        let browserReview = try DemoLibraryImport(incoming: [browserEdit], existing: [second], sourceName: "Browser test")
+        try check(browserReview.entries[0].incoming.browserTarget == nil, "incoming browser identity is removed")
+        try check(browserReview.applying(useIncoming: [second.id])[0].browserTarget == localBrowser, "same-link edit retains only this Mac's browser identity")
+        browserEdit.content = "https://example.com/different"
+        let changedBrowser = try DemoLibraryImport(incoming: [browserEdit], existing: [second], sourceName: "Changed link")
+        try check(changedBrowser.applying(useIncoming: [second.id])[0].browserTarget == nil, "changed link cannot keep routing to the old browser destination")
 
         // A view render uses the exact sheet, model and synthetic exchange.
         if CommandLine.arguments.count == 2 {
@@ -54,9 +65,15 @@ import SwiftUI
             _ = NSApplication.shared
             let view = NSHostingView(rootView: DemoLibraryImportView(library: model).environment(\.colorScheme, .dark))
             view.frame = NSRect(x: 0, y: 0, width: 960, height: 720)
+            view.appearance = NSAppearance(named: .darkAqua)
+            let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.appearance = view.appearance
+            window.contentView = view
+            window.displayIfNeeded()
             view.layoutSubtreeIfNeeded()
             // onAppear/selection reconciliation runs on the native run loop.
             RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+            view.layoutSubtreeIfNeeded()
             guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw VoiceError.message("Render allocation failed") }
             view.cacheDisplay(in: view.bounds, to: bitmap)
             guard let png = bitmap.representation(using: .png, properties: [:]) else { throw VoiceError.message("PNG encoding failed") }

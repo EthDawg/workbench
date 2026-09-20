@@ -44,11 +44,15 @@ The separate break-timer window remembers either a free dragged position or one 
 
 ### Saved resources
 
+Library → Import library previews New, Changed and Unchanged items. Each changed ID has an explicit Keep mine / Use incoming choice with both versions visible; the default keeps local work. Apply adds new records and saves selected updates atomically. The review reports unavailable incoming file references because exports contain metadata, not media. Identical re-imports are no-ops, and incoming browser assignments and access bookmarks are discarded. A failed write or a newer outside edit preserves the saved library and leaves the review available for retry or refresh.
+
 Return in search or the focused results list performs the current selected item's visible primary action: copy a prompt or open a link/file. It acts only on a valid selection. It does not intercept multiline editing, a sheet, IME marked text, modified keys or held repeats. Buttons retain the same actions and labels. Copy reports a failed pasteboard write honestly; retry can recover. No automatic paste, focus switching, clipboard watching or additional indexer is added.
 
 Quick Look is a separate explicit action for an available, non-executable local file. Workbench resolves and, when needed, refreshes the saved bookmark, then displays the original through a native `QLPreviewView`; it does not copy or modify the file. Supported images, PDFs, text and movies share the same panel. The app holds security-scoped access until the panel closes and releases it on close, removal or navigation. Missing files keep the existing Locate file recovery. Unknown or unsupported types report that no preview is available instead of claiming success. Escape closes only the preview panel and leaves library selection and search intact. Movies do not autoplay.
 
 ## Checks and evidence
+
+The import fixture runs the actual store, comparison and model against synthetic files: 32 checks cover classification, exact notes/IDs, defaults, cancellation, write failure/retry, stale reviews, byte-for-byte no-ops, malformed/future/oversized input, local attachment retention and original-file preservation. Its screenshot renders the production review sheet; it is not a live multi-Mac or VoiceOver acceptance result.
 
 Focused tests execute actual production playback methods with a synthetic audio player plus real `AVAudioPlayer` seek checks, and the actual saved-library model/view with injected effects. Stage tests cover board pixel orientation/background/opacity/export and fullscreen lifecycle transitions.
 

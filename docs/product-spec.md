@@ -45,6 +45,12 @@ Snap & Talk's **Hand off** menu is an explicit local bridge, not an agent platfo
 
 The mobile tile contains no Dictate, Read aloud, cleanup modes or model downloads. Presentation does not redefine a global voice shortcut. Reject new Mac microphone capture when the presentation is the intended input surface; an explicitly selected Mac text field remains a separate job.
 
+## Saved-resource import review
+
+Saved resources → Library → Import library opens a review before changing saved data. Show New, Changed and Unchanged counts, unavailable incoming file references, and an explicit note that files are not bundled. Selecting a changed row exposes both versions of its name, kind, product, persona, text/path, notes and favorite state. Keep mine is the default; Use incoming selects that record for replacement. New records are added on Apply import. Keep library completes a no-op review; Cancel discards the review.
+
+Apply commits all chosen changes together. Invalid, unsupported, oversized or duplicate-ID input cannot mutate the library. A failed save retains review choices for retry. A changed saved file blocks Apply; Review again reloads it and resets decisions. Export/import do not share browser-profile bindings or security bookmarks. Retain local attachments on a metadata-only update of the same destination; changing its path/URL removes the old attachment. Missing files remain references with Locate file recovery.
+
 ## Dictation states
 
 1. Idle: setup in the app/menu. No compulsory idle capsule.

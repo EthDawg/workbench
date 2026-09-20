@@ -36,7 +36,7 @@ struct DemoLibraryImportView: View {
                                 )) {
                                     Text("Keep mine").tag(false)
                                     Text("Use incoming").tag(true)
-                                }.pickerStyle(.segmented)
+                                }.pickerStyle(.segmented).labelsHidden()
                                     .accessibilityLabel("Import choice for \(entry.incoming.title)")
                             } else {
                                 Text(entry.status == .new ? "This resource will be added." : "No changes. Your local resource will be kept.")
@@ -70,6 +70,7 @@ struct DemoLibraryImportView: View {
                         .accessibilityHint("Saves the chosen changes together and closes this review.")
                 }
             }.padding(24).frame(minWidth: 800, idealWidth: 920, minHeight: 560, idealHeight: 660)
+                .background(Color(nsColor: .windowBackgroundColor))
                 .onAppear { selection = review.entries.first(where: { $0.status == .changed })?.id ?? review.entries.first?.id }
                 .onChange(of: review.id) { _, _ in selection = review.entries.first(where: { $0.status == .changed })?.id ?? review.entries.first?.id }
         }
