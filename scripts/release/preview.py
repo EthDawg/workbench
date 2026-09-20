@@ -71,7 +71,7 @@ def developer_identity(requested=None):
     return candidates[0]
 
 
-def validate_bundle(app, config, allow_ad_hoc=False):
+def validate_bundle(app, config, allow_ad_hoc=False, require_services=True):
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     expected = {"CFBundleIdentifier": config["identifier"], "CFBundleExecutable": config["executable"], "WorkbenchChannel": None if config["channel"] == "production" else "preview"}
     if any(info.get(key) != value for key, value in expected.items()):
@@ -79,8 +79,8 @@ def validate_bundle(app, config, allow_ad_hoc=False):
     reading_services = [service for service in info.get("NSServices", []) if service.get("NSMessage") == "readSelection"]
     service_title = "Read Selection in Workbench Preview" if config["channel"] == "preview" else "Read Selection in Workbench"
     service_port = config["bundle"].removesuffix(".app")
-    if len(reading_services) != 1 or reading_services[0].get("NSPortName") != service_port \
-            or reading_services[0].get("NSMenuItem", {}).get("default") != service_title:
+    if require_services and (len(reading_services) != 1 or reading_services[0].get("NSPortName") != service_port \
+            or reading_services[0].get("NSMenuItem", {}).get("default") != service_title):
         raise RuntimeError("Refusing a bundle without the exact selected-app Services identity")
     run("codesign", "--verify", "--deep", "--strict", app)
     signature = run("codesign", "-d", "--verbose=4", app, capture=True).stderr
@@ -174,7 +174,7 @@ def install(config, archive, ad_hoc=False, open_app=True):
         if destination.exists():
             if config["channel"] == "production" and (destination / "Contents/_MASReceipt/receipt").exists():
                 raise RuntimeError("This production copy is managed by the Mac App Store. Update it there to retain its sandbox data and permissions.")
-            previous = validate_bundle(destination, config, allow_ad_hoc=True)
+            previous = validate_bundle(destination, config, allow_ad_hoc=True, require_services=False)
             # Never silently replace an established signer with a different team
             # or a disposable ad-hoc signature, which may orphan OS permissions.
             teams = [re.search(r"^TeamIdentifier=(.*)$", details, re.M) for details in (previous, signature)]

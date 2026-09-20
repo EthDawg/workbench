@@ -29,6 +29,28 @@ import SwiftUI
         func check(_ condition: @autoclosure () throws -> Bool, _ name: String) throws {
             guard try condition() else { throw VoiceError.message("IMPORT REVIEW FAILED: \(name)") }; count += 1
         }
+        func chunked(_ data: Data, chunkSize: Int, limit: Int = DemoLibraryStore.byteLimit) throws -> Data {
+            var offset = 0
+            return try DemoLibraryStore.readBounded(maxBytes: limit) { requested in
+                let end = min(data.count, offset + min(requested, chunkSize))
+                defer { offset = end }
+                return data.subdata(in: offset..<end)
+            }
+        }
+        let portable = try DemoLibraryStore.encoded(initial, portable: true)
+        let streamed = try chunked(portable, chunkSize: 7)
+        try check(streamed == portable && DemoLibraryStore.decode(streamed).count == initial.count, "short file-provider reads accumulate until EOF before decoding")
+        var trailingRejected = false
+        do { _ = try DemoLibraryStore.decode(chunked(portable + Data("invalid trailing data".utf8), chunkSize: portable.count)) }
+        catch { trailingRejected = true }
+        try check(trailingRejected, "valid JSON in the first read cannot hide unread trailing data")
+        try check(chunked(Data(repeating: 1, count: 32), chunkSize: 3, limit: 32).count == 32, "exact byte limit remains readable across short reads")
+        var limitRejected = false
+        do { _ = try chunked(Data(repeating: 1, count: 33), chunkSize: 3, limit: 32) } catch { limitRejected = true }
+        try check(limitRejected, "streamed input stops and rejects at the first byte beyond its limit")
+        var readFailed = false
+        do { _ = try DemoLibraryStore.readBounded { _ in throw CocoaError(.fileReadUnknown) } } catch { readFailed = true }
+        try check(readFailed && model.resources == initial && Data(contentsOf: store.url) == originalLibrary, "read failure propagates without changing the saved library")
         let exchange = root.appendingPathComponent("Shared library.json")
         func prepare(_ resources: [DemoResource]) throws {
             try DemoLibraryStore.encoded(resources).write(to: exchange)

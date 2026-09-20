@@ -138,6 +138,22 @@ struct DemoLibraryStore {
     static let byteLimit = 16_000_000
     let url: URL
     init(directory: URL = StateStore().url.deletingLastPathComponent()) { url = directory.appendingPathComponent("demo-library.json") }
+    /// File providers may return short reads without EOF. Consume the complete
+    /// bounded document before decoding, including any data after a valid prefix.
+    static func readBounded(maxBytes: Int = byteLimit, read: (Int) throws -> Data?) throws -> Data {
+        var data = Data()
+        while true {
+            let chunk = try read(min(65_536, maxBytes + 1 - data.count)) ?? Data()
+            if chunk.isEmpty { return data }
+            data.append(chunk)
+            guard data.count <= maxBytes else { throw VoiceError.message("This library is too large to import (16 MB maximum).") }
+        }
+    }
+    static func read(from url: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        return try readBounded { try handle.read(upToCount: $0) }
+    }
     static func decode(_ data: Data) throws -> [DemoResource] {
         guard data.count <= byteLimit else { throw VoiceError.message("This library is too large to import (16 MB maximum).") }
         let document = try JSONDecoder().decode(DemoLibraryDocument.self, from: data)
@@ -183,14 +199,14 @@ struct DemoLibraryStore {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= Self.byteLimit else { throw VoiceError.message("The saved library exceeds the 16 MB limit.") }
-        return try Self.decode(Data(contentsOf: url))
+        return try Self.decode(Self.read(from: url))
     }
     func currentData() throws -> Data? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= Self.byteLimit else {
             throw VoiceError.message("The saved library exceeds the 16 MB limit.")
         }
-        return try Data(contentsOf: url)
+        return try Self.read(from: url)
     }
     @discardableResult func save(_ items: [DemoResource]) throws -> Data {
         let data = try Self.encoded(items)
@@ -407,9 +423,7 @@ final class DemoLibraryModel: ObservableObject {
         do {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= DemoLibraryStore.byteLimit else { throw VoiceError.message("Choose a library smaller than 16 MB.") }
-            let handle = try FileHandle(forReadingFrom: url)
-            defer { try? handle.close() }
-            let data = try handle.read(upToCount: DemoLibraryStore.byteLimit + 1) ?? Data()
+            let data = try DemoLibraryStore.read(from: url)
             let incoming = try DemoLibraryStore.decode(data)
             importChoices = []; importError = nil; error = nil; notice = nil
             importReview = try DemoLibraryImport(incoming: incoming, existing: resources, sourceName: url.lastPathComponent)
