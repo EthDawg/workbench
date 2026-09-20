@@ -39,6 +39,11 @@ enum CoreChecks {
         let secondCopyLabel = CaptureHistoryAccessibility.label("Copy", context: secondContext)
         try check(firstCopyLabel != secondCopyLabel && firstCopyLabel.hasPrefix("Copy, captured "), "history actions identify otherwise identical captures by date and time")
         try check(!firstCopyLabel.contains(firstAccessibleCapture.text), "history action labels do not expose transcript contents")
+        let simultaneous = Transcript(date: firstAccessibleCapture.date, text: "Same words", seconds: 2)
+        let subsecond = Transcript(date: firstAccessibleCapture.date.addingTimeInterval(0.1), text: "Same words", seconds: 2)
+        let sameSecond = [firstAccessibleCapture, simultaneous, subsecond]
+        let uniqueLabels = sameSecond.map { CaptureHistoryAccessibility.context(for: $0, history: sameSecond, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!) }
+        try check(Set(uniqueLabels).count == 3, "history labels distinguish exact-time and subsecond captures without transcript contents")
         let exportCapture = Transcript(text: "Cleaned café\nSecond line", seconds: 2, rawText: "Original café\nsecond line")
         try check(TranscriptExport.text(for: exportCapture, version: .cleaned) == exportCapture.text
                   && TranscriptExport.text(for: exportCapture, version: .original) == exportCapture.rawText,

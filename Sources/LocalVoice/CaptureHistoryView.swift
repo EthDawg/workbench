@@ -1,13 +1,17 @@
 import SwiftUI
 
 enum CaptureHistoryAccessibility {
-    static func context(for capture: Transcript, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+    static func context(for capture: Transcript, history: [Transcript] = [], locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.timeZone = timeZone
         formatter.dateStyle = .medium
         formatter.timeStyle = .medium
-        return "captured \(formatter.string(from: capture.date))"
+        let timestamp = formatter.string(from: capture.date)
+        let collisions = history.filter { formatter.string(from: $0.date) == timestamp }
+        let suffix = collisions.count > 1 && collisions.contains(where: { $0.id == capture.id })
+            ? ", capture \(collisions.firstIndex(where: { $0.id == capture.id })! + 1) of \(collisions.count)" : ""
+        return "captured \(timestamp)\(suffix)"
     }
     static func label(_ action: String, context: String) -> String { "\(action), \(context)" }
 }
@@ -39,7 +43,7 @@ struct CaptureHistoryView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(matches) { item in
-                            let accessibilityContext = CaptureHistoryAccessibility.context(for: item)
+                            let accessibilityContext = CaptureHistoryAccessibility.context(for: item, history: model.history)
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack {
                                     Text(item.date, format: .dateTime.month(.abbreviated).day().hour().minute())

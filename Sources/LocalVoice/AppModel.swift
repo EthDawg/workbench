@@ -619,6 +619,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try TranscriptExport.write(item, version: version, to: url)
+            self.error = nil
             status = "\(version.rawValue) saved to \(url.lastPathComponent)."
         } catch {
             self.error = "Could not save this transcript. \(error.localizedDescription)"
