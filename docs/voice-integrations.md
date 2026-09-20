@@ -18,6 +18,14 @@ Apple owns the microphone and its cancellation controls in this workflow. Workbe
 
 **Why this composition:** native testing on macOS 26.5.1 confirmed the prototype’s direct recording action could return live text, but Shortcuts’ Stop did not reliably cancel an app-owned microphone capture, even with task/progress cancellation handlers. The shipped design reuses Apple’s Record Audio lifecycle. The direct recording action was removed; it is not a hidden microphone fallback. Cancellation during local processing may finish the current recognition work; it cannot keep recording audio.
 
+## Read a selection from another Mac app
+
+Select text in TextEdit or an app that supplies plain text to macOS Services, then choose **Services → Read Selection in Workbench**. Workbench opens Read aloud with the exact supplied selection. If a different reading already exists, review the incoming text and choose **Keep current** or **Replace reading**; neither choice starts audio.
+
+Preview builds name this action **Read Selection in Workbench Preview**. Open the installed app once; if the action is unavailable, check **System Settings → Keyboard → Keyboard Shortcuts → Services**. An installed-package pass from TextEdit and a supported browser, including VoiceOver, remains unverified on the development host.
+
+The Service declares plain-text input and no return type. With no usable selection it reports an error instead of reading the general clipboard, whole screen, focused window or Accessibility tree. A long selection is not truncated: the editor shows the selected provider's limit and keeps Listen/Save audio unavailable until the draft fits. Mac voices remain local. When Speko is selected, its online disclosure remains visible and text is sent only after the separate **Listen** or **Save audio** action.
+
 ## Optional Speko reading
 
 Mac voices remain the default, offline and account-free. Choosing **Read aloud → Speko · online** explicitly enables online readings. Create a personal account at [Speko](https://platform.speko.ai), choose **Gateway + Router** during onboarding, create an API key and save it in Voice’s secure field. No gateway worker is needed.

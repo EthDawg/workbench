@@ -40,6 +40,27 @@ def configuration(root=ROOT, production=False):
     return config
 
 
+def update_bundle_info(info, config, build_version):
+    """Apply the selected app identity, including its distinct Services port."""
+    info.update(CFBundleIdentifier=config["identifier"], CFBundleExecutable=config["executable"],
+                CFBundleName=config["bundle"].removesuffix(".app"),
+                CFBundleDisplayName=config["bundle"].removesuffix(".app"),
+                CFBundleVersion=build_version)
+    if config["channel"] == "preview":
+        info["WorkbenchChannel"] = "preview"
+    else:
+        info.pop("WorkbenchChannel", None)
+    for service in info.get("NSServices", []):
+        if service.get("NSMessage") != "readSelection":
+            continue
+        service["NSPortName"] = config["bundle"].removesuffix(".app")
+        service.setdefault("NSMenuItem", {})["default"] = (
+            "Read Selection in Workbench Preview" if config["channel"] == "preview"
+            else "Read Selection in Workbench"
+        )
+    return info
+
+
 def developer_identity(requested=None):
     identities = run("security", "find-identity", "-v", "-p", "codesigning", capture=True).stdout
     candidates = re.findall(r'([A-Fa-f0-9]{40}) "Developer ID Application:[^\n]+\(([A-Z0-9]{10})\)"', identities)
@@ -55,6 +76,12 @@ def validate_bundle(app, config, allow_ad_hoc=False):
     expected = {"CFBundleIdentifier": config["identifier"], "CFBundleExecutable": config["executable"], "WorkbenchChannel": None if config["channel"] == "production" else "preview"}
     if any(info.get(key) != value for key, value in expected.items()):
         raise RuntimeError("Refusing a bundle without the exact selected identity, executable and channel")
+    reading_services = [service for service in info.get("NSServices", []) if service.get("NSMessage") == "readSelection"]
+    service_title = "Read Selection in Workbench Preview" if config["channel"] == "preview" else "Read Selection in Workbench"
+    service_port = config["bundle"].removesuffix(".app")
+    if len(reading_services) != 1 or reading_services[0].get("NSPortName") != service_port \
+            or reading_services[0].get("NSMenuItem", {}).get("default") != service_title:
+        raise RuntimeError("Refusing a bundle without the exact selected-app Services identity")
     run("codesign", "--verify", "--deep", "--strict", app)
     signature = run("codesign", "-d", "--verbose=4", app, capture=True).stderr
     if not allow_ad_hoc and "Authority=Developer ID Application:" not in signature:
@@ -92,10 +119,7 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
         info = plistlib.loads(info_path.read_bytes())
         executable = app / "Contents/MacOS" / info["CFBundleExecutable"]
         executable.rename(executable.with_name(config["executable"]))
-        info.update(CFBundleIdentifier=config["identifier"], CFBundleExecutable=config["executable"],
-                    CFBundleName=config["bundle"].removesuffix(".app"),
-                    CFBundleDisplayName=config["bundle"].removesuffix(".app"),
-                    CFBundleVersion=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"), WorkbenchChannel="preview")
+        update_bundle_info(info, config, datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
         photo_entitlements = None
         if photo_cloud_profile:
             photo_entitlements = staging / "photo-cloud.entitlements"

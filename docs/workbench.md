@@ -11,13 +11,13 @@ The separate native **iOS/iPadOS 26+ Preview** carries these useful jobs into ph
 | Primitive | Workbench's responsibility | Boundary |
 | --- | --- | --- |
 | Speak → text | Capture/import, recognition, optional cleanup, original wording, history and safe delivery | Other apps own the note, message or document made from the result. |
-| Text → speech | Mac reading voices, playback/export and optional online reading | Keep provider setup explicit; do not turn the utility into a general agent platform. |
+| Text → speech | Explicit selected-text handoff, Mac reading voices, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
 | Explain a screen | Live drawing, pointer emphasis, boards and a clear return to the demo | A meeting app owns distribution to the audience. |
 | Present a device | USB video preview in a saved scene, branding, readable controls and a break timer | QuickTime and iPhone Mirroring remain separate Apple apps. |
 | Enjoy a desktop | A distinct wallpaper journey: still-image baseline, independent settings and optional future motion | Direct wallpaper management is proposed; current Preview applies a rendered scene as a still. Use native OS support and preserve later manual changes. |
 | Reuse an item | Searchable prompts, links and file references already supported by the library | No tenant management, browser-profile rotation or team knowledge system. |
 
-Screenshot capture/markup, Services and Share extensions are possible later improvements. Their native equivalents are the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+Screenshot capture/markup and Share extensions are possible later improvements. The bounded macOS Service accepts an explicit text selection into Read aloud; it is not a clipboard watcher or document reader. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
 ## One app, several ways in
 
@@ -27,6 +27,7 @@ flowchart TB
     Menu["One menu-bar icon<br/>Quick actions and status"]
     Keys["Global keys<br/>Editable and practisable"]
     Intent["Apple Shortcuts<br/>Audio in, text out"]
+    Service["macOS Services<br/>Selected text in"]
     Shell["Workbench app lifecycle<br/>Navigation, busy state, permissions"]
     Voice["Voice code<br/>Recognition, reading, history, delivery"]
     Stage["StageKit library<br/>Drawing, boards, timer, device scenes"]
@@ -34,13 +35,14 @@ flowchart TB
     Menu --> Shell
     Keys --> Shell
     Intent --> Voice
+    Service --> Voice
     Shell --> Voice
     Shell --> Stage
 ```
 
 The normal window makes the app discoverable. The menu bar and keyboard accelerate familiar work. Recording controls, palettes and presentation windows appear when needed. Closing Home leaves the menu-bar utility running; Quit must stop capture, playback, drawing and presentation. Login launch is an explicit user setting.
 
-Normal application menus, buttons and editable shortcuts remain available together. Spotlight can find the app by name. The existing App Intent accepts audio and returns text; it does not own microphone recording. Additional Spotlight actions, Services, Share extensions and URL automation must be treated as new integrations with their own evidence.
+Normal application menus, buttons and editable shortcuts remain available together. Spotlight can find the app by name. The existing App Intent accepts audio and returns text; it does not own microphone recording. The selected-text Service receives only the request pasteboard supplied by macOS, opens a reviewable reading draft and never starts playback. Additional Spotlight actions, Share extensions and URL automation must be treated as new integrations with their own evidence.
 
 ## Interaction rules
 

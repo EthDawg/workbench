@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
+    var readSelectionService: ReadSelectionService!
     private var receiptStatus: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -106,7 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let page = notification.object as? String else { return }
             Task { @MainActor in self?.navigate(page) }
         }
-        setupMenus(); registerShortcuts(); showWindow()
+        setupMenus()
+        readSelectionService = ReadSelectionService { [weak self] selection in
+            self?.model.receiveReadingSelection(selection)
+        }
+        NSApp.servicesProvider = readSelectionService
+        registerShortcuts(); showWindow()
         model.clipboardReceipt.$receipt.receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -164,6 +170,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
+        let services = NSMenu(title: "Services")
+        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        servicesItem.submenu = services; appMenu.addItem(servicesItem); NSApp.servicesMenu = services
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Workbench", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Workbench", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -273,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        NSApp.servicesProvider = nil
         keyboard?.stopInteraction(); stage?.shutdown(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
     }
@@ -313,7 +323,22 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-core":
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
-            try await MainActor.run { try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
+            try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
+        case "--check-reading-service":
+            try await MainActor.run { try ReadSelectionChecks.run() }
+        case "--check-reading-service-native":
+            try await MainActor.run {
+                _ = NSApplication.shared
+                NSApp.setActivationPolicy(.prohibited)
+                NSApp.finishLaunching()
+                try ReadSelectionChecks.runNativePasteboard()
+            }
+        case "--render-reading-service-fixture":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-reading-service-fixture OUTPUT.png") }
+            try await MainActor.run {
+                _ = NSApplication.shared
+                try ReadSelectionChecks.renderReviewCard(to: URL(fileURLWithPath: args[1]))
+            }
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
         case "--check-refinement":
@@ -353,7 +378,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine.transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }

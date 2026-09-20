@@ -181,6 +181,11 @@ struct ContentView: View {
     private var speak: some View {
         VStack(alignment: .leading, spacing: 24) {
             heading("Give your words a voice.", "Paste something to hear it aloud, or save a reading to take with you.")
+            if let selection = model.pendingReadingSelection {
+                ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
+                                           replacingDisabled: model.rendering,
+                                           keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
+            }
             ReadingProviderView(model: model)
             if model.readingProvider == .mac { HStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -194,8 +199,13 @@ struct ContentView: View {
             }.padding(20).background(panelColor, in: RoundedRectangle(cornerRadius: 14)).disabled(model.rendering) }
             editor(text: $model.speechText, placeholder: "Paste an article, a draft, or a thought.\nLet your Mac do the reading.", label: "Text to read").disabled(model.rendering)
             HStack {
-                Text("\(model.speechText.count.formatted()) / \(model.readingLimit.formatted()) characters").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text("\(model.speechText.count.formatted()) / \(model.readingLimit.formatted()) characters").font(.system(size: 10))
+                    .foregroundStyle(model.speechText.count > model.readingLimit ? Color.orange : Color.secondary.opacity(0.6))
                 Spacer()
+            }
+            if let limit = model.readingLimitMessage(for: model.speechText) {
+                Label(limit, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
+                    .accessibilityLabel("Reading limit: \(limit)")
             }
             if model.playing || model.paused {
                 HStack(spacing: 12) {
@@ -317,6 +327,40 @@ struct DictionaryView: View {
                 }
             }
         }
+    }
+}
+
+struct ReadingSelectionReviewCard: View {
+    let selection: ReadingSelectionImport
+    let limitMessage: String?
+    var replacingDisabled = false
+    let keep: () -> Void
+    let replace: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Selected text is ready to review", systemImage: "text.quote")
+                .font(.headline).foregroundStyle(mint)
+            ScrollView {
+                Text(selection.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                    .accessibilityLabel("Imported selected text")
+                    .accessibilityValue(selection.text)
+            }.frame(maxHeight: 120).padding(12).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            Text("Your current reading stays unchanged until you choose Replace reading. Keep current discards only this imported selection.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let limitMessage {
+                Label(limitMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            HStack {
+                Button("Keep current", action: keep)
+                Button("Replace reading", action: replace)
+                    .buttonStyle(PrimaryButton()).disabled(replacingDisabled)
+                    .accessibilityHint("Replaces the current reading draft. It does not start audio or send text online.")
+            }
+        }.padding(16).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Review imported selected text")
     }
 }
 

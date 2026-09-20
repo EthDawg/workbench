@@ -11,6 +11,7 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 | `RecognitionEngine` actor | Selected recognition provider, preparation and one transcription at a time | `RecognitionProviders.swift` |
 | `KeyboardCoachModel` | Combined shortcut catalogue, assignment, conflict feedback and safe practice | `KeyboardCoach.swift`; persistence/suspension closures supplied by the host |
 | App Intents | Audio-file transcription returning a typed text result | `Shortcuts.swift` |
+| macOS Services | Explicit selected text into a reviewable reading draft | `ReadSelectionService.swift`; declaration in `scripts/Info.plist` |
 
 The internal Swift module remains `LocalVoice` to preserve App Intents type/metadata compatibility. Packaging names the installed binary `Workbench`, or `WorkbenchPreview` in Preview. StageKit is linked into it; Workbench does not launch a second StageMark process.
 
@@ -70,7 +71,7 @@ The fixed-size, nonactivating `CapturePanel` exposes recording, processing, canc
 
 There is no fallback from one provider to another. Add an explicit `RecognitionProvider` case and engine dispatch when a new runtime has a clear setup, input, cancellation and availability contract. Do not duplicate recording, history, hotkeys or cleanup inside the adapter. [Provider documentation](model-providers.md) defines limits and tests.
 
-Reading remains separate from recognition. Mac voices use `/usr/bin/say` with an argument array and a temporary UTF-8 input file, `AVAudioPlayer` for playback and `/usr/bin/afconvert` for M4A export. User text is not interpolated into shell commands. Optional Speko reading uses an explicit Keychain-backed key and sends submitted text online; it is not a transcription provider. New reading backends should preserve the same playback/export and explicit-consent boundaries.
+Reading remains separate from recognition. `ReadSelectionService` accepts only the string on the macOS Services request pasteboard. An empty request fails instead of consulting the general clipboard, screen, Accessibility or another window. A different existing reading stays unchanged behind explicit Keep current / Replace reading controls; importing never starts playback. Mac voices use `/usr/bin/say` with an argument array and a temporary UTF-8 input file, `AVAudioPlayer` for playback and `/usr/bin/afconvert` for M4A export. User text is not interpolated into shell commands. Optional Speko reading uses an explicit Keychain-backed key and sends text only after Listen or Save audio; it is not a transcription provider. New reading backends should preserve the same playback/export and explicit-consent boundaries.
 
 Cleanup offers Original, deterministic Light, and optional Natural editing through Apple FoundationModels where available. Natural candidates are checked for ordered factual tokens, numbers and negation; rejected/unavailable edits fall back to Light. These guards reduce specific risks, not prove equivalent meaning. The unedited text stays available.
 
@@ -82,7 +83,7 @@ StageKit's `DemoCapture` uses AVFoundation external-device discovery and a video
 
 `TranscribeWithWorkbench` is the existing App Intent. Apple Shortcuts owns `Record Audio`; the intent accepts audio and returns that invocation's text through the normal voice pipeline. It never starts the microphone, copies or submits the result. Full Xcode metadata extraction and native discovery need package-level testing. The final live recording composition must be verified separately from synthetic invocation checks; [earlier integration notes](voice-integrations.md) are historical evidence for the previous Voice version.
 
-No Services implementation, Share extension, private iPhone Mirroring integration or general app-automation bridge is added by this consolidation. Those are future adapters only if a useful workflow justifies them. Windows portability is likewise a future design decision: isolate platform-facing code, but do not promise portability for AppKit, AVFoundation device capture, Carbon or App Intents.
+The selected-text Service is the only Services adapter: it declares plain-text input and no return type, and production/Preview packages use distinct port names. No Share extension, private iPhone Mirroring integration or general app-automation bridge is added. Those remain future adapters only if a useful workflow justifies them. Windows portability is likewise a future design decision: isolate platform-facing code, but do not promise portability for AppKit, AVFoundation device capture, Carbon, Services or App Intents.
 
 ## Saved state and migration
 

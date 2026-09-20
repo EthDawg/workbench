@@ -26,8 +26,8 @@ class PreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             app = Path(temporary) / config["bundle"]
             (app / "Contents").mkdir(parents=True)
-            info = {"CFBundleIdentifier": config["identifier"].removesuffix(".preview"),
-                    "CFBundleExecutable": config["executable"], "WorkbenchChannel": "preview"}
+            info = preview.update_bundle_info({"NSServices": [{"NSMessage": "readSelection"}]}, config, "1")
+            info["CFBundleIdentifier"] = config["identifier"].removesuffix(".preview")
             (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
             with self.assertRaises(RuntimeError):
                 preview.validate_bundle(app, config)
@@ -39,6 +39,16 @@ class PreviewTests(unittest.TestCase):
                 # Existing ad-hoc installs can be upgraded once to Developer ID;
                 # only the incoming replacement must be persistently signed.
                 preview.validate_bundle(app, config, allow_ad_hoc=True)
+
+    def test_preview_service_uses_distinct_title_and_port(self):
+        config = preview.configuration()
+        source = {"NSServices": [{"NSMessage": "readSelection", "NSPortName": "Workbench",
+                                  "NSMenuItem": {"default": "Read Selection in Workbench"}}]}
+        info = preview.update_bundle_info(source, config, "123")
+        service = info["NSServices"][0]
+        self.assertEqual(service["NSPortName"], "Workbench Preview")
+        self.assertEqual(service["NSMenuItem"]["default"], "Read Selection in Workbench Preview")
+        self.assertEqual(info["CFBundleExecutable"], "WorkbenchPreview")
 
     def run_update(self, fail=False):
         config = preview.configuration()

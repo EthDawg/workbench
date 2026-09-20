@@ -100,6 +100,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var paused = false
     @Published var audioDuration = 0.0
     @Published var playbackTime = 0.0
+    @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
     let engine = RecognitionEngine()
@@ -190,6 +191,46 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         do { try await engine.prepare(); ready = true; modelMessage = await engine.statusDescription() }
         catch { modelMessage = "Speech model needs attention"; self.error = "Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)" }
         preparing = false
+    }
+
+    func receiveReadingSelection(_ selection: ReadingSelectionImport) {
+        error = nil
+        clipboardReceipt.dismissHUD()
+        if ReadingSelectionImport.needsReview(current: speechText, incoming: selection.text) {
+            pendingReadingSelection = selection
+            status = "Selected text is ready. Choose Replace reading or Keep current."
+        } else {
+            pendingReadingSelection = nil
+            if speechText != selection.text { applyReadingSelection(selection) }
+            else { status = "The selected text already matches this reading draft." }
+        }
+        page = "speak"
+        onShowEditor?("speak")
+    }
+
+    func replaceReadingWithSelection() {
+        guard !rendering, let selection = pendingReadingSelection else { return }
+        applyReadingSelection(selection)
+        pendingReadingSelection = nil
+    }
+
+    func keepCurrentReading() {
+        guard pendingReadingSelection != nil else { return }
+        pendingReadingSelection = nil
+        status = "Current reading kept. The imported selection was not saved or sent."
+    }
+
+    func readingLimitMessage(for text: String) -> String? {
+        guard text.count > readingLimit else { return nil }
+        let provider = readingProvider == .speko ? "Speko" : "Mac reading"
+        return "This selection has \(text.count.formatted()) characters. \(provider) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
+    }
+
+    private func applyReadingSelection(_ selection: ReadingSelectionImport) {
+        invalidateAudio()
+        speechText = selection.text
+        status = readingLimitMessage(for: selection.text)
+            ?? "Selected text imported for review. Choose Listen when you are ready."
     }
 
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {

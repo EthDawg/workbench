@@ -17,7 +17,7 @@ Wispr Flow and Superwhisper were already explored through their installed settin
 
 | Category | 1 — implemented in this increment | 2 — contributor idea | 3 — contributor idea |
 | --- | --- | --- | --- |
-| Read aloud | Scrub and skip ±15 seconds in existing audio | [Cancel local and remote generation consistently #16](https://github.com/EthDawg/workbench/issues/16) | [Read selected text through a Mac Service #17](https://github.com/EthDawg/workbench/issues/17) |
+| Read aloud | Scrub/skip existing audio; import an explicit selection through macOS Services | [Cancel local and remote generation consistently #16](https://github.com/EthDawg/workbench/issues/16) | [Validate installed selected-text handoff #17](https://github.com/EthDawg/workbench/issues/17) |
 | Annotation / screenshots | Copy board or save its PNG | [Native Screenshot handoff with ink preserved #18](https://github.com/EthDawg/workbench/issues/18) | [Select/move an annotation with Undo #19](https://github.com/EthDawg/workbench/issues/19) |
 | Device presentation | Present in a resizable window; leaving fullscreen keeps it active | [One fresh branded scene snapshot #20](https://github.com/EthDawg/workbench/issues/20) | [Remember break-timer placement #21](https://github.com/EthDawg/workbench/issues/21) |
 | Saved resources | Return performs the selected copy/open action; truthful copy feedback | [Explicit native Quick Look #22](https://github.com/EthDawg/workbench/issues/22) | [Review shared-library import changes #23](https://github.com/EthDawg/workbench/issues/23) |
@@ -29,6 +29,8 @@ These are priorities within each job, not a promise that every idea will ship. P
 ### Read aloud
 
 The app's existing reading view owns playback. Back/Forward 15 seconds and a native slider operate on the current `AVAudioPlayer`; neither calls a renderer, provider or network service. Seeking is bounded and preserves paused/playing state. Stop and completion clear active progress. Late callbacks from an old player cannot change a newer reading. Word highlighting is excluded because this pipeline has no word timing data.
+
+**Read Selection in Workbench** is a plain-text macOS Service with no return type. It reads only the request pasteboard supplied by Services and opens the selected text for review; no selection fails rather than consulting the general clipboard, screen or surrounding document. A different existing reading remains intact until Keep current or Replace reading. Importing never starts audio. Provider limits remain visible, and an online Speko request still requires a later explicit Listen or Save audio action.
 
 ### Board export
 
@@ -46,11 +48,11 @@ Return in search or the focused results list performs the current selected item'
 
 ## Checks and evidence
 
-Focused tests execute actual production playback methods with a synthetic audio player plus real `AVAudioPlayer` seek checks, and the actual saved-library model/view with injected effects. Stage tests cover board pixel orientation/background/opacity/export and fullscreen lifecycle transitions.
+Focused tests execute actual production playback methods with a synthetic audio player plus real `AVAudioPlayer` seek checks, the selected-text provider selector/review policy with exact, empty and long synthetic input, and the actual saved-library model/view with injected effects. The packaged Services declaration and Preview-specific identity are inspected separately. Stage tests cover board pixel orientation/background/opacity/export and fullscreen lifecycle transitions.
 
 Native playback QA used the exact production strip/buttons and methods in a temporary in-memory app with a bundled 45-second silent WAV. Pause, accessible slider increment, ±15 skip, Resume and Stop were exercised; audio loads stayed at one. This verifies controls and audio reuse, not audible voice quality or provider generation.
 
-Native library QA used the actual view/model with synthetic resources and simulated copy/open effects. Search Return and list Return each produced one selected action; failed copy reported failure, retry recovered, no-match Return did nothing, and Return inside a multiline editor inserted a line without invoking the resource. Cancel preserved the original. Policy checks cover marked-text composition; an actual multilingual IME and VoiceOver session remain unverified.
+Native library QA used the actual view/model with synthetic resources and simulated copy/open effects. Search Return and list Return each produced one selected action; failed copy reported failure, retry recovered, no-match Return did nothing, and Return inside a multiline editor inserted a line without invoking the resource. Cancel preserved the original. Policy checks cover marked-text composition. The selected-text Service still requires an installed-package pass from TextEdit and a supported browser, plus VoiceOver review; these are not inferred from selector or metadata checks.
 
 The release record adds final build/regression and native board/window evidence. Keep hardware and meeting receiver acceptance separate from fixtures. No private draft, library, microphone sample or competitor transcript was replaced or published.
 

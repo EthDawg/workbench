@@ -22,7 +22,7 @@ An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a se
 | Capability | What it does |
 | --- | --- |
 | **Dictate** | Record speech or import audio; keep original and cleaned text, a dictionary and recent transcripts; copy or optionally paste into the original field. |
-| **Read aloud** | Listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key. |
+| **Read aloud** | Send an explicit selection from another Mac app into a reviewable draft, listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key. |
 | **Annotate** | Draw, highlight, add shapes/text, emphasise the pointer and use saved boards over a live presentation. |
 | **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer. QuickTime and iPhone Mirroring can be opened separately. |
 | **Saved resources** | Keep searchable prompts, web links and references to local decks, videos and other files. |
@@ -34,8 +34,9 @@ The core app requires no account or subscription. Built-in Parakeet recognition 
 
 1. Open **Workbench Preview** and choose an action from Home. **Models** prepares the default Parakeet recognizer; its first download can take several minutes.
 2. Try **Dictate** with a short, disposable sentence. Microphone access is requested when recording needs it. Copy works without Accessibility; automatic paste is an optional setting.
-3. Open **Keyboard** to see or practise a shortcut. The defaults include **Control–Option–Space** for dictation, **Control–Option–V** for quick controls and **Control–Option–J** for saved resources.
-4. For a mobile demo, choose **Present a device**, prepare a scene and select an available source. Workbench's device view is video-only. iPhone Mirroring runs in Apple's own window; Workbench does not embed or control it.
+3. To hear text from TextEdit or a supported browser, select it and choose **Services → Read Selection in Workbench**. Review the imported text in Read aloud, then choose Listen; a different existing reading is never replaced without your choice.
+4. Open **Keyboard** to see or practise a shortcut. The defaults include **Control–Option–Space** for dictation, **Control–Option–V** for quick controls and **Control–Option–J** for saved resources.
+5. For a mobile demo, choose **Present a device**, prepare a scene and select an available source. Workbench's device view is video-only. iPhone Mirroring runs in Apple's own window; Workbench does not embed or control it.
 
 The menu-bar icon provides quick access while another app is active. The normal window is for editing and setup. Closing it leaves the utility available; **Quit Workbench** stops the app. **Open Workbench at login** is optional in Settings.
 
@@ -60,7 +61,7 @@ Model settings apply to the next request; the active request keeps its original 
 
 **Text refinement** is a separate model job. Original and Light use no text model. Natural uses available Apple Intelligence or an explicitly configured local Ollama model, with conservative fallback when a response fails preservation checks. Models provides installed-model checks, explicit download, load and save controls. Ollama must already run on your Mac; Workbench refuses cloud-model metadata but cannot audit your server. Cleanup, dictionary and delivery settings are captured at the start of each operation. The original transcript remains available.
 
-**Apple Shortcuts** can compose `Record Audio → Transcribe with Workbench → a text action`. Apple owns recording; Workbench's App Intent transcribes the supplied audio and returns text. Native discovery requires packaging with full Xcode metadata. See [integration setup and earlier validation](docs/voice-integrations.md). Services, Share extensions and Spotlight actions beyond normal app discovery are future options, not implemented entry points in this consolidation.
+**Apple Shortcuts** can compose `Record Audio → Transcribe with Workbench → a text action`. Apple owns recording; Workbench's App Intent transcribes the supplied audio and returns text. Native discovery requires packaging with full Xcode metadata. **macOS Services** supplies only the text explicitly selected in another app to **Read Selection in Workbench**; it opens a review draft and never starts audio, reads the general clipboard or submits text. See [integration setup and validation boundaries](docs/voice-integrations.md). Share extensions and Spotlight actions beyond normal app discovery remain future options.
 
 ## Build and install Preview
 

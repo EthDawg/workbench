@@ -15,6 +15,7 @@ Make frequent Mac tasks easy to start, understand and leave. Local dictation is 
 | Apple's iPhone Mirroring | Apple's separate app and supported input mechanisms | Open that app; no embedded control or microphone forwarding |
 | Explain a browser demo | Browser owns page input; explicit Workbench overlay edit mode | Annotation and saved persona, move/size/lock/hide |
 | Hear a draft | Reading engine, not microphone capture | Read, pause, resume, stop, export |
+| Hear a selection from another Mac app | That app and macOS Services own the explicit selection | Open a review draft; keep or replace an existing reading; wait for Listen |
 | Take a break | Timer session | Duration, start/pause/resume, hide |
 | Chain an audio workflow | Shortcuts Record Audio owns recording/cancel | Transcribe with Workbench receives a file and returns text |
 
@@ -27,6 +28,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Surface | Activation | Owns | Closing/focus |
 | --- | --- | --- | --- |
 | App window | Open app/menu/configured shortcut | Drafts, history, models, settings, scenes/personas, keyboard practice | Ordinary editing focus; close does not quit or delete saved work |
+| Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read aloud; Keep current or Replace reading resolves a conflict; neither starts playback |
 | One menu bar entry | Click/configured shortcut | Discover and launch jobs; truthful status | Transient launcher, not a universal persistent mode picker |
 | Dictation HUD | Explicit Mac capture/preview; completion or error | Current recording and result, compact/expanded | Stop completes; cancellation is explicit; closing options or collapsing preserves audio and paste target |
 | Presentation tile | Workbench presentation is active | Device presentation only | Starts collapsed: phone icon, divider, chevron. Click or Command-/ opens. Escape closes open controls first, otherwise ends presentation |
@@ -34,6 +36,8 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Annotation layer | Explicit drawing action/shortcut | Marks over the current screen | Escape leaves drawing; existing clear/undo semantics remain |
 
 The mobile tile contains no Dictate, Read aloud, cleanup modes or model downloads. Presentation does not redefine a global voice shortcut. Reject new Mac microphone capture when the presentation is the intended input surface; an explicitly selected Mac text field remains a separate job.
+
+The selected-text Service preserves the supplied string exactly, including whitespace and line breaks. No selection is an error; it must not read the whole screen, general clipboard, focused window or Accessibility tree to invent input. A selection beyond the active reading provider's limit remains reviewable but Listen and Save audio stay unavailable until it is shortened. Speko disclosure remains visible, and only an explicit Listen or Save audio action may send text online.
 
 ## Dictation states
 
@@ -69,6 +73,7 @@ Implement contextual presentation controls, compact/expanded recording HUD, shar
 - Exercise click-only presentation, keyboard opening/Escape, source/reconnect and persona rendering.
 - Geometry tests cover anchors, negative display origins, removed displays, snap thresholds and resizing.
 - Test refinement with a loopback fixture, failures, cancellation and original preservation. Report actual model/hardware testing separately.
+- Test Services metadata and selector dispatch with empty, exact and long synthetic selections; verify TextEdit and a supported browser from an installed package, including Keep/Replace and online-provider disclosure.
 - Inspect native UI using synthetic data. Real phone, physical unplug and meeting receiver checks are distinct claims.
 - Deploy the tested guide to the existing Vercel project, publish source and a signed Preview archive with checksum, and update installed Preview while preserving data. Use the explicit distribution workflow and report notarization, upload, tester availability and App Review separately; none is implied by a successful compile.
 
