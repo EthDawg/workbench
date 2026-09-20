@@ -1,5 +1,9 @@
 # Product-guide image experiments
 
+## Recovered phone-hand assets · 21 September 2026
+
+The [six-style grip kit](assets/phone-hand-grips/README.md) preserves 12 original transparent PNGs, source bounds, generation prompts, visual proofs and the runnable resize reference. The [native implementation brief](research/phone-hand-grips.md) distinguishes the existing single-PNG **Add hand cutout…** control from the proposed fitted two-layer grip, and covers shared rendering, saved-scene compatibility and shipment checks. These assets are now available to implement; the gallery is a prototype, not a shipped native feature.
+
 ## Personal scene refinement — 13 September 2026
 
 Both experiments were shown inline for review. They use fictional imagery and are retained as exploration, not evidence of implemented or tested behavior. The newer [personal-scenes decision](research/personal-scenes.md) supersedes the earlier photo-only navigation limit below.

@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "name": "StageMark smartphone grip kit",
+  "coordinateSystem": "top-left, source PNG pixels",
+  "layerOrder": [
+    "background",
+    "palm",
+    "fingers",
+    "procedural phone bezel",
+    "clipped live screen",
+    "optional logo"
+  ],
+  "defaultVariant": "medium-masculine",
+  "supportedScreenAspect": [
+    0.43,
+    0.565
+  ],
+  "supportedBorderFraction": [
+    0.004,
+    0.025
+  ],
+  "supportedCornerFraction": [
+    0.03,
+    0.16
+  ],
+  "uniformScaleOnly": true,
+  "variants": [
+    {
+      "id": "light-feminine",
+      "size": [
+        1536,
+        1024
+      ],
+      "sourcePhone": [
+        445,
+        54,
+        372,
+        731
+      ],
+      "files": [
+        "assets/light-feminine-fingers.png",
+        "assets/light-feminine-palm.png"
+      ],
+      "sha256": [
+        "a54f46efe1a3228d8a5cc54f04df41725992a718f04168d41cf4046609a319e7",
+        "376d549e04692ecd192192d04f557eb810772fe828e74f404558b665610e6ecf"
+      ],
+      "label": "Light \u00b7 Feminine",
+      "skinTone": "light",
+      "appearance": "feminine"
+    },
+    {
+      "id": "light-masculine",
+      "size": [
+        1536,
+        1024
+      ],
+      "sourcePhone": [
+        446,
+        55,
+        370,
+        730
+      ],
+      "files": [
+        "assets/light-masculine-fingers.png",
+        "assets/light-masculine-palm.png"
+      ],
+      "sha256": [
+        "ec7e64079b4cfce0cb042363934301dc6be223ea4a8c3b900c9646f7ecee6c13",
+        "434e556de1d5c58255e6b22e426a858a78c57b3cc656a23c5dc337f409a665a4"
+      ],
+      "label": "Light \u00b7 Masculine",
+      "skinTone": "light",
+      "appearance": "masculine"
+    },
+    {
+      "id": "medium-feminine",
+      "size": [
+        1536,
+        1024
+      ],
+      "sourcePhone": [
+        446,
+        55,
+        370,
+        730
+      ],
+      "files": [
+        "assets/medium-feminine-fingers.png",
+        "assets/medium-feminine-palm.png"
+      ],
+      "sha256": [
+        "f934fc9e68e4b3a164bdba717e9b45ae6f07a5b329afecae8124ffa82f8d8fc8",
+        "2ae7e4ccb4a09977a78d4e44cb6359ff5702783fcef1f95fdc2ca17fa9580521"
+      ],
+      "label": "Medium \u00b7 Feminine",
+      "skinTone": "medium",
+      "appearance": "feminine"
+    },
+    {
+      "id": "medium-masculine",
+      "size": [
+        1536,
+        1024
+      ],
+      "sourcePhone": [
+        445,
+        55,
+        371,
+        730
+      ],
+      "files": [
+        "assets/medium-masculine-fingers.png",
+        "assets/medium-masculine-palm.png"
+      ],
+      "sha256": [
+        "06597d1a146df3309762e158141f1cdf44b9710a02a72966b3f3bb620141381d",
+        "9800b48f19cc88c09d41c721acd9e66e651899da36510f0efc692dab9ef37ec0"
+      ],
+      "label": "Medium \u00b7 Masculine",
+      "skinTone": "medium",
+      "appearance": "masculine"
+    },
+    {
+      "id": "deep-feminine",
+      "size": [
+        1536,
+        1024
+      ],
+      "sourcePhone": [
+        446,
+        55,
+        370,
+        730
+      ],
+      "files": [
+        "assets/deep-feminine-fingers.png",
+        "assets/deep-feminine-palm.png"
+      ],
+      "sha256": [
+        "275349ac075544950eeebd09bce076f14e710fcd15d87fe76c8cfa917e10e060",
+        "1f4d5491a2d5753d729980663fef27d565e753533032e79dd8acd5980ff7c54b"
+      ],
+      "label": "Deep \u00b7 Feminine",
+      "skinTone": "deep",
+      "appearance": "feminine"
+    },
+    {
+      "id": "deep-masculine",
+      "size": [
+        1536,
+        1024
+      ],
+      "sourcePhone": [
+        446,
+        55,
+        370,
+        730
+      ],
+      "files": [
+        "assets/deep-masculine-fingers.png",
+        "assets/deep-masculine-palm.png"
+      ],
+      "sha256": [
+        "9bc047efb8cd25b65b51c780bb5985b86b2c90799bb337578e413bb8d79684ac",
+        "e00411ef5c928152722180aef60cb2d56854f3af6a74ad691a386f70c4f42b5d"
+      ],
+      "label": "Deep \u00b7 Masculine",
+      "skinTone": "deep",
+      "appearance": "masculine"
+    }
+  ],
+  "integrationStatus": "Asset and prototype handoff; not integrated into StageMark."
+}
