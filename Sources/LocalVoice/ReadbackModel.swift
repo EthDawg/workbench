@@ -138,39 +138,72 @@ enum ReadbackStore {
         guard manifest.formatVersion == ReadbackManifest.currentFormat else {
             throw ReadbackError.message("This Snap & Talk session uses format \(manifest.formatVersion), but this Workbench supports format \(ReadbackManifest.currentFormat). The folder was not changed.")
         }
-        for section in manifest.sections {
-            _ = try safeURL(root: root, relative: section.directory)
-            _ = try safeURL(root: root, relative: section.screenshot)
-            for path in [section.audio, section.originalTranscript, section.transcript].compactMap({ $0 }) {
-                _ = try safeURL(root: root, relative: path)
-            }
-        }
+        try validate(manifest, at: root)
         return manifest
     }
 
     static func save(_ manifest: ReadbackManifest, at root: URL) throws {
+        try validate(manifest, at: root)
         var value = manifest; value.updatedAt = Date()
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]; encoder.dateEncodingStrategy = .iso8601
         try writePrivate(encoder.encode(value), to: root.appendingPathComponent(manifestName))
     }
 
+    private static func validate(_ manifest: ReadbackManifest, at root: URL) throws {
+        var seen = Set<UUID>()
+        for section in manifest.sections {
+            let directory = "\(section.deletedAt == nil ? "items" : "trash")/\(section.id.uuidString.lowercased())"
+            guard seen.insert(section.id).inserted, section.directory == directory else {
+                throw ReadbackError.message("The session contains an invalid section directory or duplicate section and was not changed.")
+            }
+            _ = try safeURL(root: root, relative: directory)
+            for path in [section.screenshot, section.audio, section.originalTranscript, section.transcript].compactMap({ $0 }) {
+                guard path.hasPrefix(directory + "/") else {
+                    throw ReadbackError.message("The session links a file outside its section and was not changed.")
+                }
+                let file = try safeURL(root: root, relative: path)
+                let folder = root.appendingPathComponent(directory).standardizedFileURL
+                guard file.path.hasPrefix(folder.path + "/") else {
+                    throw ReadbackError.message("The session links a file outside its section and was not changed.")
+                }
+            }
+        }
+    }
+
     static func safeURL(root: URL, relative: String) throws -> URL {
-        guard !relative.isEmpty, !relative.hasPrefix("/"), !relative.split(separator: "/").contains("..") else {
+        let components = relative.split(separator: "/", omittingEmptySubsequences: false)
+        guard !relative.isEmpty, !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else {
             throw ReadbackError.message("The session contains an unsafe file path and was not changed.")
         }
-        let originalBase = root.standardizedFileURL
-        let base = originalBase.resolvingSymlinksInPath()
-        let candidate = originalBase.appendingPathComponent(relative).standardizedFileURL
-        let prefix = base.path.hasSuffix("/") ? base.path : base.path + "/"
-        let resolvedParent = candidate.deletingLastPathComponent().resolvingSymlinksInPath()
-        guard resolvedParent.path == base.path || resolvedParent.path.hasPrefix(prefix) else {
-            throw ReadbackError.message("The session contains a symbolic link outside its folder.")
-        }
-        if FileManager.default.fileExists(atPath: candidate.path) {
-            let resolved = candidate.resolvingSymlinksInPath()
-            guard resolved.path.hasPrefix(prefix) else { throw ReadbackError.message("The session contains a symbolic link outside its folder.") }
+        // Portable sessions own real files, never aliases into another section (or outside the session).
+        // Check each component, including dangling links, before a write, archive or deletion.
+        var candidate = root.standardizedFileURL
+        for component in components {
+            candidate.appendPathComponent(String(component))
+            if (try? candidate.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                throw ReadbackError.message("The session contains a symbolic link and was not changed.")
+            }
         }
         return candidate
+    }
+
+    static func append(_ section: ReadbackSection, at root: URL) throws -> ReadbackManifest {
+        // Capture suspends while older narration may finish. Read its committed result, not the UI snapshot.
+        var current = try load(from: root)
+        current.sections.append(section)
+        try save(current, at: root)
+        return current
+    }
+
+    static func restoreNarrationState(_ previous: ReadbackSection, at root: URL) throws -> ReadbackManifest {
+        var current = try load(from: root)
+        guard let index = current.sections.firstIndex(where: { $0.id == previous.id && $0.deletedAt == nil }) else {
+            throw ReadbackError.message("The section is no longer available.")
+        }
+        current.sections[index].status = previous.status
+        current.sections[index].failure = previous.failure
+        try save(current, at: root)
+        return current
     }
 
     static func readText(root: URL, relative: String?) -> String {
@@ -246,7 +279,7 @@ enum ReadbackScreenCapture {
 @MainActor
 final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private struct Job: Hashable { let root: URL; let sectionID: UUID }
-    private struct RecordingContext { let root: URL; let sectionID: UUID; let pendingURL: URL }
+    private struct RecordingContext { let root: URL; let sectionID: UUID; let pendingURL: URL; let previousSection: ReadbackSection }
 
     @Published private(set) var sessionURL: URL?
     @Published private(set) var manifest: ReadbackManifest?
@@ -412,11 +445,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func captureNewSection(fromEditor: Bool) async {
         guard !isCapturing, !isRecording else { return }
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
-        guard let root = sessionURL, var current = manifest else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
+        guard let root = sessionURL, manifest != nil else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
         guard permissionsReady else { notice = "Snap & Talk needs Screen Recording and Microphone access first."; stateChanged(); return }
         isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
         do {
             let capture = try await captureScreen(fromEditor: fromEditor)
+            guard sessionURL?.standardizedFileURL == root.standardizedFileURL else {
+                throw ReadbackError.message("The session changed during capture. Capture again in the selected session.")
+            }
             let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
             let folder = try ReadbackStore.safeURL(root: root, relative: directory)
             try ReadbackStore.createPrivateDirectory(folder)
@@ -424,8 +460,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             try ReadbackStore.writePrivate(capture.data, to: ReadbackStore.safeURL(root: root, relative: screenshot))
             let section = ReadbackSection(id: id, capturedAt: Date(), displayName: capture.displayName, directory: directory,
                 screenshot: screenshot, audio: nil, originalTranscript: nil, transcript: nil, status: .needsNarration, failure: nil, deletedAt: nil)
-            current.sections.append(section); current.updatedAt = Date(); try ReadbackStore.save(current, at: root)
-            manifest = current; recordingThumbnail = NSImage(data: capture.data); recordingScreenFrame = capture.screenFrame
+            let current = try ReadbackStore.append(section, at: root)
+            publish(current, for: root); recordingThumbnail = NSImage(data: capture.data); recordingScreenFrame = capture.screenFrame
             isCapturing = false
             do { try startNarration(root: root, sectionID: id) }
             catch { markNeedsNarration(root: root, sectionID: id, message: error.localizedDescription) }
@@ -452,6 +488,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard var current = try? ReadbackStore.load(from: root), let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else {
             throw ReadbackError.message("The Snap & Talk section is no longer available.")
         }
+        guard ![.queued, .transcribing, .recording].contains(current.sections[index].status) else {
+            throw ReadbackError.message("Wait for this section's narration to finish before recording it again.")
+        }
         let folder = try ReadbackStore.safeURL(root: root, relative: current.sections[index].directory)
         let pending = folder.appendingPathComponent("narration-pending-\(UUID().uuidString).wav")
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16000, AVNumberOfChannelsKey: 1,
@@ -459,7 +498,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         let capture = try AVAudioRecorder(url: pending, settings: settings)
         capture.delegate = self; capture.isMeteringEnabled = true
         guard capture.prepareToRecord(), capture.record() else { throw ReadbackError.message("The microphone could not start. Check that an input device is connected.") }
-        recorder = capture; recordingContext = RecordingContext(root: root, sectionID: sectionID, pendingURL: pending)
+        recorder = capture; recordingContext = RecordingContext(root: root, sectionID: sectionID, pendingURL: pending, previousSection: current.sections[index])
         recordingElapsed = 0; recordingLevel = 0; peakPower = -160; isRecording = true; recordingSectionID = sectionID
         current.sections[index].status = .recording; current.sections[index].failure = nil
         try ReadbackStore.save(current, at: root); publish(current, for: root)
@@ -485,7 +524,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         do {
             guard duration >= 0.35, peakPower > -55 else {
                 try? FileManager.default.removeItem(at: context.pendingURL)
-                markNeedsNarration(root: context.root, sectionID: context.sectionID, message: "No clear speech was captured. The screenshot was kept; record its narration again.")
+                restoreNarration(context, message: "No clear speech was captured. The screenshot and any earlier narration were kept.")
                 return
             }
             var current = try ReadbackStore.load(from: context.root)
@@ -514,7 +553,16 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
         try? FileManager.default.removeItem(at: context.pendingURL)
         isRecording = false; recordingSectionID = nil; recordingContext = nil; recordingLevel = 0
-        markNeedsNarration(root: context.root, sectionID: context.sectionID, message: "Narration was cancelled. The screenshot and any earlier narration were kept.")
+        restoreNarration(context, message: "Narration was cancelled. The screenshot and any earlier narration were kept.")
+    }
+
+    private func restoreNarration(_ context: RecordingContext, message: String) {
+        do {
+            let current = try ReadbackStore.restoreNarrationState(context.previousSection, at: context.root)
+            publish(current, for: context.root)
+            notice = message
+        } catch { notice = "Earlier narration was kept, but its status could not be restored. \(error.localizedDescription)" }
+        stateChanged()
     }
 
     func replaceScreenshot(_ sectionID: UUID) async {
@@ -568,7 +616,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func moveSections(from offsets: IndexSet, to destination: Int) {
-        guard let root = sessionURL, var current = manifest else { return }
+        guard let root = sessionURL, var current = try? ReadbackStore.load(from: root) else { return }
         var active = current.sections.filter { $0.deletedAt == nil }
         active.move(fromOffsets: offsets, toOffset: destination)
         current.sections = active + current.sections.filter { $0.deletedAt != nil }
@@ -577,7 +625,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func moveSection(_ sourceID: UUID, before targetID: UUID) {
-        guard sourceID != targetID, let root = sessionURL, var current = manifest else { return }
+        guard sourceID != targetID, let root = sessionURL, var current = try? ReadbackStore.load(from: root) else { return }
         var active = current.sections.filter { $0.deletedAt == nil }
         guard let source = active.firstIndex(where: { $0.id == sourceID }), let target = active.firstIndex(where: { $0.id == targetID }) else { return }
         let section = active.remove(at: source)
@@ -588,7 +636,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func deleteSection(_ sectionID: UUID) {
-        guard !isRecording, let root = sessionURL, var current = manifest,
+        guard !isRecording, let root = sessionURL, var current = try? ReadbackStore.load(from: root),
               let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }),
               ![.queued, .transcribing].contains(current.sections[index].status) else {
             notice = "Wait for transcription to finish before deleting this section."; return
@@ -608,7 +656,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func restoreSection(_ sectionID: UUID) {
-        guard let root = sessionURL, var current = manifest,
+        guard let root = sessionURL, var current = try? ReadbackStore.load(from: root),
               let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt != nil }) else { return }
         do {
             let oldDirectory = current.sections[index].directory
@@ -624,8 +672,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func emptyRecentlyDeleted() {
-        guard let root = sessionURL, var current = manifest else { return }
+        guard let root = sessionURL else { return }
         do {
+            var current = try ReadbackStore.load(from: root)
             for section in current.sections where section.deletedAt != nil {
                 let url = try ReadbackStore.safeURL(root: root, relative: section.directory)
                 if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }

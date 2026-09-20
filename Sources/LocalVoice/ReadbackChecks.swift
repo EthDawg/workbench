@@ -62,6 +62,96 @@ enum ReadbackChecks {
             try check(error.localizedDescription.contains("999") && error.localizedDescription.contains("1"), "unsupported format errors identify both versions")
         }
         try ReadbackStore.save(loaded, at: root)
+
+        // Malformed portable manifests must be rejected before deletion can touch a parent or sibling.
+        func writeUnchecked(_ value: ReadbackManifest) throws {
+            let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(value).write(to: root.appendingPathComponent(ReadbackStore.manifestName))
+        }
+        func rejectsManifest(_ message: String, _ edit: (inout ReadbackManifest) -> Void) throws {
+            var invalid = loaded; edit(&invalid)
+            try writeUnchecked(invalid)
+            try rejects(message) { _ = try ReadbackStore.load(from: root) }
+            try rejects(message + " on save") { try ReadbackStore.save(invalid, at: root) }
+            try ReadbackStore.save(loaded, at: root)
+        }
+        for directory in ["items", "trash", ".", "items/" + secondID.uuidString.lowercased(), firstDirectory + "/nested"] {
+            try rejectsManifest("section directory must belong to its UUID: \(directory)") { $0.sections[0].directory = directory }
+        }
+        try rejectsManifest("deleted sections cannot reference active directories") { $0.sections[0].deletedAt = Date() }
+        try rejectsManifest("duplicate IDs are rejected before draft dictionaries or deletion") { $0.sections.append($0.sections[0]) }
+        try rejectsManifest("screenshots cannot reference sibling files") { $0.sections[0].screenshot = secondDirectory + "/screen.png" }
+        try rejectsManifest("audio cannot reference sibling files") { $0.sections[0].audio = secondDirectory + "/narration.wav" }
+        try rejectsManifest("original transcripts cannot reference session metadata") { $0.sections[0].originalTranscript = "session.json" }
+        try rejectsManifest("editable transcripts cannot reference sibling files") { $0.sections[0].transcript = secondDirectory + "/narration.txt" }
+        try rejectsManifest("linked files cannot be the section directory itself") { $0.sections[0].screenshot = firstDirectory }
+        try rejectsManifest("linked paths cannot traverse to another section") { $0.sections[0].screenshot = firstDirectory + "/../" + secondID.uuidString.lowercased() + "/screen.png" }
+        let firstScreenshot = try Data(contentsOf: root.appendingPathComponent(firstDirectory + "/screen.png"))
+        let secondScreenshot = try Data(contentsOf: root.appendingPathComponent(secondDirectory + "/screen.png"))
+        try check(firstScreenshot == secondScreenshot && firstScreenshot.count == 4, "rejected manifests leave both synthetic screenshots untouched")
+
+        let aliasID = UUID(), aliasDirectory = "items/\(aliasID.uuidString.lowercased())"
+        let directoryAlias = root.appendingPathComponent(aliasDirectory)
+        try FileManager.default.createSymbolicLink(at: directoryAlias, withDestinationURL: root.appendingPathComponent(secondDirectory))
+        try rejectsManifest("section directories cannot alias a sibling") {
+            $0.sections[0] = ReadbackSection(id: aliasID, capturedAt: Date(), displayName: "Alias", directory: aliasDirectory,
+                screenshot: aliasDirectory + "/screen.png", audio: nil, originalTranscript: nil, transcript: nil,
+                status: .needsNarration, failure: nil, deletedAt: nil)
+        }
+        try FileManager.default.removeItem(at: directoryAlias)
+        let alias = root.appendingPathComponent(firstDirectory + "/alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: root.appendingPathComponent(secondDirectory))
+        try rejectsManifest("internal links cannot alias a sibling's files") { $0.sections[0].screenshot = firstDirectory + "/alias/screen.png" }
+        try rejects("archive folders cannot alias siblings") { _ = try ReadbackStore.safeURL(root: root, relative: firstDirectory + "/alias/history") }
+        try FileManager.default.removeItem(at: alias)
+        let missing = root.appendingPathComponent(firstDirectory + "/missing")
+        try FileManager.default.createSymbolicLink(at: missing, withDestinationURL: root.appendingPathComponent("not-created"))
+        try rejects("dangling symbolic links are rejected before writing") { _ = try ReadbackStore.safeURL(root: root, relative: firstDirectory + "/missing/narration.txt") }
+        try FileManager.default.removeItem(at: missing)
+
+        // Reproduce transcription finishing during the asynchronous screen capture.
+        var completed = loaded
+        completed.sections[0].audio = firstDirectory + "/narration.wav"
+        completed.sections[0].originalTranscript = firstDirectory + "/narration-original.txt"
+        completed.sections[0].transcript = firstDirectory + "/narration.txt"
+        completed.sections[0].status = .ready
+        let audioBytes = Data("synthetic saved audio".utf8)
+        try audioBytes.write(to: root.appendingPathComponent(completed.sections[0].audio!))
+        try Data("Original words".utf8).write(to: root.appendingPathComponent(completed.sections[0].originalTranscript!))
+        try Data("Edited words".utf8).write(to: root.appendingPathComponent(completed.sections[0].transcript!))
+        try ReadbackStore.save(completed, at: root)
+        let thirdID = UUID(), thirdDirectory = "items/\(thirdID.uuidString.lowercased())"
+        let appendedSection = ReadbackSection(id: thirdID, capturedAt: Date(), displayName: "Display 3", directory: thirdDirectory,
+            screenshot: thirdDirectory + "/screen.png", audio: nil, originalTranscript: nil, transcript: nil, status: .needsNarration, failure: nil, deletedAt: nil)
+        _ = try ReadbackStore.append(appendedSection, at: root)
+        let appended = try ReadbackStore.load(from: root)
+        try check(appended.sections.map(\.id) == [firstID, secondID, thirdID], "capture appends to the latest committed section order")
+        try check(appended.sections[0] == completed.sections[0], "capture retains transcription completed after its initial snapshot")
+        try check(ReadbackStore.readText(root: root, relative: appended.sections[0].transcript) == "Edited words", "capture retains the completed transcript file")
+
+        // Beginning a rerecord changes only status; cancellation must restore that status and prior error.
+        for previousStatus in [ReadbackSectionStatus.ready, .failed, .needsNarration] {
+            var before = appended
+            before.sections[0].status = previousStatus
+            before.sections[0].failure = previousStatus == .failed ? "Original recognition failure" : nil
+            var recording = before
+            recording.sections[0].status = .recording; recording.sections[0].failure = nil
+            try ReadbackStore.save(recording, at: root)
+            let restored = try ReadbackStore.restoreNarrationState(before.sections[0], at: root)
+            try check(restored.sections[0] == before.sections[0], "cancel rerecord restores previous \(previousStatus.rawValue) state and file links")
+            let savedAudio = try Data(contentsOf: root.appendingPathComponent(restored.sections[0].audio!))
+            try check(savedAudio == audioBytes, "cancel rerecord preserves original audio bytes")
+            try check(ReadbackStore.readText(root: root, relative: restored.sections[0].originalTranscript) == "Original words"
+                && ReadbackStore.readText(root: root, relative: restored.sections[0].transcript) == "Edited words", "cancel rerecord preserves original and edited transcripts")
+            try check(restored.sections.dropFirst() == appended.sections.dropFirst(), "cancel rerecord preserves other sections")
+        }
+        var trashed = loaded
+        trashed.sections[0].moveFiles(from: firstDirectory, to: "trash/\(firstID.uuidString.lowercased())")
+        trashed.sections[0].deletedAt = Date()
+        try ReadbackStore.save(trashed, at: root)
+        let reloadedTrash = try ReadbackStore.load(from: root)
+        try check(reloadedTrash.sections[0].directory.hasPrefix("trash/"), "valid recoverable-deletion paths still load")
+        try ReadbackStore.save(loaded, at: root)
         try rejects("parent traversal is rejected") { _ = try ReadbackStore.safeURL(root: root, relative: "../outside") }
         try rejects("absolute paths are rejected") { _ = try ReadbackStore.safeURL(root: root, relative: "/tmp/outside") }
         let outside = root.deletingLastPathComponent().appendingPathComponent("Workbench-readback-outside-\(UUID().uuidString)", isDirectory: true)
