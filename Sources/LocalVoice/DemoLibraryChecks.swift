@@ -101,7 +101,7 @@ enum DemoLibraryChecks {
         let migrated = try JSONDecoder().decode(VoicePreferences.self, from: JSONSerialization.data(withJSONObject: oldJSON))
         try check(migrated.dictationShortcut == oldPreferences.dictationShortcut && !migrated.restoreClipboard, "adding library shortcut preserves older voice settings")
         try check(migrated.shortcut(3) == VoicePreferences().shortcut(3), "older preferences receive only the new library shortcut default")
-        try check(migrated.shortcut(4) == VoicePreferences().shortcut(4), "older preferences receive the new readback shortcut default")
+        try check(migrated.shortcut(5) == VoicePreferences().shortcut(5), "older preferences receive the new readback shortcut default")
         var disabled = migrated; var shortcut = disabled.shortcut(3); shortcut.enabled = false; disabled.setShortcut(shortcut, for: 3)
         let roundtrip = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(disabled))
         try check(!roundtrip.shortcut(3).enabled, "disabled library shortcut stays disabled after restart")

@@ -310,7 +310,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var deletedSections: [ReadbackSection] { manifest?.sections.filter { $0.deletedAt != nil } ?? [] }
     var hasPendingTranscriptions: Bool { pendingTranscriptionCount > 0 }
     var permissionsReady: Bool { screenPermissionGranted && microphonePermission == .authorized }
-    var shortcutLabel: String { VoicePreferences.load().shortcut(4).label }
+    var shortcutLabel: String { VoicePreferences.load().shortcut(5).label }
 
     private let engine: RecognitionEngine
     private var recorder: AVAudioRecorder?

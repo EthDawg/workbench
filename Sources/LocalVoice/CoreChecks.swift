@@ -44,6 +44,11 @@ enum CoreChecks {
         let sameSecond = [firstAccessibleCapture, simultaneous, subsecond]
         let uniqueLabels = sameSecond.map { CaptureHistoryAccessibility.context(for: $0, history: sameSecond, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!) }
         try check(Set(uniqueLabels).count == 3, "history labels distinguish exact-time and subsecond captures without transcript contents")
+        var combinedPreferences = VoicePreferences()
+        combinedPreferences.setShortcut(VoiceShortcut(keyCode: 18), for: 4)
+        combinedPreferences.setShortcut(VoiceShortcut(keyCode: 19), for: 5)
+        let restoredPreferences = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(combinedPreferences))
+        try check(restoredPreferences.shortcut(4).keyCode == 18 && restoredPreferences.shortcut(5).keyCode == 19, "Chrome and Snap & Talk shortcut assignments remain independent through save and reload")
         let exportCapture = Transcript(text: "Cleaned café\nSecond line", seconds: 2, rawText: "Original café\nsecond line")
         try check(TranscriptExport.text(for: exportCapture, version: .cleaned) == exportCapture.text
                   && TranscriptExport.text(for: exportCapture, version: .original) == exportCapture.rawText,

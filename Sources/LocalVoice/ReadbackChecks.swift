@@ -164,10 +164,10 @@ enum ReadbackChecks {
         var moved = loaded.sections[0]
         moved.moveFiles(from: firstDirectory, to: "trash/\(firstID.uuidString.lowercased())")
         try check(moved.screenshot.hasPrefix("trash/") && moved.directory.hasPrefix("trash/"), "recoverable deletion keeps linked paths together")
-        try check(VoicePreferences().shortcut(4).keyCode == UInt32(kVK_ANSI_Backslash) && VoicePreferences().shortcut(4) != VoicePreferences().shortcut(1), "Snap & Talk defaults to Control-Option-Backslash")
+        try check(VoicePreferences().shortcut(5).keyCode == UInt32(kVK_ANSI_Backslash) && VoicePreferences().shortcut(5) != VoicePreferences().shortcut(1), "Snap & Talk defaults to Control-Option-Backslash")
         var legacyPreferences = VoicePreferences()
         legacyPreferences.readbackShortcut = VoicePreferences.legacyReadbackShortcut
-        try check(VoicePreferences.migratingLegacyDefaults(legacyPreferences).shortcut(4) == VoicePreferences.defaultReadbackShortcut, "the conflicting legacy Control-Option-R default migrates")
+        try check(VoicePreferences.migratingLegacyDefaults(legacyPreferences).shortcut(5) == VoicePreferences.defaultReadbackShortcut, "the conflicting legacy Control-Option-R default migrates")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
 }
