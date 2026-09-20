@@ -26,7 +26,7 @@ An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a se
 | **Snap & Talk** | Capture the display under the pointer, record linked narration, and keep an ordered portable session for slide generation. |
 | **Annotate** | Draw, highlight, add shapes/text, emphasise the pointer and use saved boards over a live presentation. |
 | **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer that remembers where you placed it. QuickTime and iPhone Mirroring can be opened separately. |
-| **Saved resources** | Keep searchable prompts, web links and references to local decks, videos and other files; inspect supported local files in Quick Look before opening them. |
+| **Saved resources** | Keep searchable prompts, web links and references to local files; preview files in Quick Look and review new or changed items before importing a shared library. |
 | **Switch to** | In this development build, return to a named demo tab in its paired Chrome profile from any app. [Setup and evidence](docs/presenter-direction.md). |
 | **Keyboard** | See all Workbench assignments, change or disable them, and practise on a virtual keyboard without activating tools. |
 

@@ -106,6 +106,8 @@ Quit stops work and preserves pending recovery. On reopening, an acknowledged jo
 
 ## Saved state and migration
 
+`DemoLibraryImport` compares a validated, bounded exchange document with a frozen local library. It removes incoming bookmarks and browser targets before comparison or file-availability checks, and ignores timestamp-only differences. Unchanged and Keep mine records retain their exact local state; chosen updates preserve local file/browser attachments only when the incoming reference still identifies the same destination. `DemoLibraryModel` owns the review and choices. It checks the saved file against its loaded bytes before applying; Review again reloads an outside edit and resets choices. An identical import does not write. The store prepares private bytes in a sibling file before atomic rename, so a reported staging or permission failure cannot follow replacement of the original. Original media is never copied or changed.
+
 | Data | Unified Preview location / owner |
 | --- | --- |
 | Voice session and resources | `Application Support/Workbench Preview/LocalVoice/state.json` and `demo-library.json` |

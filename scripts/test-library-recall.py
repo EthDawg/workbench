@@ -16,7 +16,7 @@ import time
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "DemoLibraryView.swift", "DemoQuickLook.swift")]
+SOURCES = [PROJECT / "Sources/LocalVoice" / name for name in ("DemoLibrary.swift", "DemoLibraryView.swift", "DemoQuickLook.swift", "DemoLibraryImport.swift", "DemoLibraryImportView.swift")]
 SOURCES.append(PROJECT / "Sources/PresenterKit/PresenterProtocol.swift")
 
 DEPENDENCIES = r'''
@@ -258,6 +258,8 @@ def compile_fixture(directory: Path, main: str, binary: Path) -> None:
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--native-fixture", type=Path, help="Build a disposable native QA app in this directory; do not launch")
+parser.add_argument("--import-review", action="store_true", help="Check the import transaction with the actual model and store")
+parser.add_argument("--render-import-review", type=Path, help="Render the actual import review with synthetic records")
 args = parser.parse_args()
 started = time.monotonic()
 if args.native_fixture:
@@ -276,6 +278,7 @@ else:
     with tempfile.TemporaryDirectory(prefix="workbench-library-recall-", dir="/private/tmp") as temporary:
         directory = Path(temporary)
         binary = directory / "Checks"
-        compile_fixture(directory, CHECKS, binary)
-        subprocess.run([str(binary)], check=True, timeout=20)
+        main = (PROJECT / "scripts/fixtures/LibraryImportChecks.swift").read_text() if args.import_review or args.render_import_review else CHECKS
+        compile_fixture(directory, main, binary)
+        subprocess.run([str(binary), *([str(args.render_import_review.resolve())] if args.render_import_review else [])], check=True, timeout=30)
 print(f"Compilation and checks: {time.monotonic() - started:.3f}s")
