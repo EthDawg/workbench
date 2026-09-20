@@ -36,7 +36,8 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         case .overlayPrevious: return "Previous prepared overlay set"
         case .overlayVisibility: return "Hide or show presentation overlays"
         case .overlayEnd: return "End presentation overlays"
-        case .color1, .color2, .color3, .color4, .color5, .color6: return "Colour \(rawValue.last!)"
+        case .color1, .color2, .color3, .color4, .color5, .color6:
+            return InkColor.presetName(at: Int(String(rawValue.last!))! - 1) + " colour"
         default: return rawValue.capitalized
         }
     }

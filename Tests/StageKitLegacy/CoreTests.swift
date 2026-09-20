@@ -4,6 +4,13 @@ final class CoreTests: XCTestCase {
     func stroke(_ tool: DrawingTool = .pen, from: CGPoint = .zero, to: CGPoint = CGPoint(x: 100, y: 100), created: Double = 100) -> Annotation {
         Annotation(tool: tool, color: .coral, width: 4, points: [InkPoint(from), InkPoint(to)], created: created)
     }
+
+    func testInkColourAccessibilityDescriptions() {
+        XCTAssertEqual(InkColor.presets.map(\.accessibilityDescription), ["Coral", "Amber", "Mint", "Blue", "Violet", "White"])
+        XCTAssertEqual(InkColor(0.1, 0.2, 0.3).accessibilityDescription, "Custom #19334C")
+        XCTAssertEqual([Action.color1, .color2, .color3, .color4, .color5, .color6].map(\.title),
+                       ["Coral colour", "Amber colour", "Mint colour", "Blue colour", "Violet colour", "White colour"])
+    }
     func testLineHitTestingUsesSegmentsNotBoundingBox() {
         let line = stroke(.line)
         XCTAssertTrue(line.hitTest(CGPoint(x: 50, y: 52)))

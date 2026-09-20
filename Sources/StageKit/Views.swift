@@ -166,7 +166,12 @@ struct ControlCenter: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
             }.surface()
             VStack(spacing: 20) {
-                HStack { Text("Ink colour"); Spacer(); swatches; ColorPicker("Custom", selection: colorBinding(\Preferences.color), supportsOpacity: false).labelsHidden().help("Custom ink colour") }
+                HStack {
+                    Text("Ink colour"); Spacer(); swatches
+                    ColorPicker("Custom", selection: colorBinding(\Preferences.color), supportsOpacity: false)
+                        .labelsHidden().accessibilityLabel("Custom ink colour")
+                        .accessibilityValue(settings.value.color.accessibilityDescription).help("Custom ink colour")
+                }
                 sliderRow("Line width", value: $settings.value.lineWidth, range: 1...20, suffix: "pt")
                 sliderRow("Highlighter", value: $settings.value.highlighterWidth, range: 8...60, suffix: "pt")
                 sliderRow("Text size", value: $settings.value.fontSize, range: 12...96, suffix: "pt")
@@ -311,7 +316,10 @@ struct ControlCenter: View {
                 Button { settings.value.color = color } label: {
                     Circle().fill(Color(nsColor: color.nsColor)).frame(width: 18, height: 18)
                         .padding(3).overlay(Circle().stroke(settings.value.color == color ? .white : .clear, lineWidth: 1.5))
-                }.buttonStyle(.plain).accessibilityLabel("Ink colour \(index + 1)")
+                }.buttonStyle(.plain)
+                    .accessibilityLabel("\(color.accessibilityDescription) ink colour")
+                    .accessibilityValue(settings.value.color == color ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(settings.value.color == color ? .isSelected : [])
             }
         }
     }
@@ -401,7 +409,10 @@ struct DrawingPalette: View {
                 Button { settings.value.color = color } label: {
                     Circle().fill(Color(nsColor: color.nsColor)).frame(width: 15, height: 15).padding(3)
                         .overlay(Circle().stroke(settings.value.color == color ? .white : .clear))
-                }.buttonStyle(.plain).help("Colour \(index + 1)").accessibilityLabel("Colour \(index + 1)")
+                }.buttonStyle(.plain).help(color.accessibilityDescription)
+                    .accessibilityLabel("\(color.accessibilityDescription) ink colour")
+                    .accessibilityValue(settings.value.color == color ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(settings.value.color == color ? .isSelected : [])
             }
             Divider().frame(height: 24).padding(.horizontal, 3)
             Button { app.perform(.undo) } label: { Image(systemName: "arrow.uturn.backward").frame(width: 25, height: 32) }.help("Undo").accessibilityLabel("Undo")

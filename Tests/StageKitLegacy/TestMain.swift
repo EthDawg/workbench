@@ -9,6 +9,13 @@ struct TestRunner {
             PersonaSessionFixture().run()
             return
         }
+        if args == ["--colour-accessibility-only"] {
+            let suite = CoreTests(), before = assertionFailures
+            suite.testInkColourAccessibilityDescriptions()
+            if assertionFailures == before { print("PASS ink colour accessibility descriptions") }
+            print("1 tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--backdrop-fixture"] {
             _ = NSApplication.shared
             BackdropReplacementFixture().run()
@@ -163,6 +170,7 @@ struct TestRunner {
             ("shortcut uniqueness", suite.testDefaultShortcutsAreUniqueAndComplete),
             ("settings persistence and bounds", suite.testPreferencesPersistAndClamp),
             ("settings recovery", suite.testCorruptPreferencesArePreservedForRecovery),
+            ("ink colour accessibility descriptions", suite.testInkColourAccessibilityDescriptions),
             ("actual rendering for every tool", suite.testAllToolsRenderToRealPixels),
             ("native mouse handlers and text commit", integration.testActualMouseHandlersAndTextCommit),
             ("first stroke after activation", integration.testFirstStrokeAfterActivationReachesInactiveCanvas),
