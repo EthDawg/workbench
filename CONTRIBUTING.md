@@ -101,7 +101,7 @@ Record simulator model/OS and actual test results in the PR. Physical speech ava
 
 [The product contract](docs/workbench.md) owns app-wide behaviour; [the implementation map](docs/design.md) describes boundaries. Voice currently lives in the `LocalVoice` executable target; `StageKit` is a separate Swift library within the same process. Neither module should grow its own app lifecycle or another menu-bar icon. The original checkouts are provenance, not a requirement to maintain matching implementation PRs in two repos.
 
-The [jobs and interaction specification](docs/product-spec.md) defines input ownership, surfaces, placement and closure. The [public guide](https://workbench-mac.vercel.app/guide/) explains them to users. Update that specification and `site/guide/index.html` alongside behavior changes.
+The [jobs and interaction specification](docs/product-spec.md) defines input ownership, surfaces, placement and closure. The [design language](docs/design-language.md) records the themes, shared atoms and recurring components behind those surfaces, and carries the checklist to run before opening a PR that changes anything visible. The [public guide](https://workbench-mac.vercel.app/guide/) explains them to users. Update that specification and `site/guide/index.html` alongside behavior changes.
 
 For mobile behaviour, update [the mobile contract and evidence](docs/ios-preview.md); [mobile research](docs/mobile-research.md) records the native baselines and platform constraints. Keep mobile results separate from the Mac acceptance record.
 
