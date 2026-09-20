@@ -183,6 +183,16 @@ final class CanvasHistory {
         undoStack = undoStack.map { $0.filter { $0.opacity(at: time, fadeDelay: delay) > 0 } }
         redoStack = redoStack.map { $0.filter { $0.opacity(at: time, fadeDelay: delay) > 0 } }
     }
+    func pauseFade(by duration: TimeInterval) {
+        guard duration.isFinite, duration > 0 else { return }
+        func shifted(_ values: [Annotation]) -> [Annotation] {
+            values.map { value in var copy = value; copy.created += duration; return copy }
+        }
+        annotations = shifted(annotations)
+        undoStack = undoStack.map(shifted)
+        redoStack = redoStack.map(shifted)
+        if let transaction { self.transaction = shifted(transaction) }
+    }
 }
 
 struct Countdown {

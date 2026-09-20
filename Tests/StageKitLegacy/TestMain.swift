@@ -34,16 +34,19 @@ struct TestRunner {
         let boardPresentationOnly = args == ["--board-presentation-only"]
         let backdropOnly = args == ["--backdrop-only"]
         let personaQuickOnly = args == ["--persona-quick-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly else {
+        let screenshotStateOnly = args == ["--screenshot-state-only"]
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly else {
             print("Usage: StageMarkTests [--ci | --scenes-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
 
             exit(2)
         }
         let scenesOnly = args == ["--scenes-only"]
         let hostedCI = args == ["--ci"]
-        _ = NSApplication.shared
-        NSApp.setActivationPolicy(.accessory)
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
+        if !screenshotStateOnly {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
+        }
         let suite = CoreTests()
         let integration = IntegrationTests()
         let scenes = SceneTests()
@@ -162,6 +165,7 @@ struct TestRunner {
             ("undo clear", suite.testClearIsUndoableAndEmptyClearDoesNotAddHistory),
             ("bounded history", suite.testHistoryIsBounded),
             ("fade lifecycle", suite.testFadeTimingAndExpiredInkCannotResurrect),
+            ("Screenshot handoff state and fade pause", suite.testScreenshotHandoffStateAndFadePause),
             ("countdown pause resume sleep", suite.testCountdownPauseResumeAndSleep),
             ("countdown formatting", suite.testCountdownRoundingAndHours),
             ("board persistence", suite.testBoardPersistenceRoundTripAndSeparateDisplays),
@@ -175,6 +179,7 @@ struct TestRunner {
             ("native mouse handlers and text commit", integration.testActualMouseHandlersAndTextCommit),
             ("first stroke after activation", integration.testFirstStrokeAfterActivationReachesInactiveCanvas),
             ("native drawing lifecycle and board isolation", integration.testDrawingLifecycleAndBoardIsolation),
+            ("Screenshot handoff preserves ink and suspends input", integration.testScreenshotHandoffPreservesInkAndSuspendsInput),
             ("global shortcut registration and release", integration.testShortcutRegistrationAndRelease)
         ]
         tests.insert(contentsOf: [
@@ -204,6 +209,8 @@ struct TestRunner {
             tests = backdropTests
         } else if boardPresentationOnly {
             tests = Array(tests.prefix(5))
+        } else if screenshotStateOnly {
+            tests = [("Screenshot handoff state and fade pause", suite.testScreenshotHandoffStateAndFadePause)]
         } else if scenesOnly {
             tests = Array(tests.prefix { $0.0 != "line hit testing" })
         } else if hostedCI {
@@ -211,7 +218,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
