@@ -1,4 +1,5 @@
 import AppKit
+import StageKit
 import SwiftUI
 
 /// Idle disclosure is independent of recording detail and microphone ownership.
@@ -11,6 +12,23 @@ enum FloatingToolbarDisclosure: Equatable {
         case .hovered: return NSSize(width: 368, height: 60)
         case .expanded: return NSSize(width: 480, height: 116)
         }
+    }
+
+    func size(at anchor: FloatingControlAnchor?) -> NSSize {
+        guard anchor == .left || anchor == .right else { return size }
+        switch self {
+        case .collapsed: return NSSize(width: 28, height: 76)
+        case .hovered: return NSSize(width: size.width, height: 76)
+        case .expanded: return size
+        }
+    }
+}
+
+/// The shared geometry still allows free placement for other utilities. This
+/// toolbar always chooses one of the named destinations, even from mid-screen.
+enum FloatingToolbarDocking {
+    static func anchor(for frame: NSRect, in screen: NSRect) -> FloatingControlAnchor {
+        FloatingControlGeometry.nearestAnchor(to: frame, in: screen, threshold: .greatestFiniteMagnitude) ?? .bottom
     }
 }
 

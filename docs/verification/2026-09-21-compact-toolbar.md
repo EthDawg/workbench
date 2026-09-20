@@ -4,19 +4,20 @@ Follow-up to merged #62 and the remaining #56 acceptance. This change implements
 
 ## Behavior
 
-- A 76 × 28 point resting indicator expands on hover to 368 × 60 quick actions. Click/Expand pins the 480 × 116 full tools. Collapse and expansion are remembered independently of show/hide and recording detail.
+- A 76 × 28 point horizontal resting indicator expands on hover to 368 × 60 quick actions. Left/right centre positions use a 28 × 76 vertical pill and 368 × 76 hover controls, retaining both resting tips. Click/Expand pins the 480 × 116 full tools. Collapse and expansion are remembered independently of show/hide and recording detail.
 - Native mouse movement reveals controls with a restrained 380 ms spring and a short content fade. Reduce Motion disables both. Pointer exit allows 450 ms to reach controls. Re-entry cancels collapse; native menu tracking, keyboard interaction and dragging retain controls.
 - Minimise clears the previous hover state and measures the future pill before accepting re-entry. Window resizing cannot manufacture pointer gestures. Explicit collapse works during a reveal or from an open menu. The unexplained six-dot idle grip is removed; drag the empty header space or use Position in the menu.
 - Change mode uses Original/Light/Natural cleanup preferences and native checkmarks. Native menu highlight is navigation. The current recording retains its captured configuration.
 - Dictation and Snap & Talk show configured shortcut information, including disabled/failed bindings. Stop, processing, failure and receipt surfaces retain their existing lifecycle; screenshot acquisition hides the complete shared window.
 - Ordinary pointer use preserves external focus. Window → Focus floating toolbar explicitly focuses the native action menu; Space/Return opens it, arrows navigate and Escape leaves. This command only focuses idle tools. All idle actions and Change mode are also available from this menu.
-- Anchored resizing preserves the display/edge. Free placement saves both origin and size so relaunch can restore its centre even if it last exited while hover-expanded.
+- Every toolbar drag snaps to the nearest named position, matching the highlighted guide, with a soft landing. Menu positions use the same dimensions and placement. Saved free placement migrates to its nearest dock on the resolved display. Other StageKit controls retain their existing free-placement contract.
 
 ## Verified locally
 
 - Debug and release builds passed. Package suite: 107 tests, zero failures.
-- All 45 focused toolbar checks passed, covering transient disclosure, genuine pointer motion, bounded spring motion, exit grace/re-entry, menu and drag holds, keyboard transitions, saved expansion, honest shortcuts and all eight anchor positions.
-- All 23 disposable native controller checks passed: ten repeated minimise/reopen cycles, stationary pointer samples, first re-entry, continued movement outside, menu holds/collapse, intermediate animated window sizes, same-turn and mid-animation cancellation, dragging, recording takeover, hiding and closing. They drive the production controller with synthetic pointer samples; they do not inject OS mouse events.
+- All 55 focused toolbar checks passed, covering transient disclosure, genuine pointer motion, bounded spring motion, exit grace/re-entry, menu and drag holds, keyboard transitions, saved expansion, honest shortcuts and all eight anchor positions.
+- All 34 disposable native controller checks passed: ten repeated minimise/reopen cycles, stationary pointer samples, first re-entry, continued movement outside, menu holds/collapse, intermediate animated window sizes, same-turn and mid-animation cancellation, dragging, recording takeover, hiding, closing, orientation changes, pill-tip containment, mandatory docking and restoration from free placement. They drive the production controller with synthetic pointer samples; they do not inject OS mouse events.
+- Physical user feedback confirmed the revised soft hover and minimise behavior before the mandatory-docking follow-up.
 - Core regression checks passed, including frozen capture settings, capture geometry, keyboard, clipboard receipts, cleanup and integration checks.
 - The actual debug app runs in a disposable bundle with separate preferences and storage. Native inspection verified quiet and expanded layouts, main-window closure, and Original/Natural mode selection. Keyboard inspection exposed a focus issue; the repair explicitly focuses a native button containing all actions.
 - Full `bash scripts/test.sh` passed, including StageKit: 139 tests / 2,828 assertions, 64 extension tests and the provider, persistence, clipboard and keyboard regressions. All 8 website tests and its static build passed.

@@ -29,7 +29,7 @@ enum FloatingToolbarChecks {
         controls.pointerInside = { controller.window?.frame.contains(pointer) == true }
         controls.pointerInsideCollapsed = {
             guard let frame = controller.window?.frame, let screen = NSScreen.main?.visibleFrame else { return false }
-            return CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size, anchor: controls.anchor,
+            return CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size(at: controls.anchor), anchor: controls.anchor,
                 previous: frame, screens: [screen], preferred: screen).contains(pointer)
         }
         func settle(_ size: NSSize) async throws {
@@ -101,6 +101,39 @@ enum FloatingToolbarChecks {
         try check(!controller.isAnimatingToolbar && controller.window!.frame.size == FloatingToolbarDisclosure.expanded.size,
                   "dragging during reveal settles the window before taking ownership")
         controller.finishDragging()
+        controls.collapseToolbar()
+        try await settle(FloatingToolbarDisclosure.collapsed.size(at: controls.anchor))
+        for anchor in [FloatingControlAnchor.left, .right, .top, .bottom] {
+            controls.choosePosition?(anchor)
+            try await settle(FloatingToolbarDisclosure.collapsed.size(at: anchor))
+            let rest = controller.window!.frame
+            try check(rest.size == FloatingToolbarDisclosure.collapsed.size(at: anchor), "native pill orientation follows " + anchor.title)
+            pointer = NSPoint(x: rest.midX, y: rest.maxY - 1)
+            controller.pointerMoved(to: pointer)
+            try await settle(FloatingToolbarDisclosure.hovered.size(at: anchor))
+            try check(controller.window!.frame.contains(pointer), "hover preserves the resting tip at " + anchor.title)
+            controls.collapseToolbar()
+            try await settle(FloatingToolbarDisclosure.collapsed.size(at: anchor))
+            pointer = NSPoint(x: -10000, y: -10000); controller.pointerMoved(to: pointer)
+        }
+        controls.choosePosition?(.left)
+        try await Task.sleep(nanoseconds: 60_000_000)
+        controls.choosePosition?(.bottom)
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        try check(controls.anchor == .bottom, "changing edges during a snap settles at the latest orientation")
+        controls.expandToolbar()
+        try await settle(FloatingToolbarDisclosure.expanded.size)
+        controller.beginDragging()
+        let screen = NSScreen.main!.visibleFrame
+        controller.window!.setFrameOrigin(NSPoint(x: screen.midX - 240, y: screen.midY - 58))
+        let destination = FloatingToolbarDocking.anchor(for: controller.window!.frame, in: screen)
+        controller.previewDragging(); controller.finishDragging()
+        try await settle(FloatingToolbarDisclosure.expanded.size)
+        try check(controls.anchor == destination && controller.window!.frame == FloatingControlGeometry.frame(
+            anchor: destination, size: FloatingToolbarDisclosure.expanded.size, visibleFrame: screen),
+                  "arbitrary mid-screen drop lands in the previewed named slot")
+        controls.choosePosition?(.bottom)
+        try await settle(FloatingToolbarDisclosure.expanded.size)
         controls.expandToolbar()
         model.previewingPanel = true; controller.update(model: model)
         try await settle(CaptureHUDLayout.compact)
@@ -120,6 +153,19 @@ enum FloatingToolbarChecks {
         try await Task.sleep(nanoseconds: 500_000_000)
         try check(controller.window?.isVisible != true && !controller.isAnimatingToolbar,
                   "closed toolbar remains hidden after pending callbacks")
+        let legacyFrame = NSRect(x: screen.midX - 200, y: screen.midY - 40, width: 400, height: 80)
+        UserDefaults.standard.removeObject(forKey: "capturePanelAnchor.v2")
+        UserDefaults.standard.set(NSStringFromPoint(legacyFrame.origin), forKey: "capturePanelOrigin.v1")
+        UserDefaults.standard.set(NSStringFromSize(legacyFrame.size), forKey: "capturePanelSize.v1")
+        let restoredControls = CaptureHUDControls()
+        let restored = CapturePanelController(model: model, readback: readback, stage: stage,
+            dictate: {}, snap: {}, draw: {}, present: {}, controls: restoredControls, monitorsPointer: false)
+        restored.update(model: model)
+        let restoredAnchor = FloatingToolbarDocking.anchor(for: legacyFrame, in: screen)
+        try check(restoredControls.anchor == restoredAnchor && restored.window!.frame == FloatingControlGeometry.frame(
+            anchor: restoredAnchor, size: restoredControls.preferredToolbarSize, visibleFrame: screen),
+                  "legacy free placement restores into its nearest named dock")
+        restored.close()
         print("FLOATING_TOOLBAR_NATIVE_OK: \(count) checks passed")
     }
 
@@ -135,6 +181,8 @@ enum FloatingToolbarChecks {
         let stage = StageKitController(onOpenControls: {}, onOpenScenes: {})
         let collapsed = CaptureHUDControls(), hovered = CaptureHUDControls(), expanded = CaptureHUDControls()
         collapsed.collapseToolbar(); hovered.collapseToolbar(); hovered.hover(true); expanded.expandToolbar()
+        let side = CaptureHUDControls()
+        side.collapseToolbar(); side.anchor = .left; side.toolbarSize = side.preferredToolbarSize
         func toolbar(_ controls: CaptureHUDControls) -> some View {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls,
                 dictate: {}, snap: {}, draw: {}, present: {})
@@ -147,6 +195,8 @@ enum FloatingToolbarChecks {
                 HStack(spacing: 20) {
                     Text("At rest").frame(width: 90, alignment: .leading)
                     toolbar(collapsed)
+                    Text("Side edge")
+                    toolbar(side)
                 }
                 HStack(spacing: 20) {
                     Text("On hover").frame(width: 90, alignment: .leading)
@@ -157,10 +207,10 @@ enum FloatingToolbarChecks {
                     toolbar(expanded)
                 }
                 Text("Actual native views · synthetic idle state").font(.caption).foregroundStyle(.secondary)
-            }.font(.system(size: 12)).padding(28).frame(width: 580, height: 386, alignment: .topLeading)
+            }.font(.system(size: 12)).padding(28).frame(width: 580, height: 434, alignment: .topLeading)
                 .background(Color(nsColor: .windowBackgroundColor)).workbenchTheme()
             let view = NSHostingView(rootView: root)
-            view.frame = NSRect(x: 0, y: 0, width: 580, height: 386)
+            view.frame = NSRect(x: 0, y: 0, width: 580, height: 434)
             view.layoutSubtreeIfNeeded()
             guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
                 throw VoiceError.message("Toolbar bitmap allocation failed")
@@ -256,16 +306,30 @@ enum FloatingToolbarChecks {
 
         let screen = NSRect(x: -1440, y: 30, width: 1440, height: 900)
         for anchor in FloatingControlAnchor.allCases {
-            let rest = CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size, anchor: anchor,
+            let rest = CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size(at: anchor), anchor: anchor,
                 previous: nil, screens: [screen], preferred: screen)
+            try check((rest.height > rest.width) == (anchor == .left || anchor == .right),
+                      "pill orientation follows its edge: " + anchor.title)
             for disclosure in [FloatingToolbarDisclosure.hovered, .expanded] {
-                let revealed = CaptureHUDGeometry.frame(size: disclosure.size, anchor: anchor,
+                let revealed = CaptureHUDGeometry.frame(size: disclosure.size(at: anchor), anchor: anchor,
                     previous: rest, screens: [screen], preferred: screen)
-                let collapsed = CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size,
+                let collapsed = CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size(at: anchor),
                     anchor: anchor, previous: revealed, screens: [screen], preferred: screen)
                 try check(revealed.contains(rest) && collapsed == rest,
                           "reveal retains the hover target and anchor: " + anchor.title)
             }
+        }
+        for display in [screen, NSRect(x: 0, y: -900, width: 1440, height: 900)] {
+            let drops = stride(from: 0.1, through: 0.9, by: 0.2).flatMap { x in
+                stride(from: 0.1, through: 0.9, by: 0.2).map { y in
+                    NSRect(x: display.minX + display.width * x, y: display.minY + display.height * y, width: 368, height: 60)
+                }
+            }
+            try check(drops.allSatisfy { drop in
+                let anchor = FloatingToolbarDocking.anchor(for: drop, in: display)
+                let destination = FloatingControlGeometry.frame(anchor: anchor, size: drop.size, visibleFrame: display)
+                return display.contains(destination) && FloatingControlGeometry.nearestAnchor(to: destination, in: display) == anchor
+            }, "arbitrary drops on offset displays always resolve to valid named slots")
         }
         var shortcut = VoiceShortcut(keyCode: 18)
         try check(FloatingToolbar.shortcutLabel(shortcut, failure: nil) == shortcut.label, "configured shortcut is shown")

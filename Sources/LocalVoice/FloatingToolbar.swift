@@ -37,16 +37,16 @@ struct FloatingToolbar: View {
                 case .expanded: expanded
                 }
             }
-            .frame(width: disclosure.size.width, height: disclosure.size.height)
+            .frame(width: controls.preferredToolbarSize.width, height: controls.preferredToolbarSize.height)
             .id(disclosure)
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
         .frame(width: controls.toolbarSize.width, height: controls.toolbarSize.height)
-        .clipped()
         .background {
             if reduceTransparency { RoundedRectangle(cornerRadius: radius).fill(Color(nsColor: .windowBackgroundColor)) }
             else { RoundedRectangle(cornerRadius: radius).fill(.regularMaterial) }
         }
+        .clipShape(RoundedRectangle(cornerRadius: radius))
         .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(.primary.opacity(0.12)))
         .contentShape(RoundedRectangle(cornerRadius: radius))
         .onExitCommand { controls.collapseToolbar() }
@@ -55,15 +55,19 @@ struct FloatingToolbar: View {
         .accessibilityLabel("Workbench floating toolbar")
     }
 
-    private var radius: CGFloat { min(18, controls.toolbarSize.height / 2) }
+    private var radius: CGFloat { min(18, controls.toolbarSize.width / 2, controls.toolbarSize.height / 2) }
 
     private var resting: some View {
         Button { controls.expandToolbar() } label: {
-            HStack(spacing: 9) {
+            let layout = controls.isSideDocked ? AnyLayout(VStackLayout(spacing: 9)) : AnyLayout(HStackLayout(spacing: 9))
+            layout {
                 Image(systemName: stage.isPresenting ? "iphone" : stage.isDrawing ? "pencil.tip" : "waveform")
                     .font(.system(size: 12, weight: .medium))
-                Capsule().fill(.secondary.opacity(0.55)).frame(width: 22, height: 3)
-            }.foregroundStyle(.secondary).frame(width: 76, height: 28).contentShape(Capsule())
+                Capsule().fill(.secondary.opacity(0.55))
+                    .frame(width: controls.isSideDocked ? 3 : 22, height: controls.isSideDocked ? 22 : 3)
+            }.foregroundStyle(.secondary)
+                .frame(width: controls.preferredToolbarSize.width, height: controls.preferredToolbarSize.height)
+                .contentShape(Capsule())
         }.buttonStyle(.plain)
             .accessibilityLabel("Expand Workbench toolbar")
             .help("Workbench · " + status + ". Hover for quick actions, or click to keep all tools open.")

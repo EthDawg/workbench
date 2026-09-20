@@ -29,6 +29,8 @@ final class CaptureHUDControls: ObservableObject {
     var releaseKeyboardFocus: (() -> Void)?
     var focusFirstControl: (() -> Void)?
     private static let pinnedKey = "floatingToolbarExpanded.v1"
+    var isSideDocked: Bool { anchor == .left || anchor == .right }
+    var preferredToolbarSize: NSSize { toolbarDisclosure.size(at: anchor) }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -86,7 +88,7 @@ final class CaptureHUDControls: ObservableObject {
         let animation: Animation? = resize != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             ? .easeOut(duration: 0.16) : nil
         withAnimation(animation) { toolbarDisclosure = next }
-        if let resize { resize() } else { toolbarSize = next.size }
+        if let resize { resize() } else { toolbarSize = preferredToolbarSize }
     }
     private func scheduleCollapse() {
         guard toolbarInteraction.canCollapse else { return }
@@ -140,13 +142,21 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         self.model = model
         self.readback = readback; self.stage = stage
         let savedAnchor = UserDefaults.standard.string(forKey: anchorKey).flatMap(FloatingControlAnchor.init(rawValue:))
-        controls.anchor = savedAnchor ?? (UserDefaults.standard.string(forKey: positionKey) == nil ? .bottom : nil)
+        if let savedAnchor { controls.anchor = savedAnchor }
+        else if let origin = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString),
+                let preferred = NSScreen.main?.visibleFrame {
+            let savedSize = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString) ?? controls.toolbarSize
+            let frame = NSRect(origin: origin, size: savedSize)
+            let screen = CaptureHUDGeometry.screen(for: frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+            controls.anchor = FloatingToolbarDocking.anchor(for: frame, in: screen)
+        } else { controls.anchor = .bottom }
+        controls.toolbarSize = controls.preferredToolbarSize
         controls.resize = { [weak self, weak model] in if let model { self?.update(model: model) } }
         controls.choosePosition = { [weak self] in self?.choosePosition($0) }
         controls.pointerInside = { [weak self] in self?.pointerFrame?.contains(NSEvent.mouseLocation) == true }
         controls.pointerInsideCollapsed = { [weak self] in
             guard let self, let preferred = self.preferredScreen else { return false }
-            return CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size,
+            return CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size(at: self.controls.anchor),
                 anchor: self.controls.anchor, previous: self.window?.frame,
                 screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred).contains(NSEvent.mouseLocation)
         }
@@ -212,7 +222,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             controls.isExpanded = false
             return
         }
-        let size = surface == .tools ? controls.toolbarDisclosure.size : CaptureHUDLayout.size(
+        let size = surface == .tools ? controls.preferredToolbarSize : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
             preview: model.previewingPanel, expanded: controls.isExpanded)
         if !window.isVisible { place(size: size, restoreSaved: true) }
@@ -301,7 +311,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private func choosePosition(_ anchor: FloatingControlAnchor) {
         controls.anchor = anchor
         guard let window else { return }
-        place(size: animationTarget?.size ?? window.frame.size, restoreSaved: false)
+        place(size: surface == .tools ? controls.preferredToolbarSize : (animationTarget?.size ?? window.frame.size),
+              restoreSaved: false, animated: surface == .tools)
     }
 
     private func cancelAnimation() {
@@ -331,7 +342,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
                 window.setFrame(next, display: true, animate: false)
                 if elapsed >= FloatingToolbarMotion.duration {
                     self.animationTarget = nil; self.animationTask = nil; self.positioning = false
-                    self.savePosition(); return
+                    self.savePosition()
+                    if self.surface == .tools, self.controls.toolbarDisclosure != .collapsed, !self.dragging {
+                        let inside = self.controls.pointerInside?() ?? false
+                        if inside != self.controls.toolbarInteraction.hovered { self.controls.hover(inside) }
+                    }
+                    return
                 }
                 try? await Task.sleep(nanoseconds: 16_000_000)
             }
@@ -379,18 +395,21 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
         let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        let anchor = FloatingControlGeometry.nearestAnchor(to: window.frame, in: screen)
-        snapGuide.show(controlFrame: window.frame, visibleFrame: screen, activeAnchor: anchor, below: window)
+        let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
+        let size = surface == .tools ? controls.toolbarDisclosure.size(at: anchor) : window.frame.size
+        snapGuide.show(controlFrame: NSRect(origin: window.frame.origin, size: size), visibleFrame: screen,
+                       activeAnchor: anchor, below: window)
     }
 
     func finishDragging() {
         defer { cancelDragging() }
         guard dragging, let window, let preferred = preferredScreen else { return }
         let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        controls.anchor = FloatingControlGeometry.nearestAnchor(to: window.frame, in: screen)
-        let frame = controls.anchor.map { FloatingControlGeometry.frame(anchor: $0, size: window.frame.size, visibleFrame: screen) }
-            ?? FloatingControlGeometry.clamp(window.frame, to: screen)
-        setFrame(frame); savePosition()
+        let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
+        controls.anchor = anchor
+        let size = surface == .tools ? controls.preferredToolbarSize : window.frame.size
+        let frame = FloatingControlGeometry.frame(anchor: anchor, size: size, visibleFrame: screen)
+        setFrame(frame, animated: surface == .tools)
     }
 }
 
