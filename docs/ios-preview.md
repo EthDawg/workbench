@@ -136,3 +136,11 @@ These generated layered pictures are neither captured video nor Live Photos. Exp
 ## Paste preservation · 15 September 2026
 
 Dictate’s Paste button replaces the whole draft. The previous draft is now kept in Saved, with its original and existing saved-item identity/audio retained, in the same disk transaction that installs the pasted draft. The editor changes only after that commit succeeds. Empty or oversized payloads and failed writes leave the current draft and library intact. Two native unit regressions cover successful replacement, existing-item update, reopen and storage failure/retry. This does not change native caret insertion from the keyboard’s Paste command. Current simulator evidence is recorded in the release review.
+
+## Store preparation — 20 September 2026
+
+Mobile **2.1.0 (3)**, source `4519f62`, was exported using the existing App Store distribution profile and uploaded successfully. App Store Connect shows processing **Complete** and **Ready to Submit**. The extracted IPA signature and provisioning were checked: retained mobile Preview bundle identity, Production CloudKit, no debug entitlement and no device-limited provisioning. This build includes the current native text-editing preservation fixes; earlier build 1 must not remain the submitted version. The source tree records the build-number increase without changing the mobile app identity.
+
+The existing privacy responses were published with the account holder’s explicit approval. Live inspection confirmed four iPhone screenshots and one iPad screenshot already present. Review contact and final release-draft selection are completed separately in App Store Connect; no contact details belong in this public record. Physical dictation and paired scene-transfer acceptance still remain before App Review.
+
+The older standalone StageMark Mac submission is rejected under Guideline 2.1, requesting a recording on a physical device and six pieces of review information. It is not evidence of rejection of this mobile build or the unified Developer ID Preview. The unified Mac app still needs its own sandbox/distribution validation before a Mac App Store submission.

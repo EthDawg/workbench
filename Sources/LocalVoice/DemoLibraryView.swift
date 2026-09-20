@@ -51,7 +51,7 @@ struct DemoLibraryView: View {
                     Button("Save clipboard as prompt") { saveClipboard() }
                     Button("Save current transcript") { library.newPrompt(model.transcript) }.disabled(model.transcript.isEmpty)
                 } label: { Label("Add", systemImage: "plus") }
-                    .disabled(library.savingDisabled).fixedSize()
+                    .disabled(library.savingDisabled || library.importReview != nil).fixedSize()
             }
             HStack(spacing: 10) {
                 TextField("Search resources, products, personas…", text: $library.query)
@@ -99,7 +99,7 @@ struct DemoLibraryView: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 Spacer()
                 Menu {
-                    Button("Import library…") { library.importLibrary() }.disabled(library.savingDisabled)
+                    Button("Import library…") { library.importLibrary() }.disabled(library.savingDisabled || library.draft != nil || library.importReview != nil)
                     Button("Export library…") { library.exportLibrary() }.disabled(library.resources.isEmpty)
                 } label: { Label("Library", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
             }
@@ -115,6 +115,9 @@ struct DemoLibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in focusSearchWhenReady() }
         .onDisappear { library.closePreview() }
         .sheet(item: $library.draft) { item in DemoResourceEditor(library: library, initial: item) }
+        .sheet(isPresented: Binding(get: { library.importReview != nil }, set: { if !$0 { library.cancelImport() } })) {
+            DemoLibraryImportView(library: library)
+        }
         .confirmationDialog("Remove this resource from the library?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
             Button("Remove resource", role: .destructive) { if let item = removal { library.remove(item) }; removal = nil }
             Button("Cancel", role: .cancel) { removal = nil }
@@ -137,12 +140,12 @@ struct DemoLibraryView: View {
         return library.performPrimaryAction() ? .handled : .ignored
     }
     private func focusSearchWhenReady() {
-        guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
+        guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, library.importReview == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
         // Recall can reveal a hidden editor before SwiftUI has mounted the search
         // field. Re-arm focus on the next main-loop turn, after the window is key.
         searching = false
         DispatchQueue.main.async {
-            guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, window.isVisible, window === NSApp.keyWindow else { return }
+            guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, library.importReview == nil, window.isVisible, window === NSApp.keyWindow else { return }
             searching = true
         }
     }

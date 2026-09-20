@@ -2,6 +2,12 @@
 
 This is submission copy and a release handoff, not evidence of store approval or publication. Confirm the public Mac companion download and privacy page contain this feature before submitting.
 
+## Existing store identity
+
+Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; protocol, saved destinations and profile storage are unchanged.
+
+After installing the matching companion, choose **Repair Chrome connection** in **Saved resources → Chrome destinations** to refresh an existing native host registration. A store installation has separate extension storage and requires its own explicit profile pairing. Live store-installed pairing and the dashboard's submission/approval/publication status remain separate acceptance checks.
+
 ## Store fields
 
 **Name:** Workbench Preview
@@ -76,11 +82,11 @@ Use the live dashboard’s exact definitions. This extension handles user data, 
 5. Close the destination tab and activate again to open the saved URL. For multiple tabs with the same saved URL after losing the remembered binding, the extension asks which tab to use rather than choosing silently.
 6. Update the destination from its own profile to another synthetic site. Review the old/new URLs and grant that site before saving.
 
-Provide the exact public native build URL and its supported macOS version in the submission notes. Store-assigned extension identity must match the native host allowlist before a store-installed build can connect.
+Provide the exact public native build URL and its supported macOS version in the submission notes. The companion must include the exact store origin `chrome-extension://alckfplchkdcjdlhlnhanonkelljnioj/` in both registration and host validation; verify the installed registration and store-installed pairing before submission.
 
 ## Store assets and remaining publication work
 
-- ZIP: `dist/WorkbenchPreview-Chrome-0.1.0.zip`, generated from the explicit 12-file runtime allowlist.
+- ZIP: `dist/WorkbenchPreview-Chrome-0.1.1.zip`, generated from the explicit 12-file runtime allowlist.
 - 128px icon: `BrowserExtension/icons/icon128.png`; 16/32/48px icons are also packaged.
 - Small promotional image: `BrowserExtension/store/promo-440x280.png`, 440×280 pixels, derived from the existing Workbench icon. It is branding artwork, not a screenshot.
 - Required screenshot: capture the actual packaged extension with synthetic destinations at **1280×800** or **640×400**. No screenshot is fabricated by the packager. The final changed popup still needs visual/live verification.

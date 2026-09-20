@@ -628,24 +628,33 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         } catch { notice = "The edited narration could not be saved. \(error.localizedDescription)" }
     }
 
-    func moveSections(from offsets: IndexSet, to destination: Int) {
-        guard let root = sessionURL, var current = try? ReadbackStore.load(from: root) else { return }
-        var active = current.sections.filter { $0.deletedAt == nil }
-        active.move(fromOffsets: offsets, toOffset: destination)
-        current.sections = active + current.sections.filter { $0.deletedAt != nil }
-        do { try ReadbackStore.save(current, at: root); manifest = current }
-        catch { notice = "The new section order could not be saved. \(error.localizedDescription)" }
-    }
-
-    func moveSection(_ sourceID: UUID, before targetID: UUID) {
-        guard sourceID != targetID, let root = sessionURL, var current = try? ReadbackStore.load(from: root) else { return }
-        var active = current.sections.filter { $0.deletedAt == nil }
-        guard let source = active.firstIndex(where: { $0.id == sourceID }), let target = active.firstIndex(where: { $0.id == targetID }) else { return }
-        let section = active.remove(at: source)
-        active.insert(section, at: source < target ? max(0, target - 1) : target)
-        current.sections = active + current.sections.filter { $0.deletedAt != nil }
-        do { try ReadbackStore.save(current, at: root); manifest = current }
-        catch { notice = "The new section order could not be saved. \(error.localizedDescription)" }
+    /// Save only the chosen permutation, merging it into the latest section
+    /// records so completed transcription and replacement metadata survive.
+    @discardableResult
+    func saveSectionOrder(_ ids: [UUID], expectedOrder: [UUID], session root: URL) -> Bool {
+        do {
+            guard sessionURL?.standardizedFileURL == root.standardizedFileURL else {
+                throw ReadbackError.message("The session changed. Reopen Reorder sections in the session you want.")
+            }
+            var current = try ReadbackStore.load(from: root)
+            let active = current.sections.filter { $0.deletedAt == nil }
+            guard active.map(\.id) == expectedOrder else {
+                throw ReadbackError.message("Sections changed while you were arranging them. Reopen Reorder sections to use the latest order.")
+            }
+            guard ids.count == active.count, Set(ids).count == ids.count, Set(ids) == Set(expectedOrder) else {
+                throw ReadbackError.message("The section order is incomplete. Your saved session is unchanged.")
+            }
+            guard ids != expectedOrder else { return true }
+            let byID = Dictionary(uniqueKeysWithValues: active.map { ($0.id, $0) })
+            current.sections = ids.compactMap { byID[$0] } + current.sections.filter { $0.deletedAt != nil }
+            try ReadbackStore.save(current, at: root)
+            publish(current, for: root)
+            notice = "Section order saved."
+            return true
+        } catch {
+            notice = "The new section order could not be saved. \(error.localizedDescription)"
+            return false
+        }
     }
 
     func deleteSection(_ sectionID: UUID) {

@@ -11,14 +11,14 @@ The separate native **iOS/iPadOS 26+ Preview** carries these useful jobs into ph
 | Primitive | Workbench's responsibility | Boundary |
 | --- | --- | --- |
 | Speak → text | Capture/import, recognition, optional cleanup, original wording, history and safe delivery | Other apps own the note, message or document made from the result. |
-| Text → speech | Mac reading voices, playback/export and optional online reading | Keep provider setup explicit; do not turn the utility into a general agent platform. |
+| Text → speech | Explicit selected-text handoff, Mac reading voices, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
 | Screen → Snap & Talk | Capture the display under the pointer, retain linked local audio/transcripts and prepare an ordered portable session | Screen Recording and Microphone access are explicit; slide generation does not silently reinterpret narration. |
 | Explain a screen | Live drawing, pointer emphasis, boards and a clear return to the demo | A meeting app owns distribution to the audience. |
 | Present a device | USB video preview in a saved scene, branding, readable controls and a break timer | [Connection & audio](phone-presenting.md) separates picture, voice and Mac control. QuickTime and iPhone Mirroring remain separate apps; an explicit fallback releases Workbench capture first. |
 | Enjoy a desktop | A distinct wallpaper journey: still-image baseline, independent settings and optional gentle motion | Direct wallpaper management is proposed; current source can apply a rendered scene as a still, with an explicit app-owned motion option in non-App-Store builds. Use native OS support and preserve later manual changes. |
 | Reuse an item | Searchable prompts, links and file references with explicit Quick Look; a named Chrome destination can return to its paired profile/tab | No tenant administration, credential rotation or team knowledge system. |
 
-The explicit Screenshot action hands existing annotations to Apple Screenshot; it hides Workbench controls during capture and preserves the marks afterward. A standalone screenshot editor, Services and Share extensions remain possible later improvements. Snap & Talk uses deliberate whole-display captures for a named narrated session; it is not a general capture editor. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+The explicit Screenshot action hands existing annotations to Apple Screenshot; it hides Workbench controls during capture and preserves the marks afterward. A standalone screenshot editor and Share extensions remain possible later improvements. Snap & Talk uses deliberate whole-display captures for a named narrated session; it is not a general capture editor. The bounded macOS Service accepts an explicit text selection into Read aloud; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
 ## One app, several ways in
 
@@ -30,6 +30,7 @@ flowchart TB
     Menu["One menu-bar icon<br/>Quick actions and status"]
     Keys["Global keys<br/>Editable and practisable"]
     Intent["Apple Shortcuts<br/>Audio in, text out"]
+    Service["macOS Services<br/>Selected text in"]
     Shell["Workbench app lifecycle<br/>Navigation, busy state, permissions"]
     Voice["Voice code<br/>Recognition, reading, history, delivery"]
     Stage["StageKit library<br/>Drawing, boards, timer, device scenes"]
@@ -37,13 +38,14 @@ flowchart TB
     Menu --> Shell
     Keys --> Shell
     Intent --> Voice
+    Service --> Voice
     Shell --> Voice
     Shell --> Stage
 ```
 
 The normal window makes the app discoverable. The menu bar and keyboard accelerate familiar work. Recording controls, palettes and presentation windows appear when needed. Closing Home leaves the menu-bar utility running; Quit must stop capture, playback, drawing and presentation. Login launch is an explicit user setting.
 
-Normal application menus, buttons and editable shortcuts remain available together. Spotlight can find the app by name. The existing App Intent accepts audio and returns text; it does not own microphone recording. Additional Spotlight actions, Services, Share extensions and URL automation must be treated as new integrations with their own evidence.
+Normal application menus, buttons and editable shortcuts remain available together. Spotlight can find the app by name. The existing App Intent accepts audio and returns text; it does not own microphone recording. The selected-text Service receives only the request pasteboard supplied by macOS, opens a reviewable reading draft and never starts playback. Additional Spotlight actions, Share extensions and URL automation must be treated as new integrations with their own evidence.
 
 ## Interaction rules
 
@@ -53,6 +55,7 @@ Normal application menus, buttons and editable shortcuts remain available togeth
 - Keyboard practice pauses Workbench global actions, consumes practice key presses, counts complete press/release repetitions and restores actions when it ends or the window loses focus. It does not claim a complete inventory of other apps' shortcuts.
 - Capture the original app and field before dictation. Paste only when they remain valid; otherwise copy. Never press Return or submit a message. Restore the previous clipboard only after confirmed insertion while Workbench still owns the clipboard change.
 - Preserve originals and saved work. Cleanup is optional and reversible. A generated rewrite is not evidence of factual or semantic correctness.
+- Shared-resource imports preview New, Changed and Unchanged records. Changed IDs default to Keep mine; Use incoming is explicit. Apply saves the choices together, while Cancel, invalid input and failed saves preserve the original library. File references travel without media or local browser/access grants.
 - Ending a scene releases its device capture, presentation window, controls and keep-awake activity. It does not restore desktop wallpaper, close unrelated apps or change system policies. Quit stops app-owned work; a still picture set through macOS and its recovery records persist. Restore desktop is a separate explicit action with an ownership check.
 
 ## Models stay replaceable

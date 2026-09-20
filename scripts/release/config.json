@@ -24,6 +24,12 @@
     ],
     [
       "--check-presenter"
+    ],
+    [
+      "--check-readback"
+    ],
+    [
+      "--check-reading-service-native"
     ]
   ]
 }
