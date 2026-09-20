@@ -12,7 +12,7 @@ The capture output is already configured as BGRA. Explicit copy makes an immutab
 
 ## Automated and rendered evidence
 
-Validation is in progress. Reproduce the focused checks with:
+At source `5448018`, on 21 September 2026, the focused suite passed **4 tests / 77 assertions**. All **8 site tests** and the static site build passed. Current-main integration and CI are tracked in the PR. Reproduce the focused checks with:
 
 ```sh
 bash scripts/test-stage.sh --snapshots-only
@@ -23,6 +23,12 @@ node site/build.mjs
 The focused suite exercises real synthetic `CMSampleBuffer` input, newest-frame replacement, delayed/stale clipboard commits, source identity, same-device replacement, the real capture model's immediate End/selection/reconnect invalidation, clipboard refusal, image orientation, clean aperture/pixel aspect, fixed versus matched viewports, preserved branding/persona pixels, hidden-device export and bounded canvas geometry. Fake clipboard writes establish decision behavior, not native delivery.
 
 An optional `--snapshot-evidence OUTPUT_DIRECTORY` runner path renders the production snapshot control with synthetic ready/success/failure state and writes a synthetic scene PNG. This is native view/compositor evidence, not a physical feed or a window-server screenshot.
+
+All four control states and the synthetic PNG were rendered and visually inspected. The action and receipt are legible; the four colored device quadrants retain their orientation, rounded clipping and branding/persona layers.
+
+![Actual scene compositor with a synthetic four-quadrant device image](../../site/assets/guide/device-snapshot-composite.png)
+
+![Actual production Copy control rendered with synthetic success state](../../site/assets/guide/device-snapshot-controls.png)
 
 ## Limits and remaining acceptance
 

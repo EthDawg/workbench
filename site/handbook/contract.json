@@ -55,7 +55,7 @@
       "effect": "Copy a PNG with one fresh device frame, the frozen scene's crop, still background, hand, logo and persona. Match the current canvas ratio and device-proportion setting. Receipt identifies the source and Mac frame-arrival time.",
       "limit": "Static background/poster, at most 3840 pixels on the longest edge; no controls, independent overlay windows, audio, recording, upload or phone input. Reject samples older than one second at delivery and invalidated/disconnected feeds. Source contribution, not public-release or physical-device acceptance.",
       "source": "Sources/StageKit/DemoSnapshot.swift",
-      "evidence": "Synthetic sample conversion, compositing, freshness, generation and clipboard-failure checks are in Tests/StageKitLegacy/DemoSnapshotTests.swift. Native and physical-device evidence are recorded separately; validation of this contribution is in progress."
+      "evidence": "At 5448018, 4 focused tests / 77 assertions passed, including real synthetic BGRA sample conversion, clean aperture/pixel aspect, compositing, freshness, generation and clipboard refusal. Production controls in four synthetic states and a scene PNG were rendered and inspected. Full native clipboard/display and physical USB checks remain separate; see docs/verification/2026-09-20-device-snapshot.md."
     },
     {
       "id": "desktop-still",
