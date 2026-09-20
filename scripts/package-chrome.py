@@ -22,12 +22,12 @@ import zipfile
 PROJECT = Path(__file__).resolve().parents[1]
 RUNTIME_FILES = (
     "manifest.json", "background.js", "core.js", "native.js", "popup.js",
-    "popup.html", "popup.css", "privacy.html",
+    "popup.html", "popup.css", "privacy.html", "setup.js", "setup.html", "setup-page.js",
     "icons/icon16.png", "icons/icon32.png", "icons/icon48.png", "icons/icon128.png",
 )
 ALLOWED_MANIFEST_KEYS = {
     "manifest_version", "name", "version", "description", "homepage_url", "icons",
-    "minimum_chrome_version", "permissions", "optional_host_permissions", "incognito",
+    "minimum_chrome_version", "permissions", "optional_permissions", "optional_host_permissions", "incognito",
     "background", "action", "content_security_policy", "key",
 }
 MAX_FILE_BYTES = 1_048_576
@@ -117,6 +117,7 @@ def validate(source):
     require(isinstance(description, str) and 1 <= len(description) <= 132, "Description must be 1–132 characters.")
     require("macOS" in description and "companion" in description, "Description must disclose the macOS companion requirement.")
     require(manifest.get("permissions") == ["nativeMessaging", "activeTab", "storage", "alarms"], "Unexpected required permissions.")
+    require(manifest.get("optional_permissions") == ["bookmarks"], "Unexpected optional API permissions.")
     require(manifest.get("optional_host_permissions") == ["http://*/*", "https://*/*"], "Unexpected optional host permissions.")
     require(manifest.get("incognito") == "not_allowed", "Incognito must remain disabled.")
     require(manifest.get("background") == {"service_worker": "background.js", "type": "module"}, "Unexpected service worker.")

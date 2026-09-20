@@ -33,6 +33,7 @@ test("native port sends hello first and shares one connection across callers", a
   const second = f.client.connect(PROFILE);
   assert.equal(f.ports.length, 1);
   assert.equal(f.sent[0].type, "hello");
+  assert.deepEqual(f.sent[0].capabilities, ["browserSetup1"]);
   assert.equal(f.sent[0].profileID, PROFILE.profileID);
   await assert.rejects(f.client.request("list"), { code: "unavailable" });
   f.reply(f.sent[0], { destinations: [DESTINATION] });
@@ -157,4 +158,27 @@ test("failed hello leaves no ready connection and supports explicit retry", asyn
   assert.equal(f.client.port, null);
   await f.connect();
   assert.equal(f.client.ready, true);
+});
+
+
+test("setup commands require accepted hello and return the same ID and nested result", async () => {
+  let calls = 0;
+  const setupResult = { reviewToken: PROFILE.profileID, create: 2, update: 0, unchanged: 0, conflicts: 0, root: "Local Bookmarks", notes: [] };
+  const f = fixture({ onSetup: async () => { calls++; return { ok: true, setupResult }; } });
+  const pending = f.client.connect(PROFILE);
+  const message = { v: 1, id: DESTINATION.id, type: "setupPreview" };
+  await f.client.receive(message, f.ports[0]); assert.equal(calls, 0);
+  f.reply(f.sent[0], { destinations: [] }); await pending;
+  await f.client.receive(message, f.ports[0]);
+  assert.deepEqual(f.sent.at(-1), { v: 1, id: DESTINATION.id, type: "setupResult", ok: true, setupResult });
+});
+
+test("setup errors are allowlisted and late results never cross a disconnected port", async () => {
+  const f = fixture({ onSetup: async () => { throw new WorkbenchError("setupPermission"); } }); await f.connect();
+  await f.client.receive({ v: 1, id: DESTINATION.id, type: "setupApply" }, f.ports[0]);
+  assert.equal(f.sent.at(-1).error, "setupPermission");
+  let finish; f.client.onSetup = () => new Promise(resolve => { finish = resolve; });
+  const response = f.client.receive({ v: 1, id: PROFILE.profileID, type: "setupLaunch" }, f.ports[0]);
+  f.ports[0].disconnect(); await f.connect(); finish({ ok: true }); await response;
+  assert.equal(f.sent.some(message => message.type === "setupResult" && message.id === PROFILE.profileID), false);
 });

@@ -1,6 +1,12 @@
 export const HOST_NAME = "com.ethdawg.workbench.browser";
 export const MAX_PACKET_BYTES = 65_536;
 export const ERRORS = Object.freeze({
+  setupPermission: "Open Browser setup in this Chrome profile and allow bookmark access.",
+  setupRoot: "Choose a writable local bookmark location in Browser setup. Existing packs need their original location.",
+  setupChanged: "The setup or bookmarks changed after review. Preview the changes again.",
+  setupUnsupported: "Browser setup needs Chrome 134 or later with local bookmark metadata available.",
+  setupUncertain: "A setup operation could not be confirmed. Inspect Chrome before continuing; Workbench will not repeat it.",
+  setupInvalid: "This browser setup pack is invalid or contains an unsupported address.",
   unavailable: "Open Workbench and enable Chrome connection in Saved resources, then Retry.",
   invalidURL: "Choose a complete http or https address without a username or password.",
   invalidName: "Enter a name of 1–80 characters without control characters.",

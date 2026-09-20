@@ -4,7 +4,7 @@ This is submission copy and a release handoff, not evidence of store approval or
 
 ## Existing store identity
 
-Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The store ZIP omits the development-only `key`; uploading it updates the existing item under Google’s assigned signing identity. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; protocol, saved destinations and profile storage are unchanged.
+Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The store ZIP omits the development-only `key`; uploading it updates the existing item under Google’s assigned signing identity. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; saved destinations and profile pairing are preserved. Version 0.2.0 adds optional browser setup commands and local bookmark receipts; it requires a matching companion for those new actions.
 
 After installing the matching companion, choose **Repair Chrome connection** in **Saved resources → Chrome destinations** to refresh an existing native host registration. A store installation has separate extension storage and requires its own explicit profile pairing. Live store-installed pairing and the dashboard's submission/approval/publication status remain separate acceptance checks.
 
@@ -22,7 +22,7 @@ After installing the matching companion, choose **Repair Chrome connection** in 
 
 **Support:** https://github.com/EthDawg/workbench/issues
 
-**Privacy policy:** https://workbench-mac.vercel.app/privacy.html#chrome — the browser-specific disclosure was published and byte-verified on 15 September 2026. The packaged `privacy.html` provides the corresponding in-product policy.
+**Privacy policy:** https://workbench-mac.vercel.app/privacy.html#chrome — the earlier browser-specific disclosure was published and byte-verified on 15 September 2026. The 0.2.0 browser-setup additions in packaged `privacy.html` and `privacy-policy-draft.md` still need public publication before this update is submitted.
 
 ## Detailed description
 
@@ -42,15 +42,17 @@ When a tenant’s subdomain changes, open the new address in its intended profil
 
 Workbench remembers the tab during the browser session. If that tab is gone, it looks for the saved address. One match is focused; no match opens a tab; several matches ask you to choose the right tab and update the destination. Existing unrelated tabs are not navigated or closed. Keep the destination’s Chrome profile open and connected.
 
-Your destination names, saved addresses and profile labels are handled locally and shared with the Workbench companion on your Mac. The extension does not send destination records to a developer server or use Chrome Sync. Query parameters and fragments are removed before saving. The extension reads the current address for saving and permitted tab addresses for matching; it does not read page content, saved passwords, forms, cookies or browsing history, and it does not sign in or rotate credentials.
+Your destination names, saved addresses and profile labels are handled locally and shared with the Workbench companion on your Mac. The extension does not send destination records to a developer server or use Chrome Sync. Switch to removes query parameters and fragments before saving. Browser setup preserves ordinary query/fragment routes and rejects known credential-bearing query keys. The extension reads the current address for saving and permitted tab addresses for matching; it does not read page content, saved passwords, forms, cookies or browsing history, and it does not sign in or rotate credentials.
 
 Opening a destination confirms Chrome’s tab and window focus. It does not confirm which account is signed in, page readiness or what a meeting audience can see.
 
 Free and open source. Preview software: report reproducible issues using synthetic examples and leave out customer data, passwords and private addresses.
 
+Optional browser setup applies a reviewed pack of bookmarks into a selected local folder and opens launch tabs in a new window. Bookmark access is requested only if you enable that feature. Existing bookmarks and detected manual changes are preserved. Chrome 134 or later is required for setup; Switch to continues to support Chrome 120 or later. Workbench does not set startup or New Tab settings, create profiles or change Google Password Manager.
+
 ## Single purpose
 
-Save named web destinations in the local Workbench Mac companion and return to each destination’s tab in its explicitly paired Chrome profile.
+Prepare and return to reviewed web destinations in explicitly paired Chrome profiles, using the local Workbench Mac companion. Browser setup remains part of preparing those destinations; reassess the final single-purpose description and permission disclosures in the store dashboard before submitting this update.
 
 ## Permission justifications
 
@@ -58,8 +60,9 @@ Save named web destinations in the local Workbench Mac companion and return to e
 | --- | --- |
 | `nativeMessaging` | Connects to the installed `com.ethdawg.workbench.browser` native host. The local Workbench Mac app owns Saved resources and routes each selected destination to its paired Chrome profile. This companion is required and prominently disclosed. |
 | `activeTab` | Reads the current tab’s address when the user opens the extension, to show exactly what will be saved. The user chooses a label; the page’s title and content are not copied. |
-| `storage` | Stores only a generated profile identifier, user-chosen profile label and paired flag durably in this Chrome profile. Session storage holds temporary destination-to-tab bindings and an editable save draft while Chrome presents an optional site permission. Chrome Sync is not used. |
+| `storage` | Stores a generated profile identifier, user-chosen profile label and paired flag, plus optional setup root IDs, owned bookmark receipts, interruption journal and launch request ledger locally in this Chrome profile. Session storage holds temporary destination-to-tab bindings and an editable save draft while Chrome presents an optional site permission. Chrome Sync is not used. |
 | `alarms` | Schedules a reconnect attempt 30 seconds after the native companion disconnects, only for previously paired profiles. It never retries a destination activation. |
+| Optional `bookmarks` | Granted only from the Browser setup page by an explicit click. Reads bookmark metadata locally to select a writable local root and verify owned nodes; applies a reviewed pack without deletion or adopting existing names. No bookmark tree is sent to the native app. |
 | Optional `http://*/*`, `https://*/*` | Supports user-chosen demo sites whose tenant hostname can change. No host is granted at installation. The user grants a specific scheme and hostname through “Allow this site”. That access reads tab addresses for matching and allows the selected destination to be focused. A new subdomain requires another explicit grant. The extension has no content scripts or DOM access and requests neither all sites at once nor wildcard subdomain grants. |
 
 **Remote code:** No. All JavaScript is in the uploaded extension package. Native messaging exchanges versioned data and commands with the installed local companion; it does not download or execute remote JavaScript.
@@ -68,6 +71,7 @@ Save named web destinations in the local Workbench Mac companion and return to e
 
 Use the live dashboard’s exact definitions. This extension handles user data, so do not describe it as handling no data simply because processing is local.
 
+- Browser setup reads bookmark metadata locally and retains only its owned-node receipts; the native companion receives counts, root labels, fixed notes and review tokens. The bookmark tree is not exported.
 - Saved URLs and current/permitted tab addresses are URL/browsing data used solely to save and focus a selected destination. The extension does not enumerate browsing history or track visits.
 - User-entered destination/profile labels and a generated profile identifier are handled locally. Labels can contain personal information if a user types it. Describe these and their local companion transfer in the policy and any applicable dashboard fields.
 - There is no payment, health, authentication, location, communications or page-content collection for this feature, and no analytics or advertising.
@@ -86,11 +90,11 @@ Provide the exact public native build URL and its supported macOS version in the
 
 ## Store assets and remaining publication work
 
-- ZIP: `dist/WorkbenchPreview-Chrome-0.1.1.zip`, generated from the explicit 12-file runtime allowlist.
+- ZIP: `dist/WorkbenchPreview-Chrome-0.2.0.zip`, generated from the explicit 15-file runtime allowlist.
 - 128px icon: `BrowserExtension/icons/icon128.png`; 16/32/48px icons are also packaged.
 - Small promotional image: `BrowserExtension/store/promo-440x280.png`, 440×280 pixels, derived from the existing Workbench icon. It is branding artwork, not a screenshot.
 - Required screenshot: capture the actual packaged extension with synthetic destinations at **1280×800** or **640×400**. No screenshot is fabricated by the packager. The final changed popup still needs visual/live verification.
-- The companion is publicly available as [Workbench 2.0 Preview 4](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.4), build `20260920065909`. It is Developer ID signed, notarized, stapled and retains Production CloudKit. The published ZIP was downloaded back and hash-verified. It includes the browser companion and exact existing store identity; older Preview 3 does not.
+- The browser setup increment has not been installed, accepted with live Chrome, or published. A matching companion and updated public privacy policy are prerequisites for distributing 0.2.0. The earlier companion is publicly available as [Workbench 2.0 Preview 4](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.4), build `20260920065909`. It is Developer ID signed, notarized, stapled and retains Production CloudKit. The published ZIP was downloaded back and hash-verified. It includes the browser companion and exact existing store identity; older Preview 3 does not.
 - Verify developer registration, contact verification and the current dashboard distribution/review requirements.
 - Uploading a draft, submitting for review, approval and publication are separate states. Preserve this distinction in the release record.
 

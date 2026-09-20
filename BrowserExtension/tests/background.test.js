@@ -174,3 +174,13 @@ test("paired disconnect schedules one 30-second alarm without retrying activatio
   assert.equal(f.sent.some(message => message.type === "activate"), false);
   assert.equal((await f.send({ type: "state" })).connected, false);
 });
+
+
+test("only setup page can read setup state or choose its bookmark root", async () => {
+  const f = await fixture(); const listener = f.api.runtime.onMessage.listeners[0];
+  const setupSender = { ...f.sender, url: f.api.runtime.getURL("setup.html") };
+  assert.equal(listener({ type: "setupRoot", rootID: "any" }, f.sender, () => {}), false);
+  assert.equal(listener({ type: "connect" }, setupSender, () => {}), false);
+  const result = await new Promise(resolve => assert.equal(listener({ type: "setupState" }, setupSender, resolve), true));
+  assert.equal(result.ok, false); assert.equal(result.error, ERRORS.setupUnsupported);
+});

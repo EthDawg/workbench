@@ -77,6 +77,15 @@ class ChromePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(PACKAGER.PackageError, "permissions"):
             PACKAGER.validate(self.source)
 
+    def test_rejects_unreviewed_optional_permission_and_setup_asset(self):
+        self.manifest(lambda value: value["optional_permissions"].append("tabs"))
+        with self.assertRaisesRegex(PACKAGER.PackageError, "optional API permissions"):
+            PACKAGER.validate(self.source)
+        self.manifest(lambda value: value.update(optional_permissions=["bookmarks"]))
+        (self.source / "setup.js").unlink()
+        with self.assertRaisesRegex(PACKAGER.PackageError, "Missing"):
+            PACKAGER.validate(self.source)
+
     def test_rejects_remote_runtime_asset_but_allows_help_links(self):
         PACKAGER.validate(self.source)
         path = self.source / "popup.html"

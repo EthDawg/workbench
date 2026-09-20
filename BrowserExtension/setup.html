@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser setup — Workbench Preview</title>
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="setup-page.js"></script>
+</head>
+<body class="privacy-page">
+  <header><img class="mark" src="icons/icon48.png" width="34" height="34" alt=""><div><h1>Browser setup</h1><p id="profile" class="eyebrow">This Chrome profile</p></div></header>
+  <main>
+    <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+    <p>Prepare this profile once, then review and apply a browser setup pack in the Workbench Mac app. Pair each participating profile using the Workbench toolbar popup.</p>
+    <section aria-labelledby="bookmarks-heading">
+      <h2 id="bookmarks-heading">Bookmarks</h2>
+      <p>Chrome grants access to all bookmarks in this profile. Workbench uses a local location you select and updates only bookmarks it created. Existing and manually changed bookmarks are preserved.</p>
+      <button id="grant" type="button" class="primary">Allow bookmark access</button>
+      <div id="root-controls" hidden>
+        <label for="root">Local bookmark location</label>
+        <select id="root"><option value="">Choose a location…</option></select>
+        <button id="save-root" type="button" class="primary">Use this location</button>
+      </div>
+      <p>Browser setup needs Chrome 134 or later. A synced or managed location cannot be selected. If profiles share synced bookmarks, use Chrome Sync rather than applying duplicate packs. Choosing this local location does not change Chrome Sync settings.</p>
+      <p id="uncertain" hidden>A previous bookmark write was interrupted. Further bookmark writes are blocked because a result could not be recorded. Inspect this pack in Chrome's Bookmark Manager before recovery. Workbench will not adopt matching names or repeat an uncertain write.</p>
+      <button type="button" class="secondary" data-chrome="chrome://bookmarks/">Open Bookmark Manager</button>
+      <button id="refresh" type="button" class="secondary">Refresh setup</button>
+    </section>
+    <section aria-labelledby="password-heading">
+      <h2 id="password-heading">Google Password Manager and Chrome Sync</h2>
+      <p>Chrome owns your Google sign-in, saved passwords and Sync. Sign in or choose what to sync using Chrome's settings. Each demo profile can keep its own account; you do not need the same Google account across personas.</p>
+      <p>Workbench does not read, export, copy or change passwords, cookies or signed-in sessions. Pairing a profile does not establish who is signed in. Manage saved passwords in Google Password Manager.</p>
+      <button type="button" class="secondary" data-chrome="chrome://password-manager/passwords">Open Google Password Manager</button>
+      <button type="button" class="secondary" data-chrome="chrome://settings/syncSetup">Open Chrome Sync settings</button>
+    </section>
+    <section aria-labelledby="tabs-heading">
+      <h2 id="tabs-heading">Launch tabs, startup and New Tab</h2>
+      <p><strong>Open launch tabs</strong> in Workbench opens the reviewed addresses in a new window in this connected profile. Your existing tabs stay open. This does not set Chrome's startup pages.</p>
+      <p><strong>On startup:</strong> choose “Open a specific page or set of pages” in Chrome settings and add the addresses from your pack. Check the result after fully quitting Chrome with ⌘Q and reopening it. “Use current pages” can include unrelated tabs, so review that list carefully.</p>
+      <button type="button" class="secondary" data-chrome="chrome://settings/onStartup">Open startup settings</button>
+      <p><strong>New Tab:</strong> every new tab has a separate setting. A dedicated extension such as <a href="https://chromewebstore.google.com/detail/custom-new-tab-url/mmjbdbjnoablegbkcklggeknkfcjkjia" target="_blank" rel="noopener noreferrer">Custom New Tab URL</a> is one option to review yourself. Workbench does not install or configure it. Startup completion and New Tab completion remain your checks.</p>
+      <p><strong>New profiles:</strong> use Chrome's profile menu → Add Chrome profile, then install and connect Workbench in that profile. Workbench does not create profiles or copy sessions.</p>
+    </section>
+  </main>
+  <footer><a href="privacy.html" target="_blank" rel="noopener noreferrer">Privacy &amp; permissions</a><span>Workbench Preview 0.2</span></footer>
+</body>
+</html>

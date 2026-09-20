@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Workbench Preview",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Save named destinations and return to the right Chrome profile. Requires the Workbench Preview companion for macOS.",
   "homepage_url": "https://workbench-mac.vercel.app/",
   "icons": {
@@ -37,5 +37,8 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
   },
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAme0hX1qoFfv5FYpF/mgl+SC0tlhpTIDIy6UCbHcllxc1S1ATlhhzYzglFOd/u9ea0A4QZs+fhYEpQVMXnxBORrl5XC1eFyTwXv/Q6IQ5sCQpMuiwGpb3JsYmj/luWg4nWJaQ4W91ZY3AKLfj0O48eiKC6W9zKXzpR18jQdQ5bvPJ5okeKRANwcAio2br1d7uyK8Cx0yVSSTdy4m6KMeVg4YzlJwf7vUgKAuer7Mj/LS8kwdkc86dZqhUQdh/+slh6uzo/OfcMjiX6pvyfyJ6qHC4OO09Dt5kHrxypAXbkae8e6mRC2ly95YE86lPPMGhmsiKI+xbCWRmMztQ/lgCmQIDAQAB"
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAme0hX1qoFfv5FYpF/mgl+SC0tlhpTIDIy6UCbHcllxc1S1ATlhhzYzglFOd/u9ea0A4QZs+fhYEpQVMXnxBORrl5XC1eFyTwXv/Q6IQ5sCQpMuiwGpb3JsYmj/luWg4nWJaQ4W91ZY3AKLfj0O48eiKC6W9zKXzpR18jQdQ5bvPJ5okeKRANwcAio2br1d7uyK8Cx0yVSSTdy4m6KMeVg4YzlJwf7vUgKAuer7Mj/LS8kwdkc86dZqhUQdh/+slh6uzo/OfcMjiX6pvyfyJ6qHC4OO09Dt5kHrxypAXbkae8e6mRC2ly95YE86lPPMGhmsiKI+xbCWRmMztQ/lgCmQIDAQAB",
+  "optional_permissions": [
+    "bookmarks"
+  ]
 }

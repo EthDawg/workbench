@@ -1,10 +1,13 @@
 import { FocusController, WorkbenchError, canonicalizeURL, cleanName, validID, permissionPattern, safeError } from "./core.js";
+import { SetupController } from "./setup.js";
 import { NativeClient } from "./native.js";
 
 const RETRY_ALARM = "workbench-native-reconnect";
 const focus = new FocusController(chrome);
+const setup = new SetupController(chrome);
 const activeFocus = new Set();
 const client = new NativeClient(chrome, {
+  onSetup: message => setup.command(message),
   onFocus: async message => {
     const controller = new AbortController();
     activeFocus.add(controller);
@@ -19,6 +22,7 @@ const client = new NativeClient(chrome, {
     } finally { clearTimeout(timer); activeFocus.delete(controller); }
   },
   onDisconnect: () => {
+    setup.cancel();
     for (const controller of activeFocus) controller.abort();
     void scheduleRetry();
   },
@@ -53,6 +57,8 @@ async function currentTab() {
 
 async function handle(message) {
   if (!message || typeof message !== "object") throw new WorkbenchError("invalidMessage");
+  if (message.type === "setupState") return { ok: true, ...await profileState(), ...await setup.state() };
+  if (message.type === "setupRoot") return { ok: true, ...await setup.selectRoot(message.rootID) };
   if (message.type === "state") {
     const profile = await profileState();
     let tab = null;
@@ -106,7 +112,10 @@ async function handle(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("popup.html")) return false;
+  if (sender.id !== chrome.runtime.id) return false;
+  const setupPage = sender.url === chrome.runtime.getURL("setup.html");
+  if (setupPage ? !["setupState", "setupRoot"].includes(message?.type) : sender.url !== chrome.runtime.getURL("popup.html")) return false;
+  if (!setupPage && ["setupState", "setupRoot"].includes(message?.type)) return false;
   handle(message).then(sendResponse, error => sendResponse({ ok: false, error: safeError(error) }));
   return true;
 });

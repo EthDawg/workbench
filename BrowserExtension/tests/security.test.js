@@ -10,6 +10,9 @@ test("manifest retains minimal adapter permissions, fixed identity and strict MV
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.incognito, "not_allowed");
   assert.deepEqual(manifest.permissions.sort(), ["activeTab", "alarms", "nativeMessaging", "storage"]);
+  assert.deepEqual(manifest.optional_permissions, ["bookmarks"]);
+  assert.equal(manifest.chrome_url_overrides, undefined);
+  assert.equal(manifest.chrome_settings_overrides, undefined);
   assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   for (const key of ["host_permissions", "content_scripts", "externally_connectable", "web_accessible_resources"]) assert.equal(manifest[key], undefined);
   const digest = createHash("sha256").update(Buffer.from(manifest.key, "base64")).digest("hex").slice(0, 32);
@@ -34,8 +37,20 @@ test("popup uses local assets and text-only rendering without inline execution",
 });
 
 test("runtime has no sync storage, content inspection, navigation of existing tabs or logging", async () => {
-  const source = (await Promise.all(["core.js", "native.js", "background.js", "popup.js"].map(read))).join("\n");
+  const source = (await Promise.all(["core.js", "native.js", "background.js", "popup.js", "setup.js", "setup-page.js"].map(read))).join("\n");
   assert.doesNotMatch(source, /storage\.sync|console\.|scripting\.|executeScript|cookies\.|passwords\.|history\.|fetch\(|XMLHttpRequest/);
   assert.doesNotMatch(source, /tabs\.update\([^\n]*\burl\s*:/);
   assert.doesNotMatch(source, /tabs\.remove\(/);
+});
+
+
+test("setup page uses text-only UI and only a local gesture can request bookmark permission", async () => {
+  const html = await read("setup.html"), js = await read("setup-page.js"), engine = await read("setup.js");
+  assert.doesNotMatch(html, /\son\w+\s*=|<script(?![^>]*\bsrc=)|\bsrc=["']https?:/i);
+  assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|eval\(|new Function/);
+  assert.match(js, /chrome\.permissions\.request\(\{ permissions: \["bookmarks"\]/);
+  assert.doesNotMatch(engine, /permissions\.request|bookmarks\.remove/);
+  assert.match(html, /Google Password Manager/);
+  assert.match(html, /does not set Chrome's startup pages/);
+  assert.match(html, /aria-live="polite"/);
 });

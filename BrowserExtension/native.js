@@ -7,9 +7,10 @@ export function nativeError(value, fallback = "failed") {
 }
 
 export class NativeClient {
-  constructor(api, { onFocus, onDisconnect = () => {}, timeoutMS = 15_000, uuid = () => crypto.randomUUID() } = {}) {
+  constructor(api, { onFocus, onSetup, onDisconnect = () => {}, timeoutMS = 15_000, uuid = () => crypto.randomUUID() } = {}) {
     this.api = api;
     this.onFocus = onFocus;
+    this.onSetup = onSetup;
     this.onDisconnect = onDisconnect;
     this.timeoutMS = timeoutMS;
     this.uuid = uuid;
@@ -37,7 +38,7 @@ export class NativeClient {
         this.disconnected(port);
       });
       try {
-        const result = await this.send("hello", { profileID: profile.profileID, profileName }, true);
+        const result = await this.send("hello", { profileID: profile.profileID, profileName, capabilities: ["browserSetup1"] }, true);
         if (this.port !== port) throw new WorkbenchError("unavailable");
         this.ready = true;
         return result;
@@ -117,6 +118,17 @@ export class NativeClient {
         }
         pending.resolve(result);
       } catch { pending.reject(new WorkbenchError("invalidMessage")); }
+      return;
+    }
+    if (["setupPreview", "setupApply", "setupLaunch"].includes(message.type)) {
+      if (!this.ready || !this.onSetup) return;
+      let result;
+      try { result = await this.onSetup(message); }
+      catch (error) { result = { ok: false, error: error instanceof WorkbenchError ? error.code : "setupUncertain" }; }
+      if (this.port !== port || !this.ready) return;
+      const reply = { ...result, v: 1, id: message.id, type: "setupResult" };
+      if (!validEnvelope(reply)) return;
+      try { port.postMessage(reply); } catch { /* Never replay an uncertain setup operation. */ }
       return;
     }
     if (message.type !== "focus" || !this.ready || !this.onFocus) return;
