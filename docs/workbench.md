@@ -2,7 +2,7 @@
 
 Workbench is one native Mac app for speaking, explaining, presenting and shaping a useful desktop. It establishes a useful free baseline: dependable primitives, optional better models and a few thoughtful combinations. A feature earns its place by removing recurring friction beyond the Mac's existing tools.
 
-This contract describes the direction and current consolidation structure. [The acceptance record](unification.md) distinguishes implementation from tested and released behaviour.
+This contract describes the direction and current consolidation structure. [The acceptance record](unification.md) distinguishes implementation from tested and released behaviour. For older experiments, the [September recovery audit](research/unshipped-work-2026-09.md) maps retained source, existing PRs and deliberate deferrals without creating a second backlog.
 
 The separate native **iOS/iPadOS 26+ Preview** carries these useful jobs into phone/tablet workflows. [Its own contract and test record](ios-preview.md) govern foreground speech, reading, image markup, independent wallpaper export and editable scene preparation. Mobile uses an app window, chosen imports and explicit sharing; the Mac menu bar, global shortcuts, cross-app overlays, USB capture and desktop restoration below are not mobile capabilities. The two targets do not silently sync libraries or edits.
 

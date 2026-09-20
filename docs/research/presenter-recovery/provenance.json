@@ -1,0 +1,176 @@
+{
+  "recovered_on": "2026-09-21",
+  "base_commit": "887a6e067a9f45e2e91054eb6bc2f110c77117b7",
+  "source_branch": "feature/presenter-destinations",
+  "source_state": "uncommitted experiment; owner task inactive at audit; original worktree preserved",
+  "patch_sha256": "a1fda451191aadc75b99fa6bed17fe4b287708006dfb7f316de67c567f55fbed",
+  "scope": "source and tests only; excludes store artwork, signing material, historical release claims and private records",
+  "warning": "Historical reference patch for its exact base, not a patch to apply wholesale to main. Manifest 0.2.0 is not a proposed current extension version.",
+  "files": [
+    {
+      "path": "BrowserExtension/background.js",
+      "sha256": "801f2d4ea667d1639fa2f409f1017821340b50b390b280939bb45ad718b044a5",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/bookmarks.js",
+      "sha256": "a776309e5ecc0e4ebd2ff9494333a5e0a0fd3998f8b12b4a4a22a36f023666a2",
+      "status": "new"
+    },
+    {
+      "path": "BrowserExtension/core.js",
+      "sha256": "0744bd5aedcbc97a6bd4936c93642563e72230215b7fabe349855a402517fb7e",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/manifest.json",
+      "sha256": "57beb1e6e71cebc7f767fc8d037ab859e987ccdda713a8907a7f3e7e67073708",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/native.js",
+      "sha256": "620652a96bfea2735d5c1c07b4b418fc88ca3f49a31a096c7d3ce444d14d703f",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/popup.css",
+      "sha256": "99e41400fed090a7fd335b813de93393649fec4ce93a4899016656f6c9a4e558",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/popup.html",
+      "sha256": "8ed18938bd38895e7ebe34f91567134b4f37d2a4f6c1b4703d274dcdbd2d7202",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/popup.js",
+      "sha256": "728c63b4066e5780142336d4a09381e29f708f174e0ea82b04abdf59542ba93f",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/privacy.html",
+      "sha256": "5b7c5ffe10a704c6f849d12c4566546a370157f87c539067aeb452ac13229547",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/profile-focus.js",
+      "sha256": "e7ac39c2acc6b022be207d582a9630529d960bf74255fb66608e24e9c347a19a",
+      "status": "new"
+    },
+    {
+      "path": "BrowserExtension/tests/background.test.js",
+      "sha256": "0b4426303b8b8aa3ece02c20070a8cd64f97a7fbde1dd76a0f646ea6bf68f0fa",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/tests/bookmarks.test.js",
+      "sha256": "c858fd7f81f590a171888eb32dea7b65e4a169d11308f42dc41b62f20c9abe06",
+      "status": "new"
+    },
+    {
+      "path": "BrowserExtension/tests/native.test.js",
+      "sha256": "dd6050a7737ca5ee6d870471a9dd83f5dcf7f1ee38045955c5dc6c4d33c00a8b",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/tests/package_test.py",
+      "sha256": "79518dfdfd7db5065b9af4cd0f60a8b0d87c91265e996e27f6eba926c55cdd06",
+      "status": "modified"
+    },
+    {
+      "path": "BrowserExtension/tests/profile-focus.test.js",
+      "sha256": "24348b3139e20fe1063e81de23d697bee4c5f1520a906626044442b27c420265",
+      "status": "new"
+    },
+    {
+      "path": "BrowserExtension/tests/security.test.js",
+      "sha256": "d0efaeebcffe06cdc0294f45fb8a106882bfbf97cdaad5ce83f9bb7899144dc7",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/LocalVoice/PresenterBridge.swift",
+      "sha256": "7d90c70aad27bef7c6e18428094deec1dcc4de7f343be459f72e672727bc80f0",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/LocalVoice/PresenterChecks.swift",
+      "sha256": "5c5e187445bbffd5e2313a3b1721f9f2ebdeb471df64754e18c27ce2a8efe17f",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/LocalVoice/PresenterPanel.swift",
+      "sha256": "98fb203d1641a668cb3aa3830fe88f092ed7641d7e839bf4588dd6a63823d168",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/LocalVoice/PresenterPreferences.swift",
+      "sha256": "a3e3eb237bb7d6c06f03bd7c2a2bd14bc33f4cfaab4f0c93cb03595f27446957",
+      "status": "new"
+    },
+    {
+      "path": "Sources/LocalVoice/PresenterPreferencesChecks.swift",
+      "sha256": "564126a9f783739fc6e39edcb4909ba467d51c98283b7c7253868a566f9dbce3",
+      "status": "new"
+    },
+    {
+      "path": "Sources/LocalVoice/PresenterProfileCoordinator.swift",
+      "sha256": "42b5abde74b52221fa73fbe68e0fe021b9de71cf306c93f225da925c3d0f2473",
+      "status": "new"
+    },
+    {
+      "path": "Sources/LocalVoice/main.swift",
+      "sha256": "0db2805ed178a5c4c0ef1054908f2f5eb1a0c49efb8f0cc25a402d470a15c8b5",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/PresenterKit/PresenterProtocol.swift",
+      "sha256": "09e98eb1e3508e58c37bc477ab102e6a289844144eb949eed2d77cbf1430639d",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/StageKit/Persona.swift",
+      "sha256": "70c6310e2a1f28bcea476973d9bf736156a9f614b639b0af1ebae835451128b7",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/StageKit/PersonaOverlay.swift",
+      "sha256": "536a332bd9cd5a3c7e2522cf231f2ec45c56e0fff1ab48d47c8d1d1104e61106",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/StageKit/ProfilePersonaOverlay.swift",
+      "sha256": "93e8f81139f805bcf8a2c916430fb3319c9a510875d26682386be7fea1564f15",
+      "status": "new"
+    },
+    {
+      "path": "Sources/StageKit/StageKitController.swift",
+      "sha256": "252ba84ae0603cdec5340c7723175598e30a5f4950ea7465d27d1ab72bb40dbc",
+      "status": "modified"
+    },
+    {
+      "path": "Sources/WorkbenchBrowserHost/main.swift",
+      "sha256": "a62de8ceb8d424809d7c3f65ffe51a410a38be898681e8c54476fc729a85c2d2",
+      "status": "modified"
+    },
+    {
+      "path": "Tests/PresenterKitTests/PresenterKitTests.swift",
+      "sha256": "6306f2b50e38189cab013146ed6d9a6c083231e9e231c83d0b5a2eb606afcc40",
+      "status": "modified"
+    },
+    {
+      "path": "Tests/StageKitLegacy/ProfilePersonaOverlayTests.swift",
+      "sha256": "6e5fa1aa91414b499457ce035e57f2e3a0018710fc06df782818c35404356162",
+      "status": "new"
+    },
+    {
+      "path": "Tests/StageKitLegacy/TestMain.swift",
+      "sha256": "c81e4450ec36436e97739e6fcd205ca1470121ab5580e0a58439c2ae2fe6f78b",
+      "status": "modified"
+    },
+    {
+      "path": "scripts/package-chrome.py",
+      "sha256": "78496d920ea9b8a0cc46bcdcf2a2db0028bf0901a25ae0be997efbf2629bc37d",
+      "status": "modified"
+    }
+  ]
+}
