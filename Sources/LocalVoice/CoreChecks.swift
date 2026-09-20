@@ -31,6 +31,14 @@ enum CoreChecks {
         let later = Transcript(text: "Same words", seconds: 4, rawText: "Same words")
         let captures = TranscriptHistory.adding(later, to: [earlier])
         try check(captures.count == 2 && captures[0].id == later.id && captures[1].id == earlier.id, "repeated words remain distinct captures in newest-first order")
+        let firstAccessibleCapture = Transcript(date: Date(timeIntervalSince1970: 1_700_000_000), text: "Same words", seconds: 2)
+        let secondAccessibleCapture = Transcript(date: Date(timeIntervalSince1970: 1_700_000_001), text: "Same words", seconds: 2)
+        let firstContext = CaptureHistoryAccessibility.context(for: firstAccessibleCapture, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!)
+        let secondContext = CaptureHistoryAccessibility.context(for: secondAccessibleCapture, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!)
+        let firstCopyLabel = CaptureHistoryAccessibility.label("Copy", context: firstContext)
+        let secondCopyLabel = CaptureHistoryAccessibility.label("Copy", context: secondContext)
+        try check(firstCopyLabel != secondCopyLabel && firstCopyLabel.hasPrefix("Copy, captured "), "history actions identify otherwise identical captures by date and time")
+        try check(!firstCopyLabel.contains(firstAccessibleCapture.text), "history action labels do not expose transcript contents")
         var many: [Transcript] = []
         for i in 0...TranscriptHistory.limit { many = TranscriptHistory.adding(Transcript(text: "Capture \(i)", seconds: 1), to: many) }
         try check(many.count == TranscriptHistory.limit && many.first?.text == "Capture 100" && many.last?.text == "Capture 1", "bounded history retains the newest 100 captures")
