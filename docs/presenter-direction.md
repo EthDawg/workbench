@@ -100,3 +100,7 @@ Remaining acceptance: physical sleep/wake; a real Zoom/Teams receiver across sha
 Chrome Web Store registration, upload, final identity/key alignment, review submission and approval are not complete. Before submitting, provide a publicly downloadable matching native companion and replace these pending claims only with authoritative release evidence. Physical hotkey delivery, sleep/wake and meeting-receiver limitations above remain unchanged.
 
 The only deferred opportunities created from this work are [weekly password distribution through an existing manager #37](https://github.com/EthDawg/workbench/issues/37) and [contextual notes on an explicitly unshared surface #38](https://github.com/EthDawg/workbench/issues/38). They are not implemented capabilities.
+
+## Research-only audience output
+
+The recovered [Audience developer spike](../tools/audience-spike/README.md) explores an explicitly selected output window for [contextual notes #38](https://github.com/EthDawg/workbench/issues/38). It is separate from Workbench and all release targets. Compilation and 24 pure state checks passed at recovery; real capture, permission behavior, performance and meeting receivers remain untested. The experiment record compares the simpler selected-window/unshared-display route and sets a stop-or-advance trial. It does not change the supported sharing contract above.

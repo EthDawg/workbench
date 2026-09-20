@@ -1,0 +1,29 @@
+{
+  "recovered_on": "2026-09-21",
+  "source_branch": "feature/presenter-destinations",
+  "source_base_commit": "887a6e067a9f45e2e91054eb6bc2f110c77117b7",
+  "status": "standalone experiment, never added to Workbench runtime or distribution",
+  "files": [
+    {
+      "path": "AudienceSpike.swift",
+      "original_sha256": "d3b932264fc4214ccfa547a3d68c29105ee5ab5e1c55c35c3b27b1ad07afa74d"
+    },
+    {
+      "path": "AudienceSessionState.swift",
+      "original_sha256": "4dd0fa017622639e91a9b8a92cfb033942e59d2af89fe562018b47d6612715d3"
+    },
+    {
+      "path": "StateTests.swift",
+      "original_sha256": "831760e1c712d13782c68cac59f5ebe3e71ae53c21e0852d4ad8d5e8af6d4fb3"
+    },
+    {
+      "path": "build.sh",
+      "original_sha256": "5fc233092a1f2bbf4c67ebf88685ab0531e6e1699b98de5d887f67385d60f548"
+    },
+    {
+      "path": "README.md",
+      "original_sha256": "19407234a5bc0be76f7982f1be7ba62f6c3ddbc7b7e37dcc5a61a80a13d33090"
+    }
+  ],
+  "adaptation": "README refreshed at recovery; Swift and build script retained byte-for-byte"
+}
