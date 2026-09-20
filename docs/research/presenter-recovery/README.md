@@ -1,6 +1,6 @@
 # Recover the unfinished presenter experiment
 
-**Decision, 21 September 2026:** retain the source and reuse it selectively. Start with opening an existing Chrome bookmark in its selected profile. Validate profile cues next; keep private notes under [issue #38](https://github.com/EthDawg/workbench/issues/38). Do not reintroduce a broad launcher or merge the old experiment wholesale.
+**Decision, 21 September 2026:** retain the source and reuse it selectively. Start with [opening an existing Chrome bookmark in its selected profile, #75](https://github.com/EthDawg/workbench/issues/75). Validate profile cues next; keep private notes under [issue #38](https://github.com/EthDawg/workbench/issues/38). Do not reintroduce a broad launcher or merge the old experiment wholesale.
 
 The job is concrete: during a prepared demo, reach the right screen and keep track of which role is being demonstrated without rebuilding the preparation in another library. The current Switch to implementation already handles named destinations. [PR #55](https://github.com/EthDawg/workbench/pull/55) owns setup packs, launch sets and default tabs. This recovery concerns different, unfinished work.
 
