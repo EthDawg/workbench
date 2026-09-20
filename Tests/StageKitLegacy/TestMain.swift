@@ -67,8 +67,9 @@ struct TestRunner {
         let backdropOnly = args == ["--backdrop-only"]
         let personaQuickOnly = args == ["--persona-quick-only"]
         let screenshotStateOnly = args == ["--screenshot-state-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
+        let sceneListOnly = args == ["--scene-list-only"]
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly || sceneListOnly else {
+            print("Usage: StageMarkTests [--ci | --scenes-only | --scene-list-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
 
             exit(2)
         }
@@ -77,7 +78,7 @@ struct TestRunner {
         if !screenshotStateOnly {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
-            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly { NSApp.finishLaunching() }
+            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !sceneListOnly { NSApp.finishLaunching() }
         }
         let suite = CoreTests()
         let integration = IntegrationTests()
@@ -96,6 +97,15 @@ struct TestRunner {
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
+        let sceneList = SceneListTests()
+        let sceneListTests: [(String, () throws -> Void)] = [
+            ("scene list filtered selection", sceneList.testSelectionFiltersAndNeverTargetsHiddenScenes),
+            ("scene list atomic confirmed deletion and preserved images", sceneList.testConfirmedBulkDeletionIsOneCommitAndPreservesEveryImage),
+            ("scene list stale and failed deletion preservation", sceneList.testStaleOrFailedBulkDeletionKeepsWholeSelection),
+            ("scene list rename search and stale snapshots", sceneList.testRenameReconcilesSearchAndRejectsStaleSnapshots),
+            ("scene list drag selection and stale token rejection", sceneList.testDragReordersSelectionAndRejectsStaleOrForeignTokens),
+            ("scene list keyboard focus ownership", sceneList.testDeleteAndReturnBelongOnlyToFocusedTable)
+        ]
         let workbench = WorkbenchModuleTests()
         let boardExport = BoardExportTests()
         let presentationLifecycle = PresentationLifecycleTests()
@@ -233,7 +243,10 @@ struct TestRunner {
             ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
         ], at: 5)
         tests.insert(contentsOf: backdropTests, at: 5)
-        if personaQuickOnly {
+        tests.insert(contentsOf: sceneListTests, at: 5)
+        if sceneListOnly {
+            tests = sceneListTests
+        } else if personaQuickOnly {
             tests = [
                 ("persona quick shortcuts and default keys", suite.testDefaultShortcutsAreUniqueAndComplete),
                 ("persona quick shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
@@ -254,7 +267,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly && !sceneListOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }

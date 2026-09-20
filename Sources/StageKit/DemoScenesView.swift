@@ -3,10 +3,7 @@ import SwiftUI
 
 struct DemoScenesView: View {
     @ObservedObject var model: DemoScenes
-    @State private var rename = ""
-    @State private var confirmingRemoval = false
-    @State private var removalCandidate: DemoScene?
-    @State private var renameSnapshot: DemoScene?
+    @State private var removalRequest: SceneRemovalRequest?
     @State private var choosingStarter = false
     @State private var choosingLogo = false
     @State private var creatingTextLogo = false
@@ -17,26 +14,20 @@ struct DemoScenesView: View {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Scenes", systemImage: "iphone.and.landscape").font(.title2.weight(.semibold))
-                    Text("Your pictures, wallpapers and presentations.").font(.callout).foregroundStyle(.secondary)
+                    Text("Saved backdrops and device layouts.").font(.callout).foregroundStyle(.secondary)
                 }
                 TextField("Find a customer or scene", text: $model.query).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Find a scene")
-                List(selection: $model.selectedID) {
-                    ForEach(model.matches) { scene in
-                        HStack(spacing: 9) {
-                            Image(systemName: scene.showsPhone ? "iphone" : "photo").foregroundStyle(Workbench.accent)
-                            Text(scene.name).lineLimit(2)
-                        }.padding(.vertical, 5).tag(scene.id)
-                    }
-                }.listStyle(.sidebar)
-                Button { choosingStarter = true } label: { Label("Choose a starter…", systemImage: "square.grid.2x2") }
+                SceneList(model: model) { scenes in removalRequest = SceneRemovalRequest(scenes: scenes) }
+                Text(model.query.isEmpty ? "Double-click to rename · Drag to reorder" : "Clear search to reorder scenes")
+                    .font(.caption).foregroundStyle(.secondary)
+                Menu {
+                    Button("Choose a starter…") { choosingStarter = true }
+                    Button("Choose a backdrop…") { model.importImage() }
+                    Divider()
+                    Button("Import scene copy…") { model.importSceneCopy() }
+                } label: { Label("Add scene", systemImage: "plus") }
                     .disabled(model.storageBlocked)
-                Button { model.importImage() } label: { Label("Add backdrop…", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).disabled(model.storageBlocked)
-                Button { model.importSceneCopy() } label: { Label("Import scene copy…", systemImage: "square.and.arrow.down") }
-                    .disabled(model.storageBlocked)
-                Button { model.showPersonas() } label: { Label("Personas…", systemImage: "person.crop.rectangle") }
-                    .help("Show a persona over your browser without a backdrop")
                 if let adapter = model.sceneSync { MacSceneSyncControls(adapter: adapter) }
             }.padding(18).frame(width: 245)
             Divider()
@@ -46,21 +37,13 @@ struct DemoScenesView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let scene = model.selected {
                     HStack {
-                        TextField("Scene name", text: $rename, onCommit: commitName)
-                            .font(.title2.weight(.semibold)).textFieldStyle(.plain)
-                            .onChange(of: model.selectedID) { _, _ in renameSnapshot = model.selected; rename = model.selected?.name ?? "" }
-                            .onAppear { renameSnapshot = scene; rename = scene.name }
-                            .onChange(of: scene.libraryRevision) { _, _ in
-                                if rename == renameSnapshot?.name { rename = scene.name; renameSnapshot = scene }
-                            }
-                        Button("Rename") { commitName() }.disabled(rename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rename == scene.name)
+                        Text(scene.name).font(.title2.weight(.semibold))
+                        Spacer()
                         Menu {
-                            Button("Save editable copy…") { commitName(); model.exportSceneCopy() }
+                            Button("Save editable copy…") { model.exportSceneCopy() }
                                 .disabled(model.isSceneReadOnly(scene))
                             Button("Duplicate scene") { model.duplicate() }
-                            Button("Move up") { model.moveScene(scene.id, by: -1) }.disabled(model.scenes.first?.id == scene.id)
-                            Button("Move down") { model.moveScene(scene.id, by: 1) }.disabled(model.scenes.last?.id == scene.id)
-                            Button("Remove scene…", role: .destructive) { removalCandidate = scene; confirmingRemoval = true }
+                            Button("Delete scene…", role: .destructive) { removalRequest = SceneRemovalRequest(scenes: [scene]) }
                         } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
                             .accessibilityLabel("Scene options")
                     }
@@ -133,6 +116,16 @@ struct DemoScenesView: View {
                                 .disabled(model.storageBlocked)
                         }
                     }
+                } else if model.selection.ids.count > 1 {
+                    VStack(spacing: 14) {
+                        Image(systemName: "square.stack").font(.system(size: 38)).foregroundStyle(.secondary)
+                        Text("\(model.selection.ids.count) scenes selected").font(.title2.weight(.semibold))
+                        Text(model.query.isEmpty ? "Drag them together to reorder, or delete the selection." : "Select one scene to edit, or delete the selection.")
+                            .foregroundStyle(.secondary)
+                        Button("Delete selected scenes…", role: .destructive) {
+                            removalRequest = SceneRemovalRequest(scenes: model.selectedScenes)
+                        }.disabled(model.selectedScenes.contains { model.isSceneReadOnly($0) })
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if !model.scenes.isEmpty {
                     VStack(spacing: 14) {
                         Image(systemName: "magnifyingglass").font(.system(size: 38)).foregroundStyle(.secondary)
@@ -177,17 +170,17 @@ struct DemoScenesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         #if !APP_STORE
-                        Button("Present full screen") { commitName(); model.startDemo() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                        Button("Present in window") { commitName(); model.startDemo(mode: .windowed) }.controlSize(.large).disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+                        Button("Present full screen") { model.startDemo() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+                        Button("Present in window") { model.startDemo(mode: .windowed) }.controlSize(.large).disabled(model.desktopBusy || !model.systemIntegrationEnabled)
                         #else
-                        Button("Export image…") { commitName(); model.exportPNG() }.buttonStyle(.borderedProminent).controlSize(.large)
+                        Button("Export image…") { model.exportPNG() }.buttonStyle(.borderedProminent).controlSize(.large)
                         #endif
                         Spacer()
                         Menu("More") {
                         #if !APP_STORE
-                        Button("Export image…") { commitName(); model.exportPNG() }
-                        Button("Use as desktop") { commitName(); model.applyDesktop() }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                        Button("Use as animated desktop") { commitName(); model.applyDesktop(animate: true) }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+                        Button("Export image…") { model.exportPNG() }
+                        Button("Use as desktop") { model.applyDesktop() }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+                        Button("Use as animated desktop") { model.applyDesktop(animate: true) }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
                         #endif
                         }.fixedSize().accessibilityLabel("More scene actions")
                     }
@@ -206,6 +199,9 @@ struct DemoScenesView: View {
         }
         .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
         .sheet(item: $backdropReplacement) { draft in BackdropReplacementView(model: model, draft: draft) }
+        .sheet(item: $removalRequest) { request in
+            SceneRemovalConfirmation(request: request) { model.removeScenes(request.scenes) }
+        }
         .sheet(isPresented: $choosingStarter) {
             SceneStarterGallery(model: model) { starter in
                 do { try model.useStarter(starter); choosingStarter = false }
@@ -228,10 +224,6 @@ struct DemoScenesView: View {
             Button("Create") { model.makeTextLogo(String(textLogoName.prefix(80))) }
             Button("Cancel", role: .cancel) {}
         } message: { Text("A simple wordmark you can use now and replace with the real logo later.") }
-        .alert("Remove this scene?", isPresented: $confirmingRemoval) {
-            Button("Cancel", role: .cancel) {}
-            Button("Remove", role: .destructive) { if let captured = removalCandidate { model.remove(captured) }; removalCandidate = nil }
-        } message: { Text("The saved layout will be removed. If scene sync is enabled, removal also syncs to your devices. Original pictures stay on this Mac.") }
     }
     private func previewSize(in editor: CGSize) -> CGSize {
         // Keep the saved scene and everyday controls together at the minimum
@@ -396,17 +388,6 @@ struct DemoScenesView: View {
     }
     private func position(_ x: Double) {
         guard var scene = model.selected else { return }; scene.phoneX = x; model.update(scene)
-    }
-    private func commitName() {
-        guard var scene = renameSnapshot, scene.id == model.selectedID else { return }
-        let trimmed = rename.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { rename = scene.name; return }
-        guard trimmed != scene.name else { return }
-        scene.name = String(trimmed.prefix(160))
-        // A rename can leave the current search. Keep this customer selected so
-        // the following Start or Export action cannot act on a different scene.
-        if !model.query.isEmpty && !scene.name.localizedCaseInsensitiveContains(model.query) { model.query = "" }
-        if model.update(scene) { renameSnapshot = model.selected; rename = model.selected?.name ?? rename }
     }
 }
 
