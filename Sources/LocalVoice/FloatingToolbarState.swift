@@ -14,6 +14,33 @@ enum FloatingToolbarDisclosure: Equatable {
     }
 }
 
+/// Geometry changes are not pointer gestures. In particular, shrinking a window
+/// must never manufacture the exit/re-entry that unlocks an explicit collapse.
+struct FloatingToolbarPointerTracker {
+    var lastPoint: NSPoint
+    mutating func moved(to point: NSPoint) -> Bool {
+        guard point != lastPoint else { return false }
+        lastPoint = point
+        return true
+    }
+}
+
+enum FloatingToolbarMotion {
+    static let duration = 0.38
+    /// A gently damped spring: quick response, under one percent overshoot.
+    static func progress(at time: TimeInterval) -> CGFloat {
+        if time >= duration { return 1 }
+        let t = max(0, time), damping = 19.32, frequency = 12.48
+        return 1 - exp(-damping * t) * (cos(frequency * t) + damping / frequency * sin(frequency * t))
+    }
+    static func frame(from: NSRect, to: NSRect, progress: CGFloat) -> NSRect {
+        NSRect(x: from.minX + (to.minX - from.minX) * progress,
+               y: from.minY + (to.minY - from.minY) * progress,
+               width: from.width + (to.width - from.width) * progress,
+               height: from.height + (to.height - from.height) * progress)
+    }
+}
+
 struct FloatingToolbarInteraction {
     var pinned = false
     var hovered = false

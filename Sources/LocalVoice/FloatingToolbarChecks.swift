@@ -4,6 +4,125 @@ import SwiftUI
 
 @MainActor
 enum FloatingToolbarChecks {
+    static func runNative() async throws {
+        guard Workbench.fixtureRoot != nil, NSScreen.main != nil else {
+            throw VoiceError.message("Native toolbar checks require the disposable debug app and a display.")
+        }
+        var count = 0
+        func check(_ condition: Bool, _ name: String) throws {
+            guard condition else { throw VoiceError.message("Native toolbar: " + name) }
+            count += 1
+        }
+        let model = AppModel()
+        model.ready = true; model.floatingToolbarVisible = true
+        let readback = ReadbackModel(engine: model.engine)
+        let stage = StageKitController(onOpenControls: {}, onOpenScenes: {})
+        let controls = CaptureHUDControls()
+        controls.collapseToolbar()
+        let controller = CapturePanelController(model: model, readback: readback, stage: stage,
+            dictate: {}, snap: {}, draw: {}, present: {}, controls: controls, monitorsPointer: false)
+        defer { controller.close() }
+        var pointer = NSPoint(x: -10000, y: -10000)
+        // Samples below are synthetic; keep the tracker on that stream rather
+        // than resetting it to the unrelated physical mouse on collapse.
+        controls.didCollapse = nil
+        controls.pointerInside = { controller.window?.frame.contains(pointer) == true }
+        controls.pointerInsideCollapsed = {
+            guard let frame = controller.window?.frame, let screen = NSScreen.main?.visibleFrame else { return false }
+            return CaptureHUDGeometry.frame(size: FloatingToolbarDisclosure.collapsed.size, anchor: controls.anchor,
+                previous: frame, screens: [screen], preferred: screen).contains(pointer)
+        }
+        func settle(_ size: NSSize) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 3
+            while ProcessInfo.processInfo.systemUptime < deadline {
+                if !controller.isAnimatingToolbar, let actual = controller.window?.frame.size,
+                   abs(actual.width - size.width) < 1, abs(actual.height - size.height) < 1 { return }
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            throw VoiceError.message("Native toolbar did not settle at \(size); actual \(String(describing: controller.window?.frame))")
+        }
+        controller.update(model: model)
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        controls.expandToolbar(); controls.collapseToolbar()
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        try check(controls.toolbarDisclosure == .collapsed, "same-turn collapse cancels an unstarted reveal")
+        for _ in 0..<10 {
+            controls.expandToolbar()
+            try await settle(FloatingToolbarDisclosure.expanded.size)
+            let frame = controller.window!.frame
+            pointer = NSPoint(x: frame.maxX - 25, y: frame.midY)
+            controller.pointerMoved(to: pointer)
+            controls.collapseToolbar()
+            try await settle(FloatingToolbarDisclosure.collapsed.size)
+            controller.pointerMoved(to: pointer)
+            controller.update(model: model)
+            try await Task.sleep(nanoseconds: 30_000_000)
+            try check(controls.toolbarDisclosure == .collapsed && controller.window!.frame.width == 76,
+                      "minimise remains collapsed after resize and a stationary pointer sample")
+        }
+        pointer = NSPoint(x: controller.window!.frame.midX, y: controller.window!.frame.midY)
+        controller.pointerMoved(to: pointer)
+        try await settle(FloatingToolbarDisclosure.hovered.size)
+        try check(controls.toolbarDisclosure == .hovered, "first genuine entry after minimise reveals controls")
+        let menu = NSMenu()
+        controls.beginMenu(menu)
+        pointer = NSPoint(x: -10000, y: -10000); controller.pointerMoved(to: pointer)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try check(controller.window!.frame.width == 368, "native window stays open while choosing a menu item")
+        controls.endMenu()
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        pointer = NSPoint(x: controller.window!.frame.midX, y: controller.window!.frame.midY)
+        controller.pointerMoved(to: pointer)
+        try await settle(FloatingToolbarDisclosure.hovered.size)
+        for offset in 0..<7 {
+            pointer = NSPoint(x: -10000 + offset, y: -10000); controller.pointerMoved(to: pointer)
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try check(controls.toolbarDisclosure == .collapsed, "continued outside motion cannot restart the exit grace period")
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        controls.expandToolbar()
+        try await settle(FloatingToolbarDisclosure.expanded.size)
+        let collapseMenu = NSMenu()
+        controls.beginMenu(collapseMenu)
+        controls.collapseToolbar(); controls.endMenu()
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        try check(controls.toolbarDisclosure == .collapsed, "collapse from a native menu closes its tracking hold")
+        // Interrupt a spring with another choice, then with active recording UI.
+        controls.expandToolbar()
+        try await Task.sleep(nanoseconds: 60_000_000)
+        try check(controller.window!.frame.width > 76 && controller.window!.frame.width < 480,
+                  "reveal passes through intermediate native window sizes")
+        controls.collapseToolbar()
+        try await settle(FloatingToolbarDisclosure.collapsed.size)
+        try check(controls.toolbarDisclosure == .collapsed, "latest requested size wins during an interrupted reveal")
+        controls.expandToolbar()
+        try await Task.sleep(nanoseconds: 60_000_000)
+        controller.beginDragging()
+        try check(!controller.isAnimatingToolbar && controller.window!.frame.size == FloatingToolbarDisclosure.expanded.size,
+                  "dragging during reveal settles the window before taking ownership")
+        controller.finishDragging()
+        controls.expandToolbar()
+        model.previewingPanel = true; controller.update(model: model)
+        try await settle(CaptureHUDLayout.compact)
+        controller.focusToolbar()
+        try check(!(controller.window as! CapturePanel).allowsKeyboardFocus,
+                  "idle focus command cannot focus recording controls")
+        try check(!controller.isAnimatingToolbar, "recording cancels an idle resize")
+        model.previewingPanel = false; model.floatingToolbarVisible = false; controller.update(model: model)
+        try check(controller.window?.isVisible == false && !controller.isAnimatingToolbar,
+                  "hiding cancels native animation without a stale reappearance")
+        model.floatingToolbarVisible = true; controls.collapseToolbar(); controller.update(model: model)
+        pointer = NSPoint(x: controller.window!.frame.midX, y: controller.window!.frame.midY)
+        controller.pointerMoved(to: pointer)
+        try await settle(FloatingToolbarDisclosure.hovered.size)
+        controller.close()
+        try check(!controller.isAnimatingToolbar, "closing a revealed toolbar cannot schedule another resize")
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try check(controller.window?.isVisible != true && !controller.isAnimatingToolbar,
+                  "closed toolbar remains hidden after pending callbacks")
+        print("FLOATING_TOOLBAR_NATIVE_OK: \(count) checks passed")
+    }
+
     /// Render the production views only from the existing disposable debug app.
     /// No microphone, capture, paste, shortcuts or live user library is involved.
     static func render(to directory: URL) throws {
@@ -15,7 +134,7 @@ enum FloatingToolbarChecks {
         let readback = ReadbackModel(engine: model.engine)
         let stage = StageKitController(onOpenControls: {}, onOpenScenes: {})
         let collapsed = CaptureHUDControls(), hovered = CaptureHUDControls(), expanded = CaptureHUDControls()
-        collapsed.collapseToolbar(); hovered.hover(true); expanded.expandToolbar()
+        collapsed.collapseToolbar(); hovered.collapseToolbar(); hovered.hover(true); expanded.expandToolbar()
         func toolbar(_ controls: CaptureHUDControls) -> some View {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls,
                 dictate: {}, snap: {}, draw: {}, present: {})
@@ -62,6 +181,13 @@ enum FloatingToolbarChecks {
             count += 1
         }
         var state = FloatingToolbarInteraction()
+        var tracker = FloatingToolbarPointerTracker(lastPoint: NSPoint(x: 100, y: 100))
+        try check(!tracker.moved(to: NSPoint(x: 100, y: 100)), "window geometry cannot invent a pointer move")
+        try check(tracker.moved(to: NSPoint(x: 101, y: 100)), "a genuine pointer move is detected")
+        try check(FloatingToolbarMotion.progress(at: 0) == 0 && FloatingToolbarMotion.progress(at: 1) == 1,
+                  "spring has exact resting endpoints")
+        let spring = stride(from: 0.0, through: FloatingToolbarMotion.duration, by: 0.005).map(FloatingToolbarMotion.progress)
+        try check(spring.allSatisfy { $0 >= 0 && $0 < 1.02 }, "spring overshoot stays restrained")
         try check(state.disclosure == .collapsed, "first launch is a quiet indicator")
         state.enter()
         try check(state.disclosure == .hovered, "hover reveals actions")
@@ -94,7 +220,8 @@ enum FloatingToolbarChecks {
         inside = true; controls.hover(true)
         try await Task.sleep(nanoseconds: 500_000_000)
         try check(controls.toolbarDisclosure == .hovered, "rapid re-entry cancels delayed collapse")
-        controls.beginMenu(NSMenu())
+        let trackingMenu = NSMenu()
+        controls.beginMenu(trackingMenu)
         inside = false; controls.hover(false)
         try await Task.sleep(nanoseconds: 500_000_000)
         try check(controls.toolbarDisclosure == .hovered, "an open menu survives an extended pointer exit")

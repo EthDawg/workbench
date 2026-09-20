@@ -29,29 +29,33 @@ struct FloatingToolbar: View {
     private var canDictate: Bool { model.ready && !model.rendering && !readback.blocksDictation }
 
     var body: some View {
-        Group {
-            switch disclosure {
-            case .collapsed: resting
-            case .hovered: revealed
-            case .expanded: expanded
+        ZStack {
+            Group {
+                switch disclosure {
+                case .collapsed: resting
+                case .hovered: revealed
+                case .expanded: expanded
+                }
             }
+            .frame(width: disclosure.size.width, height: disclosure.size.height)
+            .id(disclosure)
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
-        .frame(width: disclosure.size.width, height: disclosure.size.height)
+        .frame(width: controls.toolbarSize.width, height: controls.toolbarSize.height)
+        .clipped()
         .background {
             if reduceTransparency { RoundedRectangle(cornerRadius: radius).fill(Color(nsColor: .windowBackgroundColor)) }
             else { RoundedRectangle(cornerRadius: radius).fill(.regularMaterial) }
         }
         .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(.primary.opacity(0.12)))
         .contentShape(RoundedRectangle(cornerRadius: radius))
-        .onHover { controls.hover($0) }
         .onExitCommand { controls.collapseToolbar() }
-        .transaction { $0.animation = nil }
         .tint(Workbench.accent).workbenchTheme()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench floating toolbar")
     }
 
-    private var radius: CGFloat { disclosure == .collapsed ? 14 : 18 }
+    private var radius: CGFloat { min(18, controls.toolbarSize.height / 2) }
 
     private var resting: some View {
         Button { controls.expandToolbar() } label: {
@@ -67,7 +71,6 @@ struct FloatingToolbar: View {
 
     private var revealed: some View {
         HStack(spacing: 8) {
-            PanelDragHandle(accessibilityLabel: "Drag Workbench toolbar").frame(width: 16, height: 34)
             Button(action: dictate) {
                 VStack(alignment: .leading, spacing: 2) {
                     Label("Dictate", systemImage: "mic.fill").font(.system(size: 12, weight: .semibold))
@@ -81,21 +84,20 @@ struct FloatingToolbar: View {
                 Image(systemName: "rectangle.and.pencil.and.ellipsis").frame(width: 32, height: 32)
             }.buttonStyle(.plain).disabled(model.rendering || readback.isCapturing)
                 .help("Snap & Talk · " + shortcutLabel(5)).accessibilityLabel("Snap & Talk. " + shortcutLabel(5))
-            Spacer(minLength: 0)
+            PanelDragHandle(accessibilityLabel: "Move toolbar by dragging this empty space", showsGrip: false)
+                .frame(maxWidth: .infinity).frame(height: 34)
             expandButton
         }.padding(.horizontal, 12)
     }
 
     private var expanded: some View {
-        HStack(spacing: 10) {
-            PanelDragHandle(accessibilityLabel: "Drag Workbench toolbar; position choices are in the menu")
-                .frame(width: 20, height: 60)
-            VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 8) {
                     FloatingToolbarMenu(title: "Workbench", symbol: "square.stack.3d.up.fill",
                         help: "Workbench toolbar menu", controls: controls, focusOnReveal: true, makeMenu: toolsMenu)
                         .frame(width: 116, height: 24)
-                    Spacer(minLength: 0)
+                    PanelDragHandle(accessibilityLabel: "Move toolbar by dragging this empty space; positions are also in the menu", showsGrip: false)
+                        .frame(maxWidth: .infinity).frame(height: 24)
                     Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     Button { controls.collapseToolbar() } label: {
                         Image(systemName: "minus").frame(width: 26, height: 24)
@@ -115,8 +117,7 @@ struct FloatingToolbar: View {
                     Spacer(minLength: 0)
                     Text(shortcutLabel(1)).foregroundStyle(.secondary)
                 }.font(.system(size: 11))
-            }
-        }.padding(.horizontal, 12)
+        }.padding(.horizontal, 16)
     }
 
     private var expandButton: some View {
