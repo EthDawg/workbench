@@ -67,8 +67,12 @@ public struct PresenterMessage: Codable, Sendable {
     public var error: String?
     public var destinations: [PresenterDestination]?
     public var expiresAt: Double?
+    public var capabilities: [String]?
+    public var setup: BrowserSetupPayload?
+    public var reviewToken: String?
+    public var setupResult: BrowserSetupResult?
     public init(id: UUID = UUID(), type: String) { self.id = id; self.type = type }
-    enum CodingKeys: String, CodingKey { case v, id, type, profileID, profileName, destinationID, title, url, ok, status, error, destinations, expiresAt }
+    enum CodingKeys: String, CodingKey { case v, id, type, profileID, profileName, destinationID, title, url, ok, status, error, destinations, expiresAt, capabilities, setup, reviewToken, setupResult }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(v, forKey: .v); try c.encode(id.uuidString.lowercased(), forKey: .id); try c.encode(type, forKey: .type)
@@ -78,6 +82,8 @@ public struct PresenterMessage: Codable, Sendable {
         try c.encodeIfPresent(url, forKey: .url); try c.encodeIfPresent(ok, forKey: .ok)
         try c.encodeIfPresent(status, forKey: .status); try c.encodeIfPresent(error, forKey: .error)
         try c.encodeIfPresent(destinations, forKey: .destinations); try c.encodeIfPresent(expiresAt, forKey: .expiresAt)
+        try c.encodeIfPresent(capabilities, forKey: .capabilities); try c.encodeIfPresent(setup, forKey: .setup)
+        try c.encodeIfPresent(reviewToken, forKey: .reviewToken); try c.encodeIfPresent(setupResult, forKey: .setupResult)
     }
     public func reply(ok: Bool, error: String? = nil) -> Self {
         var reply = Self(id: id, type: "result"); reply.ok = ok; reply.error = error; return reply

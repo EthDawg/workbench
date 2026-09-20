@@ -2,7 +2,7 @@
 
 The selected increment is **Switch to**: save a named demo tab in its Chrome profile, then return to it from the browser or Workbench’s native picker. “Manager” should bring forward the prepared Manager tab while the presenter moves between browser, slides, a native app and a mirrored phone. Workbench activates the destination; it does not certify the signed-in account or control the phone.
 
-This extends Saved resources. It does not introduce a second library, a presales platform, or a new app lifecycle. The current branch implements the browser adapter and native picker. Public Preview 3 predates them; build, installed acceptance, review and publication are separate states.
+This extends Saved resources. It does not introduce a second library, a presales platform, or a new app lifecycle. Public Preview 4 includes the browser adapter and native picker. The newer [browser setup pack candidate](browser-setup.md) adds reviewed bookmark preparation and role-based launch tabs. Build, installed acceptance, review and publication remain separate states.
 
 ## Decision and research
 
@@ -69,7 +69,7 @@ No automatic screen-sharing detection, private-note overlay, full workspace rest
 
 The provider issues a new weekly password for global demo tenants. The requested operation is distribution across 2–5 usernames in 2–6 Chrome profiles, with occasional tenant-subdomain changes. It is not changing passwords at the provider. The earlier CSV-upload workflow was unreliable.
 
-Chromium restricts `passwordsPrivate` to component extensions; an ordinary extension cannot bulk-edit Chrome’s saved-password store. [Permission source](https://chromium.googlesource.com/chromium/src/+/main/chrome/common/extensions/api/_permission_features.json). Do not write Chrome credential databases or automate internal password pages. A later adapter should update a reviewed set of existing items in an approved manager and verify each receipt without returning secrets. [Bitwarden’s CLI](https://bitwarden.com/help/cli/) is a feasibility reference, not a selected or configured dependency. This iteration stores no username/password mapping and changes no credentials.
+Chromium restricts `passwordsPrivate` to component extensions; an ordinary extension cannot bulk-edit Chrome’s saved-password store. [Permission source](https://chromium.googlesource.com/chromium/src/+/main/chrome/common/extensions/api/_permission_features.json). Do not write Chrome credential databases or automate internal password pages. A later adapter should update a reviewed set of existing items in an approved manager and verify each receipt without returning secrets. [Bitwarden’s CLI](https://bitwarden.com/help/cli/) is a feasibility reference, not a selected or configured dependency. This iteration stores no username/password mapping and changes no credentials. For the 20 September browser setup increment, Ethan selected Chrome / Google Password Manager; the included guide uses Google’s own account controls, not a new password manager dependency.
 
 ## Build and validation
 

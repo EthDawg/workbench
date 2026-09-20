@@ -78,10 +78,17 @@ final class PresenterListener {
     deinit { stop() }
 }
 
+struct ConnectedBrowserProfile: Identifiable {
+    let id: UUID
+    let name: String
+    let supportsSetup: Bool
+}
+
 @MainActor
 final class PresenterModel: ObservableObject {
     @Published private(set) var destinations: [PresenterDestination] = []
     @Published private(set) var enabled = false
+    @Published private(set) var connectedProfiles: [ConnectedBrowserProfile] = []
     @Published var message: String?
     @Published private(set) var busy = false
     var onSwitch: (() -> Void)?
@@ -93,6 +100,9 @@ final class PresenterModel: ObservableObject {
     private let listener = PresenterListener()
     private var peers: [UUID: PresenterPeer] = [:]
     private var profiles: [UUID: (id: UUID, name: String)] = [:]
+    private var setupCapabilities = Set<UUID>()
+    private var setupPending: (id: UUID, peer: UUID, deadline: Date, finish: (PresenterMessage) -> Void)?
+    private var setupTimer: Task<Void, Never>?
     private var observers = Set<AnyCancellable>()
     private var seen: [UUID: Set<UUID>] = [:]
     private var pending: (id: UUID, peer: UUID, deadline: Date, finish: (PresenterMessage) -> Void)?
@@ -109,6 +119,7 @@ final class PresenterModel: ObservableObject {
     var connectedCount: Int { Set(profiles.values.map(\.id)).count }
     var extensionFolder: URL? { Bundle.main.resourceURL?.appendingPathComponent("BrowserExtension", isDirectory: true) }
     func refresh() {
+        connectedProfiles = profiles.map { ConnectedBrowserProfile(id: $0.value.id, name: $0.value.name, supportsSetup: setupCapabilities.contains($0.key)) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         destinations = library.resources.compactMap { resource in
             guard resource.kind == .link, let binding = resource.browserTarget, binding.machineID == machineID,
                   let url = PresenterURL.canonical(resource.content) else { return nil }
@@ -139,6 +150,8 @@ final class PresenterModel: ObservableObject {
         generation = UUID()
         timer?.cancel(); timer = nil
         if let pending { self.pending = nil; var reply = PresenterMessage(id: pending.id, type: "result"); reply.ok = false; reply.error = "unavailable"; pending.finish(reply) }
+        if let setupPending { finishSetup(id: setupPending.id, error: "offline") }
+        setupCapabilities.removeAll()
         for peer in peers.values { peer.stop() }
         peers.removeAll(); profiles.removeAll(); seen.removeAll(); listener.stop(); enabled = false; busy = false; refresh()
     }
@@ -158,12 +171,22 @@ final class PresenterModel: ObservableObject {
         }
     }
     private func disconnected(_ peerID: UUID) {
+        setupCapabilities.remove(peerID)
+        if let setupPending, setupPending.peer == peerID { finishSetup(id: setupPending.id, error: "offline") }
         peers.removeValue(forKey: peerID); profiles.removeValue(forKey: peerID); seen.removeValue(forKey: peerID)
         if let pending, pending.peer == peerID { finish(id: pending.id, ok: false, error: "offline") }
         refresh()
     }
     private func receive(_ request: PresenterMessage, from peer: PresenterPeer) {
         guard peers[peer.id] != nil else { return }
+        if request.type == "setupResult" {
+            guard let pending = setupPending, pending.id == request.id, pending.peer == peer.id else { return }
+            guard Date() <= pending.deadline else { finishSetup(id: request.id, error: "timeout"); return }
+            guard request.setupResult?.isValid != false,
+                  request.ok != true || request.setupResult != nil else { finishSetup(id: request.id, error: "invalid"); return }
+            setupPending = nil; setupTimer?.cancel(); setupTimer = nil; busy = false
+            pending.finish(request); return
+        }
         if request.type == "focused" {
             guard let pending, pending.id == request.id, pending.peer == peer.id else { return }
             guard Date() <= pending.deadline else { finish(id: request.id, ok: false, error: "timeout"); return }
@@ -179,7 +202,9 @@ final class PresenterModel: ObservableObject {
                 peer.send(request.reply(ok: false, error: "invalid")); return
             }
             guard !profiles.values.contains(where: { $0.id == id }) else { peer.send(request.reply(ok: false, error: "duplicateProfile")); return }
-            profiles[peer.id] = (id, name); refresh(); respond(request, to: peer); return
+            profiles[peer.id] = (id, name)
+            if request.capabilities?.contains("browserSetup1") == true { setupCapabilities.insert(peer.id) }
+            refresh(); respond(request, to: peer); return
         }
         guard let profile = profiles[peer.id] else { peer.send(request.reply(ok: false, error: "unavailable")); return }
         switch request.type {
@@ -246,6 +271,30 @@ final class PresenterModel: ObservableObject {
         self.pending = nil; timer?.cancel(); timer = nil; busy = false
         var reply = PresenterMessage(id: id, type: "result"); reply.ok = ok; reply.status = status; reply.error = error
         pending.finish(reply)
+    }
+    /// A deliberate one-shot operation. Disconnects and timeouts never replay writes or launch tabs.
+    func browserSetup(profileID: UUID, command: String, payload: BrowserSetupPayload, reviewToken: String? = nil) async -> PresenterMessage {
+        var request = PresenterMessage(type: command); request.setup = payload; request.reviewToken = reviewToken
+        guard ["setupPreview", "setupApply", "setupLaunch"].contains(command), !busy, mayActivate?() != false else { return request.reply(ok: false, error: "busy") }
+        guard let connection = profiles.first(where: { $0.value.id == profileID }), let peer = peers[connection.key] else { return request.reply(ok: false, error: "offline") }
+        guard setupCapabilities.contains(peer.id) else { return request.reply(ok: false, error: "setupUnsupported") }
+        let deadline = Date().addingTimeInterval(30); request.expiresAt = deadline.timeIntervalSince1970 * 1000
+        guard (try? PresenterWire.encode(request)) != nil else { return request.reply(ok: false, error: "invalid") }
+        return await withCheckedContinuation { continuation in
+            busy = true
+            setupPending = (request.id, peer.id, deadline, { continuation.resume(returning: $0) })
+            peer.send(request)
+            let id = request.id
+            setupTimer = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { return }; self?.finishSetup(id: id, error: "timeout")
+            }
+        }
+    }
+    private func finishSetup(id: UUID, error: String) {
+        guard let pending = setupPending, pending.id == id else { return }
+        setupPending = nil; setupTimer?.cancel(); setupTimer = nil; busy = false
+        pending.finish(PresenterMessage(id: id, type: "setupResult").reply(ok: false, error: error))
     }
     static func explanation(_ error: String?) -> String {
         switch error {

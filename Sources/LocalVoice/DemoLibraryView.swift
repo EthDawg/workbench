@@ -16,6 +16,7 @@ struct DemoLibraryView: View {
     @ObservedObject var model: AppModel
     @FocusState private var searching: Bool
     @State private var removal: DemoResource?
+    @State private var showingBrowserSetup = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -36,6 +37,11 @@ struct DemoLibraryView: View {
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
             ChromeConnectionView(presenter: model.presenter)
+            HStack {
+                Label("Bookmarks & profile setup", systemImage: "person.crop.rectangle.stack")
+                Spacer()
+                Button("Browser setup…") { showingBrowserSetup = true }
+            }.font(.callout)
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Ready when they ask.").font(.system(size: 30, weight: .semibold)).tracking(-0.8)
@@ -114,6 +120,7 @@ struct DemoLibraryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in focusSearchWhenReady() }
         .onDisappear { library.closePreview() }
+        .sheet(isPresented: $showingBrowserSetup) { BrowserSetupView(setup: model.browserSetup, presenter: model.presenter) }
         .sheet(item: $library.draft) { item in DemoResourceEditor(library: library, initial: item) }
         .sheet(isPresented: Binding(get: { library.importReview != nil }, set: { if !$0 { library.cancelImport() } })) {
             DemoLibraryImportView(library: library)

@@ -191,6 +191,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     let store = StateStore()
     let library = DemoLibraryModel()
     lazy var presenter = PresenterModel(library: library)
+    lazy var browserSetup = BrowserSetupModel(presenter: presenter)
     var onShowPresenter: (() -> Void)?
     let photoHandoff = PhotoHandoffModel(directory: Workbench.supportDirectory(component: "PhotoHandoff"), platform: "Mac")
     private var photoHandoffRefresh: Task<Void, Never>?

@@ -25,7 +25,7 @@ let package = Package(
         .target(name: "SceneSyncKit"),
         .testTarget(name: "SceneSyncKitTests", dependencies: ["SceneSyncKit"]),
         .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit"], linkerSettings: [.linkedFramework("Carbon")]),
-        .executableTarget(name: "LocalVoice", dependencies: ["StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon")])
+        .executableTarget(name: "LocalVoice", dependencies: ["StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/build-snap-and-talk-deck"), .copy("Resources/browser-setup")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon")])
     ],
     swiftLanguageModes: [.v5]
 )

@@ -384,6 +384,13 @@ func runCLI(_ args: [String]) async -> Int32 {
     do {
         let engine = RecognitionEngine()
         switch args.first {
+        case "--export-browser-setup":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --export-browser-setup NEW_FOLDER") }
+            try await MainActor.run { try BrowserSetupModel.writePack(.compound(), to: URL(fileURLWithPath: args[1])) }
+            print("BROWSER_SETUP_EXPORT_OK")
+        case "--render-browser-setup-fixture":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-browser-setup-fixture OUTPUT.png") }
+            try await MainActor.run { _ = NSApplication.shared; try PresenterChecks.renderBrowserSetup(to: URL(fileURLWithPath: args[1])) }
         case "--check-presenter":
             try await PresenterChecks.run()
         case "--check-core":
@@ -473,6 +480,12 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fi
     MainActor.assumeIsolated {
         let app = NSApplication.shared; app.setActivationPolicy(.regular)
         let delegate = PresenterFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
+        app.delegate = delegate; app.run()
+    }
+} else if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--browser-setup-fixture", CommandLine.arguments[2].hasPrefix("/tmp/wb-browser-setup-") {
+    MainActor.assumeIsolated {
+        let app = NSApplication.shared; app.setActivationPolicy(.regular)
+        let delegate = BrowserSetupFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
         app.delegate = delegate; app.run()
     }
 } else if CommandLine.arguments.count > 1, CommandLine.arguments[1].hasPrefix("--") {
