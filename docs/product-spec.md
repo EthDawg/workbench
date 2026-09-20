@@ -43,6 +43,8 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 
 Snap & Talk preserves completed narration while the next screenshot captures. Cancelling a rerecord (or discarding silence) restores the section's prior readiness and keeps its earlier audio, original transcript and edited text. Portable sessions accept only each section's own UUID folder under `items/` or `trash/`; malformed paths and symbolic links are rejected before edits or deletion.
 
+Snap & Talk's **Reorder…** action opens a compact list with screenshot thumbnails and narration previews. Drag a row to the native insertion line, or select a row and use **Move up** / **Move down**. Hovering and cancelled drags never reorder the session. **Save order** commits the complete order once; **Cancel** discards it. Only drags from the same list are accepted, and completed/cancelled drag tokens expire. Saving retains the latest section metadata, media and original/edited narration; changed section membership or another saved order requires reopening the list.
+
 Snap & Talk's **Hand off** menu is an explicit local bridge, not an agent platform or upload API. It copies a target-neutral task prompt that points to the session's bundled `SKILL.md`, reveals the folder in Finder and opens Claude, ChatGPT or Codex when installed. The user grants the chosen app folder access and pastes the prompt; Workbench neither uploads the screenshots nor submits the request.
 
 The mobile tile contains no Dictate, Read aloud, cleanup modes or model downloads. Presentation does not redefine a global voice shortcut. Reject new Mac microphone capture when the presentation is the intended input surface; an explicitly selected Mac text field remains a separate job.

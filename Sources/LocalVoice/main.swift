@@ -426,6 +426,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try InputChecks.run() }
         case "--check-readback":
             try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks()
+            try await MainActor.run { try ReadbackOrderingChecks.run() }
+        case "--check-readback-ordering-ui":
+            let output = args.count > 1 ? URL(fileURLWithPath: args[1]) : nil
+            try await MainActor.run { try ReadbackOrderingChecks.runNative(output: output) }
         case "--check-cleanup":
             try CleanupChecks.run()
             let result = await CleanupEngine().clean(CleanupChecks.example, style: .natural)

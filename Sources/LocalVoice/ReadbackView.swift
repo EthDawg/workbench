@@ -2,11 +2,10 @@ import AppKit
 import Combine
 import StageKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ReadbackView: View {
     @ObservedObject var model: ReadbackModel
-    @State private var draggingSection: UUID?
+    @State private var orderingSections = false
     @State private var confirmEmptyTrash = false
 
     var body: some View {
@@ -17,6 +16,9 @@ struct ReadbackView: View {
                 if model.sessionURL == nil { emptyState }
                 else { sessionEditor }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .sheet(isPresented: $orderingSections) {
+            if let root = model.sessionURL { ReadbackOrderingView(model: model, sessionURL: root) }
         }
         .confirmationDialog("Permanently delete every section in Recently Deleted?", isPresented: $confirmEmptyTrash) {
             Button("Empty Recently Deleted", role: .destructive) { model.emptyRecentlyDeleted() }
@@ -82,13 +84,11 @@ struct ReadbackView: View {
                     } else {
                         HStack {
                             Text("SECTIONS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                            Text("Drag to reorder").font(.caption).foregroundStyle(.tertiary)
                             Spacer()
                             Text("\(model.activeSections.count) slides").font(.caption.monospaced()).foregroundStyle(.secondary)
                         }
                         ForEach(Array(model.activeSections.enumerated()), id: \.element.id) { index, section in
                             sectionCard(section, number: index + 1)
-                                .onDrop(of: [UTType.text], delegate: ReadbackSectionDropDelegate(target: section.id, model: model, dragging: $draggingSection))
                         }
                     }
                     if !model.deletedSections.isEmpty { recentlyDeleted }
@@ -107,6 +107,9 @@ struct ReadbackView: View {
             if model.pendingTranscriptionCount > 0 {
                 Label("\(model.pendingTranscriptionCount) processing", systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
             }
+            Button { orderingSections = true } label: { Label("Reorder…", systemImage: "arrow.up.arrow.down") }
+                .disabled(model.activeSections.count < 2 || model.isRecording || model.isCapturing)
+                .help("Arrange sections in a compact list")
             Menu {
                 ForEach(ReadbackHandoffTarget.allCases) { target in
                     Button { model.handOff(to: target) } label: {
@@ -183,19 +186,6 @@ struct ReadbackView: View {
 
     private func sectionCard(_ section: ReadbackSection, number: Int) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            VStack(spacing: 5) {
-                Image(systemName: "line.3.horizontal").font(.system(size: 17, weight: .semibold))
-                Text("DRAG").font(.system(size: 8, weight: .bold)).tracking(0.6)
-            }.foregroundStyle(.secondary).frame(width: 36, height: 58)
-                .background(.quaternary.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Workbench.border))
-                .contentShape(Rectangle())
-                .onDrag {
-                    draggingSection = section.id
-                    return NSItemProvider(object: section.id.uuidString as NSString)
-                }
-                .help("Drag section \(number) to reorder")
-                .accessibilityLabel("Drag section \(number) to reorder")
             VStack(alignment: .leading, spacing: 7) {
                 ZStack(alignment: .topLeading) {
                     ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
@@ -277,7 +267,7 @@ struct ReadbackView: View {
     }
 }
 
-private struct ReadbackThumbnail: View {
+struct ReadbackThumbnail: View {
     let root: URL?
     let relative: String
     let revision: Date
@@ -290,17 +280,6 @@ private struct ReadbackThumbnail: View {
             }
         }.accessibilityLabel("Snap & Talk screenshot")
     }
-}
-
-private struct ReadbackSectionDropDelegate: DropDelegate {
-    let target: UUID
-    let model: ReadbackModel
-    @Binding var dragging: UUID?
-    func dropEntered(info: DropInfo) {
-        guard let dragging, dragging != target else { return }
-        model.moveSection(dragging, before: target)
-    }
-    func performDrop(info: DropInfo) -> Bool { dragging = nil; return true }
 }
 
 struct ReadbackHUDView: View {
