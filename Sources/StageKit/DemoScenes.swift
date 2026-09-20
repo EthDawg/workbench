@@ -112,7 +112,7 @@ enum SceneRenderer {
         return CGRect(x: left ? margin : size.width - margin - width,
                       y: top ? size.height - margin - height : margin, width: width, height: height)
     }
-    static func draw(_ scene: DemoScene, image: NSImage, size: CGSize, logoImage: NSImage? = nil, handImage: NSImage? = nil, personaImage: NSImage? = nil, drawsBackground: Bool = true) {
+    static func draw(_ scene: DemoScene, image: NSImage, size: CGSize, logoImage: NSImage? = nil, handImage: NSImage? = nil, personaImage: NSImage? = nil, drawsBackground: Bool = true, deviceImage: NSImage? = nil) {
         let bounds = CGRect(origin: .zero, size: size)
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: bounds).addClip()
@@ -139,6 +139,17 @@ enum SceneRenderer {
             NSGraphicsContext.restoreGraphicsState()
             NSColor.black.setFill()
             NSBezierPath(roundedRect: geometry.screen, xRadius: geometry.innerRadius, yRadius: geometry.innerRadius).fill()
+            if let deviceImage, deviceImage.size.width > 0, deviceImage.size.height > 0 {
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(roundedRect: geometry.screen, xRadius: geometry.innerRadius, yRadius: geometry.innerRadius).addClip()
+                // AVCaptureVideoPreviewLayer uses resizeAspect, not aspect fill.
+                let scale = min(geometry.screen.width / deviceImage.size.width, geometry.screen.height / deviceImage.size.height)
+                let fitted = CGSize(width: deviceImage.size.width * scale, height: deviceImage.size.height * scale)
+                let rect = CGRect(x: geometry.screen.midX - fitted.width / 2, y: geometry.screen.midY - fitted.height / 2,
+                                  width: fitted.width, height: fitted.height)
+                deviceImage.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+                NSGraphicsContext.restoreGraphicsState()
+            }
         }
         drawLogo(scene, size: size, image: logoImage)
         drawPersona(scene, size: size, image: personaImage)
@@ -160,13 +171,13 @@ enum SceneRenderer {
         image.draw(in: PersonaGeometry.rect(persona, imageSize: image.size, in: size),
                    from: .zero, operation: .sourceOver, fraction: 1)
     }
-    static func png(_ scene: DemoScene, image: NSImage, size: CGSize, logoImage: NSImage? = nil, handImage: NSImage? = nil, personaImage: NSImage? = nil) throws -> Data {
+    static func png(_ scene: DemoScene, image: NSImage, size: CGSize, logoImage: NSImage? = nil, handImage: NSImage? = nil, personaImage: NSImage? = nil, deviceImage: NSImage? = nil) throws -> Data {
         guard size.width >= 1, size.height >= 1, size.width <= 8192, size.height <= 8192,
               let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let context = NSGraphicsContext(bitmapImageRep: bitmap) else { throw SceneError.invalidImage }
         NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
-        draw(scene, image: image, size: size, logoImage: logoImage, handImage: handImage, personaImage: personaImage)
+        draw(scene, image: image, size: size, logoImage: logoImage, handImage: handImage, personaImage: personaImage, deviceImage: deviceImage)
         NSGraphicsContext.restoreGraphicsState()
         guard let data = bitmap.representation(using: .png, properties: [:]) else { throw SceneError.invalidImage }
         return data

@@ -23,7 +23,7 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         self.scene = scene; backdrop = image; self.logo = logo; self.hand = hand; self.persona = persona; self.screen = screen
         self.mode = mode; self.ambience = ambience
         capture = DemoCapture(root: root)
-        controls = PresentationControlsModel(root: root)
+        controls = PresentationControlsModel(root: root, showsDevice: scene.showsPhone)
         super.init()
     }
     func start() {
@@ -158,9 +158,11 @@ private final class PresentationControlsModel: ObservableObject {
     private var storageBlocked = false
     private var dragStart: CGRect?
     private var suppressClickUntil: TimeInterval = 0
-    var controlSize: CGSize { policy.isExpanded ? CGSize(width: 304, height: 192) : CGSize(width: 76, height: 40) }
+    private let showsDevice: Bool
+    var controlSize: CGSize { policy.isExpanded ? CGSize(width: 304, height: showsDevice ? 278 : 192) : CGSize(width: 76, height: 40) }
 
-    init(root: URL) {
+    init(root: URL, showsDevice: Bool) {
+        self.showsDevice = showsDevice
         url = root.appendingPathComponent("presentation-controls.json")
         do {
             archiveData = try PersonaStorage.read(url)
@@ -235,15 +237,11 @@ private struct DemoStageContent: View {
     @State private var motionPaused = false
     @State private var choosingSource = false
     @State private var pendingNativeApp: NativePresentationApp?
+    @State private var copyingSnapshot = false
+    @State private var snapshotNotice: String?
     @FocusState private var focusedControl: Control?
     private var liveScene: DemoScene {
-        var value = scene
-        if fitToSource, capture.dimensions.height > 0 {
-            var viewport = scene.viewport ?? .legacy
-            viewport.aspect = capture.dimensions.width / capture.dimensions.height
-            value.viewport = (try? viewport.validated()) ?? viewport
-        }
-        return value
+        DemoSnapshotRendering.scene(scene, matching: fitToSource ? capture.dimensions : nil)
     }
     private var sourceName: String {
         guard scene.showsPhone else { return "Saved scene" }
@@ -362,6 +360,9 @@ private struct DemoStageContent: View {
                         .help(motionPaused ? "Play background motion" : "Pause background motion")
                 }
             }.frame(height: 28)
+            if scene.showsPhone {
+                DemoSnapshotControls(canCopy: capture.live, copying: copyingSnapshot, notice: snapshotNotice) { copySnapshot(in: size) }
+            }
             Divider()
             HStack {
                 Menu("Position") {
@@ -381,6 +382,20 @@ private struct DemoStageContent: View {
             }.frame(height: 28)
         }.padding(12)
             .accessibilityElement(children: .contain).accessibilityLabel("Presentation controls")
+    }
+    private func copySnapshot(in size: CGSize) {
+        guard !copyingSnapshot else { return }
+        copyingSnapshot = true; snapshotNotice = nil
+        let copiedSource = sourceName
+        capture.copySceneSnapshot(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona,
+                                  canvas: size, matchDevice: fitToSource) { result in
+            copyingSnapshot = false
+            switch result {
+            case .success(let receivedAt):
+                snapshotNotice = "Copied PNG · \(copiedSource) · frame received \(receivedAt.formatted(date: .omitted, time: .standard)) · still backdrop"
+            case .failure(let error): snapshotNotice = error.localizedDescription
+            }
+        }
     }
     private func openSource() {
         controls.close()

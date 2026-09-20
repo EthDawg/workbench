@@ -67,8 +67,11 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private let deliveryLock = NSLock()
     private var pendingDelivery = false
     private var deliveryToken = -1
+    private let snapshots: DemoSnapshotStore
+    private var snapshotEpoch: UInt64 = 0
 
-    init(root: URL) {
+    init(root: URL, snapshots: DemoSnapshotStore = DemoSnapshotStore()) {
+        self.snapshots = snapshots
         preference = root.appendingPathComponent("demo-source.json")
         super.init()
         if let data = try? Data(contentsOf: preference), let id = try? JSONDecoder().decode(String.self, from: data) {
@@ -87,10 +90,17 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             discoveryObservation = discovery?.observe(\.devices, options: [.new]) { [weak self] _, _ in self?.refresh() }
             let center = NotificationCenter.default
             for name in [AVCaptureDevice.wasConnectedNotification, AVCaptureDevice.wasDisconnectedNotification] {
-                observers.append(center.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in self?.refresh() })
+                observers.append(center.addObserver(forName: name, object: nil, queue: nil) { [weak self] notification in
+                    if name == AVCaptureDevice.wasDisconnectedNotification,
+                       let device = notification.object as? AVCaptureDevice {
+                        self?.snapshots.invalidate(source: device.uniqueID)
+                    }
+                    self?.refresh()
+                })
             }
             observers.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: nil, queue: nil) { [weak self] notification in
                 guard let failed = notification.object as? AVCaptureSession else { return }
+                self?.snapshots.invalidate(session: ObjectIdentifier(failed))
                 self?.queue.async { [weak self] in
                     guard let self, enabled, session === failed else { return }
                     stopSession(); publish("The device feed was interrupted. Reconnecting to your selected device…")
@@ -107,6 +117,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
     func refresh() { queue.async { [weak self] in self?.discover() } }
     func select(_ id: String) {
+        snapshots.invalidate()
         queue.async { [weak self] in
             guard let self, enabled else { return }
             retryAfter = .distantPast; retryDelay = 2
@@ -117,6 +128,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
     }
     func reconnect() {
+        snapshots.invalidate()
         queue.async { [weak self] in
             guard let self, enabled else { return }
             retryAfter = .distantPast; retryDelay = 2
@@ -126,6 +138,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     /// Completion runs on main only after this capture queue has released its
     /// session and recovery observers. A native fallback must wait for it.
     func stop(completion: (() -> Void)? = nil) {
+        snapshots.invalidate()
         // Replace the former live label during the short full-screen exit.
         publish("Ending demo…")
         queue.async { [self] in
@@ -196,6 +209,9 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             let ports = input.ports.filter { $0.mediaType == .video }
             guard !ports.isEmpty else { throw CaptureError.unavailable }
             let videoConnection = AVCaptureConnection(inputPorts: ports, output: output)
+            if videoConnection.isVideoMirroringSupported {
+                videoConnection.automaticallyAdjustsVideoMirroring = false; videoConnection.isVideoMirrored = false
+            }
             guard newSession.canAddConnection(videoConnection) else { throw CaptureError.unavailable }
             newSession.addConnection(videoConnection)
             previewLayer.setSessionWithNoConnection(newSession)
@@ -208,6 +224,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             // Explicit video-only wiring avoids connecting a muxed device
             // microphone as an accidental side effect of auto-connection.
             session = newSession; activeID = id; activeToken = recovery.generation
+            snapshotEpoch = snapshots.activate(source: id, session: ObjectIdentifier(newSession))
             deliveryLock.lock(); deliveryToken = activeToken; deliveryLock.unlock()
             lastFrame = .distantPast; startedAt = Date()
             newSession.startRunning()
@@ -218,6 +235,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         // Automatic error/disconnect recovery can reopen the same device without
         // another selection. Its new session must never reuse an old frame token.
         recovery.invalidateSession()
+        snapshots.invalidate()
         deliveryLock.lock(); deliveryToken = -1; deliveryLock.unlock()
         session?.stopRunning(); previewLayer.session = nil; session = nil; activeID = nil
         DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero }
@@ -234,9 +252,10 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         guard enabled, let id = activeID, recovery.accepts(activeToken, source: id),
               session?.outputs.contains(where: { $0 === output }) == true else { return }
         lastFrame = Date(); retryDelay = 2
+        snapshots.receive(sampleBuffer, epoch: snapshotEpoch, source: id, receivedAt: lastFrame)
         guard lastFrame.timeIntervalSince(lastPublish) >= 0.2,
               let description = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
-        let size = CMVideoFormatDescriptionGetDimensions(description)
+        let size = CMVideoFormatDescriptionGetPresentationDimensions(description, usePixelAspectRatio: true, useCleanAperture: true)
         deliveryLock.lock()
         if pendingDelivery { deliveryLock.unlock(); return }
         pendingDelivery = true; deliveryLock.unlock()
@@ -249,9 +268,36 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             // selected identity also gates any already-enqueued old frame.
             deliveryLock.lock(); let valid = deliveryToken == token; deliveryLock.unlock()
             guard valid, selectedID == id else { return }
-            let nextSize = CGSize(width: Int(size.width), height: Int(size.height))
+            let nextSize = size
             if dimensions != nextSize { dimensions = nextSize }
             if !live { live = true; message = "Live device screen" }
+        }
+    }
+    /// Freezes only this scene's assets and one current video sample. No window
+    /// capture, audio, controls, independent overlays or file writes are involved.
+    func copySceneSnapshot(scene: DemoScene, backdrop: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage?,
+                           canvas: CGSize, matchDevice: Bool, completion: @escaping (Result<Date, Error>) -> Void) {
+        let requestedEpoch = snapshots.currentEpoch
+        queue.async { [self] in
+            do {
+                guard enabled, scene.showsPhone, let id = activeID,
+                      recovery.accepts(activeToken, source: id), let device = devices[id], device.isConnected,
+                      let session, session.isRunning else { throw DemoSnapshotError.unavailable }
+                let frame = try snapshots.frame(expectedEpoch: requestedEpoch)
+                let deviceImage = try DemoSnapshotRendering.deviceImage(frame.sample)
+                DispatchQueue.main.async { [self] in
+                    do {
+                        let image = NSImage(cgImage: deviceImage.pixels, size: deviceImage.displaySize)
+                        let frozen = DemoSnapshotRendering.scene(scene, matching: matchDevice ? deviceImage.displaySize : nil)
+                        let data = try SceneRenderer.png(frozen, image: backdrop,
+                            size: DemoSnapshotRendering.canvasSize(canvas), logoImage: logo, handImage: hand,
+                            personaImage: persona, deviceImage: image)
+                        try snapshots.commit(frame, connected: { device.isConnected && session.isRunning },
+                                             write: { DemoSnapshotRendering.writePNG(data) })
+                        completion(.success(frame.receivedAt))
+                    } catch { completion(.failure(error)) }
+                }
+            } catch { DispatchQueue.main.async { completion(.failure(error)) } }
         }
     }
     private enum CaptureError: Error { case unavailable }

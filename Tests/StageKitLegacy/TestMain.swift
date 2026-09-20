@@ -4,6 +4,29 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args.count == 2, args[0] == "--snapshot-evidence" {
+            _ = NSApplication.shared
+            do { try DemoSnapshotTests().writeEvidence(to: URL(fileURLWithPath: args[1], isDirectory: true)) }
+            catch { print("Snapshot evidence failed: \(error)"); exit(1) }
+            return
+        }
+        if args == ["--snapshots-only"] {
+            _ = NSApplication.shared
+            let suite = DemoSnapshotTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("snapshot freshness and latest frame replacement", suite.testFreshnessAndReplacement),
+                ("snapshot lifecycle and clipboard refusal", suite.testLifecycleAndClipboardFailures),
+                ("snapshot real sample conversion and compositing", suite.testDeviceConversionAndSceneComposite),
+                ("snapshot canvas bounds and aspect", suite.testCanvasBounds)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-session-fixture"] || Bundle.main.bundleIdentifier == "app.workbench.overlay-review" {
             _ = NSApplication.shared
             PersonaSessionFixture().run()
@@ -84,6 +107,7 @@ struct TestRunner {
         let scenes = SceneTests()
         let assets = SceneAssetTests()
         let demo = DemoModeTests()
+        let snapshots = DemoSnapshotTests()
         let phonePresentation = PhonePresentationTests()
         let desktopMotion = DesktopMotionTests()
         let gentleMotion = GentleMotionTests()
@@ -183,6 +207,10 @@ struct TestRunner {
             ("viewport geometry and saved device profiles", demo.testViewportGeometryAndProfiles),
             ("independent Space recovery and manual changes", demo.testIndependentSpaceRecoveryAndManualChanges),
             ("capture source identity and stale frames", demo.testCaptureSourceIdentityAndStaleFrames),
+            ("snapshot freshness and latest frame replacement", snapshots.testFreshnessAndReplacement),
+            ("snapshot lifecycle and clipboard refusal", snapshots.testLifecycleAndClipboardFailures),
+            ("snapshot real sample conversion and compositing", snapshots.testDeviceConversionAndSceneComposite),
+            ("snapshot canvas bounds and aspect", snapshots.testCanvasBounds),
             ("presentation controls intentional reveal and retention", demo.testPresentationControlsRevealAndRetention),
             ("hand transparency persistence and no stretching", demo.testHandTransparencyPersistenceAndNoStretch),
             ("saved logo adoption reuse and removal", demo.testLogoLibraryMigrationReuseAndRemoval),

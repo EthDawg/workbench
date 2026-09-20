@@ -45,6 +45,14 @@ Snap & Talk's **Hand off** menu is an explicit local bridge, not an agent platfo
 
 The mobile tile contains no Dictate, Read aloud, cleanup modes or model downloads. Presentation does not redefine a global voice shortcut. Reject new Mac microphone capture when the presentation is the intended input surface; an explicitly selected Mac text field remains a separate job.
 
+## Copy a device scene snapshot
+
+During a live device presentation, expand the controls and choose **Copy scene snapshot**. The result is a PNG containing one fresh device frame, the frozen scene's still backdrop/crop, bezel, hand, logo and placed persona. It matches the current presentation canvas ratio and **Match device proportions** setting; a fixed device shape letterboxes the video rather than stretching it. The longest exported edge is at most 3840 pixels.
+
+This is a composition export, not a screenshot of the Mac. Controls, independent overlay windows and other apps are excluded. Animated backgrounds use their static poster, as in other scene PNG exports. No recording, audio, automatic upload, phone input or scene-file modification is added. The ordinary preparation PNG continues to show an empty device frame.
+
+Only one latest video sample is retained. Copy must belong to the same capture generation from the click through clipboard delivery, and its sample must have arrived within the preceding second at delivery. End, Reconnect, source reselection (including the same device) and automatic teardown invalidate pending copies. A disconnected device, old sample or clipboard refusal reports failure instead of success. The receipt identifies the source and the frame's Mac arrival time, not a claimed device exposure timestamp. Physical USB orientation, disconnect/reconnect and pasted output require separate acceptance from synthetic renderer tests.
+
 ## Dictation states
 
 1. Idle: setup in the app/menu. No compulsory idle capsule.

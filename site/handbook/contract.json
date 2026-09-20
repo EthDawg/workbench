@@ -48,6 +48,16 @@
       "evidence": "Six phone regressions passed with 45 assertions. Integrated StageKit passed 121 tests / 2,601 assertions. Actual native guide inspection covered all jobs/routes, scroll reset, Escape/Done and dismissal before a fake fallback launch. Physical device and receiver checks remain separate."
     },
     {
+      "id": "device-scene-snapshot",
+      "name": "Copy one fresh device scene snapshot",
+      "status": "implemented",
+      "entry": "Live device presentation → expand controls → Copy scene snapshot",
+      "effect": "Copy a PNG with one fresh device frame, the frozen scene's crop, still background, hand, logo and persona. Match the current canvas ratio and device-proportion setting. Receipt identifies the source and Mac frame-arrival time.",
+      "limit": "Static background/poster, at most 3840 pixels on the longest edge; no controls, independent overlay windows, audio, recording, upload or phone input. Reject samples older than one second at delivery and invalidated/disconnected feeds. Source contribution, not public-release or physical-device acceptance.",
+      "source": "Sources/StageKit/DemoSnapshot.swift",
+      "evidence": "Synthetic sample conversion, compositing, freshness, generation and clipboard-failure checks are in Tests/StageKitLegacy/DemoSnapshotTests.swift. Native and physical-device evidence are recorded separately; validation of this contribution is in progress."
+    },
+    {
       "id": "desktop-still",
       "name": "Apply a scene as a desktop picture",
       "status": "implemented",
@@ -195,6 +205,12 @@
     }
   ],
   "acceptance": [
+    {
+      "id": "device-snapshot-physical",
+      "test": "With a physical iPhone and iPad, copy portrait and landscape frames into a receiving app. Verify clean aperture, orientation, letterboxing, crop, logo and persona. Disconnect, stall, reconnect, reselect the same device and End during a copy; no invalidated frame may reach the clipboard. Check native keyboard access, error recovery and minimum-window controls. Synthetic renderer output alone does not pass this check.",
+      "status": "not-run",
+      "capabilities": ["device-scene-snapshot", "scene-session"]
+    },
     {
       "id": "presentation-snapshot",
       "test": "At da4f0f4, start a windowed synthetic still in the native Mac host, change the saved name/backdrop and remove the placed persona, then revisit the running presentation. It stayed unchanged; End/restart adopted the saved changes. Device capture and cloud were off. Live video, incoming sync, fullscreen and receiving-participant behavior remain unverified.",
