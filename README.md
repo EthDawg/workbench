@@ -32,6 +32,10 @@ An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a se
 
 The core app requires no account or subscription. Built-in Parakeet recognition and Mac reading work locally after their initial setup. Optional integrations have their own setup and privacy boundaries.
 
+## Current integration candidate
+
+The [September contribution Preview checklist](docs/releases/2026-09-20-integration-preview.md) explains what changed and what to test. This source includes pending release work; it does not change the public Preview 3 download.
+
 ## First use
 
 1. Open **Workbench Preview** and choose an action from Home. **Models** prepares the default Parakeet recognizer; its first download can take several minutes.
