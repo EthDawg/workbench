@@ -113,6 +113,7 @@ struct DemoLibraryView: View {
             if let window = notification.object as? NSWindow, window === NSApp.keyWindow { focusSearchWhenReady() }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in focusSearchWhenReady() }
+        .onDisappear { library.closePreview() }
         .sheet(item: $library.draft) { item in DemoResourceEditor(library: library, initial: item) }
         .confirmationDialog("Remove this resource from the library?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
             Button("Remove resource", role: .destructive) { if let item = removal { library.remove(item) }; removal = nil }
@@ -180,9 +181,13 @@ struct DemoLibraryView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     primaryActionButton(item)
+                    Button("Quick Look") { library.preview(item) }
+                        .disabled(!item.canPreviewFile)
+                        .accessibilityHint("Previews the original file without modifying or copying it.")
                     Button("Show in Finder") { library.open(item, reveal: true) }.disabled(!item.fileAvailable)
                 }
                 if item.fileAvailable && !item.canOpenFile { Text("Applications and executable files are available in Finder only.").font(.caption).foregroundStyle(.secondary) }
+                else if item.fileAvailable && !item.canPreviewFile { Text("This file type opens in its usual app but is not available for Quick Look here.").font(.caption).foregroundStyle(.secondary) }
                 Button("Locate file…") { library.chooseFile(for: item) }.disabled(library.savingDisabled)
             } else {
                 if let target = item.browserTarget {

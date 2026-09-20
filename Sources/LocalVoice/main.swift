@@ -344,6 +344,12 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
         case "--check-reading-cancellation":
             try await AudioRendererCancellationChecks.run()
+        case "--check-library":
+            try DemoLibraryChecks.run()
+            try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
+        case "--check-quick-look-panel":
+            let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
+            try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
         case "--check-refinement":
@@ -383,7 +389,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine.transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-reading-cancellation | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
