@@ -18,6 +18,8 @@ Dictation, reading, annotation and wallpaper remain useful independent jobs. A p
 
 The proposed reason to choose Workbench is a shorter, more reliable path to an understood explanation and an accepted follow-up artifact. Screenshot controls, semantic filenames and agent integration already exist elsewhere. Demonstrate the benefit against ordinary screenshots plus notes and a short recording.
 
+The [handoff and skills review](research/handoff-and-skills.md) makes that opportunity concrete: finish the faithful-deck journey, resolve evidence access, then trial a review/implementation brief before adding more modes. A reusable recipe carries quality rules; selected evidence carries the author's intent; the receiving host supplies tools and access. [Android-on-Mac options](phone-presenting.md#android-on-a-mac-options-and-trade-offs) offer a useful external capture route before embedded mirroring.
+
 ## Connect existing primitives
 
 ```mermaid

@@ -54,6 +54,8 @@ Only then consider title/tag suggestions from narration or OCR. Keep suggestions
 
 Bounded implementation proposal: [#63](https://github.com/EthDawg/workbench/issues/63). Selected context is separately scoped in [#64](https://github.com/EthDawg/workbench/issues/64).
 
+The [handoff and skills deep dive](handoff-and-skills.md) audits current source after #62, ranks useful recipes, separates evidence/recipe/host responsibilities, and defines host trials and return checks. It keeps #63 bounded and records when selected packaging, installed skills or live tools would earn further work. The [Android route comparison](../phone-presenting.md#android-on-a-mac-options-and-trade-offs) covers USB/wireless scrcpy, native files and emulator alternatives without claiming an embedded Workbench source.
+
 The [bundled deck recipe](../../Sources/LocalVoice/Resources/build-snap-and-talk-deck/SKILL.md) defines eligible sections, order, complete screenshot fit, faithful visible copy and verbatim edited narration in notes. Preserve originals, authored corrections and generated slide copy as separate layers.
 
 Verified gaps:

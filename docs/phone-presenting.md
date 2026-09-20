@@ -17,6 +17,33 @@ The three priorities were **route clarity and safe handoff**, an evidence-based 
 
 **Ecosystem addendum · 20 September 2026:** Android-to-Mac display/control is available through the separate [scrcpy project](https://github.com/Genymobile/scrcpy), subject to its device/debugging prerequisites and workplace policy. Workbench currently has no scrcpy/adb adapter or embedded external-window source. Start with an approved scrcpy window and native screenshot/meeting share; record phone audio and receiver behaviour separately. The [ecosystem review](research/product-direction-2026-09.md#ecosystem-service-areas-and-boundaries) distinguishes this route, Windows remote content and a future Windows port. This is researched feasibility, not a newly implemented or hardware-verified Workbench capability.
 
+## Android on a Mac: options and trade-offs
+
+Reviewed 20 September 2026 from official documentation, without installing tools or testing a device. **Start with a separate scrcpy window over USB when live control matters; use ordinary phone screenshots when it does not.** Workbench does not need embedded Android support to explore either useful workflow.
+
+| Approach | Useful for | Setup and trade-off |
+| --- | --- | --- |
+| USB scrcpy | Showing and controlling a real Android app from a Mac | Android 5+, USB debugging, a suitable cable and the phone's ADB authorization. No root or permanently installed phone app. Use `--no-control` when only display is wanted. USB keeps network pairing out of the first trial. |
+| Wireless scrcpy | Moving around without the cable after the workflow is proven | TCP/IP connection; `--tcpip` can configure it after USB connection. Android 11+ wireless debugging also supports pairing without initial USB. Network/pairing/firewall conditions add failure paths. |
+| Native screenshot → selected file transfer | Occasional screens and explanations | Capture on the phone and transfer chosen files through an existing approved route. No continuous connection or remote control; manual transfer is the cost. |
+| Android Studio emulator | Repeatable demonstrations/tests of an app available to run in the emulator | Requires a configured virtual device and runnable app. It does not reproduce a customer's actual hardware, installed apps, accounts or managed environment. |
+
+Sources: [scrcpy requirements](https://github.com/Genymobile/scrcpy), [macOS installation](https://github.com/Genymobile/scrcpy/blob/master/doc/macos.md), [display-only control](https://github.com/Genymobile/scrcpy/blob/master/doc/control.md#read-only), [connection options](https://github.com/Genymobile/scrcpy/blob/master/doc/connection.md#tcpip-wireless), [Android debugging authorization and wireless pairing](https://developer.android.com/tools/adb), [native capture](https://support.google.com/android/answer/9075928?hl=en), [emulator](https://developer.android.com/studio/run/emulator).
+
+Keep the capture paths distinct:
+
+- **Available whole-display path:** put scrcpy visibly on the display under the pointer, then use Snap & Talk's existing display capture and narration. Check the resulting image: this captures surrounding desktop material too. A calm background and sufficiently large phone window can leave space for annotation, but do not assume separate floating ink is captured by every window-sharing route.
+- **Clean device-image path:** take a phone screenshot or, with already authorised ADB, use [its screenshot command](https://developer.android.com/tools/adb#screencap) to save a PNG on the Mac. [#60](https://github.com/EthDawg/workbench/issues/60) owns the proposed Add images flow; it is not yet a shipped Snap & Talk import capability at this review's source baseline. No external scrcpy window can currently become a Workbench live scene source.
+- **Sequence/video path:** [scrcpy recording](https://github.com/Genymobile/scrcpy/blob/master/doc/recording.md) can save a file directly, including a video-only recording with `--no-audio`. That is not a supported Snap & Talk video-import promise. Choose stills for the first handoff experiment.
+
+Phone audio needs its own decision. [scrcpy audio](https://github.com/Genymobile/scrcpy/blob/master/doc/audio.md) requires Android 11+; Android 11 must be unlocked at startup. Default output forwarding and microphone capture are different sources. Android 13+ duplication can retain playback on the phone, subject to app restrictions. None establishes that a Mac meeting will carry the presenter, phone reply and participants correctly. The documented [V4L2 virtual-camera path](https://github.com/Genymobile/scrcpy/blob/master/doc/v4l2.md) is Linux-only, not a macOS camera adapter.
+
+Protected or managed content may be unavailable. Android's [secure-window flag](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SECURE) prevents screenshots/nonsecure display, and policy can restrict capture or debugging. Report the limitation and choose permitted content; do not design a bypass.
+
+**First proof:** use a consenting/owned test phone and ordinary synthetic app content. Capture three screens over USB, narrate their meaning, and produce the checked result through the [handoff trial](research/handoff-and-skills.md#prove-value-before-adding-modes-or-model-spend). Record Mac/Android/scrcpy versions, setup steps, image readability and recovery after one disconnect. If presenting to others, verify one receiver separately under [#29](https://github.com/EthDawg/workbench/issues/29). Documentation establishes feasibility; only the trial establishes this setup works.
+
+Embedding earns consideration only if repeated use shows meaningful device-selection, reconnection or capture/import friction. Try a launch/capture/import Shortcut or narrow action first. An embedded viewer would also take on ADB packaging/versioning, device authorization, process cleanup, disconnect handling, audio ownership and distribution review. Preserve the external-window option even if an adapter is later justified.
+
 ## Before, during, after
 
 **Before:** Present a device → Connection & audio… opens without starting capture or prompting for permissions. Choose Show a phone, Voice conversation or Control from Mac. Select a route to see steps, limitations and official instructions. Preparation should happen before screen sharing; this guide is an ordinary visible window.
