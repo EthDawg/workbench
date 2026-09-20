@@ -2,6 +2,8 @@
 
 Native **iOS/iPadOS 26+ Preview**, not a published App Store or TestFlight release. This document owns mobile scope, build instructions and platform limits. The [personal-scenes contract](research/personal-scenes.md) owns the shared scene architecture and preservation rules; the [public scene evidence](https://workbench-mac.vercel.app/scenes/#evidence) is the current cross-device acceptance view. The Mac remains a separate native target. GitHub issues remain the contribution queue.
 
+[Snap & Talk mobile research](research/snap-and-talk-mobile.md) proposes selected screenshot intake, optional context and portable agent handoff. It begins with Mac image import and existing transfer tools. A mobile Snap & Talk receiver and team-capture reuse remain proposed, not capabilities of this Preview.
+
 ## The useful mobile baseline
 
 **Tools** opens Dictate, Read aloud, Mark up, Scenes and Wallpapers; **Saved** returns to your work. Dictation has first emphasis. iPad uses the same jobs with adaptive layouts and native Pencil tools. Scenes replaces the primary Backdrops and Take a photo for Mac entries; it does not absorb voice, reading, annotation or wallpaper.

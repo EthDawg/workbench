@@ -20,6 +20,8 @@ The separate native **iOS/iPadOS 26+ Preview** carries these useful jobs into ph
 
 The explicit Screenshot action hands existing annotations to Apple Screenshot; it hides Workbench controls during capture and preserves the marks afterward. A standalone screenshot editor and Share extensions remain possible later improvements. Snap & Talk uses deliberate whole-display captures for a named narrated session; it is not a general capture editor. The bounded macOS Service accepts an explicit text selection into Read aloud; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
+[Snap & Talk mobile research](research/snap-and-talk-mobile.md) proposes bringing existing images into that session format, then testing capture with a short explanation on mobile and reuse of selected team contributions. It is a future direction with a bounded first implementation brief, not a current image-import, Share extension or team-library promise.
+
 ## One app, several ways in
 
 **Switch to** extends Saved resources through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. This development increment is separate from the public Preview 3 binary. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
