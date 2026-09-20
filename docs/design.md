@@ -81,7 +81,7 @@ Saved resources keep references to original local files. Their explicit Quick Lo
 
 There is no fallback from one provider to another. Add an explicit `RecognitionProvider` case and engine dispatch when a new runtime has a clear setup, input, cancellation and availability contract. Do not duplicate recording, history, hotkeys or cleanup inside the adapter. [Provider documentation](model-providers.md) defines limits and tests.
 
-Reading remains separate from recognition. Mac voices use `/usr/bin/say` with an argument array and a temporary UTF-8 input file, `AVAudioPlayer` for playback and `/usr/bin/afconvert` for M4A export. User text is not interpolated into shell commands. Optional Speko reading uses an explicit Keychain-backed key and sends submitted text online; it is not a transcription provider. New reading backends should preserve the same playback/export and explicit-consent boundaries.
+Reading remains separate from recognition. Mac voices use `/usr/bin/say` with an argument array and a temporary UTF-8 input file, `AVAudioPlayer` for playback and `/usr/bin/afconvert` for M4A export. User text is not interpolated into shell commands. Optional Speko reading uses an explicit Keychain-backed key and sends submitted text online. Its voice catalogue is fetched without reading text; Automatic keeps balanced routing, while a selected catalogue entry pins the provider/model/voice tuple Speko marks as compatible. This TTS adapter is not a transcription provider. New reading or recognition backends should preserve their separate playback/capture and explicit-consent boundaries.
 
 Cleanup offers Original, deterministic Light, and optional Natural editing through Apple FoundationModels where available. Natural candidates are checked for ordered factual tokens, numbers and negation; rejected/unavailable edits fall back to Light. These guards reduce specific risks, not prove equivalent meaning. The unedited text stays available.
 
@@ -124,6 +124,8 @@ This is one-time migration, not ongoing synchronization or a rollback of user da
 ## Verification and release boundaries
 
 `bash scripts/test.sh` composes release-tool regressions, voice/core/library/cleanup/integration/keyboard checks, provider checks and the StageKit harness. `scripts/test-stage.sh --ci` compiles the StageKit tests separately. Provider transport checks exercise a synthetic loopback server; they do not establish transcription quality or compatibility of a real model server.
+
+Speko voice catalogue loading bounds each streamed response to 2 MiB, the complete result to 1,000 voices and each refresh to 20 requests, including empty pages with fresh cursors. Redirects are refused, and cancellation or rejection cancels the owned session. `scripts/test-speko-catalog.py` checks the actual catalogue transport with intercepted synthetic responses, including a body that exceeds its limit without reaching EOF and endlessly paginated empty results. It does not use a real key or establish live provider availability.
 
 `--self-test` uses synthetic Mac speech, the selected recognizer and an M4A round-trip. `--check-input` covers global registration and release behaviour. Live keyboard practice, microphone permission/cancellation, exact-field paste, window focus, physical-device connection, meeting sharing and signed-package migration need their own runtime evidence.
 

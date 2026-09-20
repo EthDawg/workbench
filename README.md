@@ -22,7 +22,7 @@ An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a se
 | Capability | What it does |
 | --- | --- |
 | **Dictate** | Record speech or import audio; keep original and cleaned text, a dictionary and recent transcripts; copy or optionally paste into the original field. |
-| **Read aloud** | Listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key. |
+| **Read aloud** | Listen with installed Mac voices and export M4A. Speko is an explicit online option using your own key, with automatic routing or a chosen compatible voice. |
 | **Snap & Talk** | Capture the display under the pointer, record linked narration, and keep an ordered portable session for slide generation. |
 | **Annotate** | Draw, highlight, add shapes/text, emphasise the pointer and use saved boards over a live presentation. |
 | **Present a device** | Prepare a scene with a background, logo and persona, display a supported USB video source, and use a break timer that remembers where you placed it. QuickTime and iPhone Mirroring can be opened separately. |
@@ -60,7 +60,7 @@ Keyboard recording and practice temporarily suspend Workbench's global shortcuts
 | **Parakeet on this Mac** | Default English recognizer, using FluidAudio and a downloaded Core ML model | On-device inference; no server or API key. |
 | **Local model server** | You run a compatible server and supply its full transcription URL and model ID | Loopback addresses only. Workbench does not install the server or bundle a Whisper model. The server may itself forward audio; inspect its configuration. |
 | **Mac voices** | Installed macOS reading voices, with pace control | Local text-to-speech and audio export. |
-| **Speko** | Optional personal account and Keychain-stored API key | Explicit readings send text online and may be billed. |
+| **Speko TTS** | Optional personal account and Keychain-stored API key | Browse compatible English voices, keep balanced automatic routing or pin a voice; explicit readings send text online and may be billed. Speko STT is not a Workbench recognition choice yet. |
 
 Model settings apply to the next request; the active request keeps its original provider. There is no automatic cloud fallback. A valid local-server configuration is not a successful connectivity or model test—the first real transcription checks those. See [model setup and limits](docs/model-providers.md).
 
