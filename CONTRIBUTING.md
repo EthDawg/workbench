@@ -113,6 +113,8 @@ Keep one clear purpose per PR. Follow surrounding Swift style and avoid unrelate
 
 For a larger proposal, leave a short breadcrumb in its issue: the user's job and workaround, evidence, smallest useful change, input/output and existing state owner, acceptance and known limits, and why wider work can wait. Link the relevant decision instead of repeating a research report. Include model calls, correction effort or maintenance costs when they affect the choice. A typo or straightforward fix does not need this ceremony.
 
+For a visual interaction proposal, a relevant image and source link can make the idea easier to review. Explain what the image demonstrates, how it would help Workbench and what needs testing; label competitor references, concepts and actual app evidence. See the [compact-controls examples](docs/research/compact-controls-2026-09.md).
+
 ```sh
 git add path/to/changed-file
 git commit -m "Describe the user-visible improvement"

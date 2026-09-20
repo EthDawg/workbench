@@ -26,6 +26,8 @@ Primary pages checked 20 September 2026. The final column is our interpretation,
 
 A floating menu matters when it prevents a lost place: start the next action, stop the current one, return to software input, or move the result onward. [#56](https://github.com/EthDawg/workbench/issues/56) and active [PR #62](https://github.com/EthDawg/workbench/pull/62) own this implementation. Test closed/idle/recording states, keyboard recovery, placement and audience visibility before another menu redesign.
 
+The [illustrated compact-controls review](compact-controls-2026-09.md) pairs five supplied Superwhisper/Wispr Flow reference crops with official links, observable details and specific Workbench adaptations: shortcuts beside actions, selected versus highlighted state, explicit expansion and useful completion actions. It records the limits of static screenshots and keeps the work with those existing owners.
+
 ## Context should follow the material
 
 Avoid collapsing these distinct concepts:
