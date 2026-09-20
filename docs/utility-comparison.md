@@ -1,5 +1,7 @@
 # The next useful step in each utility
 
+**Status note · 20 September 2026:** the rankings below preserve the earlier category review; several proposals now have implementations described later in this file. Use [current product direction](commodity-strategy.md), its [research and reconciliation](research/product-direction-2026-09.md), and live issues before choosing new work. Remaining acceptance is not a request to rebuild an implemented feature.
+
 Review date: 13 September 2026. Scope: the existing Workbench categories, not new product lines. The ranking is a product judgment based on source review and documented workflows; it is not a user survey or a feature-parity claim.
 
 ## What was compared

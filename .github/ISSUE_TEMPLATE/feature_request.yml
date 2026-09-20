@@ -13,7 +13,7 @@ body:
     id: change
     attributes:
       label: What would a small first improvement look like?
-      description: Include a concrete example. Alternatives are welcome.
+      description: Include a concrete example, the simplest alternative, and how someone could tell the improvement worked. Link relevant research or an existing issue if available.
     validations:
       required: true
   - type: dropdown

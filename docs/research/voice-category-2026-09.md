@@ -1,5 +1,7 @@
 # Voice to text: where Workbench should compete
 
+**Status note · 20 September 2026:** the leading Mac recovery proposal below is now implemented; see [the 15 September verification](../verification/2026-09-15-recent-journeys.md). This is a dated research record, not the current queue or release status. The [project-wide direction](../commodity-strategy.md) and [model evaluation issue #24](https://github.com/EthDawg/workbench/issues/24) guide subsequent investment. Later [release records](../releases/2026-09-20-preview-4.md) supersede the historical submission/distribution statements below.
+
 Research and proposals, **14 September 2026**. Current source reviewed at `363abbce32183e082543b08e398547ac233d53b0`. These recommendations are not implemented features or release evidence. Apple sign-in, submission declarations and physical-phone acceptance remain paused.
 
 **Proposed next implementation: recover unfinished Mac dictation after an app restart, and require a successful save before removing its recording.** This closes a concrete reliability gap in the current source. It is a prerequisite for a dependable utility, rather than a novel competitive moat. The smallest subsequent mobile improvement is **Remember correction** in transcript review.

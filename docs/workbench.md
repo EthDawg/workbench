@@ -88,7 +88,7 @@ The short implementation map is [design.md](design.md). The earlier suite model 
 
 ## Improving the commodity utility
 
-The [category comparison](utility-comparison.md) ranks three useful steps per existing job. The [architecture decision](commodity-strategy.md) records stable jobs, replaceable engines and storage boundaries. Use the [model evaluation template](model-evaluation.md) before changing a default engine. GitHub issues remain the canonical contribution queue.
+The [product direction](commodity-strategy.md) connects preparation, explanation and handoff while preserving independent utility jobs and existing state owners. Its [supporting review](research/product-direction-2026-09.md) records current category research, staged experiments and issue reconciliation; the [earlier comparison](utility-comparison.md) retains implementation history. Use the [model evaluation template](model-evaluation.md) before changing a default engine. GitHub issues remain the canonical contribution queue.
 
 Scene preparation and persistent wallpaper are distinct, independently useful jobs. The user may adopt either without the other. Share original pictures by choice, with separate crop, layout and playback state. A direct Wallpaper entry is an accepted direction to prototype; current Preview still routes desktop apply through a rendered scene. Home placement remains a usability decision, not a reason to force both jobs into a common mode selector.
 

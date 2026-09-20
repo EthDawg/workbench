@@ -16,6 +16,8 @@ Repository collaborators can push their own feature branches after accepting the
 
 ## Choose a first step
 
+Read [product direction](docs/commodity-strategy.md) for the outcomes being tested and [the supporting review](docs/research/product-direction-2026-09.md) for evidence and alternatives. These explain priorities; the live issues remain the work queue. Check current source before implementing an older proposal.
+
 1. Check the [open issues](https://github.com/EthDawg/workbench/issues). An unassigned [good first issue](https://github.com/EthDawg/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
 2. A typo or clear, small fix can go directly to a PR. Discuss a larger feature in an issue or [Discussions](https://github.com/EthDawg/workbench/discussions) first. Agree the smallest useful outcome and who is working on it.
 3. Ask for help on the issue when stuck. Incomplete attempts and draft PRs are welcome. Coordinate before replacing work another contributor has offered to do.
@@ -108,6 +110,8 @@ For mobile behaviour, update [the mobile contract and evidence](docs/ios-preview
 ## Send your change
 
 Keep one clear purpose per PR. Follow surrounding Swift style and avoid unrelated formatting or generated build products.
+
+For a larger proposal, leave a short breadcrumb in its issue: the user's job and workaround, evidence, smallest useful change, input/output and existing state owner, acceptance and known limits, and why wider work can wait. Link the relevant decision instead of repeating a research report. Include model calls, correction effort or maintenance costs when they affect the choice. A typo or straightforward fix does not need this ceremony.
 
 ```sh
 git add path/to/changed-file

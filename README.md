@@ -13,9 +13,11 @@ Workbench brings Voice and StageMark into **one native app, one home window and 
 
 **Contributors:** branch from `main` and send PRs back to `main`. The [contributor setup and Matt's screenshot/annotation handoff](CONTRIBUTING.md#start-from-the-current-workbench-code) include exact clone commands and code entry points. Issues, reviews and releases all live in this repository.
 
-An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a separate native SwiftUI target. It offers foreground dictation, installed-voice reading, PencilKit image markup, independent wallpaper crop/export and editable scenes prepared for Mac. The Mac capabilities below retain their own platform boundaries. See the [mobile scope, build instructions and test record](docs/ios-preview.md) and [mobile research](docs/mobile-research.md); no mobile App Store or TestFlight release is claimed.
+For proposed priorities, start with [product direction](docs/commodity-strategy.md): dependable explanation, useful handoff and reusable preparation. Its [research and experiments](docs/research/product-direction-2026-09.md) separate current capabilities from hypotheses and point to the existing issue queue.
 
-**Mac download:** [Workbench Preview 3](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.3) is Developer ID signed, Apple-notarized and stapled. The exact downloaded ZIP was hash-verified. Its notes distinguish verified packaging from remaining physical-device acceptance. The iOS build is uploaded to App Store Connect, with tester distribution and review still pending.
+An **iPhone and iPad Preview for iOS/iPadOS 26+** is also in development as a separate native SwiftUI target. It offers foreground dictation, installed-voice reading, PencilKit image markup, independent wallpaper crop/export and editable scenes prepared for Mac. The Mac capabilities below retain their own platform boundaries. See the [mobile scope, build instructions and test record](docs/ios-preview.md) and [mobile research](docs/mobile-research.md). The [20 September release record](docs/releases/2026-09-20-preview-4.md) reports internal TestFlight availability; this is not a public App Store release or physical-device acceptance.
+
+**Mac download:** [Workbench Preview 4](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.4) is Developer ID signed, Apple-notarized and stapled. The downloaded ZIP was hash-verified. Its [release record](docs/releases/2026-09-20-preview-4.md) distinguishes verified packaging and installed checks from remaining physical-device and receiving-meeting acceptance.
 
 ## What is in the app?
 

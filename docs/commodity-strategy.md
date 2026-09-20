@@ -1,83 +1,96 @@
-# A small app that benefits from better engines
+# Product direction: make an explanation useful beyond the moment
 
-Decision record · 13 September 2026. Read with [Workbench's product boundary](workbench.md) and [the category comparison](utility-comparison.md). GitHub issues are the contribution queue; this document explains the enduring direction.
+Updated 20 September 2026. Proposed investment direction for maintainer review, not a release commitment or an agreement attributed to every contributor. [The product contract](workbench.md) owns implemented behaviour; [the supporting review](research/product-direction-2026-09.md) records evidence, alternatives and experiments. GitHub issues remain the contribution queue.
 
-Workbench should make a few everyday jobs dependable and pleasant without a required subscription. Better models and better coding agents should improve the implementation behind those jobs. They should not require people to relearn the app, surrender originals or migrate to another service.
+Workbench should help someone prepare a recognisable workspace, explain software without losing their place, and leave behind material another person or their chosen AI can use. The opportunity is continuity between those steps: the right image, its explanation, the selected context and an explicit next job travel together.
 
-## Keep the jobs stable
+The first customer hypothesis is a Mac-based solution engineer, trainer or technical consultant who repeatedly demonstrates software, sometimes on a phone, then prepares follow-up material. This is a prioritisation hypothesis. We have source review and some acceptance evidence, not weeks of interviews, measured demand or proof of an advantage over competitors.
 
-| Job | Native surface | Replaceable part | What remains the app's responsibility |
-| --- | --- | --- | --- |
-| Dictate into a Mac field | Shortcut, recording panel, draft review | Recognition and optional text refinement | Capture ownership, cancellation, destination, faithful result, original and recovery |
-| Listen to text | Read aloud in the app window | Local or explicitly chosen speech generation | Playback, seek, stop, export and honest provider state |
-| Explain a screen | Annotation overlay and board controls | Drawing renderer where justified | Input, undo, board persistence, deliberate export |
-| Present a device | Scene editor, presentation window and device tile | Device capture and scene rendering | Connection state, display geometry, control placement and teardown |
-| Reuse an item | Saved resources search and detail | Search/index internals only if needed | Explicit copy/open, durable references, understandable import/export |
+Dictation, reading, annotation and wallpaper remain useful independent jobs. A person should not have to create a group, scene or AI account to use them. Dependable voice and input recovery remain foundations even when the next product experiment focuses on presenting.
 
-A phone's live screen travels **to the Mac scene**. Workbench does not send Mac dictation or input to that phone. Separate floating overlays are not guaranteed to appear in another app's window share.
+## Three outcomes worth investing in
 
-## What is worth copying, and what to develop next
+| Outcome | What a person should be able to do | Why invest next |
+| --- | --- | --- |
+| Explain with confidence | Prepare once, find the controls, show a phone or browser, mark what matters, and recover from an interruption while the audience sees the intended content. | Existing capabilities need proof as a complete journey. A polished local preview does not establish a good meeting. |
+| Hand over useful material | Capture or import images, explain and order them, then give a selected recipient a readable package and a clear task. | Snap & Talk already links images, narration and a reusable `SKILL.md`. Removing transfer and access friction increases the value of that work. |
+| Reuse preparation and context | Adapt a scene for another audience and find relevant approved captures without rebuilding or re-explaining everything. | Selected group/scene facts can save work before automatic tagging or generation is needed. |
 
-A competitor could reproduce individual controls quickly. The stronger investment is a complete, dependable job, portable originals and fewer surprising transitions. These are differentiation hypotheses, not claims that competitors lack these features. These five pillars describe the implemented baseline; the engine layer is a shared foundation. The subsequent [visual-experience contract](../site/handbook/contract.json) recognises persistent wallpaper as its own user job alongside presentation. Keep its entry and lifecycle independent; the number of sidebar groups is not a product constraint.
+The proposed reason to choose Workbench is a shorter, more reliable path to an understood explanation and an accepted follow-up artifact. Screenshot controls, semantic filenames and agent integration already exist elsewhere. Demonstrate the benefit against ordinary screenshots plus notes and a short recording.
 
-| Pillar | Strongest current behaviour worth copying | One recommendation to distinguish the experience | Proof that would justify it |
-| --- | --- | --- | --- |
-| Dictate | Recoverable originals plus a personal correction with exact preview and safe Undo | **Context-respecting delivery:** personal names remain literal while insertion handles surrounding spaces and sentence boundaries, with clear copy fallback. Useful with every speech engine. | Same test phrases inserted mid-sentence in representative Mac/browser fields; no joins, duplicated spaces, submitted messages or changed names. Continue [#14](https://github.com/EthDawg/workbench/issues/14). |
-| Read aloud | Generate once, then seek, replay and export the same audio | **A reading that keeps your place:** explicitly retain one reading and resume after interruption/relaunch, tied to that exact audio and text revision. Define its ownership, replacement/deletion and missing-file recovery. Validate a recurring long-reading need before building; no reading library. | Relaunch/sleep tests restore a bounded position without regenerating audio; changed/missing audio is explained. Consistent generation cancellation ([#16](https://github.com/EthDawg/workbench/issues/16)) is a prerequisite, not a second flagship. |
-| Annotate | Retained ink and clean board export through the same renderer | **Explain, then share the marked image:** a deliberate native Screenshot handoff preserves marks and lets the user inspect the image before copying/saving. | The captured region, retained ink and exported pixels align at Retina/multiple displays; Cancel preserves the drawing. Continue [#18](https://github.com/EthDawg/workbench/issues/18). |
-| Present | A prepared device/brand/persona composition, contextual controls and a scene that survives window-mode changes | **A fresh branded takeaway:** capture one current device frame inside that same composition, with controls excluded and disconnected/stale frames rejected. The backdrop editor supports preparation; this completes follow-up collateral. | Captured frame belongs to the selected connected device and current session; preview/export agree at the chosen aspect. Continue [#20](https://github.com/EthDawg/workbench/issues/20). |
-| Saved resources | One small searchable collection of prompts, links and local file references with explicit keyboard actions | **A library people can safely exchange:** conditionally add review of added/changed/conflicting items before import; retain intentional local edits and explain unresolved file references. Validate a real collateral-exchange scenario first; code co-maintainership alone is not evidence of this need. Portable JSON stays the exchange format. | Exchange edited copies between two isolated libraries; review resolves differences without hidden overwrites or copying private media. Continue [#23](https://github.com/EthDawg/workbench/issues/23). |
-
-Considered and cut: more dictation writing modes before insertion quality; more voices before reliable reading sessions; more brushes before a completed image handoff; browser/tenant orchestration before a fresh scene snapshot; semantic indexing before clear library exchange. The native Quick Look baseline is now an explicit saved-file action ([#22](https://github.com/EthDawg/workbench/issues/22)); library exchange still needs demonstrated demand before becoming the next implementation. Lack of novelty is no reason to skip a useful commodity feature. Existing file bookmarks already resolve ordinary moved files; “self-healing references” is not an unimplemented blank slate.
-
-The supporting engine advantage should be **evidence-backed interchangeability**: change the recogniser or voice without changing the person's workflow, then publish same-input accuracy, latency and failure results. This requires the corpus in #24; the current app has not established output-quality leadership. These recommendations are directions for review, not five additional features implemented in the backdrop change.
-
-## Current boundaries, verified in source
+## Connect existing primitives
 
 ```mermaid
-flowchart TD
-  App[One Workbench application and menu owner]
-  App --> Voice[Voice workflow in LocalVoice]
-  App --> Stage[StageKit presentation and annotation]
-  App --> Library[Saved resources and versioned library]
-  Voice --> Recognition[RecognitionEngine: selected engine per invocation]
-  Recognition --> Raw[Original recognition text]
-  Raw --> Cleanup[Optional cleanup and dictionary]
-  Cleanup --> Delivery[History and explicit Mac delivery]
-  Voice --> Generation[Mac voices or explicit Speko generation]
-  Generation --> Audio[Audio file]
-  Audio --> Playback[Shared playback and export]
-  Stage --> Ink[InkRenderer and board state]
-  Stage --> Capture[Device capture]
-  Capture --> Scene[Mac scene window]
+flowchart LR
+  Prepare[Prepare scene, personas and destinations] --> Explain[Present and explain]
+  Explain --> Capture[Capture a frame or import chosen images]
+  Capture --> Session[Ordered images, notes and selected context]
+  Session --> Handoff[Scoped files and a clear recipe]
+  Handoff --> Result[Recipient verifies the result]
+  Result --> Reuse[Deliberately reuse approved material]
+  Reuse --> Prepare
 ```
 
-This is an implementation map, not a generic plugin architecture. `RecognitionProviders.swift` centralises preparation and recognition; `Cleanup.swift` keeps optional refinement separate. `AppModel.swift` still owns considerable voice orchestration. StageKit exposes actions without creating another menu owner. `DemoLibrary.swift` and scene formats validate versions. FluidAudio is pinned to an exact version.
+This is a proposed journey; its arrows do not claim automatic transfers exist. Static scene export currently has an empty device viewport. Snap & Talk handoff copies instructions and opens an app; it does not grant file access or confirm completion.
 
-The current CLI `--transcribe` job is **recognise this audio**, returning raw recognition. The app and App Intents perform **prepare dictation**, including selected cleanup, dictionary and history. Those are different contracts. Preserve the CLI's existing meaning. Before another integration needs complete dictation semantics, extract a small non-UI pipeline with explicit options; leave microphone, history, focus and paste decisions with its caller.
+| Part and existing owner | Small extension to prove |
+| --- | --- |
+| Capture/narration: `ReadbackModel` and portable session | Add chosen images through [#60](https://github.com/EthDawg/workbench/issues/60); make template/input/output access unambiguous through [#63](https://github.com/EthDawg/workbench/issues/63). |
+| Device/scene: StageKit capture and presentation | A fresh still through [#20](https://github.com/EthDawg/workbench/issues/20), including source freshness and readable output. |
+| Prepared groups: persona library and frozen live session | [Copy selected context at capture time #64](https://github.com/EthDawg/workbench/issues/64); a later group change must not relabel earlier material. |
+| Drawing/boards: StageKit annotations and renderer | Keep marking fast; tie future semantic notes to the captured image they explain. |
+| Prompts/links/files: Saved resources | Reuse existing import review. Try an explicitly chosen shared folder before creating a team service. |
+| Voice: separate recognition, refinement and reading pipelines | Measure time to correct usable output before changing a model or default. |
 
-## Three improvements that matter over time
+Keep these owners. Do not create a universal project object, global tag graph, generic integration framework or second database to connect the first two callers.
 
-1. **Measure an engine upgrade before changing the default.** Existing tests establish transport, cancellation and deterministic behavior; a passing suite is not proof of speech accuracy. Use [evaluation corpus idea #24](https://github.com/EthDawg/workbench/issues/24) and the [evaluation template](model-evaluation.md) to compare the same public or consented inputs on the same hardware. Record names, numbers, omissions, latency, memory and failure behavior. Compare the complete user job separately from raw recognition.
-2. **Make storage changes safe for older and newer files.** [Contribution idea #25](https://github.com/EthDawg/workbench/issues/25). Library and scene formats already check versions; older voice state and preferences need explicit compatibility treatment before their next schema change. A missing optional field can have a documented default. A malformed or unsupported future document must not be silently replaced with defaults. Keep the original bytes, explain recovery and test with old fixtures before writing.
-3. **Extract only when there is a second real caller.** Keep capture, recognition, refinement and delivery separable, but do not add a plugin marketplace or platform abstraction without a concrete consumer. Engine provenance belongs first in an evaluation artifact. Add typed persisted provenance when a named diagnostic or comparison consumer actually reads it, with backwards-compatible decoding.
+## Known context first, intelligence when it earns its place
 
-The storage review found uneven future migration handling, not evidence of current user data loss. A new dependency, engine or agent does not earn an automatic release. A contributor provides an isolated change, evidence and a rollback path; a maintainer decides what ships.
+For a capture deliberately associated with a scene or prepared group, offer a reviewable context summary: scene, visible persona role and any explicitly chosen group label. Use existing IDs and readable snapshots; omit unavailable values. A group name may be private preparation context, so exported fields need deliberate selection. An imported screenshot does not inherit whichever scene happens to be open.
 
-## Rules for maintainers and coding agents
+This removes the need to remember a tagging mode while presenting. It does not explain *why* a screen matters. Keep narration or a typed note as the primary explanation. Inference can suggest a title/tags later, but must not rewrite the original, invent customer facts or turn a suggestion into an authored statement.
 
-- State the job, entry point and observable before/after behavior. Reuse existing app surfaces and data owners.
-- Keep original media/text and provider settings captured for each operation. Do not change an in-flight job when settings change.
-- Baseline against macOS and relevant category tools. Use their real interfaces where available; distinguish hands-on observations from documentation and benchmarks.
-- Run focused behavioral checks, then the release checks. Use synthetic fixtures or an injectable store; never replace a person's current draft or library to make a demo pass.
-- Before a model/default change, attach a same-input evaluation and name known regressions. Before a format change, attach old/current/future-format fixtures and recovery behavior.
-- Keep AI-generated designs as experiments. Publish actual screenshots separately. Another model's agreement is not validation.
-- Keep the native implementation until another platform has a real user job and acceptance criteria. Portable file formats and small pure operations are useful now; a Windows shell rewrite is not a prerequisite.
+1. **Crawl:** deterministic context, readable names, ordering and a portable package. Zero model calls for facts the app knows.
+2. **Walk:** an explicit action on selected material, such as suggesting a title, extracting visible text or preparing a background prompt. Preview the result and preserve the source.
+3. **Run:** background enrichment or a live agent adapter only after repeated use shows that manual selection/handoff is the costly step. Keep bounded inputs, cancellation, caching and honest failure.
 
-Claude challenged the generic architecture proposal without repository source or user records. Its useful contributions were requiring a real consumer before adding provenance and treating entry-point semantics as part of evaluation correctness. Source review confirmed these gaps; it did not substantiate a claim of existing data loss. The parent retained the narrower, evidence-backed interpretation.
+Compare cost per accepted result: operator/correction minutes, retries, service spend, setup and device resources. Report time and money separately. A local model has resource and maintenance costs; a larger coding allowance does not remove review, testing or future support costs.
 
-## What this increment changes
+## A practical two-week sequence
 
-Read aloud gains seeking in existing audio; annotation boards gain copy/PNG export; device scenes gain a normal resizable presentation option; the separate break timer recovers its saved position; saved resources gain a contextual Return action with truthful copy feedback and explicit Quick Look for supported local files. Backdrop replacement now preserves a prepared scene and repairs missing images through an explicit preview/apply operation. These use existing playback, renderer, window and library ownership. The timer adds one bounded placement record; no new model, network service or application framework is introduced.
+This is a proposed sequence for available effort, not a dated promise. Keep at most two active implementation changes, with one writer per branch. Reserve roughly one third of effort for observing use, acceptance, documentation and repair. This allocation is a planning suggestion, not a measured optimum.
 
-The earlier publication hold was superseded on 14 September 2026. [Preview 3](https://github.com/EthDawg/workbench/releases/tag/v2.0.0-preview.3) is signed, notarized and published; iOS 2.1.0 (1) has completed Apple processing but is not released. See the [release record](preview-2.0.md) and [iOS preparation](ios-preview.md#release-preparation--14-september-2026) for verified results and remaining acceptance.
+| Sequence | Tangible result | Existing work and gate |
+| --- | --- | --- |
+| First few days: finish and observe | A three-minute synthetic demo repeated successfully through one real meeting receiver, with discoverable controls and recorded limitations. | Finish active usability [PR #62](https://github.com/EthDawg/workbench/pull/62), then [#29](https://github.com/EthDawg/workbench/issues/29). Preserve the owning branch. Fix consequential failures before broadening the UI. |
+| Remainder of week one: complete handoff | A five-screen explanation using Mac and phone images, corrected/reordered, and turned into a checked artifact without the author re-explaining it. | [#60](https://github.com/EthDawg/workbench/issues/60) plus [handoff fix #63](https://github.com/EthDawg/workbench/issues/63). Compare screenshots plus notes and a short recording. Record access failures, clarification, corrections and total time. |
+| Week two: reuse what worked | Adapt a scene for a second fictional audience; carry selected context into a capture. Prove a clean live-phone still if that is the next bottleneck. | [Context #64](https://github.com/EthDawg/workbench/issues/64) and [snapshot #20](https://github.com/EthDawg/workbench/issues/20). Trial [background brief #65](https://github.com/EthDawg/workbench/issues/65) manually before adding a control. |
+| Bounded evidence work alongside this | A first same-input model report, including failures and correction time. | [#24](https://github.com/EthDawg/workbench/issues/24). Start with current available engines; no model collection or automatic default change. |
+
+The first two outcomes take priority. If they consume the available time, defer scene automation and additional AI actions. Physical acceptance needs suitable devices and a receiver; agents can prepare fixtures/instructions but cannot replace that evidence with simulation. The [review](research/product-direction-2026-09.md#experiments-and-stop-rules) defines tests and stop rules.
+
+Ask target users to show a recent preparation/follow-up task, observe their work, then have another recipient use the result. Publish only consented or synthetic evidence. A small formative trial does not establish product-market fit.
+
+## Keep wider ideas with a reason to revisit them
+
+| Idea | First useful route | Before expanding |
+| --- | --- | --- |
+| Mobile Snap & Talk | Native screenshot → chosen transfer → Mac Add images, optionally with a typed/dictated explanation. | Repeated friction before a mobile receiver/full session editor. See [research PR #61](https://github.com/EthDawg/workbench/pull/61). |
+| Team reuse | Curated copies in an approved shared folder; source/author/why preserved; selected items form a new session. | A second person successfully contributes and recomposes an explanation. Personal CloudKit sync is a different job. |
+| Branded preparation | Existing assets/editable overlays and a complete background brief with dimensions, clear space and approved ingredients. | Repeat-use benefit before integrated generation, discovery or brand inheritance. |
+| Group starting scenes | Duplicate a scene or explicitly copy a suggestion as [#28](https://github.com/EthDawg/workbench/issues/28) proposes. | Repeated setup pain; no live cross-library inheritance. |
+| Personal settings | Durable local profiles and explicit portable settings as [#59](https://github.com/EthDawg/workbench/issues/59) proposes. | Migration safety [#25](https://github.com/EthDawg/workbench/issues/25), then sync demand and paired acceptance. |
+| Notes, broader browser orchestration, more engines | Preserve focused issues and native alternatives. | A recurring job simpler primitives cannot complete. [PR #55](https://github.com/EthDawg/workbench/pull/55) already owns browser setup work. |
+
+## Preserve the value as contributors and agents add code
+
+- State the job, current workaround, one observable improvement and the state owner. Link the decision and issue instead of copying the strategy into every PR.
+- Preserve original media and authored text. Freeze inputs/settings per operation; retain old/future-format files safely. A failed write must not erase the only good copy.
+- Keep recognition, refinement, generation and delivery separate. The CLI recognises audio; prepared dictation adds cleanup/dictionary/history. Snap & Talk currently uses raw recognition. Evaluate the entry point being changed.
+- Extract a shared operation when a second real caller needs it. Microphone, focus, history, permissions and paste decisions stay with their current owners. Portable recipes need no marketplace.
+- Maintain one visual language: clear verbs, obvious primary action, compact controls with explicit expansion, predictable Escape/Cancel, keyboard access and native feedback. Test return to the underlying app and receiving share.
+- Keep the existing canonical contracts: [Mac visual acceptance](../site/handbook/contract.json), [mobile](ios-preview.md), [selected-photo transfer](photo-handoff.md), [interaction behaviour](product-spec.md). Issues track work; dated records track evidence; releases track distribution.
+- Distinguish source inspection, automated checks, isolated UI inspection, installed acceptance, real receiver and published distribution. None implies the next.
+- Review human and agent contributions by the same standard. Preserve licensing and credit. The [working agreement](../CONTRIBUTING.md#proposed-ethanmatt-working-agreement) remains proposed; this review assigns no other contributor's time or approval.
+
+This updates the 13 September direction. Shared-library import review, selected-text reading and capture recovery now exist; remaining acceptance is not a request to implement them again. Distribution status belongs in the [Preview 4 record](releases/2026-09-20-preview-4.md) and subsequent releases.
