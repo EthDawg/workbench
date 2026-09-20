@@ -115,6 +115,8 @@ For a larger proposal, leave a short breadcrumb in its issue: the user's job and
 
 For a visual interaction proposal, a relevant image and source link can make the idea easier to review. Explain what the image demonstrates, how it would help Workbench and what needs testing; label competitor references, concepts and actual app evidence. See the [compact-controls examples](docs/research/compact-controls-2026-09.md).
 
+Before commissioning more images, check the [existing design assets, prompts and decisions](docs/design-images.md#reuse-the-work-before-generating-again). Generate alternatives when they help resolve a design question, then carry the selected details and intentional implementation differences into the issue or PR. Use the same small, approved context when delegating to Claude or Codex; the worked waveform example shows how to connect a concept to real source without requiring an exact visual copy.
+
 ```sh
 git add path/to/changed-file
 git commit -m "Describe the user-visible improvement"

@@ -8,6 +8,8 @@ The working guide is `guide/index.html`. The product handbook is `handbook/index
 
 `assets/guide/` contains explicitly labelled generated studies and separate actual native screenshots. Generation prompts and critique live in `../docs/design-images.md`. The build uses an explicit file allowlist; it publishes no source tests, rendering helper, environment files or local deployment state. No backend, agent endpoint or wallpaper automation is added by the handbook.
 
+For new collateral, start with the [asset reuse guide and waveform example](../docs/design-images.md#reuse-the-work-before-generating-again). Keep a concept label visible where an illustration appears; use a capture of the relevant implemented state for current UI instructions. A native panel preview or Simulator capture retains its original evidence limits when reused.
+
 ## Local development
 
 Requires Node.js 22+ for checks/build and Python 3 for the local web server. No dependency installation is needed.

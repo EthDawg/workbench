@@ -18,6 +18,8 @@ Recording is the core utility. Its Stop action and recording state remain visibl
 
 The selected pairing is A for regular use and C when explicitly expanded. Ethan authorised implementation using the project goals and the form-factor distinction. Generated boards compare the alternatives, refine the presentation tile, and illustrate snapping and recording states. They are design illustrations, not screenshots of shipped behavior.
 
+The illustrated waveform remains an exploration detail: the current recording implementation uses a segmented input-level meter. See the [concept-to-source example](design-images.md#worked-example-the-waveform-is-a-design-choice) for the reference, current source and evidence limits. Decide whether a different visual improves sound feedback before making it an implementation requirement.
+
 ## Interaction details to validate
 
 - Click opens options. Clicking elsewhere closes options without stopping or discarding audio.
