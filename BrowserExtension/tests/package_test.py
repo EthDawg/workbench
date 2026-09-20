@@ -31,14 +31,23 @@ class ChromePackageTests(unittest.TestCase):
         change(value)
         file.write_text(json.dumps(value))
 
-    def test_zip_contains_exact_runtime_bytes_and_no_development_or_private_extras(self):
+    def test_store_zip_omits_only_development_key_and_preserves_source_identity(self):
         (self.source / ".env").write_text("SYNTHETIC_PRIVATE_VALUE=do-not-package")
+        source_manifest_bytes = (self.source / "manifest.json").read_bytes()
+        source_manifest = json.loads(source_manifest_bytes)
         result = PACKAGER.package(self.source, self.directory / "release.zip")
         with zipfile.ZipFile(result["artifact"]) as archive:
             self.assertEqual(archive.namelist(), list(PACKAGER.RUNTIME_FILES))
-            self.assertEqual(archive.read("manifest.json"), (self.source / "manifest.json").read_bytes())
+            packaged_manifest = json.loads(archive.read("manifest.json"))
+            self.assertNotIn("key", packaged_manifest)
+            self.assertEqual(packaged_manifest, {key: value for key, value in source_manifest.items() if key != "key"})
+            for name in PACKAGER.RUNTIME_FILES:
+                if name != "manifest.json":
+                    self.assertEqual(archive.read(name), (self.source / name).read_bytes())
             self.assertNotIn("README.md", archive.namelist())
             self.assertNotIn("store/promo-440x280.png", archive.namelist())
+        self.assertEqual((self.source / "manifest.json").read_bytes(), source_manifest_bytes)
+        self.assertTrue(result["manifest_key_omitted"])
         self.assertEqual(result["unpacked_extension_id"], "ajafaiojgpdgmeblldllnhhfnafiiieo")
 
     def test_archive_is_reproducible(self):
