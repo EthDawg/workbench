@@ -87,8 +87,19 @@ public struct PresenterMessage: Codable, Sendable {
 public enum PresenterWire {
     public static let limit = 65_536
     public static let hostName = "com.ethdawg.workbench.browser"
-    // Public extension identity; this is not a credential or a signing secret.
+    // Public identities, not credentials. Keep the existing unpacked identity
+    // separate from the identity assigned to the existing Chrome Web Store item.
     public static let extensionID = "ajafaiojgpdgmeblldllnhhfnafiiieo"
+    public static let storeExtensionID = "alckfplchkdcjdlhlnhanonkelljnioj"
+    public static let allowedExtensionOrigins = [extensionID, storeExtensionID].map { "chrome-extension://\($0)/" }
+    public static func acceptsExtensionOrigin(_ origin: String?) -> Bool {
+        guard let origin else { return false }
+        return allowedExtensionOrigins.contains(origin)
+    }
+    public static func nativeHostManifest(executablePath: String) -> [String: Any] {
+        ["name": hostName, "description": "Workbench saved destinations", "path": executablePath,
+         "type": "stdio", "allowed_origins": allowedExtensionOrigins]
+    }
     public static func encode(_ message: PresenterMessage) throws -> Data {
         let data = try JSONEncoder().encode(message)
         guard !data.isEmpty, data.count <= limit else { throw PresenterError.invalidMessage }

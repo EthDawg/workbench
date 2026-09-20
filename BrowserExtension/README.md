@@ -12,7 +12,9 @@ An unpacked Manifest V3 adapter for the Workbench Mac app. Saved resources in Wo
 
 When a tenant’s subdomain changes, open its new tab in the intended profile, select its existing destination under **Save or update this tab**, review the old and new addresses, and select **Update to this tab**. The existing destination ID is retained. Another profile cannot update it.
 
-The stable unpacked ID is `ajafaiojgpdgmeblldllnhhfnafiiieo`; native host `com.ethdawg.workbench.browser` must allow exactly that extension origin. The manifest contains only a public key for stable identity, not a signing secret or published Web Store package.
+The stable unpacked ID is `ajafaiojgpdgmeblldllnhhfnafiiieo`. The existing Chrome Web Store draft has the separate assigned ID `alckfplchkdcjdlhlnhanonkelljnioj`. Native host `com.ethdawg.workbench.browser` allows exactly those two extension origins, both in its registration and when accepting a connection. The manifest's public key preserves the unpacked identity; it is not a signing secret or evidence of a published Web Store package. Updating the companion does not migrate extension storage or remove existing unpacked connections.
+
+After installing a companion with support for both identities, existing users should choose **Saved resources → Chrome destinations → Repair Chrome connection** to refresh the native host registration before connecting a store-installed extension. This preserves saved destinations and profile bindings. Each extension installation owns its own pairing and storage; the store build does not automatically inherit the unpacked installation's profile identity.
 
 ## What activation means
 
@@ -44,4 +46,4 @@ Run `python3 BrowserExtension/tests/package_test.py` for the packaging regressio
 
 The icons reuse the repository’s canonical `scripts/icon.swift` artwork. To regenerate them on macOS, first run that script into a temporary directory, then run `swift BrowserExtension/store/render-assets.swift <temporary-directory>/icon_512x512@2x.png BrowserExtension`. This creates exact 16/32/48/128px PNGs and the separate 440×280 promotional tile. The 128px icon keeps transparent store padding. The tile is branding artwork; the store still needs a screenshot of the actual extension.
 
-The store name is **Workbench Preview**, version **0.1.0**. The existing unpacked identity remains unchanged. Verify the dashboard’s assigned identity and update the native host allowlist together before distributing a store-installed build. Packaging does not publish the extension or install its native companion.
+The store name is **Workbench Preview**, version **0.1.0**. Keep the existing draft item `alckfplchkdcjdlhlnhanonkelljnioj` and unpacked identity `ajafaiojgpdgmeblldllnhhfnafiiieo`; do not create a replacement store item or change the manifest key to repair native connectivity. Verify store-installed pairing against the matching companion before distribution. Packaging and the two-origin native allowlist do not establish store approval, publication or live store-installed acceptance.

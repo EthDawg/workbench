@@ -4,6 +4,44 @@ import Darwin
 @testable import PresenterKit
 
 final class PresenterKitTests: XCTestCase {
+    func testNativeHostAcceptsOnlyTheExistingUnpackedAndStoreOrigins() {
+        let ids = ["ajafaiojgpdgmeblldllnhhfnafiiieo", "alckfplchkdcjdlhlnhanonkelljnioj"]
+        XCTAssertEqual(PresenterWire.extensionID, ids[0])
+        XCTAssertEqual(PresenterWire.storeExtensionID, ids[1])
+        XCTAssertEqual(PresenterWire.allowedExtensionOrigins, ids.map { "chrome-extension://\($0)/" })
+        XCTAssertFalse(PresenterWire.acceptsExtensionOrigin(nil))
+        XCTAssertFalse(PresenterWire.acceptsExtensionOrigin(""))
+        XCTAssertFalse(PresenterWire.acceptsExtensionOrigin("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"))
+        XCTAssertFalse(PresenterWire.acceptsExtensionOrigin("chrome-extension://*/"))
+        for id in ids {
+            let origin = "chrome-extension://\(id)/"
+            XCTAssertTrue(PresenterWire.acceptsExtensionOrigin(origin))
+            for invalid in [
+                "prefix" + origin, origin + "suffix", origin + "?query", origin + "#fragment",
+                origin + "\n", " " + origin, "chrome-extension://\(id)",
+                "chrome-extension://\(id).invalid/", "chrome-extension://prefix\(id)/",
+                "chrome-extension://\(id)suffix/", "chrome-extension://\(id):443/",
+                "chrome-extension://\(id)@invalid/", "chrome-extension://user@\(id)/",
+                "https://\(id)/", origin.uppercased(), "chrome-extension://\(id)/../"
+            ] {
+                XCTAssertFalse(PresenterWire.acceptsExtensionOrigin(invalid), invalid)
+            }
+        }
+    }
+    func testNativeHostRegistrationContainsExactlyTheTwoPinnedOrigins() throws {
+        let executable = "/Applications/Workbench Preview.app/Contents/MacOS/WorkbenchBrowserHost"
+        let data = try JSONSerialization.data(withJSONObject: PresenterWire.nativeHostManifest(executablePath: executable))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(Set(manifest.keys), ["name", "description", "path", "type", "allowed_origins"])
+        XCTAssertEqual(manifest["name"] as? String, "com.ethdawg.workbench.browser")
+        XCTAssertEqual(manifest["description"] as? String, "Workbench saved destinations")
+        XCTAssertEqual(manifest["path"] as? String, executable)
+        XCTAssertEqual(manifest["type"] as? String, "stdio")
+        XCTAssertEqual(manifest["allowed_origins"] as? [String], [
+            "chrome-extension://ajafaiojgpdgmeblldllnhhfnafiiieo/",
+            "chrome-extension://alckfplchkdcjdlhlnhanonkelljnioj/"
+        ])
+    }
     func testNavigationAddressesExcludeCredentialsAndEphemeralParts() {
         XCTAssertEqual(PresenterURL.canonical("https://TENANT.example:443/path?q=secret#fragment"), "https://tenant.example/path")
         XCTAssertEqual(PresenterURL.canonical("http://localhost:8080"), "http://localhost:8080/")
