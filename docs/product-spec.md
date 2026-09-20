@@ -1,6 +1,6 @@
 # Workbench: jobs, surfaces and interaction contract
 
-Specification: 12 September 2026. Maintained with the code. The release record distinguishes implemented, tested and published behavior. The public guide lives at `/guide/` on the Workbench site.
+Specification updated: 20 September 2026. Maintained with the code. The release record distinguishes implemented, tested and published behavior. The public guide lives at `/guide/` on the Workbench site.
 
 ## Product outcome
 
@@ -33,8 +33,8 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | App window | Open app/menu/configured shortcut | Drafts, history, models, settings, scenes/personas, keyboard practice | Ordinary editing focus; close does not quit or delete saved work |
 | Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read aloud; Keep current or Replace reading resolves a conflict; neither starts playback |
 | Snap & Talk editor | App navigation; dedicated global shortcut captures outside it | User-chosen session folder, ordered screenshots, narration and recovery | Closing or switching sessions does not delete work; queued transcription resumes from saved audio |
-| One menu bar entry | Click/configured shortcut | Discover and launch jobs; truthful status | Transient launcher, not a universal persistent mode picker |
-| Dictation HUD | Explicit Mac capture/preview; completion or error | Current recording and result, compact/expanded | Stop completes; cancellation is explicit; closing options or collapsing preserves audio and paste target |
+| One menu bar entry | Click/configured shortcut; Window offers recovery | Discover and launch jobs; truthful status | Closing the launcher leaves active work and the floating toolbar intact |
+| Floating toolbar | Shown on first launch; remembered Show floating toolbar setting | Idle actions, then dictation or Snap & Talk recording and result in one window | Shares one saved position. Hidden during screenshot acquisition; returns to tools when done. Hiding idle tools never hides active recording controls |
 | Presentation tile | Workbench presentation is active | Device presentation only | Starts collapsed: phone icon, divider, chevron. Click or Command-/ opens. Escape closes open controls first, otherwise ends presentation |
 | Persona overlay | Explicit Show over browser | Audience-visible finished artwork | Drag or Position menu; lock enables click-through; hidden on app launch |
 | Switch to | Configured global shortcut, menu or Chrome extension | Named saved-link destinations in paired Chrome profiles | Transient picker; Escape restores the prior app, selection hides it before routing, failures explain recovery. Labels may be visible in a screen share. |
@@ -59,7 +59,7 @@ Apply commits all chosen changes together. Invalid, unsupported, oversized or du
 
 ## Dictation states
 
-1. Idle: setup in the app/menu. No compulsory idle capsule.
+1. Idle: the optional floating toolbar offers Dictate, Snap & Talk, Draw and Present. Its menu opens preparation, reading, resources and settings. Show/hide is remembered; the app menu can always reveal it.
 2. Permission: describe the request honestly and allow cancel.
 3. Recording: compact view retains state, elapsed time/input level, Stop and click-to-expand. Expanded view adds details and cancellation. No essential action is hover-only.
 4. Processing: microphone off; distinguish transcription and optional cleanup. Cancellation/generation checks prevent late results replacing a later capture.
@@ -96,7 +96,7 @@ The previous public Preview and a newly installed source build are separate rele
 
 The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Saved resources. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
 
-Implement contextual presentation controls, compact/expanded recording HUD, shared placement, local refinement management, and persona overlays. Logo web discovery and animated backdrop playback are separate extensions of the asset library, not reasons for a universal mode picker. Distribution and acceptance status belong in the [Preview 4 release record](releases/2026-09-20-preview-4.md), subsequent releases and the [mobile acceptance record](ios-preview.md), rather than the date of an illustration or this specification.
+The current source includes contextual presentation controls, one persistent floating toolbar with recording states, shared placement, local refinement management, persona overlays, embedded logo discovery and live scene previews. The 20 September usability work is tracked in GitHub issues #56–58. Public download links identify the published Mac Preview separately from source and local installed builds; iOS testing and App Review remain separate stages. Distribution and acceptance status belong in the [Preview 4 release record](releases/2026-09-20-preview-4.md), subsequent releases, [usability evidence](verification/2026-09-20-mac-usability.md) and the [mobile acceptance record](ios-preview.md), rather than the date of an illustration or this specification.
 
 ## Acceptance
 
@@ -120,7 +120,17 @@ The app-window review flow follows the [dictation comparison and correction cont
 
 ## Everyday utility increment
 
-[Utility comparison and contracts](utility-comparison.md) specifies playback seeking, board image export, windowed presentation and contextual resource recall. [Commodity strategy](commodity-strategy.md) records the architecture and model-upgrade acceptance process. These extend existing surfaces; they do not add a universal floating mode menu.
+[Utility comparison and contracts](utility-comparison.md) specifies playback seeking, board image export, windowed presentation and contextual resource recall. [Commodity strategy](commodity-strategy.md) records the architecture and model-upgrade acceptance process. The floating toolbar provides a shared entry point while each operation retains its own state and preparation screen.
+
+## Scene preparation
+
+The native scene list supports Command/Shift selection, Backspace/Delete with a confirmation naming the captured selection, double-click or Return to rename, and drag insertion to reorder. Escape cancels a title edit; Return commits it. Search and title fields retain ordinary text-deletion behavior. Reordering is available with an empty search, with Move up/down as keyboard-accessible alternatives. Multi-selection shows the selection count instead of silently choosing a scene to present. A stale library revision prevents partial deletion or overwriting newer edits; original images are kept.
+
+**Add scene** groups starter, image, clipboard and editable-scene import choices. **Add persona…** chooses artwork for the current scene. Independent browser overlays live under **Overlay cards** and **Arrange overlays…**; they are not a prerequisite for presenting a scene.
+
+**Add logo → Find on the web…** opens public Google Images inside a temporary in-app browser. The person chooses an image, reviews it, then selects **Use logo**. This commits to the scene captured when the sheet opened and saves a reusable logo. Cancel leaves the scene unchanged. The importer validates bounded raster data, supports a direct image URL, and cancels superseded downloads. Search does not open an external browser or connect a personal Google Photos account.
+
+An enabled animated starter plays in the visible, active Mac scene editor. **Pause preview** changes only the current viewing session. Crop/layout interaction, another sheet, inactivity and system motion/energy preferences pause it with a visible reason. Exported PNGs and gallery thumbnails remain still. The [motion record](gentle-motion.md) and [visual contract](../site/handbook/contract.json) own the shared motion lifecycle.
 
 ## Backdrop editing contract
 

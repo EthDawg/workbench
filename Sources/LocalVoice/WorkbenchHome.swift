@@ -133,6 +133,9 @@ struct WorkbenchHome: View {
             Text("Make yourself at home.").font(.largeTitle.weight(.semibold))
             Text("Only turn on the access you need. Closing this window leaves the menu-bar tools available; Quit stops Workbench.").foregroundStyle(.secondary)
             WorkbenchAppearancePicker()
+            Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
+            Text("Start another action from the same place. Recording controls appear here while you speak.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
                 do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
                 catch { loginError = error.localizedDescription }
@@ -165,6 +168,7 @@ struct WorkbenchQuickPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             WorkbenchHeader(title: "Workbench", subtitle: "A little less friction.", symbol: "square.stack.3d.up.fill")
+            Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
             WorkbenchClipboardShelf(receipts: model.clipboardReceipt, review: { model.clipboardReceipt.dismissHUD(); open("history") }, showCue: {
                 model.onCloseMenu?(); model.clipboardReceipt.revealHUD()
             })
@@ -179,7 +183,7 @@ struct WorkbenchQuickPanel: View {
             quick("Draw on screen", "pencil.tip") { draw() }
             quick("Present a device", "iphone") { open("present") }
             quick("Switch to…", "arrow.up.forward.app") { model.onShowPresenter?() }
-            quick("Personas and overlays…", "person.crop.rectangle") { personas() }
+            quick("Overlay cards…", "person.crop.rectangle") { personas() }
             if stage.hasOverlaySession {
                 HStack {
                     Button { model.onCloseMenu?(); stage.focusOverlayControls() } label: { Image(systemName: "rectangle.on.rectangle") }

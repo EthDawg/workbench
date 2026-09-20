@@ -218,7 +218,11 @@ struct DesktopSnapshot: Codable {
 final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var scenes: [DemoScene] = [] { didSet { reconcileSelection() } }
     @Published var query = "" { didSet { reconcileSelection() } }
-    @Published var selectedID: UUID?
+    @Published private(set) var selection = SceneListSelection()
+    var selectedID: UUID? {
+        get { selection.primaryID }
+        set { selection = SceneListSelection(ids: Set(newValue.map { [$0] } ?? []), primaryID: newValue) }
+    }
     @Published var notice: String?
     @Published var choosingPersonas = false
     var personaSceneID: UUID?
@@ -246,9 +250,13 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     var starters: [SceneStarter] { starterPreferences.visible }
     private let imageCache = NSCache<NSString, NSImage>()
     var matches: [DemoScene] { scenes.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) } }
-    var selected: DemoScene? { matches.first { $0.id == selectedID } }
+    var selectedScenes: [DemoScene] { matches.filter { selection.ids.contains($0.id) } }
+    var selected: DemoScene? { selection.ids.count == 1 ? matches.first { $0.id == selectedID } : nil }
+    func selectScenes(_ ids: Set<UUID>) {
+        selection = SceneListSelection(ids: ids, primaryID: selectedID).reconciled(with: matches.map(\.id))
+    }
     private func reconcileSelection() {
-        if !matches.contains(where: { $0.id == selectedID }) { selectedID = matches.first?.id }
+        selection = selection.reconciled(with: matches.map(\.id))
     }
     private var archiveURL: URL { root.appendingPathComponent("scenes.json") }
     private var snapshotURL: URL { root.appendingPathComponent("desktop-restore.json") }
@@ -594,7 +602,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             try addLogo(LogoImport.read(pasteboard), to: sceneID)
         } catch { notice = error.localizedDescription }
     }
-    private func addLogo(_ imported: LogoImport.Image, to sceneID: UUID) throws {
+    func addLogo(_ imported: LogoImport.Image, to sceneID: UUID) throws {
         guard !storageBlocked else { throw SceneError.storageBlocked }
         guard var scene = scenes.first(where: { $0.id == sceneID }) else { throw SceneError.noScene }
         let filename = UUID().uuidString + ".png"
@@ -664,6 +672,32 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         next.swapAt(index, index + offset)
         do { try persist(next); selectedID = id } catch { notice = error.localizedDescription }
     }
+    var canReorderScenes: Bool { query.isEmpty && !storageBlocked && scenes.allSatisfy { !isSceneReadOnly($0) } }
+    @discardableResult func reorderScenes(_ ids: [UUID], expectedOrder: [UUID]) -> Bool {
+        do {
+            guard canReorderScenes, scenes.map(\.id) == expectedOrder else { throw SceneDocumentError.concurrentChange }
+            try MainActor.assumeIsolated {
+                guard let sceneSync else { throw SceneError.storageBlocked }
+                try sceneSync.reorder(ids, expectedOrder: expectedOrder)
+            }
+            notice = nil; return true
+        } catch { notice = error.localizedDescription; return false }
+    }
+    @discardableResult func renameScene(_ captured: DemoScene, to name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        var value = captured; value.name = String(trimmed.prefix(160))
+        guard value.name != captured.name else { return true }
+        let wasSelected = selection.ids == [captured.id]
+        guard update(value) else { return false }
+        // Keep a renamed search result selected rather than silently switching
+        // the following presentation/export action to another customer.
+        if wasSelected {
+            if !query.isEmpty && !value.name.localizedCaseInsensitiveContains(query) { query = "" }
+            selectedID = value.id
+        }
+        notice = nil; return true
+    }
     func customizeStarter(_ change: (inout StarterPreferences) -> Void) {
         guard !starterLibraryBlocked else { notice = "Starter customizations are preserved until the unreadable file is recovered."; return }
         var next = starterPreferences; change(&next)
@@ -682,13 +716,17 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     }
     func remove(_ captured: DemoScene? = nil) {
         guard let scene = captured ?? selected else { return }
+        _ = removeScenes([scene])
+    }
+    @discardableResult func removeScenes(_ captured: [DemoScene]) -> Bool {
         do {
             try MainActor.assumeIsolated {
                 guard let sceneSync else { throw SceneError.storageBlocked }
-                try sceneSync.remove(scene)
+                try sceneSync.remove(captured)
             }
             // Originals and immutable assets remain available to active output.
-        } catch { notice = error.localizedDescription }
+            notice = nil; return true
+        } catch { notice = error.localizedDescription; return false }
     }
     var targetScreen: NSScreen? { window?.screen ?? NSScreen.main }
     var outputSize: CGSize {

@@ -4,14 +4,14 @@ A saved persona is reusable finished artwork or an editable portrait card. A **g
 
 ## Quick: show one card
 
-Open **Personas and overlays…** in the Workbench menu. Import or paste finished artwork, or choose a starter portrait and edit its visible label/colour. **Show one card** preserves the simple one-card workflow. The nearby controls provide Hide, Lock and Size; a prepared group's candidates remain scoped to that group, while **All saved** offers one card at a time from the frozen saved list. A shown card never changes merely because you browse another library item.
+Open **Overlay cards…** in the Workbench menu. Import or paste finished artwork, or choose a starter portrait and edit its visible label/colour. **Show one card** preserves the simple one-card workflow. The nearby controls provide Hide, Lock and Size; a prepared group's candidates remain scoped to that group, while **All saved** offers one card at a time from the frozen saved list. A shown card never changes merely because you browse another library item.
 
 From any app, press **Control–Option–I** to show or hide the selected persona. Press **Control–Option–Left Arrow** or **Control–Option–Right Arrow** to flip through the current prepared group, or through all saved personas when no group is selected. These three defaults are editable and practisable under **Keyboard**. If no card is visible, either arrow shortcut first shows the current persona; it never starts a multi-overlay session.
 
 ## Prepare several overlays
 
 1. Create a group and choose its members in Personas. Prepare each audience separately.
-2. Open **Prepare presentation…**. Add the members you want to place. Each placed copy has its own visibility, lock, size and position; the same image can appear twice. New copies start locked so clicks pass through to the demo.
+2. Open **Arrange overlays…**. Add the members you want to place. Each placed copy has its own visibility, lock, size and position; the same image can appear twice. New copies start locked so clicks pass through to the demo.
 3. Select each copy in the placement preview/list. Adjust it using the native Position menu and size control. Reorder, duplicate or remove a copy without deleting the original image. Save the layout explicitly. The small preview is approximate; native display framing must be checked.
 4. Use **Demo groups…** to choose and order the groups in this presentation. Only those explicitly prepared choices become available during the demo. Public labels are optional; the live menu otherwise says Set 1, Set 2 and numbered personas, never private group names or filenames.
 5. Choose **Start overlays**. Optional **Soft reveal** fades in the initial artwork or a newly added copy briefly; it does not animate faces or loop. It respects Reduce Motion. Start defaults to still appearance.

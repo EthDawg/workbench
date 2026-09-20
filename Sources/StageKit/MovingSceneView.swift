@@ -23,6 +23,10 @@ class MovingSceneView: NSView {
     private var sleepReasons = Set<String>()
     var motionRequested = false { didSet { updateMotion() } }
     var motionSuspended = false { didSet { updateMotion() } }
+    var motionSuspension: SceneMotionState? { didSet { updateMotion() } }
+    var requiresActiveApplication = false { didSet { updateMotion() } }
+    private(set) var motionState = SceneMotionState.off
+    var motionStateChanged: ((SceneMotionState) -> Void)?
     var isAnimating: Bool { ambient.isPlaying || photograph.animation(forKey: GentlePhotoMotion.animationKey) != nil }
 
     override init(frame frameRect: NSRect) {
@@ -57,6 +61,7 @@ class MovingSceneView: NSView {
         foreground.configure(scene: scene, backdrop: backdrop, hand: hand)
         branding.configure(scene: scene, logo: logo, persona: persona)
         if changed { needsLayout = true }
+        updateMotion()
     }
     func insertVideoLayer(_ layer: CALayer) {
         self.layer?.insertSublayer(layer, below: branding.layer)
@@ -81,6 +86,12 @@ class MovingSceneView: NSView {
         removeObservers()
         if let window {
             observe(.default, NSWindow.didChangeOcclusionStateNotification, object: window) { $0.updateMotion() }
+            observe(.default, NSApplication.didBecomeActiveNotification) { $0.updateMotion() }
+            observe(.default, NSApplication.didResignActiveNotification) { $0.updateMotion() }
+            if let clip = enclosingScrollView?.contentView {
+                clip.postsBoundsChangedNotifications = true
+                observe(.default, NSView.boundsDidChangeNotification, object: clip) { $0.updateMotion() }
+            }
             observe(.default, .NSProcessInfoPowerStateDidChange) { $0.updateMotion() }
             if #available(macOS 15.0, *) {
                 observe(.default, AccessibilitySettings.animatedImagesEnabledDidChangeNotification) { $0.updateMotion() }
@@ -117,10 +128,15 @@ class MovingSceneView: NSView {
         let playsAnimatedImages: Bool
         if #available(macOS 15.0, *) { playsAnimatedImages = AccessibilitySettings.animatedImagesEnabled }
         else { playsAnimatedImages = AXAnimatedImagesEnabled() }
-        let allowed = GentlePhotoMotion.permitted(requested: motionRequested && !motionSuspended && sleepReasons.isEmpty && playsAnimatedImages,
-            visible: window?.isVisible == true && window?.occlusionState.contains(.visible) == true && !isHiddenOrHasHiddenAncestor,
-            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled, thermalState: ProcessInfo.processInfo.thermalState)
+        let state = SceneMotionState.resolve(requested: motionRequested,
+            suspension: motionSuspension ?? (motionSuspended ? .paused : nil),
+            available: (hasAmbience || scene?.ambience == nil) && photograph.contents != nil,
+            visible: window?.isVisible == true && window?.occlusionState.contains(.visible) == true && !isHiddenOrHasHiddenAncestor && !visibleRect.isEmpty,
+            active: !requiresActiveApplication || NSApp?.isActive == true, sleeping: !sleepReasons.isEmpty,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, autoplay: playsAnimatedImages,
+            lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled, thermal: ProcessInfo.processInfo.thermalState)
+        let allowed = state == .playing
+        if motionState != state { motionState = state; motionStateChanged?(state) }
         if hasAmbience {
             photograph.removeAnimation(forKey: GentlePhotoMotion.animationKey)
             ambient.setPlaying(allowed)

@@ -25,6 +25,10 @@ Open http://127.0.0.1:4173. Check desktop/mobile layout, keyboard tab switching,
 
 ## Publish
 
+The app page is `/`, everyday instructions are `/guide/`, and `/handbook/` is the deeper capability/lifecycle reference. Keep design studies, development history and QA detail in the repository or reference pages, not in the getting-started flow. GitHub issues remain the only work queue.
+
+`workbench.mwdm.cloud` is the proposed permanent address. On 20 September 2026 it did not resolve; the current Vercel address returned HTTPS 200. Attach the custom domain to the existing `less-go/workbench-mac` project, have the domain owner apply Vercel's verified DNS record, then verify HTTPS and every existing path before changing canonical links or redirecting the old address. This reuses one site and deployment; it does not require a second app/docs host. Domain and DNS changes have not been made by the usability work.
+
 Vercel project: `less-go/workbench-mac`, framework Other. Direct CLI deployment uploads `site/` as the project root. When connecting GitHub later, set Root Directory to `site`. `vercel.json` defines the build and static output. Direct CLI deployment is the current publication path; automatic GitHub deployment needs a GitHub Login Connection in the Vercel account before this repository can be linked. Once connected, use `main` for production and PRs for previews. Do not expose a preview to the general audience in place of the production alias. The existing Vercel workspace is `less-go`; its member list was checked and contained only the maintainer as owner.
 
 Publish reviewed source with `vercel deploy --prod --yes --scope less-go --cwd site` from the repository root. Do not upload `.env` files.

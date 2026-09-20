@@ -27,7 +27,7 @@ struct PersonaLibraryView: View {
                 if preparingPresentation {
                     Button { leavePreparation(dismissLibrary: false) } label: { Label("Personas", systemImage: "chevron.left") }
                 }
-                Text(preparingPresentation ? "Prepare presentation" : "Personas").font(.title2.bold())
+                Text(preparingPresentation ? "Arrange overlays" : (onChoose == nil ? "Personas" : "Choose persona")).font(.title2.bold())
                 Spacer()
                 if !preparingPresentation {
                     Menu("Add persona") {
@@ -43,7 +43,7 @@ struct PersonaLibraryView: View {
                 Button("Done") { leavePreparation(dismissLibrary: true) }.keyboardShortcut(.cancelAction)
             }
             if !preparingPresentation {
-                Text("Show one card and flip through personas, or prepare several overlays and the groups you want to switch between.")
+                Text(onChoose == nil ? "Show a persona card over your apps, or arrange several cards together." : "Choose a persona card to place in this scene.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Picker("Group", selection: Binding(get: { library.activeGroupID }, set: { library.prepareGroup($0) })) {
@@ -100,23 +100,25 @@ struct PersonaLibraryView: View {
                                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             HStack {
-                                if library.sessionState.phase == .idle {
-                                    Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
-                                        if library.overlayVisible { library.hideOverlay() }
-                                        else { showAfterDismiss = true; dismiss() }
-                                    }.disabled(!library.overlayVisible && library.renderedImage(for: selected) == nil)
-                                } else {
-                                    if library.sessionState.phase == .paused {
-                                        Button("Resume overlays") { resumeAfterDismiss = true; dismiss() }
-                                    } else { Button("Hide all") { library.pauseOverlaySession() } }
-                                    Button("End overlays") { library.endOverlaySession() }
+                                if onChoose == nil {
+                                    if library.sessionState.phase == .idle {
+                                        Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
+                                            if library.overlayVisible { library.hideOverlay() }
+                                            else { showAfterDismiss = true; dismiss() }
+                                        }.disabled(!library.overlayVisible && library.renderedImage(for: selected) == nil)
+                                    } else {
+                                        if library.sessionState.phase == .paused {
+                                            Button("Resume overlays") { resumeAfterDismiss = true; dismiss() }
+                                        } else { Button("Hide all") { library.pauseOverlaySession() } }
+                                        Button("End overlays") { library.endOverlaySession() }
+                                    }
                                 }
                                 if let onChoose {
                                     Button("Use in scene") { onChoose(selected); dismiss() }
                                         .disabled(library.renderedImage(for: selected) == nil)
                                 }
                             }
-                            if library.sessionState.phase == .idle {
+                            if onChoose == nil && library.sessionState.phase == .idle {
                                 Toggle("Lock artwork · clicks pass through", isOn: Binding(
                                     get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
                                 HStack(spacing: 8) {
@@ -155,16 +157,19 @@ struct PersonaLibraryView: View {
                             Text("Use the same saved image over your browser or inside a mobile scene.")
                                 .font(.callout).foregroundStyle(.secondary)
                         }
-                        if library.overlayVisible || library.sessionState.phase != .idle {
+                        if onChoose == nil && (library.overlayVisible || library.sessionState.phase != .idle) {
                             Button("Focus floating controls for keyboard") { library.focusOverlayControls() }
                         }
                     }.frame(width: 320, alignment: .leading)
                 }
-                HStack {
-                    Text("Need several overlays at once?").font(.callout).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Prepare presentation…") { preparingPresentation = true }
-                        .disabled(library.isReadOnly)
+                if onChoose == nil {
+                    HStack {
+                        Text("Need several overlays at once?").font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Arrange overlays…") { preparingPresentation = true }
+                            .help("Place several persona cards over your apps")
+                            .disabled(library.isReadOnly)
+                    }
                 }
             } else {
                 PersonaPresentationPreparation(library: library, onStart: { ids, softReveal in

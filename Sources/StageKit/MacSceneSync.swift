@@ -199,7 +199,16 @@ import PhotoHandoffKit
         guard !isReadOnly(scene.id), let revision = scene.libraryRevision else { throw SceneDocumentError.concurrentChange }
         try library.delete(id: scene.id, expectedRevision: revision); publish(library.records)
     }
-    func reorder(_ ids: [UUID]) throws { try library.reorder(ids: ids); publish(library.records) }
+    func remove(_ captured: [DemoScene]) throws {
+        guard Set(captured.map(\.id)).count == captured.count,
+              captured.allSatisfy({ !isReadOnly($0.id) && $0.libraryRevision != nil })
+        else { throw SceneDocumentError.concurrentChange }
+        let revisions = Dictionary(uniqueKeysWithValues: captured.map { ($0.id, $0.libraryRevision!) })
+        try library.delete(expectedRevisions: revisions); publish(library.records)
+    }
+    func reorder(_ ids: [UUID], expectedOrder: [UUID]? = nil) throws {
+        try library.reorder(ids: ids, expectedOrder: expectedOrder); publish(library.records)
+    }
     func shutdown() { subscriptions.removeAll(); library.cancelRefresh(); onChange = nil }
 }
 

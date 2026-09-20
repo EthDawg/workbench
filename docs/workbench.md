@@ -43,7 +43,7 @@ flowchart TB
     Shell --> Stage
 ```
 
-The normal window makes the app discoverable. The menu bar and keyboard accelerate familiar work. Recording controls, palettes and presentation windows appear when needed. Closing Home leaves the menu-bar utility running; Quit must stop capture, playback, drawing and presentation. Login launch is an explicit user setting.
+The normal window makes the app discoverable. The menu bar, keyboard and optional persistent floating toolbar accelerate familiar work. The toolbar uses the same window and saved position for idle actions, dictation and Snap & Talk narration, returning to tools after the operation. It hides during screenshot acquisition. Window → Show floating toolbar provides a fallback when macOS conceals a menu-bar item. Closing Home leaves the utility running; Quit must stop capture, playback, drawing and presentation. Login launch is an explicit user setting.
 
 Normal application menus, buttons and editable shortcuts remain available together. Spotlight can find the app by name. The existing App Intent accepts audio and returns text; it does not own microphone recording. The selected-text Service receives only the request pasteboard supplied by macOS, opens a reviewable reading draft and never starts playback. Additional Spotlight actions, Share extensions and URL automation must be treated as new integrations with their own evidence.
 
