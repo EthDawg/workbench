@@ -28,9 +28,9 @@ async function refresh() {
 }
 async function perform(action) {
   if (busy) return; busy = true;
-  for (const control of document.querySelectorAll("button,select")) control.disabled = true;
+  for (const control of document.querySelectorAll("button:not(#default-tab-form button),select")) control.disabled = true;
   try { await action(); } catch (error) { feedback(safeError(error, "setupUncertain"), true); }
-  finally { busy = false; for (const control of document.querySelectorAll("button,select")) control.disabled = false; }
+  finally { busy = false; for (const control of document.querySelectorAll("button:not(#default-tab-form button),select")) control.disabled = false; }
 }
 element("grant").addEventListener("click", () => {
   if (busy) return;

@@ -14,7 +14,7 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 | App Intents | Audio-file transcription returning a typed text result | `Shortcuts.swift` |
 | macOS Services | Explicit selected text into a reviewable reading draft | `ReadSelectionService.swift`; declaration in `scripts/Info.plist` |
 | `PresenterKit` / `PresenterModel` | Typed Chrome routing protocol; existing Saved resources remains authoritative | `PresenterProtocol.swift`, `PresenterSocket.swift`, `PresenterBridge.swift` |
-| Browser setup packs | Portable link/role intent, local profile assignment, reviewed additive bookmark updates | `BrowserSetupPack.swift`, `BrowserSetupView.swift`, `BrowserExtension/setup.js`; [contract](browser-setup.md) |
+| Browser setup packs | Portable link/role intent, local profile assignment, reviewed additive bookmark updates | `BrowserSetupPack.swift`, `BrowserSetupView.swift`, `BrowserExtension/setup.js`, `BrowserExtension/default-tab.js`; [contract](browser-setup.md) |
 | Chrome/native adapters | Profile-scoped tab targeting, framed transport, transient native picker | `BrowserExtension/`, `WorkbenchBrowserHost`, `PresenterPanel.swift` |
 
 The internal Swift module remains `LocalVoice` to preserve App Intents type/metadata compatibility. Packaging names the installed binary `Workbench`, or `WorkbenchPreview` in Preview. StageKit is linked into it; Workbench does not launch a second StageMark process.

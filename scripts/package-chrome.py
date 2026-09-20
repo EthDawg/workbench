@@ -23,12 +23,13 @@ PROJECT = Path(__file__).resolve().parents[1]
 RUNTIME_FILES = (
     "manifest.json", "background.js", "core.js", "native.js", "popup.js",
     "popup.html", "popup.css", "privacy.html", "setup.js", "setup.html", "setup-page.js",
+    "default-tab.js", "default-tab-page.js", "newtab.html", "newtab.js",
     "icons/icon16.png", "icons/icon32.png", "icons/icon48.png", "icons/icon128.png",
 )
 ALLOWED_MANIFEST_KEYS = {
     "manifest_version", "name", "version", "description", "homepage_url", "icons",
     "minimum_chrome_version", "permissions", "optional_permissions", "optional_host_permissions", "incognito",
-    "background", "action", "content_security_policy", "key",
+    "background", "action", "content_security_policy", "key", "chrome_url_overrides",
 }
 MAX_FILE_BYTES = 1_048_576
 MAX_TOTAL_BYTES = 4_194_304
@@ -119,6 +120,7 @@ def validate(source):
     require(manifest.get("permissions") == ["nativeMessaging", "activeTab", "storage", "alarms"], "Unexpected required permissions.")
     require(manifest.get("optional_permissions") == ["bookmarks"], "Unexpected optional API permissions.")
     require(manifest.get("optional_host_permissions") == ["http://*/*", "https://*/*"], "Unexpected optional host permissions.")
+    require(manifest.get("chrome_url_overrides") == {"newtab": "newtab.html"}, "Unexpected New Tab override.")
     require(manifest.get("incognito") == "not_allowed", "Incognito must remain disabled.")
     require(manifest.get("background") == {"service_worker": "background.js", "type": "module"}, "Unexpected service worker.")
     require(manifest.get("action", {}).get("default_popup") == "popup.html", "Unexpected popup entry point.")

@@ -50,6 +50,15 @@ class ChromePackageTests(unittest.TestCase):
         self.assertTrue(result["manifest_key_omitted"])
         self.assertEqual(result["unpacked_extension_id"], "ajafaiojgpdgmeblldllnhhfnafiiieo")
 
+    def test_rejects_changed_newtab_override_and_missing_page(self):
+        self.manifest(lambda value: value.update(chrome_url_overrides={"newtab": "https://example.test/"}))
+        with self.assertRaisesRegex(PACKAGER.PackageError, "New Tab override"):
+            PACKAGER.validate(self.source)
+        self.manifest(lambda value: value.update(chrome_url_overrides={"newtab": "newtab.html"}))
+        (self.source / "newtab.js").unlink()
+        with self.assertRaisesRegex(PACKAGER.PackageError, "Missing"):
+            PACKAGER.validate(self.source)
+
     def test_archive_is_reproducible(self):
         first = PACKAGER.package(self.source, self.directory / "first.zip")
         second = PACKAGER.package(self.source, self.directory / "second.zip")

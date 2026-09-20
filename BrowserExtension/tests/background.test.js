@@ -185,3 +185,28 @@ test("only setup page can read setup state or choose its bookmark root", async (
   const result = await new Promise(resolve => assert.equal(listener({ type: "setupState" }, setupSender, resolve), true));
   assert.equal(result.ok, false); assert.equal(result.error, ERRORS.setupUnsupported);
 });
+
+test("opted-in startup opens only on the profile startup event, never install, worker boot or reconnect", async () => {
+  const f = await fixture(); const opened = [];
+  f.api.tabs.create = async value => { opened.push(value); };
+  f.local.defaultTab = { version: 1, url: "https://example.test/start", redirectNewTabs: false, openOnStartup: true };
+  await f.connect();
+  f.api.runtime.onInstalled.emit();
+  f.api.alarms.onAlarm.emit({ name: "workbench-native-reconnect" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(opened, []);
+  f.api.runtime.onStartup.emit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(opened, [{ url: "https://example.test/start", active: false }]);
+});
+
+test("profile startup without consent or with invalid settings opens nothing", async () => {
+  const f = await fixture(); const opened = [];
+  f.api.tabs.create = async value => { opened.push(value); };
+  f.api.runtime.onStartup.emit();
+  await new Promise(resolve => setImmediate(resolve));
+  f.local.defaultTab = { version: 1, url: "javascript:alert(1)", redirectNewTabs: true, openOnStartup: true };
+  f.api.runtime.onStartup.emit();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(opened, []);
+});

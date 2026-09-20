@@ -32,3 +32,9 @@ See the [browser setup contract and acceptance steps](../browser-setup.md) for u
 ## Still to verify before promotion
 
 The computer-control service timed out while opening the disposable native fixture. No live Chrome bookmark permission/apply flow is claimed from this session, and no real profile/bookmark/password changes were made. Use the two-disposable-profile acceptance sequence in the contract before merging/promoting the feature, then build and notarize a new Preview from the accepted commit. Do not replace the current store draft with 0.2.0 until that matching native companion is ready. Hardware/iOS/App Store work is unaffected.
+
+## Default-tab increment · extension 0.2.1
+
+The candidate now includes a per-profile default URL, an explicit toolbar open action, optional New Tab redirect and optional extra startup tab. Installing the extension changes New Tab to the local Workbench page; redirect/startup opt-ins begin off. Off does not restore Chrome’s original page (unless another extension controls it). Disable/remove the extension to restore it, which also disconnects the profile. No native protocol, credentials, profile creation or copy behavior was added. The native guide text points to these controls.
+
+Automated verification for this increment: 103 Node tests, 11 package tests and 8 website tests passed; the changed native guide source passed Swift syntax parsing; the store-format 0.2.1 ZIP contains all 19 runtime files and omits the development key. Earlier 0.2.0 hashes above remain historical evidence for that build, not this increment. See the generated local package for its current hash. No live installation, store submission, website deployment or public binary promotion was performed. Two-profile Chrome acceptance, redirects in real new tabs, competing-extension prompts and startup behavior remain outstanding. Protected Chrome settings/store automation must not be bypassed through another controller or profile-file edits.

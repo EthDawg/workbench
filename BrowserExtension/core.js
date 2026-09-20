@@ -1,6 +1,9 @@
 export const HOST_NAME = "com.ethdawg.workbench.browser";
 export const MAX_PACKET_BYTES = 65_536;
 export const ERRORS = Object.freeze({
+  defaultTabInvalid: "Enter a complete HTTP(S) address without credentials or secret query parameters. Automatic opening needs an address.",
+  defaultTabMissing: "Choose a default address in Browser setup for this profile first.",
+  defaultTabFailed: "The default-tab action could not be confirmed. Check this profile before trying again.",
   setupPermission: "Open Browser setup in this Chrome profile and allow bookmark access.",
   setupRoot: "Choose a writable local bookmark location in Browser setup. Existing packs need their original location.",
   setupChanged: "The setup or bookmarks changed after review. Preview the changes again.",

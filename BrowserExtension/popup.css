@@ -66,4 +66,7 @@ footer span:first-child { max-width:185px; overflow:hidden; text-overflow:ellips
 @media (prefers-color-scheme:dark) { :root { --bg:#172322; --surface:#20312e; --ink:#e4ede9; --muted:#a0b4ac; --line:#354841; --mint:#263f35; --accent:#a2e4c6; --focus:#a2e4c6; --error:#f4b8a8; } .primary { background:#b5edd4; color:#15352a; } }
 @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
 
+.checkbox-label { display:flex; align-items:center; gap:10px; font-size:13px; }
+.checkbox-label input { width:auto; }
+#default-tab-form button { margin:6px 4px 6px 0; }
 .setup-link { padding:0 20px 12px; font-size:12px; }

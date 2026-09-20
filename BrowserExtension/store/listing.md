@@ -4,7 +4,7 @@ This is submission copy and a release handoff, not evidence of store approval or
 
 ## Existing store identity
 
-Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The store ZIP omits the development-only `key`; uploading it updates the existing item under Google’s assigned signing identity. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; saved destinations and profile pairing are preserved. Version 0.2.0 adds optional browser setup commands and local bookmark receipts; it requires a matching companion for those new actions.
+Continue the existing Chrome Web Store draft with assigned extension ID `alckfplchkdcjdlhlnhanonkelljnioj`; do not create a replacement item. The store ZIP omits the development-only `key`; uploading it updates the existing item under Google’s assigned signing identity. The development manifest retains its public key and stable unpacked ID `ajafaiojgpdgmeblldllnhhfnafiiieo`. The companion's native host registration and incoming-origin validation explicitly allow those two identities only. This preserves existing unpacked use while supporting the store-assigned identity; saved destinations and profile pairing are preserved. Version 0.2.1 includes the 0.2 browser setup commands plus the default-tab behavior disclosed below. Version 0.2.0 added optional browser setup commands and local bookmark receipts; it requires a matching companion for those new actions.
 
 After installing the matching companion, choose **Repair Chrome connection** in **Saved resources → Chrome destinations** to refresh an existing native host registration. A store installation has separate extension storage and requires its own explicit profile pairing. Live store-installed pairing and the dashboard's submission/approval/publication status remain separate acceptance checks.
 
@@ -22,7 +22,7 @@ After installing the matching companion, choose **Repair Chrome connection** in 
 
 **Support:** https://github.com/EthDawg/workbench/issues
 
-**Privacy policy:** https://workbench-mac.vercel.app/privacy.html#chrome — the earlier browser-specific disclosure was published and byte-verified on 15 September 2026. The 0.2.0 browser-setup additions in packaged `privacy.html` and `privacy-policy-draft.md` still need public publication before this update is submitted.
+**Privacy policy:** https://workbench-mac.vercel.app/privacy.html#chrome — the earlier browser-specific disclosure was published and byte-verified on 15 September 2026. The 0.2.1 browser-setup and default-tab additions in packaged `privacy.html` and `privacy-policy-draft.md` still need public publication before this update is submitted.
 
 ## Detailed description
 
@@ -48,7 +48,7 @@ Opening a destination confirms Chrome’s tab and window focus. It does not conf
 
 Free and open source. Preview software: report reproducible issues using synthetic examples and leave out customer data, passwords and private addresses.
 
-Optional browser setup applies a reviewed pack of bookmarks into a selected local folder and opens launch tabs in a new window. Bookmark access is requested only if you enable that feature. Existing bookmarks and detected manual changes are preserved. Chrome 134 or later is required for setup; Switch to continues to support Chrome 120 or later. Workbench does not set startup or New Tab settings, create profiles or change Google Password Manager.
+Optional browser setup applies a reviewed pack of bookmarks into a selected local folder and opens launch tabs in a new window. Bookmark access is requested only if you enable that feature. Existing bookmarks and detected manual changes are preserved. Chrome 134 or later is required for setup; Switch to continues to support Chrome 120 or later. Workbench does not create profiles or change Google Password Manager. Version 0.2.1 replaces New Tab with a local Workbench page and offers a per-profile saved default URL, optional New Tab redirection and optional extra startup tab; both automatic choices start off. Turning redirection off keeps the Workbench page. Disable/remove Workbench to restore Chrome’s New Tab page, which also stops its connection. Defaults are local to each profile and can open without the companion. Review the New Tab override and startup behavior in the store disclosures before submission.
 
 ## Single purpose
 

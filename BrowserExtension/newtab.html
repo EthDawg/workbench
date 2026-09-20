@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New tab — Workbench Preview</title>
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="newtab.js"></script>
+</head>
+<body class="privacy-page">
+  <header><img class="mark" src="icons/icon48.png" width="34" height="34" alt=""><div><h1>Workbench <span class="preview-label">Preview</span></h1><p class="eyebrow">New tab · this Chrome profile</p></div></header>
+  <main>
+    <h2>Your next destination</h2>
+    <p>Use the address bar, or open the default address saved for this profile.</p>
+    <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+    <button id="open-default-tab" class="primary" type="button">Open default tab</button>
+    <p><a href="setup.html">Choose or change this profile’s default address</a></p>
+    <p>Automatic redirection is off until you enable it in Browser setup. Turning it off keeps this Workbench page. To restore Chrome’s own New Tab page (unless another extension controls it), disable or remove Workbench in Chrome’s extension settings; that also stops this profile’s Workbench connection.</p>
+  </main>
+  <footer><a href="privacy.html">Privacy &amp; permissions</a></footer>
+</body>
+</html>

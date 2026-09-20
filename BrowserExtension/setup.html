@@ -6,12 +6,30 @@
   <title>Browser setup — Workbench Preview</title>
   <link rel="stylesheet" href="popup.css">
   <script type="module" src="setup-page.js"></script>
+  <script type="module" src="default-tab-page.js"></script>
 </head>
 <body class="privacy-page">
   <header><img class="mark" src="icons/icon48.png" width="34" height="34" alt=""><div><h1>Browser setup</h1><p id="profile" class="eyebrow">This Chrome profile</p></div></header>
   <main>
     <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
     <p>Prepare this profile once, then review and apply a browser setup pack in the Workbench Mac app. Pair each participating profile using the Workbench toolbar popup.</p>
+    <section aria-labelledby="default-tab-heading">
+      <h2 id="default-tab-heading">Default tab for this profile</h2>
+      <p>Choose an address, then open it from the toolbar popup. This setting works without the Mac connection and stays local to this Chrome profile. A browser pack does not change it automatically.</p>
+      <div id="default-tab-feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+      <form id="default-tab-form">
+        <label for="default-url">Default address (HTTP or HTTPS)</label>
+        <input id="default-url" type="url" maxlength="4096" placeholder="https://example.com/" autocomplete="off" spellcheck="false">
+        <label class="checkbox-label"><input id="redirect-new-tabs" type="checkbox"> Redirect every new tab to this address</label>
+        <label class="checkbox-label"><input id="open-on-startup" type="checkbox"> Open an extra background tab when this Chrome profile starts</label>
+        <p>Both options start off. Startup adds a tab alongside Chrome’s restored or startup pages, so enabling both options can open the address twice. Opening another window or reconnecting Workbench does not trigger the extra startup tab.</p>
+        <button type="submit" class="primary">Save default tab</button>
+        <button id="open-default-tab" type="button" class="secondary">Open saved default tab</button>
+        <button id="clear-default-tab" type="button" class="secondary">Clear address and stop automatic opening</button>
+      </form>
+      <p><strong>New Tab changes when you install this version.</strong> Workbench replaces Chrome’s New Tab page even when redirection is off. Off shows the local Workbench page; it does not restore Chrome’s original page (unless another extension controls it). Disable or remove Workbench in Chrome’s extension settings to restore the original; this also stops the profile’s Workbench connection. Chrome controls competing New Tab extensions.</p>
+      <p>Normal query parameters and fragments are preserved, including Compound’s <code>passwordMode=1&amp;app=rippling</code> demo route. Do not put passwords, tokens or private information in the address.</p>
+    </section>
     <section aria-labelledby="bookmarks-heading">
       <h2 id="bookmarks-heading">Bookmarks</h2>
       <p>Chrome grants access to all bookmarks in this profile. Workbench uses a local location you select and updates only bookmarks it created. Existing and manually changed bookmarks are preserved.</p>
@@ -39,7 +57,7 @@
       <p><strong>Open launch tabs</strong> in Workbench opens the reviewed addresses in a new window in this connected profile. Your existing tabs stay open. This does not set Chrome's startup pages.</p>
       <p><strong>On startup:</strong> choose “Open a specific page or set of pages” in Chrome settings and add the addresses from your pack. Check the result after fully quitting Chrome with ⌘Q and reopening it. “Use current pages” can include unrelated tabs, so review that list carefully.</p>
       <button type="button" class="secondary" data-chrome="chrome://settings/onStartup">Open startup settings</button>
-      <p><strong>New Tab:</strong> every new tab has a separate setting. A dedicated extension such as <a href="https://chromewebstore.google.com/detail/custom-new-tab-url/mmjbdbjnoablegbkcklggeknkfcjkjia" target="_blank" rel="noopener noreferrer">Custom New Tab URL</a> is one option to review yourself. Workbench does not install or configure it. Startup completion and New Tab completion remain your checks.</p>
+      <p><strong>New Tab:</strong> use the default-tab controls above. For Chrome-managed startup pages, use the settings button instead of enabling an extra startup tab here.</p>
       <p><strong>New profiles:</strong> use Chrome's profile menu → Add Chrome profile, then install and connect Workbench in that profile. Workbench does not create profiles or copy sessions.</p>
     </section>
   </main>

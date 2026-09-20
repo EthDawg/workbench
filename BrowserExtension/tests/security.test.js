@@ -11,7 +11,7 @@ test("manifest retains minimal adapter permissions, fixed identity and strict MV
   assert.equal(manifest.incognito, "not_allowed");
   assert.deepEqual(manifest.permissions.sort(), ["activeTab", "alarms", "nativeMessaging", "storage"]);
   assert.deepEqual(manifest.optional_permissions, ["bookmarks"]);
-  assert.equal(manifest.chrome_url_overrides, undefined);
+  assert.deepEqual(manifest.chrome_url_overrides, { newtab: "newtab.html" });
   assert.equal(manifest.chrome_settings_overrides, undefined);
   assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   for (const key of ["host_permissions", "content_scripts", "externally_connectable", "web_accessible_resources"]) assert.equal(manifest[key], undefined);
@@ -37,7 +37,7 @@ test("popup uses local assets and text-only rendering without inline execution",
 });
 
 test("runtime has no sync storage, content inspection, navigation of existing tabs or logging", async () => {
-  const source = (await Promise.all(["core.js", "native.js", "background.js", "popup.js", "setup.js", "setup-page.js"].map(read))).join("\n");
+  const source = (await Promise.all(["core.js", "native.js", "background.js", "popup.js", "setup.js", "setup-page.js", "default-tab.js", "default-tab-page.js", "newtab.js"].map(read))).join("\n");
   assert.doesNotMatch(source, /storage\.sync|console\.|scripting\.|executeScript|cookies\.|passwords\.|history\.|fetch\(|XMLHttpRequest/);
   assert.doesNotMatch(source, /tabs\.update\([^\n]*\burl\s*:/);
   assert.doesNotMatch(source, /tabs\.remove\(/);

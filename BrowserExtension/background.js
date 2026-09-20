@@ -1,6 +1,7 @@
 import { FocusController, WorkbenchError, canonicalizeURL, cleanName, validID, permissionPattern, safeError } from "./core.js";
 import { SetupController } from "./setup.js";
 import { NativeClient } from "./native.js";
+import { openDefaultTab } from "./default-tab.js";
 
 const RETRY_ALARM = "workbench-native-reconnect";
 const focus = new FocusController(chrome);
@@ -120,10 +121,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handle(message).then(sendResponse, error => sendResponse({ ok: false, error: safeError(error) }));
   return true;
 });
-chrome.runtime.onStartup.addListener(() => { void reconnect(); });
+chrome.runtime.onStartup.addListener(() => {
+  void reconnect();
+  // Explicit profile-local opt-in. This is deliberately absent from installation,
+  // worker boot and reconnect paths. Do not retry a possibly completed opening.
+  void openDefaultTab(chrome, { startup: true }).catch(() => {});
+});
 chrome.runtime.onInstalled.addListener(() => { void reconnect(); });
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === RETRY_ALARM) void reconnect(); });
 
 // A worker restarted by a popup also reattaches a previously paired profile.
-// No automatic command activates a destination or creates a tab.
+// Worker boot never activates a destination or creates a tab.
 void reconnect();

@@ -1,3 +1,4 @@
+import { openDefaultTab } from "./default-tab.js";
 import { ERRORS, WorkbenchError, cleanName, permissionPattern, safeError } from "./core.js";
 
 const element = id => document.getElementById(id);
@@ -207,6 +208,11 @@ element("save-form").addEventListener("submit", event => {
   });
 });
 
+element("open-default-tab").addEventListener("click", () => { void perform(async () => {
+  try { await openDefaultTab(chrome); }
+  catch (error) { throw error instanceof WorkbenchError ? error : new WorkbenchError("defaultTabFailed"); }
+  feedback("Opened the default address in a new tab in this profile.");
+}); });
 render();
 void perform(async () => {
   state = await request({ type: "state" });

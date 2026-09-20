@@ -189,7 +189,7 @@ final class BrowserSetupModel: ObservableObject {
         2. Open extension Profile setup, grant optional bookmark access and choose a writable local location. Chrome 134+ is required for local/synced-root detection. For shared Google-account bookmarks, use Chrome’s own sync instead of applying duplicate packs to synced roots.
         3. In Workbench > Saved resources > Browser setup, open the JSON, assign roles to selected profiles, Review, then Apply reviewed bookmarks. Existing manual edits are kept; removal from the pack does not delete a browser bookmark.
         4. Launch tabs deliberately opens a new window per selected profile. It does not set startup pages or new tabs, verify the login, or replay on reconnect.
-        5. For startup pages, open chrome://settings/onStartup in each intended profile and add that role’s default URL (below). For every new tab, use a dedicated extension such as Custom New Tab URL and configure its URL per profile. Workbench does not change new-tab behaviour globally.
+        5. Extension 0.2.1: copy the role’s default URL below into that profile’s Workbench Browser setup. Open it from the toolbar or opt into New Tab redirection or an extra startup tab. Installing 0.2.1 changes New Tab to a Workbench page even with redirect off; disable/remove the extension to restore Chrome’s page, also stopping its connection. Startup can duplicate Chrome’s own restored pages. Configure each profile separately; a pack never changes these settings. Older extensions can use Chrome startup settings or a separate New Tab extension.
 
         ## Google Password Manager
         Use Chrome’s Google sign-in and saved-info settings to make passwords available where you sign in to the same Google Account. Check the account in each profile yourself; different demo personas can require separate site logins. Chrome profiles keep their sessions separate. Workbench never exports passwords, copies cookies, or proves an authenticated persona from a profile label. Do not put password CSV exports or credentials in this folder or an agent prompt.
@@ -204,7 +204,7 @@ final class BrowserSetupModel: ObservableObject {
         - Google profiles: https://support.google.com/chrome/answer/2364824
         - Google saved info: https://support.google.com/chrome/answer/165139
         - Startup pages: https://support.google.com/chrome/answer/95314
-        - Custom New Tab URL (separate third-party extension): https://chromewebstore.google.com/detail/custom-new-tab-url/mmjbdbjnoablegbkcklggeknkfcjkjia
+        - New Tab override behavior: https://developer.chrome.com/docs/extensions/develop/ui/override-chrome-pages
         """
     }
 }
@@ -312,7 +312,7 @@ struct BrowserSetupView: View {
                 ForEach(role.launchURLs, id: \.self) { url in Text(url).font(.caption).textSelection(.enabled) }
                 HStack {
                     Text("Default page").font(.subheadline.bold())
-                    Button("Copy URL") { _ = TextDelivery.copy(role.defaultURL); setup.notice = "Default URL copied. Set it in this profile’s startup settings or dedicated new-tab extension." }
+                    Button("Copy URL") { _ = TextDelivery.copy(role.defaultURL); setup.notice = "Default URL copied. Paste it into this profile’s Workbench extension Browser setup (0.2.1+) or Chrome startup settings." }
                 }
                 Text(role.defaultURL).font(.caption).textSelection(.enabled)
             }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .leading)

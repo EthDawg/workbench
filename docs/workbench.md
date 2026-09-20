@@ -22,7 +22,7 @@ The explicit Screenshot action hands existing annotations to Apple Screenshot; i
 
 ## One app, several ways in
 
-**Switch to** extends Saved resources through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. Switch to is included in public Preview 4. The newer [browser setup pack increment](browser-setup.md) is a development candidate: shared bookmarks, per-profile roles, explicit launch tabs and a portable Claude/Codex/ChatGPT skill, with reviewed additive writes. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
+**Switch to** extends Saved resources through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. Switch to is included in public Preview 4. The newer [browser setup pack increment](browser-setup.md) is a development candidate: shared bookmarks, per-profile roles, explicit launch tabs, profile-local default-tab controls with a disclosed New Tab override, and a portable Claude/Codex/ChatGPT skill, with reviewed additive writes. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
 
 ```mermaid
 flowchart TB
