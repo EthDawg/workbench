@@ -121,6 +121,9 @@ enum SpekoVoiceCatalog {
 
     static let maximumResponseBytes = 2 * 1024 * 1024
     static let maximumVoices = 1_000
+    // Bound requests independently of voice count: a service can return empty
+    // pages with a different cursor each time.
+    static let maximumPages = 20
 
     static func request(key: String, cursor: String? = nil) throws -> URLRequest {
         var components = URLComponents(string: "https://api.speko.dev/v1/tts/voices")!
@@ -171,8 +174,7 @@ enum SpekoVoiceCatalog {
         }
     }
 
-    static func load(key: String) async throws -> [SpekoVoice] {
-        let configuration = URLSessionConfiguration.ephemeral
+    static func load(key: String, configuration: URLSessionConfiguration = .ephemeral) async throws -> [SpekoVoice] {
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
         configuration.timeoutIntervalForResource = 60
@@ -182,11 +184,21 @@ enum SpekoVoiceCatalog {
         var voices: [SpekoVoice] = []
         var cursor: String?
         var seenCursors: Set<String> = []
+        var pageCount = 0
         repeat {
             try Task.checkCancellation()
-            let (data, response) = try await session.data(for: request(key: key, cursor: cursor))
+            guard pageCount < maximumPages else { throw VoiceError.message("Speko returned too many voice catalogue pages. Try refreshing later.") }
+            pageCount += 1
+            let (stream, response) = try await session.bytes(for: request(key: key, cursor: cursor))
             guard let http = response as? HTTPURLResponse else { throw VoiceError.message("Speko returned an invalid voice catalogue response.") }
             try validate(http)
+            var data = Data()
+            for try await byte in stream {
+                if data.count.isMultiple(of: 16384) { try Task.checkCancellation() }
+                guard data.count < maximumResponseBytes else { throw VoiceError.message("Speko returned an oversized voice catalogue.") }
+                data.append(byte)
+            }
+            try Task.checkCancellation()
             let page = try decode(data)
             voices.append(contentsOf: page.data)
             guard voices.count <= maximumVoices else { throw VoiceError.message("Speko returned too many voices to display safely.") }
