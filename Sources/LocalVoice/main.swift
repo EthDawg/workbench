@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.start()
         model.microphoneStartFailure = { [weak self] target in
             guard let self else { return "Workbench is unavailable." }
-            if self.readback.isRecording || self.readback.hasPendingTranscriptions { return "Finish the current Snap & Talk narration and transcription queue before starting ordinary dictation." }
+            if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil)
                 ? nil : "To enter text on your phone, use its keyboard or Dictation button. Mac dictation works in a Mac text field."
         }
@@ -378,7 +378,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await PresenterChecks.run()
         case "--check-core":
             try CorrectionRuleChecks.run()
-            try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
+            try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
         case "--check-reading-cancellation":
@@ -400,7 +400,7 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-input":
             try await MainActor.run { try InputChecks.run() }
         case "--check-readback":
-            try ReadbackChecks.run()
+            try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks()
         case "--check-cleanup":
             try CleanupChecks.run()
             let result = await CleanupEngine().clean(CleanupChecks.example, style: .natural)

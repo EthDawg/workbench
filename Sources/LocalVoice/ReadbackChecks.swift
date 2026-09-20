@@ -170,4 +170,82 @@ enum ReadbackChecks {
         try check(VoicePreferences.migratingLegacyDefaults(legacyPreferences).shortcut(5) == VoicePreferences.defaultReadbackShortcut, "the conflicting legacy Control-Option-R default migrates")
         print("READBACK_CHECKS_OK: \(passed) checks")
     }
+
+    @MainActor
+    static func runAdmissionChecks() async throws {
+        var passed = 0
+        func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+            guard condition() else { throw ReadbackError.message("READBACK_ADMISSION_CHECK_FAILED: \(message)") }
+            passed += 1
+        }
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("Workbench-readback-admission-\(UUID().uuidString)")
+        let domain = "Workbench.ReadbackAdmissionChecks.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: domain) else { throw ReadbackError.message("Unable to isolate check preferences") }
+        defer { defaults.removePersistentDomain(forName: domain); try? fm.removeItem(at: root) }
+        var manifest = try ReadbackStore.create(at: root, title: "Synthetic admission")
+        let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
+        try ReadbackStore.createPrivateDirectory(root.appendingPathComponent(directory))
+        let section = ReadbackSection(id: id, capturedAt: Date(timeIntervalSince1970: 10), displayName: "Synthetic display", directory: directory,
+            screenshot: directory + "/screen.png", audio: directory + "/narration.wav", originalTranscript: directory + "/narration-original.txt",
+            transcript: directory + "/narration.txt", status: .ready, failure: nil, deletedAt: nil)
+        for path in [section.screenshot, section.audio!, section.originalTranscript!, section.transcript!] {
+            try ReadbackStore.writePrivate(Data("Original synthetic \(path)".utf8), to: root.appendingPathComponent(path))
+        }
+        manifest.sections = [section]; try ReadbackStore.save(manifest, at: root)
+        func snapshot() throws -> [String: Data] {
+            var files: [String: Data] = [:]
+            guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) else {
+                throw ReadbackError.message("Unable to enumerate synthetic session")
+            }
+            for case let url as URL in enumerator where try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+                files[url.path] = try Data(contentsOf: url)
+            }
+            return files
+        }
+        let before = try snapshot()
+        defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+        var denial: String? = "Synthetic ordinary dictation is active"
+        var captureCount = 0
+        var duringCapture: (() -> Void)?
+        let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults) {
+            captureCount += 1
+            await Task.yield()
+            duringCapture?()
+            return ReadbackScreenshot(data: Data("Replacement synthetic screenshot".utf8), displayName: "Synthetic capture", screenFrame: .zero)
+        }
+        defer { duringCapture = nil; model.shutdown() }
+        model.mayBeginCapture = { denial }
+        try check(model.manifest?.sections.first == section, "isolated model loads the ready synthetic section without permission prompts")
+        await model.redoBoth(id)
+        model.startNarration(for: id)
+        await model.captureNewSection(fromEditor: true)
+        let earlyDenied = try snapshot()
+        try check(captureCount == 0, "busy admission blocks redo and new capture before invoking the capture service")
+        try check(!model.isRecording && !model.isCapturing, "busy admission never starts a recorder")
+        try check(earlyDenied == before, "early denial preserves manifest, original screenshot, audio and both transcripts byte for byte")
+        try check(model.notice == denial, "early denial explains the owning operation")
+
+        denial = nil
+        var dictationBlockedDuringCapture = false
+        duringCapture = {
+            dictationBlockedDuringCapture = model.blocksDictation
+            denial = "Synthetic reading started while capture awaited"
+        }
+        await model.redoBoth(id)
+        let lateDenied = try snapshot()
+        try check(captureCount == 1 && dictationBlockedDuringCapture, "in-flight screenshot capture reserves ordinary dictation admission")
+        try check(lateDenied == before, "late admission denial occurs before archiving or replacing any previous section files")
+        try check(model.manifest?.sections.first == section && !model.isRecording && !model.blocksDictation, "late denial retains ready state and releases the capture gate")
+        try check(model.notice?.contains(denial!) == true, "late denial gives the busy reason")
+
+        denial = nil
+        duringCapture = { model.closeSession() }
+        await model.redoBoth(id)
+        let switched = try snapshot()
+        try check(captureCount == 2 && switched == before, "closing the session during redo never modifies the previous session")
+        try check(model.sessionURL == nil && !model.isRecording && !model.blocksDictation, "session change leaves no hidden recorder or capture reservation")
+        print("READBACK_ADMISSION_CHECKS_OK: \(passed) checks")
+    }
+
 }

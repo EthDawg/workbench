@@ -309,10 +309,13 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var activeSections: [ReadbackSection] { manifest?.sections.filter { $0.deletedAt == nil } ?? [] }
     var deletedSections: [ReadbackSection] { manifest?.sections.filter { $0.deletedAt != nil } ?? [] }
     var hasPendingTranscriptions: Bool { pendingTranscriptionCount > 0 }
+    var blocksDictation: Bool { isCapturing || isRecording || hasPendingTranscriptions }
     var permissionsReady: Bool { screenPermissionGranted && microphonePermission == .authorized }
     var shortcutLabel: String { VoicePreferences.load().shortcut(5).label }
 
     private let engine: RecognitionEngine
+    private let defaults: UserDefaults
+    private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
     private var recorder: AVAudioRecorder?
     private var meter: Timer?
     private var peakPower: Float = -160
@@ -322,10 +325,13 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var activeJob: Job?
     private static let recentsKey = "readback.recentSessionPaths.v1"
 
-    init(engine: RecognitionEngine) {
+    init(engine: RecognitionEngine, defaults: UserDefaults = .standard,
+         captureDisplay: @escaping @MainActor () async throws -> ReadbackScreenshot = { try await ReadbackScreenCapture.currentDisplay() }) {
         self.engine = engine
+        self.defaults = defaults
+        self.captureDisplay = captureDisplay
         super.init()
-        recentSessionURLs = (UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        recentSessionURLs = (defaults.stringArray(forKey: Self.recentsKey) ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let recent = recentSessionURLs.first, let loaded = try? ReadbackStore.load(from: recent) {
             let restored = recovered(loaded, at: recent)
             setCurrent(url: recent, manifest: restored)
@@ -450,6 +456,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
         do {
             let capture = try await captureScreen(fromEditor: fromEditor)
+            if let reason = mayBeginCapture?() { throw ReadbackError.message(reason) }
             guard sessionURL?.standardizedFileURL == root.standardizedFileURL else {
                 throw ReadbackError.message("The session changed during capture. Capture again in the selected session.")
             }
@@ -484,6 +491,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     private func startNarration(root: URL, sectionID: UUID) throws {
+        if let reason = mayBeginCapture?() { throw ReadbackError.message(reason) }
         guard microphonePermission == .authorized else { throw ReadbackError.message("Microphone access is off.") }
         guard var current = try? ReadbackStore.load(from: root), let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else {
             throw ReadbackError.message("The Snap & Talk section is no longer available.")
@@ -583,9 +591,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func redoBoth(_ sectionID: UUID) async {
         guard !isCapturing, !isRecording, let root = sessionURL else { return }
+        if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
         isCapturing = true; stateChanged()
         do {
             let capture = try await captureScreen(fromEditor: true)
+            if let reason = mayBeginCapture?() { throw ReadbackError.message(reason) }
+            guard sessionURL?.standardizedFileURL == root.standardizedFileURL else {
+                throw ReadbackError.message("The session changed during capture. Capture again in the selected session.")
+            }
             var current = try ReadbackStore.load(from: root)
             guard let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else { throw ReadbackError.message("The section is no longer available.") }
             try archiveFile(relative: current.sections[index].screenshot, label: "screen", root: root, section: current.sections[index])
@@ -698,7 +711,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         defer { if fromEditor { onRestoreAfterEditorCapture?() } }
-        return try await ReadbackScreenCapture.currentDisplay()
+        return try await captureDisplay()
     }
 
     private func archiveNarrationFiles(section: ReadbackSection, root: URL) throws {
@@ -825,7 +838,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         })
         var paths = recentSessionURLs.map(\.standardizedFileURL).filter { $0 != url.standardizedFileURL }
         paths.insert(url.standardizedFileURL, at: 0); recentSessionURLs = Array(paths.prefix(12))
-        UserDefaults.standard.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
+        defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
     }
 
     private func publish(_ value: ReadbackManifest, for root: URL) {
