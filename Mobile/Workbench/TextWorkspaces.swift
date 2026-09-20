@@ -12,7 +12,7 @@ struct MobileDictateView: View {
     @State private var cleanup = true
     @State private var importing = false
     @State private var notice: String?
-    @State private var previousDraft: String?
+    @State private var previousDraft: (before: String, applied: String)?
     @State private var listening = false
     @State private var originalVisible = false
     @State private var discardRecovery = false
@@ -64,23 +64,30 @@ struct MobileDictateView: View {
                 }
                 ZStack(alignment: .topLeading) {
                     if draft.isEmpty { Text("Speak, paste or type something you want to keep.").foregroundStyle(.tertiary).padding(.top, 12).padding(.leading, 5).allowsHitTesting(false) }
-                    // A user edit retires cleanup Undo, even if later edits return
-                    // to identical text. Programmatic cleanup retains its snapshot.
-                    // Commit native text before invalidating its dependent Undo UI.
-                    TextEditor(text: Binding(get: { draft }, set: { value in
-                        if value != draft { draft = value; previousDraft = nil }
-                    })).frame(minHeight: 200).scrollContentBackground(.hidden).focused($editing).accessibilityLabel("Draft text").accessibilityIdentifier("dictate.draft").disabled(speech.isWorking || speech.isRecording)
+                    // Let native input commit through its own state binding.
+                    // Retire dependent Undo UI after SwiftUI observes the edit,
+                    // rather than mutating both states inside the input setter.
+                    TextEditor(text: $draft).frame(minHeight: 200).scrollContentBackground(.hidden).focused($editing).accessibilityLabel("Draft text").accessibilityIdentifier("dictate.draft").disabled(speech.isWorking || speech.isRecording)
                 }.padding(12).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
                 if !draft.isEmpty {
                     HStack {
                         Button("Clean up", systemImage: "text.badge.checkmark") {
-                            previousDraft = draft
+                            let applied = TextRules.apply(DictationCleanup.light(draft), replacements: store.document.replacements)
+                            previousDraft = (before: draft, applied: applied)
                             if original.isEmpty { original = draft }
-                            draft = TextRules.apply(DictationCleanup.light(draft), replacements: store.document.replacements)
+                            draft = applied
                             store.change { $0.draft = draft; $0.draftOriginal = original }
                             notice = "Light cleanup applied. Your original is kept."
                         }.buttonStyle(.bordered).disabled(speech.isWorking || speech.isRecording)
-                        if let before = previousDraft { Button("Undo cleanup") { draft = before; previousDraft = nil } }
+                        if let snapshot = previousDraft {
+                            Button("Undo cleanup") {
+                                previousDraft = nil
+                                // A pending view refresh cannot make stale Undo
+                                // overwrite text that has already changed.
+                                guard draft == snapshot.applied else { return }
+                                draft = snapshot.before
+                            }
+                        }
                         Spacer()
                     }
                     DisclosureGroup("Original", isExpanded: $originalVisible) {
@@ -108,6 +115,9 @@ struct MobileDictateView: View {
             .onAppear { draft = store.document.draft; original = store.document.draftOriginal }
             .task { await speech.refreshAvailability() }
             .onChange(of: draft) { _, new in
+                // Any edit retires the snapshot; returning to its text later
+                // must not revive it. Programmatic cleanup matches applied.
+                if let snapshot = previousDraft, new != snapshot.applied { previousDraft = nil }
                 if new.count > 50_000 { draft = String(new.prefix(50_000)); return }
                 store.change { $0.draft = new; $0.draftOriginal = original }
             }
