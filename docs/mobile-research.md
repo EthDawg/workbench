@@ -1,6 +1,6 @@
 # Mobile utility decisions
 
-For the proposed phone-screenshot workflow, portable agent handoff and selected team-capture reuse, see [Snap & Talk on mobile](research/snap-and-talk-mobile.md). That research recommends Mac image import first, followed by a measured mobile capture experiment; it does not change the current mobile capability record.
+For the proposed phone-screenshot workflow, portable agent handoff and selected team-capture reuse, see [Snap & Talk on mobile](research/snap-and-talk-mobile.md). That research recommends Mac image import and an experiment combining existing phone presentation, scene backgrounds and annotation, followed by a measured mobile capture experiment; it does not change the current mobile capability record.
 
 Reviewed 13 September 2026. This is a bounded comparison of current vendor/Apple documentation and a sample of publicly surfaced US App Store reviews and forum reports. It is **not** an exhaustive export of every review, a representative sentiment survey or a hands-on benchmark of every competitor. Review dates matter: a past complaint does not establish a current defect. The native Workbench test record is separate in [iOS Preview](ios-preview.md).
 
