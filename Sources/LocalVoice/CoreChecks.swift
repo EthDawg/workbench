@@ -82,3 +82,23 @@ enum CoreChecks {
         print("CORE_CHECKS_OK: \(passed) checks passed")
     }
 }
+
+enum AudioRendererCancellationChecks {
+    static func run() async throws {
+        let task = Task {
+            try await AudioRenderer.runCancellable("/bin/sleep", ["30"])
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let cancellationStarted = Date()
+        task.cancel()
+        var reportedCancellation = false
+        do { try await task.value }
+        catch is CancellationError { reportedCancellation = true }
+        guard reportedCancellation else { throw VoiceError.message("CHECK FAILED: cancelled renderer reports cancellation") }
+        guard Date().timeIntervalSince(cancellationStarted) < 2 else {
+            throw VoiceError.message("CHECK FAILED: cancelled renderer terminates its child process promptly")
+        }
+        try await AudioRenderer.runCancellable("/usr/bin/true", [])
+        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated and a later render can start")
+    }
+}
