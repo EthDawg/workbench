@@ -93,6 +93,79 @@ Improve prompts with a few versioned examples and accepted/rejected synthetic ou
 
 Apple announced on 11 June 2026 that programmatic `ImageCreator` will not work on OS 27 and later, directing developers to the Image Playground sheet or another service. Do not assume it is an enduring offline engine. [Apple's notice](https://developer.apple.com/news/?id=dz9wvq0r). A portable brief is the smaller initial investment.
 
+## Ecosystem service areas and boundaries
+
+Added 20 September 2026 after the broader ecosystem review. Official documentation establishes feasible routes and API contracts; no Android device, Windows host, Teams/Slack tenant, VPN or managed-device configuration was accessed or tested. Keep this map with the product rationale. Do not turn every row into a feature, sidebar category or integration issue.
+
+| Service area | What Workbench can own | Ecosystem boundary and investment trigger |
+| --- | --- | --- |
+| Personal input and accessibility | Faithful capture, correction, reading, recoverable originals and understandable native controls. | OS input/accessibility and chosen model providers remain distinct. Invest when measured correction or access friction blocks a real task. |
+| Devices and capture | Selected evidence, source identity, composition and capture recovery. | Use external mirroring/remote tools first. Add a source adapter only when repeated capture/composition friction survives that trial. |
+| Live presentation and collaboration | Preparation, destination switching and presenter-owned emphasis. | Teams/Zoom/Meet own audience delivery. Prove visibility, audio and recovery before claiming compatibility. |
+| Evidence and reuse | Portable explanations, provenance and a reviewed selection. | Existing approved folders/libraries own sharing and access. Add retrieval or contribution automation when a second person repeatedly needs it. |
+| Agent instructions and execution | A clear recipe, bounded inputs and a verified return. | The chosen host owns model access. Progress from files to tools only when measured handoff friction justifies it. |
+| Managed-workplace compatibility | Truthful prerequisites, data-flow explanation, recoverable errors and supportable installation. | The organisation owns accounts, device/network policy and retention. A real deployment requirement must justify any managed configuration, audit or administration feature. |
+
+Architecture, security, design and delivery cut across these areas. They do not require separate products. Useful emerging opportunities include turning demonstrations into reusable evidence, using selected context to guide agents, and reviewing an agent's result before applying it. Their value is a completed task, not the number of connected services.
+
+### Android and Windows: three separate questions
+
+**Android on a Mac is feasible now through a separate tool.** [scrcpy](https://github.com/Genymobile/scrcpy) documents display/control over USB or TCP/IP on macOS, Windows and Linux, without root or a persistent phone app. Mirroring requires Android 5+ and normally USB debugging; its OTG exception provides input control without mirroring. The [Mac guide](https://github.com/Genymobile/scrcpy/blob/master/doc/macos.md) documents installation and adb prerequisites. Managed devices may prohibit that setup. No installation is part of this review.
+
+First trial: an approved Android device → scrcpy window → native screenshot or meeting share → chosen image into Snap & Talk through #60. Workbench's current AVFoundation device path does not ingest a scrcpy window. Native screenshot capture can supply an image; a composed live source would need a separate, validated adapter. scrcpy's documented virtual-camera route is Linux-only, so do not assume it produces a Mac camera input. [Project capabilities](https://github.com/Genymobile/scrcpy).
+
+Audio is another acceptance path: scrcpy documents Android 11+ forwarding, with version/source restrictions and possible video-only continuation when audio fails. That does not establish meeting audibility or two-way voice-agent operation. [Audio contract](https://github.com/Genymobile/scrcpy/blob/master/doc/audio.md). Start a permitted USB trial before wireless discovery; networking and device policy remain separate constraints. [Connection options](https://github.com/Genymobile/scrcpy/blob/master/doc/connection.md).
+
+**Windows content on a Mac** can use Microsoft's Windows App to reach an authorised remote PC or provisioned Windows service, subject to that destination's prerequisites and network access. Workbench could explain or capture the visible remote window; the remote client owns connection, credentials and redirection. This is a composition to test, not an integrated Workbench remote-desktop feature. [Microsoft Windows App](https://learn.microsoft.com/en-us/windows-app/get-started-connect-devices-desktops-apps).
+
+**Workbench running on Windows** is a separate port with no current implementation commitment. Portable images, notes and decks provide an earlier cross-platform benefit. Microsoft Phone Link is a Windows-host option with device/market requirements; its existence does not establish universal phone mirroring or a Mac route. [Supported Phone Link experiences](https://support.microsoft.com/en-us/windows/apps/phonelink/supported-devices-for-phone-link-experiences). Keep host OS, source device, control, capture and audio as separate capability fields.
+
+### Get more from Teams and the existing Chrome extension
+
+Start with the meeting app's supported primitives. Microsoft documents screen/window sharing, Chrome/Edge web sharing and its own presenter controls. On Mac, the relevant app/browser needs screen-recording access. [Teams presentation guidance](https://support.microsoft.com/en-us/teams/meetings/present-content-in-microsoft-teams-meetings).
+
+| Intended job | First route to verify | What must remain explicit |
+| --- | --- | --- |
+| Move between browser profiles, native apps and floating overlays | Teams desktop sharing one prepared display. | Anything visible on that display, including Workbench controls, can reach the audience. |
+| Present one composed device view | Share the Workbench scene window. | Separate persona/ink/timer windows are not automatically included. |
+| Show one browser application | Teams web with the selected tab. | A successful Workbench Switch to does not retarget the shared tab. |
+| Show the phone directly | Teams mobile screen sharing/companion route. | Separate from Workbench USB; rehearse audio, echo and interruptions. |
+
+The extension currently focuses a named destination in its paired Chrome profile. It has no Teams meeting API or share-state detector. A fixed window/tab share can keep showing the old source after a successful switch. Verify that interaction from the receiver. Its URL canonicalisation removes queries/fragments: save stable demo destinations and leave meeting invitations/joining with Teams, rather than assuming invitation links retain their meaning. See [presenter ownership](../presenter-direction.md#state-and-security-boundaries), [URL handling](../../Sources/PresenterKit/PresenterProtocol.swift) and [Chrome native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging). Browser-native transport is not a Teams connector.
+
+Keep presenter microphone, application playback and phone conversation separate. Microsoft's Mac desktop guidance calls for the Teams audio component; its web documentation describes tab/system sound controls whose actual availability needs testing in the chosen Mac/browser build. No component is installed by this proposal. [Teams sound sharing](https://support.microsoft.com/en-us/teams/meetings/share-sound-from-your-computer-in-microsoft-teams-meetings-or-live-events). Workbench's USB picture remains video-only.
+
+Teams already offers collaborative annotation using Whiteboard and saved snapshots. Prefer that baseline when the audience needs to contribute; Workbench's candidate role is presenter-owned explanation across applications. Check availability and input ownership in the actual client rather than running two ink layers blindly. [Teams annotation](https://support.microsoft.com/en-us/teams/meetings-events/use-annotation-while-sharing-your-screen-in-microsoft-teams).
+
+### Skills, tools and interactive agent interfaces
+
+| Mechanism | Useful job | When it earns its cost |
+| --- | --- | --- |
+| Portable folder and `SKILL.md` | Tell a chosen agent how to transform selected evidence into a checked artifact. | Now: clear instructions, file access and output contract. A copied skill file is not automatically installed/discovered by every host. |
+| Native action, CLI or small adapter | Invoke a repeatable bounded operation with typed input/output. | Reuse existing operations first, such as audio-in/text-out Shortcuts or the browser destination adapter. No model call is inherently required. |
+| MCP tools/resources | Query selected live state or request an operation and receive a structured result. | Repeated cases need live freshness, bounded export or a validated result return that the file route cannot handle well. |
+| MCP Apps | Show an interactive preview/selection inside a supporting agent host. | Later: only if choosing captured sections or approving returned assets inside the conversation measurably improves the workflow. |
+
+[Agent Skills](https://agentskills.io/home) packages task instructions/resources; [MCP](https://modelcontextprotocol.io/docs/learn/architecture) provides a tool/resource interaction contract. They can complement each other. [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview) adds interactive host-rendered interfaces; it introduces another UI to support. None supplies credentials, permission, product understanding or successful completion by itself. A connector also does not automatically reduce token use: compare selected input volume, calls, retries and correction effort.
+
+A sensible first tool candidate, if needed, is reading or exporting an explicitly selected session revision, followed later by previewing a returned artifact. Reuse the same validation/state owner as the native UI. Keep arbitrary file access, arbitrary commands, automatic posting and a generic agent platform outside that trial. #63 remains the file-handoff first step.
+
+### Collaboration and enterprise possibilities
+
+Start Slack/Teams delivery with a readable artifact and an existing authorised conversation or approved folder link. [Slack supports normal file sharing](https://slack.com/help/articles/201330736-Add-files-to-Slack), subject to workspace restrictions. The recipient should not need Workbench to understand the output. Do not assume chat delivery grants access to a linked folder.
+
+The stronger stretch cases have concrete triggers: a Teams meeting app when participants repeatedly need a shared interactive artifact inside a meeting; a transcript connector when a selected meeting's discussion must be combined with the explanation; or a Slack adapter when repeated thread selection/delivery receipts create material work. [Teams meeting apps](https://learn.microsoft.com/en-us/microsoftteams/platform/apps-in-teams-meetings/teams-apps-in-meetings), [Graph transcript/recording access](https://learn.microsoft.com/en-us/microsoftteams/platform/graph-api/meeting-transcripts/overview-transcripts) and [Slack file APIs](https://docs.slack.dev/messaging/working-with-files/) add app permissions, organisational rules and ongoing maintenance. Wrapping an API in MCP does not remove them. Prefer the user's existing approved connector where it already completes the task.
+
+VPN compatibility is a property of a tested route, not a universal toggle. Workbench's current Chrome bridge uses local native messaging/a Unix socket; tenant pages, remote desktops, meeting media, wireless devices and model downloads have different network dependencies. Record the approved configuration and failure without collecting credentials or altering routes. Microsoft's [VPN guidance](https://learn.microsoft.com/en-us/microsoft-365/enterprise/microsoft-365-vpn-split-tunnel?view=o365-worldwide) is an administrator concern. Managed extension, recording, USB and installation policies can independently constrain a demo.
+
+An enterprise opportunity could be repeatable team preparation and evidence reuse with controlled export. Managed deployment, audit/retention, redaction and identity integration stay conditional on a real customer's requirements. First publish an honest supported-route description and a portable result; avoid adding a service platform to make the project look enterprise-ready.
+
+### Two ecosystem experiments, using the existing queue
+
+Use [receiver issue #29](https://github.com/EthDawg/workbench/issues/29) for the first chosen route; its original one-meeting-app scope stays small. Optional follow-on rows compare Teams desktop display/scene-window sharing with Teams web tab sharing. Switch between two prepared Chrome profiles, mark/clear, show one phone picture and play a test sound. Record exactly what the recipient sees/hears, wrong-source incidents, readability and stop/restart recovery. Android/scrcpy is another optional hardware row, not a dependency for finishing the iPhone route. Leave untried rows explicitly deferred rather than expanding the issue's closure gate.
+
+Extend the #63 handoff trial: use a synthetic explanation and a chosen recipient/destination, with a human explicitly handling delivery. Can they open the output, associate notes/images and answer the intended question without installing Workbench? Measure missing context and delivery effort before proposing a bot or connector. No test message, tenant access, driver install or policy change is authorised by this document. Create an implementation issue only after one of these trials identifies a concrete missing step.
+
 ## Local models: working integrations, incomplete quality evidence
 
 | Job | Implementation at reviewed source | Evidence boundary |

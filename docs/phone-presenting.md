@@ -8,12 +8,14 @@ A presenter chooses a route for the actual job, can change to an Apple fallback 
 
 | Job | First route to consider | Important limit |
 | --- | --- | --- |
-| Show a phone inside a branded scene | Workbench USB | Operate the physical phone; no phone audio enters Workbench. |
+| Show an iPhone/iPad inside a branded scene | Workbench USB | Operate the physical phone; no phone audio enters Workbench. |
 | Demonstrate an agent that listens and speaks | Rehearse QuickTime USB; in Zoom consider its native iPhone/iPad via Cable route with Share computer sound | Playback support is not proof of simultaneous microphone use, interruption or audience audibility. |
 | Control a phone with Mac keyboard and mouse | Apple iPhone Mirroring, when available and permitted | The iPhone microphone and camera are unavailable in Mirroring. |
 | No allowed USB route | AirPlay to an allowed receiver, or Teams/Zoom screen sharing directly from iPhone | Network policy, protected content and the phone app's audio mode may prevent the intended workflow. |
 
 The three priorities were **route clarity and safe handoff**, an evidence-based phone-audio path, and a first-class wireless receiver. Implement the first now. Keep the second conditional on real duplex tests. Do not add the third merely to duplicate Apple, Teams or Zoom.
+
+**Ecosystem addendum · 20 September 2026:** Android-to-Mac display/control is available through the separate [scrcpy project](https://github.com/Genymobile/scrcpy), subject to its device/debugging prerequisites and workplace policy. Workbench currently has no scrcpy/adb adapter or embedded external-window source. Start with an approved scrcpy window and native screenshot/meeting share; record phone audio and receiver behaviour separately. The [ecosystem review](research/product-direction-2026-09.md#ecosystem-service-areas-and-boundaries) distinguishes this route, Windows remote content and a future Windows port. This is researched feasibility, not a newly implemented or hardware-verified Workbench capability.
 
 ## Before, during, after
 

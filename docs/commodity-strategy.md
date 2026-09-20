@@ -82,6 +82,14 @@ Ask target users to show a recent preparation/follow-up task, observe their work
 | Personal settings | Durable local profiles and explicit portable settings as [#59](https://github.com/EthDawg/workbench/issues/59) proposes. | Migration safety [#25](https://github.com/EthDawg/workbench/issues/25), then sync demand and paired acceptance. |
 | Notes, broader browser orchestration, more engines | Preserve focused issues and native alternatives. | A recurring job simpler primitives cannot complete. [PR #55](https://github.com/EthDawg/workbench/pull/55) already owns browser setup work. |
 
+## Know the ecosystem without expanding the app's surface
+
+Keep six service areas in view: personal input/accessibility, device capture, live presentation, reusable evidence, agent handoff, and managed-workplace compatibility. These are lenses for product decisions, not six new navigation groups or services. The [ecosystem review](research/product-direction-2026-09.md#ecosystem-service-areas-and-boundaries) maps each to its existing owner and a reason to invest further.
+
+The near-term opportunity is to compose with tools people already have: Android through an approved scrcpy setup; Windows content through an approved remote-desktop window; Teams for audience delivery; shared files for reuse; and a skill for the agent's task. Workbench does not currently embed scrcpy, run natively on Windows, control Teams sharing or manage a corporate VPN.
+
+Validate those routes before building adapters. Add MCP when repeated live queries or returning validated results improve the job; add a Teams/Slack integration when a particular meeting or thread needs a repeatable action that ordinary file delivery cannot provide. An enterprise opportunity may emerge around repeatable demo preparation, selected evidence and controlled sharing, but managed deployment, identity, retention and support obligations need an actual organisational use case. There is no enterprise-readiness claim or additional platform commitment here.
+
 ## Preserve the value as contributors and agents add code
 
 - State the job, current workaround, one observable improvement and the state owner. Link the decision and issue instead of copying the strategy into every PR.

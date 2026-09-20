@@ -2,6 +2,8 @@
 
 The selected increment is **Switch to**: save a named demo tab in its Chrome profile, then return to it from the browser or Workbench’s native picker. “Manager” should bring forward the prepared Manager tab while the presenter moves between browser, slides, a native app and a mirrored phone. Workbench activates the destination; it does not certify the signed-in account or control the phone.
 
+**Meeting boundary · 20 September 2026:** Switch to changes browser focus, not the meeting's capture source. A Teams window/tab share can continue showing the previous destination after a successful switch. Verify a whole-display route for movement across apps/overlays, and test narrower shares separately. Save stable demo URLs; canonicalisation removes query/fragment values, so meeting invitation links are not guaranteed to survive it. See [the ecosystem review](research/product-direction-2026-09.md#get-more-from-teams-and-the-existing-chrome-extension) for the researched routes and remaining acceptance. No Teams API integration is claimed.
+
 This extends Saved resources. It does not introduce a second library, a presales platform, or a new app lifecycle. The current branch implements the browser adapter and native picker. Public Preview 3 predates them; build, installed acceptance, review and publication are separate states.
 
 ## Decision and research
