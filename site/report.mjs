@@ -1,4 +1,4 @@
-const version = '2.0.0-preview.3';
+const version = '2.0.0-preview.4';
 const source = `https://github.com/EthDawg/workbench/tree/v${version}`;
 const documents = `https://github.com/EthDawg/workbench/blob/v${version}`;
 const guide = `${documents}/CONTRIBUTING.md`;
