@@ -2,6 +2,8 @@
 
 Research and proposed first increment · 20 September 2026. This is a product proposal, not implemented functionality. Public documentation and current Workbench source were inspected; no customer tenant was accessed or changed. The products below are representative examples, not a commitment to support every tenant.
 
+Implementation proposal: [#67](https://github.com/EthDawg/workbench/issues/67). The issue owns the first slice; this review holds the rationale, references and later possibilities.
+
 ## The useful outcome
 
 Start with an approved or generated image, choose the destination slot, fine-tune the crop and placement, then export clearly named files that are easy to upload. The job is the last few minutes of preparation: keep the subject in view, make the logo sit properly, respect the target's constraints and avoid repeatedly guessing in an upload form.
