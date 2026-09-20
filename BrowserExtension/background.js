@@ -58,6 +58,7 @@ async function currentTab() {
 async function handle(message) {
   if (!message || typeof message !== "object") throw new WorkbenchError("invalidMessage");
   if (message.type === "setupState") return { ok: true, ...await profileState(), ...await setup.state() };
+  if (message.type === "setupRecover") return { ok: true, ...await setup.recover(message) };
   if (message.type === "setupRoot") return { ok: true, ...await setup.selectRoot(message.rootID) };
   if (message.type === "state") {
     const profile = await profileState();
@@ -114,8 +115,8 @@ async function handle(message) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false;
   const setupPage = sender.url === chrome.runtime.getURL("setup.html");
-  if (setupPage ? !["setupState", "setupRoot"].includes(message?.type) : sender.url !== chrome.runtime.getURL("popup.html")) return false;
-  if (!setupPage && ["setupState", "setupRoot"].includes(message?.type)) return false;
+  if (setupPage ? !["setupState", "setupRoot", "setupRecover"].includes(message?.type) : sender.url !== chrome.runtime.getURL("popup.html")) return false;
+  if (!setupPage && ["setupState", "setupRoot", "setupRecover"].includes(message?.type)) return false;
   handle(message).then(sendResponse, error => sendResponse({ ok: false, error: safeError(error) }));
   return true;
 });

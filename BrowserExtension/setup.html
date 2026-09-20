@@ -22,7 +22,8 @@
         <button id="save-root" type="button" class="primary">Use this location</button>
       </div>
       <p>Browser setup needs Chrome 134 or later. A synced or managed location cannot be selected. If profiles share synced bookmarks, use Chrome Sync rather than applying duplicate packs. Choosing this local location does not change Chrome Sync settings.</p>
-      <p id="uncertain" hidden>A previous bookmark write was interrupted. Further bookmark writes are blocked because a result could not be recorded. Inspect this pack in Chrome's Bookmark Manager before recovery. Workbench will not adopt matching names or repeat an uncertain write.</p>
+      <p id="uncertain" hidden>A previous bookmark write was interrupted. Further bookmark writes are blocked because a result could not be recorded. Inspect this pack in Chrome's Bookmark Manager before recovery. Workbench will not adopt matching names or repeat an uncertain write. You can keep everything in Chrome and explicitly start a fresh managed copy of only the interrupted pack. The next apply can duplicate links already kept.</p>
+      <button id="recover" type="button" class="secondary" hidden>Keep existing bookmarks and start a fresh copy…</button>
       <button type="button" class="secondary" data-chrome="chrome://bookmarks/">Open Bookmark Manager</button>
       <button id="refresh" type="button" class="secondary">Refresh setup</button>
     </section>

@@ -211,3 +211,65 @@ test("permission revoked after preview prevents apply and old worker tokens cann
   f.controls.permission = true; f.restart(); await assert.rejects(f.apply(pack(), token), { code: "setupChanged" });
   assert.equal(f.writes.length, 0);
 });
+
+test("strict pack schema rejects unknown fields, untrimmed names, normalized launch duplicates and oversized UTF-8 URLs", () => {
+  const unknown = pack(); unknown.password = "never accepted"; assert.throws(() => cleanSetup(unknown), { code: "setupInvalid" });
+  const nested = pack(); nested.bookmarks[0].username = "not part of the schema"; assert.throws(() => cleanSetup(nested), { code: "setupInvalid" });
+  for (const field of ["title", "roleTitle"]) { const value = pack(); value[field] = " leading"; assert.throws(() => cleanSetup(value), { code: "setupInvalid" }); }
+  for (const field of ["title", "folder"]) { const value = pack(); value.bookmarks[0][field] = "trailing "; assert.throws(() => cleanSetup(value), { code: "setupInvalid" }); }
+  const duplicates = pack(); duplicates.launchURLs = ["https://EXAMPLE.test:443", "https://example.test/"];
+  assert.throws(() => cleanSetup(duplicates), { code: "setupInvalid" });
+  assert.throws(() => setupURL("https://example.test/" + "界".repeat(1400)), { code: "setupInvalid" });
+});
+
+test("more than 512 historical launches are pruned only after expiry grace and do not disable use", async () => {
+  const f = fixture(); await f.configure(); f.advance(200_000);
+  const retained = f.message("setupLaunch"); await f.controller.command(retained);
+  for (let index = 1000; index < 1600; index++) f.local.browserSetup.launches[uuid(index)] = { state: "completed", at: 1000, expiresAt: 31_000 };
+  const boundaryID = uuid(1600);
+  f.local.browserSetup.launches[boundaryID] = { state: "completed", at: 1000, expiresAt: 141_000 };
+  assert.equal((await f.controller.command(f.message("setupLaunch"))).ok, true);
+  assert.equal(Object.keys(f.local.browserSetup.launches).length, 3, "expiry plus grace boundary is retained");
+  assert.ok(f.local.browserSetup.launches[boundaryID]);
+  await assert.rejects(f.controller.command(retained), { code: "setupUncertain" });
+  await assert.rejects(f.controller.command({ ...retained, expiresAt: 31_000 }), { code: "timeout" });
+  f.advance(1); await f.controller.command(f.message("setupLaunch"));
+  assert.equal(Object.hasOwn(f.local.browserSetup.launches, boundaryID), false);
+  assert.equal(f.windows.length, 3);
+});
+
+test("explicit recovery preserves all browser bytes and only forgets interrupted pack ownership", async () => {
+  const f = fixture(); await f.configure();
+  const other = pack(); other.roleID = "employee"; other.roleTitle = "Employee";
+  await f.apply(other); await f.controller.command(f.message("setupLaunch"));
+  const oldReview = (await f.preview(other)).setupResult.reviewToken;
+  f.controls.failAt = f.writes.length + 4; assert.equal((await f.apply()).error, "setupUncertain");
+  const state = await f.controller.state(); assert.ok(state.recovery); assert.equal(state.uncertain, true);
+  const browserBefore = JSON.stringify(f.root), stored = structuredClone(f.local.browserSetup), writes = f.writes.length;
+  await assert.rejects(f.preview(), { code: "setupUncertain" }); assert.ok(f.local.browserSetup.journal, "no automatic recovery");
+  await assert.rejects(f.controller.recover({ ...state.recovery, confirmed: false }), { code: "setupInvalid" });
+  await assert.rejects(f.controller.recover({ ...state.recovery, journalID: uuid(9999), confirmed: true }), { code: "setupChanged" });
+  assert.equal((await f.controller.recover({ ...state.recovery, confirmed: true })).recovered, true);
+  assert.equal(JSON.stringify(f.root), browserBefore); assert.equal(f.writes.length, writes);
+  assert.equal(f.local.browserSetup.journal, null); assert.equal(f.receipt(), undefined);
+  assert.deepEqual(f.local.browserSetup.receipts[`${PACK}:employee`], stored.receipts[`${PACK}:employee`]);
+  assert.deepEqual(f.local.browserSetup.launches, stored.launches); assert.equal(f.local.browserSetup.rootID, stored.rootID);
+  assert.equal((await f.controller.state()).recovery, null);
+  await assert.rejects(f.apply(other, oldReview), { code: "setupChanged" });
+  assert.equal((await f.preview()).setupResult.create, 2);
+  f.controls.failAt = 0; assert.equal((await f.apply()).setupResult.create, 2);
+  assert.equal(f.find("local-bar").children.length, 3, "fresh managed copy keeps interrupted and other-role folders");
+});
+
+test("recovery cannot accept a malformed journal key or silently fix corrupt receipts", async () => {
+  const f = fixture(); await f.configure(); f.controls.failAt = 4; await f.apply();
+  const recovery = (await f.controller.state()).recovery;
+  f.local.browserSetup.journal.pack = "__proto__";
+  await assert.rejects(f.controller.recover({ ...recovery, confirmed: true }), { code: "setupUncertain" });
+  await assert.rejects(f.controller.state(), { code: "setupUncertain" });
+  f.local.browserSetup.journal.pack = recovery.pack;
+  f.local.browserSetup.receipts[recovery.pack].items.home.extra = "corrupt";
+  const before = JSON.stringify(f.local);
+  await assert.rejects(f.controller.recover({ ...recovery, confirmed: true }), { code: "setupUncertain" });
+  assert.equal(JSON.stringify(f.local), before);
+});

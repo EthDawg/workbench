@@ -51,6 +51,9 @@ test("setup page uses text-only UI and only a local gesture can request bookmark
   assert.match(js, /chrome\.permissions\.request\(\{ permissions: \["bookmarks"\]/);
   assert.doesNotMatch(engine, /permissions\.request|bookmarks\.remove/);
   assert.match(html, /Google Password Manager/);
+  assert.match(html, /id="recover"[^>]*hidden/);
+  assert.match(js, /window\.confirm/);
+  assert.match(js, /DUPLICATE links already kept/);
   assert.match(html, /does not set Chrome's startup pages/);
   assert.match(html, /aria-live="polite"/);
 });
