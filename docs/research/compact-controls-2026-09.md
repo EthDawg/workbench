@@ -16,7 +16,7 @@ The second example spells out the action and shortcut together. Wispr Flow's [sh
 
 **Workbench adaptation:** show the actual configured shortcut next to Dictate and Snap & Talk in the available menu space, and in help for compact buttons. Reuse the keyboard catalogue rather than hard-coding today's default. A disabled or conflicting shortcut must not appear usable. Keep the click action obvious; tooltips cannot be the only way to discover Stop or understand an icon.
 
-This needs no AI. Existing `ShortcutKeycap`/`ShortcutControl` already expose editable assignments. Active [PR #62](https://github.com/EthDawg/workbench/pull/62) adds the persistent toolbar; improve that surface rather than creating another launcher. Link shortcut editing to the existing Keyboard flow when idle, preserving its conflict and cancellation rules.
+This needs no AI. Existing `ShortcutKeycap`/`ShortcutControl` already expose editable assignments. [PR #62](https://github.com/EthDawg/workbench/pull/62), merged on 20 September, adds the persistent toolbar; improve that surface rather than creating another launcher. Link shortcut editing to the existing Keyboard flow when idle, preserving its conflict and cancellation rules.
 
 ## Make selection different from navigation
 
@@ -58,7 +58,7 @@ An adjacent reference is [CleanShot's Quick Access Overlay](https://cleanshot.co
 
 Observe a first-use attempt and a repeat attempt with synthetic content. Record wrong clicks, whether the person can identify the active state, time to the next useful action and any loss of focus. Test light/dark, Reduce Transparency, keyboard/VoiceOver, constrained display space and receiver visibility where affected. A static crop or another model's preference is not usability evidence.
 
-Keep the first slice with [#56](https://github.com/EthDawg/workbench/issues/56) and PR #62's owner; it must not turn that existing change into a broad redesign. Later receipt work stays with its existing owner. Current source references are [shortcut controls](../../Sources/LocalVoice/QuickControls.swift), [keyboard catalogue](../../Sources/LocalVoice/KeyboardCoach.swift), [recording panel](../../Sources/LocalVoice/CapturePanel.swift), and the proposed [floating toolbar in PR #62](https://github.com/EthDawg/workbench/pull/62/files). Source inspection is not a new installed-app test.
+Coordinate the first refinement with [#56](https://github.com/EthDawg/workbench/issues/56)'s existing acceptance work; the now-merged PR #62 is not an open implementation task. These references do not broaden that issue's closure requirements. Later receipt work stays with its existing owner. Source references are [shortcut controls](../../Sources/LocalVoice/QuickControls.swift), [keyboard catalogue](../../Sources/LocalVoice/KeyboardCoach.swift), [recording panel](../../Sources/LocalVoice/CapturePanel.swift), and the merged [floating-toolbar change in PR #62](https://github.com/EthDawg/workbench/pull/62/files). Source inspection is not a new installed-app test.
 
 ## Keep future visual ideas this concrete
 

@@ -2,6 +2,10 @@ name: Small improvement or idea
 description: Describe a useful outcome and a manageable first step.
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search open and closed issues and [ideas already considered](https://github.com/EthDawg/workbench/blob/main/docs/commodity-strategy.md#keep-wider-ideas-with-a-reason-to-revisit-them). If this has come up before, link the earlier discussion and explain what changed. New evidence and different approaches are welcome.
   - type: textarea
     id: need
     attributes:
@@ -13,7 +17,7 @@ body:
     id: change
     attributes:
       label: What would a small first improvement look like?
-      description: Include a concrete example, the simplest alternative, and how someone could tell the improvement worked. Link relevant research or an existing issue if available.
+      description: Include a concrete example, the simplest alternative, and how someone could tell the improvement worked. Link relevant research or an existing issue; if revisiting a decision, explain the new evidence or different approach.
     validations:
       required: true
   - type: dropdown

@@ -18,11 +18,21 @@ Repository collaborators can push their own feature branches after accepting the
 
 Read [product direction](docs/commodity-strategy.md) for the outcomes being tested and [the supporting review](docs/research/product-direction-2026-09.md) for evidence and alternatives. These explain priorities; the live issues remain the work queue. Check current source before implementing an older proposal.
 
-1. Check the [open issues](https://github.com/EthDawg/workbench/issues). An unassigned [good first issue](https://github.com/EthDawg/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
+1. Search [open and closed issues](https://github.com/EthDawg/workbench/issues?q=is%3Aissue) and the [ideas already considered](docs/commodity-strategy.md#keep-wider-ideas-with-a-reason-to-revisit-them). An unassigned [good first issue](https://github.com/EthDawg/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
 2. A typo or clear, small fix can go directly to a PR. Discuss a larger feature in an issue or [Discussions](https://github.com/EthDawg/workbench/discussions) first. Agree the smallest useful outcome and who is working on it.
 3. Ask for help on the issue when stuck. Incomplete attempts and draft PRs are welcome. Coordinate before replacing work another contributor has offered to do.
 
 **No Mac or no Swift experience?** Edit documentation through GitHub's pencil and fork/PR workflow. Say “documentation only” in the PR; native checks are unnecessary for that change. Hardware findings can be an issue comment with the Mac/device/OS versions and steps tried.
+
+## Before revisiting an idea
+
+A considered idea can remain useful even when it is not the next thing to build. Read the linked reasoning before proposing it again. Add new evidence to the existing issue or discussion: what has changed in the user problem, workaround, platform or proposed solution? If the old issue is closed, explain why reconsideration is warranted. A meaningfully different proposal can have its own issue with a backlink.
+
+For a material decision, keep a short dated explanation in that existing record, or in the owning document when no issue exists: **current position, reason, evidence/alternative and what would change the decision**. The product-direction table is a summary with links, not a second task queue. Preserve earlier reasoning when a decision changes and link the replacement; do not rewrite history as though the current view was always held.
+
+Use plain distinctions: **needs evidence** means a specific question is unresolved; **not now** means the idea may help but other work or a simpler route comes first; **outside scope** means the proposed responsibility does not fit the project. A maintainer-agreed design still needs an implementation owner and validation; an open issue, generated concept or draft PR is not a delivery promise. Research recommendations remain proposals until reviewed.
+
+Only record choices someone is likely to revisit and whose reasoning would save work. A routine fix needs no decision form. Avoid new issues solely to stockpile speculative features, vote thresholds, stale-issue bots or a compulsory RFC process. The [open-source examples](docs/research/product-direction-2026-09.md#how-established-projects-retain-decisions) explain the lightweight approach used here.
 
 ## Build and check the Mac app
 
