@@ -3,7 +3,7 @@
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
   "reviewedOn": "2026-09-21",
-  "implementationRevision": "4ce4747",
+  "implementationRevision": "3d6746a86c45ce18c2292b850800b31084af1575",
   "scope": "Presentation preparation, independently managed native overlays, break-timer placement, persistent desktop appearance and coordination of live scenes, annotation and Mac dictation. Reading remains an independent job; ordinary dictation and Snap & Talk still share one microphone.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
