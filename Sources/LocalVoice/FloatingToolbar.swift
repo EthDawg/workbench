@@ -26,7 +26,8 @@ struct FloatingToolbar: View {
     let present: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private var disclosure: FloatingToolbarDisclosure { controls.toolbarDisclosure }
-    private var canDictate: Bool { model.ready && !model.rendering && !readback.blocksDictation }
+    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
+    private var canDictate: Bool { context.state.enabled(.dictate) }
 
     var body: some View {
         ZStack {
@@ -61,7 +62,7 @@ struct FloatingToolbar: View {
         Button { controls.expandToolbar() } label: {
             let layout = controls.isSideDocked ? AnyLayout(VStackLayout(spacing: 9)) : AnyLayout(HStackLayout(spacing: 9))
             layout {
-                Image(systemName: stage.isPresenting ? "iphone" : stage.isDrawing ? "pencil.tip" : "waveform")
+                Image(systemName: stage.isDrawing ? "pencil.tip" : stage.isPresenting ? "iphone" : model.controlTool.symbol)
                     .font(.system(size: 12, weight: .medium))
                 Capsule().fill(.secondary.opacity(0.55))
                     .frame(width: controls.isSideDocked ? 3 : 22, height: controls.isSideDocked ? 22 : 3)
@@ -74,54 +75,62 @@ struct FloatingToolbar: View {
     }
 
     private var revealed: some View {
-        HStack(spacing: 8) {
-            Button(action: dictate) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label("Dictate", systemImage: "mic.fill").font(.system(size: 12, weight: .semibold))
-                    Text(shortcutLabel(1)).font(.system(size: 10)).foregroundStyle(.secondary)
-                }.frame(minWidth: 72, minHeight: 34)
-            }.buttonStyle(.plain).disabled(!canDictate)
-                .help(dictationHelp).accessibilityLabel("Dictate. " + shortcutLabel(1))
-            Divider().frame(height: 25)
-            modeMenu.frame(width: 91, height: 30)
-            Button(action: snap) {
-                Image(systemName: "rectangle.and.pencil.and.ellipsis").frame(width: 32, height: 32)
-            }.buttonStyle(.plain).disabled(model.rendering || readback.isCapturing)
-                .help("Snap & Talk · " + shortcutLabel(5)).accessibilityLabel("Snap & Talk. " + shortcutLabel(5))
-            PanelDragHandle(accessibilityLabel: "Move toolbar by dragging this empty space", showsGrip: false)
-                .frame(maxWidth: .infinity).frame(height: 34)
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                toolMenu.frame(width: 108, height: 24)
+                Text(model.controlTool == .snap ? "\(readback.activeSections.count) captures" : status == "Ready when you are" ? "Ready" : status)
+                    .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85).help(status)
+                    .frame(width: 108, alignment: .leading)
+            }.frame(width: 108)
+            Divider().frame(height: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Button(context.state.actionTitle(model.controlTool), action: performSelected)
+                    .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                    .disabled(!context.state.enabled(model.controlTool))
+                Button(context.shortcut(model.controlTool) ?? "Options…") {
+                    model.onShowEditor?(context.shortcut(model.controlTool) == nil ? model.controlTool.page : "shortcuts")
+                }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
+                    .help("View controls and change keyboard shortcuts")
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            PanelDragHandle(accessibilityLabel: "Drag this space to move toolbar", showsGrip: false).frame(width: 12, height: 28)
             expandButton
         }.padding(.horizontal, 12)
     }
 
     private var expanded: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     FloatingToolbarMenu(title: "Workbench", symbol: "square.stack.3d.up.fill",
                         help: "Workbench toolbar menu", controls: controls, focusOnReveal: true, makeMenu: toolsMenu)
-                        .frame(width: 116, height: 24)
+                        .frame(width: 104, height: 22)
                     PanelDragHandle(accessibilityLabel: "Move toolbar by dragging this empty space; positions are also in the menu", showsGrip: false)
                         .frame(maxWidth: .infinity).frame(height: 24)
-                    Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(status).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).help(status)
                     Button { controls.collapseToolbar() } label: {
                         Image(systemName: "minus").frame(width: 26, height: 24)
                     }.buttonStyle(.plain).help("Collapse to the quiet indicator")
                         .accessibilityLabel("Collapse Workbench toolbar")
                 }
-                HStack(spacing: 8) {
-                    action("Dictate", "mic", dictate).disabled(!canDictate).help(dictationHelp)
-                    action("Snap & Talk", "rectangle.and.pencil.and.ellipsis", snap)
-                        .disabled(model.rendering || readback.isCapturing).help("Snap & Talk · " + shortcutLabel(5))
-                    action(stage.isDrawing ? "Done drawing" : "Draw", "pencil.tip", draw)
-                    action(stage.isPresenting ? "End scene" : "Present", "iphone", present)
-                }.controlSize(.small)
-                HStack(spacing: 5) {
-                    Text("Dictation mode").foregroundStyle(.secondary)
-                    modeMenu.frame(width: 91, height: 22)
+                HStack(spacing: 7) {
+                    toolMenu.frame(width: 108, height: 24)
+                    Button(context.state.actionTitle(model.controlTool), action: performSelected)
+                        .buttonStyle(.borderedProminent).disabled(!context.state.enabled(model.controlTool))
                     Spacer(minLength: 0)
-                    Text(shortcutLabel(1)).foregroundStyle(.secondary)
-                }.font(.system(size: 11))
-        }.padding(.horizontal, 16)
+                    if model.controlTool == .dictate { modeMenu.frame(width: 106, height: 24) }
+                    else {
+                        Button(model.controlTool == .snap ? "Review" : "Options") { model.onShowEditor?(model.controlTool.page) }
+                            .buttonStyle(.borderless)
+                    }
+                }.controlSize(.small).font(.system(size: 11))
+                HStack(spacing: 5) {
+                    Text(context.detail(model.controlTool)).lineLimit(1).help(context.detail(model.controlTool))
+                    Spacer(minLength: 0)
+                    if let shortcut = context.shortcut(model.controlTool) {
+                        Button(shortcut) { model.onShowEditor?("shortcuts") }.buttonStyle(.plain).fixedSize()
+                            .help("View or change keyboard shortcuts")
+                    }
+                }.font(.system(size: 10)).foregroundStyle(.secondary)
+        }.padding(.horizontal, 12)
     }
 
     private var expandButton: some View {
@@ -133,14 +142,14 @@ struct FloatingToolbar: View {
 
     private var modeMenu: some View {
         FloatingToolbarMenu(title: model.preferences.cleanup.rawValue, symbol: "slider.horizontal.3",
-            help: "Change mode. Dictation cleanup: " + model.preferences.cleanup.rawValue,
+            help: "Text style for the next dictation: " + model.preferences.cleanup.rawValue,
             controls: controls, enabled: model.phase == .idle && !readback.isRecording,
             makeMenu: makeModeMenu)
     }
 
     private func makeModeMenu() -> NSMenu {
-        let menu = NSMenu(title: "Change mode"); menu.autoenablesItems = false
-        menu.addItem(ToolbarMenuAction("Dictation cleanup", enabled: false) {})
+        let menu = NSMenu(title: "Text style"); menu.autoenablesItems = false
+        menu.addItem(ToolbarMenuAction("Text style for the next dictation", enabled: false) {})
         for style in CleanupStyle.allCases {
             let item = ToolbarMenuAction(style.rawValue, checked: model.preferences.cleanup == style) {
                 guard model.phase == .idle, !readback.isRecording else { return }
@@ -149,18 +158,61 @@ struct FloatingToolbar: View {
             item.toolTip = style.detail; menu.addItem(item)
         }
         menu.addItem(.separator())
+        menu.addItem(ToolbarMenuAction("Destination for the next dictation", enabled: false) {})
+        for delivery in DeliveryMode.allCases {
+            menu.addItem(ToolbarMenuAction(delivery.rawValue, checked: model.preferences.delivery == delivery) {
+                guard model.phase == .idle, !readback.isRecording else { return }
+                model.preferences.delivery = delivery
+            })
+        }
+        menu.addItem(.separator())
         menu.addItem(ToolbarMenuAction("Dictation settings…") { model.onShowEditor?("dictate") })
         return menu
+    }
+
+    private var toolMenu: some View {
+        FloatingToolbarMenu(title: model.controlTool.title, symbol: model.controlTool.symbol,
+            help: "Change tool. Running activities continue.", controls: controls, makeMenu: makeToolMenu)
+    }
+    private func makeToolMenu() -> NSMenu {
+        let menu = NSMenu(title: "Change tool"); menu.autoenablesItems = false
+        for tool in WorkbenchControlTool.allCases {
+            menu.addItem(ToolbarMenuAction(tool.title, checked: model.controlTool == tool) { model.controlTool = tool })
+        }
+        addActiveActions(to: menu)
+        menu.addItem(.separator())
+        menu.addItem(ToolbarMenuAction("Keyboard shortcuts…") { model.onShowEditor?("shortcuts") })
+        return menu
+    }
+    private func addActiveActions(to menu: NSMenu) {
+        guard stage.isPresenting || stage.isDrawing || model.playing else { return }
+        menu.addItem(.separator())
+        if stage.isDrawing { menu.addItem(ToolbarMenuAction("Done drawing · keep marks") { stage.finishDrawing() }) }
+        if stage.isPresenting { menu.addItem(ToolbarMenuAction("End device scene") { stage.endDeviceScene() }) }
+        if model.playing { menu.addItem(ToolbarMenuAction("Stop reading") { model.stopPlayback() }) }
+    }
+    private func performSelected() {
+        switch model.controlTool {
+        case .dictate: dictate()
+        case .snap: snap()
+        case .annotate: draw()
+        case .present: present()
+        case .read:
+            if model.rendering { model.cancelReading() }
+            else if model.playing || model.paused { model.listen() }
+            else { model.onShowEditor?("speak") }
+        }
     }
 
     private func toolsMenu() -> NSMenu {
         let menu = NSMenu(); menu.autoenablesItems = false
         menu.addItem(ToolbarMenuAction("Dictate · " + shortcutLabel(1), enabled: canDictate, run: dictate))
-        menu.addItem(ToolbarMenuAction("Snap & Talk · " + shortcutLabel(5),
-            enabled: !model.rendering && !readback.isCapturing, run: snap))
-        menu.addItem(ToolbarMenuAction(stage.isDrawing ? "Done drawing" : "Draw", run: draw))
-        menu.addItem(ToolbarMenuAction(stage.isPresenting ? "End scene" : "Present", run: present))
-        let mode = NSMenuItem(title: "Change mode · " + model.preferences.cleanup.rawValue, action: nil, keyEquivalent: "")
+        menu.addItem(ToolbarMenuAction("Snap & Talk · " + shortcutLabel(5), enabled: context.state.enabled(.snap), run: snap))
+        menu.addItem(ToolbarMenuAction(stage.isDrawing ? "Done drawing" : "Draw", enabled: context.state.enabled(.annotate), run: draw))
+        menu.addItem(ToolbarMenuAction(stage.isPresenting ? "End scene" : "Present", enabled: context.state.enabled(.present), run: present))
+        let tools = NSMenuItem(title: "Change tool", action: nil, keyEquivalent: "")
+        tools.submenu = makeToolMenu(); menu.addItem(tools)
+        let mode = NSMenuItem(title: "Text style · " + model.preferences.cleanup.rawValue, action: nil, keyEquivalent: "")
         mode.submenu = makeModeMenu(); menu.addItem(mode)
         menu.addItem(.separator())
         for (title, page) in [("Open Workbench", "home"), ("Read aloud…", "speak"),
@@ -192,20 +244,10 @@ struct FloatingToolbar: View {
         if failure != nil { return "Shortcut unavailable" }
         return shortcut.label
     }
-    private var dictationHelp: String {
-        canDictate ? "Dictate · " + shortcutLabel(1) : readback.blocksDictation ? "Finish Snap & Talk before dictating" : "Open Workbench to prepare dictation"
-    }
     private var status: String {
-        if readback.hasPendingTranscriptions { return "Transcribing narration…" }
-        if stage.isPresenting { return "Presenting" }
-        if stage.isDrawing { return "Drawing" }
-        if !model.ready { return "Speech needs setup" }
-        return "Ready"
+        context.activitySummary
     }
-    private func action(_ title: String, _ symbol: String, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) { Label(title, systemImage: symbol).fixedSize() }
-            .buttonStyle(.bordered).accessibilityLabel(title)
-    }
+
 }
 
 struct WorkbenchFloatingContent: View {
@@ -222,7 +264,8 @@ struct WorkbenchFloatingContent: View {
         if readback.isRecording {
             ReadbackHUDView(model: readback, controls: controls)
         } else if CapturePanelController.showsDictation(model) {
-            RecordingOverlay(model: model, controls: controls)
+            RecordingOverlay(model: model, controls: controls,
+                finishDrawing: stage.isDrawing ? { stage.finishDrawing() } : nil)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls,
                             dictate: dictate, snap: snap, draw: draw, present: present)

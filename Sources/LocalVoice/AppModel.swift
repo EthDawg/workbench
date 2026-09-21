@@ -38,6 +38,14 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     enum Phase: String { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     let clipboardReceipt = ClipboardReceiptModel()
     @Published var captureProcessingLabel = "Preparing speech…"
+    @Published private(set) var waitingForDrawing = false
+    var shouldDeferDelivery: (() -> Bool)?
+    private let drawingDelivery = DrawingDeliveryGate()
+    func resumeWaitingDelivery() {
+        guard waitingForDrawing, shouldDeferDelivery?() != true else { return }
+        drawingDelivery.resolve(.resume)
+    }
+    func copyWaitingDelivery() { drawingDelivery.resolve(.copy) }
     @Published var isMicrophoneQuiet = false
     @Published var captureUsesHoldShortcut = false
     @Published private(set) var captureOutputModeLabel = "Light cleanup"
@@ -59,6 +67,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var editingShortcut: UInt32?
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
+    @Published var controlTool: WorkbenchControlTool = .dictate
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
@@ -517,7 +526,18 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                     shortcutRequest.finish(id: shortcutID, result: .success(result))
                 } else {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
-                    let outcome = await TextDelivery.deliver(result, target: destination, mode: settings.preferences.delivery, restoreClipboard: settings.preferences.restoreClipboard)
+                    var delivery = settings.preferences.delivery
+                    if delivery == .paste, destination != nil, shouldDeferDelivery?() == true {
+                        waitingForDrawing = true
+                        captureProcessingLabel = "Finish drawing to paste, or copy now."
+                        status = "Text ready. Finish drawing to return to your Mac text field."
+                        onPhaseChange?()
+                        defer { waitingForDrawing = false }
+                        if try await drawingDelivery.wait() == .copy { delivery = .clipboard }
+                    }
+                    try Task.checkCancellation()
+                    guard transcriptionID == invocation else { return }
+                    let outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard)
                     guard transcriptionID == invocation else { return }
                     status = outcome.message
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))

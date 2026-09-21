@@ -74,7 +74,7 @@ enum FloatingToolbarChecks {
         controls.beginMenu(menu)
         pointer = NSPoint(x: -10000, y: -10000); controller.pointerMoved(to: pointer)
         try await Task.sleep(nanoseconds: 500_000_000)
-        try check(controller.window!.frame.width == 368, "native window stays open while choosing a menu item")
+        try check(controller.window!.frame.width == FloatingToolbarDisclosure.hovered.size.width, "native window stays open while choosing a menu item")
         controls.endMenu()
         try await settle(FloatingToolbarDisclosure.collapsed.size)
         pointer = NSPoint(x: controller.window!.frame.midX, y: controller.window!.frame.midY)
@@ -96,7 +96,7 @@ enum FloatingToolbarChecks {
         // Interrupt a spring with another choice, then with active recording UI.
         controls.expandToolbar()
         try await Task.sleep(nanoseconds: 60_000_000)
-        try check(controller.window!.frame.width > 76 && controller.window!.frame.width < 480,
+        try check(controller.window!.frame.width > 76 && controller.window!.frame.width < FloatingToolbarDisclosure.expanded.size.width,
                   "reveal passes through intermediate native window sizes")
         controls.collapseToolbar()
         try await settle(FloatingToolbarDisclosure.collapsed.size)
@@ -184,6 +184,25 @@ enum FloatingToolbarChecks {
             anchor: restoredAnchor, size: restoredControls.preferredToolbarSize, visibleFrame: screen)),
                   "legacy free placement restores into its nearest named dock")
         restored.close()
+        // The menu fits each real SwiftUI state rather than imposing the old
+        // fixed 440pt box. No production menu or microphone is involved.
+        let quick = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback,
+            open: { _ in }, draw: {}, snap: {}, present: {}, timer: {}, personas: {}))
+        quick.sizingOptions = [.preferredContentSize]
+        let quickWindow = NSWindow(contentViewController: quick)
+        quickWindow.setContentSize(NSSize(width: 344, height: 1))
+        quick.view.layoutSubtreeIfNeeded()
+        let idleSize = quick.view.fittingSize
+        try check(abs(idleSize.width - 344) < 1 && idleSize.height > 180 && idleSize.height < 340,
+                  "idle menu fits its compact content without the old empty panel")
+        model.phase = .recording
+        try await Task.sleep(nanoseconds: 100_000_000)
+        quick.view.layoutSubtreeIfNeeded()
+        let activeSize = quick.view.fittingSize
+        try check(activeSize.height >= idleSize.height && activeSize.height <= idleSize.height + 20,
+                  "finishing an active job replaces its start action without another padded row")
+        quickWindow.orderOut(nil)
+        model.phase = .idle
         print("FLOATING_TOOLBAR_NATIVE_OK: \(count) checks passed")
     }
 
@@ -195,7 +214,22 @@ enum FloatingToolbarChecks {
         }
         let model = AppModel()
         model.ready = true
-        let readback = ReadbackModel(engine: model.engine)
+        let session = Workbench.fixtureRoot!.appendingPathComponent("menu-captures-" + UUID().uuidString)
+        var manifest = try ReadbackStore.create(at: session, title: "Synthetic menu review")
+        for index in 1...3 {
+            let id = UUID(), path = "items/\(id.uuidString.lowercased())"
+            try ReadbackStore.createPrivateDirectory(session.appendingPathComponent(path))
+            try ReadbackStore.writePrivate(Data([0x89, 0x50, 0x4e, 0x47]), to: session.appendingPathComponent(path + "/screen.png"))
+            manifest.sections.append(ReadbackSection(id: id, capturedAt: Date(timeIntervalSince1970: Double(index)),
+                displayName: "Synthetic display", directory: path, screenshot: path + "/screen.png",
+                audio: nil, originalTranscript: nil, transcript: nil, status: .needsNarration, failure: nil, deletedAt: nil))
+        }
+        try ReadbackStore.save(manifest, at: session)
+        let domain = Workbench.suiteDomain + ".menu-render"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.set([session.path], forKey: "readback.recentSessionPaths.v1")
+        defer { defaults.removePersistentDomain(forName: domain); try? FileManager.default.removeItem(at: session) }
+        let readback = ReadbackModel(engine: model.engine, defaults: defaults)
         let stage = StageKitController(onOpenControls: {}, onOpenScenes: {})
         let collapsed = CaptureHUDControls(), hovered = CaptureHUDControls(), expanded = CaptureHUDControls()
         collapsed.collapseToolbar(); hovered.collapseToolbar(); hovered.hover(true); expanded.expandToolbar()
@@ -238,6 +272,39 @@ enum FloatingToolbarChecks {
                 throw VoiceError.message("Toolbar PNG encoding failed")
             }
             try png.write(to: directory.appendingPathComponent("toolbar-" + appearance.rawValue.lowercased() + ".png"))
+            for tool in WorkbenchControlTool.allCases {
+                let sample = AppModel(); sample.ready = true; sample.controlTool = tool
+                let tools = CaptureHUDControls(); tools.expandToolbar()
+                let hover = CaptureHUDControls(); hover.collapseToolbar(); hover.hover(true)
+                let menu = WorkbenchQuickPanel(model: sample, stage: stage, readback: readback,
+                    open: { _ in }, draw: {}, snap: {}, present: {}, timer: {}, personas: {})
+                let native = HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Menu bar · " + tool.title).font(.system(size: 14, weight: .semibold))
+                        menu.background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("On hover").font(.system(size: 14, weight: .semibold))
+                        FloatingToolbar(model: sample, readback: readback, stage: stage, controls: hover, dictate: {}, snap: {}, draw: {}, present: {})
+                        Text("Expanded").font(.system(size: 14, weight: .semibold))
+                        FloatingToolbar(model: sample, readback: readback, stage: stage, controls: tools, dictate: {}, snap: {}, draw: {}, present: {})
+                        Text("Production SwiftUI views · synthetic state\nChanging tool keeps independent work running.")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }.padding(24).frame(width: 838, height: 410, alignment: .topLeading)
+                    .background(Color(nsColor: .underPageBackgroundColor)).workbenchTheme()
+                let hosted = NSHostingView(rootView: native)
+                hosted.frame = NSRect(x: 0, y: 0, width: 838, height: 410)
+                hosted.layoutSubtreeIfNeeded()
+                guard let image = hosted.bitmapImageRepForCachingDisplay(in: hosted.bounds) else {
+                    throw VoiceError.message("Contextual menu bitmap allocation failed")
+                }
+                hosted.cacheDisplay(in: hosted.bounds, to: image)
+                guard let data = image.representation(using: .png, properties: [:]) else {
+                    throw VoiceError.message("Contextual menu PNG encoding failed")
+                }
+                try data.write(to: directory.appendingPathComponent("controls-\(tool.rawValue)-\(appearance.rawValue.lowercased()).png"))
+            }
         }
         print("FLOATING_TOOLBAR_RENDER_OK: " + directory.path)
     }

@@ -96,6 +96,7 @@ public final class StageKitController: ObservableObject {
         AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, imageURL: imageURL, title: title))
     }
     public var isDrawing: Bool { coordinator.isDrawing }
+    public var drawingActivationTitle: String { coordinator.settings.value.activation.rawValue }
     public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
     public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }

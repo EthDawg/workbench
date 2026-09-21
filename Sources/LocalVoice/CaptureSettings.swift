@@ -17,7 +17,9 @@ struct CaptureSettings {
 }
 
 enum CaptureInputPolicy {
-    static func canStart(isPresenting: Bool, hasExternalMacTarget: Bool) -> Bool {
-        !isPresenting || hasExternalMacTarget
+    static func canStart(isPresenting: Bool, hasExternalMacTarget: Bool, delivery: DeliveryMode = .paste) -> Bool {
+        // Explicit clipboard capture is useful for thoughts during a live scene;
+        // automatic paste still needs an external Mac target, never a phone.
+        delivery == .clipboard || !isPresenting || hasExternalMacTarget
     }
 }

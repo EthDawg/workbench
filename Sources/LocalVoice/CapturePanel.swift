@@ -482,6 +482,7 @@ final class DragHandleView: NSView {
 struct RecordingOverlay: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
+    var finishDrawing: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private var isRecordingSurface: Bool { model.phase == .recording || model.previewingPanel }
@@ -522,6 +523,10 @@ struct RecordingOverlay: View {
                 CaptureLevelMeter(level: model.previewingPanel ? 0 : model.level).frame(width: 62, height: 9)
             }
             Spacer(minLength: 0)
+            if let finishDrawing {
+                Button(action: finishDrawing) { Image(systemName: "pencil.tip.crop.circle.badge.checkmark").frame(width: 24, height: 28) }
+                    .buttonStyle(.plain).help("Done drawing · keep marks").accessibilityLabel("Done drawing; keep marks")
+            }
             stopButton
             expansionButton
         }
@@ -555,7 +560,7 @@ struct RecordingOverlay: View {
                 }
             } else if model.phase != .requesting {
                 HStack(spacing: 7) {
-                    if !reduceMotion { ProgressView().controlSize(.mini) }
+                    if !reduceMotion && !model.waitingForDrawing { ProgressView().controlSize(.mini) }
                     Text(model.captureProcessingLabel).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -570,6 +575,12 @@ struct RecordingOverlay: View {
                 }
             }
             HStack {
+                if let finishDrawing {
+                    Button("Done drawing", action: finishDrawing).buttonStyle(.bordered).controlSize(.small)
+                }
+                if model.waitingForDrawing {
+                    Button("Copy now") { model.copyWaitingDelivery() }.buttonStyle(.bordered).controlSize(.small)
+                }
                 if !model.previewingPanel && model.canCancelCurrentCapture {
                     Button { model.cancelCurrentCapture() } label: { Text("Cancel").frame(minWidth: 44, minHeight: 28) }
                         .buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Cancel dictation and discard recording")
@@ -639,7 +650,7 @@ struct RecordingOverlay: View {
         case .recording: return "Recording"
         case .transcribing: return "Transcribing"
         case .cleaning: return "Tidying your words"
-        case .delivering: return "Delivering text"
+        case .delivering: return model.waitingForDrawing ? "Text ready" : "Delivering text"
         case .cancelling: return "Cancelling"
         case .idle: return "Dictation"
         }
@@ -663,6 +674,7 @@ struct RecordingOverlay: View {
             }
         }
         if model.phase == .recording { return model.captureShortcutInstruction }
+        if model.waitingForDrawing { return "Your text is saved. The original field is checked again before paste." }
         if model.phase == .delivering { return "Microphone off. Checking the destination." }
         if model.phase == .cancelling { return "Microphone off. Waiting for processing to stop." }
         if !model.canCancelCurrentCapture { return "Microphone off. Your original text is retained." }

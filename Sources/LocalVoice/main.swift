@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var receiptObservations = Set<AnyCancellable>()
     var readSelectionService: ReadSelectionService!
     private var receiptStatus: String?
+    private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Workbench.preparePreviewData(component: "LocalVoice", files: ["state.json", "demo-library.json"])
@@ -34,6 +35,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
             return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
+        }
+        stage.mayBeginDrawing = { [weak self] in
+            guard let self else { return false }
+            return WorkbenchDrawingAdmission.allows(phase: self.model.phase, suspended: self.shortcutsSuspended,
+                capturingScreen: self.readback.isCapturing, terminating: self.terminating)
+        }
+        model.shouldDeferDelivery = { [weak self] in self?.stage.isDrawing == true }
+        stage.onDrawingChanged = { [weak self] drawing in
+            guard let self, !self.terminating else { return }
+            if drawing { self.model.controlTool = .annotate }
+            if !drawing {
+                if self.shortcutsSuspended || self.readback.isCapturing { self.model.copyWaitingDelivery() }
+                else { self.model.resumeWaitingDelivery() }
+            }
+            self.updateRecordingUI()
         }
         stage.onEditShortcuts = { [weak self] in self?.navigate("shortcuts") }
         stage.onBeginActivity = { [weak self] in
@@ -57,8 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.microphoneStartFailure = { [weak self] target in
             guard let self else { return "Workbench is unavailable." }
             if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
-            return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil)
-                ? nil : "To enter text on your phone, use its keyboard or Dictation button. Mac dictation works in a Mac text field."
+            return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil, delivery: self.model.preferences.delivery)
+                ? nil : "Choose Copy to clipboard to capture a thought, or focus a Mac text field. To enter text on your phone, use its keyboard or Dictation button."
         }
         readback.mayBeginCapture = { [weak self] in
             guard let self else { return "Workbench is unavailable." }
@@ -85,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             snap: { [weak self] in self?.toolbarSnap() },
             draw: { [weak self] in
                 guard let self else { return }
-                if self.stage.isDrawing { self.stage.escape() } else { self.stage.draw() }
+                if self.stage.isDrawing { self.stage.finishDrawing() } else { self.stage.draw() }
             }, present: { [weak self] in
                 guard let self else { return }
                 if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
@@ -105,15 +121,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
-            self?.resumeTarget { _ in self?.stage.draw() }
+        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+            guard let self else { return }
+            if self.stage.isDrawing { self.stage.finishDrawing() }
+            else { self.resumeTarget { [weak self] _ in self?.stage.draw() } }
+        }, snap: { [weak self] in self?.toolbarSnap() }, present: { [weak self] in
+            guard let self else { return }
+            if self.stage.isPresenting { self.stage.endDeviceScene() }
+            else { self.closeControls(); self.stage.presentSelectedScene() }
         }, timer: { [weak self] in self?.closeControls(); self?.stage.showTimer() }, personas: { [weak self] in
             self?.closeControls(); self?.stage.showPersonas()
         }))
-        popover.contentSize = NSSize(width: 370, height: 440)
+        quickController.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = quickController
         model.onPhaseChange = { [weak self] in
             guard let self else { return }
-            if self.model.phase != .idle { self.presenterPanel?.hide(); self.keyboard?.stopInteraction(); self.stage.escape() }
+            if self.model.phase != .idle { self.presenterPanel?.hide(); self.keyboard?.stopInteraction() }
             self.updateRecordingUI()
         }
         model.onShortcutsChanged = { [weak self] in self?.registerShortcuts() }
@@ -181,6 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.updateRecordingUI()
             }
             .store(in: &receiptObservations)
+        stage.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.updateRecordingUI()
+        }.store(in: &receiptObservations)
     }
     func registerShortcuts() {
         guard model.editingShortcut == nil, !shortcutsSuspended else { return }
@@ -322,6 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.toggleRecording(target: target)
     }
     func toolbarSnap() {
+        if readback.isRecording { readback.stopNarration(); return }
         readback.refreshPermissionState()
         guard readback.sessionURL != nil, readback.permissionsReady else {
             navigate("readback"); return
@@ -340,7 +367,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.model.clipboardReceipt.clear(); self.model.dismissCaptureFailure()
             self.model.phase = .delivering; self.model.onPhaseChange?()
             Task {
-                let outcome = await TextDelivery.deliver(text, target: target, mode: .paste, restoreClipboard: self.model.preferences.restoreClipboard)
+                // Manual history paste cannot insert into an annotation editor.
+                let outcome = await TextDelivery.deliver(text, target: target, mode: self.stage.isDrawing ? .clipboard : .paste, restoreClipboard: self.model.preferences.restoreClipboard)
                 self.model.status = outcome.message
                 self.model.clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
                 self.model.phase = .idle; self.model.onPhaseChange?()
@@ -355,11 +383,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .recording: symbol = "mic.fill"; state = "Recording"
         case .requesting: symbol = "mic.badge.plus"; state = "Starting microphone"
         case .transcribing, .cleaning: symbol = "waveform"; state = "Processing speech"
-        case .delivering: symbol = "arrow.up.doc"; state = "Delivering text"
+        case .delivering: symbol = "arrow.up.doc"; state = model.waitingForDrawing ? "Text ready · finish drawing or copy" : "Delivering text"
         case .cancelling: symbol = "xmark.circle"; state = "Cancelling"
         case .idle:
             if readback?.isRecording == true { symbol = "rectangle.and.pencil.and.ellipsis"; state = "Recording Snap & Talk narration" }
             else if (readback?.pendingTranscriptionCount ?? 0) > 0 { symbol = "waveform"; state = "Processing Snap & Talk narration" }
+            else if stage.isDrawing { symbol = "pencil.tip"; state = stage.isPresenting ? "Presenting · Drawing" : "Drawing" }
+            else if stage.isPresenting { symbol = "iphone"; state = "Presenting" }
             else {
                 symbol = receipt?.isClipboardCurrent == true ? "doc.on.clipboard" : "square.stack.3d.up"
                 state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
@@ -392,6 +422,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidBecomeActive(_ notification: Notification) { readback?.refreshPermissionState() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        terminating = true
         NSApp.servicesProvider = nil
         presenterPanel?.hide(); model?.presenter.stop()
         capturePanel?.close()
@@ -435,12 +466,14 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-presenter":
             try await PresenterChecks.run()
         case "--check-core":
+            try await WorkbenchControlChecks.run()
             try await FloatingToolbarChecks.run()
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
         case "--check-floating-toolbar":
+            try await WorkbenchControlChecks.run()
             try await FloatingToolbarChecks.run()
         case "--check-floating-toolbar-native":
             await MainActor.run {
