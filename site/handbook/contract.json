@@ -3,7 +3,7 @@
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
   "reviewedOn": "2026-09-21",
-  "implementationRevision": "f85fbcbdf30ef22a59f1d9c113ebbc11d7481604",
+  "implementationRevision": "4ce4747",
   "scope": "Presentation preparation, independently managed native overlays, break-timer placement, persistent desktop appearance and coordination of live scenes, annotation and Mac dictation. Reading remains an independent job; ordinary dictation and Snap & Talk still share one microphone.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
@@ -131,8 +131,8 @@
       "id": "continuous-presentation-controls",
       "name": "Use annotation and Mac dictation during a live scene",
       "status": "implemented",
-      "entry": "Menu bar primary actions, contextual floating toolbar or configured hotkeys",
-      "effect": "Choose controls without ending running work. Done drawing retains ink and boards. A saved transcript waits while drawing owns input, then revalidates its original Mac target; Copy now completes without ending drawing. Explicit clipboard capture also works without a Mac field during presentation.",
+      "entry": "Menu bar primary actions, native Annotate menu, contextual floating toolbar or configured hotkeys",
+      "effect": "Choose controls without ending running work. The compact menus expose direct actions and configured shortcuts. Native annotation tools refresh on opening; Done drawing retains ink and boards. Failed audio-only capture can be kept in Saved recordings while starting fresh. A saved transcript waits while drawing owns input, then revalidates its original Mac target; Copy now completes without ending drawing. Explicit clipboard capture also works without a Mac field during presentation.",
       "limit": "No Mac input is forwarded to a phone. Final insertion, screenshot acquisition, export, shortcut practice and shutdown keep their input guards. Grouped durable notes and adding existing notes to Snap & Talk handoff remain separate work. Real microphone/device/receiver coexistence requires hardware acceptance.",
       "source": "docs/contextual-controls.md",
       "evidence": "Host action-state and delivery-gate checks; exact AppModel capture-method tests with injected input/output; focused StageKit drawing tests; disposable native sizing and light/dark view renders. See the scoped acceptance record."

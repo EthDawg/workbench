@@ -419,7 +419,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
         guard duration >= 0.35, peakPower > -55 else {
             discardRecordingRecovery()
-            fail("No clear speech was captured. Check your microphone and try again."); return
+            fail("No clear speech was captured. Check Sound → Input. For a MacBook’s built-in microphone, open the lid."); return
         }
         transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
         recordingSettings = nil
