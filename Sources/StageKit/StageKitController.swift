@@ -90,6 +90,10 @@ public final class StageKitController: ObservableObject {
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
     public var quickControlsView: AnyView { AnyView(QuickControlsView(app: coordinator, settings: coordinator.settings)) }
+    /// One native menu for the application menu bar or the shell's status menu.
+    /// It refreshes tool state and shortcut labels whenever it opens; StageKit
+    /// continues to own all drawing actions and their existing global keys.
+    public func makeAnnotationMenu() -> NSMenu { AnnotationMenu(coordinator: coordinator) }
     /// Opens an existing-scene choice followed by the ordinary backdrop preview.
     /// The caller presents this as a sheet; no scene changes until Use backdrop.
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {

@@ -185,6 +185,17 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         boards[display] != nil && settings.value.separateBoards ? boardHistory[display] : overlayHistory[display]
     }
     private var activeHistory: CanvasHistory? { history(for: activeDisplayID ?? currentID) }
+    var canBeginDrawing: Bool {
+        !boardExportInProgress && !screenshotHandoffActive && !shortcutsSuspended && recordingAction == nil
+            && (mayBeginDrawing ?? mayBeginInteraction)?() != false
+    }
+    /// Menu validation reads the same admission rules as action dispatch. It
+    /// also keeps menu clicks out of shortcut practice/recording.
+    func canUseAnnotationMenuAction(_ action: Action) -> Bool {
+        if action.tool != nil { return canBeginDrawing }
+        guard !boardExportInProgress, !screenshotHandoffActive, !shortcutsSuspended, recordingAction == nil else { return false }
+        return action == .clear || action == .controls || mayBeginInteraction?() != false
+    }
     @discardableResult
     func startDrawing(_ selected: DrawingTool, latched: Bool) -> Bool {
         guard !boardExportInProgress, !screenshotHandoffActive, !shortcutsSuspended, recordingAction == nil else { return false }

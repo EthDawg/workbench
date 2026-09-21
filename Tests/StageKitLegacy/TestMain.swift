@@ -4,6 +4,25 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--annotation-menu-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let suite = AnnotationMenuTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("annotation menu live shortcuts and single key owner", suite.testMenuUsesLiveShortcutsWithoutAddingAKeyRoute),
+                ("annotation menu native actions and live state", suite.testNativeActionsRefreshSelectionAndHistory),
+                ("annotation menu preserves ink and boards", suite.testBoardsAndControlsPreserveInkUntilExplicitClear),
+                ("annotation menu rechecks admission", suite.testStaleMenuCannotBypassChangedAdmission)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--drawing-concurrency-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -321,6 +340,13 @@ struct TestRunner {
                 ("drawing admission preserves independent guards", workbench.testDrawingAdmissionIsSeparateFromGeneralInteraction),
                 ("finish drawing preserves ink and settled input", workbench.testFinishDrawingPreservesBoardInkAndReportsSettledTransitions),
                 ("shortcut replacement releases only held drawing", workbench.testShortcutReregistrationReleasesOnlyHeldDrawing)
+            ])
+            let annotationMenu = AnnotationMenuTests()
+            tests.append(contentsOf: [
+                ("annotation menu live shortcuts and single key owner", annotationMenu.testMenuUsesLiveShortcutsWithoutAddingAKeyRoute),
+                ("annotation menu native actions and live state", annotationMenu.testNativeActionsRefreshSelectionAndHistory),
+                ("annotation menu preserves ink and boards", annotationMenu.testBoardsAndControlsPreserveInkUntilExplicitClear),
+                ("annotation menu rechecks admission", annotationMenu.testStaleMenuCannotBypassChangedAdmission)
             ])
         }
         for (name, test) in tests {
