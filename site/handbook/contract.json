@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
-  "reviewedOn": "2026-09-20",
-  "implementationRevision": "1014c938893eabdcbba8eb1485d4844e7757ac3a",
-  "scope": "Presentation preparation, independently managed native overlays, independent break-timer placement, persistent desktop appearance and optional reuse between them. This contract does not change dictation, reading or annotation lifecycles.",
+  "reviewedOn": "2026-09-21",
+  "implementationRevision": "f85fbcbdf30ef22a59f1d9c113ebbc11d7481604",
+  "scope": "Presentation preparation, independently managed native overlays, break-timer placement, persistent desktop appearance and coordination of live scenes, annotation and Mac dictation. Reading remains an independent job; ordinary dictation and Snap & Talk still share one microphone.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
     "proposed": "A product contract for review and implementation. No corresponding feature is promised in the current download."
@@ -21,7 +21,7 @@
       "id": "scene-backdrop",
       "name": "Change a scene backdrop",
       "status": "implemented",
-      "entry": "Present a device → Change backdrop…",
+      "entry": "Present a device \u2192 Change backdrop\u2026",
       "effect": "Preview a file, starter or saved scene image with the retained foreground; apply only the background and crop.",
       "limit": "Changes the saved scene and later outputs, not a running presentation or an already-applied desktop image.",
       "source": "Sources/StageKit/BackdropReplacement.swift",
@@ -41,7 +41,7 @@
       "id": "phone-routes",
       "name": "Choose a phone connection and audio route",
       "status": "implemented",
-      "entry": "Present a device → Connection & audio…; also available in live Source",
+      "entry": "Present a device \u2192 Connection & audio\u2026; also available in live Source",
       "effect": "Separate phone picture, voice conversation and Mac control; guide six native routes. Explicit End preview & open releases capture and closes the presentation before launching an installed Apple app.",
       "limit": "Workbench USB remains video only. The guide does not detect policy, forward a microphone, configure a meeting or establish a working duplex voice route.",
       "source": "Sources/StageKit/NativePresentationApps.swift",
@@ -51,7 +51,7 @@
       "id": "desktop-still",
       "name": "Apply a scene as a desktop picture",
       "status": "implemented",
-      "entry": "Present a device → More → Use as desktop (Preview build)",
+      "entry": "Present a device \u2192 More \u2192 Use as desktop (Preview build)",
       "effect": "Render the whole scene to a retained PNG, record recovery information and request the desktop change through macOS.",
       "limit": "Includes foreground artwork; it is not a background-photo-only picker. Uses the editor window's display or the main display. No dedicated display chooser. Excluded from APP_STORE builds.",
       "source": "Sources/StageKit/DemoScenes.swift",
@@ -91,17 +91,17 @@
       "id": "wallpaper-motion",
       "name": "Gentle desktop motion, while Workbench is open",
       "status": "implemented",
-      "entry": "Present a device → More beside the presentation buttons → Use as animated desktop (non-App-Store build)",
+      "entry": "Present a device \u2192 More beside the presentation buttons \u2192 Use as animated desktop (non-App-Store build)",
       "effect": "Apply and verify a rendered native still, then show an independent click-through desktop layer. Authored starters move clouds or foliage; ordinary photos use gentle zoom. Foreground artwork stays still. Pause/Resume/Stop controls appear in the scene window.",
       "limit": "App-owned, one display and the current Space only. Stops on Quit or Space change; checks native wallpaper ownership periodically. A direct photo-only wallpaper picker is still proposed. No video import, Lock Screen installation, automatic login restart or energy claim.",
       "source": "Sources/StageKit/DesktopMotion.swift",
-      "evidence": "Native isolated Mac host checked desktop-layer Start/Pause/Resume/Stop and presentation-End independence without changing the user’s wallpaper. Ownership, nested sleep and removal policies passed unit checks. Actual native still apply is separately implemented; physical multi-display/Spaces and energy remain unverified. The signed Mac Preview at source 9fe7959 was installed and opened with existing scenes present; the new toggle and desktop menu action were confirmed. It is not notarized or in the public download. The authored starter increment at 48c00dc is installed as signed local Preview build 20260914180524; exact archive/resource identity and new gallery verified. Not notarized or in the public download."
+      "evidence": "Native isolated Mac host checked desktop-layer Start/Pause/Resume/Stop and presentation-End independence without changing the user\u2019s wallpaper. Ownership, nested sleep and removal policies passed unit checks. Actual native still apply is separately implemented; physical multi-display/Spaces and energy remain unverified. The signed Mac Preview at source 9fe7959 was installed and opened with existing scenes present; the new toggle and desktop menu action were confirmed. It is not notarized or in the public download. The authored starter increment at 48c00dc is installed as signed local Preview build 20260914180524; exact archive/resource identity and new gallery verified. Not notarized or in the public download."
     },
     {
       "id": "scene-motion",
       "name": "Gentle motion in a prepared scene",
       "status": "implemented",
-      "entry": "Choose a starter → Window light, Campus breeze or Coastal sky. Gentle motion in scene settings; Pause/Play in presentation controls or the iOS editor preview.",
+      "entry": "Choose a starter \u2192 Window light, Campus breeze or Coastal sky. Gentle motion in scene settings; Pause/Play in presentation controls or the iOS editor preview.",
       "effect": "For ordinary photos, an optional 3.5% zoom. Three authored starters instead move clouds or branches while the architecture and foreground remain still. Complete posters, clean plates and details travel in version 2 packages; the prior library manifest is preserved before upgrade.",
       "limit": "The visible active Mac editor previews enabled motion, with Play/Pause and a reason when paused. Drag, layout controls and sheets pause it. Galleries remain still. iOS animates only the active visible scene preview. PNG/Photos exports stay still; no Live Photo export or continuous iOS Home Screen animation. Reduce Motion, disabled animated-image autoplay, low power and high thermal state suppress animation. Device video and meeting receivers need separate validation.",
       "source": "Sources/StageKit/MovingSceneView.swift",
@@ -111,7 +111,7 @@
       "id": "persona-session",
       "name": "Present several native overlays",
       "status": "implemented",
-      "entry": "Overlay cards → Arrange overlays → Demo groups → Start overlays",
+      "entry": "Overlay cards \u2192 Arrange overlays \u2192 Demo groups \u2192 Start overlays",
       "effect": "Show several independently placed cards, switch among explicitly prepared sets, and Hide/Show/End through one click-based native tile. Live images, labels and allowed choices are frozen; layout saving is explicit.",
       "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
       "source": "Sources/StageKit/PersonaSession.swift",
@@ -121,11 +121,21 @@
       "id": "break-timer-placement",
       "name": "Remember the separate break timer position",
       "status": "implemented",
-      "entry": "Break timer → drag or Position",
+      "entry": "Break timer \u2192 drag or Position",
       "effect": "Snap on drag release; persist a free normalized position or one of eight anchors and recover on an available display after hiding, closing or restarting.",
       "limit": "Countdown and presentation remain independent. Corrupt, future or concurrently changed placement files are preserved. Physical display removal, VoiceOver and meeting receivers remain acceptance checks.",
       "source": "Sources/StageKit/BreakTimerPlacement.swift",
       "evidence": "Focused synthetic persistence checks: 19 assertions. Native AppKit timer hide/reopen and release-time snapping: 11 assertions. See docs/verification/2026-09-20-contribution-integration.md for combined-candidate results."
+    },
+    {
+      "id": "continuous-presentation-controls",
+      "name": "Use annotation and Mac dictation during a live scene",
+      "status": "implemented",
+      "entry": "Menu bar primary actions, contextual floating toolbar or configured hotkeys",
+      "effect": "Choose controls without ending running work. Done drawing retains ink and boards. A saved transcript waits while drawing owns input, then revalidates its original Mac target; Copy now completes without ending drawing. Explicit clipboard capture also works without a Mac field during presentation.",
+      "limit": "No Mac input is forwarded to a phone. Final insertion, screenshot acquisition, export, shortcut practice and shutdown keep their input guards. Grouped durable notes and adding existing notes to Snap & Talk handoff remain separate work. Real microphone/device/receiver coexistence requires hardware acceptance.",
+      "source": "docs/contextual-controls.md",
+      "evidence": "Host action-state and delivery-gate checks; exact AppModel capture-method tests with injected input/output; focused StageKit drawing tests; disposable native sizing and light/dark view renders. See the scoped acceptance record."
     }
   ],
   "events": [
@@ -141,7 +151,7 @@
       "id": "restore-desktop",
       "label": "Restore desktop",
       "status": "implemented",
-      "stops": "The app-owned desktop-motion layer immediately, then use of Workbench’s still output on eligible matched displays after macOS confirms restoration.",
+      "stops": "The app-owned desktop-motion layer immediately, then use of Workbench\u2019s still output on eligible matched displays after macOS confirms restoration.",
       "keeps": "A later manual picture choice, unmatched recovery records and any active presentation.",
       "check": "Read the current desktop before restoring. A recorded old URL is not authority to overwrite a later user choice."
     },
@@ -157,7 +167,7 @@
       "id": "pause-motion",
       "label": "Pause wallpaper motion",
       "status": "implemented",
-      "stops": "The desktop layer’s animation and visibility; the underlying native still shows.",
+      "stops": "The desktop layer\u2019s animation and visibility; the underlying native still shows.",
       "keeps": "The applied still, independent saved scene and any presentation. Resume checks that Workbench still owns the desktop picture.",
       "check": "Explicit Pause survives sleep/wake. Reduce Motion, Low Power Mode, high thermal state and occlusion separately suppress animation. No automatic login restart."
     },
@@ -192,6 +202,14 @@
       "stops": "This Workbench device presentation, its capture session, observers, controls and keep-awake activity before launching the requested app.",
       "keeps": "Saved scenes, independently applied wallpaper and other apps. The selected Apple app owns its own device session and meeting sharing remains separate.",
       "check": "Both capture cleanup and native window closure must finish, in either order, before one app-launch attempt. A visible launch error never silently reacquires capture."
+    },
+    {
+      "id": "change-control-tool",
+      "label": "Choose another tool or finish drawing",
+      "status": "implemented",
+      "stops": "Changing the selected tool changes its controls only. Done drawing commits the active stroke or text and releases annotation input.",
+      "keeps": "The live scene, saved ink and boards, and any ordinary dictation capture or narration remain independently owned.",
+      "check": "The menu offers each primary action directly with one click. Verify original-target delivery after drawing ends, copy fallback when focus changes, and no late paste after Quit."
     }
   ],
   "acceptance": [
@@ -330,6 +348,14 @@
       "capabilities": [
         "break-timer-placement"
       ]
+    },
+    {
+      "id": "continuous-presentation",
+      "capabilities": [
+        "continuous-presentation-controls"
+      ],
+      "test": "Start a scene, dictate into a Mac field, annotate with a held or toggle shortcut, then finish voice before drawing. Verify saved text waits, original-target revalidation or Copy now, retained ink, and scene continuity. Repeat with Snap & Talk narration, denied permissions and a changed target. Physical microphone, phone and meeting receiver results are separate from synthetic checks.",
+      "status": "passed-synthetic-hardware-pending"
     }
   ],
   "agentContract": {

@@ -2,6 +2,8 @@
 
 Built on the compact-toolbar branch at `17fd38f`, including its docking, animation and explicit-collapse fixes. This change preserves that behavior and replaces the empty menu space with direct actions and contextual options. The separate focused StageKit contribution is committed as `8de0d66` on this branch.
 
+Implementation: `f85fbcbdf30ef22a59f1d9c113ebbc11d7481604`. Signed local Preview build `20260921121123` was packaged from that source and installed. The existing signing identity and CloudKit provisioning profile were reused and validated; the installer retained a previous-app archive. All 98 saved application files matched their pre-install hashes before launch. The final installed-app UI inspection was blocked by the Mac lock screen; no automatic unlock was attempted after that result.
+
 ## Verified locally
 
 - `bash scripts/test.sh`: complete Mac suite passed. Includes 107 package tests; 64 browser-extension tests; StageKit 142 tests / 2,875 assertions; provider, refinement, clipboard, keyboard, capture, reading and persistence checks.
