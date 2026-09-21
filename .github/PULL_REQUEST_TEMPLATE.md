@@ -12,3 +12,4 @@
 
 - [ ] I reviewed the diff and included no private data or generated build products.
 - [ ] If I changed the shared Workbench shell, I linked the sibling PR (otherwise not applicable).
+- [ ] For a visible change, I followed the [design language](../docs/design-language.md) checklist: reused existing radius, type, spacing and colour values, kept essential actions off hover, and gave icon-only controls accessible names (otherwise not applicable).
