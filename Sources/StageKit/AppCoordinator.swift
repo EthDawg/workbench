@@ -12,6 +12,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     var onOpenShortcuts: (() -> Void)?
     var onBeginActivity: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
+    var mayBeginDrawing: (() -> Bool)?
+    var onDrawingChanged: ((Bool) -> Void)?
     var validateExternalShortcut: ((UInt32, UInt32) -> String?)?
     private var shortcutsSuspended = false
     let settings: SettingsStore
@@ -183,9 +185,14 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         boards[display] != nil && settings.value.separateBoards ? boardHistory[display] : overlayHistory[display]
     }
     private var activeHistory: CanvasHistory? { history(for: activeDisplayID ?? currentID) }
-    func startDrawing(_ selected: DrawingTool, latched: Bool) {
-        guard !boardExportInProgress, !screenshotHandoffActive else { return }
-        guard mayBeginInteraction?() != false else { notice = "Finish your current recording or keyboard practice before drawing."; return }
+    @discardableResult
+    func startDrawing(_ selected: DrawingTool, latched: Bool) -> Bool {
+        guard !boardExportInProgress, !screenshotHandoffActive, !shortcutsSuspended, recordingAction == nil else { return false }
+        guard (mayBeginDrawing ?? mayBeginInteraction)?() != false else {
+            notice = "Finish the current capture or keyboard practice before drawing."
+            return false
+        }
+        let wasDrawing = isDrawing
         onBeginActivity?()
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
         tool = selected; isDrawing = true; self.latched = latched
@@ -198,13 +205,17 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if selected == .text, let canvas = canvases[currentID] {
             canvas.startText(at: canvas.localPoint(NSEvent.mouseLocation))
         }
+        if !wasDrawing { onDrawingChanged?(true) }
+        return true
     }
     func stopDrawing() {
+        let wasDrawing = isDrawing
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
         isDrawing = false; latched = false; heldAction = nil
         for panel in panels.values { panel.resignKey() }
         NSCursor.arrow.set()
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+        if wasDrawing { onDrawingChanged?(false) }
     }
     func escape() {
         if screenshotHandoffActive { return }
@@ -218,12 +229,11 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         guard !screenshotHandoffActive else { return }
         if action.isOverlayAction { if down { perform(action) }; return }
         guard recordingAction == nil, !boardExportInProgress else { return }
-        if down && action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool {
             if down {
                 let toggle = settings.value.activation == .toggle || selected == .text || !boards.isEmpty
                 if toggle && isDrawing && tool == selected { stopDrawing() }
-                else { startDrawing(selected, latched: toggle); heldAction = toggle ? nil : action }
+                else if startDrawing(selected, latched: toggle) { heldAction = toggle ? nil : action }
             } else if heldAction == action && !latched { stopDrawing() }
         } else if down { perform(action) }
     }
@@ -244,8 +254,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             return
         }
         guard !boardExportInProgress else { return }
-        if action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         if let selected = action.tool { startDrawing(selected, latched: true); return }
+        if action != .clear && action != .controls && mayBeginInteraction?() == false { return }
         switch action {
         case .clear:
             hideQuickControls()
@@ -351,6 +361,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     func openScreenshot() {
         guard !screenshotHandoffActive, !boardExportInProgress, mayBeginInteraction?() != false,
               screenshotHandoff.begin(at: Date.timeIntervalSinceReferenceDate, autoFade: settings.value.autoFade) else { return }
+        let wasDrawing = isDrawing
         onBeginActivity?()
         for canvas in canvases.values {
             canvas.finishStroke(); canvas.commitText()
@@ -359,8 +370,10 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         }
         screenshotHandoffActive = true
         isDrawing = false; latched = false; heldAction = nil
+        for panel in panels.values { panel.resignKey() }
         hideQuickControls(); mainWindow?.orderOut(nil); palette?.orderOut(nil)
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
+        if wasDrawing { onDrawingChanged?(false) }
         screenshotLauncher { [weak self] error in
             DispatchQueue.main.async { self?.finishScreenshotHandoff(error: error) }
         }
@@ -744,6 +757,9 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         } else { registerShortcuts(); refreshWindows() }
     }
     private func registerShortcuts() {
+        // Re-registration discards the pressed-key record. Finish only a held
+        // drawing session before its key-up can be lost; latched tools stay on.
+        if heldAction != nil && !latched { stopDrawing() }
         var preferences = settings.value
         var conflicts: [Action: String] = [:]
         for action in Action.allCases {

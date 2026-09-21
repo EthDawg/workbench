@@ -211,6 +211,7 @@ final class AnnotationView: NSView {
         guard let app = coordinator, app.isDrawing || board != nil else { return }
         app.activeDisplayID = displayID
         if !app.isDrawing { app.startDrawing(app.tool, latched: true) }
+        guard app.isDrawing else { return }
         lastInteraction = Date.timeIntervalSinceReferenceDate
         let point = inkPoint(event)
         if app.tool == .text {

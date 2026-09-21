@@ -4,6 +4,24 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--drawing-concurrency-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let workbench = WorkbenchModuleTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("drawing admission preserves independent guards", workbench.testDrawingAdmissionIsSeparateFromGeneralInteraction),
+                ("finish drawing preserves ink and settled input", workbench.testFinishDrawingPreservesBoardInkAndReportsSettledTransitions),
+                ("shortcut replacement releases only held drawing", workbench.testShortcutReregistrationReleasesOnlyHeldDrawing)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--scene-media-only"] {
             _ = NSApplication.shared
             let media = SceneMediaTests()
@@ -297,7 +315,14 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly && !sceneListOnly { tests.append(("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings)) }
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly && !sceneListOnly {
+            tests.append(contentsOf: [
+                ("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings),
+                ("drawing admission preserves independent guards", workbench.testDrawingAdmissionIsSeparateFromGeneralInteraction),
+                ("finish drawing preserves ink and settled input", workbench.testFinishDrawingPreservesBoardInkAndReportsSettledTransitions),
+                ("shortcut replacement releases only held drawing", workbench.testShortcutReregistrationReleasesOnlyHeldDrawing)
+            ])
+        }
         for (name, test) in tests {
             let before = assertionFailures
             do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }

@@ -41,6 +41,15 @@ public final class StageKitController: ObservableObject {
             coordinator.demoScenes.personas.mayBeginInteraction = mayBeginInteraction
         }
     }
+    /// Drawing may coexist with a host recording; other StageKit actions retain
+    /// the broader interaction guard. An unset drawing guard uses that guard.
+    public var mayBeginDrawing: (() -> Bool)? {
+        didSet { coordinator.mayBeginDrawing = mayBeginDrawing }
+    }
+    /// Called after input ownership changes, once per drawing state transition.
+    public var onDrawingChanged: ((Bool) -> Void)? {
+        didSet { coordinator.onDrawingChanged = onDrawingChanged }
+    }
     /// Hide the shell before drawing, starting a timer or presenting a scene.
     public var onBeginActivity: (() -> Void)? {
         didSet {
@@ -87,6 +96,7 @@ public final class StageKitController: ObservableObject {
         AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, imageURL: imageURL, title: title))
     }
     public var isDrawing: Bool { coordinator.isDrawing }
+    public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
     public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }
     public func presentSelectedScene() {
@@ -115,6 +125,8 @@ public final class StageKitController: ObservableObject {
         coordinator.shutdown()
     }
     public func draw() { coordinator.startDrawing(.pen, latched: true) }
+    /// Return input without clearing the current ink or removing a board.
+    public func finishDrawing() { coordinator.stopDrawing() }
     public func clear() { coordinator.perform(.clear) }
     public func showBoard() { coordinator.toggleBoard(.white) }
     public func showTimer() { coordinator.toggleTimer() }
