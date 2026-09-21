@@ -428,7 +428,7 @@ protocol FloatingHUDDragController: AnyObject {
 
 struct PanelDragHandle: NSViewRepresentable {
     var accessibilityLabel = "Drag dictation panel; named positions are also available in options"
-    var showsGrip = true
+    var showsGrip = false
     func makeNSView(context: Context) -> DragHandleView { DragHandleView(accessibilityLabel: accessibilityLabel, showsGrip: showsGrip) }
     func updateNSView(_ nsView: DragHandleView, context: Context) {}
 }
@@ -437,7 +437,7 @@ final class DragHandleView: NSView {
     private var anchor: NSPoint?
     private var startingOrigin: NSPoint?
     private let showsGrip: Bool
-    init(accessibilityLabel: String, showsGrip: Bool = true) {
+    init(accessibilityLabel: String, showsGrip: Bool = false) {
         self.showsGrip = showsGrip
         super.init(frame: .zero)
         setAccessibilityElement(true); setAccessibilityRole(.image)
@@ -490,7 +490,7 @@ struct RecordingOverlay: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            PanelDragHandle().frame(width: 24, height: 40)
+            PanelDragHandle().frame(width: 8, height: 40)
             if model.phase == .idle && !model.previewingPanel, let failure = model.captureFailure {
                 failureState(failure)
             } else if model.phase == .idle && !model.previewingPanel {
@@ -625,7 +625,10 @@ struct RecordingOverlay: View {
                     Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
                         .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
                 }
-                if !model.canRetry || model.hasCaptureRecovery {
+                if model.canRecordAgain {
+                    Button("Record again") { model.toggleRecording() }
+                        .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
+                } else if !model.canRetry || model.hasCaptureRecovery {
                     Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
                         Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
                     }.buttonStyle(.bordered)

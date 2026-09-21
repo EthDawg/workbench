@@ -142,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onShortcutsChanged = { [weak self] in self?.registerShortcuts() }
         model.onEditShortcut = { [weak self] id in self?.navigate("shortcuts") }
         model.onShowEditor = { [weak self] page in self?.model.page = page; self?.showWindow() }
+        model.onShowAnnotationMenu = { [weak self] in self?.showAnnotationMenu() }
         model.onMenuRecording = { [weak self] in self?.menuRecording() }
         model.onCloseMenu = { [weak self] in self?.closeControls() }
         model.onPasteLast = { [weak self] in self?.pasteLast() }
@@ -261,6 +262,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
         edit.submenu = editMenu; main.addItem(edit)
+        let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
+        annotate.submenu = stage.makeAnnotationMenu(); main.addItem(annotate)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
@@ -289,6 +292,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func statusClicked(_ sender: Any?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
+            let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
+            annotate.submenu = stage.makeAnnotationMenu(); menu.addItem(annotate)
+            menu.addItem(.separator())
             menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
             menu.addItem(withTitle: model.floatingToolbarVisible ? "Hide floating toolbar" : "Show floating toolbar", action: #selector(toggleFloatingToolbar), keyEquivalent: "")
             menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "")
@@ -303,6 +309,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } else { toggleControls() }
     }
     @objc func toggleControls() { if popover.isShown { closeControls() } else { showControls() } }
+    @objc func showAnnotationMenu() {
+        closeControls()
+        guard let button = statusItem.button, button.window?.isVisible == true else {
+            model.page = "annotate"; showWindow(); return
+        }
+        statusItem.menu = stage.makeAnnotationMenu()
+        button.performClick(nil)
+        statusItem.menu = nil
+    }
     @objc func showFloatingToolbar() {
         model.floatingToolbarVisible = true
         capturePanel.update(model: model)

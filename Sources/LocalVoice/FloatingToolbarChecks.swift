@@ -190,10 +190,10 @@ enum FloatingToolbarChecks {
             open: { _ in }, draw: {}, snap: {}, present: {}, timer: {}, personas: {}))
         quick.sizingOptions = [.preferredContentSize]
         let quickWindow = NSWindow(contentViewController: quick)
-        quickWindow.setContentSize(NSSize(width: 344, height: 1))
+        quickWindow.setContentSize(NSSize(width: 288, height: 1))
         quick.view.layoutSubtreeIfNeeded()
         let idleSize = quick.view.fittingSize
-        try check(abs(idleSize.width - 344) < 1 && idleSize.height > 180 && idleSize.height < 340,
+        try check(abs(idleSize.width - 288) < 1 && idleSize.height > 180 && idleSize.height < 340,
                   "idle menu fits its compact content without the old empty panel")
         model.phase = .recording
         try await Task.sleep(nanoseconds: 100_000_000)

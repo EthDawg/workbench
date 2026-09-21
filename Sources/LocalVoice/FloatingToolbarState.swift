@@ -9,8 +9,8 @@ enum FloatingToolbarDisclosure: Equatable {
     var size: NSSize {
         switch self {
         case .collapsed: return NSSize(width: 76, height: 28)
-        case .hovered: return NSSize(width: 336, height: 52)
-        case .expanded: return NSSize(width: 400, height: 88)
+        case .hovered: return NSSize(width: 244, height: 52)
+        case .expanded: return NSSize(width: 304, height: 88)
         }
     }
 

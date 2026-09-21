@@ -1,11 +1,15 @@
 # Compact controls during a continuous presentation
 
-The menu bar offers Dictate, Snap & Talk, Draw, Present and Read directly. Each main action takes one click; active work replaces Start with its own Finish, Done or End action. Secondary controls add a choice or a review surface: text style/destination, capture review, drawing tools, scene selection and shortcuts. There is no icon-only selector strip or six-dot drag grip. The 344pt menu fits its content with 12pt outer padding rather than reserving a fixed 440pt height.
+The menu bar offers Dictate, Snap & Talk, Draw, Present and Read directly. Each main action takes one click; active work replaces Start with its own Finish, Done or End action. Secondary controls add a choice or a review surface: text style/destination, capture review, drawing tools, scene selection and shortcuts. There is no icon-only selector strip or six-dot drag grip. The 288pt menu fits its content with 10pt outer padding rather than reserving a fixed 440pt height.
 
-The floating toolbar retains the existing resting pill, hover grace, keyboard access, eight docking positions and Reduce Motion behavior. Hover is 336 × 52pt (76pt high at side docks to retain the whole resting target); expanded controls are 400 × 88pt. Its tool menu changes the controls without stopping independent work. Current configured shortcuts are visible; off/conflicted bindings are identified. The text-style menu separately controls cleanup and paste/copy destination for the next capture. Native snapshots below use a synthetic three-capture session, not private user content.
+The floating toolbar retains the existing resting pill, hover grace, keyboard access, eight docking positions and Reduce Motion behavior. Hover is 244 × 52pt (76pt high at side docks to retain the whole resting target); expanded controls are 304 × 88pt. Its Change menu switches controls without stopping independent work. There is one primary action, with no repeated tool-selection button beside it. Expanded controls expose other actions through the Workbench menu. Current configured shortcuts are visible; off/conflicted bindings are identified. The text-style menu separately controls cleanup and paste/copy destination for the next capture. Native snapshots below use a synthetic three-capture session, not private user content.
 
 ![Light controls](assets/contextual-controls/light.png)
 ![Dark controls](assets/contextual-controls/dark.png)
+
+The native Annotate menu is available in the application menu bar, the status icon’s right-click menu and the compact Tools action. It refreshes selected tools, ink, boards, undo/redo and actual configured shortcuts each time it opens. Finish Drawing keeps marks and releases input. These menus share the existing annotation owner and shortcut registrations.
+
+A failed audio-only capture offers Retry transcription and Record again. Starting fresh moves the whole prior recovery folder into private Saved recordings before opening a new capture slot. The old WAV stays available for import; the current text draft is unchanged. A failed recognized-text save still blocks new capture until Retry saving succeeds. Invalid imports, changed metadata and unsafe files never silently replace recovery.
 
 ## State and ownership
 

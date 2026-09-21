@@ -23,13 +23,14 @@ methods = '\n'.join([
     extract('    func resumeWaitingDelivery()', '\n    @Published var isMicrophoneQuiet'),
     extract('    func cancelShortcut(', '\n    func transcribeForShortcut'),
     extract('    func cancelRecording()', '\n    func importAudio()'),
+    extract('    func importAudio(_ url:', '\n    func retryTranscription()'),
     extract('    func retryTranscription()', '\n    private func captureSettings()'),
     extract('    private func transcribe(', '\n    func copyTranscript()'),
     extract('    func fail(', '\n    func persist()'),
     extract('    func saveNow()', '\n    func shutdown()'),
     source[source.index('    func shutdown()'):source.rindex('\n}')],
 ])
-labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:']))
+labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:', 'var canRecordAgain:', 'var hasSavedRecordings:']))
 request = shortcuts[shortcuts.index('@MainActor\nfinal class DictationRequest'):shortcuts.index('/// Shortcuts owns Record Audio')]
 fixture = r'''
 import AppKit
@@ -266,6 +267,38 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(FileManager.default.fileExists(atPath: interruptedURL.path) && interrupted.history.isEmpty, "Quit invalidates a late result but keeps unfinished audio")
         let audioRecovery = CaptureHarness(directory: folder("interrupted")); audioRecovery.restore()
         try check(audioRecovery.canRetry && audioRecovery.retryCaptureLabel == "Retry transcription" && audioRecovery.elapsed == 1, "An interrupted recording is discoverable as audio-only recovery")
+        let recoveredID = audioRecovery.captureRecovery.pending!.id
+        let extraFile = folder("interrupted").appendingPathComponent("user-note.txt")
+        try Data("Keep this sibling".utf8).write(to: extraFile)
+        try check(audioRecovery.canRecordAgain && audioRecovery.admitsCapture(), "A fresh recording safely releases failed audio instead of trapping dictation")
+        let kept = audioRecovery.captureRecovery.savedRecordingsDirectory.appendingPathComponent(recoveredID.uuidString)
+        try check(try Data(contentsOf: kept.appendingPathComponent(interruptedURL.lastPathComponent)) == wav, "Saved recording retains exact audio bytes")
+        try check(FileManager.default.fileExists(atPath: kept.appendingPathComponent("pending.json").path)
+                  && FileManager.default.fileExists(atPath: kept.appendingPathComponent("user-note.txt").path), "The complete prior journal and unrelated sibling survive")
+        try check(audioRecovery.transcript == "Old draft" && audioRecovery.history.isEmpty && !audioRecovery.canRetry && audioRecovery.recordURL == nil, "Keeping failed audio does not change the draft or manufacture a transcript")
+        let freshURL = try audioRecovery.makeRecording(wav)
+        try check(freshURL != interruptedURL && audioRecovery.captureRecovery.pending?.id != recoveredID, "Next capture owns a fresh journal and audio identity")
+        let racing = CaptureHarness(directory: folder("racing-archive")); _ = try racing.makeRecording(wav)
+        let altered = Data("changed externally".utf8)
+        try altered.write(to: folder("racing-archive").appendingPathComponent("pending.json"))
+        try check(!racing.admitsCapture() && racing.hasCaptureRecovery, "Changed metadata refuses archival and remains recoverable")
+        try check(try Data(contentsOf: folder("racing-archive").appendingPathComponent("pending.json")) == altered, "Failed archival preserves external metadata")
+        let markerOnly = CaptureHarness(directory: folder("marker-only"))
+        _ = try markerOnly.captureRecovery.beginRecording()
+        let markerID = markerOnly.captureRecovery.pending!.id
+        try check(markerOnly.canRecordAgain && markerOnly.admitsCapture(), "A crash before WAV creation can archive its journal and record again")
+        try check(FileManager.default.fileExists(atPath: markerOnly.captureRecovery.savedRecordingsDirectory.appendingPathComponent(markerID.uuidString).appendingPathComponent("pending.json").path), "A missing WAV never causes deletion of its recovery marker")
+        let collision = CaptureHarness(directory: folder("archive-collision")); let collisionURL = try collision.makeRecording(wav)
+        let collisionDestination = collision.captureRecovery.savedRecordingsDirectory.appendingPathComponent(collision.captureRecovery.pending!.id.uuidString)
+        try FileManager.default.createDirectory(at: collisionDestination, withIntermediateDirectories: true)
+        try check(!collision.admitsCapture() && collision.hasCaptureRecovery && FileManager.default.fileExists(atPath: collisionURL.path), "An existing saved-recording destination is never overwritten")
+        let importing = CaptureHarness(directory: folder("import-validation")); let importRecoveryURL = try importing.makeRecording(wav)
+        let importRecoveryID = importing.captureRecovery.pending!.id
+        let invalidImport = root.appendingPathComponent("invalid.wav"); try Data("not audio".utf8).write(to: invalidImport)
+        importing.importAudio(invalidImport)
+        try check(importing.captureRecovery.pending?.id == importRecoveryID && FileManager.default.fileExists(atPath: importRecoveryURL.path), "Invalid audio import leaves current retry audio in place")
+        importing.importAudio(importRecoveryURL); await finish(importing)
+        try check(importing.history.count == 1 && importing.history.first?.id == importRecoveryID && !importing.hasCaptureRecovery, "Importing the current recovery transcribes with its owned identity and never moves the URL first")
         let cancelled = CaptureHarness(directory: folder("cancelled"))
         let cancelURL = try cancelled.makeRecording(wav); cancelled.engine.delayed = true
         cancelled.run(cancelURL, owned: true); try await waitForEngine(cancelled)
@@ -279,6 +312,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(stale.store.calls == 0 && stale.transcript == "Old draft" && stale.captureRecovery.pending?.capture == nil, "Stale generation cannot publish, journal or commit its text")
 
         // Shortcuts failure ends its continuation once; imported originals are never owned.
+        TextDelivery.calls = 0
         let importedURL = root.appendingPathComponent("imported-original.wav"); try wav.write(to: importedURL)
         let shortcut = CaptureHarness(directory: folder("shortcut")); shortcut.store.fails = true
         let requestID = UUID(); var replies = 0, wasFailure = false

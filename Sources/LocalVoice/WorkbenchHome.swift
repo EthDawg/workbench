@@ -234,7 +234,7 @@ struct WorkbenchQuickPanel: View {
             }.buttonStyle(.plain).font(.system(size: 11))
             Text(model.phase == .idle ? model.status : context.activitySummary)
                 .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2).help(model.status)
-        }.padding(12).frame(width: 344).fixedSize(horizontal: false, vertical: true)
+        }.padding(10).frame(width: 288).fixedSize(horizontal: false, vertical: true)
             .tint(Workbench.accent).workbenchTheme()
     }
 
@@ -264,7 +264,7 @@ struct WorkbenchQuickPanel: View {
         case .snap:
             if readback.sessionURL != nil { Button("Review") { open("readback") }.buttonStyle(.borderless) }
         case .annotate:
-            Button("Tools") { open("annotate") }.buttonStyle(.borderless)
+            Button("Tools") { model.onShowAnnotationMenu?() }.buttonStyle(.borderless)
         case .present:
             Button("Scenes") { open("present") }.buttonStyle(.borderless)
         case .read:
@@ -273,7 +273,7 @@ struct WorkbenchQuickPanel: View {
     }
     private func actionTitle(_ tool: WorkbenchControlTool) -> String {
         if tool == .dictate && model.waitingForDrawing { return "Copy text now" }
-        if tool == .dictate && model.phase == .idle { return "Dictate" }
+        if tool == .dictate && model.phase == .idle { return model.canRecordAgain ? "Record again" : "Dictate" }
         if tool == .snap && !readback.isRecording && !readback.isCapturing && readback.sessionURL == nil { return "Snap & Talk" }
         if tool == .annotate && !stage.isDrawing { return "Draw on screen" }
         if tool == .present && !stage.isPresenting { return "Present scene" }

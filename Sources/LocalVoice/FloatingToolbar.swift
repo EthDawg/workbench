@@ -28,6 +28,10 @@ struct FloatingToolbar: View {
     private var disclosure: FloatingToolbarDisclosure { controls.toolbarDisclosure }
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
     private var canDictate: Bool { context.state.enabled(.dictate) }
+    private var selectedActionTitle: String {
+        if model.controlTool == .dictate && model.phase == .idle { return model.canRecordAgain ? "Record again" : "Dictate" }
+        return context.state.actionTitle(model.controlTool)
+    }
 
     var body: some View {
         ZStack {
@@ -77,14 +81,14 @@ struct FloatingToolbar: View {
     private var revealed: some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
-                toolMenu.frame(width: 108, height: 24)
+                toolMenu.frame(width: 70, height: 24)
                 Text(model.controlTool == .snap ? "\(readback.activeSections.count) captures" : status == "Ready when you are" ? "Ready" : status)
                     .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85).help(status)
-                    .frame(width: 108, alignment: .leading)
-            }.frame(width: 108)
+                    .frame(width: 70, alignment: .leading)
+            }.frame(width: 70)
             Divider().frame(height: 28)
             VStack(alignment: .leading, spacing: 3) {
-                Button(context.state.actionTitle(model.controlTool), action: performSelected)
+                Button(selectedActionTitle, action: performSelected)
                     .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
                     .disabled(!context.state.enabled(model.controlTool))
                 Button(context.shortcut(model.controlTool) ?? "Options…") {
@@ -92,9 +96,8 @@ struct FloatingToolbar: View {
                 }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
                     .help("View controls and change keyboard shortcuts")
             }.frame(maxWidth: .infinity, alignment: .leading)
-            PanelDragHandle(accessibilityLabel: "Drag this space to move toolbar", showsGrip: false).frame(width: 12, height: 28)
             expandButton
-        }.padding(.horizontal, 12)
+        }.padding(.horizontal, 8)
     }
 
     private var expanded: some View {
@@ -105,18 +108,21 @@ struct FloatingToolbar: View {
                         .frame(width: 104, height: 22)
                     PanelDragHandle(accessibilityLabel: "Move toolbar by dragging this empty space; positions are also in the menu", showsGrip: false)
                         .frame(maxWidth: .infinity).frame(height: 24)
-                    Text(status).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).help(status)
+                    Text(status == "Ready when you are" ? "Ready" : status).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).help(status)
                     Button { controls.collapseToolbar() } label: {
                         Image(systemName: "minus").frame(width: 26, height: 24)
                     }.buttonStyle(.plain).help("Collapse to the quiet indicator")
                         .accessibilityLabel("Collapse Workbench toolbar")
                 }
                 HStack(spacing: 7) {
-                    toolMenu.frame(width: 108, height: 24)
-                    Button(context.state.actionTitle(model.controlTool), action: performSelected)
+                    Button(selectedActionTitle, action: performSelected)
                         .buttonStyle(.borderedProminent).disabled(!context.state.enabled(model.controlTool))
                     Spacer(minLength: 0)
-                    if model.controlTool == .dictate { modeMenu.frame(width: 106, height: 24) }
+                    if model.controlTool == .dictate { modeMenu.frame(width: 86, height: 24) }
+                    else if model.controlTool == .annotate {
+                        FloatingToolbarMenu(title: "Tools", symbol: "", help: "Drawing tools, ink and shortcuts",
+                            controls: controls, makeMenu: { stage.makeAnnotationMenu() }).frame(width: 52, height: 24)
+                    }
                     else {
                         Button(model.controlTool == .snap ? "Review" : "Options") { model.onShowEditor?(model.controlTool.page) }
                             .buttonStyle(.borderless)
@@ -130,7 +136,7 @@ struct FloatingToolbar: View {
                             .help("View or change keyboard shortcuts")
                     }
                 }.font(.system(size: 10)).foregroundStyle(.secondary)
-        }.padding(.horizontal, 12)
+        }.padding(.horizontal, 10)
     }
 
     private var expandButton: some View {
@@ -171,7 +177,7 @@ struct FloatingToolbar: View {
     }
 
     private var toolMenu: some View {
-        FloatingToolbarMenu(title: model.controlTool.title, symbol: model.controlTool.symbol,
+        FloatingToolbarMenu(title: "Change", symbol: "chevron.down",
             help: "Change tool. Running activities continue.", controls: controls, makeMenu: makeToolMenu)
     }
     private func makeToolMenu() -> NSMenu {

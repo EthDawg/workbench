@@ -63,7 +63,7 @@ flowchart LR
     History --> Output["Edit, copy, guarded paste<br/>or App Intent result"]
 ```
 
-Microphone capture is capped at five minutes; file import at 30 minutes. Very short or effectively silent recordings are rejected. Imported source files are not modified. Each Parakeet request uses a fresh decoder state. A pending hold-to-record permission request cannot later start a stale recording after the key is released.
+Microphone capture is capped at five minutes; file import at 30 minutes. Very short or effectively silent recordings are rejected. Imported source files are not modified. Failed audio-only recovery can be retained under LocalVoice/SavedRecordings through an atomic same-volume directory move before a fresh recording; recognized-text save failures retain the single-slot guard. The source file for an import is validated before releasing recovery, and selecting the current recovery invokes its owned retry. Each Parakeet request uses a fresh decoder state. A pending hold-to-record permission request cannot later start a stale recording after the key is released.
 
 Automatic paste checks both the original application and accessibility field immediately before delivery, excludes secure fields, and never submits. Captures are saved before delivery. Clipboard restoration requires confirmed insertion and unchanged clipboard ownership; uncertainty leaves the transcript copied for recovery.
 
