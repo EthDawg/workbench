@@ -7,7 +7,7 @@ import XCTest
 final class ToolbarModelCheckTests: XCTestCase {
     private static let events: [ToolbarEvent] =
         [.pointerEntered, .pointerLeft, .pointerSettled(inside: true), .pointerSettled(inside: false),
-         .graceElapsed, .pillClicked, .expandClicked, .collapseRequested,
+         .graceElapsed, .keepOpenChanged(true), .keepOpenChanged(false),
          .surfaceLeftTools, .surfaceReturnedToTools]
         + ToolbarHold.allCases.map { ToolbarEvent.holdBegan($0) }
         + ToolbarHold.allCases.map { ToolbarEvent.holdEnded($0) }
@@ -15,7 +15,7 @@ final class ToolbarModelCheckTests: XCTestCase {
     /// Breadth-first from both launch states, following every event.
     private func reachable() -> [ToolbarState] {
         var seen = Set<ToolbarState>()
-        var queue = [ToolbarState(pinnedPreference: false), ToolbarState(pinnedPreference: true)]
+        var queue = [ToolbarState(keepsOpen: false), ToolbarState(keepsOpen: true)]
         seen.formUnion(queue)
         while let state = queue.popLast() {
             for event in Self.events {
@@ -26,29 +26,29 @@ final class ToolbarModelCheckTests: XCTestCase {
         return Array(seen)
     }
 
-    func testNoReachableStateLeavesTheToolbarStuckOpen() {
+    func testNoReachableStateLeavesTheRowStuckOpen() {
         for state in reachable() {
-            XCTAssertFalse(state.tier == .peeking && state.holds.isEmpty
-                           && !state.pointerInside && !state.graceRunning,
-                           "revealed, nothing holding it, no pointer and no timer: \(state)")
+            XCTAssertFalse(state.tier == .revealed && state.holds.isEmpty && !state.pointerInside
+                           && !state.keepsOpen && !state.graceRunning,
+                           "revealed, nothing holding it, no pointer, not kept open and no timer: \(state)")
         }
     }
 
     func testATimerOnlyRunsForARevealedToolbar() {
         for state in reachable() where state.graceRunning {
-            XCTAssertEqual(state.tier, .peeking, "\(state)")
+            XCTAssertEqual(state.tier, .revealed, "\(state)")
+        }
+    }
+
+    func testAToolbarTheUserAskedToKeepOpenIsNeverCountingDown() {
+        for state in reachable() where state.keepsOpen {
+            XCTAssertFalse(state.graceRunning, "\(state)")
         }
     }
 
     func testKeyboardFocusIsNeverOnAnInvisibleToolbar() {
         for state in reachable() where state.holds.contains(.keyboard) {
-            XCTAssertEqual(state.tier, .pinned, "\(state)")
-        }
-    }
-
-    func testAToolbarThatStaysOpenWithNoHoldIsADeliberateChoice() {
-        for state in reachable() where state.tier == .pinned && state.holds.isEmpty {
-            XCTAssertTrue(state.pinnedPreference, "\(state)")
+            XCTAssertEqual(state.tier, .revealed, "\(state)")
         }
     }
 
@@ -76,12 +76,13 @@ final class ToolbarModelCheckTests: XCTestCase {
         }
     }
 
-    /// A complexity budget. Five fields could combine 384 ways; the invariants
-    /// above cut that to 62, which is the whole of the toolbar's behaviour.
-    /// Adding one more boolean roughly doubles it, and the table in the docs
-    /// stops being the whole story — so a jump here is the signal to stop.
+    /// A complexity budget. Five fields could combine 128 ways; the invariants
+    /// above cut that to 48 — 16 resting and 32 revealed — which is the whole of
+    /// the toolbar's behaviour. Adding a field or a tier roughly doubles it, and
+    /// the table in the docs stops being the whole story: a jump here is the
+    /// signal to stop and take something away instead.
     func testTheStateSpaceStaysSmallEnoughToReasonAbout() {
         let count = reachable().count
-        XCTAssertLessThanOrEqual(count, 72, "reachable states grew to \(count)")
+        XCTAssertLessThanOrEqual(count, 56, "reachable states grew to \(count)")
     }
 }

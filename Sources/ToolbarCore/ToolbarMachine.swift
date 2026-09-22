@@ -1,26 +1,23 @@
 /// The complete behaviour of the floating toolbar, with no AppKit, no windows,
 /// no timers and no clock. Read this one file and you know what the toolbar does.
 ///
-/// The previous implementation derived what to show from six booleans on every
-/// read, so 64 combinations were legal and most were meaningless. Here exactly
-/// one property is an output — `tier` — and it is only ever assigned by `reduce`.
-/// Everything else records what the world is doing.
+/// Two tiers, because hover is the mechanism. A control that does what moving
+/// the pointer already does is a second way to say the same thing, so there is
+/// no minimise button, no expand button and no third tier for them to act on.
 
-/// What the user can see.
+/// What the user can see. There is no state between these two.
 public enum ToolbarTier: String, CaseIterable, Sendable {
-    /// A quiet indicator. The only resting job is to be findable and clickable.
+    /// One glyph. Its whole job is to be findable and to say whether work is running.
     case resting
-    /// Revealed by the pointer, and taken away again when the pointer leaves.
-    case peeking
-    /// Kept open because the user asked for it, or because the keyboard is here.
-    case pinned
+    /// One row: what this tool does next, and the key that does it.
+    case revealed
 }
 
-/// A reason the toolbar must stay open although the pointer has gone.
+/// A reason the toolbar must stay revealed although the pointer has gone.
 ///
 /// A hold can only prevent a collapse; it never causes a reveal. Keyboard focus
 /// is the single exception, written out in `reduce`, because focusing an
-/// invisible pill is useless. Keeping the rule this narrow is what stops a drag
+/// invisible glyph is useless. Keeping the rule this narrow is what stops a drag
 /// from resizing the very window being dragged.
 public enum ToolbarHold: String, CaseIterable, Sendable {
     case menu, drag, keyboard
@@ -30,25 +27,22 @@ public enum ToolbarHold: String, CaseIterable, Sendable {
 public enum ToolbarEvent: Equatable, Sendable {
     /// A real inward crossing of the toolbar's tracking area, and the only event
     /// that can reveal the toolbar by pointer. Never send it from a poll of the
-    /// mouse location, and never from a frame change: a window shrinking out
-    /// from under a stationary pointer is how a collapse used to spring open again.
+    /// mouse location, and never from a frame change: a window growing or
+    /// shrinking under a stationary pointer is not a gesture.
     case pointerEntered
     /// A real outward crossing.
     case pointerLeft
     /// One reconciliation after the host finishes a frame animation, when the
     /// window may have moved out from under a pointer that never moved. It
-    /// records where the pointer is and can never promote a tier.
+    /// records where the pointer is and can never reveal the toolbar.
     case pointerSettled(inside: Bool)
     /// The host's grace timer finished. A stale firing is ignored.
     case graceElapsed
-    /// The resting indicator was clicked.
-    case pillClicked
-    /// The expand control on the revealed toolbar was clicked.
-    case expandClicked
-    /// Collapse, from the minimise button, the menu item or the Escape key.
-    case collapseRequested
     case holdBegan(ToolbarHold)
     case holdEnded(ToolbarHold)
+    /// Keep open was ticked or unticked in the toolbar's own menu. Unticking it
+    /// is what a minimise button used to be for, in the place that owns the idea.
+    case keepOpenChanged(Bool)
     /// Dictation, narration or screenshot acquisition took the window away.
     case surfaceLeftTools
     /// The tools surface is back; the remembered choice decides what is shown.
@@ -62,8 +56,8 @@ public enum ToolbarEffect: Equatable, Sendable {
     /// Start the single grace timer, which must deliver exactly one `graceElapsed`.
     case startGrace
     case cancelGrace
-    /// Write the remembered open/closed choice to preferences.
-    case persistPinned(Bool)
+    /// Write the remembered keep-open choice to preferences.
+    case persistKeepOpen(Bool)
     /// Cancel any open menu tracking, end any drag and drop keyboard focus.
     case releaseHolds
 }
@@ -74,14 +68,14 @@ public struct ToolbarState: Hashable, Sendable {
     public private(set) var holds: Set<ToolbarHold>
     public private(set) var pointerInside: Bool
     public private(set) var graceRunning: Bool
-    /// The remembered "keep it open" choice. A temporary keyboard reveal never
-    /// writes it, so tabbing through the toolbar cannot silently change a setting.
-    public private(set) var pinnedPreference: Bool
+    /// The remembered choice to leave the row up. It behaves like a hold that
+    /// outlives the session, which is why there is no separate pinned tier.
+    public private(set) var keepsOpen: Bool
 
     /// Launch state, read from preferences once.
-    public init(pinnedPreference: Bool = false) {
-        self.pinnedPreference = pinnedPreference
-        tier = pinnedPreference ? .pinned : .resting
+    public init(keepsOpen: Bool = false) {
+        self.keepsOpen = keepsOpen
+        tier = keepsOpen ? .revealed : .resting
         holds = []
         pointerInside = false
         graceRunning = false
@@ -106,7 +100,8 @@ public struct ToolbarState: Hashable, Sendable {
         /// Revealed, with nothing holding it and no pointer on it, is the one
         /// state that must never be allowed to persist.
         func startGraceIfAdrift() {
-            guard next.tier == .peeking, next.holds.isEmpty, !next.pointerInside, !next.graceRunning else { return }
+            guard next.tier == .revealed, next.holds.isEmpty, !next.pointerInside,
+                  !next.keepsOpen, !next.graceRunning else { return }
             next.graceRunning = true
             effects.append(.startGrace)
         }
@@ -115,17 +110,12 @@ public struct ToolbarState: Hashable, Sendable {
             next.holds = []
             effects.append(.releaseHolds)
         }
-        func remember(_ pinned: Bool) {
-            guard next.pinnedPreference != pinned else { return }
-            next.pinnedPreference = pinned
-            effects.append(.persistPinned(pinned))
-        }
 
         switch event {
         case .pointerEntered:
             next.pointerInside = true
             cancelGrace()
-            if next.tier == .resting { show(.peeking) }
+            show(.revealed)
 
         case .pointerLeft:
             next.pointerInside = false
@@ -140,37 +130,27 @@ public struct ToolbarState: Hashable, Sendable {
             // while it ran, decides nothing.
             guard next.graceRunning else { break }
             next.graceRunning = false
-            guard next.tier == .peeking, next.holds.isEmpty, !next.pointerInside else { break }
+            guard next.tier == .revealed, next.holds.isEmpty,
+                  !next.pointerInside, !next.keepsOpen else { break }
             show(.resting)
-
-        case .pillClicked, .expandClicked:
-            cancelGrace()
-            show(.pinned)
-            remember(true)
-
-        case .collapseRequested:
-            // Collapse is itself a menu item, so the menu that issued it is still
-            // tracking. Tearing every hold down is what makes the click stick.
-            cancelGrace()
-            releaseHolds()
-            show(.resting)
-            remember(false)
 
         case .holdBegan(let hold):
             next.holds.insert(hold)
             cancelGrace()
-            if hold == .keyboard { show(.pinned) }
+            if hold == .keyboard { show(.revealed) }
 
         case .holdEnded(let hold):
             next.holds.remove(hold)
             guard next.holds.isEmpty else { break }
-            if next.tier == .pinned, !next.pinnedPreference {
-                // A keyboard reveal ending. The pointer decides where it lands,
-                // and the remembered choice is left exactly as the user set it.
-                show(next.pointerInside ? .peeking : .resting)
-            } else {
-                startGraceIfAdrift()
-            }
+            startGraceIfAdrift()
+
+        case .keepOpenChanged(let on):
+            guard next.keepsOpen != on else { break }
+            next.keepsOpen = on
+            effects.append(.persistKeepOpen(on))
+            // Unticking it inside the menu leaves the menu holding the row up;
+            // it fades when the menu closes, which is the behaviour you expect.
+            if on { cancelGrace(); show(.revealed) } else { startGraceIfAdrift() }
 
         case .surfaceLeftTools:
             cancelGrace()
@@ -182,7 +162,7 @@ public struct ToolbarState: Hashable, Sendable {
             cancelGrace()
             releaseHolds()
             next.pointerInside = false
-            show(next.pinnedPreference ? .pinned : .resting)
+            show(next.keepsOpen ? .revealed : .resting)
         }
         return (next, effects)
     }
