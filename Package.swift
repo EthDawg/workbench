@@ -17,6 +17,8 @@ let package = Package(
                .executable(name: "WorkbenchBrowserHost", targets: ["WorkbenchBrowserHost"])],
     dependencies: [.package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6")],
     targets: [
+        .target(name: "ToolbarCore"),
+        .testTarget(name: "ToolbarCoreTests", dependencies: ["ToolbarCore"]),
         .target(name: "PresenterKit"),
         .testTarget(name: "PresenterKitTests", dependencies: ["PresenterKit"]),
         .executableTarget(name: "WorkbenchBrowserHost", dependencies: ["PresenterKit"]),

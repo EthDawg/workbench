@@ -6,6 +6,7 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 
 | Owner | Responsibility | Entry points |
 | --- | --- | --- |
+| `ToolbarCore` library target | When the floating toolbar shows what, and the remembered open/closed choice. No AppKit, no clock, no window | `ToolbarMachine.swift`; the behaviour is owned by [floating-toolbar.md](floating-toolbar.md) |
 | `LocalVoice` executable target | App shell plus existing voice workflows, reading, cleanup, delivery and resources | `main.swift`, `WorkbenchHome.swift`, `AppModel.swift` |
 | `StageKit` library target | Drawing, boards, timer, scene library and device video preview | Public `StageKitController`; internal `AppCoordinator` |
 | `RecognitionEngine` actor | Selected recognition provider, preparation and one transcription at a time | `RecognitionProviders.swift` |
