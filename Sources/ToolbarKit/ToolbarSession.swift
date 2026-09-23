@@ -40,8 +40,9 @@ import ToolbarCore
     private let clock: ToolbarGraceClock
     private let defaults: UserDefaults
     private weak var menu: NSMenu?
-    // Preserve the existing explicit preference without changing user choices.
-    public static let keepOpenKey = "floatingToolbarExpanded.v1"
+    // A click on the old pill persisted expansion. Only the explicit new menu
+    // choice should keep this two-tier row open across launches.
+    public static let keepOpenKey = "floatingToolbarKeepOpen.v2"
 
     public init(defaults: UserDefaults = .standard, clock: ToolbarGraceClock? = nil) {
         self.defaults = defaults

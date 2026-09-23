@@ -86,6 +86,22 @@ final class ToolbarSessionTests: XCTestCase {
         XCTAssertEqual(restored.state.tier, .revealed)
     }
 
+    @MainActor func testLegacyClickToExpandDoesNotOptIntoKeepOpen() {
+        let (_, _, defaults, domain) = fixture()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(true, forKey: "floatingToolbarExpanded.v1")
+        let session = ToolbarSession(defaults: defaults, clock: ManualClock())
+        session.activate()
+        XCTAssertFalse(session.state.keepsOpen)
+        XCTAssertEqual(session.state.tier, .resting)
+        XCTAssertNil(defaults.object(forKey: ToolbarSession.keepOpenKey))
+        session.send(.keepOpenChanged(true))
+        let relaunched = ToolbarSession(defaults: defaults, clock: ManualClock())
+        relaunched.activate()
+        XCTAssertTrue(relaunched.state.keepsOpen)
+        XCTAssertEqual(relaunched.state.tier, .revealed)
+    }
+
     @MainActor func testMenuReconciliationUpdatesGateBeforeImmediateReentry() {
         let (session, clock, defaults, domain) = fixture()
         defer { defaults.removePersistentDomain(forName: domain) }

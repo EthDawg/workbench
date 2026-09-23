@@ -83,6 +83,11 @@ glyph is useless.
 
 `keepsOpen` is a hold that outlives the session. That is the whole of it.
 
+The choice uses `floatingToolbarKeepOpen.v2`, defaulting to off on upgrade.
+The old `floatingToolbarExpanded.v1` is left untouched and ignored: clicking
+the former pill wrote it, so it does not establish an explicit choice to keep
+this new row open. Once chosen in the menu, the new preference survives relaunch.
+
 ### The table
 
 | Tier | Event | Next | Effects |
