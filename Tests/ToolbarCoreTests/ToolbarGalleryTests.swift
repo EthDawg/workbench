@@ -57,7 +57,7 @@ final class ToolbarGalleryTests: XCTestCase {
                 return XCTFail("\(state.name) shows a key while work is running")
             }
         }
-        for state in ToolbarGallery.tools where !state.isBusy {
+        for state in ToolbarGallery.states where !state.isBusy {
             guard case .shortcut = state.trailing else {
                 return XCTFail("\(state.name) shows a status while idle")
             }

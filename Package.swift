@@ -18,6 +18,9 @@ let package = Package(
     dependencies: [.package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6")],
     targets: [
         .target(name: "ToolbarCore"),
+        .target(name: "ToolbarKit", dependencies: ["ToolbarCore"]),
+        .executableTarget(name: "ToolbarGalleryRenderer", dependencies: ["ToolbarKit", "StageKit"]),
+        .testTarget(name: "ToolbarKitTests", dependencies: ["ToolbarKit", "StageKit"]),
         .testTarget(name: "ToolbarCoreTests", dependencies: ["ToolbarCore"]),
         .target(name: "PresenterKit"),
         .testTarget(name: "PresenterKitTests", dependencies: ["PresenterKit"]),
@@ -27,7 +30,7 @@ let package = Package(
         .target(name: "SceneSyncKit"),
         .testTarget(name: "SceneSyncKitTests", dependencies: ["SceneSyncKit"]),
         .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit"], linkerSettings: [.linkedFramework("Carbon")]),
-        .executableTarget(name: "LocalVoice", dependencies: ["StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon")])
+        .executableTarget(name: "LocalVoice", dependencies: ["ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon")])
     ],
     swiftLanguageModes: [.v5]
 )

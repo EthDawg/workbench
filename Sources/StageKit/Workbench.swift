@@ -93,11 +93,7 @@ enum Workbench {
     }
     static let background = Color(nsColor: .windowBackgroundColor)
     static let surface = Color(nsColor: .controlBackgroundColor)
-    static let accent = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.43, green: 0.89, blue: 0.73, alpha: 1)
-            : NSColor(srgbRed: 0.04, green: 0.43, blue: 0.32, alpha: 1)
-    })
+    static let accent = WorkbenchPalette.accent
     static let border = Color.primary.opacity(0.08)
     static let controlWidth: CGFloat = 370
 }

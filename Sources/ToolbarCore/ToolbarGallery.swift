@@ -16,7 +16,16 @@ public enum ToolbarGallery {
     public static let tools: [ToolbarViewState] = ToolbarTool.allCases.flatMap { tool in
         ToolbarTier.allCases.map { tier in
             ToolbarViewState(name: "tool-\(tool.slug)-\(tier.rawValue)", tier: tier, tool: tool,
-                             trailing: .shortcut(tool == .read ? .off : .assigned("⌃⌥Space")))
+                             trailing: .shortcut(exampleShortcut(tool)))
+        }
+    }
+
+    private static func exampleShortcut(_ tool: ToolbarTool) -> ToolbarShortcut {
+        switch tool {
+        case .dictate: return .assigned("⌃⌥Space")
+        case .snapAndTalk: return .assigned("⌃⌥\\")
+        case .annotate: return .assigned("⌃⌥D")
+        case .present, .read: return .off
         }
     }
 
@@ -34,16 +43,21 @@ public enum ToolbarGallery {
         ToolbarViewState(name: "activity-drawing-resting", tier: .resting, tool: .annotate, isBusy: true),
         ToolbarViewState(name: "activity-presenting", tier: .revealed, tool: .present,
                          actionTitle: "End scene", trailing: .status("Right display"), isBusy: true),
-        ToolbarViewState(name: "activity-captures", tier: .revealed, tool: .snapAndTalk,
-                         actionTitle: "Capture next", trailing: .status("3 captures"), isBusy: true),
         ToolbarViewState(name: "activity-transcribing", tier: .revealed, tool: .snapAndTalk,
                          actionTitle: "Capture next", trailing: .status("Transcribing 2 of 3"), isBusy: true),
         ToolbarViewState(name: "activity-reading", tier: .revealed, tool: .read,
-                         actionTitle: "Stop reading", trailing: .status("Ava"), isBusy: true),
-        ToolbarViewState(name: "activity-unavailable", tier: .revealed, tool: .dictate,
-                         isActionEnabled: false, trailing: .status("Microphone busy"))
+                         actionTitle: "Stop reading", trailing: .status("Ava"), isBusy: true)
+    ]
+
+    /// Waiting between captures and preparing speech are idle. Keep the key
+    /// discoverable; session counts and availability explanations live in help/menu.
+    public static let idle: [ToolbarViewState] = [
+        ToolbarViewState(name: "idle-session-open", tier: .revealed, tool: .snapAndTalk,
+                         actionTitle: "Capture next", trailing: .shortcut(.assigned("⌃⌥\\"))),
+        ToolbarViewState(name: "idle-speech-preparing", tier: .revealed, tool: .dictate,
+                         isActionEnabled: false, trailing: .shortcut(.assigned("⌃⌥Space")))
     ]
 
     /// Everything, in a stable order.
-    public static let states: [ToolbarViewState] = placements + tools + bindings + activity
+    public static let states: [ToolbarViewState] = placements + tools + bindings + activity + idle
 }

@@ -2,7 +2,9 @@
 
 This document owns the toolbar's behaviour. `Sources/ToolbarCore/ToolbarMachine.swift`
 is the executable copy of it, and `Tests/ToolbarCoreTests` is the proof. When
-the three disagree, the tests are right and the other two need fixing.
+they disagree, resolve the intended behaviour against the product contract, then
+update the table, implementation and regression together. A passing test is not
+permission to preserve a bug.
 
 ## What it is
 
@@ -14,7 +16,7 @@ resting      [ ◉ ]
 
 revealed     [ ◉ ▾ ]  Dictate              ⌃⌥Space
              [ ◉ ▾ ]  Done drawing         Drawing
-             [ ◉ ▾ ]  Capture next         3 captures
+             [ ◉ ▾ ]  Capture next         ⌃⌥\
 ```
 
 Three elements in the row, and every one of them is load-bearing. The glyph is
@@ -61,8 +63,8 @@ individual fixes, it was the shape:
 | Layer | Owns | Depends on | Tested by |
 | --- | --- | --- | --- |
 | **Core** `Sources/ToolbarCore` | When to show which tier, and the remembered choice | Nothing. No AppKit, no clock, no window | `swift test`, instantly, with no sleeps |
-| **Look** SwiftUI views | How each tier is drawn | One `ToolbarViewState` value | Snapshots of `ToolbarGallery.states`, light and dark |
-| **Host** `CapturePanelController` | Windows, tracking areas, one timer, one animation | Core's effects | A handful of native checks: given an effect, the window lands here |
+| **Look** `ToolbarKit/ToolbarRow` | How each tier is drawn | One `ToolbarViewState` value | Native layout tests and snapshots of `ToolbarGallery.states`, light/dark and larger text |
+| **Host** `ToolbarKit` + `CapturePanelController` | Tracking, one cancellable deadline, one native animation; app surface and saved position | Core effects, existing operation owners | `ToolbarKitTests` and isolated app acceptance |
 
 A change belongs to exactly one layer. If a change needs all three, it is three
 changes.
@@ -109,7 +111,7 @@ issued by the control that owns the idea.
 ### What the invariants guarantee
 
 `ToolbarModelCheckTests` walks every state the toolbar can reach — 40 of a
-possible 128 — and applies every event to each one. Four things can never happen:
+possible 128 — and applies every event to each one. Five things can never happen:
 
 1. **Stuck open.** Revealed, with nothing holding it, no pointer on it, not kept
    open and no timer running.
@@ -133,7 +135,7 @@ The core cannot be right if the host feeds it fiction.
   every time it opens and closes, and that is geometry, not a gesture.
 - **Suspend crossings while the frame animates, then reconcile once** by sending
   the event that matches where the pointer actually is. Do the same when menu
-  tracking ends, because it swallows the owning window's exit, and when the tools
+  tracking ends and dragging finishes, because they can swallow the owning window's exit, and when the tools
   surface comes back, because AppKit cannot deliver a crossing to a pointer that
   never moved. Both events are idempotent, so agreeing with the core costs
   nothing. There is deliberately no third, non-revealing reconciliation event:
@@ -147,8 +149,9 @@ The core cannot be right if the host feeds it fiction.
   the effect loop: a crossing AppKit delivers synchronously from that resize
   cannot invalidate an effect still waiting to run.
 - **One grace timer.** `startGrace` starts it, `cancelGrace` stops it, and it
-  delivers exactly one `graceElapsed`. A late firing is safe — the core ignores
-  it — so the host needs no generation counters.
+  delivers exactly one `graceElapsed`. The production Task exits on cancellation
+  and checks cancellation before delivery on the main actor. A callback from a
+  cancelled deadline must never be delivered into a later deadline.
 - **One animation.** `NSAnimationContext` on the window frame. The content does
   not animate its own size at the same time.
 - **The row grows inward from the docked edge**, so the glyph keeps its place on
@@ -166,14 +169,20 @@ and the snapshot renderer iterates it, so a design regression arrives as an imag
 diff rather than a sentence in a report.
 
 - **Resting says two things and no more:** which tool is selected, and whether
-  work is running. It has no label, no capsule and no grip.
+  work is running. A small rounded material tile keeps it legible over arbitrary
+  wallpaper; Reduce Transparency uses an opaque background. No label or grip.
 - **Revealed is one row.** The glyph keeps its place from the resting tier, so
   the row grows out of the glyph rather than replacing it.
 - **Active work replaces the start action** and moves the status into the
   trailing slot, where the shortcut was.
+- **Idle keeps the shortcut visible.** An open Snap & Talk session between
+  captures and initial speech-model preparation are idle. Counts stay in the
+  Review menu item; availability explanations stay in help and the existing
+  Workbench page. Only work actually running replaces the key with status.
 - **An unusable binding never looks usable.** Off and failed read differently,
   and both read differently from an assigned key.
-- **Sizes come from content.** No fixed point sizes: the toolbar has to survive
+- **Sizes come from content.** The glyph has a scaled minimum hit area; the row
+  has no fixed width and never shrinks its labels: the toolbar has to survive
   accessibility text sizes and longer labels (see #87).
 - **The trailing slot is a glance, not a sentence.** The longest it may ever say
   is `Shortcut unavailable`, and a test holds that budget. Two fixtures were
@@ -200,3 +209,43 @@ A change that needs a new field on `ToolbarState`, a third tier, or a new event
 that reports something without acting on it, needs a reason in the pull request.
 Five fields, two tiers and eight events is the budget, and the state count in the
 model check is the alarm.
+
+
+## Run and review
+
+```sh
+# Reducer, production timer adapter, geometry and native layout/window checks.
+swift test --disable-sandbox --filter Toolbar
+
+# Render the actual production row, without launching Workbench or reading its data.
+swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
+```
+
+The gallery generates 140 individual fixtures and four overview sheets. It covers
+both tiers at every anchor, each tool, active work, disabled/failed shortcuts,
+light/dark appearance and standard/larger type. `ToolbarKitTests` checks intrinsic
+sizes and longer labels; the committed overview sheets in
+[assets/floating-toolbar](assets/floating-toolbar) provide PR image diffs. CI
+retains the full gallery as an artifact. These are real native views, not HTML
+approximations. Visual acceptance still requires inspecting the images.
+
+`CaptureHUDControls` bridges the row's measured size and the core's effects into
+the existing app panel. `ToolbarSession` owns the one deadline and persisted
+Keep open choice. `ToolbarTrackingView` owns the one tracking area.
+`ToolbarWindowMotion` owns the frame animation; ending it before a drag is synchronous.
+Menu activation requires admission from the active tools session; a stale glyph cannot open a menu over a recording HUD. Menu dismissal reconciles both the pointer gate and reducer. The drag event loop
+exits on cancellation or app deactivation and always releases its hold.
+`ToolbarTaskClock(delay:)` exposes the single 450 ms default for measured tuning.
+`StageKit/WorkbenchPalette` owns the one Mac accent definition; Voice, StageKit,
+the toolbar glyph/dot and gallery all consume it. The toolbar receives the colour
+as a value and remains independent of application models. Native pixel tests
+check both appearances. The old boolean interaction
+model, global/local mouse monitors, spring loop, three fixed toolbar sizes and
+426-line in-product polling harness have been removed.
+
+A bug report needs only: selected tool, action taken, expected result, actual
+result, anchor and whether Keep open was enabled. Add the smallest reproducing
+sequence to the existing tests. Do not create another toolbar backlog.
+
+The installed candidate and any remaining physical-device limits are recorded
+in [the integration verification](verification/2026-09-23-durable-toolbar.md).
