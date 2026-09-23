@@ -21,6 +21,8 @@ Idle Snap & Talk keeps its capture shortcut visible between captures; its Review
 
 ## Installation and limits
 
-The signed replacement uses the existing Preview identity and embedded Production CloudKit profile. Final installed build and data-preservation checks are recorded after installation below.
+Signed Preview build `20260923012017` was installed from implementation `bd7b57e`. The Developer ID signature passed `codesign --verify --deep --strict` with normal macOS certificate access. The embedded Production CloudKit profile is byte-identical to the previous app's. Before first launch, all 100 existing app-data files had identical paths and SHA-256 hashes. The installer retained the previous app archive.
+
+In the installed build, the recovered-audio banner reappeared correctly. Only its temporary message was dismissed; the recording was not retried, replaced or deleted. Native glyph activation and keyboard Return opened the menu. Keep open held the row. Selecting Snap & Talk displayed the actual configured shortcut while an existing session was open; Review showed its capture count. The original Dictate selection and Keep open = false were restored. The existing right-centre dock was retained. No new microphone capture or screenshot was started during these checks.
 
 Physical multi-display dragging, VoiceOver end-to-end, a real phone/meeting receiver and new microphone accuracy measurements are not established by this change. Automated geometry covers all anchors and off-origin screens. An unusually narrow screen can clamp a long row and move the glyph; labels are not shrunk to conceal that limit. Prior dictation/annotation repair evidence remains in `2026-09-22-menu-repair.md`.
