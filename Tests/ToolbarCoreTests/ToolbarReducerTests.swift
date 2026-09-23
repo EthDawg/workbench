@@ -174,35 +174,48 @@ final class ToolbarReducerTests: XCTestCase {
         XCTAssertEqual(effects, [.releaseHolds, .show(.resting)])
     }
 
-    // MARK: Frames moving under a still pointer
+    // MARK: Reconciling after the frame or the surface moves
 
-    func testAGrowingRowDoesNotCollapseUnderAStillPointer() {
-        // The row is wider than the glyph, so the frame moves out from under the
-        // pointer as it opens. That is geometry, not a gesture.
-        var state = driven([.pointerEntered])
-        let effects = state.apply(.pointerSettled(inside: true))
-        XCTAssertEqual(state.tier, .revealed)
-        XCTAssertEqual(effects, [])
+    func testTheHostReconcilesWithTheEventThatMatchesThePointer() {
+        // AppKit cannot deliver a crossing to a pointer that never moved, so the
+        // host says where the pointer is after an animation. Both events are
+        // idempotent, so agreeing with the core costs nothing.
+        var onIt = driven([.pointerEntered])
+        XCTAssertEqual(onIt.apply(.pointerEntered), [])
+        var awayFromIt = driven([.pointerEntered, .pointerLeft])
+        XCTAssertEqual(awayFromIt.apply(.pointerLeft), [], "a second report must not restart the timer")
+        XCTAssertTrue(awayFromIt.graceRunning)
     }
 
-    func testAShrinkingRowDoesNotRevealUnderAStillPointer() {
-        var state = driven([.pointerEntered, .pointerLeft, .graceElapsed])
+    func testARowThatOpensUnderAStillPointerStaysOpen() {
+        // The row is far wider than the glyph, so its frame moves out from under
+        // the pointer as it opens. Reconciling must not close it.
+        var state = driven([.pointerEntered])
+        XCTAssertEqual(state.apply(.pointerEntered), [])
+        XCTAssertEqual(state.tier, .revealed)
+    }
+
+    func testTheRowComesBackForAPointerThatNeverMoved() {
+        // Dictation took the window while the pointer sat on the toolbar, and the
+        // user clicked Stop without moving. When the tools surface returns, the
+        // row belongs up: nothing dismissed it, so a pointer on it still means show.
+        var state = driven([.pointerEntered, .surfaceLeftTools])
         XCTAssertEqual(state.tier, .resting)
-        let effects = state.apply(.pointerSettled(inside: true))
-        XCTAssertEqual(state.tier, .resting, "settling reports where the pointer is; it can never reveal")
-        XCTAssertEqual(effects, [])
+        XCTAssertEqual(state.apply(.pointerEntered), [.show(.revealed)],
+                       "the toolbar must not ignore a pointer that is already on it")
     }
 
     func testSettlingAwayFromThePointerStartsGrace() {
         var state = driven([.pointerEntered, .holdBegan(.drag)])
         state.apply(.holdEnded(.drag))
         XCTAssertEqual(state.tier, .revealed, "the pointer was still recorded as inside when the drag ended")
-        XCTAssertEqual(state.apply(.pointerSettled(inside: false)), [.startGrace], "the docked frame landed away from the pointer")
+        XCTAssertEqual(state.apply(.pointerLeft), [.startGrace], "the docked frame landed away from the pointer")
     }
 
-    func testARealCrossingRevealsAgainAfterACollapse() {
-        var state = driven([.pointerEntered, .pointerLeft, .graceElapsed, .pointerSettled(inside: true)])
-        state.apply(.pointerLeft)
-        XCTAssertEqual(state.apply(.pointerEntered), [.show(.revealed)])
+    func testAMenuThatSwallowedTheExitIsReconciledWhenItCloses() {
+        // Native menu tracking eats the owning window's exit event.
+        var state = driven([.pointerEntered, .holdBegan(.menu)])
+        XCTAssertEqual(state.apply(.pointerLeft), [], "the menu still holds the row up")
+        XCTAssertEqual(state.apply(.holdEnded(.menu)), [.startGrace])
     }
 }

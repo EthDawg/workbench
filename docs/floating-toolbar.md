@@ -99,7 +99,7 @@ glyph is useless.
 | revealed | keepOpenChanged(false) | revealed | `persistKeepOpen(false)`, then `startGrace` once nothing else holds it |
 | any | surfaceLeftTools | resting | `releaseHolds`, `show(.resting)` — the remembered choice is kept |
 | any | surfaceReturnedToTools | by the remembered choice | `show(…)` |
-| any | pointerSettled(inside:) | never reveals | `cancelGrace` or `startGrace` |
+| resting | pointerEntered after the surface returns | revealed | `show(.revealed)` |
 
 Unticking **Keep open** inside the open menu is the one worth walking through:
 the preference is written immediately, the menu still holds the row up, and the
@@ -108,30 +108,44 @@ issued by the control that owns the idea.
 
 ### What the invariants guarantee
 
-`ToolbarModelCheckTests` walks every state the toolbar can reach — 48 of a
+`ToolbarModelCheckTests` walks every state the toolbar can reach — 40 of a
 possible 128 — and applies every event to each one. Four things can never happen:
 
 1. **Stuck open.** Revealed, with nothing holding it, no pointer on it, not kept
    open and no timer running.
-2. **A timer on a toolbar that is not revealed.**
-3. **A countdown against a toolbar the user asked to keep open.**
-4. **Keyboard focus on an invisible toolbar.**
+2. **Stuck closed.** Resting while the pointer is on it. Nothing on the toolbar
+   dismisses it any more, so a pointer resting on it always means the row should
+   be up; the state is unrepresentable rather than merely avoided.
+3. **A timer on a toolbar that is not revealed.**
+4. **A countdown against a toolbar the user asked to keep open.**
+5. **Keyboard focus on an invisible toolbar.**
 
-It also proves `reduce` is pure and that a `show` effect is emitted exactly when
-the tier changes.
+It also proves `reduce` is pure, that a `show` effect is emitted exactly when the
+tier changes, and that `show` is always last in its batch.
 
 ## The host contract
 
 The core cannot be right if the host feeds it fiction.
 
-- **`pointerEntered` and `pointerLeft` come from one `NSTrackingArea` crossing
-  and nothing else.** Never from polling the mouse location, and never from a
-  frame change. The row is much wider than the glyph, so the frame moves out from
-  under a stationary pointer every time it opens and closes; that is geometry,
-  not a gesture.
-- **Suspend crossings for the length of a frame animation**, then send exactly
-  one `pointerSettled(inside:)` when the frame is final. That is the only
-  reconciliation, and it can never reveal the toolbar.
+- **A crossing is a crossing.** `pointerEntered` and `pointerLeft` come from one
+  `NSTrackingArea`, and the host filters the synthetic ones: the row is much
+  wider than the glyph, so its frame moves out from under a stationary pointer
+  every time it opens and closes, and that is geometry, not a gesture.
+- **Suspend crossings while the frame animates, then reconcile once** by sending
+  the event that matches where the pointer actually is. Do the same when menu
+  tracking ends, because it swallows the owning window's exit, and when the tools
+  surface comes back, because AppKit cannot deliver a crossing to a pointer that
+  never moved. Both events are idempotent, so agreeing with the core costs
+  nothing. There is deliberately no third, non-revealing reconciliation event:
+  one of those is what made the toolbar sit closed under a pointer that was on it.
+- **Every hold needs a guaranteed release.** Menu tracking ending, the window
+  resigning key, and mouse-up or a cancelled drag each have to deliver their
+  `holdEnded`. A hold the host forgets to release is a row that never closes, and
+  it is the one failure the reducer cannot protect you from. Release holds on
+  app deactivation and on a screen-parameter change.
+- **`show` is always the last effect in a batch**, so a host may resize inside
+  the effect loop: a crossing AppKit delivers synchronously from that resize
+  cannot invalidate an effect still waiting to run.
 - **One grace timer.** `startGrace` starts it, `cancelGrace` stops it, and it
   delivers exactly one `graceElapsed`. A late firing is safe — the core ignores
   it — so the host needs no generation counters.
@@ -182,6 +196,7 @@ nothing at rest, which is why it is where a second control belongs.
    it in both themes before shipping.
 6. Only then touch the host, and only for windows, timers and frames.
 
-A change that needs a new field on `ToolbarState`, or a third tier, needs a
-reason in the pull request. Five fields and two tiers is the budget, and the
-state count in the model check is the alarm.
+A change that needs a new field on `ToolbarState`, a third tier, or a new event
+that reports something without acting on it, needs a reason in the pull request.
+Five fields, two tiers and eight events is the budget, and the state count in the
+model check is the alarm.

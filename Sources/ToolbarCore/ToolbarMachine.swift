@@ -4,6 +4,12 @@
 /// Two tiers, because hover is the mechanism. A control that does what moving
 /// the pointer already does is a second way to say the same thing, so there is
 /// no minimise button, no expand button and no third tier for them to act on.
+///
+/// Because nothing on the toolbar dismisses it any more, a pointer resting on
+/// it always means the row should be up. That is why there is no separate
+/// non-revealing reconciliation event: `resting` while the pointer is inside is
+/// not a state the toolbar is allowed to be in, and the model check proves it
+/// cannot happen.
 
 /// What the user can see. There is no state between these two.
 public enum ToolbarTier: String, CaseIterable, Sendable {
@@ -25,17 +31,15 @@ public enum ToolbarHold: String, CaseIterable, Sendable {
 
 /// Something that happened. Events are facts, never intentions about appearance.
 public enum ToolbarEvent: Equatable, Sendable {
-    /// A real inward crossing of the toolbar's tracking area, and the only event
-    /// that can reveal the toolbar by pointer. Never send it from a poll of the
-    /// mouse location, and never from a frame change: a window growing or
-    /// shrinking under a stationary pointer is not a gesture.
+    /// The pointer is on the toolbar. Normally a real tracking-area crossing;
+    /// also how the host reconciles after a frame animation, after menu tracking
+    /// ends, and when the tools surface comes back, because AppKit cannot
+    /// deliver a crossing to a pointer that never moved. Idempotent, so
+    /// reconciling costs nothing when it agrees with what the core already knew.
     case pointerEntered
-    /// A real outward crossing.
+    /// The pointer is not on the toolbar. Equally idempotent, and equally the
+    /// reconciliation event.
     case pointerLeft
-    /// One reconciliation after the host finishes a frame animation, when the
-    /// window may have moved out from under a pointer that never moved. It
-    /// records where the pointer is and can never reveal the toolbar.
-    case pointerSettled(inside: Bool)
     /// The host's grace timer finished. A stale firing is ignored.
     case graceElapsed
     case holdBegan(ToolbarHold)
@@ -120,10 +124,6 @@ public struct ToolbarState: Hashable, Sendable {
         case .pointerLeft:
             next.pointerInside = false
             startGraceIfAdrift()
-
-        case .pointerSettled(let inside):
-            next.pointerInside = inside
-            if inside { cancelGrace() } else { startGraceIfAdrift() }
 
         case .graceElapsed:
             // A timer the host already cancelled, or one whose conditions changed
