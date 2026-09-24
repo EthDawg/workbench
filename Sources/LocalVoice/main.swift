@@ -177,11 +177,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onResetShortcuts = { [weak self] in
             guard let self else { return }
             self.finishEditing()
-            self.model.preferences.dictationShortcut = VoicePreferences().dictationShortcut
-            self.model.preferences.controlsShortcut = VoicePreferences().controlsShortcut
-            self.model.preferences.libraryShortcut = VoicePreferences().libraryShortcut
-            self.model.preferences.presenterShortcut = VoicePreferences().presenterShortcut
-            self.model.preferences.readbackShortcut = VoicePreferences().readbackShortcut
+            var preferences = self.model.preferences
+            for id in UInt32(1)...7 { preferences.setShortcut(VoicePreferences().shortcut(id), for: id) }
+            self.model.preferences = preferences
+            self.stage.resetShortcuts()
         }
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
         hotkeys.onKey = { [weak self] id, down in

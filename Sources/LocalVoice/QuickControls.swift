@@ -47,10 +47,11 @@ struct VoiceShortcutSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Click a shortcut, then press your preferred combination.").font(.caption).foregroundStyle(.secondary)
-            ShortcutControl(model: model, id: 1, title: "Dictation")
+            ShortcutControl(model: model, id: 1, title: "Dictate")
             ShortcutControl(model: model, id: 2, title: "Quick controls")
-            ShortcutControl(model: model, id: 3, title: "Demo library")
-            ShortcutControl(model: model, id: 4, title: "Snap & Talk")
+            ShortcutControl(model: model, id: 5, title: "Snap & Talk")
+            ShortcutControl(model: model, id: 3, title: "Saved resources")
+            ShortcutControl(model: model, id: 4, title: "Switch to")
             Text("Escape cancels. Delete turns a shortcut off. Existing shortcuts stay unchanged if a combination is unavailable.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Restore default shortcuts") { model.onResetShortcuts?() }
