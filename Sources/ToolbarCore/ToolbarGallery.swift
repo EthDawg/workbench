@@ -25,7 +25,7 @@ public enum ToolbarGallery {
         case .dictate: return .assigned("⌃⌥Space")
         case .snapAndTalk: return .assigned("⌃⌥\\")
         case .annotate: return .assigned("⌃⌥D")
-        case .present, .read: return .off
+        case .present, .persona, .read, .timer: return .off
         }
     }
 
@@ -42,18 +42,21 @@ public enum ToolbarGallery {
                          actionTitle: "Done drawing", trailing: .status("Drawing"), isBusy: true),
         ToolbarViewState(name: "activity-drawing-resting", tier: .resting, tool: .annotate, isBusy: true),
         ToolbarViewState(name: "activity-presenting", tier: .revealed, tool: .present,
-                         actionTitle: "End scene", trailing: .status("Right display"), isBusy: true),
+                         actionTitle: "End scene", trailing: .status("Presenting"), isBusy: true),
+        ToolbarViewState(name: "activity-personas", tier: .revealed, tool: .persona,
+                         actionTitle: "End Overlays", trailing: .status("3 Overlays"), isBusy: true),
+        ToolbarViewState(name: "activity-inserting", tier: .revealed, tool: .present,
+                         actionTitle: "Stop Inserting", trailing: .status("Inserting Prompt"), isBusy: true),
         ToolbarViewState(name: "activity-transcribing", tier: .revealed, tool: .snapAndTalk,
-                         actionTitle: "Capture next", trailing: .status("Transcribing 2 of 3"), isBusy: true),
+                         actionTitle: "Capture next", trailing: .status("3 · Saving"), isBusy: true),
         ToolbarViewState(name: "activity-reading", tier: .revealed, tool: .read,
                          actionTitle: "Stop reading", trailing: .status("Ava"), isBusy: true)
     ]
 
-    /// Waiting between captures and preparing speech are idle. Keep the key
-    /// discoverable; session counts and availability explanations live in help/menu.
+    /// Between captures, show the count and an assigned key together.
     public static let idle: [ToolbarViewState] = [
         ToolbarViewState(name: "idle-session-open", tier: .revealed, tool: .snapAndTalk,
-                         actionTitle: "Capture next", trailing: .shortcut(.assigned("⌃⌥\\"))),
+                         actionTitle: "Capture next", trailing: .status("3 Captures · ⌃⌥\\")),
         ToolbarViewState(name: "idle-speech-preparing", tier: .revealed, tool: .dictate,
                          isActionEnabled: false, trailing: .shortcut(.assigned("⌃⌥Space")))
     ]

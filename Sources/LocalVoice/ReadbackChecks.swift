@@ -248,4 +248,221 @@ enum ReadbackChecks {
         print("READBACK_ADMISSION_CHECKS_OK: \(passed) checks")
     }
 
+    @MainActor
+    static func runAvailabilityChecks() async throws {
+        var passed = 0
+        func check(_ value: @autoclosure () -> Bool, _ message: String) throws {
+            guard value() else { throw ReadbackError.message("READBACK_AVAILABILITY_CHECK_FAILED: \(message)") }
+            passed += 1
+        }
+        let fm = FileManager.default
+        let fixture = fm.temporaryDirectory.appendingPathComponent("Workbench-session-availability-\(UUID().uuidString)")
+        try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
+        let root = fixture.appendingPathComponent("Original"), moved = fixture.appendingPathComponent("Moved")
+        let other = fixture.appendingPathComponent("Different")
+        let domain = "Workbench.SessionAvailability.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain); try? fm.removeItem(at: fixture) }
+        let original = try ReadbackStore.create(at: root, title: "Synthetic session")
+        _ = try ReadbackStore.create(at: other, title: "Different session")
+        defaults.set([root.path, other.path], forKey: "readback.recentSessionPaths.v1")
+        var captures = 0
+        let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults) {
+            captures += 1
+            return ReadbackScreenshot(data: Data(), displayName: "Synthetic", screenFrame: .zero)
+        }
+        defer { model.shutdown() }
+        try check(model.currentSessionProblem == nil && model.manifest?.id == original.id, "existing session starts available")
+        let originalBytes = try Data(contentsOf: root.appendingPathComponent("session.json"))
+        try fm.moveItem(at: root, to: moved)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem != nil, "moving the open folder is reflected in current UI state")
+        try check(model.unavailableSessions[root.standardizedFileURL.path] != nil, "missing recent gets an unavailable badge regardless of URL directory hint")
+        try check(model.manifest?.id == original.id && model.recentSessionURLs.count == 2, "missing paths retain session identity and recents for recovery")
+        await model.captureNewSection(fromEditor: false)
+        try check(captures == 0 && !fm.fileExists(atPath: root.path), "capture refuses before permission/capture and never recreates the folder")
+        do {
+            try ReadbackStore.createPrivateDirectory(root.appendingPathComponent("items/\(UUID().uuidString)"), includingParents: false)
+            throw ReadbackError.message("READBACK_AVAILABILITY_CHECK_FAILED: missing parents were recreated")
+        } catch {
+            try check(!fm.fileExists(atPath: root.path), "section creation cannot recreate parents even if the folder disappears after validation")
+        }
+        model.handOff(to: .claude)
+        try check(model.notice?.contains("Locate") == true, "missing session cannot hand off stale paths")
+        try check(!model.relinkSession(root, to: other), "locating cannot substitute a different active session")
+        try check(model.sessionURL?.path == root.standardizedFileURL.path, "failed locate preserves the old selection")
+        try fm.moveItem(at: moved, to: root)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem == nil, "restoring a folder clears its unavailable state")
+        let manifestURL = root.appendingPathComponent("session.json"), held = fixture.appendingPathComponent("held.json")
+        try fm.moveItem(at: manifestURL, to: held)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem != nil, "missing manifest also marks the session unavailable")
+        try fm.moveItem(at: held, to: manifestURL)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem == nil, "manifest restoration recovers without restarting")
+        try fm.moveItem(at: root, to: moved)
+        model.refreshSessionAvailability()
+        try check(model.relinkSession(root, to: moved), "locating the moved session succeeds")
+        try check(model.sessionURL?.path == moved.standardizedFileURL.path && !model.recentSessionURLs.contains(where: { $0.path == root.path }), "relink replaces the stale path without duplicates")
+        let movedBytes = try Data(contentsOf: moved.appendingPathComponent("session.json"))
+        try check(movedBytes == originalBytes && !fm.fileExists(atPath: root.path), "locating does not rewrite or recreate session files")
+        model.forgetRecentSession(moved)
+        try check(model.sessionURL == nil && model.manifest == nil, "forgetting the current entry clears the editor")
+        try check(fm.fileExists(atPath: moved.appendingPathComponent("session.json").path), "forgetting never deletes the user's session")
+        try check(defaults.stringArray(forKey: "readback.recentSessionPaths.v1") == [other.path], "forgetting persists and preserves other recents")
+        let reopened = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults)
+        defer { reopened.shutdown() }
+        try check(reopened.recentSessionURLs.map(\.path) == [other.standardizedFileURL.path], "forgotten entry stays removed after reopening")
+        print("READBACK_AVAILABILITY_CHECKS_OK: \(passed) checks")
+        try await runRecoveryChecks()
+    }
+
+    @MainActor
+    private static func runRecoveryChecks() async throws {
+        var passed = 0
+        func check(_ value: @autoclosure () -> Bool, _ message: String) throws {
+            guard value() else { throw ReadbackError.message("READBACK_RECOVERY_CHECK_FAILED: \(message)") }
+            passed += 1
+        }
+        func waitFor(_ message: String, _ ready: () -> Bool) async throws {
+            for _ in 0..<500 {
+                if ready() { return }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            throw ReadbackError.message("READBACK_RECOVERY_CHECK_FAILED: timed out waiting for \(message)")
+        }
+        let fm = FileManager.default
+        let fixture = fm.temporaryDirectory.appendingPathComponent("Workbench-session-recovery-\(UUID().uuidString)")
+        try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
+        var domains: [String] = []
+        defer {
+            for domain in domains { UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain) }
+            try? fm.removeItem(at: fixture)
+        }
+        func preferences(_ root: URL) -> UserDefaults {
+            let domain = "Workbench.SessionRecovery.\(UUID().uuidString)"
+            domains.append(domain)
+            let defaults = UserDefaults(suiteName: domain)!
+            defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+            return defaults
+        }
+        func session(_ name: String, statuses: [ReadbackSectionStatus] = []) throws -> (URL, ReadbackManifest) {
+            let root = fixture.appendingPathComponent(name)
+            var value = try ReadbackStore.create(at: root, title: name)
+            for status in statuses {
+                let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
+                try ReadbackStore.createPrivateDirectory(root.appendingPathComponent(directory), includingParents: false)
+                try ReadbackStore.writePrivate(Data("Synthetic original audio".utf8), to: root.appendingPathComponent(directory + "/narration.wav"))
+                value.sections.append(ReadbackSection(id: id, capturedAt: Date(), displayName: "Synthetic", directory: directory,
+                    screenshot: directory + "/screen.png", audio: directory + "/narration.wav", originalTranscript: nil,
+                    transcript: nil, status: status, failure: nil, deletedAt: nil))
+            }
+            try ReadbackStore.save(value, at: root)
+            return (root, value)
+        }
+
+        // No refresh observes the missing interval: availability still has to
+        // compare identity before handoff or showing the cached session's grid.
+        do {
+            let (root, original) = try session("Original identity")
+            let (other, replacement) = try session("Replacement identity")
+            let defaults = preferences(root)
+            let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults)
+            defer { model.shutdown() }
+            let held = fixture.appendingPathComponent("Original held")
+            let replacementBytes = try Data(contentsOf: other.appendingPathComponent("session.json"))
+            try fm.moveItem(at: root, to: held); try fm.moveItem(at: other, to: root)
+            model.refreshSessionAvailability()
+            try check(model.currentSessionProblem?.contains("different session") == true, "same-path replacement is unavailable even when no poll observed absence")
+            try check(model.manifest?.id == original.id, "replacement never adopts a different UUID implicitly")
+            model.handOff(to: .claude)
+            try check(model.notice?.contains("Locate") == true, "handoff refuses a replacement session before copying or opening an app")
+            let unchanged = try Data(contentsOf: root.appendingPathComponent("session.json"))
+            let stillReplacement = try ReadbackStore.load(from: root)
+            try check(unchanged == replacementBytes && stillReplacement.id == replacement.id, "rejecting replacement preserves its manifest bytes")
+            try fm.moveItem(at: root, to: other); try fm.moveItem(at: held, to: root)
+            model.refreshSessionAvailability()
+            try check(model.currentSessionProblem == nil && model.manifest?.id == original.id, "returning the original identity clears the problem")
+        }
+
+        // Lose one active and one queued job while the destination is absent.
+        // Returning the folder must restart both from saved audio exactly once.
+        do {
+            let (root, original) = try session("Disconnected work", statuses: [.queued, .queued])
+            let defaults = preferences(root), transcriber = ControlledTranscriber()
+            let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults,
+                transcribeAudio: { try await transcriber.transcribe($0) })
+            defer { model.shutdown(); transcriber.cancel() }
+            try await waitFor("first recognition") { transcriber.calls == 1 }
+            let held = fixture.appendingPathComponent("Disconnected work held")
+            try fm.moveItem(at: root, to: held); model.refreshSessionAvailability()
+            try check(model.currentSessionProblem != nil, "an active job's missing folder is visible")
+            transcriber.complete("Result completed while folder was absent")
+            try await waitFor("missing jobs to leave the worker") { !model.hasPendingTranscriptions }
+            let interrupted = try ReadbackStore.load(from: held)
+            try check(interrupted.sections.map(\.status) == [.transcribing, .queued], "the saved folder retains active and queued work during absence")
+            try fm.moveItem(at: held, to: root); model.refreshSessionAvailability()
+            try await waitFor("first recovered recognition") { transcriber.calls == 2 }
+            try check(model.currentSessionProblem == nil && model.pendingTranscriptionCount == 2, "reconnection schedules the orphaned active and queued jobs")
+            transcriber.complete("Recovered first narration")
+            try await waitFor("second recovered recognition") { transcriber.calls == 3 }
+            transcriber.complete("Recovered second narration")
+            try await waitFor("recovered jobs to finish") { !model.hasPendingTranscriptions }
+            let completed = try ReadbackStore.load(from: root)
+            try check(completed.sections.allSatisfy { $0.status == .ready }, "all recovered work reaches ready")
+            try check(ReadbackStore.readText(root: root, relative: completed.sections[0].transcript) == "Recovered first narration"
+                && ReadbackStore.readText(root: root, relative: completed.sections[1].transcript) == "Recovered second narration", "recovered results commit to their original sections")
+            let originalAudio = try original.sections.map { try Data(contentsOf: root.appendingPathComponent($0.audio!)) }
+            try check(originalAudio.allSatisfy { $0 == Data("Synthetic original audio".utf8) }, "recovery preserves original audio bytes")
+            try check(transcriber.calls == 3, "recovery does not duplicate either completed job")
+        }
+
+        // A slow worker still owns its section when the folder reconnects.
+        // Repeated refreshes, path normalization and forgetting are not restarts.
+        do {
+            let (root, _) = try session("Still running", statuses: [.queued])
+            let defaults = preferences(root), transcriber = ControlledTranscriber()
+            let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults,
+                transcribeAudio: { try await transcriber.transcribe($0) })
+            defer { model.shutdown(); transcriber.cancel() }
+            try await waitFor("still-running recognition") { transcriber.calls == 1 }
+            let held = fixture.appendingPathComponent("Still running held")
+            try fm.moveItem(at: root, to: held); model.refreshSessionAvailability()
+            try fm.moveItem(at: held, to: root); model.refreshSessionAvailability(); model.refreshSessionAvailability()
+            let active = try ReadbackStore.load(from: root)
+            try check(active.sections[0].status == .transcribing, "reconnection preserves a live worker's status")
+            try check(model.pendingTranscriptionCount == 1 && transcriber.calls == 1, "reconnection never queues a duplicate for a live worker")
+            model.forgetRecentSession(root)
+            try check(model.sessionURL == nil && model.hasPendingTranscriptions, "forgetting clears only the editor while recognition continues")
+            transcriber.complete("Completed after forgetting")
+            try await waitFor("forgotten job to finish") { !model.hasPendingTranscriptions }
+            let completed = try ReadbackStore.load(from: root)
+            try check(completed.sections[0].status == .ready && transcriber.calls == 1, "independent recognition commits once after forgetting")
+        }
+
+        // Recording ownership is tested without opening the microphone.
+        let (_, recording) = try session("Recording ownership", statuses: [.recording, .recording, .transcribing])
+        let reconciled = ReadbackRecovery.reconcile(recording, activeTranscription: recording.sections[2].id, activeRecording: recording.sections[0].id)
+        try check(reconciled.sections[0] == recording.sections[0] && reconciled.sections[2] == recording.sections[2], "live recording and recognition retain every saved field")
+        try check(reconciled.sections[1].status == .needsNarration && reconciled.sections[1].failure?.contains("interrupted") == true, "only an orphaned recording is marked interrupted")
+        print("READBACK_RECOVERY_CHECKS_OK: \(passed) checks")
+    }
+
+    @MainActor
+    private final class ControlledTranscriber {
+        private(set) var calls = 0
+        private var pending: [CheckedContinuation<String, Error>] = []
+
+        func transcribe(_ url: URL) async throws -> String {
+            calls += 1
+            return try await withCheckedThrowingContinuation { pending.append($0) }
+        }
+
+        func complete(_ result: String) { pending.removeFirst().resume(returning: result) }
+        func cancel() {
+            let continuations = pending; pending = []
+            for continuation in continuations { continuation.resume(throwing: CancellationError()) }
+        }
+    }
 }

@@ -126,9 +126,10 @@ struct TestRunner {
         let boardPresentationOnly = args == ["--board-presentation-only"]
         let backdropOnly = args == ["--backdrop-only"]
         let personaQuickOnly = args == ["--persona-quick-only"]
+        let personaControlsOnly = args == ["--persona-controls-only"]
         let screenshotStateOnly = args == ["--screenshot-state-only"]
         let sceneListOnly = args == ["--scene-list-only"]
-        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || screenshotStateOnly || sceneListOnly else {
+        guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || personaControlsOnly || screenshotStateOnly || sceneListOnly else {
             print("Usage: StageMarkTests [--ci | --scenes-only | --scene-list-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
 
             exit(2)
@@ -138,7 +139,7 @@ struct TestRunner {
         if !screenshotStateOnly {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
-            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !sceneListOnly { NSApp.finishLaunching() }
+            if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !personaControlsOnly && !sceneListOnly { NSApp.finishLaunching() }
         }
         let suite = CoreTests()
         let integration = IntegrationTests()
@@ -154,6 +155,11 @@ struct TestRunner {
         let sceneMedia = SceneMediaTests()
         let personas = PersonaTests()
         let personaSessions = PersonaSessionTests()
+        let personaControls = PersonaControlsTests()
+        let personaControlTests: [(String, () throws -> Void)] = [
+            ("persona controls: single size slider", personaControls.testSingleSizeControlIsVisibleAndRoutesAbsoluteWidth),
+            ("persona controls: selected copy and empty recovery", personaControls.testSessionControlsTargetSelectedCopyAndRecoverFromEmptySet)
+        ]
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
@@ -311,7 +317,15 @@ struct TestRunner {
         ], at: 5)
         tests.insert(contentsOf: backdropTests, at: 5)
         tests.insert(contentsOf: sceneListTests, at: 5)
-        if sceneListOnly {
+        tests.insert(contentsOf: personaControlTests, at: 5)
+        tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))
+        if personaControlsOnly {
+            tests = personaControlTests + [
+                ("persona independent copies and size", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
+                ("persona remove and re-add", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
+                ("shared persona menu generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions)
+            ]
+        } else if sceneListOnly {
             tests = sceneListTests
         } else if personaQuickOnly {
             tests = [
@@ -334,7 +348,7 @@ struct TestRunner {
         } else {
             tests.append(("menu bar and non-destructive quick adjustments", integration.testMenuBarAccessAndQuickAdjustmentsPreserveBoard))
         }
-        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !screenshotStateOnly && !sceneListOnly {
+        if !scenesOnly && !boardPresentationOnly && !backdropOnly && !personaQuickOnly && !personaControlsOnly && !screenshotStateOnly && !sceneListOnly {
             tests.append(contentsOf: [
                 ("embedded navigation and recording suspension", workbench.testEmbeddedCallbacksAndSuspendedShortcutSettings),
                 ("drawing admission preserves independent guards", workbench.testDrawingAdmissionIsSeparateFromGeneralInteraction),

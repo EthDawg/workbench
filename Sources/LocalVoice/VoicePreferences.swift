@@ -49,9 +49,14 @@ struct VoicePreferences: Codable, Equatable {
     var presenterShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_G))
     // Optional decoding preserves preferences written before Snap & Talk sessions existed.
     var readbackShortcut: VoiceShortcut? = VoicePreferences.defaultReadbackShortcut
+    // New utility bindings are opt-in; earlier assignments remain unchanged.
+    var readingShortcut: VoiceShortcut?
+    var presentationShortcut: VoiceShortcut?
     var restoreClipboard = true
     func shortcut(_ id: UInt32) -> VoiceShortcut {
         switch id {
+        case 6: readingShortcut ?? VoiceShortcut(enabled: false)
+        case 7: presentationShortcut ?? VoiceShortcut(enabled: false)
         case 1: dictationShortcut
         case 4: presenterShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_G))
         case 3: libraryShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
@@ -61,6 +66,8 @@ struct VoicePreferences: Codable, Equatable {
     }
     mutating func setShortcut(_ shortcut: VoiceShortcut, for id: UInt32) {
         switch id {
+        case 6: readingShortcut = shortcut
+        case 7: presentationShortcut = shortcut
         case 1: dictationShortcut = shortcut
         case 4: presenterShortcut = shortcut
         case 3: libraryShortcut = shortcut

@@ -35,6 +35,52 @@ final class PersonaSessionTests {
         let group: UUID
         let other: UUID
     }
+    func testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions() throws {
+        let f = try fixture()
+        defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
+        f.library.usesSharedControls = true
+        try f.library.startOverlaySession(groupIDs: [f.group, f.other], initialGroupID: f.group)
+        let menu = f.library.makeControlsMenu()
+        func titles(_ menu: NSMenu) -> [String] { menu.items.flatMap { [$0.title] + ($0.submenu.map(titles) ?? []) } }
+        XCTAssertFalse(titles(menu).joined().contains("PRIVATE"), "Shared controls contain only public session labels")
+        let selected = f.library.sessionState.selectedInstanceID!
+        let slider = menu.items.compactMap(\.view).flatMap(\.subviews).compactMap { $0 as? NSSlider }.first!
+        let other = f.library.sessionState.instances.first { $0.id != selected }!.id
+        f.library.performOverlayAction(.selectInstance(other))
+        slider.doubleValue = 0.26; NSApp.sendAction(slider.action!, to: slider.target, from: slider)
+        XCTAssertEqual(f.library.sessionState.instances.first { $0.id == selected }!.width, 0.26, accuracy: 0.001)
+        XCTAssertEqual(f.library.sessionState.selectedInstanceID, other, "A tracked slider does not retarget after an independent selection")
+        let staleEnd = menu.items.first { $0.title == "End Overlays" }!
+        // Existing archives permit the same overlay UUID in separate groups.
+        f.library.endOverlaySession()
+        try f.library.saveGroupLayout(f.other, overlays: [PersonaOverlayItem(id: selected, personaID: f.second.id, placement: PersonaOverlayState(width: 0.14))], publicLabel: "Second step")
+        try f.library.startOverlaySession(groupIDs: [f.group, f.other], initialGroupID: f.group)
+        let firstGroupMenu = f.library.makeControlsMenu()
+        let firstGroupSlider = firstGroupMenu.items.compactMap(\.view).flatMap(\.subviews).compactMap { $0 as? NSSlider }.first!
+        let firstGroupRemove = firstGroupMenu.items.first { $0.title == "Remove Selected" }!
+        f.library.performOverlayAction(.selectGroup(f.other))
+        firstGroupSlider.doubleValue = 0.30; NSApp.sendAction(firstGroupSlider.action!, to: firstGroupSlider.target, from: firstGroupSlider)
+        NSApp.sendAction(firstGroupRemove.action!, to: firstGroupRemove.target, from: firstGroupRemove)
+        XCTAssertEqual(f.library.sessionState.instances.count, 1, "An old menu cannot remove the same UUID in a different prepared set")
+        XCTAssertEqual(f.library.sessionState.instances[0].width, 0.14, accuracy: 0.001)
+
+        f.library.endOverlaySession()
+        try f.library.startOverlaySession(groupIDs: [f.group], initialGroupID: f.group)
+        NSApp.sendAction(staleEnd.action!, to: staleEnd.target, from: staleEnd)
+        XCTAssertTrue(f.library.sessionState.phase != .idle, "An old menu cannot end a later session")
+        let current = f.library.makeControlsMenu()
+        let remove = current.items.first { $0.title == "Remove Selected" }!
+        NSApp.sendAction(remove.action!, to: remove.target, from: remove)
+        XCTAssertEqual(f.library.sessionState.instances.count, 1)
+        XCTAssertEqual(f.library.items.count, 2, "Removing a live copy leaves saved artwork intact")
+        f.library.endOverlaySession()
+        try f.library.showOverlay().get()
+        let single = f.library.makeControlsMenu()
+        let staleSingleEnd = single.items.first { $0.title == "End Overlay" }!
+        f.library.hideOverlay(); try f.library.showOverlay().get()
+        NSApp.sendAction(staleSingleEnd.action!, to: staleSingleEnd.target, from: staleSingleEnd)
+        XCTAssertTrue(f.library.overlayVisible, "An old single-card menu cannot end a restarted overlay")
+    }
     private func png(_ red: CGFloat, _ green: CGFloat) throws -> Data {
         let bitmap = CGContext(data: nil, width: 20, height: 32, bitsPerComponent: 8, bytesPerRow: 80,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!

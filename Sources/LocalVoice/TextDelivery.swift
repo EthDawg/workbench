@@ -21,13 +21,14 @@ final class TextDelivery {
         var app: NSRunningApplication
         var element: AXUIElement?
         var value: String?
+        var selection: NSRange? = nil
     }
     static func capture(app: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) -> Target? {
         guard let app, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
         let element = focusedElement(app.processIdentifier)
         return Target(app: app, element: element, value: element.flatMap {
             string($0, kAXSubroleAttribute) == kAXSecureTextFieldSubrole ? nil : string($0, kAXValueAttribute)
-        })
+        }, selection: element.flatMap { PromptInsertion.selection($0) })
     }
     static func focusedElement(_ pid: pid_t) -> AXUIElement? {
         guard AXIsProcessTrusted() else { return nil }
@@ -73,10 +74,11 @@ final class TextDelivery {
         return previous.isEmpty || pasteboard.writeObjects(previous) ? .restored : .failed
     }
 
-    static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
+    static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool,
+                        validateTarget: (() -> Bool)? = nil, expectedValue: String? = nil, expectedSelection: NSRange? = nil) async -> Outcome {
         let pasteboard = NSPasteboard.general
         let destinationName = target?.app.localizedName
-        guard !Task.isCancelled else {
+        guard !Task.isCancelled, validateTarget?() != false else {
             return Outcome(message: "Delivery stopped before copying or pasting.", clipboardChangeCount: nil,
                            wasPasted: false, destinationName: destinationName, failure: .cancelled)
         }
@@ -116,7 +118,7 @@ final class TextDelivery {
         guard pasteboard.changeCount == ownedChange else {
             return outcome("Clipboard changed before insertion, so nothing was pasted. The transcript is available in Workbench.", failure: .clipboardChanged)
         }
-        guard !Task.isCancelled else {
+        guard !Task.isCancelled, validateTarget?() != false else {
             return outcome("Delivery stopped before pasting. The transcript remains copied.", failure: .cancelled)
         }
         down.flags = .maskCommand; up.flags = .maskCommand
@@ -128,7 +130,8 @@ final class TextDelivery {
         }
         let stillEligible = eligible(target)
         let after = stillEligible ? target.element.flatMap { string($0, kAXValueAttribute) } : nil
-        let confirmed = stillEligible && after != before && after?.contains(text) == true
+        let selectionConfirmed = expectedSelection.map { expected in target.element.flatMap { PromptInsertion.selection($0) } == expected } ?? true
+        let confirmed = stillEligible && selectionConfirmed && (expectedValue.map { after == $0 } ?? (after != before && after?.contains(text) == true))
         if confirmed, restoreClipboard {
             // Never overwrite a copy made while paste confirmation was pending.
             let restoration = restoreClipboardSnapshot(previous, on: pasteboard, ownedChange: ownedChange,

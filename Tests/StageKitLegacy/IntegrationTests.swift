@@ -158,6 +158,7 @@ final class IntegrationTests: XCTestCase {
         settings.value.timerMinutes = 1
         app.startTimer(); app.pauseResumeTimer()
         XCTAssertFalse(app.timerRunning)
+        XCTAssertTrue(app.hasActiveTimer, "A paused timer remains an active job for update admission")
         let pausedText = app.timerText
         settings.value.timerMessage = "A different message"
         settings.value.timerMinutes = 10
@@ -168,6 +169,7 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(app.timerSessionStarted)
         app.resetTimer(); XCTAssertEqual(app.timerText, "10:00")
         XCTAssertFalse(app.timerSessionStarted)
+        XCTAssertFalse(app.hasActiveTimer, "Reset ends the timer's update deferral")
         app.hideTimer()
         XCTAssertGreaterThan(app.displayCount, 0)
         XCTAssertTrue(app.panels.values.allSatisfy { $0.ignoresMouseEvents })

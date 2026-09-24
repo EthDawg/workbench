@@ -39,7 +39,9 @@ struct PhotoHandoffView: View {
                 }.disabled(!handoff.isEnabled || !handoff.isConfigured || handoff.isBusy)
                     .accessibilityIdentifier("handoff.refresh")
             }
-            PhotoHandoffSettings(handoff: handoff, showsError: false)
+            if handoff.isConfigured {
+                PhotoHandoffSettings(handoff: handoff, showsError: false)
+            }
             if let message = notice ?? handoff.error {
                 HStack(alignment: .top) {
                     Text(message).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)

@@ -20,6 +20,14 @@ struct ReadbackView: View {
         .sheet(isPresented: $orderingSections) {
             if let root = model.sessionURL { ReadbackOrderingView(model: model, sessionURL: root) }
         }
+        .task {
+            // Only poll while this workspace is mounted; app activation also checks.
+            while !Task.isCancelled {
+                model.refreshSessionAvailability()
+                do { try await Task.sleep(nanoseconds: 2_000_000_000) }
+                catch { break }
+            }
+        }
         .confirmationDialog("Permanently delete every section in Recently Deleted?", isPresented: $confirmEmptyTrash) {
             Button("Empty Recently Deleted", role: .destructive) { model.emptyRecentlyDeleted() }
         } message: { Text("Workbench cannot recover these screenshots, recordings or transcripts afterward.") }
@@ -39,14 +47,27 @@ struct ReadbackView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(model.recentSessionURLs, id: \.path) { url in
+                            let problem = model.unavailableSessions[url.standardizedFileURL.path]
+                            VStack(alignment: .leading, spacing: 4) {
                             Button { model.openRecent(url) } label: {
                                 HStack {
-                                    Image(systemName: model.sessionURL?.standardizedFileURL == url.standardizedFileURL ? "folder.fill" : "folder")
+                                    Image(systemName: problem != nil ? "folder.badge.questionmark" : (model.sessionURL?.standardizedFileURL == url.standardizedFileURL ? "folder.fill" : "folder"))
                                     Text(url.lastPathComponent).lineLimit(2)
                                     Spacer(minLength: 0)
                                 }.frame(maxWidth: .infinity, alignment: .leading).padding(7)
                             }.buttonStyle(.plain)
                                 .background(model.sessionURL?.standardizedFileURL == url.standardizedFileURL ? Workbench.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                            if problem != nil {
+                                Text("Folder unavailable").font(.caption).foregroundStyle(.orange)
+                                HStack {
+                                    Button("Locate…") { model.locateSession(url) }
+                                        .disabled(model.isRecording || model.isCapturing || model.hasPendingTranscriptions)
+                                    Button("Remove") { model.forgetRecentSession(url) }
+                                        .disabled(model.sessionURL?.path == url.standardizedFileURL.path && (model.isRecording || model.isCapturing))
+                                        .help("Remove this entry from Recents only; no files are deleted")
+                                }.controlSize(.small)
+                            }
+                            }.padding(.bottom, problem == nil ? 0 : 8)
                         }
                     }
                 }
@@ -75,6 +96,10 @@ struct ReadbackView: View {
             Divider()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
+                    if let problem = model.currentSessionProblem {
+                        unavailableSession(problem)
+                        if model.isRecording { captureCard }
+                    } else {
                     permissionCard
                     captureCard
                     if model.activeSections.isEmpty {
@@ -92,9 +117,30 @@ struct ReadbackView: View {
                         }
                     }
                     if !model.deletedSections.isEmpty { recentlyDeleted }
+                    }
                 }.padding(24).frame(maxWidth: 940)
             }.frame(maxWidth: .infinity)
         }
+    }
+
+    private func unavailableSession(_ problem: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Session folder unavailable", systemImage: "folder.badge.questionmark").font(.title3.bold())
+            Text(problem).foregroundStyle(.secondary)
+            Text("The saved sections cannot be accessed here. Locate the folder if it moved, reconnect its drive, or remove this entry from Recents. Workbench will not recreate or delete the folder.")
+                .font(.callout).foregroundStyle(.secondary)
+            if let root = model.sessionURL {
+                HStack {
+                    Button("Locate folder…") { model.locateSession(root) }.buttonStyle(.borderedProminent)
+                        .disabled(model.isRecording || model.isCapturing || model.hasPendingTranscriptions)
+                    Button("Check again") { model.refreshSessionAvailability() }
+                    Button("Remove from Recents") { model.forgetRecentSession(root) }
+                        .disabled(model.isRecording || model.isCapturing)
+                }
+            }
+            if let notice = model.notice { Text(notice).font(.caption).textSelection(.enabled) }
+        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var header: some View {
@@ -108,7 +154,7 @@ struct ReadbackView: View {
                 Label("\(model.pendingTranscriptionCount) processing", systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
             }
             Button { orderingSections = true } label: { Label("Reorder…", systemImage: "arrow.up.arrow.down") }
-                .disabled(model.activeSections.count < 2 || model.isRecording || model.isCapturing)
+                .disabled(model.currentSessionProblem != nil || model.activeSections.count < 2 || model.isRecording || model.isCapturing)
                 .help("Arrange sections in a compact list")
             Menu {
                 ForEach(ReadbackHandoffTarget.allCases) { target in
@@ -119,9 +165,10 @@ struct ReadbackView: View {
             } label: {
                 Label("Hand off…", systemImage: "arrow.up.forward.app")
             }
-            .disabled(model.isRecording)
+            .disabled(model.isRecording || model.currentSessionProblem != nil)
             .help("Copy an agent prompt, reveal this session in Finder and open the chosen app")
             Button("Show in Finder") { model.revealSession() }
+                .disabled(model.currentSessionProblem != nil)
             Button("Close session") { model.closeSession() }.disabled(model.isRecording)
         }.padding(.horizontal, 24).padding(.vertical, 16)
     }

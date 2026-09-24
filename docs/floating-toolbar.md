@@ -6,57 +6,36 @@ they disagree, resolve the intended behaviour against the product contract, then
 update the table, implementation and regression together. A passing test is not
 permission to preserve a bug.
 
-## What it is
+## Role and content
 
-A glyph at the edge of the screen. Point at it and one row appears: what this
-tool does next, and the key that does it. Move away and the row goes.
+The floating toolbar is the shared live control surface for Snap & Talk, Draw,
+Present and Persona Overlay. Desktop pages own preparation and saved libraries.
+The compact menu-bar panel owns quick utilities, adjustments and shortcut editing.
+Dictate and Read expose only their compact active controls here.
 
-```
-resting      [ ◉ ]
+At rest, one glyph identifies the selected tool. Hover reveals the contextual
+row; click opens a native menu. Keep open is an explicit persistent preference.
+The primary button names its next action. A trailing slot shows an assigned key
+or useful live state. Snap & Talk keeps its session capture count visible between
+captures and while saving. Present has a Prompts picker beside its action.
+Disabled or unassigned shortcut combinations are omitted; the toolbar has no
+shortcut editor. These roles supersede the earlier strict three-element rule,
+which excluded useful capture counts and presentation controls.
 
-revealed     [ ◉ ▾ ]  Dictate              ⌃⌥Space
-             [ ◉ ▾ ]  Done drawing         Drawing
-             [ ◉ ▾ ]  Capture next         ⌃⌥\
-```
+The same menu provides Present, Persona Overlay and Draw controls in a stable
+order without resetting another activity. Presentation source, reconnect,
+proportions, motion, window placement, native-app handoff and End remain reachable.
+Persona selection uses the frozen session's public labels and retains size,
+position, lock, add/remove, visibility, explicit layout saving and End. Mac colour
+selection updates the same drawing settings from either entry point. Native menus
+snapshot their content before tracking rather than rebuilding under the pointer.
 
-Three elements in the row, and every one of them is load-bearing. The glyph is
-the menu. The button is the action. The trailing slot is the key you could have
-pressed instead, or — while work is running — what the work is doing. Never both.
-
-## What is not on it, and why
-
-Each of these was on an earlier build. They are listed so they do not come back
-one pull request at a time.
-
-| Removed | Why |
-| --- | --- |
-| **Minimise button** | Moving the pointer away already does this. A second way to say it is a control that has to be laid out, animated, tested and explained, in the one tier where space is tightest. |
-| **Expand button** | It existed to reach a third tier that existed to hold the minimise button. |
-| **Pinned tier** | Keep open is a choice, not a different look. It is a tick in the menu, and it means the row does not collapse. Nothing else changes, so there is nothing else to design. |
-| **Six-dot drag grip** | Press and drag anywhere on the toolbar that is not the button. Position is also in the menu. |
-| **Detail line** | A third row to say what the button was about to do, under a button that already says it. |
-| **Status and shortcut together** | Two trailing labels competing meant neither read as the answer. One slot, and what it holds depends on whether work is running. |
-| **Icon-only tool selector strip** | Five icons the user has to learn before they can choose. Change tool is a menu with names and checkmarks. |
-| **A second finish button** | Active work replaces the start action; Start and Stop are never both present. |
-
-The test for anything new: **if the pointer, a keystroke or the menu already does
-it, it is not a control.**
-
-## Why the code is shaped this way
-
-The toolbar was rebuilt several times and stayed buggy. The cause was not the
-individual fixes, it was the shape:
-
-- **Appearance was derived from six booleans on every read.** 64 combinations
-  were legal and most were meaningless. `suppressHoverUntilExit` existed only to
-  patch one of them — a collapse click springing back open because the pointer
-  had not moved.
-- **Two animation systems ran at once.** A hand-written spring interpolated the
-  window frame on a 16 ms loop while SwiftUI ran its own transition on the
-  content, and hover was hit-tested against the union of the two frames. The
-  target you were aiming at was moving.
-- **The tests measured timing.** They polled for up to three seconds for the
-  window to settle and lived in `Sources`, compiled into the product.
+Saved Prompts reads the existing Saved Resources library. Favourite, Product and
+Persona groupings do not create another store. The original field, value and
+UTF-16 selection are captured before the picker opens. Supported fields receive
+confirmed literal chunks; other readable fields get one guarded paste labelled
+as such. Escape, Stop, changed focus/selection/value and shortcut editing cancel
+insertion. No partial write is replayed and no submit key is sent.
 
 ## The three layers
 
@@ -165,56 +144,29 @@ The core cannot be right if the host feeds it fiction.
 - **Effects are instructions, not suggestions.** The host never reads the state
   to decide what to do.
 
-## The look
+## The look and acceptance
 
-`ToolbarGallery.states` is every state the toolbar may be seen in: both tiers at
-all eight docks, each tool at each tier, unusable bindings, and work in progress
-including the resting glyph while it runs. The look is reviewed from this list,
-and the snapshot renderer iterates it, so a design regression arrives as an image
-diff rather than a sentence in a report.
+The glyph keeps its screen position while the row grows inward from its dock.
+A scaled hit area, content-sized text and native controls support larger type.
+Resting activity is a small dot; changing status must not substitute a different
+menu-bar brand icon. Reduce Transparency uses an opaque background. Reduce Motion
+removes the frame animation.
 
-- **Resting says two things and no more:** which tool is selected, and whether
-  work is running. A small rounded material tile keeps it legible over arbitrary
-  wallpaper; Reduce Transparency uses an opaque background. No label or grip.
-- **Revealed is one row.** The glyph keeps its place from the resting tier, so
-  the row grows out of the glyph rather than replacing it.
-- **Active work replaces the start action** and moves the status into the
-  trailing slot, where the shortcut was.
-- **Idle keeps the shortcut visible.** An open Snap & Talk session between
-  captures and initial speech-model preparation are idle. Counts stay in the
-  Review menu item; availability explanations stay in help and the existing
-  Workbench page. Only work actually running replaces the key with status.
-- **An unusable binding never looks usable.** Off and failed read differently,
-  and both read differently from an assigned key.
-- **Sizes come from content.** The glyph has a scaled minimum hit area; the row
-  has no fixed width and never shrinks its labels: the toolbar has to survive
-  accessibility text sizes and longer labels (see #87).
-- **The trailing slot is a glance, not a sentence.** The longest it may ever say
-  is `Shortcut unavailable`, and a test holds that budget. Two fixtures were
-  already over it the first time the gallery was looked at.
+`ToolbarGallery.states` supplies both tiers at every anchor, the contextual tools,
+assigned/unassigned keys, capture counts, active presentation/personas and prompt
+insertion. The renderer uses the production `ToolbarRow`, including its Prompts
+button, in both themes and standard/larger type.
 
-Everything else lives in the glyph's menu: Change tool, this tool's own options,
-Position, Keep open, Hide toolbar, Keyboard shortcuts and Settings. A menu costs
-nothing at rest, which is why it is where a second control belongs.
+Core transition tests, native layout tests and rendered fixtures establish only
+the behavior they exercise. They do not prove native pointer behavior. Before
+claiming a hover fix, reproduce the failure and record the native sequence. Test
+repeated entry/exit, menu dismissal, content-width changes and a stationary pointer
+during resize at all eight anchors, including screen edges and Reduce Motion.
+Explicitly report any input-tool or hardware limit. Multi-display dragging and
+meeting receiver visibility require their own evidence.
 
-## Adding a feature, or fixing a bug
-
-1. Check it against **What is not on it** first. Most new controls are a second
-   way to do something the pointer, a key or the menu already does.
-2. Write the row in the table above, or change the one that is wrong.
-3. Write the test in `ToolbarReducerTests`, named after the behaviour, not the
-   mechanism. It must not sleep.
-4. Make it pass in `ToolbarMachine.swift`. If the invariants or the state budget
-   in `ToolbarModelCheckTests` fail, the behaviour is the problem, not the test.
-5. If it changes what is on screen, add the state to `ToolbarGallery` and look at
-   it in both themes before shipping.
-6. Only then touch the host, and only for windows, timers and frames.
-
-A change that needs a new field on `ToolbarState`, a third tier, or a new event
-that reports something without acting on it, needs a reason in the pull request.
-Five fields, two tiers and eight events is the budget, and the state count in the
-model check is the alarm.
-
+When changing the interaction model, update the state table and targeted
+regressions. A passing legacy test does not justify preserving a broken experience.
 
 ## Run and review
 
@@ -226,7 +178,7 @@ swift test --disable-sandbox --filter Toolbar
 swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
 ```
 
-The gallery generates 140 individual fixtures and four overview sheets. It covers
+The gallery generates individual fixtures and four overview sheets. It covers
 both tiers at every anchor, each tool, active work, disabled/failed shortcuts,
 light/dark appearance and standard/larger type. `ToolbarKitTests` checks intrinsic
 sizes and longer labels; the committed overview sheets in
@@ -252,5 +204,7 @@ A bug report needs only: selected tool, action taken, expected result, actual
 result, anchor and whether Keep open was enabled. Add the smallest reproducing
 sequence to the existing tests. Do not create another toolbar backlog.
 
-The installed candidate and any remaining physical-device limits are recorded
-in [the integration verification](verification/2026-09-23-durable-toolbar.md).
+The current candidate and native limits are recorded in
+[the menu refinement verification](verification/2026-09-24-menu-refinement.md).
+The [earlier toolbar verification](verification/2026-09-23-durable-toolbar.md)
+remains historical evidence for its own source revision.

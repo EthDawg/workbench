@@ -25,6 +25,7 @@ final class CaptureHUDControls: ObservableObject {
     private var glyphSize = NSSize(width: 36, height: 36)
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
+    var promptDestination: (() -> TextDelivery.Target?)?
     var cancelDrag: (() -> Void)?
     var focusFirstControl: (() -> Void)?
     var dragActions = ToolbarDragActions()
@@ -103,6 +104,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.resize = { [weak self, weak model] in if let model { self?.update(model: model) } }
         controls.choosePosition = { [weak self] in self?.choosePosition($0) }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
+        controls.promptDestination = { [weak self] in
+            guard let self else { return nil }
+            return self.window?.isKeyWindow == true ? self.keyboardTarget : TextDelivery.capture()
+        }
         controls.dragActions = ToolbarDragActions(begin: { [weak self] in self?.beginDragging() },
             move: { [weak self] in self?.previewDragging() }, end: { [weak self] in self?.finishDragging() },
             cancel: { [weak self] in self?.cancelDragging() }, isCancelled: { [weak self] in self?.dragging != true })
@@ -113,7 +118,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             self.controls.toolbar.endMenu(pointerInside: self.tracking?.pointerInside == true)
         }
         panel.title = "Workbench floating toolbar"
-        panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
+        panel.isFloatingPanel = true
+        // Stay above the annotation canvas so drawing cannot intercept live controls.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
+        panel.hidesOnDeactivate = false
         panel.isMovable = true
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -146,6 +154,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         stage.objectWillChange.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
+        model.$rendering.combineLatest(model.$playing, model.$paused)
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
+            .store(in: &observations)
         model.$phase.combineLatest(model.$captureFailure, model.$previewingPanel)
             .receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
@@ -164,9 +176,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     func update(model: AppModel) {
         guard let window else { return }
         let previousSurface = self.surface
-        let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible,
+        let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible || stage?.isDrawing == true || stage?.isPresenting == true || stage?.hasActivePersona == true || model.promptInsertion.running,
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true,
-            dictation: Self.showsDictation(model), narration: readback?.isRecording == true)
+            dictation: Self.showsDictation(model), narration: readback?.isRecording == true,
+            reading: model.rendering || model.playing || model.paused)
         if surface != self.surface {
             self.surface = surface
             tracking?.acceptsCrossings = false
@@ -179,7 +192,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             controls.isExpanded = false
             return
         }
-        let size = surface == .tools ? controls.preferredToolbarSize : CaptureHUDLayout.size(
+        let size = surface == .tools ? controls.preferredToolbarSize : surface == .reading ? CaptureHUDLayout.compact : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
             preview: model.previewingPanel, expanded: controls.isExpanded)
         if !window.isVisible { place(size: size, restoreSaved: true) }
@@ -198,7 +211,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     func focusToolbar() {
         guard let model, let panel = window as? CapturePanel else { return }
-        let target = TextDelivery.capture()
+        let target = panel.allowsKeyboardFocus && panel.isKeyWindow ? keyboardTarget : TextDelivery.capture()
         model.floatingToolbarVisible = true
         update(model: model)
         guard surface == .tools else { return }

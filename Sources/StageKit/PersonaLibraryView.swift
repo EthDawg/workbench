@@ -20,6 +20,7 @@ struct PersonaLibraryView: View {
     @State private var unsavedPresentationLayout = false
     @State private var confirmingDiscard = false
     @State private var dismissAfterDiscard = false
+    @State private var removingPersona: SavedPersona?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -30,7 +31,7 @@ struct PersonaLibraryView: View {
                 Text(preparingPresentation ? "Arrange overlays" : (onChoose == nil ? "Personas" : "Choose persona")).font(.title2.bold())
                 Spacer()
                 if !preparingPresentation {
-                    Menu("Add persona") {
+                    Menu {
                         Button("Choose a starter portrait…") { choosingStarter = true }
                         Divider()
                         Button("Import portrait for an editable card…") {
@@ -38,7 +39,8 @@ struct PersonaLibraryView: View {
                         }
                         Button("Import finished card…") { library.importImage() }
                         Button("Paste finished image") { library.pasteImage() }
-                    }.disabled(library.isReadOnly)
+                    } label: { Label("Add persona…", systemImage: "plus.circle.fill") }
+                        .menuStyle(.borderlessButton).fixedSize().disabled(library.isReadOnly)
                 }
                 Button("Done") { leavePreparation(dismissLibrary: true) }.keyboardShortcut(.cancelAction)
             }
@@ -53,6 +55,7 @@ struct PersonaLibraryView: View {
                     Button("New…") { groupName = ""; creatingGroup = true }.disabled(library.isReadOnly)
                         .accessibilityLabel("Create persona group")
                     if let group = library.activeGroup {
+                        Button("Add / remove members…") { editingGroup = group }.disabled(library.isReadOnly)
                         Menu("Edit group") {
                             Button("Choose members…") { editingGroup = group }
                             Button("Rename…") { groupName = group.name; renamingGroup = true }
@@ -69,7 +72,7 @@ struct PersonaLibraryView: View {
                             }.padding(.vertical, 4).tag(persona.id)
                                 .contextMenu {
                                     Button("Rename library item…") { renaming = persona.id; name = persona.name }.disabled(library.isReadOnly)
-                                    Button("Remove from saved personas") { library.remove(persona.id) }.disabled(library.isReadOnly)
+                                    Button("Remove from saved personas…") { removingPersona = persona }.disabled(library.isReadOnly)
                                     if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: persona.id) {
                                         Divider()
                                         Button("Move earlier") { library.moveMember(persona.id, by: -1) }.disabled(library.isReadOnly || index == 0)
@@ -84,6 +87,9 @@ struct PersonaLibraryView: View {
                                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
                                 if let group = library.activeGroup {
                                     Button("Choose members…") { editingGroup = group }.disabled(library.isReadOnly)
+                                } else {
+                                    Button("Add starter portrait…") { choosingStarter = true }.disabled(library.isReadOnly)
+                                    Button("Import image…") { library.importImage() }.disabled(library.isReadOnly)
                                 }
                             }.padding()
                         }
@@ -93,6 +99,10 @@ struct PersonaLibraryView: View {
                             thumbnail(selected, width: 265, height: 155)
                                 .frame(maxWidth: .infinity)
                             Text(selected.name).font(.headline).lineLimit(2)
+                            Button(role: .destructive) { removingPersona = selected } label: {
+                                Label("Remove saved persona…", systemImage: "trash")
+                            }.disabled(library.isReadOnly)
+                                .help("Remove this library entry and its group memberships; retain artwork used by saved scenes")
                             if selected.card != nil {
                                 Button("Edit visible label and colour…") { editingCard = selected }.disabled(library.isReadOnly)
                             } else {
@@ -122,9 +132,11 @@ struct PersonaLibraryView: View {
                                 Toggle("Lock artwork · clicks pass through", isOn: Binding(
                                     get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
                                 HStack(spacing: 8) {
-                                    Text("Size")
+                                    Text("Size \(Int((library.overlayWidth * 100).rounded()))%")
+                                        .font(.caption.monospacedDigit()).frame(width: 58, alignment: .leading)
                                     Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
                                         .accessibilityLabel("Floating persona size")
+                                        .help("Width as a percentage of the display; changes the floating card immediately")
                                     Menu("Position") {
                                         Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
                                         Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
@@ -138,7 +150,7 @@ struct PersonaLibraryView: View {
                                         Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
                                     }.fixedSize()
                                 }
-                                Text("⌃⌥I shows or hides this card. ⌃⌥← and ⌃⌥→ flip through the current group, or all saved personas.")
+                                Text("Drag Size toward the left for a smaller card. Hide removes it from the screen, not your saved personas. ⌃⌥I shows or hides; ⌃⌥← / → switches cards.")
                                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {
@@ -184,6 +196,15 @@ struct PersonaLibraryView: View {
             Text("Whole-screen sharing includes preparation and floating controls. Use a persona in a scene when sharing that presentation window.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(24).frame(width: preparingPresentation ? 780 : 660).background(Workbench.background).workbenchTheme()
+            .alert("Remove saved persona?", isPresented: Binding(get: { removingPersona != nil }, set: { if !$0 { removingPersona = nil } })) {
+                Button("Cancel", role: .cancel) { removingPersona = nil }
+                Button("Remove", role: .destructive) {
+                    if let persona = removingPersona { library.remove(persona.id) }
+                    removingPersona = nil
+                }
+            } message: {
+                Text("This removes \(removingPersona?.name ?? "the persona") from the library, groups and active overlays. Its original image is retained for saved scenes. To only hide an on-screen card, use Hide instead.")
+            }
             .onDisappear {
                 if let request = startPreparedAfterDismiss {
                     startPreparedAfterDismiss = nil

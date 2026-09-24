@@ -8,6 +8,20 @@ enum WorkbenchControlChecks {
             guard condition else { throw VoiceError.message("Contextual controls: " + name) }
             count += 1
         }
+        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap & Talk", "Draw", "Present", "Persona Overlay", "Timer"], "seven primary menu labels retain their fixed order")
+        var saved = VoicePreferences()
+        saved.dictationShortcut.keyCode = 42
+        saved.readbackShortcut = VoiceShortcut(keyCode: 18, enabled: false)
+        var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as! [String: Any]
+        legacy.removeValue(forKey: "readingShortcut"); legacy.removeValue(forKey: "presentationShortcut")
+        let migrated = try JSONDecoder().decode(VoicePreferences.self, from: JSONSerialization.data(withJSONObject: legacy))
+        try check(migrated.dictationShortcut == saved.dictationShortcut && migrated.shortcut(5) == saved.shortcut(5), "adding utility shortcuts preserves existing and disabled bindings")
+        try check(!migrated.shortcut(6).enabled && !migrated.shortcut(7).enabled, "Read and Present add no enabled default bindings")
+        saved.setShortcut(VoiceShortcut(keyCode: 20), for: 6); saved.setShortcut(VoiceShortcut(keyCode: 21), for: 7)
+        let restored = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(saved))
+        try check(restored.shortcut(6) == saved.shortcut(6) && restored.shortcut(7) == saved.shortcut(7), "opt-in utility shortcut assignments survive reload")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading, "active reading has compact controls even with idle toolbar disabled")
+        try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
         var state = WorkbenchControlState()
         state.presenting = true; state.drawing = true; state.phase = .recording
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present),
@@ -27,6 +41,10 @@ enum WorkbenchControlChecks {
         try check(!state.enabled(.snap), "screen capture cannot be re-entered")
         state = WorkbenchControlState(); state.hasSession = true
         try check(state.actionTitle(.snap) == "Capture next", "an existing session continues instead of starting another")
+        state = WorkbenchControlState(); state.timerStarted = true
+        try check(state.actionTitle(.timer) == "Show or hide timer", "a paused or finished timer keeps its existing-session action")
+        state.timerStarted = false
+        try check(state.actionTitle(.timer) == "Start Timer", "a reset timer offers a new start")
         for phase in [AppModel.Phase.idle, .requesting, .recording, .transcribing, .cleaning] {
             try check(WorkbenchDrawingAdmission.allows(phase: phase, suspended: false, capturingScreen: false, terminating: false),
                       "annotation can coexist with \(phase.rawValue)")
@@ -55,6 +73,7 @@ enum WorkbenchControlChecks {
         try await waitUntilPending(); cancel.cancel()
         do { _ = try await cancel.value; throw VoiceError.message("Cancelled delivery resumed") }
         catch is CancellationError { try check(!gate.isWaiting, "cancellation releases its continuation") }
+        try await PromptInsertionChecks.run()
         print("WORKBENCH_CONTROL_CHECKS_OK: \(count) checks passed")
     }
 }

@@ -107,6 +107,8 @@ The Mac compiles the shared code as a SwiftPM target. The mobile project generat
 
 ## Signing and configuration gate
 
+Mac Settings and the From iPhone collection show handoff settings only when the existing runtime configuration check succeeds. This retains the provisioned Preview route and any genuinely configured production build, while an unconfigured public Workbench build does not advertise an unavailable cloud option. Already downloaded and local photos remain accessible; this visibility rule does not change their files, cloud settings or transport.
+
 Ordinary mobile builds default to cloud disabled. The optional [`PhotoCloud.xcconfig`](../Mobile/Configuration/PhotoCloud.xcconfig) and [entitlements](../Mobile/Configuration/PhotoCloud.entitlements) enable the provisioned paired Preview. Both apps must be authorised for `iCloud.com.ethdawg.workbench.preview` and the **same Production environment** for the current Developer ID Mac pairing. A Development iPhone build against that Mac accesses a different database. A Release build configuration alone does not select Production CloudKit. [Apple iCloud configuration](https://developer.apple.com/documentation/xcode/configuring-icloud-services)
 
 [`check-photo-cloud.py`](../scripts/check-photo-cloud.py) checks exact Preview bundle/team, CloudKit container and environment, profile platform/expiry, and, for `--app`, the actual signature and embedded profile. It does not create capabilities, sign in or prove account/transfer availability. Mac runtime additionally inspects signed entitlements. iOS uses the packaging-verified build marker because it has no public `SecTask` entitlement API; setting a marker alone is not sufficient provisioning evidence.

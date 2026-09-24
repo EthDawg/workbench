@@ -21,19 +21,35 @@ enum WorkbenchUpdateChecks {
         #if !APP_STORE
         // Invoke the actual delegates without starting Sparkle, networking or
         // replacing an app. Native old-to-new acceptance remains separate.
-        let policy = WorkbenchUpdates()
+        let policy = WorkbenchUpdates(build: release)
         let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
         let updater = controller.updater
         let item = SUAppcastItem.empty()
-        var busy = true, resumed = 0
+        try require(!policy.checkedCurrent && !policy.panelTitle.contains("Current"), "an unchecked build does not claim current")
+        policy.updaterDidNotFindUpdate(updater)
+        try require(policy.panelTitle == "Update · Current", "only a successful no-update response says current")
+        policy.updater(updater, didAbortWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+        try require(!policy.checkedCurrent && !policy.panelTitle.contains("Current"), "a failed check clears stale current status")
+        var busy = true, resumed = 0, saves = 0
+        func save() -> Bool { saves += 1; return true }
         policy.activity = { WorkbenchUpdateActivity(voice: busy) }
-        try require(policy.updater(updater, shouldPostponeRelaunchForUpdate: item, untilInvokingBlock: { resumed += 1 }), "busy restart defers")
-        try require(policy.restartWaiting && policy.installing && policy.canCheck, "deferred restart remains accessible")
+        try require(policy.canTerminate(saveSession: save) && saves == 0, "ordinary busy Quit is not an update restart")
+        var guardedOnResume = false
+        try require(policy.updater(updater, shouldPostponeRelaunchForUpdate: item, untilInvokingBlock: {
+            resumed += 1; guardedOnResume = policy.installing
+        }), "busy restart defers")
+        try require(policy.restartWaiting && !policy.installing && policy.canCheck, "deferred restart remains accessible without intercepting Quit")
+        try require(policy.canTerminate(saveSession: save) && saves == 0, "postponement preserves ordinary busy Quit")
         policy.checkForUpdates()
         try require(resumed == 0 && policy.restartWaiting, "busy action cannot resume installation")
         busy = false
         policy.checkForUpdates()
-        try require(resumed == 1 && !policy.restartWaiting && policy.installing, "idle resume retains final termination guard")
+        try require(resumed == 1 && !policy.restartWaiting && policy.installing && guardedOnResume, "idle resume arms final termination guard before invoking Sparkle")
+        busy = true
+        try require(!policy.canTerminate(saveSession: save) && saves == 0, "activity beginning after resume refuses the final restart")
+        busy = false
+        try require(!policy.canTerminate(saveSession: { false }), "failed session save refuses restart")
+        try require(policy.canTerminate(saveSession: save) && saves == 1, "idle restart saves the session before termination")
         policy.checkForUpdates()
         try require(resumed == 1, "consumed handler cannot run twice")
         policy.standardUserDriverWillFinishUpdateSession()

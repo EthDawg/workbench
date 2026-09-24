@@ -33,19 +33,29 @@ class UpdatesTests(unittest.TestCase):
                 self.assertNotEqual(record['feed_sha256'], publish_update.website_record(receipt, feed)['feed_sha256'])
 
     def test_local_packages_cannot_inherit_release_feed(self):
-        original = {'SUFeedURL': 'https://old.example', 'SUPublicEDKey': 'old', 'SUEnableAutomaticChecks': True}
-        value = build_info.stamp(original, 'preview', source='a'*40, dirty=True, build='3')
-        self.assertNotIn('SUFeedURL', value)
-        self.assertNotIn('SUPublicEDKey', value)
-        self.assertEqual(value['WorkbenchBuildKind'], 'local')
-        self.assertTrue(value['WorkbenchSourceDirty'])
+        original = {'SUFeedURL': 'https://old.example', 'SUPublicEDKey': 'old',
+                    'SUEnableAutomaticChecks': True, 'SUAutomaticallyUpdate': True,
+                    'SUEnableSystemProfiling': False, 'SURequireSignedFeed': True,
+                    'SUVerifyUpdateBeforeExtraction': True}
+        for channel in ('production', 'preview'):
+            with self.subTest(channel=channel):
+                value = build_info.stamp(original.copy(), channel, source='a'*40, dirty=True, build='3')
+                for key in original:
+                    self.assertNotIn(key, value)
+                self.assertEqual(value['WorkbenchBuildKind'], 'local')
+                self.assertTrue(value['WorkbenchSourceDirty'])
 
     def test_channels_and_provenance(self):
         stable = build_info.stamp({}, 'production', released=True, source='a'*40, dirty=False, build='3')
         preview_info = build_info.stamp({}, 'preview', released=True, source='a'*40, dirty=False, build='4')
         self.assertNotEqual(stable['SUFeedURL'], preview_info['SUFeedURL'])
-        self.assertTrue(stable['SURequireSignedFeed'])
-        self.assertFalse(stable['SUEnableSystemProfiling'])
+        for channel, info in [('production', stable), ('preview', preview_info)]:
+            with self.subTest(channel=channel):
+                self.assertIs(info['SUEnableAutomaticChecks'], True)
+                self.assertIs(info['SUAutomaticallyUpdate'], True)
+                self.assertIs(info['SURequireSignedFeed'], True)
+                self.assertIs(info['SUVerifyUpdateBeforeExtraction'], True)
+                self.assertIs(info['SUEnableSystemProfiling'], False)
         with self.assertRaises(RuntimeError):
             build_info.stamp({}, 'preview', released=True, source='a'*40, dirty=True)
         with self.assertRaises(RuntimeError):

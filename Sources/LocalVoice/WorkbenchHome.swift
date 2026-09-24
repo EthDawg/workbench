@@ -148,8 +148,10 @@ struct WorkbenchHome: View {
             if let loginError { Text(loginError).foregroundStyle(.orange) }
             Divider()
             WorkbenchUpdateSettings()
-            Divider()
-            PhotoHandoffSettings(handoff: model.photoHandoff)
+            if model.photoHandoff.isConfigured {
+                Divider()
+                PhotoHandoffSettings(handoff: model.photoHandoff)
+            }
             Divider()
             VoiceOptions(model: model, showShortcut: false)
             Button("Your dictionary") { model.page = "dictionary" }
@@ -157,154 +159,14 @@ struct WorkbenchHome: View {
             Divider()
             Button("Models and local server") { model.page = "models" }
             Button("Keyboard and practice") { model.page = "shortcuts" }
-            Text("Preview keeps its own session. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
+            Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
             Divider()
             FounderIntroductionCard(model: introduction, canDismiss: false)
         }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
     }
 }
 
-struct WorkbenchQuickPanel: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var stage: StageKitController
-    @ObservedObject var readback: ReadbackModel
-    var open: (String) -> Void
-    var draw: () -> Void
-    var snap: () -> Void
-    var present: () -> Void
-    var timer: () -> Void
-    var personas: () -> Void
-    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Workbench").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible)
-                    .toggleStyle(.switch).controlSize(.mini).font(.system(size: 11))
-            }
-            Divider()
-            VStack(spacing: 2) {
-                ForEach(WorkbenchControlTool.allCases) { tool in
-                    HStack(spacing: 8) {
-                        Button { perform(tool) } label: {
-                            HStack(spacing: 6) {
-                                Text(actionTitle(tool)).font(.system(size: 12, weight: .medium))
-                                Spacer(minLength: 2)
-                                if tool == .snap, readback.sessionURL != nil {
-                                    Text("\(readback.activeSections.count) · " + (context.shortcut(tool) ?? ""))
-                                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-                                        .accessibilityLabel("\(readback.activeSections.count) captures. " + (context.shortcut(tool) ?? ""))
-                                } else if let shortcut = context.shortcut(tool) {
-                                    Text(shortcut).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-                                }
-                            }.frame(maxWidth: .infinity, minHeight: 28, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                            .disabled(tool == .dictate && model.waitingForDrawing ? false : !context.state.enabled(tool))
-                            .help(context.detail(tool) + (context.shortcut(tool).map { " · " + $0 } ?? ""))
-                        options(tool).font(.system(size: 11)).controlSize(.small)
-                    }
-                }
-            }
-            if readback.hasPendingTranscriptions {
-                Text("Transcribing narration…").font(.system(size: 10)).foregroundStyle(.secondary)
-            }
-            if model.waitingForDrawing {
-                Text("Text saved. Finish drawing to paste, or copy it now.")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
-            }
-            WorkbenchClipboardShelf(receipts: model.clipboardReceipt, review: { model.clipboardReceipt.dismissHUD(); open("history") }, showCue: {
-                model.onCloseMenu?(); model.clipboardReceipt.revealHUD()
-            })
-            if stage.hasOverlaySession {
-                HStack(spacing: 8) {
-                    Button("Overlay controls") { model.onCloseMenu?(); stage.focusOverlayControls() }
-                    Spacer(minLength: 0)
-                    Button(stage.areOverlaysPaused ? "Show again" : "Hide all") { model.onCloseMenu?(); stage.toggleOverlayVisibility() }
-                    Button("End") { model.onCloseMenu?(); stage.endOverlays() }.accessibilityLabel("End overlays")
-                }.buttonStyle(.borderless).font(.system(size: 11))
-            }
-            Divider()
-            HStack(spacing: 12) {
-                Button("Open Workbench") { open("home") }
-                Menu("More") {
-                    Button("Switch to browser tab…") { model.onShowPresenter?() }
-                    Button("Overlay cards…", action: personas)
-                    Button("Break timer", action: timer)
-                    Divider()
-                    Button("Capture history…") { open("history") }
-                    Button("Settings…") { open("settings") }
-                }.menuStyle(.borderlessButton).fixedSize()
-                Spacer(minLength: 0)
-                Button("Shortcuts") { open("shortcuts") }
-            }.buttonStyle(.plain).font(.system(size: 11))
-            Text(model.phase == .idle ? model.status : context.activitySummary)
-                .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2).help(model.status)
-        }.padding(10).frame(width: 288).fixedSize(horizontal: false, vertical: true)
-            .tint(Workbench.accent).workbenchTheme()
-    }
-
-    @ViewBuilder private func options(_ tool: WorkbenchControlTool) -> some View {
-        switch tool {
-        case .dictate:
-            Menu(model.preferences.cleanup.rawValue) {
-                Text("Text style")
-                ForEach(CleanupStyle.allCases, id: \.self) { style in
-                    Button { model.preferences.cleanup = style } label: {
-                        if model.preferences.cleanup == style { Label(style.rawValue, systemImage: "checkmark") }
-                        else { Text(style.rawValue) }
-                    }
-                }
-                Divider()
-                Text("Destination")
-                ForEach(DeliveryMode.allCases, id: \.self) { delivery in
-                    Button { model.preferences.delivery = delivery } label: {
-                        if model.preferences.delivery == delivery { Label(delivery.rawValue, systemImage: "checkmark") }
-                        else { Text(delivery.rawValue) }
-                    }
-                }
-                Divider()
-                Button("Dictation settings…") { open("dictate") }
-            }.fixedSize().controlSize(.small).disabled(model.phase != .idle || readback.isRecording)
-                .help("Text style and destination for the next dictation")
-        case .snap:
-            if readback.sessionURL != nil { Button("Review") { open("readback") }.buttonStyle(.borderless) }
-        case .annotate:
-            Button("Tools") { model.onShowAnnotationMenu?() }.buttonStyle(.borderless)
-        case .present:
-            Button("Scenes") { open("present") }.buttonStyle(.borderless)
-        case .read:
-            if model.playing || model.paused { Button("Stop") { model.stopPlayback() }.buttonStyle(.borderless) }
-        }
-    }
-    private func actionTitle(_ tool: WorkbenchControlTool) -> String {
-        if tool == .dictate && model.waitingForDrawing { return "Copy text now" }
-        if tool == .dictate && model.phase == .idle { return model.canRecordAgain ? "Record again" : "Dictate" }
-        if tool == .snap && !readback.isRecording && !readback.isCapturing && readback.sessionURL == nil { return "Snap & Talk" }
-        if tool == .annotate && !stage.isDrawing { return "Draw on screen" }
-        if tool == .present && !stage.isPresenting { return "Present scene" }
-        if tool == .read && !model.playing && !model.paused && !model.rendering { return "Read aloud" }
-        return context.state.actionTitle(tool)
-    }
-    private func perform(_ tool: WorkbenchControlTool) {
-        model.controlTool = tool
-        switch tool {
-        case .dictate:
-            if model.waitingForDrawing { model.copyWaitingDelivery() }
-            else { model.onMenuRecording?() }
-        case .snap: snap()
-        case .annotate: draw()
-        case .present: present()
-        case .read:
-            if model.rendering { model.cancelReading() }
-            else if model.playing || model.paused { model.listen() }
-            else { open("speak") }
-        }
-    }
-}
-
-private struct WorkbenchClipboardShelf: View {
+struct WorkbenchClipboardShelf: View {
     @ObservedObject var receipts: ClipboardReceiptModel
     let review: () -> Void
     let showCue: () -> Void

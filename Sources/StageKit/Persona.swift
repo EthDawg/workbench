@@ -234,6 +234,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
     @Published private(set) var overlayVisible = false
     @Published private(set) var overlayLocked = false
     @Published private(set) var overlayWidth = 0.16
+    var usesSharedControls = false { didSet { if usesSharedControls { hud?.hide() } } }
+    var onFocusSharedControls: (() -> Void)?
     var onShow: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
     private var sessionFeedback: String?
@@ -257,6 +259,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private var liveImages: [UUID: NSImage] = [:]
     private var liveLabels: [UUID: String] = [:]
     private var session: PersonaSessionController?
+    private var overlayGeneration = UUID()
     private let sessionPanelFactory: (() -> any PersonaSessionDisplaying)?
     private let sessionHUDEnabled: Bool
     private var archiveVersion = 2
@@ -521,6 +524,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         session?.resume()
     }
     func endOverlaySession() {
+        overlayGeneration = UUID()
         session?.onChange = nil; session?.end(); session = nil
         sessionFeedback = nil
         sessionState = PersonaSessionViewState(); overlayVisible = false; hud?.hide()
@@ -599,7 +603,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
     func focusOverlayControls() {
         guard mayBeginInteraction?() != false else { notice = PersonaSessionInteractionError.busy.localizedDescription; return }
-        hud?.focusControls()
+        if usesSharedControls { onFocusSharedControls?() }
+        else { hud?.focusControls() }
     }
 
     func toggleQuickPersona() {
@@ -698,6 +703,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         return label.isEmpty ? "Floating persona" : label
     }
     private func refreshHUD() {
+        guard !usesSharedControls else { hud?.hide(); return }
         if let session, session.phase != .idle {
             guard sessionHUDEnabled else { return }
             if hud == nil { hud = PersonaHUDController(root: root, allowsSaving: !isReadOnly) }
@@ -719,12 +725,90 @@ final class PersonaLibrary: NSObject, ObservableObject {
         hud?.onHide = { [weak self] in self?.hideOverlay() }
         hud?.onLock = { [weak self] in self?.setOverlayLocked($0) }
         hud?.onSizeChange = { [weak self] delta in guard let self else { return }; self.setOverlayWidth(self.overlayWidth + delta) }
+        hud?.onSetSize = { [weak self] in self?.setOverlayWidth($0) }
         let candidates = candidateIDs.enumerated().compactMap { index, id -> PersonaHUDItem? in
             guard items.contains(where: { $0.id == id }) else { return nil }
             let label = liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)"
             return PersonaHUDItem(id: id, label: label, image: liveImages[id])
         }
-        hud?.show(items: candidates, selectedID: current, locked: overlayLocked, near: overlay?.window?.frame)
+        hud?.show(items: candidates, selectedID: current, locked: overlayLocked, width: overlayWidth, near: overlay?.window?.frame)
+    }
+    func makeControlsMenu() -> NSMenu {
+        let menu = NSMenu(title: "Persona Overlay"); menu.autoenablesItems = false
+        let generation = overlayGeneration
+        let groupID = sessionState.currentGroupID
+        func action(_ title: String, _ operation: PersonaSessionAction, checked: Bool = false, enabled: Bool = true) -> NSMenuItem {
+            StageMenuAction(title, checked: checked, enabled: enabled) { [weak self] in
+                guard let self, self.overlayGeneration == generation, self.sessionState.currentGroupID == groupID else { return }
+                self.performOverlayAction(operation)
+            }
+        }
+        if sessionState.phase != .idle {
+            let state = sessionState
+            if let feedback = state.feedback { menu.addItem(StageMenuAction(feedback, enabled: false) {}) }
+            menu.addSubmenu("Choose Set", items: state.groups.map { action($0.label, .selectGroup($0.id), checked: $0.id == state.currentGroupID) })
+            menu.addSubmenu("Choose Overlay", items: state.instances.enumerated().map { index, item in
+                action("\(index + 1). \(item.label)", .selectInstance(item.id), checked: item.id == state.selectedInstanceID)
+            })
+            if let selected = state.selectedInstance {
+                let size = NSMenuItem(); size.view = PersonaSizeMenuView(width: selected.width) { [weak self] in
+                    guard let self, self.overlayGeneration == generation, self.sessionState.currentGroupID == groupID else { return }
+                    self.performOverlayAction(.width(selected.id, $0))
+                }; menu.addItem(size)
+                menu.addItem(action("Lock Artwork · Clicks Pass Through", .locked(selected.id, !selected.locked), checked: selected.locked))
+                menu.addSubmenu("Position Artwork", items: FloatingControlAnchor.allCases.map { anchor in
+                    action(anchor.title, .position(selected.id, anchor.unitPoint.x, anchor.unitPoint.y))
+                })
+                menu.addSubmenu("Replace Selected", items: state.candidates.map { action($0.label, .replace(instanceID: selected.id, personaID: $0.id), checked: $0.id == selected.personaID) })
+                menu.addItem(action(selected.visible ? "Hide Selected" : "Show Selected", .visible(selected.id, !selected.visible)))
+                menu.addItem(action("Bring Forward", .move(selected.id, 1)))
+                menu.addItem(action("Send Backward", .move(selected.id, -1)))
+                menu.addItem(action("Remove Selected", .remove(selected.id)))
+            }
+            menu.addSubmenu("Add Overlay", items: state.candidates.map { action($0.label, .add($0.id), enabled: state.instances.count < PersonaSessionController.maximumOverlays) })
+            menu.addItem(.separator())
+            menu.addItem(action(state.phase == .paused ? "Show Again" : "Hide All Temporarily", .pauseResume))
+            menu.addItem(action("Save Layout for Next Time", .saveLayout, enabled: state.canSaveLayout && state.hasUnsavedLayout))
+            menu.addItem(action("End Overlays", .end))
+        } else if overlayVisible, let current = displayedID {
+            let ids = liveSelection?.candidateIDs ?? [current]
+            menu.addSubmenu("Choose Persona", items: ids.enumerated().map { index, id in
+                StageMenuAction(liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)", checked: id == current) { [weak self] in
+                    guard let self, self.overlayGeneration == generation else { return }; self.selectLivePersona(id)
+                }
+            })
+            let size = NSMenuItem(); size.view = PersonaSizeMenuView(width: overlayWidth) { [weak self] width in
+                guard let self, self.overlayGeneration == generation, self.displayedID == current, self.session == nil else { return }; self.setOverlayWidth(width)
+            }; menu.addItem(size)
+            menu.addItem(StageMenuAction("Lock Artwork · Clicks Pass Through", checked: overlayLocked) { [weak self] in
+                guard let self, self.overlayGeneration == generation, self.displayedID == current, self.session == nil else { return }; self.setOverlayLocked(!self.overlayLocked)
+            })
+            menu.addSubmenu("Position Artwork", items: FloatingControlAnchor.allCases.map { anchor in
+                StageMenuAction(anchor.title) { [weak self] in
+                    guard let self, self.overlayGeneration == generation, self.displayedID == current, self.session == nil else { return }
+                    self.setOverlayPosition(x: anchor.unitPoint.x, y: anchor.unitPoint.y)
+                }
+            })
+            menu.addItem(StageMenuAction("End Overlay") { [weak self] in
+                guard let self, self.overlayGeneration == generation else { return }; self.hideOverlay()
+            })
+        } else {
+            menu.addItem(StageMenuAction("Show Selected Persona", enabled: !visibleItems.isEmpty) { [weak self] in
+                guard let self, self.overlayGeneration == generation else { return }; self.showOverlay()
+            })
+            let ready = groups.filter { preparedGroupIDs.contains($0.id) && $0.overlays?.isEmpty == false }
+            if !ready.isEmpty {
+                menu.addSubmenu("Start Prepared Set", items: ready.enumerated().map { index, group in
+                    StageMenuAction(group.publicLabel ?? "Set \(index + 1)") { [weak self] in
+                        guard let self, self.overlayGeneration == generation else { return }
+                        do { try self.startOverlaySession(groupIDs: ready.map(\.id), initialGroupID: group.id) }
+                        catch { self.notice = error.localizedDescription }
+                    }
+                })
+            }
+            if visibleItems.isEmpty { menu.addItem(StageMenuAction("Prepare a persona in Workbench first.", enabled: false) {}) }
+        }
+        return menu
     }
     private var archive: PersonaArchive { PersonaArchive(version: archiveVersion, items: items, selectedID: selectedID, groups: groups, activeGroupID: activeGroupID, preparedGroupIDs: preparedGroupIDs) }
     private func commit(_ items: [SavedPersona], selection: UUID?) throws {

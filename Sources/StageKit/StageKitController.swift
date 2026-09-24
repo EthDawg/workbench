@@ -87,13 +87,66 @@ public final class StageKitController: ObservableObject {
         coordinator.demoScenes.personas.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
     }
 
+    /// Embedded Workbench owns the sole live control surface. Standalone
+    /// StageKit fixtures retain their existing controls for compatibility.
+    public var onFocusActivityControls: ((String) -> Void)? {
+        didSet {
+            coordinator.demoScenes.onFocusSharedControls = { [weak self] in self?.onFocusActivityControls?("present") }
+            coordinator.demoScenes.personas.onFocusSharedControls = { [weak self] in self?.onFocusActivityControls?("persona") }
+        }
+    }
+    public func useSharedActivityControls() {
+        coordinator.demoScenes.usesSharedControls = true
+        coordinator.demoScenes.personas.usesSharedControls = true
+    }
+    public var hasActivePersona: Bool { hasActivePersonaSession || coordinator.demoScenes.personas.overlayVisible }
+    public var personaStatus: String {
+        let library = coordinator.demoScenes.personas
+        if library.sessionState.phase == .paused { return "Hidden" }
+        if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
+        return library.overlayVisible ? "Shown" : ""
+    }
+    public func togglePersona() {
+        if hasActivePersona { coordinator.demoScenes.personas.hideOverlay() }
+        else if case .failure = coordinator.demoScenes.personas.showOverlay() { showPersonas() }
+    }
+    public func makePersonaMenu(includePreparation: Bool = false) -> NSMenu {
+        let menu = coordinator.demoScenes.personas.makeControlsMenu()
+        if includePreparation {
+            menu.addItem(.separator())
+            menu.addItem(StageMenuAction("Prepare Personas…") { [weak self] in self?.showPersonas() })
+        }
+        return menu
+    }
+    public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
+    public func makeTimerMenu() -> NSMenu {
+        let app = coordinator
+        let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
+        menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
+        menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: app.timerSessionStarted && !app.timerFinished) { [weak app] in app?.pauseResumeTimer() })
+        menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
+        menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
+        menu.addSubmenu("Duration", items: [1, 5, 10, 15, 30, 60].map { minutes in
+            StageMenuAction("\(minutes) min", checked: app.settings.value.timerMinutes == Double(minutes)) { [weak app] in
+                app?.settings.value.timerMinutes = Double(minutes)
+                // A duration change applies on the next Start or Reset.
+            }
+        })
+        menu.addSubmenu("Position", items: FloatingControlAnchor.allCases.map { anchor in
+            StageMenuAction(anchor.title, checked: app.timerPlacementAnchor == anchor) { [weak app] in app?.setTimerPosition(anchor) }
+        })
+        menu.addItem(StageMenuAction("Chime When Finished", checked: app.settings.value.timerChime) { [weak app] in
+            guard let app else { return }; app.settings.value.timerChime.toggle()
+        })
+        return menu
+    }
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
     public var quickControlsView: AnyView { AnyView(QuickControlsView(app: coordinator, settings: coordinator.settings)) }
     /// One native menu for the application menu bar or the shell's status menu.
     /// It refreshes tool state and shortcut labels whenever it opens; StageKit
     /// continues to own all drawing actions and their existing global keys.
-    public func makeAnnotationMenu() -> NSMenu { AnnotationMenu(coordinator: coordinator) }
+    public func makeAnnotationMenu(includeSettings: Bool = true) -> NSMenu { AnnotationMenu(coordinator: coordinator, includeSettings: includeSettings) }
     /// Opens an existing-scene choice followed by the ordinary backdrop preview.
     /// The caller presents this as a sheet; no scene changes until Use backdrop.
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {
@@ -118,6 +171,8 @@ public final class StageKitController: ObservableObject {
     public var canStepOverlays: Bool { coordinator.demoScenes.personas.sessionState.groups.count > 1 }
     public var timerText: String { coordinator.timerText }
     public var isTimerRunning: Bool { coordinator.timerRunning }
+    public var hasTimerSession: Bool { coordinator.timerSessionStarted }
+    public var hasActiveTimer: Bool { coordinator.hasActiveTimer }
     public var notice: String? { coordinator.notice ?? coordinator.settings.notice ?? coordinator.demoScenes.notice }
 
     public func start() {

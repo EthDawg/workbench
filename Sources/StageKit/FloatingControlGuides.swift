@@ -78,14 +78,15 @@ public struct FloatingControlGuides: View {
         }
         .allowsHitTesting(false).accessibilityHidden(true)
         .transaction { $0.disablesAnimations = true }
+        .tint(Workbench.accent).workbenchTheme()
     }
 
     private func outline(active: Bool, compact: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: compact ? 4 : 12)
         return shape
-            .fill(active && !reduceTransparency ? Color.accentColor.opacity(0.10) : Color.clear)
+            .fill(active && !reduceTransparency ? Workbench.accent.opacity(0.10) : Color.clear)
             .overlay(shape.stroke(Color(nsColor: .windowBackgroundColor), lineWidth: active ? 5 : 3))
-            .overlay(shape.stroke(active ? Color.accentColor : Color.primary,
+            .overlay(shape.stroke(active ? Workbench.accent : Color.primary,
                                   style: StrokeStyle(lineWidth: active ? 3 : 1, dash: active ? [] : [4, 3])))
     }
 }

@@ -4,9 +4,11 @@ import Carbon
 /// The native menu is a view of the coordinator, never another drawing owner.
 final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
     private weak var coordinator: AppCoordinator?
+    private let includeSettings: Bool
 
-    init(coordinator: AppCoordinator) {
+    init(coordinator: AppCoordinator, includeSettings: Bool = true) {
         self.coordinator = coordinator
+        self.includeSettings = includeSettings
         super.init(title: "Annotate")
         autoenablesItems = false
         delegate = self
@@ -58,6 +60,9 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         let colourItem = NSMenuItem(title: "Ink Colour", action: nil, keyEquivalent: "")
         colourItem.submenu = colours
         addItem(colourItem)
+        addItem(command("Choose Colour…", id: "customColour", enabled: app.canUseAnnotationMenuAction(.color1)) { [weak app] in
+            app?.inkColourPicker.show()
+        })
         addItem(actionItem(.pointer, checked: app.pointerEnabled))
         addItem(actionItem(.fade, checked: app.settings.value.autoFade))
 
@@ -72,6 +77,7 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         addItem(actionItem(.whiteboard, checked: board == .white))
         addItem(actionItem(.blackboard, checked: board == .black))
         addItem(.separator())
+        guard includeSettings else { return }
         addItem(command("Drawing Controls…", id: "controls", enabled: app.canUseAnnotationMenuAction(.controls)) { [weak app] in
             guard let app, app.canUseAnnotationMenuAction(.controls) else { return }
             app.stopDrawing()
