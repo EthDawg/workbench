@@ -37,6 +37,7 @@ final class PersonaHUDController: NSWindowController {
     var onHide: (() -> Void)?
     var onLock: ((Bool) -> Void)?
     var onSizeChange: ((Double) -> Void)?
+    var onSetSize: ((Double) -> Void)?
     private(set) var notice: String?
     private let picker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let options = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -58,6 +59,12 @@ final class PersonaHUDController: NSWindowController {
     private var sessionMenu: NSMenu?
     private let sessionButton = NSButton()
     private let sessionDragHandle = PersonaHUDDragHandle()
+    private let sizeSlider = NSSlider(value: 0.16, minValue: 0.06, maxValue: 0.40, target: nil, action: nil)
+    private let sizeLabel = NSTextField(labelWithString: "Size 16%")
+    private let sessionSizeSlider = NSSlider(value: 0.16, minValue: 0.06, maxValue: 0.40, target: nil, action: nil)
+    private let sessionSizeLabel = NSTextField(labelWithString: "Size 16%")
+    private let addButton = NSButton(title: "Add…", target: nil, action: nil)
+    private let removeButton = NSButton(title: "Remove", target: nil, action: nil)
 
     init(root: URL, allowsSaving: Bool = true) {
         url = root.appendingPathComponent("persona-controls.json")
@@ -85,8 +92,14 @@ final class PersonaHUDController: NSWindowController {
         picker.setAccessibilityLabel("Choose an available persona")
         picker.cell?.lineBreakMode = .byTruncatingTail
         options.setAccessibilityLabel("Persona options")
-        let row = NSStackView(views: [dragHandle, previous, picker, next, options, dismiss])
-        row.orientation = .horizontal; row.spacing = 4; row.alignment = .centerY
+        configureSize(sizeSlider, label: sizeLabel)
+        sizeSlider.setAccessibilityIdentifier("persona.single.size")
+        let actions = NSStackView(views: [dragHandle, previous, picker, next, options, dismiss])
+        actions.orientation = .horizontal; actions.spacing = 4; actions.alignment = .centerY
+        let sizing = NSStackView(views: [sizeLabel, sizeSlider])
+        sizing.orientation = .horizontal; sizing.spacing = 8; sizing.alignment = .centerY
+        let row = NSStackView(views: [actions, sizing])
+        row.orientation = .vertical; row.spacing = 2; row.alignment = .centerX
         row.translatesAutoresizingMaskIntoConstraints = false; material.addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: material.leadingAnchor, constant: 7),
@@ -106,13 +119,14 @@ final class PersonaHUDController: NSWindowController {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func show(items: [PersonaHUDItem], selectedID: UUID, locked: Bool, near artwork: CGRect?) {
+    func show(items: [PersonaHUDItem], selectedID: UUID, locked: Bool, width: Double = 0.16, near artwork: CGRect?) {
         guard !items.isEmpty, items.contains(where: { $0.id == selectedID }) else { hide(); return }
         if sessionModel != nil || window?.contentView !== legacyContent {
             sessionMenu?.cancelTracking(); sessionMenu = nil; sessionModel = nil
             window?.contentView = legacyContent
-            resizeControl(width: 332)
         }
+        resizeControl(width: 440, height: 76)
+        updateSize(sizeSlider, label: sizeLabel, width: width)
         self.locked = locked
         picker.removeAllItems()
         for item in items {
@@ -140,7 +154,7 @@ final class PersonaHUDController: NSWindowController {
     func shutdown() {
         hide(); screens = nil
         MainActor.assumeIsolated { guides?.shutdown() }; guides = nil
-        onSelect = nil; onStep = nil; onHide = nil; onLock = nil; onSizeChange = nil
+        onSelect = nil; onStep = nil; onHide = nil; onLock = nil; onSizeChange = nil; onSetSize = nil
     }
     /// Called only through an explicit keyboard-access control in preparation.
     func focusControls() {
@@ -162,7 +176,16 @@ final class PersonaHUDController: NSWindowController {
             sessionButton.font = .systemFont(ofSize: 13, weight: .medium); sessionButton.imagePosition = .imageLeading
             sessionButton.target = self; sessionButton.action = #selector(openSessionMenu)
             sessionButton.setAccessibilityIdentifier("persona.session.controls")
-            let row = NSStackView(views: [sessionDragHandle, sessionButton])
+            configureSize(sessionSizeSlider, label: sessionSizeLabel)
+            sessionSizeSlider.setAccessibilityIdentifier("persona.session.size")
+            addButton.target = self; addButton.action = #selector(addOverlay)
+            addButton.bezelStyle = .rounded; addButton.toolTip = "Add a persona from this prepared set"
+            addButton.setAccessibilityIdentifier("persona.session.add")
+            removeButton.target = self; removeButton.action = #selector(removeOverlay)
+            removeButton.bezelStyle = .rounded
+            removeButton.toolTip = "Remove the selected on-screen copy; keep the saved persona"
+            removeButton.setAccessibilityIdentifier("persona.session.remove")
+            let row = NSStackView(views: [sessionDragHandle, sessionButton, sessionSizeLabel, sessionSizeSlider, addButton, removeButton])
             row.orientation = .horizontal; row.alignment = .centerY; row.spacing = 2
             row.translatesAutoresizingMaskIntoConstraints = false; material.addSubview(row)
             NSLayoutConstraint.activate([
@@ -171,8 +194,10 @@ final class PersonaHUDController: NSWindowController {
                 row.centerYAnchor.constraint(equalTo: material.centerYAnchor),
                 sessionDragHandle.widthAnchor.constraint(equalToConstant: 20),
                 sessionDragHandle.heightAnchor.constraint(equalToConstant: 32),
-                sessionButton.heightAnchor.constraint(equalToConstant: 34)
+                sessionButton.heightAnchor.constraint(equalToConstant: 34),
+                sessionButton.widthAnchor.constraint(lessThanOrEqualToConstant: 140)
             ])
+            sessionButton.cell?.lineBreakMode = .byTruncatingTail
             sessionDragHandle.onDrag = { [weak self] in self?.previewDrag() }
             sessionDragHandle.onEnd = { [weak self] in self?.finishDrag() }
             sessionContent = material
@@ -180,19 +205,30 @@ final class PersonaHUDController: NSWindowController {
         window?.contentView = sessionContent
         let paused = viewModel.state.phase == .paused
         let visible = viewModel.state.instances.filter(\.visible).count
-        sessionButton.title = viewModel.state.feedback != nil ? "Notice  ›" : (paused ? "Hidden  ›" : "\(visible)  ›")
+        sessionButton.title = viewModel.state.feedback != nil ? "Notice  ›" : (paused ? "Hidden  ›" : "\(visible) cards  ›")
         sessionButton.image = NSImage(systemSymbolName: viewModel.state.feedback != nil ? "info.circle" : (paused ? "eye.slash" : "rectangle.on.rectangle"), accessibilityDescription: nil)
         sessionButton.setAccessibilityLabel(viewModel.state.feedback ?? (paused ? "Overlays hidden. Open presentation controls" : "\(visible) overlays shown. Open presentation controls"))
-        sessionButton.toolTip = "Click for sets, artwork, Hide all and End. Keyboard: focus, then Space."
-        resizeControl(width: paused || viewModel.state.feedback != nil ? 142 : 116)
+        sessionButton.toolTip = "Click to choose the card to resize or remove, change sets, Hide all or End."
+        let selected = viewModel.state.selectedInstance
+        if viewModel.state.feedback == nil, !paused, let selected {
+            sessionButton.title = "\(String(selected.label.prefix(14)))  ›"
+        }
+        updateSize(sessionSizeSlider, label: sessionSizeLabel, width: selected?.width ?? 0.16)
+        sessionSizeSlider.isEnabled = selected != nil
+        sessionSizeLabel.stringValue = selected == nil ? "Size —" : sessionSizeLabel.stringValue
+        removeButton.isEnabled = selected != nil
+        removeButton.setAccessibilityLabel(selected.map { "Remove \($0.label) from this set" } ?? "Remove selected overlay")
+        sessionSizeSlider.setAccessibilityLabel(selected.map { "Size of \($0.label)" } ?? "Size of selected overlay")
+        addButton.isEnabled = !viewModel.state.candidates.isEmpty && viewModel.state.instances.count < PersonaSessionController.maximumOverlays
+        resizeControl(width: 466)
         if window?.isVisible != true { position(near: artwork); window?.orderFrontRegardless() }
     }
 
-    private func resizeControl(width: CGFloat) {
-        guard let window, window.frame.width != width else { return }
+    private func resizeControl(width: CGFloat, height: CGFloat = 44) {
+        guard let window, window.frame.size != CGSize(width: width, height: height) else { return }
         let current = window.frame
         let screen = screen(near: current)
-        window.setContentSize(CGSize(width: width, height: 44))
+        window.setContentSize(CGSize(width: width, height: height))
         if let screen {
             let frame = placement.position.anchor.map {
                 FloatingControlGeometry.frame(anchor: $0, size: window.frame.size, visibleFrame: screen.visibleFrame)
@@ -266,6 +302,41 @@ final class PersonaHUDController: NSWindowController {
     @objc private func performSessionCommand(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? PersonaSessionAction else { return }
         sessionModel?.perform(action)
+    }
+
+    private func configureSize(_ slider: NSSlider, label: NSTextField) {
+        slider.target = self; slider.action = #selector(setSize(_:)); slider.isContinuous = true
+        slider.setAccessibilityLabel("Persona size")
+        slider.toolTip = "Width as a percentage of the display; tall cards may be height-limited"
+        slider.widthAnchor.constraint(equalToConstant: 90).isActive = true
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        label.widthAnchor.constraint(equalToConstant: 62).isActive = true
+    }
+    private func updateSize(_ slider: NSSlider, label: NSTextField, width: Double) {
+        slider.doubleValue = width
+        label.stringValue = "Size \(Int((width * 100).rounded()))%"
+    }
+    @objc private func setSize(_ sender: NSSlider) {
+        if sender === sessionSizeSlider {
+            guard let id = sessionModel?.state.selectedInstanceID else { return }
+            sessionModel?.perform(.width(id, sender.doubleValue))
+        } else { onSetSize?(sender.doubleValue) }
+    }
+    @objc private func removeOverlay() {
+        guard let id = sessionModel?.state.selectedInstanceID else { return }
+        sessionModel?.perform(.remove(id))
+    }
+    @objc private func addOverlay() {
+        guard let model = sessionModel, addButton.isEnabled else { return }
+        let menu = NSMenu(title: "Add persona"); menu.autoenablesItems = false
+        for candidate in model.state.candidates {
+            let item = NSMenuItem(title: candidate.label, action: #selector(performSessionCommand(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = PersonaSessionAction.add(candidate.id)
+            menu.addItem(item)
+        }
+        sessionMenu = menu
+        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: addButton.bounds.maxY + 4), in: addButton)
+        sessionMenu = nil
     }
 
     private func configureButton(_ button: NSButton, symbol: String, label: String, action: Selector) {

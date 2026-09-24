@@ -4,7 +4,9 @@ A saved persona is reusable finished artwork or an editable portrait card. A **g
 
 ## Quick: show one card
 
-Open **Overlay cards…** in the Workbench menu. Import or paste finished artwork, or choose a starter portrait and edit its visible label/colour. **Show one card** preserves the simple one-card workflow. The nearby controls provide Hide, Lock and Size; a prepared group's candidates remain scoped to that group, while **All saved** offers one card at a time from the frozen saved list. A shown card never changes merely because you browse another library item.
+Open **Overlay cards…** in the Workbench menu. **Add persona…** imports or pastes finished artwork, or chooses a starter portrait with an editable visible label/colour. The empty library also offers direct starter and image-import buttons. **Show one card** preserves the simple one-card workflow. Drag the labelled **Size** slider left to make the floating card smaller, or right to enlarge it, without unlocking the artwork. The percentage is the requested display width (6–40%); tall artwork is also limited by available height. A prepared group's candidates remain scoped to that group, while **All saved** offers one card at a time from the frozen saved list. A shown card never changes merely because you browse another library item.
+
+**Hide** only removes the floating card from the screen. **Remove saved persona…** in the library asks for confirmation before removing that entry and its group memberships; original artwork stays available to saved scenes. **Add / remove members…** changes only the selected group's membership.
 
 From any app, press **Control–Option–I** to show or hide the selected persona. Press **Control–Option–Left Arrow** or **Control–Option–Right Arrow** to flip through the current prepared group, or through all saved personas when no group is selected. These three defaults are editable and practisable under **Keyboard**. If no card is visible, either arrow shortcut first shows the current persona; it never starts a multi-overlay session.
 
@@ -20,7 +22,7 @@ A session supports up to eight groups, eight placed overlays per group and 32 di
 
 ## During the demo
 
-The compact tile shows a stack-of-cards icon and visible count. **Click** opens a native menu; hover only provides a hint. The tile can be dragged/snapped, and Control position offers the same named destinations without dragging.
+The floating controls name the selected card and expose **Size**, **Add…** and **Remove** directly. Click the card-name menu to select another copy or access sets, positioning and lifecycle controls; hover only provides a hint. Add uses only the prepared set's frozen members. Remove affects the selected on-screen copy, not the saved persona. An empty set keeps Add available. The controls can be dragged/snapped, and Control position offers the same named destinations without dragging.
 
 - **Next/Previous set** changes the prepared overlays as you manually change browser tabs or apps. Each set retains its current placements when you return. This does not navigate the browser for you.
 - **Choose overlay** targets one copy. Show/hide, lock, size, position, order and replace affect that copy; Add creates another copy from the frozen prepared members.

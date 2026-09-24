@@ -112,7 +112,7 @@
       "name": "Present several native overlays",
       "status": "implemented",
       "entry": "Overlay cards → Arrange overlays → Demo groups → Start overlays",
-      "effect": "Show several independently placed cards, switch among explicitly prepared sets, and Hide/Show/End through one click-based native tile. Live images, labels and allowed choices are frozen; layout saving is explicit.",
+      "effect": "Show several independently placed cards, with visible Size, Add and Remove controls for the selected copy. Switch among explicitly prepared sets and Hide/Show/End through the native menu. Live images, labels and allowed choices are frozen; layout saving is explicit. Removing a live copy does not remove its saved persona.",
       "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
       "source": "Sources/StageKit/PersonaSession.swift",
       "evidence": "88 integrated native Mac scene tests /2367 assertions and 114 StageKit CI-mode tests /2533 assertions passed (live menu-bar popover check excluded). Native keyboard focus and click menu, per-card hide, paused set switching, return and restoration checked with disposable artwork. Signed local Preview 20260914204356 installed; signature, preparation entry and disabled optional shortcuts verified. Source and delivery limits are in /personas/."
