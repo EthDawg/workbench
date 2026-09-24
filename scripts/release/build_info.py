@@ -28,7 +28,7 @@ def stamp(info, channel, *, released=False, source=None, dirty=None, build=None)
         info.pop(key, None)
     if released:
         info.update(SUFeedURL=f"{config['feed_base']}/{channel}.xml", SUPublicEDKey=config['public_key'],
-                    SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=False, SUEnableSystemProfiling=False,
+                    SUEnableAutomaticChecks=True, SUAutomaticallyUpdate=True, SUEnableSystemProfiling=False,
                     SURequireSignedFeed=True, SUVerifyUpdateBeforeExtraction=True)
     return info
 
