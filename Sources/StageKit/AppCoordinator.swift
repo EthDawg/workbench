@@ -739,8 +739,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             if event.keyCode == 53 { self.finishRecording(); return nil }
             if event.keyCode == 51 { var shortcut = self.settings.value.shortcut(for: action); shortcut.enabled = false; self.settings.value.shortcuts[action.rawValue] = shortcut; self.finishRecording(); return nil }
             let shortcut = Shortcut(event: event)
-            guard shortcut.modifiers & UInt32(controlKey | optionKey | cmdKey) != 0 else {
-                self.notice = "Include Control, Option or Command with your shortcut."; return nil
+            guard shortcut.modifiers & UInt32(controlKey | optionKey) != 0 else {
+                self.notice = "Include Control or Option with your shortcut."; return nil
             }
             if let conflict = Action.allCases.first(where: { $0 != action && self.settings.value.shortcut(for: $0) == shortcut }) {
                 self.notice = "That shortcut belongs to \(conflict.title). Choose another combination."; return nil
@@ -786,6 +786,14 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         hotkeys.register(preferences)
         registeredShortcuts = settings.value.shortcuts
         shortcutFailures = hotkeys.failures.merging(conflicts) { _, conflict in conflict }
+        let live = { (action: Action) -> String? in
+            let shortcut = self.settings.value.shortcut(for: action)
+            return shortcut.enabled && self.shortcutFailures[action] == nil ? shortcut.label : nil
+        }
+        var hint: [String] = []
+        if let toggle = live(.personaToggle) { hint.append("\(toggle) shows or hides") }
+        if let previous = live(.personaPrevious), let next = live(.personaNext) { hint.append("\(previous) and \(next) switch cards") }
+        demoScenes.personas.shortcutHint = hint.isEmpty ? nil : hint.joined(separator: "; ") + "."
     }
     func setLaunchAtLogin(_ enabled: Bool) {
         do {

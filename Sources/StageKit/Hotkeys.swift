@@ -1,6 +1,15 @@
 import AppKit
 import Carbon
 
+/// Workbench shortcuts work in every app. A combination without Control or Option (⌘T, ⇧⌘N)
+/// belongs to the app in front, so Workbench never takes one.
+public enum GlobalShortcutRule {
+    public static func allows(modifiers: UInt32) -> Bool { modifiers & UInt32(controlKey | optionKey) != 0 }
+    public static func problem(label: String, modifiers: UInt32) -> String? {
+        allows(modifiers: modifiers) ? nil : "\(label) belongs to the app you're using. Choose a combination with Control or Option."
+    }
+}
+
 final class HotkeyManager {
     private var handler: EventHandlerRef?
     private var registrations: [UInt32: EventHotKeyRef] = [:]
@@ -64,6 +73,7 @@ final class HotkeyManager {
         for (index, action) in Action.allCases.enumerated() {
             let shortcut = preferences.shortcut(for: action)
             guard shortcut.enabled else { continue }
+            if let problem = GlobalShortcutRule.problem(label: shortcut.label, modifiers: shortcut.modifiers) { failures[action] = problem; continue }
             let id = UInt32(index + 1)
             var reference: EventHotKeyRef?
             let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: signature, id: id),

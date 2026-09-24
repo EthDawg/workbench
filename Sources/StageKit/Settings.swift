@@ -41,7 +41,26 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         default: return rawValue.capitalized
         }
     }
+    /// On by default: what a presenter reaches for mid-demo. Hold Draw, Highlighter or Arrow to
+    /// mark the screen and let go to return to the demo; Undo and Clear tidy up; the persona keys
+    /// step through a persona demo. Everything else starts off and is one recording away.
+    static let presenterEssentials: Set<Action> = [.pen, .highlighter, .arrow, .undo, .clear, .personaToggle, .personaPrevious, .personaNext]
     var defaultShortcut: Shortcut {
+        var shortcut = legacyDefaultShortcut
+        // Rectangle and Magnet ship ⌃⌥D, ⌃⌥I and ⌃⌥←/→ as window keys (First Third, Top Right,
+        // Left and Right Half), and only one app can hold a key.
+        switch self {
+        case .pen: shortcut.keyCode = UInt32(kVK_ANSI_S)
+        case .personaToggle: shortcut.keyCode = UInt32(kVK_ANSI_P)
+        case .personaPrevious: shortcut.keyCode = UInt32(kVK_ANSI_Comma)
+        case .personaNext: shortcut.keyCode = UInt32(kVK_ANSI_Period)
+        default: break
+        }
+        shortcut.enabled = Self.presenterEssentials.contains(self)
+        return shortcut
+    }
+    /// The 2.0.0 defaults. An update moves a shortcut only while it still matches one of these.
+    var legacyDefaultShortcut: Shortcut {
         let key: Int
         switch self {
         case .pen: key = kVK_ANSI_D
@@ -192,15 +211,16 @@ final class SettingsStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let savedData = defaults.data(forKey: "preferences.v1")
+        var decoded = false
         if let data = savedData {
-            do { value = try JSONDecoder().decode(Preferences.self, from: data); value.validate() }
+            do { value = try JSONDecoder().decode(Preferences.self, from: data); value.validate(); decoded = true }
             catch { value = Preferences(); notice = "Saved settings could not be read. Defaults are in use; the original settings have been preserved."; defaults.set(data, forKey: "preferences.recovery") }
         } else { value = Preferences() }
         if defaults.integer(forKey: "preferences.schema") < 2 {
             var migrated = value
             for action in Action.allCases where action.rawValue.hasPrefix("color") {
-                let old = Shortcut(keyCode: action.defaultShortcut.keyCode, modifiers: UInt32(controlKey | optionKey))
-                if migrated.shortcut(for: action) == old { migrated.shortcuts[action.rawValue] = action.defaultShortcut }
+                let old = Shortcut(keyCode: action.legacyDefaultShortcut.keyCode, modifiers: UInt32(controlKey | optionKey))
+                if migrated.shortcut(for: action) == old { migrated.shortcuts[action.rawValue] = action.legacyDefaultShortcut }
             }
             value = migrated
             defaults.set(2, forKey: "preferences.schema")
@@ -208,7 +228,7 @@ final class SettingsStore: ObservableObject {
         if savedData != nil, defaults.integer(forKey: "preferences.schema") < 3 {
             var migrated = value
             for action in [Action.personaToggle, .personaPrevious, .personaNext] where migrated.shortcuts[action.rawValue] == nil {
-                let candidate = action.defaultShortcut
+                let candidate = action.legacyDefaultShortcut
                 let collides = migrated.shortcuts.values.contains {
                     $0.enabled && $0.keyCode == candidate.keyCode && $0.modifiers == candidate.modifiers
                 }
@@ -220,6 +240,32 @@ final class SettingsStore: ObservableObject {
             value = migrated
             defaults.set(3, forKey: "preferences.schema")
         }
+        if defaults.integer(forKey: "preferences.schema") < 4 {
+            // Fresh and unreadable settings already hold the current defaults. Observers do not run
+            // during init, so the move is saved here rather than recomputed on every launch.
+            if decoded { value = Self.movingUntouchedShortcuts(value); save() }
+            defaults.set(4, forKey: "preferences.schema")
+        }
+    }
+    /// Moves each shortcut still on its 2.0.0 default, or on an app command Workbench no longer
+    /// takes (⌘S, ⌘W), to its presenter-first default. Any other chosen combination always wins:
+    /// a new default that would take one keeps its old combination.
+    static func movingUntouchedShortcuts(_ preferences: Preferences) -> Preferences {
+        func keys(_ shortcut: Shortcut) -> [UInt32] { [shortcut.keyCode, shortcut.modifiers] }
+        let untouched = Action.allCases.filter { action in
+            guard let saved = preferences.shortcuts[action.rawValue] else { return true }
+            return saved == action.legacyDefaultShortcut || saved.enabled && !GlobalShortcutRule.allows(modifiers: saved.modifiers)
+        }
+        var taken = Set(Action.allCases.filter { !untouched.contains($0) }
+            .map { preferences.shortcut(for: $0) }.filter(\.enabled).map(keys))
+        var result = preferences
+        for action in untouched {
+            var next = action.defaultShortcut
+            if next.enabled && taken.contains(keys(next)) { next = action.legacyDefaultShortcut }
+            result.shortcuts[action.rawValue] = next
+            if next.enabled { taken.insert(keys(next)) }
+        }
+        return result
     }
     private func save() {
         do { defaults.set(try JSONEncoder().encode(value), forKey: "preferences.v1") }

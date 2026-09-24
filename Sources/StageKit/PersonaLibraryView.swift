@@ -150,7 +150,7 @@ struct PersonaLibraryView: View {
                                         Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
                                     }.fixedSize()
                                 }
-                                Text("Drag Size toward the left for a smaller card. Hide removes it from the screen, not your saved personas. ⌃⌥I shows or hides; ⌃⌥← / → switches cards.")
+                                Text("Drag Size toward the left for a smaller card. Hide removes it from the screen, not your saved personas." + (library.shortcutHint.map { " " + $0 } ?? ""))
                                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {

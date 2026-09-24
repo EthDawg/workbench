@@ -24,7 +24,7 @@ public enum ToolbarGallery {
         switch tool {
         case .dictate: return .assigned("⌃⌥Space")
         case .snapAndTalk: return .assigned("⌃⌥\\")
-        case .annotate: return .assigned("⌃⌥D")
+        case .annotate: return .assigned("⌃⌥S")
         case .present, .persona, .read, .timer: return .off
         }
     }

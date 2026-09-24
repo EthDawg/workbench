@@ -278,8 +278,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if event.keyCode == 53 { self.finishEditing(); return nil }
             var shortcut = VoiceShortcut(event: event)
             if event.keyCode == 51 && shortcut.modifiers == 0 { shortcut.enabled = false }
-            else if shortcut.modifiers & UInt32(controlKey | optionKey | cmdKey) == 0 {
-                self.model.shortcutRecordingMessage = "Include Control, Option, or Command."; return nil
+            else if shortcut.modifiers & UInt32(controlKey | optionKey) == 0 {
+                self.model.shortcutRecordingMessage = "Include Control or Option."; return nil
             }
             if shortcut.enabled && [UInt32(1), 2, 3, 4, 5, 6, 7].contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Workbench."; return nil }
             var candidate = self.model.preferences

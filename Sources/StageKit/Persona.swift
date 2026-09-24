@@ -231,6 +231,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
     @Published private(set) var sessionState = PersonaSessionViewState()
     @Published var selectedID: UUID? { didSet { if !applyingArchive { select(previous: oldValue) } } }
     @Published var notice: String?
+    /// Live persona keys for help text, set by the shortcut owner.
+    @Published var shortcutHint: String?
     @Published private(set) var overlayVisible = false
     @Published private(set) var overlayLocked = false
     @Published private(set) var overlayWidth = 0.16

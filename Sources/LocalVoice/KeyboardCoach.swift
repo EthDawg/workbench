@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import StageKit
 import SwiftUI
 
 /// One shortcut catalogue for every Workbench module. The owner persists changes transactionally.
@@ -20,7 +21,7 @@ enum ShortcutConflict {
     static func message(for candidate: VoiceShortcut, replacing id: String, in entries: [ShortcutEntry]) -> String? {
         guard candidate.enabled else { return nil }
         guard candidate.modifiers & UInt32(controlKey | optionKey | cmdKey) != 0 else {
-            return "Include Control, Option or Command so ordinary typing stays available."
+            return "Include Control or Option so ordinary typing stays available."
         }
         guard candidate.modifiers & ~supportedModifiers == 0 else { return "Choose Control, Option, Shift or Command with a key." }
         if let other = entries.first(where: { $0.id != id && $0.shortcut.enabled && $0.shortcut.keyCode == candidate.keyCode && $0.shortcut.modifiers == candidate.modifiers }) {
@@ -29,7 +30,7 @@ enum ShortcutConflict {
         if let owner = systemUse(candidate) {
             return "\(candidate.label) is commonly used for \(owner). Choose another combination to keep that Mac control available."
         }
-        return nil
+        return GlobalShortcutRule.problem(label: candidate.label, modifiers: candidate.modifiers)
     }
 
     /// A small, explicit policy for familiar Mac controls. macOS does not expose a complete

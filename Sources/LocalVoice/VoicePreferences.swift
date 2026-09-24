@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import StageKit
 
 enum CaptureMode: String, Codable, CaseIterable { case toggle = "Toggle", hold = "Press & hold" }
 enum DeliveryMode: String, Codable, CaseIterable { case paste = "Paste automatically", clipboard = "Copy to clipboard" }
@@ -39,14 +40,18 @@ struct VoiceShortcut: Codable, Equatable {
 struct VoicePreferences: Codable, Equatable {
     static let defaultReadbackShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_Backslash))
     static let legacyReadbackShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_R))
+    // Saved resources and Switch to start off: ⌃⌥J and ⌃⌥G are Rectangle and Magnet window keys,
+    // and neither is a presenter's everyday action. Each is one recording away in Keyboard.
+    static let defaultLibraryShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_J), enabled: false)
+    static let defaultPresenterShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_G), enabled: false)
     var cleanup = CleanupStyle.light
     var capture = CaptureMode.toggle
     var delivery = DeliveryMode.paste
     var dictationShortcut = VoiceShortcut()
     var controlsShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_V))
     // Optional decoding preserves pre-library preferences without resetting dictation.
-    var libraryShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
-    var presenterShortcut: VoiceShortcut? = VoiceShortcut(keyCode: UInt32(kVK_ANSI_G))
+    var libraryShortcut: VoiceShortcut? = VoicePreferences.defaultLibraryShortcut
+    var presenterShortcut: VoiceShortcut? = VoicePreferences.defaultPresenterShortcut
     // Optional decoding preserves preferences written before Snap & Talk sessions existed.
     var readbackShortcut: VoiceShortcut? = VoicePreferences.defaultReadbackShortcut
     // New utility bindings are opt-in; earlier assignments remain unchanged.
@@ -58,8 +63,8 @@ struct VoicePreferences: Codable, Equatable {
         case 6: readingShortcut ?? VoiceShortcut(enabled: false)
         case 7: presentationShortcut ?? VoiceShortcut(enabled: false)
         case 1: dictationShortcut
-        case 4: presenterShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_G))
-        case 3: libraryShortcut ?? VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+        case 4: presenterShortcut ?? Self.defaultPresenterShortcut
+        case 3: libraryShortcut ?? Self.defaultLibraryShortcut
         case 5: readbackShortcut ?? Self.defaultReadbackShortcut
         default: controlsShortcut
         }
@@ -83,9 +88,32 @@ struct VoicePreferences: Codable, Equatable {
         }
         return preferences
     }
-    static func load() -> VoicePreferences {
-        if let data = UserDefaults.standard.data(forKey: key), let saved = try? JSONDecoder().decode(Self.self, from: data) { return migratingLegacyDefaults(saved) }
-        return VoicePreferences()
+    static let shortcutRevisionKey = "voicePreferences.shortcutRevision"
+    /// Runs once: turns off the 2.0.0 ⌃⌥J and ⌃⌥G defaults and returns any app command Workbench
+    /// no longer takes (⌘3) to its default. Any other chosen combination is kept.
+    static func movingUntouchedShortcuts(_ preferences: VoicePreferences) -> VoicePreferences {
+        var preferences = preferences
+        if preferences.libraryShortcut == VoiceShortcut(keyCode: UInt32(kVK_ANSI_J)) { preferences.libraryShortcut = defaultLibraryShortcut }
+        if preferences.presenterShortcut == VoiceShortcut(keyCode: UInt32(kVK_ANSI_G)) { preferences.presenterShortcut = defaultPresenterShortcut }
+        for id in UInt32(1)...7 where preferences.shortcut(id).enabled && !GlobalShortcutRule.allows(modifiers: preferences.shortcut(id).modifiers) {
+            preferences.setShortcut(VoicePreferences().shortcut(id), for: id)
+        }
+        return preferences
     }
-    func save() { if let data = try? JSONEncoder().encode(self) { UserDefaults.standard.set(data, forKey: Self.key) } }
+    static func load(from defaults: UserDefaults = .standard) -> VoicePreferences {
+        guard let data = defaults.data(forKey: key), let saved = try? JSONDecoder().decode(Self.self, from: data) else {
+            // Fresh settings already hold the current defaults.
+            defaults.set(1, forKey: shortcutRevisionKey)
+            return VoicePreferences()
+        }
+        var preferences = migratingLegacyDefaults(saved)
+        if defaults.integer(forKey: shortcutRevisionKey) < 1 {
+            // Saved once, so a shortcut someone turns back on stays on.
+            preferences = movingUntouchedShortcuts(preferences)
+            preferences.save(to: defaults)
+            defaults.set(1, forKey: shortcutRevisionKey)
+        }
+        return preferences
+    }
+    func save(to defaults: UserDefaults = .standard) { if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.key) } }
 }

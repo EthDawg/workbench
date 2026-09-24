@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import StageKit
 
 final class VoiceHotkeys {
     private var handler: EventHandlerRef?
@@ -41,6 +42,7 @@ final class VoiceHotkeys {
         unregister(); failures = [:]
         for id in [UInt32(1), UInt32(2), UInt32(3), UInt32(4), UInt32(5), UInt32(6), UInt32(7)] where preferences.shortcut(id).enabled {
             let shortcut = preferences.shortcut(id)
+            if let problem = GlobalShortcutRule.problem(label: shortcut.label, modifiers: shortcut.modifiers) { failures[id] = problem; continue }
             var reference: EventHotKeyRef?
             let code = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: 0x4C564F49, id: id), GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &reference)
             if code == noErr, let reference { references[id] = reference; shortcuts[id] = shortcut }
