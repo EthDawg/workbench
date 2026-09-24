@@ -148,8 +148,10 @@ struct WorkbenchHome: View {
             if let loginError { Text(loginError).foregroundStyle(.orange) }
             Divider()
             WorkbenchUpdateSettings()
-            Divider()
-            PhotoHandoffSettings(handoff: model.photoHandoff)
+            if model.photoHandoff.isConfigured {
+                Divider()
+                PhotoHandoffSettings(handoff: model.photoHandoff)
+            }
             Divider()
             VoiceOptions(model: model, showShortcut: false)
             Button("Your dictionary") { model.page = "dictionary" }
@@ -157,7 +159,7 @@ struct WorkbenchHome: View {
             Divider()
             Button("Models and local server") { model.page = "models" }
             Button("Keyboard and practice") { model.page = "shortcuts" }
-            Text("Preview keeps its own session. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
+            Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
             Divider()
             FounderIntroductionCard(model: introduction, canDismiss: false)
         }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
