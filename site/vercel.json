@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "node --test tests/*.test.mjs && node build.mjs",
+  "buildCommand": "node --test tests/*.test.mjs && node build.mjs --require-production",
   "outputDirectory": "public",
   "headers": [
     {
