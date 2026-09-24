@@ -36,6 +36,14 @@ def verify_tag_target(tag, source):
         raise RuntimeError('Existing release tag points to different source; no write performed')
 
 
+def website_record(receipt, feed):
+    """Bind the website selection to the exact feed verified for publication."""
+    record = {key: receipt[key] for key in
+              ['channel', 'version', 'build', 'tag', 'source', 'download_url', 'sha256', 'feed_url']}
+    record['feed_sha256'] = hashlib.sha256(feed.read_bytes()).hexdigest()
+    return record
+
+
 def publish(directory, notes):
     receipt = json.loads((directory/'release.json').read_text())
     tag, filename = receipt['tag'], receipt['archive']
@@ -83,8 +91,8 @@ def publish(directory, notes):
         while block:=response.read(1024*1024): digest.update(block)
     if digest.hexdigest()!=receipt['sha256']:
         raise RuntimeError('Public download mismatch; feed has not been promoted')
-    # These are the only website files staged by this command. Site build checks
-    # use latest.json as the shared download record for each edition.
+    # These are the only website files staged by this command. The site selects
+    # production.json for the public download and preserves the Preview channel.
     destination=ROOT/'site/updates'; destination.mkdir(parents=True,exist_ok=True)
     previous=destination/feed.name
     if previous.exists():
@@ -93,7 +101,7 @@ def publish(directory, notes):
         if any(tuple(map(int,v.text.split('.'))) >= tuple(map(int,receipt['build'].split('.'))) for v in versions):
             raise RuntimeError('A newer feed is already staged. No feed replaced.')
     shutil.copy2(feed,previous)
-    (destination/(receipt['channel']+'.json')).write_text(json.dumps({k:receipt[k] for k in ['version','build','tag','source','download_url','sha256','feed_url']},indent=2)+'\n')
+    (destination/(receipt['channel']+'.json')).write_text(json.dumps(website_record(receipt, feed),indent=2)+'\n')
     print(f'Published and verified https://github.com/{REPO}/releases/tag/{tag}')
     print('Signed feed and download record staged in site/updates. Commit, build, deploy and verify them together.')
 

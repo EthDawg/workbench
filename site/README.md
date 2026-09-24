@@ -31,6 +31,10 @@ Vercel project: `less-go/workbench-mac`, framework Other. Direct CLI deployment 
 
 Publish reviewed source with `vercel deploy --prod --yes --scope less-go --cwd site` from the repository root. Do not upload `.env` files.
 
-The build publishes only an explicit allowlist. Binaries remain on GitHub. Update the versioned download links, checksum links, and `apps` versions in `report.mjs` together, after verifying the release assets. Do not use a moving latest-download URL for a checksum or version-specific trial.
+The build publishes only an explicit allowlist. Binaries remain on GitHub. `scripts/release/publish_update.py` verifies the released package and public download before staging each edition's signed XML feed and JSON record in `updates/`. Those records own the download, version, release notes, checksum and feedback source links. Do not edit versions in HTML or `report.mjs`, synthesize a release record, or edit signed XML.
+
+`production.json` selects **Workbench** as the public product as soon as it exists. The build validates its edition, version, immutable archive URL, source, checksum and exact signed-feed digest; an invalid or incomplete production record stops the build. Preview retains its own record and feed for contributors. Before the first production release, an ordinary build truthfully retains the existing Preview download.
+
+For production promotion, run `node --test tests/*.test.mjs` and `node build.mjs --require-production` from `site/`. The explicit gate refuses a Preview fallback. Commit the verified `production.json` and `production.xml` together, deploy that commit to the existing production site, then check the public ZIP digest, `/updates/production.xml`, download link and feedback source version agree. The generated browser `release.mjs` and HTML use the same selected record; no browser fetch or separate version edit is needed. Keep the published ZIP immutable and never use a moving latest-download URL for a checksum or trial.
 
 Feedback remains in page memory until the user copies it or explicitly opens GitHub. Generated report content is rendered with `textContent`, not HTML. Editing a field invalidates an earlier preview. A long issue URL falls back to copy/paste. Clipboard-denied environments get a selectable fallback. No actual issue is submitted by the website.

@@ -13,6 +13,25 @@ import publish_update
 import preview
 
 class UpdatesTests(unittest.TestCase):
+    def test_website_record_binds_each_edition_to_the_verified_feed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            feed = Path(directory) / 'production.xml'
+            feed.write_bytes(b'synthetic feed fixture; not a signed release')
+            for channel, tag, filename in [('production', 'v2.0.0', 'Workbench.zip'),
+                                           ('preview', 'v2.0.0-preview.5', 'Workbench.Preview.zip')]:
+                receipt = dict(channel=channel, version='2.0.0', build='5', tag=tag,
+                               source='a'*40, sha256='b'*64,
+                               download_url=f'https://github.com/EthDawg/workbench/releases/download/{tag}/{filename}',
+                               feed_url=f'https://workbench-mac.vercel.app/updates/{channel}.xml',
+                               notarization='private-packaging-evidence')
+                record = publish_update.website_record(receipt, feed)
+                self.assertEqual(record['channel'], channel)
+                self.assertEqual(record['download_url'], receipt['download_url'])
+                self.assertEqual(record['feed_sha256'], hashlib.sha256(feed.read_bytes()).hexdigest())
+                self.assertNotIn('notarization', record)
+                feed.write_bytes(feed.read_bytes() + b' changed')
+                self.assertNotEqual(record['feed_sha256'], publish_update.website_record(receipt, feed)['feed_sha256'])
+
     def test_local_packages_cannot_inherit_release_feed(self):
         original = {'SUFeedURL': 'https://old.example', 'SUPublicEDKey': 'old', 'SUEnableAutomaticChecks': True}
         value = build_info.stamp(original, 'preview', source='a'*40, dirty=True, build='3')
