@@ -1,0 +1,56 @@
+name: Site
+
+# Runs on every pull request, not only those touching site/. A required check
+# that a path filter skips never reports, and the pull request waits forever.
+# It takes seconds and needs no Mac.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Daily: installed apps and store listings depend on the durable host.
+    - cron: '17 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  site:
+    name: Site
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Test
+        run: node --test tests/*.test.mjs
+      - name: Build
+        run: node build.mjs
+
+  durable-host:
+    name: Durable host keeps its promises
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Privacy policy and signed feeds answer directly
+        run: node site/scripts/verify-host.mjs --promises

@@ -32,7 +32,7 @@ The notarization workflow must verify one clean source commit, channel identity,
 
 A signed, notarized Preview may be a GitHub **prerelease** for independent testing after packaging and local regressions pass, with remaining fresh-Mac and live-workflow checks stated in its notes. Production promotion requires those acceptance checks to be completed. [Native acceptance and publication](../scripts/release/README.md#native-acceptance-and-publication) is the single policy for both channels. A successful build or synthetic speech round-trip alone does not prove first-run usability, automatic paste, device video or an audience's screen share.
 
-For website changes, run `node --test site/tests/*.test.mjs` and `node site/build.mjs`. Check installation wording, version/ref agreement and local assets. Browser interaction and mobile layout need separate evidence when exercised. Preserve the existing Vercel project and `site` root; deploy the unified site only after the matching public download is verified. Never submit synthetic QA feedback as real issues.
+For website changes, run `node --test site/tests/*.test.mjs` and `node site/build.mjs`. Check installation wording, version/ref agreement and local assets. Browser interaction and mobile layout need separate evidence when exercised. Preserve the existing Vercel project and `site` root; deploy the unified site only after the matching public download is verified. Never submit synthetic QA feedback as real issues. [site/HOSTING.md](../site/HOSTING.md) owns the host, its two addresses and what must never break for installed apps.
 
 ## App Store scope
 

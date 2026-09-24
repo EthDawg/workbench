@@ -377,7 +377,7 @@
   "sources": [
     {
       "title": "Workbench: personal scenes",
-      "url": "https://workbench-mac.vercel.app/scenes/",
+      "url": "/scenes/",
       "supports": "Mobile preparation, optional personal sync, persona snapshots and current evidence; wallpaper and voice remain independent."
     },
     {
@@ -407,7 +407,7 @@
     },
     {
       "title": "Workbench: phone connection and audio",
-      "url": "https://workbench-mac.vercel.app/phone-presenting/",
+      "url": "/phone-presenting/",
       "supports": "Native route comparison, voice rehearsal, safe handoff and current implementation evidence."
     },
     {

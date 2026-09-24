@@ -1,0 +1,18 @@
+# Owners follow what a change can break. The last matching rule wins.
+#
+# Any website change gets a second pair of eyes from the other maintainer.
+/site/                          @EthDawg @mattywhitenz
+
+# What the site promises, and what decides what people download and install,
+# goes to the release owner: signed feeds and download records, the host's
+# headers and build, the list of files that ship, the site's addresses, the
+# product contract that generates the agent brief, and release tooling.
+/site/updates/                  @EthDawg
+/site/vercel.json               @EthDawg
+/site/build.mjs                 @EthDawg
+/site/origin.mjs                @EthDawg
+/site/handbook/contract.json    @EthDawg
+/scripts/release/               @EthDawg
+
+# The rules of review themselves.
+/.github/                       @EthDawg

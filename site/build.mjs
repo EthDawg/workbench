@@ -1,6 +1,7 @@
-import { mkdir, copyFile, cp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, copyFile, cp, rm, readFile, readdir, writeFile } from 'node:fs/promises';
 import { renderPublishedRelease } from './release.mjs';
 import { renderHandbook, validateContract, agentBrief } from './handbook/render.mjs';
+import { pagePath, withCanonical } from './origin.mjs';
 // Explicit allowlist: source tests, host configuration and local files never ship.
 await rm(new URL('./public/',import.meta.url),{recursive:true,force:true});
 await mkdir(new URL('./public/guide/',import.meta.url),{recursive:true});
@@ -25,5 +26,12 @@ for (const name of ['handbook.css', 'handbook.mjs']) await copyFile(new URL(`han
 for (const name of ['index.html', 'guide/index.html']) {
     const path = new URL(`public/${name}`, import.meta.url);
     await writeFile(path, renderPublishedRelease(await readFile(path, 'utf8')));
+}
+// Every published page names one canonical address, so a second host name
+// serving the same deployment never competes with the first in search.
+const publicDir = new URL('./public/', import.meta.url);
+for (const file of (await readdir(publicDir, { recursive: true })).filter(name => name.endsWith('.html')).sort()) {
+    const path = new URL(file, publicDir);
+    await writeFile(path, withCanonical(await readFile(path, 'utf8'), pagePath(file)));
 }
 console.log('Built static Workbench site in site/public');
