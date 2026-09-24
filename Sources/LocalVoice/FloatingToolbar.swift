@@ -66,7 +66,7 @@ struct FloatingToolbar: View {
         case .persona:
             trailing = .status(stage.personaStatus); busy = stage.hasActivePersona
         case .timer:
-            trailing = .status(stage.isTimerRunning ? stage.timerText : ""); busy = stage.isTimerRunning
+            trailing = .status(stage.hasTimerSession ? stage.timerText : ""); busy = stage.hasActiveTimer
         case .read:
             if model.rendering { trailing = .status("Preparing audio"); busy = true }
             else if model.playing || model.paused {

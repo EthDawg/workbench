@@ -228,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 reading: self.model.rendering || self.model.playing || self.model.paused || self.model.promptInsertion.running,
                 capture: self.readback.blocksDictation || self.stage.isTakingScreenshot,
                 presentation: self.stage.isPresenting || self.stage.hasActivePersona, drawing: self.stage.isDrawing,
-                timer: self.stage.isTimerRunning,
+                timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
         }
         WorkbenchUpdates.shared.start()

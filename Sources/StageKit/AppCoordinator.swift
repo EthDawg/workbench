@@ -600,6 +600,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         palette?.setFrameOrigin(NSPoint(x: frame.midX - 335, y: frame.minY + 28))
         palette?.alphaValue = 1; palette?.ignoresMouseEvents = false; palette?.orderFrontRegardless()
     }
+    var hasActiveTimer: Bool { timerSessionStarted && !timerFinished }
     func toggleTimer() {
         guard mayBeginInteraction?() != false else { return }
         hideQuickControls()

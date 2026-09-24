@@ -55,7 +55,7 @@ struct WorkbenchControlState {
     var playing = false
     var paused = false
     var overlays = false
-    var timerRunning = false
+    var timerStarted = false
 
     func enabled(_ tool: WorkbenchControlTool) -> Bool {
         switch tool {
@@ -67,7 +67,7 @@ struct WorkbenchControlState {
         case .present: return presenting || mayPresent
         case .read: return true
         case .persona: return overlays || mayPresent
-        case .timer: return timerRunning || mayPresent
+        case .timer: return timerStarted || mayPresent
         }
     }
     func actionTitle(_ tool: WorkbenchControlTool) -> String {
@@ -84,7 +84,7 @@ struct WorkbenchControlState {
         case .annotate: return drawing ? "Done drawing" : "Draw on screen"
         case .present: return presenting ? "End scene" : "Start scene"
         case .persona: return overlays ? "End Overlays" : "Show Persona"
-        case .timer: return timerRunning ? "Show or hide timer" : "Start Timer"
+        case .timer: return timerStarted ? "Show or hide timer" : "Start Timer"
         case .read: return rendering ? "Cancel generation" : playing ? "Pause reading" : paused ? "Resume reading" : "Open reading"
         }
     }
@@ -108,7 +108,7 @@ struct WorkbenchControlContext {
             drawing: stage.isDrawing, presenting: stage.isPresenting,
             mayDraw: stage.mayBeginDrawing?() ?? stage.mayBeginInteraction?() ?? true,
             mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
-            overlays: stage.hasActivePersona, timerRunning: stage.isTimerRunning)
+            overlays: stage.hasActivePersona, timerStarted: stage.hasTimerSession)
     }
     func shortcut(_ tool: WorkbenchControlTool) -> String? {
         switch tool {
@@ -155,7 +155,7 @@ struct WorkbenchControlContext {
         case .annotate: return stage.isDrawing ? stage.drawingToolTitle + " · Done keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
         case .present: return stage.isPresenting ? "Scene stays live while you use other tools." : "Present your selected device scene."
         case .persona: return stage.hasActivePersona ? "Adjust the current overlays without ending the device scene." : "Show a prepared persona. Organise cards in Workbench."
-        case .timer: return stage.isTimerRunning ? stage.timerText : "Start your saved timer."
+        case .timer: return stage.hasTimerSession ? stage.timerText : "Start your saved timer."
         case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }
     }

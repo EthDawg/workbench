@@ -41,6 +41,10 @@ enum WorkbenchControlChecks {
         try check(!state.enabled(.snap), "screen capture cannot be re-entered")
         state = WorkbenchControlState(); state.hasSession = true
         try check(state.actionTitle(.snap) == "Capture next", "an existing session continues instead of starting another")
+        state = WorkbenchControlState(); state.timerStarted = true
+        try check(state.actionTitle(.timer) == "Show or hide timer", "a paused or finished timer keeps its existing-session action")
+        state.timerStarted = false
+        try check(state.actionTitle(.timer) == "Start Timer", "a reset timer offers a new start")
         for phase in [AppModel.Phase.idle, .requesting, .recording, .transcribing, .cleaning] {
             try check(WorkbenchDrawingAdmission.allows(phase: phase, suspended: false, capturingScreen: false, terminating: false),
                       "annotation can coexist with \(phase.rawValue)")

@@ -171,6 +171,8 @@ public final class StageKitController: ObservableObject {
     public var canStepOverlays: Bool { coordinator.demoScenes.personas.sessionState.groups.count > 1 }
     public var timerText: String { coordinator.timerText }
     public var isTimerRunning: Bool { coordinator.timerRunning }
+    public var hasTimerSession: Bool { coordinator.timerSessionStarted }
+    public var hasActiveTimer: Bool { coordinator.hasActiveTimer }
     public var notice: String? { coordinator.notice ?? coordinator.settings.notice ?? coordinator.demoScenes.notice }
 
     public func start() {
