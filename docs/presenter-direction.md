@@ -1,5 +1,7 @@
 # Presenter direction: return to the right place
 
+> **Paused — 24 September 2026.** Chrome extension development and distribution work are paused until the Mac experience meets the release quality bar. The adapter source, setup procedure and historical evidence remain available for reference; they are not an active Chrome release or testing invitation. This pause does not remove Mac Saved resources, persona overlays or [connected-phone presentation guidance](phone-presenting.md).
+
 The selected increment is **Switch to**: save a named demo tab in its Chrome profile, then return to it from the browser or Workbench’s native picker. “Manager” should bring forward the prepared Manager tab while the presenter moves between browser, slides, a native app and a mirrored phone. Workbench activates the destination; it does not certify the signed-in account or control the phone.
 
 This extends Saved resources. It does not introduce a second library, a presales platform, or a new app lifecycle. The current branch implements the browser adapter and native picker. Public Preview 3 predates them; build, installed acceptance, review and publication are separate states.

@@ -13,3 +13,4 @@
 - [ ] I reviewed the diff and included no private data or generated build products.
 - [ ] I followed docs/updating.md and identified the source revision and installed build actually tested.
 - [ ] I distinguished source checks, installed acceptance and published delivery; release changes preserve the signing identity, data and update edition.
+- [ ] For visible changes, I followed the [product contract](https://github.com/EthDawg/workbench/blob/main/docs/workbench.md): named the primary surface, reused existing controls, checked click/keyboard access and icon labels, and updated the owning guide or explained why it is unchanged.

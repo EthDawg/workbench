@@ -1,5 +1,7 @@
 # Workbench on iPhone and iPad
 
+> **Paused — 24 September 2026.** iPhone and iPad development and distribution work are paused until the Mac experience meets the release quality bar. This document preserves the mobile source contract, build procedures and historical evidence; it is not a current release or testing invitation. Workbench for Mac is the active product. See [installation and updates](updating.md).
+
 Native **iOS/iPadOS 26+ Preview**, not a published App Store or TestFlight release. This document owns mobile scope, build instructions and platform limits. The [personal-scenes contract](research/personal-scenes.md) owns the shared scene architecture and preservation rules; the [public scene evidence](https://workbench-mac.vercel.app/scenes/#evidence) is the current cross-device acceptance view. The Mac remains a separate native target. GitHub issues remain the contribution queue.
 
 ## The useful mobile baseline

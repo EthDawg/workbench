@@ -1,6 +1,19 @@
 import { mkdir, copyFile, cp, rm, readFile, writeFile } from 'node:fs/promises';
-import { renderPublishedRelease } from './release.mjs';
+import { createHash } from 'node:crypto';
+import { renderPublishedRelease, currentRelease } from './release.mjs';
 import { renderHandbook, validateContract, agentBrief } from './handbook/render.mjs';
+if (process.argv.slice(2).some(argument => argument !== '--require-production')) throw new Error('Unknown site build option');
+if (process.argv.includes('--require-production') && currentRelease.channel !== 'production') {
+    throw new Error('Production promotion requires a verified production.json and signed production.xml');
+}
+// publish_update.py stages the feed and record only after public asset readback.
+// Refuse an incomplete promotion before removing the previous build output.
+if (currentRelease.feed_url) {
+    const feed = await readFile(new URL(`updates/${currentRelease.channel}.xml`, import.meta.url));
+    if (createHash('sha256').update(feed).digest('hex') !== currentRelease.feed_sha256) {
+        throw new Error('Signed update feed differs from the verified publication record');
+    }
+}
 // Explicit allowlist: source tests, host configuration and local files never ship.
 await rm(new URL('./public/',import.meta.url),{recursive:true,force:true});
 await mkdir(new URL('./public/guide/',import.meta.url),{recursive:true});
@@ -11,8 +24,16 @@ await mkdir(new URL('./public/scenes/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/personas/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/phone-presenting/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/scenes/ambient/',import.meta.url),{recursive:true});
-for (const name of ['index.html','privacy.html','style.css','app.mjs','report.mjs','release.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
-await cp(new URL('updates/',import.meta.url),new URL('public/updates/',import.meta.url),{recursive:true});
+for (const name of ['index.html','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
+await mkdir(new URL('./public/updates/', import.meta.url), { recursive: true });
+for (const channel of ['production', 'preview']) for (const extension of ['json', 'xml']) {
+    try {
+        await copyFile(new URL(`updates/${channel}.${extension}`, import.meta.url), new URL(`public/updates/${channel}.${extension}`, import.meta.url));
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+    }
+}
+await writeFile(new URL('./public/release.mjs', import.meta.url), `export const currentRelease = Object.freeze(${JSON.stringify(currentRelease)});\n`);
 await cp(new URL('assets/',import.meta.url),new URL('public/assets/',import.meta.url),{recursive:true});
 const contract = validateContract(JSON.parse(await readFile(new URL('./handbook/contract.json', import.meta.url), 'utf8')));
 const template = await readFile(new URL('./handbook/index.html', import.meta.url), 'utf8');
@@ -26,4 +47,4 @@ for (const name of ['index.html', 'guide/index.html']) {
     const path = new URL(`public/${name}`, import.meta.url);
     await writeFile(path, renderPublishedRelease(await readFile(path, 'utf8')));
 }
-console.log('Built static Workbench site in site/public');
+console.log(`Built Workbench site for ${currentRelease.channel} ${currentRelease.tag} (build ${currentRelease.build}) in site/public`);
