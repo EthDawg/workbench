@@ -132,11 +132,8 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
 #if !APP_STORE
 extension WorkbenchUpdates: SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     func allowedSystemProfileKeys(for updater: SPUUpdater) -> [String]? { [] }
-    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
-        if activity().busy {
-            throw NSError(domain: "WorkbenchUpdates", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updates will wait until your current activity is finished."])
-        }
-    }
+    // A refused scheduled check consumes Sparkle's whole check interval. Let
+    // quiet checks proceed; manual actions and final restart keep their gates.
     var supportsGentleScheduledUpdateReminders: Bool { true }
     func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool { false }
     func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {

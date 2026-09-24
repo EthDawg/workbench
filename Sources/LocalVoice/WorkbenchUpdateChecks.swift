@@ -15,7 +15,8 @@ enum WorkbenchUpdateChecks {
         try require(!WorkbenchBuild(info: [:]).preview, "stable has no Preview badge")
         try require(release.details.contains("20260924120000") && release.details.contains("Source:"), "feedback has exact build and source")
         try require(!WorkbenchUpdateActivity().busy, "idle can update")
-        for state in [WorkbenchUpdateActivity(voice: true), WorkbenchUpdateActivity(reading: true), WorkbenchUpdateActivity(capture: true), WorkbenchUpdateActivity(presentation: true), WorkbenchUpdateActivity(drawing: true), WorkbenchUpdateActivity(timer: true), WorkbenchUpdateActivity(interaction: true)] {
+        let busyActivities = [WorkbenchUpdateActivity(voice: true), WorkbenchUpdateActivity(reading: true), WorkbenchUpdateActivity(capture: true), WorkbenchUpdateActivity(presentation: true), WorkbenchUpdateActivity(drawing: true), WorkbenchUpdateActivity(timer: true), WorkbenchUpdateActivity(interaction: true)]
+        for state in busyActivities {
             try require(state.busy, "independent live activities defer restart")
         }
         #if !APP_STORE
@@ -24,6 +25,7 @@ enum WorkbenchUpdateChecks {
         let policy = WorkbenchUpdates(build: release)
         let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
         let updater = controller.updater
+        let delegate: any SPUUpdaterDelegate = policy
         let item = SUAppcastItem.empty()
         try require(!policy.checkedCurrent && !policy.panelTitle.contains("Current"), "an unchecked build does not claim current")
         policy.updaterDidNotFindUpdate(updater)
@@ -62,15 +64,18 @@ enum WorkbenchUpdateChecks {
         try require(resumed == 1 && !policy.restartWaiting && !policy.installing, "abort clears stale handler")
         try require(!policy.standardUserDriverShouldHandleShowingScheduledUpdate(item, andInImmediateFocus: false), "scheduled update stays quiet")
         try require(!policy.standardUserDriverShouldHandleShowingScheduledUpdate(item, andInImmediateFocus: true), "foreground app still uses quiet reminder")
-        try policy.updater(updater, mayPerform: .updates)
-        busy = true
-        do {
-            try policy.updater(updater, mayPerform: .updates)
-            try require(false, "busy check must be refused")
-        } catch let error as NSError {
-            try require(error.domain == "WorkbenchUpdates", "busy check refusal comes from policy")
+        // Match Sparkle's optional-delegate dispatch without starting a network
+        // session: an absent callback admits background and information checks.
+        let admission = NSSelectorFromString("updater:mayPerformUpdateCheck:error:")
+        for state in busyActivities {
+            policy.activity = { state }
+            policy.status = ""
+            try require(!delegate.responds(to: admission), "busy background checks and probes have no activity veto")
+            policy.checkForUpdates()
+            try require(!policy.checking && policy.status == "Finish recording, reading, presenting or editing before updating.",
+                        "the manual update action still refuses every busy activity")
         }
         #endif
-        print("WORKBENCH_UPDATE_CHECKS_OK: identity, seven activity gates and restart delegate policy")
+        print("WORKBENCH_UPDATE_CHECKS_OK: identity, quiet automatic checks, seven activity gates and restart delegate policy")
     }
 }
