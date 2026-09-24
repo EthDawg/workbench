@@ -223,20 +223,22 @@ struct MacSceneSyncControls: View {
                     .font(.caption).lineLimit(2)
                 Spacer(minLength: 0)
                 Menu {
-                    if library.isEnabled {
-                        Button("Sync now") { Task { await library.refresh() } }.disabled(library.isBusy)
-                        Button("Turn off scene sync") { library.disable() }
-                    } else {
-                        Button("Use private iCloud sync") { Task { await library.enable() } }
-                            .disabled(!library.isConfigured || library.isBusy || adapter.isBlocked)
+                    if library.isConfigured {
+                        if library.isEnabled {
+                            Button("Sync now") { Task { await library.refresh() } }.disabled(library.isBusy)
+                            Button("Turn off scene sync") { library.disable() }
+                        } else {
+                            Button("Use private iCloud sync") { Task { await library.enable() } }
+                                .disabled(library.isBusy || adapter.isBlocked)
+                        }
+                        Divider()
                     }
-                    Divider()
                     Button("Retry importing previous scenes") { adapter.migratePreviousScenes() }
                     Button("Show original scene files") { NSWorkspace.shared.open(adapter.root) }
                 } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Scene sync options")
+                .menuStyle(.borderlessButton).fixedSize()
+                .accessibilityLabel(library.isConfigured ? "Scene sync options" : "Scene options")
             }
-            if !library.isConfigured { Text("iCloud needs a provisioned build. Local saving works.").font(.caption).foregroundStyle(.secondary) }
             if let error = library.error {
                 Text(error + (library.isStorageBlocked ? " Quit and reopen Workbench before editing." : ""))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
