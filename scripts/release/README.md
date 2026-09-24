@@ -56,7 +56,7 @@ Run on an interactive release Mac after quitting the installed app so it release
 
 1. Have a Developer ID Application certificate and its private key available in Keychain.
 2. Reuse an existing authenticated notarytool Keychain profile. If none exists, create one using `xcrun notarytool store-credentials Workbench` and its secure prompts. Keep passwords, private keys and signing exports out of arguments, source control and public conversations.
-3. Set the marketing version in `scripts/Info.plist`, review the work and commit it. Production uses its committed build number; the Preview builder assigns a UTC timestamp build number. Keep the channel identities above unchanged.
+3. Set the marketing version in `scripts/Info.plist`, review the work and commit it. Both editions receive a UTC timestamp build number during packaging. Keep the channel identities above unchanged.
 4. Find the public certificate fingerprint with `security find-identity -v -p codesigning`.
 5. Choose the channel explicitly when making a Preview.
 
@@ -131,7 +131,7 @@ Production promotion requires the applicable native checks below to pass on the 
 - Annotation: draw/erase/undo, pointer effects, saved boards, timer, display changes and real screen sharing.
 - Present: scene and logo persistence, USB device selection/reconnection and actual video, full-screen start/end, and the separate QuickTime/iPhone Mirroring launch paths where supported.
 - Confirm Preview preserves existing production/legacy apps and saved data. Never imply unperformed hardware or fresh-Mac tests passed.
-- Publish only the final channel ZIP and `SHA256SUMS.txt` as public download assets. Keep the release evidence with the maintainer. Download the published asset back and compare its digest before updating the landing page's matching channel link.
+- Publish the final channel ZIP, `SHA256SUMS.txt` and its public `release.json` provenance receipt. Keep submission archives and notarization logs with the maintainer. Download the published asset back and compare its digest before updating the landing page's matching channel link.
 
 To update production in place from a finished notarized release:
 
@@ -173,7 +173,7 @@ python3 scripts/release/publish_update.py --prepared .build/publish/VERSION-BUIL
   --notes /path/to/release-notes.md
 ```
 
-This requires the existing maintainer `gh` login. It refuses an existing tag/release or a source other than current main. It uploads a draft, reads back its archive, publishes, verifies the unauthenticated public download digest, then stages `site/updates/EDITION.xml` and the corresponding download record. Commit/deploy that site change together; the website build derives matching download links from the record. Verify the live signed feed and download links after deployment. Other-edition feeds remain unchanged. A failed step does not authorise overwriting an existing release: inspect the recorded GitHub state before a deliberate recovery.
+This requires the existing maintainer `gh` login. It rechecks the signed/notarized app and both update signatures, and refuses an existing release, a tag pointing to different source, mismatched version/download/checksum records, or a source other than current main. It uploads a draft, reads back its archive, publishes, verifies the unauthenticated public download digest, then stages `site/updates/EDITION.xml` and the corresponding download record. Commit/deploy that site change together; the website build derives matching download links from the record. Verify the live signed feed and download links after deployment. Other-edition feeds remain unchanged. A failed step does not authorise overwriting an existing release: inspect the recorded GitHub state before a deliberate recovery.
 
 Sparkle helpers are copied with symlinks intact and signed inside-out with their original entitlements preserved. The package includes Sparkle's license. Public builds require signed feeds and verification before archive extraction. Both Preview and production now use monotonically increasing UTC build numbers; their marketing versions remain separate human-facing labels. Preview is a separate identity, so production promotion requires a separately signed/notarized production artifact and its own native acceptance.
 
