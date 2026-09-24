@@ -16,6 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 SPARKLE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
 
 
+def validate_tag(receipt, tag):
+    match = re.fullmatch(r'v([0-9]+\.[0-9]+\.[0-9]+)(-preview\.[0-9]+)?', tag)
+    if not match or match[1] != receipt['version']:
+        raise RuntimeError('Release tag must match the packaged version')
+    if (receipt['channel'] == 'preview') != bool(match[2]):
+        raise RuntimeError('Tag and package edition differ')
+
+
 def validate_receipt(receipt, archive, info, config):
     channel = receipt.get('channel')
     expected_id = 'com.ethdawg.workbench' + ('.preview' if channel == 'preview' else '')
@@ -47,22 +55,15 @@ def validate_feed(path, receipt, url, length):
         raise RuntimeError('Feed points to different or unsigned bytes')
     if item.findtext(SPARKLE + 'minimumSystemVersion') != '14.0':
         raise RuntimeError('Feed must retain the supported macOS minimum')
+    if item.findtext(SPARKLE + 'shortVersionString') != receipt['version']:
+        raise RuntimeError('Feed display version differs from the package')
+    return enclosure.get(SPARKLE + 'edSignature')
 
 
-def prepare(directory, tag, notes, output):
-    if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-preview\.[0-9]+)?', tag):
-        raise RuntimeError('Use a semantic release tag, e.g. v2.0.0-preview.5')
-    receipt = json.loads((directory / 'release.json').read_text())
-    if (receipt['channel'] == 'preview') != ('-preview.' in tag):
-        raise RuntimeError('Tag and package edition differ')
-    config = json.loads((ROOT / 'scripts/release/updates.json').read_text())
-    name = receipt['archive']
-    if Path(name).name != name:
-        raise RuntimeError('Archive must be inside the release directory')
-    archive = directory / name
+def verify_package(receipt, archive, config):
+    """Recheck the actual signed app at both preparation and publication."""
     package = release.configuration(ROOT, preview=receipt['channel'] == 'preview')
     release.validate_archive(archive, package)
-    output.mkdir(parents=True, exist_ok=False)
     with tempfile.TemporaryDirectory(prefix='workbench-feed-') as temporary:
         extracted = Path(temporary)
         subprocess.run(['ditto', '-x', '-k', archive, extracted], check=True)
@@ -72,6 +73,18 @@ def prepare(directory, tag, notes, output):
         release.check_signature(app, receipt['team'])
         subprocess.run(['xcrun', 'stapler', 'validate', app], check=True)
         subprocess.run(['spctl', '--assess', '--type', 'execute', app], check=True)
+
+
+def prepare(directory, tag, notes, output):
+    receipt = json.loads((directory / 'release.json').read_text())
+    validate_tag(receipt, tag)
+    config = json.loads((ROOT / 'scripts/release/updates.json').read_text())
+    name = receipt['archive']
+    if Path(name).name != name:
+        raise RuntimeError('Archive must be inside the release directory')
+    archive = directory / name
+    verify_package(receipt, archive, config)
+    output.mkdir(parents=True, exist_ok=False)
     filename = name.replace(' ', '.')
     destination = output / filename
     shutil.copy2(archive, destination)

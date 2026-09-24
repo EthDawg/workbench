@@ -65,7 +65,7 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(large.height, small.height, accuracy: 1)
     }
 
-    @MainActor func testNativeWindowRetargetingOnlySettlesLatestDestination() async {
+    @MainActor func testNativeWindowRetargetingOnlySettlesLatestDestination() {
         _ = NSApplication.shared
         let panel = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 36, height: 36),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -73,12 +73,13 @@ final class ToolbarNativeTests: XCTestCase {
         defer { panel.close() }
         let motion = ToolbarWindowMotion()
         let final = NSRect(x: 200, y: 160, width: 36, height: 36)
-        let settled = expectation(description: "native animation completion")
-        settled.assertForOverFulfill = true
-        motion.settled = { settled.fulfill() }
+        var completions = 0
+        motion.settled = { completions += 1 }
         motion.move(panel, to: NSRect(x: 100, y: 100, width: 300, height: 36), animated: true)
         motion.move(panel, to: final, animated: false)
-        await fulfillment(of: [settled], timeout: 2)
+        // Assert immediately: a nonanimated replacement must settle before the
+        // caller continues, not at some later point in an asynchronous wait.
+        XCTAssertEqual(completions, 1)
         XCTAssertEqual(panel.frame, final)
         XCTAssertNil(motion.target)
     }

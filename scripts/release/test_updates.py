@@ -9,6 +9,7 @@ from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import build_info
 import prepare_update
+import publish_update
 import preview
 
 class UpdatesTests(unittest.TestCase):
@@ -72,13 +73,53 @@ class UpdatesTests(unittest.TestCase):
             path = Path(directory)/'preview.xml'
             rss = ET.Element('rss'); channel=ET.SubElement(rss,'channel'); item=ET.SubElement(channel,'item')
             ET.SubElement(item,ns+'version').text='4'
+            display = ET.SubElement(item,ns+'shortVersionString'); display.text='2.0.0'
             ET.SubElement(item,ns+'minimumSystemVersion').text='14.0'
             enclosure=ET.SubElement(item,'enclosure',{'url':'https://example.test/Workbench.Preview.zip','length':'123',ns+'edSignature':'signature-fixture'})
             ET.ElementTree(rss).write(path)
-            prepare_update.validate_feed(path,{'build':'4'},enclosure.get('url'),123)
-            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,{'build':'4'},'https://example.test/Workbench.zip',123)
-            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,{'build':'4'},enclosure.get('url'),124)
+            receipt={'build':'4','version':'2.0.0'}
+            prepare_update.validate_feed(path,receipt,enclosure.get('url'),123)
+            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,receipt,'https://example.test/Workbench.zip',123)
+            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,receipt,enclosure.get('url'),124)
+            display.text='3.0.0'; ET.ElementTree(rss).write(path)
+            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,receipt,enclosure.get('url'),123)
+            display.text='2.0.0'
             del enclosure.attrib[ns+'edSignature']; ET.ElementTree(rss).write(path)
-            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,{'build':'4'},enclosure.get('url'),123)
+            with self.assertRaises(RuntimeError): prepare_update.validate_feed(path,receipt,enclosure.get('url'),123)
+
+    def test_tag_cannot_mislabel_packaged_version_or_edition(self):
+        receipt={'channel':'preview','version':'2.0.0'}
+        prepare_update.validate_tag(receipt,'v2.0.0-preview.5')
+        for tag in ['v3.0.0-preview.5','v2.0.0','v2.0.0-preview.5/other']:
+            with self.subTest(tag=tag), self.assertRaises(RuntimeError):
+                prepare_update.validate_tag(receipt,tag)
+        prepare_update.validate_tag({'channel':'production','version':'2.0.0'},'v2.0.0')
+
+    def test_preexisting_tag_must_resolve_to_delivered_source(self):
+        tag='v2.0.0-preview.5'; source='a'*40
+        prefix={'ref':f'refs/tags/{tag}0','object':{'type':'commit','sha':'b'*40}}
+        with patch.object(publish_update,'gh',return_value=json.dumps([prefix])):
+            publish_update.verify_tag_target(tag,source)
+        actual={'ref':f'refs/tags/{tag}','object':{'type':'commit','sha':'b'*40}}
+        with patch.object(publish_update,'gh',return_value=json.dumps([actual])):
+            with self.assertRaises(RuntimeError): publish_update.verify_tag_target(tag,source)
+        actual['object']={'type':'tag','sha':'c'*40}
+        with patch.object(publish_update,'gh',side_effect=[json.dumps([actual]),json.dumps({'object':{'type':'commit','sha':source}})]):
+            publish_update.verify_tag_target(tag,source)
+
+    def test_publication_rechecks_package_before_any_remote_write(self):
+        config=json.loads((build_info.ROOT/'scripts/release/updates.json').read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary); name='Workbench.Preview.zip'; tag='v2.0.0-preview.5'
+            archive=directory/name; archive.write_bytes(b'prepared package')
+            receipt=dict(archive=name,tag=tag,channel='preview',version='2.0.0',sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
+                         download_url=f'https://github.com/EthDawg/workbench/releases/download/{tag}/{name}',feed_url=config['feed_base']+'/preview.xml')
+            (directory/'release.json').write_text(json.dumps(receipt))
+            (directory/'SHA256SUMS.txt').write_text(f"{receipt['sha256']}  {name}\n")
+            with patch.object(prepare_update,'verify_package',side_effect=RuntimeError('receipt source differs from signed app')) as verify, patch.object(publish_update,'gh') as remote:
+                with self.assertRaisesRegex(RuntimeError,'receipt source differs'):
+                    publish_update.publish(directory,directory/'notes.md')
+                verify.assert_called_once()
+                remote.assert_not_called()
 
 if __name__ == '__main__': unittest.main()

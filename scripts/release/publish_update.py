@@ -22,19 +22,41 @@ def gh(*args):
     return subprocess.check_output(['gh', *map(str,args)], text=True)
 
 
+def verify_tag_target(tag, source):
+    refs = json.loads(gh('api', f'repos/{REPO}/git/matching-refs/tags/{tag}'))
+    ref = next((r for r in refs if r['ref'] == f'refs/tags/{tag}'), None)
+    if ref is None:
+        return  # release create will create it at the supplied source
+    target = ref['object']
+    for _ in range(8):
+        if target['type'] != 'tag':
+            break
+        target = json.loads(gh('api', f"repos/{REPO}/git/tags/{target['sha']}"))['object']
+    if target['type'] != 'commit' or target['sha'] != source:
+        raise RuntimeError('Existing release tag points to different source; no write performed')
+
+
 def publish(directory, notes):
     receipt = json.loads((directory/'release.json').read_text())
     tag, filename = receipt['tag'], receipt['archive']
     if Path(filename).name != filename:
         raise RuntimeError('Unexpected asset filename')
+    prepare_update.validate_tag(receipt, tag)
     archive = directory/filename
     if hashlib.sha256(archive.read_bytes()).hexdigest() != receipt['sha256']:
         raise RuntimeError('Prepared archive changed')
     feed = directory/(receipt['channel']+'.xml')
-    prepare_update.validate_feed(feed, receipt, receipt['download_url'], archive.stat().st_size)
     config=json.loads((ROOT/'scripts/release/updates.json').read_text())
+    expected_url = f'https://github.com/{REPO}/releases/download/{tag}/{filename}'
+    if receipt['download_url'] != expected_url or receipt['feed_url'] != config['feed_base'] + '/' + feed.name:
+        raise RuntimeError('Prepared download or feed URL differs from the release identity')
+    if (directory/'SHA256SUMS.txt').read_text() != f"{receipt['sha256']}  {filename}\n":
+        raise RuntimeError('Prepared checksum record differs from the archive')
+    prepare_update.verify_package(receipt, archive, config)
+    signature=prepare_update.validate_feed(feed, receipt, expected_url, archive.stat().st_size)
     signer=ROOT/'.build/artifacts/sparkle/Sparkle/bin/sign_update'
     subprocess.run([signer,'--account',config['keychain_account'],'--verify',feed],check=True)
+    subprocess.run([signer,'--account',config['keychain_account'],'--verify',archive,signature],check=True)
     # Never create duplicate releases or overwrite already published assets.
     listing=[r for page in json.loads(gh('api',f'repos/{REPO}/releases','--paginate','--slurp')) for r in page]
     existing=next((r for r in listing if r['tag_name']==tag),None)
@@ -43,6 +65,7 @@ def publish(directory, notes):
     current=json.loads(gh('api',f'repos/{REPO}/branches/main'))['commit']['sha']
     if current != receipt['source']:
         raise RuntimeError('Release source must be current integrated main before publication')
+    verify_tag_target(tag, receipt['source'])
     command=['release','create',tag,'--repo',REPO,'--target',receipt['source'],
              '--title',f"Workbench {receipt['version']}" + (' Preview' if receipt['channel']=='preview' else ''),
              '--notes-file',str(notes),'--draft']
