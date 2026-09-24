@@ -211,8 +211,8 @@ enum ReadbackStore {
         return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }
 
-    static func createPrivateDirectory(_ url: URL) throws {
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    static func createPrivateDirectory(_ url: URL, includingParents: Bool = true) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: includingParents, attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     }
 
@@ -284,6 +284,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var sessionURL: URL?
     @Published private(set) var manifest: ReadbackManifest?
     @Published private(set) var recentSessionURLs: [URL] = []
+    @Published private(set) var unavailableSessions: [URL: String] = [:]
+    var currentSessionProblem: String? { sessionURL.flatMap { unavailableSessions[$0.standardizedFileURL] } }
     @Published private(set) var isCapturing = false
     @Published private(set) var isRecording = false
     @Published private(set) var recordingSectionID: UUID?
@@ -335,9 +337,70 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             enqueuePending(in: recent)
         }
         Task { [weak self] in self?.resumeRecentJobs() }
+        refreshSessionAvailability()
+    }
+
+    func refreshSessionAvailability() {
+        let wasUnavailable = currentSessionProblem != nil
+        var problems: [URL: String] = [:]
+        for url in Set(recentSessionURLs + [sessionURL].compactMap({ $0 })) {
+            if let problem = ReadbackAvailability.problem(at: url) { problems[url.standardizedFileURL] = problem }
+        }
+        if wasUnavailable, let root = sessionURL, problems[root.standardizedFileURL] == nil {
+            do {
+                let restored = try ReadbackStore.load(from: root)
+                guard restored.id == manifest?.id else { throw ReadbackError.message("A different session now occupies this folder. Open it explicitly to switch sessions.") }
+                publish(restored, for: root)
+            } catch { problems[root.standardizedFileURL] = error.localizedDescription }
+        }
+        if unavailableSessions != problems { unavailableSessions = problems }
+    }
+
+    func forgetRecentSession(_ url: URL) {
+        let root = url.standardizedFileURL
+        guard sessionURL != root || (!isRecording && !isCapturing) else {
+            notice = "Finish the current capture before removing this entry."; return
+        }
+        if sessionURL == root { closeSession() }
+        recentSessionURLs.removeAll { $0.standardizedFileURL == root }
+        defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
+        unavailableSessions.removeValue(forKey: root)
+        // Forgetting a shortcut never deletes media or cancels independent jobs.
+    }
+
+    func locateSession(_ oldURL: URL) {
+        guard !isRecording, !isCapturing, !hasPendingTranscriptions else {
+            notice = "Finish capture and transcription before locating a moved session."; return
+        }
+        let panel = NSOpenPanel()
+        panel.title = "Locate Snap & Talk Session"
+        panel.prompt = "Use Folder"
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        _ = relinkSession(oldURL, to: url)
+    }
+
+    @discardableResult
+    func relinkSession(_ oldURL: URL, to url: URL) -> Bool {
+        guard !isRecording, !isCapturing, !hasPendingTranscriptions else { return false }
+        do {
+            let loaded = try ReadbackStore.load(from: url)
+            if sessionURL == oldURL.standardizedFileURL, let manifest, loaded.id != manifest.id {
+                throw ReadbackError.message("That is a different session. Choose the moved folder, or use Open folder to switch sessions.")
+            }
+            setCurrent(url: url, manifest: recovered(loaded, at: url))
+            if oldURL.standardizedFileURL != url.standardizedFileURL {
+                recentSessionURLs.removeAll { $0.standardizedFileURL == oldURL.standardizedFileURL }
+                defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
+            }
+            refreshSessionAvailability(); enqueuePending(in: url)
+            notice = "Session folder located. No files were moved or deleted."
+            return true
+        } catch { notice = "The session could not be located. \(error.localizedDescription)"; return false }
     }
 
     func refreshPermissionState() {
+        refreshSessionAvailability()
         screenPermissionGranted = CGPreflightScreenCaptureAccess()
         microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         stateChanged()
@@ -391,9 +454,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         sessionURL = nil; manifest = nil; transcriptDrafts = [:]; notice = nil
     }
 
-    func revealSession() { if let sessionURL { NSWorkspace.shared.activateFileViewerSelecting([sessionURL]) } }
+    func revealSession() {
+        refreshSessionAvailability()
+        if let sessionURL, currentSessionProblem == nil { NSWorkspace.shared.activateFileViewerSelecting([sessionURL]) }
+    }
 
     func handOff(to target: ReadbackHandoffTarget) {
+        refreshSessionAvailability()
+        guard currentSessionProblem == nil else { notice = "Locate this session folder before handing it off."; return }
         guard let sessionURL else { notice = "Create or open a Snap & Talk session first."; return }
         guard TextDelivery.copy(target.prompt(for: sessionURL)) != nil else {
             notice = "The handoff prompt could not be copied. The session was not sent anywhere."
@@ -449,6 +517,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard !isCapturing, !isRecording else { return }
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
         guard let root = sessionURL, manifest != nil else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
+        refreshSessionAvailability()
+        guard currentSessionProblem == nil else { notice = "Locate this session folder before capturing another section."; return }
         guard permissionsReady else { notice = "Snap & Talk needs Screen Recording and Microphone access first."; stateChanged(); return }
         isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
         do {
@@ -457,9 +527,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             guard sessionURL?.standardizedFileURL == root.standardizedFileURL else {
                 throw ReadbackError.message("The session changed during capture. Capture again in the selected session.")
             }
+            // The folder can disappear while ScreenCaptureKit awaits a frame.
+            // Reload before creating UUID directories, so capture never recreates it.
+            guard try ReadbackStore.load(from: root).id == manifest?.id else {
+                throw ReadbackError.message("The session folder changed during capture. Open the session again.")
+            }
             let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
             let folder = try ReadbackStore.safeURL(root: root, relative: directory)
-            try ReadbackStore.createPrivateDirectory(folder)
+            try ReadbackStore.createPrivateDirectory(folder, includingParents: false)
             let screenshot = directory + "/screen.png"
             try ReadbackStore.writePrivate(capture.data, to: ReadbackStore.safeURL(root: root, relative: screenshot))
             let section = ReadbackSection(id: id, capturedAt: Date(), displayName: capture.displayName, directory: directory,
@@ -470,6 +545,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             do { try startNarration(root: root, sectionID: id) }
             catch { markNeedsNarration(root: root, sectionID: id, message: error.localizedDescription) }
         } catch {
+            refreshSessionAvailability()
             isCapturing = false; notice = "The screen was not captured. \(error.localizedDescription)"; stateChanged()
         }
     }
@@ -847,6 +923,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         var paths = recentSessionURLs.map(\.standardizedFileURL).filter { $0 != url.standardizedFileURL }
         paths.insert(url.standardizedFileURL, at: 0); recentSessionURLs = Array(paths.prefix(12))
         defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
+        refreshSessionAvailability()
     }
 
     private func publish(_ value: ReadbackManifest, for root: URL) {
