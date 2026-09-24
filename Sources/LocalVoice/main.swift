@@ -522,9 +522,9 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--build-info":
             print(WorkbenchBuild().details)
         case "--check-updates":
-            try WorkbenchUpdateChecks.run()
+            try await WorkbenchUpdateChecks.run()
         case "--check-core":
-            try WorkbenchUpdateChecks.run()
+            try await WorkbenchUpdateChecks.run()
             try await WorkbenchControlChecks.run()
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
