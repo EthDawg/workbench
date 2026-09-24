@@ -90,7 +90,8 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
         }
         checkedCurrent = false
         if let resume = deferredInstall {
-            deferredInstall = nil; restartWaiting = false; resume(); return
+            deferredInstall = nil; restartWaiting = false; installing = true
+            resume(); return
         }
         #if !APP_STORE
         if let controller { checking = true; controller.checkForUpdates(sender) }
@@ -112,6 +113,20 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
         restartWaiting ? "Restart to update…" : availableVersion != nil ? "Review update…" : "Check for Updates…"
     }
     var canCheck: Bool { enabled || availableVersion != nil || restartWaiting }
+    func canTerminate(saveSession: () -> Bool) -> Bool {
+        // A postponed update must not intercept an ordinary user Quit. Once
+        // Sparkle resumes, recheck activity and save at the final restart gate.
+        guard installing else { return true }
+        guard !activity().busy else {
+            status = "Finish your current activity before restarting to update."
+            return false
+        }
+        guard saveSession() else {
+            status = "Update paused because your current session could not be saved."
+            return false
+        }
+        return true
+    }
 }
 
 #if !APP_STORE
@@ -143,8 +158,8 @@ extension WorkbenchUpdates: SPUUpdaterDelegate, @preconcurrency SPUStandardUserD
         if (error as NSError).code != SUError.noUpdateError.rawValue { checkedCurrent = false; status = "Update check: \(error.localizedDescription)" }
     }
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
-        installing = true
-        guard activity().busy else { return false }
+        guard activity().busy else { installing = true; return false }
+        installing = false
         deferredInstall = installHandler; restartWaiting = true
         status = "Update ready. Finish your current activity, then choose Restart to update."
         return true

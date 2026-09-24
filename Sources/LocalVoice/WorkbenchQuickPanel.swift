@@ -3,12 +3,13 @@ import SwiftUI
 import StageKit
 
 /// One compact panel, reached from the status item and the Quick Controls key.
-/// The action rows and feedback well have fixed positions while it is open.
+/// The action rows stay above receipts and inline shortcut editing.
 struct WorkbenchQuickPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var keyboard: KeyboardCoachModel
+    @ObservedObject var receipts: ClipboardReceiptModel
     @ObservedObject private var updates = WorkbenchUpdates.shared
     var open: (String) -> Void
     var draw: () -> Void
@@ -18,6 +19,11 @@ struct WorkbenchQuickPanel: View {
     var personas: () -> Void
     @State private var editingShortcut = false
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
+    private var hasFeedback: Bool {
+        editingShortcut || receipts.receipt?.isClipboardCurrent == true ||
+            !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
+            readback.notice != nil || (model.phase == .idle && !model.ready)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -39,21 +45,24 @@ struct WorkbenchQuickPanel: View {
                             .disabled(!context.state.enabled(tool) || keyboard.isInteracting)
                             .help((tool == .present && stage.isPresenting || tool == .persona && stage.hasActivePersona ? "Show live controls" : context.state.actionTitle(tool)) + ". " + context.detail(tool))
                         shortcut(tool)
-                        options(tool).frame(width: 64, alignment: .trailing)
+                        ZStack(alignment: .trailing) { options(tool) }
+                            .frame(width: 64, height: 28, alignment: .trailing)
                     }.frame(height: 34)
                 }
             }
             Divider()
-            // Receipts never appear above the tools or resize the popover.
-            Group {
+            // Feedback grows below the tools; an idle panel has no empty well.
+            if hasFeedback {
                 if editingShortcut { shortcutEditor }
                 else {
                     VStack(alignment: .leading, spacing: 5) {
-                        WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
-                            review: { model.clipboardReceipt.dismissHUD(); open("history") },
-                            showCue: { model.onCloseMenu?(); model.clipboardReceipt.revealHUD() })
-                        if model.clipboardReceipt.receipt?.isClipboardCurrent != true {
-                            Text(context.activitySummary).font(.caption).foregroundStyle(.secondary)
+                        WorkbenchClipboardShelf(receipts: receipts,
+                            review: { receipts.dismissHUD(); open("history") },
+                            showCue: { model.onCloseMenu?(); receipts.revealHUD() })
+                        if receipts.receipt?.isClipboardCurrent != true {
+                            if !context.activitySummary.isEmpty {
+                                Text(context.activitySummary).font(.caption).foregroundStyle(.secondary)
+                            }
                             if let error = model.error ?? stage.notice {
                                 Text(error).font(.caption).foregroundStyle(.orange).lineLimit(3).help(error)
                             } else if let notice = readback.notice {
@@ -64,8 +73,8 @@ struct WorkbenchQuickPanel: View {
                         }
                     }
                 }
-            }.frame(height: 108, alignment: .topLeading)
-            Divider()
+                Divider()
+            }
             HStack {
                 Button("Open Workbench") { open("home") }
                 Spacer(minLength: 8)
@@ -103,7 +112,8 @@ struct WorkbenchQuickPanel: View {
             HStack {
                 Text(keyboard.selected?.title ?? "Shortcut").font(.callout.weight(.semibold))
                 Spacer()
-                Button("Done") { keyboard.stopInteraction(); editingShortcut = false }.buttonStyle(.link)
+                Button("Done") { keyboard.stopInteraction(); editingShortcut = false }
+                    .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }
             Text(keyboard.message ?? "Choose Change to record a shortcut.")
                 .font(.caption).foregroundStyle(keyboard.hasError ? .orange : .secondary).lineLimit(3)
@@ -138,11 +148,13 @@ struct WorkbenchQuickPanel: View {
                 Button("Dictation Settings…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()
         case .read:
-            if model.rendering { Button("Cancel") { model.cancelReading() }.buttonStyle(.link) }
-            else if model.playing || model.paused { Button("Stop") { model.stopPlayback() }.buttonStyle(.link) }
+            if model.rendering { Button("Cancel") { model.cancelReading() }.buttonStyle(.plain).foregroundStyle(Workbench.accent) }
+            else if model.playing || model.paused { Button("Stop") { model.stopPlayback() }.buttonStyle(.plain).foregroundStyle(Workbench.accent) }
         case .snap:
             Button(readback.sessionURL == nil ? "Set Up" : "\(readback.activeSections.count) · Review") { open("readback") }
-                .buttonStyle(.link).help("Review captures and prepare the explicit deck handoff")
+                .font(.system(size: 10)).lineLimit(1).fixedSize()
+                .buttonStyle(.plain).foregroundStyle(Workbench.accent)
+                .help("Review captures and prepare the explicit deck handoff")
         case .annotate:
             NativeControlMenu(title: "Tools") { stage.makeAnnotationMenu() }
         case .present:

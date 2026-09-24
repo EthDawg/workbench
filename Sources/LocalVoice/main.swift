@@ -145,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
             guard let self else { return }
             if self.stage.isDrawing { self.stage.finishDrawing() }
             else { self.resumeTarget { [weak self] _ in self?.stage.draw() } }
@@ -488,15 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) { readback?.refreshPermissionState() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if WorkbenchUpdates.shared.installing && WorkbenchUpdates.shared.activity().busy {
-            WorkbenchUpdates.shared.status = "Finish your current activity before restarting to update."
-            return .terminateCancel
-        }
-        if WorkbenchUpdates.shared.installing && model?.saveBeforeUpdate() != true {
-            WorkbenchUpdates.shared.status = "Update paused because your current session could not be saved."
-            return .terminateCancel
-        }
-        return .terminateNow
+        WorkbenchUpdates.shared.canTerminate { model?.saveBeforeUpdate() == true } ? .terminateNow : .terminateCancel
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {

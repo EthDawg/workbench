@@ -56,7 +56,9 @@ final class InkColourPicker: NSObject {
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3)
         panel.showsAlpha = false; panel.color = app.settings.value.color.nsColor
         panel.setTarget(self); panel.setAction(#selector(changed(_:)))
-        panel.isContinuous = true; panel.orderFront(nil)
+        panel.isContinuous = true
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
     @objc private func changed(_ sender: NSColorPanel) {
         guard let app, app.canUseAnnotationMenuAction(.color1) else { return }
