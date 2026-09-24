@@ -719,12 +719,13 @@ final class PersonaLibrary: NSObject, ObservableObject {
         hud?.onHide = { [weak self] in self?.hideOverlay() }
         hud?.onLock = { [weak self] in self?.setOverlayLocked($0) }
         hud?.onSizeChange = { [weak self] delta in guard let self else { return }; self.setOverlayWidth(self.overlayWidth + delta) }
+        hud?.onSetSize = { [weak self] in self?.setOverlayWidth($0) }
         let candidates = candidateIDs.enumerated().compactMap { index, id -> PersonaHUDItem? in
             guard items.contains(where: { $0.id == id }) else { return nil }
             let label = liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)"
             return PersonaHUDItem(id: id, label: label, image: liveImages[id])
         }
-        hud?.show(items: candidates, selectedID: current, locked: overlayLocked, near: overlay?.window?.frame)
+        hud?.show(items: candidates, selectedID: current, locked: overlayLocked, width: overlayWidth, near: overlay?.window?.frame)
     }
     private var archive: PersonaArchive { PersonaArchive(version: archiveVersion, items: items, selectedID: selectedID, groups: groups, activeGroupID: activeGroupID, preparedGroupIDs: preparedGroupIDs) }
     private func commit(_ items: [SavedPersona], selection: UUID?) throws {

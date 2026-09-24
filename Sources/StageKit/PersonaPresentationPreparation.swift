@@ -181,9 +181,11 @@ struct PersonaPresentationPreparation: View {
             Toggle("Locked · click through", isOn: binding(item, get: { $0.placement.locked }, set: { $0.placement.locked = $1 }))
         }
         HStack {
-            Text("Size").font(.callout)
+            Text("Size · \(Int((item.placement.width * 100).rounded()))% of display width").font(.callout)
             Slider(value: binding(item, get: { $0.placement.width }, set: { $0.placement.width = $1 }), in: 0.06...0.40)
                 .accessibilityLabel("Overlay width")
+            Text("Drag left for a smaller card. Tall cards are limited to fit the screen.")
+                .font(.caption).foregroundStyle(.secondary)
             Menu("Position") {
                 ForEach(FloatingControlAnchor.allCases) { anchor in
                     Button(anchor.title) { update(item.id) { $0.placement.x = anchor.unitPoint.x; $0.placement.y = anchor.unitPoint.y } }
