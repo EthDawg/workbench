@@ -78,7 +78,7 @@ class ReleaseTests(unittest.TestCase):
                 else:
                     run.assert_called_once_with(*config["build"])
                     helper.assert_not_called()
-                    self.assertEqual(result, self.ROOT / config["archive"])
+                    self.assertEqual(result, self.ROOT / config.get("component_archive", config["archive"]))
                 self.assertEqual(release.os.environ["REQUIRE_APP_INTENTS"], "0")
 
     def test_cloud_profile_passes_only_to_preview_and_build_failure_restores_environment(self):

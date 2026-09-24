@@ -53,7 +53,7 @@ git remote rename origin upstream
 git remote add origin https://github.com/YOUR-USERNAME/workbench.git
 ```
 
-The first build downloads the pinned dependency. The default test script covers release tooling, core and integration behaviour, provider contracts/transport, keyboard practice and StageKit. It does not need a speech-model download or microphone access. The ordinary build creates the ad-hoc `dist/Workbench.zip`; it does not install an app.
+The first build downloads the pinned dependency. The default test script covers release tooling, core and integration behaviour, provider contracts/transport, keyboard practice and StageKit. It does not need a speech-model download or microphone access. The ordinary build creates the disposable ad-hoc `dist/Workbench Preview.zip`; it does not install an app.
 
 For persistent native testing, use the [signed Preview build/install commands](README.md#build-and-install-preview). A Developer ID Application identity is needed for that workflow. Quit the running Preview before installing, and quit legacy Voice/StageMark instances when checking global shortcuts. The installer preserves the previous Preview archive and saved data; it does **not** run the speech round-trip or prepare a model until the app is opened.
 
@@ -104,6 +104,10 @@ Record simulator model/OS and actual test results in the PR. Physical speech ava
 The [jobs and interaction specification](docs/product-spec.md) defines input ownership, surfaces, placement and closure. The [public guide](https://workbench-mac.vercel.app/guide/) explains them to users. Update that specification and `site/guide/index.html` alongside behavior changes.
 
 For mobile behaviour, update [the mobile contract and evidence](docs/ios-preview.md); [mobile research](docs/mobile-research.md) records the native baselines and platform constraints. Keep mobile results separate from the Mac acceptance record.
+
+## Shared installation and updates
+
+Ethan, Matt and all coding agents follow [one build, installation and release workflow](docs/updating.md). Local builds are labelled and never automatically replaced by public releases. Use Copy build details when reporting a bug or handing off a tested change.
 
 ## Send your change
 

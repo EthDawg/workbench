@@ -90,7 +90,7 @@ bash scripts/install.sh --archive "dist/Workbench Preview.zip" --no-open
 
 The Preview build needs a **Developer ID Application certificate and its private key** in Keychain. If more than one exists, select its fingerprint with `--identity`. It creates `dist/Workbench Preview.zip`; the installer places `Workbench Preview.app` in `~/Applications`. Open it when ready. The install preserves the previous Preview as `dist/Previous-Workbench Preview.zip` for rollback. Quit the running Preview before updating.
 
-Without a signing identity, `bash scripts/build.sh --preview --ad-hoc` creates a disposable development archive. The default installer requires Developer ID signing; ad-hoc packages are for disposable development testing. `bash scripts/build.sh` produces the separate, ad-hoc `dist/Workbench.zip`. Neither command alone establishes notarization or publication.
+Without a signing identity, `bash scripts/build.sh --preview --ad-hoc` creates a disposable development archive. The default installer requires Developer ID signing; ad-hoc packages are for disposable development testing. `bash scripts/build.sh` also produces a disposable Preview archive. Neither command alone establishes notarization or publication.
 
 The installer does **not** run the regression suite or speech round-trip. First-open model preparation and optional live checks are separate:
 
@@ -146,3 +146,7 @@ A useful first contribution can be a confusing instruction, an accessibility imp
 - Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed Apple Shortcuts dictation and optional Speko reading in [#10](https://github.com/EthDawg/workbench/issues/10) and [#11](https://github.com/EthDawg/workbench/issues/11).
 
 The app code is [MIT licensed](LICENSE). Third-party components retain their own licenses. Contribution credit does not imply a GitHub permission level or approval of this branch.
+
+## Staying current
+
+Published updater-enabled Mac releases check their own edition for signed updates. Use Settings → Workbench updates, and Copy build details for feedback. Older downloads need one manual upgrade. See [installation and updates](docs/updating.md) for the shared user and contributor workflow.

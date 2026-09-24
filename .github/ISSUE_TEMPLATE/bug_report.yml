@@ -20,11 +20,12 @@ body:
 3. Observe…"
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: environment
     attributes:
-      label: App version or commit, macOS version, and Mac chip
-      placeholder: "Commit abc1234, macOS 26, Apple M2"
+      label: Build details
+      description: "Use Workbench → Copy build details. For an older version, include its name, version, macOS version and Mac chip."
+      placeholder: "Workbench Preview, version and build, source revision, macOS"
     validations:
       required: true
   - type: textarea

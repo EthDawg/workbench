@@ -8,6 +8,7 @@ struct WorkbenchHome: View {
     @ObservedObject var stage: StageKitController
     @ObservedObject var keyboard: KeyboardCoachModel
     @ObservedObject var readback: ReadbackModel
+    @ObservedObject private var updates = WorkbenchUpdates.shared
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
@@ -32,8 +33,12 @@ struct WorkbenchHome: View {
                     }.buttonStyle(.plain)
                 }
                 Spacer()
+                if updates.availableVersion != nil || updates.restartWaiting {
+                    Button(updates.buttonTitle) { model.page = "settings"; updates.checkForUpdates() }
+                        .font(.caption).buttonStyle(.bordered)
+                }
                 WorkbenchAppearancePicker().controlSize(.small)
-                Text("PREVIEW · 2.0").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 10)
+                Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 10)
             }.padding(16).frame(width: 215).background(Workbench.surface.opacity(0.6))
             Divider()
             Group {
@@ -142,6 +147,8 @@ struct WorkbenchHome: View {
             }))
             if let loginError { Text(loginError).foregroundStyle(.orange) }
             Divider()
+            WorkbenchUpdateSettings()
+            Divider()
             PhotoHandoffSettings(handoff: model.photoHandoff)
             Divider()
             VoiceOptions(model: model, showShortcut: false)
@@ -163,48 +170,137 @@ struct WorkbenchQuickPanel: View {
     @ObservedObject var readback: ReadbackModel
     var open: (String) -> Void
     var draw: () -> Void
+    var snap: () -> Void
+    var present: () -> Void
     var timer: () -> Void
     var personas: () -> Void
+    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            WorkbenchHeader(title: "Workbench", subtitle: "A little less friction.", symbol: "square.stack.3d.up.fill")
-            Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Workbench").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible)
+                    .toggleStyle(.switch).controlSize(.mini).font(.system(size: 11))
+            }
+            Divider()
+            VStack(spacing: 2) {
+                ForEach(WorkbenchControlTool.allCases) { tool in
+                    HStack(spacing: 8) {
+                        Button { perform(tool) } label: {
+                            HStack(spacing: 6) {
+                                Text(actionTitle(tool)).font(.system(size: 12, weight: .medium))
+                                Spacer(minLength: 2)
+                                if tool == .snap, readback.sessionURL != nil {
+                                    Text("\(readback.activeSections.count) · " + (context.shortcut(tool) ?? ""))
+                                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                                        .accessibilityLabel("\(readback.activeSections.count) captures. " + (context.shortcut(tool) ?? ""))
+                                } else if let shortcut = context.shortcut(tool) {
+                                    Text(shortcut).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                                }
+                            }.frame(maxWidth: .infinity, minHeight: 28, alignment: .leading).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .disabled(tool == .dictate && model.waitingForDrawing ? false : !context.state.enabled(tool))
+                            .help(context.detail(tool) + (context.shortcut(tool).map { " · " + $0 } ?? ""))
+                        options(tool).font(.system(size: 11)).controlSize(.small)
+                    }
+                }
+            }
+            if readback.hasPendingTranscriptions {
+                Text("Transcribing narration…").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            if model.waitingForDrawing {
+                Text("Text saved. Finish drawing to paste, or copy it now.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            }
             WorkbenchClipboardShelf(receipts: model.clipboardReceipt, review: { model.clipboardReceipt.dismissHUD(); open("history") }, showCue: {
                 model.onCloseMenu?(); model.clipboardReceipt.revealHUD()
             })
-            Button { model.onMenuRecording?() } label: {
-                HStack { Label(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Finish dictation" : "Dictate", systemImage: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic"); Spacer(); Text(model.preferences.dictationShortcut.label).font(.caption.monospaced()) }
-            }.buttonStyle(.borderedProminent).controlSize(.large)
-                .disabled(!model.ready || (model.phase != .idle && model.phase != .recording && model.phase != .requesting) || model.rendering)
-            quick("Read aloud", "speaker.wave.2") { open("speak") }
-            quick(readback.isRecording ? "Stop Snap & Talk narration" : "Snap & Talk session", "rectangle.and.pencil.and.ellipsis") {
-                if readback.isRecording { readback.stopNarration() } else { open("readback") }
-            }
-            quick("Draw on screen", "pencil.tip") { draw() }
-            quick("Present a device", "iphone") { open("present") }
-            quick("Switch to…", "arrow.up.forward.app") { model.onShowPresenter?() }
-            quick("Overlay cards…", "person.crop.rectangle") { personas() }
             if stage.hasOverlaySession {
-                HStack {
-                    Button { model.onCloseMenu?(); stage.focusOverlayControls() } label: { Image(systemName: "rectangle.on.rectangle") }
-                        .accessibilityLabel("Focus overlay controls")
-                    Button { model.onCloseMenu?(); stage.stepOverlaySet(-1) } label: { Image(systemName: "chevron.left") }
-                        .accessibilityLabel("Previous prepared overlay set").disabled(!stage.canStepOverlays)
-                    Button { model.onCloseMenu?(); stage.stepOverlaySet(1) } label: { Image(systemName: "chevron.right") }
-                        .accessibilityLabel("Next prepared overlay set").disabled(!stage.canStepOverlays)
+                HStack(spacing: 8) {
+                    Button("Overlay controls") { model.onCloseMenu?(); stage.focusOverlayControls() }
+                    Spacer(minLength: 0)
                     Button(stage.areOverlaysPaused ? "Show again" : "Hide all") { model.onCloseMenu?(); stage.toggleOverlayVisibility() }
-                    Spacer()
                     Button("End") { model.onCloseMenu?(); stage.endOverlays() }.accessibilityLabel("End overlays")
-                }.buttonStyle(.bordered).controlSize(.regular)
+                }.buttonStyle(.borderless).font(.system(size: 11))
             }
-            quick("Break timer", "timer") { timer() }
             Divider()
-            HStack { Button("Open Workbench") { open("home") }; Spacer(); Button { open("shortcuts") } label: { Image(systemName: "keyboard") }.accessibilityLabel("Keyboard shortcuts") }
-            Text(model.status).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-        }.padding(18).frame(width: 370).tint(Workbench.accent).workbenchTheme()
+            HStack(spacing: 12) {
+                Button("Open Workbench") { open("home") }
+                Menu("More") {
+                    Button("Switch to browser tab…") { model.onShowPresenter?() }
+                    Button("Overlay cards…", action: personas)
+                    Button("Break timer", action: timer)
+                    Divider()
+                    Button("Capture history…") { open("history") }
+                    Button("Settings…") { open("settings") }
+                }.menuStyle(.borderlessButton).fixedSize()
+                Spacer(minLength: 0)
+                Button("Shortcuts") { open("shortcuts") }
+            }.buttonStyle(.plain).font(.system(size: 11))
+            Text(model.phase == .idle ? model.status : context.activitySummary)
+                .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2).help(model.status)
+        }.padding(10).frame(width: 288).fixedSize(horizontal: false, vertical: true)
+            .tint(Workbench.accent).workbenchTheme()
     }
-    private func quick(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(title, systemImage: symbol).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 3) }.buttonStyle(.plain)
+
+    @ViewBuilder private func options(_ tool: WorkbenchControlTool) -> some View {
+        switch tool {
+        case .dictate:
+            Menu(model.preferences.cleanup.rawValue) {
+                Text("Text style")
+                ForEach(CleanupStyle.allCases, id: \.self) { style in
+                    Button { model.preferences.cleanup = style } label: {
+                        if model.preferences.cleanup == style { Label(style.rawValue, systemImage: "checkmark") }
+                        else { Text(style.rawValue) }
+                    }
+                }
+                Divider()
+                Text("Destination")
+                ForEach(DeliveryMode.allCases, id: \.self) { delivery in
+                    Button { model.preferences.delivery = delivery } label: {
+                        if model.preferences.delivery == delivery { Label(delivery.rawValue, systemImage: "checkmark") }
+                        else { Text(delivery.rawValue) }
+                    }
+                }
+                Divider()
+                Button("Dictation settings…") { open("dictate") }
+            }.fixedSize().controlSize(.small).disabled(model.phase != .idle || readback.isRecording)
+                .help("Text style and destination for the next dictation")
+        case .snap:
+            if readback.sessionURL != nil { Button("Review") { open("readback") }.buttonStyle(.borderless) }
+        case .annotate:
+            Button("Tools") { model.onShowAnnotationMenu?() }.buttonStyle(.borderless)
+        case .present:
+            Button("Scenes") { open("present") }.buttonStyle(.borderless)
+        case .read:
+            if model.playing || model.paused { Button("Stop") { model.stopPlayback() }.buttonStyle(.borderless) }
+        }
+    }
+    private func actionTitle(_ tool: WorkbenchControlTool) -> String {
+        if tool == .dictate && model.waitingForDrawing { return "Copy text now" }
+        if tool == .dictate && model.phase == .idle { return model.canRecordAgain ? "Record again" : "Dictate" }
+        if tool == .snap && !readback.isRecording && !readback.isCapturing && readback.sessionURL == nil { return "Snap & Talk" }
+        if tool == .annotate && !stage.isDrawing { return "Draw on screen" }
+        if tool == .present && !stage.isPresenting { return "Present scene" }
+        if tool == .read && !model.playing && !model.paused && !model.rendering { return "Read aloud" }
+        return context.state.actionTitle(tool)
+    }
+    private func perform(_ tool: WorkbenchControlTool) {
+        model.controlTool = tool
+        switch tool {
+        case .dictate:
+            if model.waitingForDrawing { model.copyWaitingDelivery() }
+            else { model.onMenuRecording?() }
+        case .snap: snap()
+        case .annotate: draw()
+        case .present: present()
+        case .read:
+            if model.rendering { model.cancelReading() }
+            else if model.playing || model.paused { model.listen() }
+            else { open("speak") }
+        }
     }
 }
 

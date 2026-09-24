@@ -51,6 +51,16 @@ jobs:
         run: bash scripts/doctor.sh
       - name: Run regression checks
         run: bash scripts/test.sh
+      - name: Render the production toolbar gallery
+        run: swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
+      - name: Retain toolbar visual evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: toolbar-native-gallery
+          path: test-results/toolbar
+          retention-days: 7
+          if-no-files-found: error
       - name: Build and verify app package with native Shortcuts metadata
         env:
           REQUIRE_APP_INTENTS: "1"
@@ -59,7 +69,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: workbench-tested-package
-          path: dist/Workbench.zip
+          path: dist/Workbench Preview.zip
           retention-days: 7
           if-no-files-found: error
       - name: Build and verify Chrome Web Store package

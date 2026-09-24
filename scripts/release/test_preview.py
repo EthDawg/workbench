@@ -14,6 +14,13 @@ spec.loader.exec_module(preview)
 
 
 class PreviewTests(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.TemporaryDirectory()
+        self.addCleanup(self.home.cleanup)
+        home_patch = patch.object(Path, "home", return_value=Path(self.home.name))
+        home_patch.start()
+        self.addCleanup(home_patch.stop)
+
     def test_configuration_never_targets_production(self):
         config = preview.configuration()
         self.assertTrue(config["identifier"].endswith(".preview"))

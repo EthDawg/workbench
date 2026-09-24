@@ -1,4 +1,5 @@
-const version = '2.0.0-preview.4';
+import { currentRelease } from './release.mjs';
+const version = currentRelease.tag.slice(1);
 const source = `https://github.com/EthDawg/workbench/tree/v${version}`;
 const documents = `https://github.com/EthDawg/workbench/blob/v${version}`;
 const guide = `${documents}/CONTRIBUTING.md`;
@@ -13,7 +14,7 @@ export function normalizeReport(input) {
   for (const key of ['version', 'environment', 'task', 'expected', 'observed']) {
     if (!data[key]) throw new Error('Complete the app, version, Mac, task, expected and observed fields.');
   }
-  const limits = { version: 50, environment: 160, task: 200, expected: 1000, observed: 1500, impact: 100, help: 100 };
+  const limits = { version: 1200, environment: 160, task: 200, expected: 1000, observed: 1500, impact: 100, help: 100 };
   for (const [key, limit] of Object.entries(limits)) if (data[key].length > limit) throw new Error(`${key} is too long. Please keep the report concise.`);
   return data;
 }

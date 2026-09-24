@@ -38,6 +38,14 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     enum Phase: String { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     let clipboardReceipt = ClipboardReceiptModel()
     @Published var captureProcessingLabel = "Preparing speech…"
+    @Published private(set) var waitingForDrawing = false
+    var shouldDeferDelivery: (() -> Bool)?
+    private let drawingDelivery = DrawingDeliveryGate()
+    func resumeWaitingDelivery() {
+        guard waitingForDrawing, shouldDeferDelivery?() != true else { return }
+        drawingDelivery.resolve(.resume)
+    }
+    func copyWaitingDelivery() { drawingDelivery.resolve(.copy) }
     @Published var isMicrophoneQuiet = false
     @Published var captureUsesHoldShortcut = false
     @Published private(set) var captureOutputModeLabel = "Light cleanup"
@@ -59,6 +67,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var editingShortcut: UInt32?
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
+    @Published var controlTool: WorkbenchControlTool = .dictate
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
@@ -185,6 +194,8 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     var retryCaptureLabel: String { captureRecovery.pending?.capture == nil ? "Retry transcription" : "Retry saving" }
     var retryCaptureHelp: String { captureRecovery.pending?.capture == nil ? "Retry the captured audio" : "Save the recognized text without transcribing or pasting again" }
     var hasCaptureRecovery: Bool { captureRecovery.hasRecovery }
+    var canRecordAgain: Bool { phase == .idle && captureRecovery.canKeepAudioForLater }
+    var hasSavedRecordings: Bool { FileManager.default.fileExists(atPath: captureRecovery.savedRecordingsDirectory.path) }
     var canDiscardCaptureRecovery: Bool { phase == .idle && captureRecovery.pending != nil && captureRecovery.problem == nil }
     private let captureRecovery = CaptureRecoveryStore(directory: Workbench.supportDirectory(component: "LocalVoice").appendingPathComponent("CaptureRecovery", isDirectory: true))
     // The focused acceptance harness injects only the state write, never live input or delivery.
@@ -220,6 +231,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     var onShortcutsChanged: (() -> Void)?
     var onEditShortcut: ((UInt32) -> Void)?
     var onShowEditor: ((String) -> Void)?
+    var onShowAnnotationMenu: (() -> Void)?
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
     var onMenuRecording: (() -> Void)?
     var onCloseMenu: (() -> Void)?
@@ -326,11 +338,11 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         if phase == .requesting { cancelRecording(); return }
         if phase == .recording { stopRecording(); return }
         guard phase == .idle, ready, !rendering else { return }
-        guard admitNewCapture() else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
             captureFailure = reason; status = reason; return
         }
+        guard admitNewCapture() else { return }
         clipboardReceipt.clear()
         captureFailure = nil
         previewingPanel = false
@@ -407,7 +419,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
         guard duration >= 0.35, peakPower > -55 else {
             discardRecordingRecovery()
-            fail("No clear speech was captured. Check your microphone and try again."); return
+            fail("No clear speech was captured. Check Sound → Input. For a MacBook’s built-in microphone, open the lid."); return
         }
         transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
         recordingSettings = nil
@@ -439,7 +451,6 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
 
     func importAudio() {
         guard phase == .idle, ready else { return }
-        guard admitNewCapture() else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.audio]; panel.canChooseDirectories = false
         panel.message = "Choose an audio file up to 30 minutes. Your selected speech engine will transcribe it."
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -447,11 +458,16 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
     func importAudio(_ url: URL) {
         guard phase == .idle, ready else { return }
-        guard admitNewCapture() else { return }
         do {
             let file = try AVAudioFile(forReading: url)
             let duration = Double(file.length) / file.processingFormat.sampleRate
             guard duration > 0, duration <= 1800 else { throw VoiceError.message("Choose an audio file between 1 second and 30 minutes long.") }
+            // Importing the current recovery is a retry, not a new capture whose
+            // archive operation would move the selected URL out from under us.
+            if recordURL?.standardizedFileURL == url.standardizedFileURL {
+                retryTranscription(); return
+            }
+            guard admitNewCapture() else { return }
             destination = nil; transcribe(url, duration: duration, temporary: false)
         } catch { fail("Could not read this audio file. \(error.localizedDescription)") }
     }
@@ -517,7 +533,18 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                     shortcutRequest.finish(id: shortcutID, result: .success(result))
                 } else {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
-                    let outcome = await TextDelivery.deliver(result, target: destination, mode: settings.preferences.delivery, restoreClipboard: settings.preferences.restoreClipboard)
+                    var delivery = settings.preferences.delivery
+                    if delivery == .paste, destination != nil, shouldDeferDelivery?() == true {
+                        waitingForDrawing = true
+                        captureProcessingLabel = "Finish drawing to paste, or copy now."
+                        status = "Text ready. Finish drawing to return to your Mac text field."
+                        onPhaseChange?()
+                        defer { waitingForDrawing = false }
+                        if try await drawingDelivery.wait() == .copy { delivery = .clipboard }
+                    }
+                    try Task.checkCancellation()
+                    guard transcriptionID == invocation else { return }
+                    let outcome = await TextDelivery.deliver(result, target: destination, mode: delivery, restoreClipboard: settings.preferences.restoreClipboard)
                     guard transcriptionID == invocation else { return }
                     status = outcome.message
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
@@ -539,6 +566,17 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
 
     private func admitNewCapture() -> Bool {
         guard captureRecovery.hasRecovery else { return true }
+        if captureRecovery.canKeepAudioForLater {
+            do {
+                try captureRecovery.keepAudioForLater()
+                recordURL = nil; canRetry = false; captureFailure = nil; error = nil
+                status = "Previous audio kept in Saved recordings."
+                onPhaseChange?(); return true
+            } catch {
+                let message = "Could not keep the previous recording safely. Its recovery files are unchanged. \(error.localizedDescription)"
+                captureFailure = message; self.error = message; status = message; onPhaseChange?(); return false
+            }
+        }
         let message = captureRecovery.problem?.localizedDescription ?? "A previous capture is kept. Use \(retryCaptureLabel) before starting another capture."
         captureFailure = message; error = message; status = message; onPhaseChange?(); return false
     }
@@ -644,6 +682,9 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
     func showCaptureRecoveryFiles() {
         if !NSWorkspace.shared.open(captureRecovery.directory) { error = "The CaptureRecovery folder could not be opened." }
+    }
+    func showSavedRecordings() {
+        if !NSWorkspace.shared.open(captureRecovery.savedRecordingsDirectory) { error = "Saved recordings could not be opened." }
     }
 
     func copyTranscript() {
@@ -924,6 +965,13 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         persistWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.saveNow() }
         persistWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+    func saveBeforeUpdate() -> Bool {
+        guard loaded else { return false }
+        do {
+            try store.save(SavedState(draft: transcript, speechText: speechText, history: history, replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
+            return true
+        } catch { self.error = "Could not save before updating. \(error.localizedDescription)"; return false }
     }
     func saveNow() {
         guard loaded else { return }

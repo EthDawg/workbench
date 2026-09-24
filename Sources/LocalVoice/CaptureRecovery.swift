@@ -39,6 +39,8 @@ final class CaptureRecoveryStore {
     private(set) var problem: Error?
     private var expectedData: Data?
     var hasRecovery: Bool { pending != nil || problem != nil }
+    var canKeepAudioForLater: Bool { pending?.audioFilename != nil && pending?.capture == nil && problem == nil }
+    var savedRecordingsDirectory: URL { directory.deletingLastPathComponent().appendingPathComponent("SavedRecordings", isDirectory: true) }
     private var metadataURL: URL { directory.appendingPathComponent("pending.json") }
 
     init(directory: URL) { self.directory = directory }
@@ -106,7 +108,29 @@ final class CaptureRecoveryStore {
         return url
     }
 
-    /// Only explicit discard or a successful state commit can release recovery.
+    /// Release the single recording slot without deleting failed audio. Moving
+    /// the whole journal on the same volume preserves even unknown sibling files.
+    /// Recognized, unsaved text must still go through the save-only retry.
+    @discardableResult func keepAudioForLater() throws -> URL {
+        guard canKeepAudioForLater, let pending else { throw CaptureRecoveryError.pending }
+        try checkDirectory()
+        guard try readMetadata() == expectedData else { throw CaptureRecoveryError.changed }
+        // A crash may leave the marker before the recorder creates its WAV.
+        // Moving that journal is still lossless and must not trap a new capture.
+        guard try audioURL(for: pending, requireExists: false) != nil else { throw CaptureRecoveryError.invalid }
+        let root = savedRecordingsDirectory
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
+                                               attributes: [.posixPermissions: 0o700])
+        let values = try root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard values.isDirectory == true, values.isSymbolicLink != true else { throw CaptureRecoveryError.invalid }
+        let destination = root.appendingPathComponent(pending.id.uuidString, isDirectory: true)
+        // An existing destination is an error, never an overwrite.
+        try FileManager.default.moveItem(at: directory, to: destination)
+        self.pending = nil; expectedData = nil; problem = nil
+        return destination
+    }
+
+    /// Only explicit discard or a successful state commit can delete recovery.
     func clear(_ id: UUID) throws {
         guard let pending, pending.id == id else { throw CaptureRecoveryError.changed }
         try checkDirectory()

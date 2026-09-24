@@ -5,7 +5,8 @@
   ],
   "build": [
     "bash",
-    "scripts/build.sh"
+    "scripts/build.sh",
+    "--component-package"
   ],
   "archive": "dist/Workbench.zip",
   "bundle": "Workbench.app",
@@ -31,5 +32,6 @@
     [
       "--check-reading-service-native"
     ]
-  ]
+  ],
+  "component_archive": ".build/component/Workbench.zip"
 }

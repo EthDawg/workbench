@@ -9,3 +9,5 @@ For Mac wallpaper and presentation, [the structured experience contract](site/ha
 Choose one user outcome, its state owner and a bounded change. Preserve originals, later manual desktop choices and independent jobs. Validate with synthetic data and report the tests actually run, screenshots, source revision and hardware/receiver limits. Do not replace live user data for tests.
 
 Keep private records and credentials out of code, images and public evidence. Do not read or publish `site/.env.local`. Apple submission, notarization, public binary publication and external communications require their applicable task authority; documentation does not grant it.
+
+For every Mac change, follow [the shared install/update workflow](docs/updating.md). Use the existing Preview identity and signed installer, never a new staging identity or privacy-permission reset. One integration owner controls the shared installed Preview. Verify the running build with Copy build details before claiming installed acceptance. Publishing must verify the released archive and promote its signed feed and website link together.

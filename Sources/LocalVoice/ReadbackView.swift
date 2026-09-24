@@ -292,7 +292,7 @@ struct ReadbackHUDView: View {
     var body: some View {
         HStack(spacing: 8) {
             PanelDragHandle(accessibilityLabel: "Drag Snap & Talk panel; named positions are available in options")
-                .frame(width: 24, height: 40)
+                .frame(width: 8, height: 40)
             if controls.isExpanded { expandedRecording }
             else { compactRecording }
         }.padding(.horizontal, 12)

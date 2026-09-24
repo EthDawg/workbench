@@ -24,8 +24,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var receiptObservations = Set<AnyCancellable>()
     var readSelectionService: ReadSelectionService!
     private var receiptStatus: String?
+    private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let editions = ["com.ethdawg.workbench", "com.ethdawg.workbench.preview", "com.ethdawg.localvoice", "com.ethdawg.localvoice.preview", "local.ethan.StageMark", "local.ethan.StageMark.preview"]
+        if let other = NSWorkspace.shared.runningApplications.first(where: { editions.contains($0.bundleIdentifier ?? "") && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
+            let alert = NSAlert()
+            alert.messageText = "Another Workbench is already running"
+            alert.informativeText = "\(other.localizedName ?? "Workbench") owns the tools and shortcuts. Quit that copy before opening \(Workbench.displayName). Your saved work stays in place."
+            alert.addButton(withTitle: "Open running app")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn { other.activate(options: [.activateAllWindows]) }
+            NSApp.terminate(nil); return
+        }
         Workbench.preparePreviewData(component: "LocalVoice", files: ["state.json", "demo-library.json"])
         _ = WorkbenchSettings.shared
         model = AppModel()
@@ -34,6 +45,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
             return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
+        }
+        stage.mayBeginDrawing = { [weak self] in
+            guard let self else { return false }
+            return WorkbenchDrawingAdmission.allows(phase: self.model.phase, suspended: self.shortcutsSuspended,
+                capturingScreen: self.readback.isCapturing, terminating: self.terminating)
+        }
+        model.shouldDeferDelivery = { [weak self] in self?.stage.isDrawing == true }
+        stage.onDrawingChanged = { [weak self] drawing in
+            guard let self, !self.terminating else { return }
+            if drawing { self.model.controlTool = .annotate }
+            if !drawing {
+                if self.shortcutsSuspended || self.readback.isCapturing { self.model.copyWaitingDelivery() }
+                else { self.model.resumeWaitingDelivery() }
+            }
+            self.updateRecordingUI()
         }
         stage.onEditShortcuts = { [weak self] in self?.navigate("shortcuts") }
         stage.onBeginActivity = { [weak self] in
@@ -57,8 +83,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.microphoneStartFailure = { [weak self] target in
             guard let self else { return "Workbench is unavailable." }
             if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
-            return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil)
-                ? nil : "To enter text on your phone, use its keyboard or Dictation button. Mac dictation works in a Mac text field."
+            return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil, delivery: self.model.preferences.delivery)
+                ? nil : "Choose Copy to clipboard to capture a thought, or focus a Mac text field. To enter text on your phone, use its keyboard or Dictation button."
         }
         readback.mayBeginCapture = { [weak self] in
             guard let self else { return "Workbench is unavailable." }
@@ -85,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             snap: { [weak self] in self?.toolbarSnap() },
             draw: { [weak self] in
                 guard let self else { return }
-                if self.stage.isDrawing { self.stage.escape() } else { self.stage.draw() }
+                if self.stage.isDrawing { self.stage.finishDrawing() } else { self.stage.draw() }
             }, present: { [weak self] in
                 guard let self else { return }
                 if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
@@ -105,20 +131,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
-            self?.resumeTarget { _ in self?.stage.draw() }
+        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+            guard let self else { return }
+            if self.stage.isDrawing { self.stage.finishDrawing() }
+            else { self.resumeTarget { [weak self] _ in self?.stage.draw() } }
+        }, snap: { [weak self] in self?.toolbarSnap() }, present: { [weak self] in
+            guard let self else { return }
+            if self.stage.isPresenting { self.stage.endDeviceScene() }
+            else { self.closeControls(); self.stage.presentSelectedScene() }
         }, timer: { [weak self] in self?.closeControls(); self?.stage.showTimer() }, personas: { [weak self] in
             self?.closeControls(); self?.stage.showPersonas()
         }))
-        popover.contentSize = NSSize(width: 370, height: 440)
+        quickController.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = quickController
         model.onPhaseChange = { [weak self] in
             guard let self else { return }
-            if self.model.phase != .idle { self.presenterPanel?.hide(); self.keyboard?.stopInteraction(); self.stage.escape() }
+            if self.model.phase != .idle { self.presenterPanel?.hide(); self.keyboard?.stopInteraction() }
             self.updateRecordingUI()
         }
         model.onShortcutsChanged = { [weak self] in self?.registerShortcuts() }
         model.onEditShortcut = { [weak self] id in self?.navigate("shortcuts") }
         model.onShowEditor = { [weak self] page in self?.model.page = page; self?.showWindow() }
+        model.onShowAnnotationMenu = { [weak self] in self?.showAnnotationMenu() }
         model.onMenuRecording = { [weak self] in self?.menuRecording() }
         model.onCloseMenu = { [weak self] in self?.closeControls() }
         model.onPasteLast = { [weak self] in self?.pasteLast() }
@@ -161,6 +195,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let page = notification.object as? String else { return }
             Task { @MainActor in self?.navigate(page) }
         }
+        WorkbenchUpdates.shared.activity = { [weak self] in
+            guard let self else { return WorkbenchUpdateActivity(interaction: true) }
+            return WorkbenchUpdateActivity(voice: self.model.phase != .idle || self.model.preparing,
+                reading: self.model.rendering || self.model.playing || self.model.paused,
+                capture: self.readback.blocksDictation || self.stage.isTakingScreenshot,
+                presentation: self.stage.isPresenting || self.stage.hasActivePersonaSession, drawing: self.stage.isDrawing,
+                timer: self.stage.isTimerRunning,
+                interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
+        }
+        WorkbenchUpdates.shared.start()
         setupMenus()
         readSelectionService = ReadSelectionService { [weak self] selection in
             self?.model.receiveReadingSelection(selection)
@@ -181,6 +225,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.updateRecordingUI()
             }
             .store(in: &receiptObservations)
+        stage.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.updateRecordingUI()
+        }.store(in: &receiptObservations)
     }
     func registerShortcuts() {
         guard model.editingShortcut == nil, !shortcutsSuspended else { return }
@@ -223,6 +270,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func setupMenus() {
         let main = NSMenu(); let application = NSMenuItem(); let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Copy build details", action: #selector(copyBuildDetails), keyEquivalent: "")
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
         let services = NSMenu(title: "Services")
@@ -235,11 +284,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
         edit.submenu = editMenu; main.addItem(edit)
+        let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
+        annotate.submenu = stage.makeAnnotationMenu(); main.addItem(annotate)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
         menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
         menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
@@ -262,6 +314,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func statusClicked(_ sender: Any?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
+            let identity = NSMenuItem(title: WorkbenchUpdates.shared.build.label, action: nil, keyEquivalent: "")
+            menu.addItem(identity)
+            menu.addItem(withTitle: WorkbenchUpdates.shared.buttonTitle, action: #selector(showUpdates), keyEquivalent: "")
+            menu.addItem(.separator())
+            let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
+            annotate.submenu = stage.makeAnnotationMenu(); menu.addItem(annotate)
+            menu.addItem(.separator())
             menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
             menu.addItem(withTitle: model.floatingToolbarVisible ? "Hide floating toolbar" : "Show floating toolbar", action: #selector(toggleFloatingToolbar), keyEquivalent: "")
             menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "")
@@ -276,11 +335,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } else { toggleControls() }
     }
     @objc func toggleControls() { if popover.isShown { closeControls() } else { showControls() } }
+    @objc func showAnnotationMenu() {
+        closeControls()
+        guard let button = statusItem.button, button.window?.isVisible == true else {
+            model.page = "annotate"; showWindow(); return
+        }
+        statusItem.menu = stage.makeAnnotationMenu()
+        button.performClick(nil)
+        statusItem.menu = nil
+    }
     @objc func showFloatingToolbar() {
         model.floatingToolbarVisible = true
         capturePanel.update(model: model)
     }
     @objc func toggleFloatingToolbar() { model.floatingToolbarVisible.toggle() }
+    @objc func focusFloatingToolbar() { capturePanel.focusToolbar() }
     @objc func restoreMenuBarIcon() {
         statusItem.isVisible = true
         updateRecordingUI()
@@ -316,10 +385,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func toolbarDictation() {
         // The toolbar is nonactivating. Capture the current field at the click,
         // never reuse an old popover target for a later toolbar operation.
-        let target = TextDelivery.capture()
+        let target = capturePanel.targetForDictation()
         model.toggleRecording(target: target)
     }
     func toolbarSnap() {
+        if readback.isRecording { readback.stopNarration(); return }
         readback.refreshPermissionState()
         guard readback.sessionURL != nil, readback.permissionsReady else {
             navigate("readback"); return
@@ -338,7 +408,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.model.clipboardReceipt.clear(); self.model.dismissCaptureFailure()
             self.model.phase = .delivering; self.model.onPhaseChange?()
             Task {
-                let outcome = await TextDelivery.deliver(text, target: target, mode: .paste, restoreClipboard: self.model.preferences.restoreClipboard)
+                // Manual history paste cannot insert into an annotation editor.
+                let outcome = await TextDelivery.deliver(text, target: target, mode: self.stage.isDrawing ? .clipboard : .paste, restoreClipboard: self.model.preferences.restoreClipboard)
                 self.model.status = outcome.message
                 self.model.clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
                 self.model.phase = .idle; self.model.onPhaseChange?()
@@ -353,11 +424,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .recording: symbol = "mic.fill"; state = "Recording"
         case .requesting: symbol = "mic.badge.plus"; state = "Starting microphone"
         case .transcribing, .cleaning: symbol = "waveform"; state = "Processing speech"
-        case .delivering: symbol = "arrow.up.doc"; state = "Delivering text"
+        case .delivering: symbol = "arrow.up.doc"; state = model.waitingForDrawing ? "Text ready · finish drawing or copy" : "Delivering text"
         case .cancelling: symbol = "xmark.circle"; state = "Cancelling"
         case .idle:
             if readback?.isRecording == true { symbol = "rectangle.and.pencil.and.ellipsis"; state = "Recording Snap & Talk narration" }
             else if (readback?.pendingTranscriptionCount ?? 0) > 0 { symbol = "waveform"; state = "Processing Snap & Talk narration" }
+            else if stage.isDrawing { symbol = "pencil.tip"; state = stage.isPresenting ? "Presenting · Drawing" : "Drawing" }
+            else if stage.isPresenting { symbol = "iphone"; state = "Presenting" }
             else {
                 symbol = receipt?.isClipboardCurrent == true ? "doc.on.clipboard" : "square.stack.3d.up"
                 state = receipt?.isClipboardCurrent == true ? (receipt?.title ?? "Transcript copied") : "Quick controls"
@@ -368,9 +441,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         icon?.isTemplate = true
         statusItem?.button?.image = icon
         statusItem?.button?.setAccessibilityLabel("Workbench · " + state)
-        statusItem?.button?.toolTip = "Workbench · " + state + " · " + model.preferences.controlsShortcut.label
+        statusItem?.button?.toolTip = WorkbenchUpdates.shared.build.label + " · " + state + " · " + model.preferences.controlsShortcut.label
         capturePanel?.update(model: model)
     }
+    @objc func showUpdates() { showSettings(); WorkbenchUpdates.shared.checkForUpdates() }
+    @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
     @objc func showHistory() { model.page = "history"; showWindow() }
@@ -385,11 +460,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.savePrompt(text)
     }
     @objc func showWindow() { closeControls(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
-    @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Workbench", .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development", .credits: NSAttributedString(string: "Everyday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
+    @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) { readback?.refreshPermissionState() }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if WorkbenchUpdates.shared.installing && WorkbenchUpdates.shared.activity().busy {
+            WorkbenchUpdates.shared.status = "Finish your current activity before restarting to update."
+            return .terminateCancel
+        }
+        if WorkbenchUpdates.shared.installing && model?.saveBeforeUpdate() != true {
+            WorkbenchUpdates.shared.status = "Update paused because your current session could not be saved."
+            return .terminateCancel
+        }
+        return .terminateNow
+    }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        terminating = true
         NSApp.servicesProvider = nil
         presenterPanel?.hide(); model?.presenter.stop()
         capturePanel?.close()
@@ -432,11 +519,19 @@ func runCLI(_ args: [String]) async -> Int32 {
         switch args.first {
         case "--check-presenter":
             try await PresenterChecks.run()
+        case "--build-info":
+            print(WorkbenchBuild().details)
+        case "--check-updates":
+            try await WorkbenchUpdateChecks.run()
         case "--check-core":
+            try await WorkbenchUpdateChecks.run()
+            try await WorkbenchControlChecks.run()
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
+        case "--check-floating-toolbar":
+            try await WorkbenchControlChecks.run()
         case "--check-reading-cancellation":
             try await AudioRendererCancellationChecks.run()
         case "--check-library":

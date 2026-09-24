@@ -6,8 +6,11 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 
 | Owner | Responsibility | Entry points |
 | --- | --- | --- |
+| `ToolbarKit` library target | Native toolbar session, production row, pointer tracking, content placement and window animation | `ToolbarSession.swift`, `ToolbarRow.swift`, `ToolbarTrackingView.swift`, `ToolbarGeometry.swift`, `ToolbarWindowMotion.swift` |
+| `ToolbarCore` library target | When the floating toolbar shows what, and the remembered open/closed choice. No AppKit, no clock, no window | `ToolbarMachine.swift`; the behaviour is owned by [floating-toolbar.md](floating-toolbar.md) |
 | `LocalVoice` executable target | App shell plus existing voice workflows, reading, cleanup, delivery and resources | `main.swift`, `WorkbenchHome.swift`, `AppModel.swift` |
 | `StageKit` library target | Drawing, boards, timer, scene library and device video preview | Public `StageKitController`; internal `AppCoordinator` |
+| `StageKit/WorkbenchPalette.swift` | The adaptive Mac brand accent shared by Voice, StageKit and toolbar fixtures | `WorkbenchPalette.accent`; ToolbarKit accepts the colour as a value |
 | `RecognitionEngine` actor | Selected recognition provider, preparation and one transcription at a time | `RecognitionProviders.swift` |
 | `ReadbackModel` | Snap & Talk pointer-display capture, narration, portable session manifests, recovery and sequential transcription | `ReadbackModel.swift`, `ReadbackView.swift` |
 | `KeyboardCoachModel` | Combined shortcut catalogue, assignment, conflict feedback and safe practice | `KeyboardCoach.swift`; persistence/suspension closures supplied by the host |
@@ -63,7 +66,7 @@ flowchart LR
     History --> Output["Edit, copy, guarded paste<br/>or App Intent result"]
 ```
 
-Microphone capture is capped at five minutes; file import at 30 minutes. Very short or effectively silent recordings are rejected. Imported source files are not modified. Each Parakeet request uses a fresh decoder state. A pending hold-to-record permission request cannot later start a stale recording after the key is released.
+Microphone capture is capped at five minutes; file import at 30 minutes. Very short or effectively silent recordings are rejected. Imported source files are not modified. Failed audio-only recovery can be retained under LocalVoice/SavedRecordings through an atomic same-volume directory move before a fresh recording; recognized-text save failures retain the single-slot guard. The source file for an import is validated before releasing recovery, and selecting the current recovery invokes its owned retry. Each Parakeet request uses a fresh decoder state. A pending hold-to-record permission request cannot later start a stale recording after the key is released.
 
 Automatic paste checks both the original application and accessibility field immediately before delivery, excludes secure fields, and never submits. Captures are saved before delivery. Clipboard restoration requires confirmed insertion and unchanged clipboard ownership; uncertainty leaves the transcript copied for recovery.
 

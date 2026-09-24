@@ -41,6 +41,15 @@ public final class StageKitController: ObservableObject {
             coordinator.demoScenes.personas.mayBeginInteraction = mayBeginInteraction
         }
     }
+    /// Drawing may coexist with a host recording; other StageKit actions retain
+    /// the broader interaction guard. An unset drawing guard uses that guard.
+    public var mayBeginDrawing: (() -> Bool)? {
+        didSet { coordinator.mayBeginDrawing = mayBeginDrawing }
+    }
+    /// Called after input ownership changes, once per drawing state transition.
+    public var onDrawingChanged: ((Bool) -> Void)? {
+        didSet { coordinator.onDrawingChanged = onDrawingChanged }
+    }
     /// Hide the shell before drawing, starting a timer or presenting a scene.
     public var onBeginActivity: (() -> Void)? {
         didSet {
@@ -81,13 +90,20 @@ public final class StageKitController: ObservableObject {
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
     public var quickControlsView: AnyView { AnyView(QuickControlsView(app: coordinator, settings: coordinator.settings)) }
+    /// One native menu for the application menu bar or the shell's status menu.
+    /// It refreshes tool state and shortcut labels whenever it opens; StageKit
+    /// continues to own all drawing actions and their existing global keys.
+    public func makeAnnotationMenu() -> NSMenu { AnnotationMenu(coordinator: coordinator) }
     /// Opens an existing-scene choice followed by the ordinary backdrop preview.
     /// The caller presents this as a sheet; no scene changes until Use backdrop.
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {
         AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, imageURL: imageURL, title: title))
     }
     public var isDrawing: Bool { coordinator.isDrawing }
+    public var drawingActivationTitle: String { coordinator.settings.value.activation.rawValue }
+    public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
+    public var hasActivePersonaSession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
     public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }
     public func presentSelectedScene() {
         if coordinator.demoScenes.selected == nil { onOpenScenes?() }
@@ -115,6 +131,8 @@ public final class StageKitController: ObservableObject {
         coordinator.shutdown()
     }
     public func draw() { coordinator.startDrawing(.pen, latched: true) }
+    /// Return input without clearing the current ink or removing a board.
+    public func finishDrawing() { coordinator.stopDrawing() }
     public func clear() { coordinator.perform(.clear) }
     public func showBoard() { coordinator.toggleBoard(.white) }
     public func showTimer() { coordinator.toggleTimer() }

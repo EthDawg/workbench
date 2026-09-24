@@ -138,6 +138,8 @@ struct ContentView: View {
                             ProgressView().controlSize(.small)
                             Text(model.preparing ? "Preparing your speech engine" : model.phase == .cancelling ? "Waiting for the speech engine to stop" : model.phase == .delivering ? "Checking the destination" : model.captureProcessingLabel)
                             if model.canCancelCurrentCapture { Button("Cancel") { model.cancelCurrentCapture() } }
+                        } else if model.canRecordAgain {
+                            Text("Record again with \(model.preferences.dictationShortcut.label). Previous audio will be kept in Saved recordings.")
                         } else { Text("Click the microphone or use \(model.preferences.dictationShortcut.label)") }
                     }.font(.system(size: 11)).foregroundStyle(.secondary)
                 }
@@ -182,12 +184,16 @@ struct ContentView: View {
             }.controlSize(.large)
             if model.hasCaptureRecovery && model.phase == .idle {
                 HStack {
-                    Text("A capture is kept for recovery.").foregroundStyle(.secondary)
+                    Text(model.canRecordAgain ? "Retry this audio, or record again and keep it for later." : "A capture is kept for recovery.").foregroundStyle(.secondary)
                     Spacer()
                     Button("Show recovery files") { model.showCaptureRecoveryFiles() }
                     Button("Discard recovery…", role: .destructive) { confirmingRecoveryDiscard = true }
                         .disabled(!model.canDiscardCaptureRecovery)
                 }.font(.caption)
+            }
+            if model.hasSavedRecordings {
+                Button("Saved recordings…") { model.showSavedRecordings() }
+                    .font(.caption).help("Previous audio is kept here. Use Import audio to transcribe a recording again.")
             }
             Text(model.preferences.delivery == .paste ? "Automatic paste returns to your starting text field. Up to 5 minutes per recording." : "Finished transcripts are copied. Paste with ⌘V. Up to 5 minutes per recording.")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)

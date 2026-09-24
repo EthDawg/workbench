@@ -24,6 +24,7 @@ enum CaptureSettingsChecks {
         try check(!CaptureInputPolicy.canStart(isPresenting: true, hasExternalMacTarget: false), "phone presentation accepted Mac capture as phone input")
         try check(CaptureInputPolicy.canStart(isPresenting: true, hasExternalMacTarget: true), "an explicit Mac field was blocked by a separate presentation")
         try check(CaptureInputPolicy.canStart(isPresenting: false, hasExternalMacTarget: false), "ordinary in-app capture was blocked")
+        try check(CaptureInputPolicy.canStart(isPresenting: true, hasExternalMacTarget: false, delivery: .clipboard), "explicit clipboard capture was blocked during a presentation")
         print("CAPTURE_SETTINGS_CHECKS_OK: 6 checks")
     }
 }
