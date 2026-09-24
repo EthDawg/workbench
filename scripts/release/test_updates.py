@@ -141,4 +141,41 @@ class UpdatesTests(unittest.TestCase):
                 verify.assert_called_once()
                 remote.assert_not_called()
 
+    def test_stale_prepared_release_cannot_create_or_publish_remote_assets(self):
+        config = json.loads((build_info.ROOT/'scripts/release/updates.json').read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root/'scripts/release').mkdir(parents=True)
+            (root/'scripts/release/updates.json').write_text(json.dumps(config))
+            destination = root/'site/updates'
+            destination.mkdir(parents=True)
+            prepared = root/'prepared'
+            prepared.mkdir()
+            name, tag = 'Workbench.zip', 'v2.0.0'
+            archive = prepared/name
+            archive.write_bytes(b'synthetic package; signature checks mocked')
+            receipt = dict(archive=name, tag=tag, channel='production', version='2.0.0', build='10',
+                           sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
+                           download_url=f'https://github.com/EthDawg/workbench/releases/download/{tag}/{name}',
+                           feed_url=config['feed_base']+'/production.xml')
+            (prepared/'release.json').write_text(json.dumps(receipt))
+            (prepared/'SHA256SUMS.txt').write_text(f"{receipt['sha256']}  {name}\n")
+            for published_build in ['10', '20']:
+                with self.subTest(published_build=published_build):
+                    feed = ET.Element('rss')
+                    item = ET.SubElement(ET.SubElement(feed, 'channel'), 'item')
+                    ET.SubElement(item, prepare_update.SPARKLE+'version').text = published_build
+                    previous = destination/'production.xml'
+                    ET.ElementTree(feed).write(previous)
+                    original = previous.read_bytes()
+                    with patch.object(publish_update, 'ROOT', root), \
+                         patch.object(prepare_update, 'verify_package'), \
+                         patch.object(prepare_update, 'validate_feed', return_value='fixture-signature'), \
+                         patch.object(publish_update.subprocess, 'run'), \
+                         patch.object(publish_update, 'gh') as remote:
+                        with self.assertRaisesRegex(RuntimeError, 'same or newer feed'):
+                            publish_update.publish(prepared, prepared/'notes.md')
+                        remote.assert_not_called()
+                        self.assertEqual(previous.read_bytes(), original)
+
 if __name__ == '__main__': unittest.main()
