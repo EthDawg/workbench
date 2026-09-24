@@ -65,7 +65,7 @@ export function renderPublishedRelease(html, record = currentRelease) {
       ? 'After this one-time manual installation, Settings → Workbench updates keeps this edition current. Scheduled updates show a quiet reminder and wait for your work.'
       : 'Future Preview updates keep that copy.',
     UPDATE_DETAILS: value.feed_url
-      ? 'Use Settings → Workbench updates to check for a new version. Automatic checks show a quiet reminder; automatic downloads are optional. Versions without the updater need one manual replacement first.'
+      ? 'Use Settings → Workbench updates to check for a new version. Automatic checks and background downloads are on by default; both can be changed in Settings, and existing choices are retained. A downloaded update can install on normal Quit or when you explicitly restart an idle app. Active work defers an update-triggered restart. Versions without the updater need one manual replacement first.'
       : 'This published version has no automatic updater. To update, quit Workbench Preview and replace the existing app in the same Applications folder with the next Preview download.',
     // Temporary aliases keep independently edited guide pages compatible.
     PREVIEW_TAG: value.tag,
