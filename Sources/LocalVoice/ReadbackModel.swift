@@ -284,8 +284,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var sessionURL: URL?
     @Published private(set) var manifest: ReadbackManifest?
     @Published private(set) var recentSessionURLs: [URL] = []
-    @Published private(set) var unavailableSessions: [URL: String] = [:]
-    var currentSessionProblem: String? { sessionURL.flatMap { unavailableSessions[$0.standardizedFileURL] } }
+    @Published private(set) var unavailableSessions: [String: String] = [:]
+    var currentSessionProblem: String? { sessionURL.flatMap { unavailableSessions[$0.standardizedFileURL.path] } }
     @Published private(set) var isCapturing = false
     @Published private(set) var isRecording = false
     @Published private(set) var recordingSectionID: UUID?
@@ -342,29 +342,29 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func refreshSessionAvailability() {
         let wasUnavailable = currentSessionProblem != nil
-        var problems: [URL: String] = [:]
+        var problems: [String: String] = [:]
         for url in Set(recentSessionURLs + [sessionURL].compactMap({ $0 })) {
-            if let problem = ReadbackAvailability.problem(at: url) { problems[url.standardizedFileURL] = problem }
+            if let problem = ReadbackAvailability.problem(at: url) { problems[url.standardizedFileURL.path] = problem }
         }
-        if wasUnavailable, let root = sessionURL, problems[root.standardizedFileURL] == nil {
+        if wasUnavailable, let root = sessionURL, problems[root.standardizedFileURL.path] == nil {
             do {
                 let restored = try ReadbackStore.load(from: root)
                 guard restored.id == manifest?.id else { throw ReadbackError.message("A different session now occupies this folder. Open it explicitly to switch sessions.") }
                 publish(restored, for: root)
-            } catch { problems[root.standardizedFileURL] = error.localizedDescription }
+            } catch { problems[root.standardizedFileURL.path] = error.localizedDescription }
         }
         if unavailableSessions != problems { unavailableSessions = problems }
     }
 
     func forgetRecentSession(_ url: URL) {
         let root = url.standardizedFileURL
-        guard sessionURL != root || (!isRecording && !isCapturing) else {
+        guard sessionURL?.path != root.path || (!isRecording && !isCapturing) else {
             notice = "Finish the current capture before removing this entry."; return
         }
-        if sessionURL == root { closeSession() }
-        recentSessionURLs.removeAll { $0.standardizedFileURL == root }
+        if sessionURL?.path == root.path { closeSession() }
+        recentSessionURLs.removeAll { $0.standardizedFileURL.path == root.path }
         defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
-        unavailableSessions.removeValue(forKey: root)
+        unavailableSessions.removeValue(forKey: root.path)
         // Forgetting a shortcut never deletes media or cancels independent jobs.
     }
 
@@ -385,12 +385,12 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard !isRecording, !isCapturing, !hasPendingTranscriptions else { return false }
         do {
             let loaded = try ReadbackStore.load(from: url)
-            if sessionURL == oldURL.standardizedFileURL, let manifest, loaded.id != manifest.id {
+            if sessionURL?.path == oldURL.standardizedFileURL.path, let manifest, loaded.id != manifest.id {
                 throw ReadbackError.message("That is a different session. Choose the moved folder, or use Open folder to switch sessions.")
             }
             setCurrent(url: url, manifest: recovered(loaded, at: url))
-            if oldURL.standardizedFileURL != url.standardizedFileURL {
-                recentSessionURLs.removeAll { $0.standardizedFileURL == oldURL.standardizedFileURL }
+            if oldURL.standardizedFileURL.path != url.standardizedFileURL.path {
+                recentSessionURLs.removeAll { $0.standardizedFileURL.path == oldURL.standardizedFileURL.path }
                 defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
             }
             refreshSessionAvailability(); enqueuePending(in: url)
@@ -920,7 +920,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             let text = ReadbackStore.readText(root: url, relative: section.transcript)
             return text.isEmpty ? nil : (section.id, text)
         })
-        var paths = recentSessionURLs.map(\.standardizedFileURL).filter { $0 != url.standardizedFileURL }
+        var paths = recentSessionURLs.map(\.standardizedFileURL).filter { $0.path != url.standardizedFileURL.path }
         paths.insert(url.standardizedFileURL, at: 0); recentSessionURLs = Array(paths.prefix(12))
         defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
         refreshSessionAvailability()

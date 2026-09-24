@@ -277,7 +277,7 @@ enum ReadbackChecks {
         try fm.moveItem(at: root, to: moved)
         model.refreshSessionAvailability()
         try check(model.currentSessionProblem != nil, "moving the open folder is reflected in current UI state")
-        try check(model.unavailableSessions[root.standardizedFileURL] != nil, "missing recent gets an unavailable badge")
+        try check(model.unavailableSessions[root.standardizedFileURL.path] != nil, "missing recent gets an unavailable badge regardless of URL directory hint")
         try check(model.manifest?.id == original.id && model.recentSessionURLs.count == 2, "missing paths retain session identity and recents for recovery")
         await model.captureNewSection(fromEditor: false)
         try check(captures == 0 && !fm.fileExists(atPath: root.path), "capture refuses before permission/capture and never recreates the folder")
@@ -290,7 +290,7 @@ enum ReadbackChecks {
         model.handOff(to: .claude)
         try check(model.notice?.contains("Locate") == true, "missing session cannot hand off stale paths")
         try check(!model.relinkSession(root, to: other), "locating cannot substitute a different active session")
-        try check(model.sessionURL == root.standardizedFileURL, "failed locate preserves the old selection")
+        try check(model.sessionURL?.path == root.standardizedFileURL.path, "failed locate preserves the old selection")
         try fm.moveItem(at: moved, to: root)
         model.refreshSessionAvailability()
         try check(model.currentSessionProblem == nil, "restoring a folder clears its unavailable state")
@@ -304,7 +304,7 @@ enum ReadbackChecks {
         try fm.moveItem(at: root, to: moved)
         model.refreshSessionAvailability()
         try check(model.relinkSession(root, to: moved), "locating the moved session succeeds")
-        try check(model.sessionURL == moved.standardizedFileURL && !model.recentSessionURLs.contains(root.standardizedFileURL), "relink replaces the stale path without duplicates")
+        try check(model.sessionURL?.path == moved.standardizedFileURL.path && !model.recentSessionURLs.contains(where: { $0.path == root.path }), "relink replaces the stale path without duplicates")
         let movedBytes = try Data(contentsOf: moved.appendingPathComponent("session.json"))
         try check(movedBytes == originalBytes && !fm.fileExists(atPath: root.path), "locating does not rewrite or recreate session files")
         model.forgetRecentSession(moved)
@@ -313,7 +313,7 @@ enum ReadbackChecks {
         try check(defaults.stringArray(forKey: "readback.recentSessionPaths.v1") == [other.path], "forgetting persists and preserves other recents")
         let reopened = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults)
         defer { reopened.shutdown() }
-        try check(reopened.recentSessionURLs == [other.standardizedFileURL], "forgotten entry stays removed after reopening")
+        try check(reopened.recentSessionURLs.map(\.path) == [other.standardizedFileURL.path], "forgotten entry stays removed after reopening")
         print("READBACK_AVAILABILITY_CHECKS_OK: \(passed) checks")
     }
 
