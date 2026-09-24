@@ -96,6 +96,7 @@ struct FloatingToolbar: View {
                 Color.clear.preference(key: ToolbarMeasuredSize.self, value: ToolbarMeasurement(tier: state.tier, size: geometry.size))
             })
             .onPreferenceChange(ToolbarMeasuredSize.self) { measurement in controls.reportSize(measurement.size, tier: measurement.tier) }
+            .pinnedToDock(state.anchor)
             .help(context.detail(model.controlTool))
             .tint(Workbench.accent).workbenchTheme()
     }

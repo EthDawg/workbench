@@ -15,6 +15,30 @@ public struct ToolbarDragActions {
     }
 }
 
+public extension ToolbarAnchor {
+    /// Where the row sits inside its window: against the docked edge, never
+    /// centred. The window is sometimes briefly the wrong size, placed before a
+    /// new row has been measured or while a collapse animates. A centred row then
+    /// moves the glyph out from under the pointer by half the difference, which
+    /// can carry the pointer outside and start a collapse.
+    var contentAlignment: Alignment {
+        let horizontal: HorizontalAlignment = growsLeftward ? .trailing : .leading
+        switch self {
+        case .topLeft, .top, .topRight: return Alignment(horizontal: horizontal, vertical: .top)
+        case .left, .right: return Alignment(horizontal: horizontal, vertical: .center)
+        case .bottomLeft, .bottom, .bottomRight: return Alignment(horizontal: horizontal, vertical: .bottom)
+        }
+    }
+}
+
+public extension View {
+    /// Hold toolbar content against its dock whatever size the window is. Apply
+    /// outside any measurement of the row, so the row still reports its own size.
+    func pinnedToDock(_ anchor: ToolbarAnchor) -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: anchor.contentAlignment)
+    }
+}
+
 /// The production look and the gallery are the same view, fed one frozen value.
 public struct ToolbarRow: View {
     public let state: ToolbarViewState
@@ -101,7 +125,9 @@ public struct ToolbarRow: View {
     }
     @ViewBuilder private var trailing: some View {
         if !state.trailing.readsAsUnavailable {
-        Text(state.trailing.text).font(.system(size: 12 * scale))
+        // Digits keep one width, so a ticking timer or a changing count never
+        // resizes the window under the pointer once a second.
+        Text(state.trailing.text).font(.system(size: 12 * scale)).monospacedDigit()
             .foregroundStyle(.secondary).fixedSize()
             .help(state.trailing.text)
             .overlay { ToolbarDragRegion(drag: drag) }

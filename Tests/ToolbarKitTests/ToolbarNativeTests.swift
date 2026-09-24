@@ -160,4 +160,52 @@ final class ToolbarNativeTests: XCTestCase {
             XCTAssertEqual(resolved.blueComponent, blue, accuracy: 0.001, name.rawValue)
         }
     }
+
+    /// The reported hover jump. The window can be the wrong size for a moment: the
+    /// first reveal is placed at a 280-point guess, a new tool's row at the last
+    /// tool's width, and a collapse shrinks a wide window around the lone glyph.
+    /// A centred row then moved the glyph under the pointer by half the error.
+    /// Pinned to its dock, the glyph keeps the same distance from the docked edge
+    /// whatever size the window is.
+    @MainActor func testTheGlyphHoldsItsPlaceWhileTheWindowIsTheWrongSize() throws {
+        _ = NSApplication.shared
+        func buttons(_ view: NSView) -> [NSButton] {
+            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+        }
+        func inset(_ state: ToolbarViewState, width: CGFloat, pinned: Bool) throws -> CGFloat {
+            let row = ToolbarRow(state: state)
+            let view = NSHostingView(rootView: pinned ? AnyView(row.pinnedToDock(state.anchor)) : AnyView(row))
+            view.frame = NSRect(x: 0, y: 0, width: width, height: NSHostingView(rootView: row).fittingSize.height)
+            view.layoutSubtreeIfNeeded()
+            let glyph = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.menu" })
+            let frame = glyph.convert(glyph.bounds, to: view)
+            return state.anchor.growsLeftward ? view.bounds.maxX - frame.maxX : frame.minX
+        }
+        for tier in ToolbarTier.allCases {
+            for anchor in ToolbarAnchor.allCases {
+                let state = ToolbarViewState(name: "jump", tier: tier, anchor: anchor, tool: .annotate)
+                let exact = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize.width
+                let settled = try inset(state, width: exact, pinned: true)
+                for stale in [exact + 60, max(280, exact + 1)] {
+                    XCTAssertEqual(try inset(state, width: stale, pinned: true), settled, accuracy: 0.5,
+                                   "\(tier) at \(anchor.rawValue): the glyph moved in a \(Int(stale))-point window")
+                }
+                XCTAssertGreaterThan(abs(try inset(state, width: exact + 60, pinned: false) - settled), 20,
+                                     "\(tier) at \(anchor.rawValue): an unpinned row no longer moves, so this test no longer reproduces the jump")
+            }
+        }
+    }
+
+    /// A running timer or a changing count redrew the row every second. With
+    /// proportional digits each redraw changed its width and re-placed the window
+    /// under the pointer.
+    @MainActor func testATickingStatusKeepsTheRowTheSameWidth() {
+        _ = NSApplication.shared
+        func width(_ status: String) -> CGFloat {
+            NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "tick", tier: .revealed, tool: .timer,
+                actionTitle: "Pause", trailing: .status(status), isBusy: true))).fittingSize.width
+        }
+        XCTAssertEqual(width("11:11"), width("08:08"), accuracy: 0.5, "digits of different shapes resized the window")
+        XCTAssertEqual(width("1 Captures"), width("8 Captures"), accuracy: 0.5)
+    }
 }

@@ -23,6 +23,7 @@ final class CaptureHUDControls: ObservableObject {
     @Published var toolbarSize = NSSize(width: 36, height: 36)
     private var measuredRowSize = NSSize(width: 280, height: 36)
     private var glyphSize = NSSize(width: 36, height: 36)
+    private var glyphMeasured = false
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
     var promptDestination: (() -> TextDelivery.Target?)?
@@ -43,7 +44,10 @@ final class CaptureHUDControls: ObservableObject {
         guard tier == toolbar.state.tier, size.width > 0, size.height > 0 else { return }
         let size = NSSize(width: ceil(size.width), height: ceil(size.height))
         let previous = preferredToolbarSize
-        if tier == .resting { glyphSize = size } else { measuredRowSize = size; glyphSize = NSSize(width: size.height, height: size.height) }
+        // Estimate the glyph from the row only until the glyph itself has been
+        // measured; afterwards the two sizes must not trade places on every reveal.
+        if tier == .resting { glyphSize = size; glyphMeasured = true }
+        else { measuredRowSize = size; if !glyphMeasured { glyphSize = NSSize(width: size.height, height: size.height) } }
         if previous != preferredToolbarSize { resize?() }
     }
     func focusToolbar() { toolbar.send(.holdBegan(.keyboard)) }
