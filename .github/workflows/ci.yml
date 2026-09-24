@@ -22,7 +22,7 @@ jobs:
       - name: Verify site contracts and release records
         run: node --test site/tests/*.test.mjs
       - name: Build the public website
-        run: node site/build.mjs
+        run: node site/build.mjs --require-production
   build-and-test:
     name: Build and test
     runs-on: macos-26
