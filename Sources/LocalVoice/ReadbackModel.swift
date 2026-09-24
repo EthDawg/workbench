@@ -278,7 +278,19 @@ enum ReadbackScreenCapture {
 
 @MainActor
 final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
-    private struct Job: Hashable { let root: URL; let sectionID: UUID }
+    private struct Job: Hashable {
+        let root: URL
+        let sectionID: UUID
+
+        static func == (lhs: Job, rhs: Job) -> Bool {
+            lhs.root.standardizedFileURL.path == rhs.root.standardizedFileURL.path && lhs.sectionID == rhs.sectionID
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(root.standardizedFileURL.path)
+            hasher.combine(sectionID)
+        }
+    }
     private struct RecordingContext { let root: URL; let sectionID: UUID; let pendingURL: URL; let previousSection: ReadbackSection }
 
     @Published private(set) var sessionURL: URL?
@@ -312,7 +324,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var permissionsReady: Bool { screenPermissionGranted && microphonePermission == .authorized }
     var shortcutLabel: String { VoicePreferences.load().shortcut(5).label }
 
-    private let engine: RecognitionEngine
+    private let transcribeAudio: @MainActor (URL) async throws -> String
     private let defaults: UserDefaults
     private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
     private var recorder: AVAudioRecorder?
@@ -325,8 +337,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private static let recentsKey = "readback.recentSessionPaths.v1"
 
     init(engine: RecognitionEngine, defaults: UserDefaults = .standard,
-         captureDisplay: @escaping @MainActor () async throws -> ReadbackScreenshot = { try await ReadbackScreenCapture.currentDisplay() }) {
-        self.engine = engine
+         captureDisplay: @escaping @MainActor () async throws -> ReadbackScreenshot = { try await ReadbackScreenCapture.currentDisplay() },
+         transcribeAudio: (@MainActor (URL) async throws -> String)? = nil) {
+        self.transcribeAudio = transcribeAudio ?? { try await engine.transcribe($0) }
         self.defaults = defaults
         self.captureDisplay = captureDisplay
         super.init()
@@ -346,11 +359,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         for url in Set(recentSessionURLs + [sessionURL].compactMap({ $0 })) {
             if let problem = ReadbackAvailability.problem(at: url) { problems[url.standardizedFileURL.path] = problem }
         }
-        if wasUnavailable, let root = sessionURL, problems[root.standardizedFileURL.path] == nil {
+        if let root = sessionURL, problems[root.standardizedFileURL.path] == nil {
             do {
                 let restored = try ReadbackStore.load(from: root)
                 guard restored.id == manifest?.id else { throw ReadbackError.message("A different session now occupies this folder. Open it explicitly to switch sessions.") }
-                publish(restored, for: root)
+                if wasUnavailable {
+                    publish(recovered(restored, at: root), for: root)
+                    enqueuePending(in: root)
+                }
             } catch { problems[root.standardizedFileURL.path] = error.localizedDescription }
         }
         if unavailableSessions != problems { unavailableSessions = problems }
@@ -850,7 +866,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             current.sections[index].status = .transcribing; current.sections[index].failure = nil
             try ReadbackStore.save(current, at: job.root); publish(current, for: job.root)
             let audioURL = try ReadbackStore.safeURL(root: job.root, relative: audio)
-            let result = try await engine.transcribe(audioURL)
+            let result = try await transcribeAudio(audioURL)
             guard !result.isEmpty else { throw ReadbackError.message("No speech was recognised. Record the narration again.") }
             current = try ReadbackStore.load(from: job.root)
             guard let freshIndex = current.sections.firstIndex(where: { $0.id == job.sectionID && $0.deletedAt == nil }) else { return }
@@ -900,17 +916,11 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     private func recovered(_ value: ReadbackManifest, at root: URL) -> ReadbackManifest {
-        var current = value; var changed = false
-        for index in current.sections.indices where current.sections[index].deletedAt == nil {
-            if current.sections[index].status == .transcribing {
-                current.sections[index].status = .queued; changed = true
-            } else if current.sections[index].status == .recording {
-                current.sections[index].status = .needsNarration
-                current.sections[index].failure = "Recording was interrupted. The screenshot was kept; record its narration again."
-                changed = true
-            }
-        }
-        if changed { try? ReadbackStore.save(current, at: root) }
+        let path = root.standardizedFileURL.path
+        let activeTranscription = activeJob.flatMap { $0.root.standardizedFileURL.path == path ? $0.sectionID : nil }
+        let activeRecording = recordingContext.flatMap { isRecording && $0.root.standardizedFileURL.path == path ? $0.sectionID : nil }
+        let current = ReadbackRecovery.reconcile(value, activeTranscription: activeTranscription, activeRecording: activeRecording)
+        if current != value { try? ReadbackStore.save(current, at: root) }
         return current
     }
 

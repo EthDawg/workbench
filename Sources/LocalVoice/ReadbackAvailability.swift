@@ -22,3 +22,21 @@ enum ReadbackAvailability {
         }
     }
 }
+
+/// Reconnecting a folder must resume orphaned work without interrupting owners
+/// that are still using its recording or recognition result.
+enum ReadbackRecovery {
+    static func reconcile(_ value: ReadbackManifest, activeTranscription: UUID?, activeRecording: UUID?) -> ReadbackManifest {
+        var current = value
+        for index in current.sections.indices where current.sections[index].deletedAt == nil {
+            let section = current.sections[index]
+            if section.status == .transcribing, section.id != activeTranscription {
+                current.sections[index].status = .queued
+            } else if section.status == .recording, section.id != activeRecording {
+                current.sections[index].status = .needsNarration
+                current.sections[index].failure = "Recording was interrupted. The screenshot was kept; record its narration again."
+            }
+        }
+        return current
+    }
+}
