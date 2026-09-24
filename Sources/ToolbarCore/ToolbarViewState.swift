@@ -143,7 +143,7 @@ public struct ToolbarViewState: Equatable, Sendable {
                 tool: ToolbarTool = .dictate, actionTitle: String? = nil,
                 isActionEnabled: Bool = true,
                 trailing: ToolbarTrailing = .shortcut(.assigned("⌃⌥Space")),
-                isBusy: Bool = false) {
+                isBusy: Bool = false, accessoryTitle: String? = nil) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
@@ -151,7 +151,8 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.actionTitle = actionTitle ?? tool.title
         self.isActionEnabled = isActionEnabled
         self.trailing = trailing
-        self.accessoryTitle = tool == .present ? "Prompts" : nil
+        // Opt-in: the live state decides whether the row carries an accessory.
+        self.accessoryTitle = accessoryTitle
         self.isBusy = isBusy
     }
 }

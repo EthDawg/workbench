@@ -19,6 +19,11 @@ enum FloatingToolbarSurface: Equatable {
 }
 
 struct FloatingToolbar: View {
+    /// Saved-prompt delivery is off in 2.0. Installed testing found the prompt
+    /// reaching the clipboard but not the selected field (see #99). Turn this on
+    /// once cross-app insertion, paste fallback and cancellation pass on the
+    /// installed app; every entry point reads this one switch.
+    static let promptDelivery = false
     @ObservedObject var model: AppModel
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var stage: StageKitController
@@ -77,7 +82,8 @@ struct FloatingToolbar: View {
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: (controls.anchor ?? .bottom).toolbarAnchor,
             tool: coreTool, actionTitle: title, isActionEnabled: promptInsertion.running || context.state.enabled(tool),
-            trailing: trailing, isBusy: busy)
+            trailing: trailing, isBusy: busy,
+            accessoryTitle: Self.promptDelivery && coreTool == .present ? "Prompts" : nil)
     }
 
     var body: some View {
@@ -137,9 +143,11 @@ struct FloatingToolbar: View {
         personas.submenu = stage.makePersonaMenu(); menu.addItem(personas)
         let drawing = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
         drawing.submenu = stage.makeAnnotationMenu(includeSettings: false); menu.addItem(drawing)
-        let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
-        prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), prepare: controls.endKeyboardInteraction)
-        menu.addItem(prompts)
+        if Self.promptDelivery {
+            let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
+            prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), prepare: controls.endKeyboardInteraction)
+            menu.addItem(prompts)
+        }
         menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
         if stage.isDrawing && model.controlTool != .annotate {
             menu.addItem(ToolbarMenuAction("Done drawing · keep marks") { stage.finishDrawing() })

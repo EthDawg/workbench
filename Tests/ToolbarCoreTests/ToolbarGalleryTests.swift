@@ -60,7 +60,9 @@ final class ToolbarGalleryTests: XCTestCase {
         let between = ToolbarGallery.idle.first { $0.name == "idle-session-open" }
         XCTAssertEqual(between?.trailing.text, "3 Captures · ⌃⌥\\")
         XCTAssertEqual(between?.isBusy, false, "a saved session does not pretend to be recording")
-        XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle, "Prompts")
+        XCTAssertNil(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle,
+                     "a row carries an accessory only when its live state asks for one")
+        XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "hidden-prompts-accessory" }?.accessoryTitle, "Prompts")
     }
 
     func testRunningWorkIsVisibleWithoutHovering() {

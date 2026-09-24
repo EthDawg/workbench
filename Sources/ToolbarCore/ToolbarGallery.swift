@@ -43,6 +43,10 @@ public enum ToolbarGallery {
         ToolbarViewState(name: "activity-drawing-resting", tier: .resting, tool: .annotate, isBusy: true),
         ToolbarViewState(name: "activity-presenting", tier: .revealed, tool: .present,
                          actionTitle: "End scene", trailing: .status("Presenting"), isBusy: true),
+        // Off in 2.0 (FloatingToolbar.promptDelivery); kept so its rendering stays under test.
+        ToolbarViewState(name: "hidden-prompts-accessory", tier: .revealed, tool: .present,
+                         actionTitle: "End scene", trailing: .status("Presenting"), isBusy: true,
+                         accessoryTitle: "Prompts"),
         ToolbarViewState(name: "activity-personas", tier: .revealed, tool: .persona,
                          actionTitle: "End Overlays", trailing: .status("3 Overlays"), isBusy: true),
         ToolbarViewState(name: "activity-inserting", tier: .revealed, tool: .present,
