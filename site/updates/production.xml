@@ -1,0 +1,23 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Workbench</title>
+        <item>
+            <title>2.0.0</title>
+            <pubDate>Fri, 25 Sep 2026 05:31:53 +1000</pubDate>
+            <sparkle:version>20260924193053</sparkle:version>
+            <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench for Mac</h2>
+<ul><li>Seven fixed menu-bar actions, shortcut editing and clear clipboard feedback.</li><li>Shared live controls for drawing, presentation, persona overlays and saved prompts.</li><li>Safer selected-field prompt insertion and missing-folder recovery for Snap &amp; Talk.</li><li>Automatic checks and background downloads, with signed updates that install on normal Quit or a safe explicit restart. Exact build details are in Settings.</li></ul>
+<p>Workbench and Workbench Preview keep separate libraries and settings. This Workbench edition uses local storage. iPhone, iPad and Chrome extension work is paused while Mac quality is the priority.</p>
+]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.0.0/Workbench.zip" length="66784792" type="application/octet-stream" sparkle:edSignature="rh5yhypMLv39MXtVUR2HgQmRKCUViRrA8jv+8H2JYIf/rqUEqxXjEMPdxTtAWj612lUi9hWDBPo00CT7uTQ7Dw=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: EGEfs6Sg3d8TDSFmPVm2bjVv5KXXHx4/4kZ87vu6hyDEioVxuNeVfXgcsuk5d+W/fbYK0qYzvtzlTzTkUHm+Cw==
+length: 1859
+-->

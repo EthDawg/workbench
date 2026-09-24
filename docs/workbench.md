@@ -22,7 +22,7 @@ The explicit Screenshot action hands existing annotations to Apple Screenshot; i
 
 ## One app, several ways in
 
-**Switch to** extends Saved resources through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. This development increment is separate from the public Preview 3 binary. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
+**Switch to** extends Saved resources through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. This describes retained source behavior; Chrome extension development and distribution are paused. Use the [production release record](../site/updates/production.json) to identify the current public Mac package and its source revision. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
 
 ```mermaid
 flowchart TB
@@ -128,7 +128,7 @@ The current desktop output/recovery mechanism exists inside scene preparation. A
 
 ## Selected-photo handoff
 
-The optional iPhone-to-Mac photo route is governed by [photo-handoff.md](photo-handoff.md). It joins a selected photo to existing Saved resources and backdrop replacement, without synchronising whole libraries or changing a scene on arrival. The public Preview 3 Mac download preserves the verified Production iCloud capability and is signed and notarized. Enabling sync remains a separate user choice; publishing a capable package does not establish paired scene reception or a public iOS release.
+The retained iPhone-to-Mac photo source is governed by [photo-handoff.md](photo-handoff.md). It joins a selected photo to existing Saved resources and backdrop replacement, without synchronising whole libraries or changing a scene on arrival. The earlier signed, notarized Preview 3 package carried the verified capability for Apple’s Production iCloud environment. That is historical evidence for the provisioned Preview identity. The production Workbench packaging path does not enable photo or scene CloudKit sync; the [production release record](../site/updates/production.json) identifies the current public Mac package. Mobile work is paused. In a capable Preview, sync requires explicit opt-in; package capability alone does not establish paired scene reception or a public iOS release.
 
 ## Personal scene preparation
 

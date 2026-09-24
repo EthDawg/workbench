@@ -41,11 +41,16 @@ test('one receipt changes every current download and notes link together', async
   assert.ok(result.includes('/tag/v2.1.0-preview.9'));
   assert.ok(result.includes('2.1.0 Preview 9'));
   assert.ok(result.includes('one-time manual installation'));
-  assert.ok(result.includes('automatic downloads are optional'));
+  assert.ok(result.includes('Automatic checks and background downloads are on by default'));
+  assert.ok(result.includes('both can be changed in Settings, and existing choices are retained'));
+  assert.ok(result.includes('normal Quit or when you explicitly restart an idle app'));
+  assert.ok(result.includes('Active work defers an update-triggered restart'));
+  assert.ok(result.includes('Versions without the updater need one manual replacement first'));
   assert.ok(!result.includes('no automatic updater'));
   const older = renderPublishedRelease(html, preview);
   assert.ok(older.includes('no automatic updater'));
-  assert.ok(!older.includes('automatic downloads are optional'));
+  assert.ok(!older.includes('background downloads are on by default'));
+  assert.ok(!older.includes('explicitly restart an idle app'));
   assert.ok(result.includes('same Applications folder'));
   assert.ok(!result.includes('{{'));
   assert.ok(!result.includes('value="2.0.0-preview.4"'));
