@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import plistlib
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
@@ -43,6 +44,19 @@ class UpdatesTests(unittest.TestCase):
                     prepare_update.validate_receipt(receipt, archive, bad, config)
             archive.write_bytes(b'changed')
             with self.assertRaises(RuntimeError): prepare_update.validate_receipt(receipt, archive, info, config)
+
+    def test_existing_install_location_is_preserved_and_duplicates_stop(self):
+        config = {'identifier':'com.example.preview','bundle':'Workbench Preview.app'}
+        with tempfile.TemporaryDirectory() as directory:
+            roots = [Path(directory)/'user',Path(directory)/'system']
+            original = roots[1]/'Workbench Preview.app'
+            (original/'Contents').mkdir(parents=True)
+            (original/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':config['identifier']}))
+            self.assertEqual(preview.installation_destination(config, roots), original)
+            duplicate = roots[0]/'Workbench Preview Copy.app'
+            (duplicate/'Contents').mkdir(parents=True)
+            (duplicate/'Contents/Info.plist').write_bytes((original/'Contents/Info.plist').read_bytes())
+            with self.assertRaises(RuntimeError): preview.installation_destination(config, roots)
 
     def test_install_lock_excludes_another_writer(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(Path, 'home', return_value=Path(directory)):

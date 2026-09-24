@@ -98,7 +98,7 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
         raise RuntimeError("Choose Developer ID signing or --ad-hoc, not both")
     selected, team = (None, None) if ad_hoc else developer_identity(identity)
     if not photo_cloud_profile and not ad_hoc and config["channel"] == "preview" and os.environ.get("WORKBENCH_RELEASE") != "1":
-        existing = Path.home() / "Applications" / config["bundle"]
+        existing = installation_destination(config)
         info_path = existing / "Contents/Info.plist"
         if info_path.exists() and plistlib.loads(info_path.read_bytes()).get("WorkbenchPhotoCloudProvisioned"):
             photo_cloud_profile = existing / "Contents/embedded.provisionprofile"
@@ -167,6 +167,22 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
     return archive
 
 
+def installation_destination(config, roots=None):
+    roots = roots or [Path.home() / "Applications", Path("/Applications")]
+    matches = []
+    for root in roots:
+        for app in root.glob("*.app"):
+            try:
+                info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+            except (OSError, ValueError):
+                continue
+            if info.get("CFBundleIdentifier") == config["identifier"]:
+                matches.append(app)
+    if len(matches) > 1:
+        raise RuntimeError("More than one installed copy has this identity. Use status.py to choose one before updating; no app was replaced.")
+    return matches[0] if matches else roots[0] / config["bundle"]
+
+
 def bundle_fingerprint(app):
     info = app / "Contents/Info.plist"
     if not info.exists():
@@ -204,9 +220,9 @@ def install_locked(config, archive, ad_hoc=False, open_app=True, expected=None):
         raise RuntimeError(f"Quit {config['bundle'].removesuffix('.app')} before updating it. Production does not need to be removed.")
     if running.returncode != 1:
         raise RuntimeError("Unable to inspect running apps. Install from a terminal with process access; no app was replaced.")
-    applications = Path("/Applications") if config["channel"] == "production" and config["executable"] == "StageMark" else Path.home() / "Applications"
+    destination = installation_destination(config)
+    applications = destination.parent
     applications.mkdir(exist_ok=True)
-    destination = applications / config["bundle"]
     if expected is not None and (bundle_fingerprint(destination) or "") != expected:
         raise RuntimeError("The installed app changed while this candidate was building. Review the current build before installing.")
     with tempfile.TemporaryDirectory(prefix=".workbench-preview-", dir=applications) as temporary:
@@ -273,7 +289,7 @@ def main():
         parser.error("--photo-cloud-profile is only for building a signed Workbench Preview")
     os.chdir(ROOT)
     config = configuration(production=args.production)
-    destination = Path.home() / "Applications" / config["bundle"]
+    destination = installation_destination(config)
     expected = (bundle_fingerprint(destination) or "") if args.command == "install" else None
     archive = args.archive.resolve() if args.archive else build(config, args.identity, args.ad_hoc, args.native, args.photo_cloud_profile)
     if args.command == "install":
