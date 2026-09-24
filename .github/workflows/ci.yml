@@ -10,34 +10,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  mobile:
-    name: iOS Preview · ${{ matrix.family }}
-    runs-on: macos-26
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        family: [iPhone, iPad]
+  site:
+    name: Site
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Run isolated native tests
-        env:
-          MOBILE_DEVICE_FAMILY: ${{ matrix.family }}
-          MOBILE_TEST_OUTPUT: ${{ github.workspace }}/test-results/mobile-${{ matrix.family }}
-        run: bash scripts/test-mobile.sh
-      - name: Retain native test results and synthetic screenshots
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: mobile-native-evidence-${{ matrix.family }}
-          path: test-results/mobile-${{ matrix.family }}/Results.xcresult
-          retention-days: 7
-          if-no-files-found: warn
-      - name: Verify the committed Xcode project matches its generator
-        run: git diff --exit-code -- Mobile/Workbench.xcodeproj
+      - name: Verify site contracts and release records
+        run: node --test site/tests/*.test.mjs
+      - name: Build the public website
+        run: node site/build.mjs
   build-and-test:
     name: Build and test
     runs-on: macos-26
@@ -70,14 +55,5 @@ jobs:
         with:
           name: workbench-tested-package
           path: dist/Workbench Preview.zip
-          retention-days: 7
-          if-no-files-found: error
-      - name: Build and verify Chrome Web Store package
-        run: python3 scripts/package-chrome.py --output dist/WorkbenchPreview-Chrome.zip
-      - name: Save tested Chrome package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: workbench-chrome-preview
-          path: dist/WorkbenchPreview-Chrome.zip
           retention-days: 7
           if-no-files-found: error

@@ -4,7 +4,7 @@ A small, useful improvement is a good first contribution. Bug reports, documenta
 
 Workbench combines Voice and StageMark into one app. Its purpose is dependable everyday Mac utilities for speaking, annotating and presenting. Improve a concrete workflow and compare against what macOS already offers before adding another feature.
 
-The separate [iOS/iPadOS 26+ Preview](docs/ios-preview.md) uses native phone/tablet workflows for the same useful jobs. Contributions should name the affected platform and preserve its own input, storage and lifecycle boundaries.
+**Current priority: Mac desktop quality. iOS, iPadOS and Chrome extension development and releases are paused.** Work from the [Mac release gate](https://github.com/EthDawg/workbench/issues/7). Existing platform code and research are retained; do not restart paused work without an explicit scope decision. Public users install **Workbench**. Contributors use the separate **Workbench Preview** edition for integration testing.
 
 ## Start from the current Workbench code
 
@@ -12,7 +12,7 @@ The canonical repository is **[`EthDawg/workbench`](https://github.com/EthDawg/w
 
 Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contributor. His September contributions include native Screenshot handoff, Snap & Talk, accessibility, transcript export, reading cancellation, Speko voices, Quick Look and timer placement. See the [integration acceptance checklist](docs/releases/2026-09-20-integration-preview.md) for their combined testing scope. Screenshot handoff launches Apple's capture tool; capturing and editing the resulting image inside Workbench remains a separate possible follow-up to [issue #18](https://github.com/EthDawg/workbench/issues/18).
 
-Repository collaborators can push their own feature branches after accepting their GitHub invitation. No fork or shared credentials are needed. The working agreement below remains a proposal for Ethan and Matt to agree.
+Repository collaborators can push their own feature branches after accepting their GitHub invitation. No fork or shared credentials are needed. Coordinate scope in the issue or PR before touching another contributor's active work.
 
 ## Choose a first step
 
@@ -61,7 +61,9 @@ For persistent native testing, use the [signed Preview build/install commands](R
 
 CI runs automated checks and packaging on a macOS runner. A maintainer may need to approve a fork's first workflow run. For a behavioural change, add or run focused checks for the actual risk. Record relevant manual evidence: microphone permission/cancellation, cross-app paste, device disconnect/reconnect, keyboard conflicts, light/dark layout or other affected behaviour. Use synthetic content in public screenshots and recordings. If something cannot be tested, say why.
 
-## Build and check the mobile Preview
+## Paused mobile development reference
+
+Mobile development and distribution are paused. These commands remain for maintaining historical work; they are not an invitation to extend the mobile release.
 
 Use full Xcode 26.1+ with the iOS 26.1+ SDK and an installed iOS 26 Simulator runtime. From the same checkout:
 
@@ -103,7 +105,7 @@ Record simulator model/OS and actual test results in the PR. Physical speech ava
 
 The [jobs and interaction specification](docs/product-spec.md) defines input ownership, surfaces, placement and closure. The [public guide](https://workbench-mac.vercel.app/guide/) explains them to users. Update that specification and `site/guide/index.html` alongside behavior changes.
 
-For mobile behaviour, update [the mobile contract and evidence](docs/ios-preview.md); [mobile research](docs/mobile-research.md) records the native baselines and platform constraints. Keep mobile results separate from the Mac acceptance record.
+If mobile work is explicitly resumed, update [the mobile contract and evidence](docs/ios-preview.md); [mobile research](docs/mobile-research.md) records the native baselines and platform constraints. Keep mobile results separate from the Mac acceptance record.
 
 ## Shared installation and updates
 
@@ -123,17 +125,17 @@ Open **Compare & pull request** for your branch on GitHub. Set the destination t
 
 AI-assisted work has the same ownership and testing expectations. The submitting person must understand the change and check its claims. Never include private prompts, recordings, credentials or customer assets. There is no CLA or DCO signing step. Contributions use this repository's [MIT license](LICENSE); preserve upstream notices and contribute only material you have the right to share.
 
-## Proposed Ethan–Matt working agreement
+## Working together
 
-**This is a proposal for the two people to agree, not a statement of existing GitHub roles, branch protections or delegated publishing authority.**
+Keep one writer per worktree and one integration owner for a shared installed app. This workflow does not assign GitHub roles or grant publishing authority.
 
 - Ethan and Matt share direction and review meaningful changes from each other.
 - Either can experiment. Claim a shared issue before implementation; coordinate if the work overlaps an existing contribution.
 - Keep independent features in separate PRs. Automated checks and AI review support the other person's review.
-- Agree together before introducing services, telemetry, broad permissions, major dependencies, migrations or a public release.
+- Obtain the applicable task authority before introducing services, telemetry, broad permissions, major dependencies, migrations or publishing a release.
 - AI can investigate, implement and draft. Public replies and commitments follow the submitting maintainer's explicit delegation. Writing in Ethan's style alone does not grant permission to speak or commit for him.
 - Keep consequential WhatsApp decisions in the relevant issue or PR. Issues are the work queue; releases are the download and change record.
 
-A maintainer review should establish scope, clarity, user-data preservation and relevant validation. A green build, merge, signed archive and published release are distinct states. Keep previews labelled and verify the actual packaged app before promotion. Response times vary; no support SLA is promised.
+A maintainer review should establish scope, clarity, user-data preservation and relevant validation. A green build, merge, signed archive and published release are distinct states. Keep Preview internal, identify the public product as Workbench, and verify the actual production package before promotion. The signed feed, public download and website version must refer to the same artifact. Response times vary; no support SLA is promised.
 
 Be kind and specific. Read [community expectations](CODE_OF_CONDUCT.md) and use [private security reporting](SECURITY.md) for vulnerabilities.
