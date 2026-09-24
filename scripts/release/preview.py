@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build or update an isolated Workbench Preview without changing production.
+"""Build Workbench Preview or install a verified package of the selected edition.
 
 One installer for the unified repository. Uses the existing Developer ID from Keychain;
 never handles credentials. No publication, app-data removal or TCC reset.
@@ -245,7 +245,7 @@ def install_locked(config, archive, ad_hoc=False, open_app=True, expected=None):
             # or a disposable ad-hoc signature, which may orphan OS permissions.
             teams = [re.search(r"^TeamIdentifier=(.*)$", details, re.M) for details in (previous, signature)]
             if teams[0] and teams[0].group(1) != "not set" and (not teams[1] or teams[0].group(1) != teams[1].group(1)):
-                raise RuntimeError("Preview signing team changed. Keep the original identity for this update.")
+                raise RuntimeError(f"{config['bundle']} signing team changed. Keep the original identity for this update.")
             backup = ROOT / config["preview_archive"]
             backup = backup.with_name("Previous-" + backup.name)
             run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", destination, staging / backup.name)

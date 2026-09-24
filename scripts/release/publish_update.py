@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tempfile
 import urllib.request
+import xml.etree.ElementTree as ET
 import prepare_update
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,6 +37,22 @@ def verify_tag_target(tag, source):
         raise RuntimeError('Existing release tag points to different source; no write performed')
 
 
+def website_record(receipt, feed):
+    """Bind the website selection to the exact feed verified for publication."""
+    record = {key: receipt[key] for key in
+              ['channel', 'version', 'build', 'tag', 'source', 'download_url', 'sha256', 'feed_url']}
+    record['feed_sha256'] = hashlib.sha256(feed.read_bytes()).hexdigest()
+    return record
+
+
+def require_newer_build(previous, build):
+    if previous.exists():
+        versions = ET.parse(previous).getroot().findall('.//' + prepare_update.SPARKLE + 'version')
+        if any(tuple(map(int, version.text.split('.'))) >= tuple(map(int, build.split('.')))
+               for version in versions):
+            raise RuntimeError('A same or newer feed is already staged. No feed replaced.')
+
+
 def publish(directory, notes):
     receipt = json.loads((directory/'release.json').read_text())
     tag, filename = receipt['tag'], receipt['archive']
@@ -57,6 +74,10 @@ def publish(directory, notes):
     signer=ROOT/'.build/artifacts/sparkle/Sparkle/bin/sign_update'
     subprocess.run([signer,'--account',config['keychain_account'],'--verify',feed],check=True)
     subprocess.run([signer,'--account',config['keychain_account'],'--verify',archive,signature],check=True)
+    destination = ROOT / 'site/updates'
+    previous = destination / feed.name
+    # Reject stale prepared artifacts before creating or exposing a release.
+    require_newer_build(previous, receipt['build'])
     # Never create duplicate releases or overwrite already published assets.
     listing=[r for page in json.loads(gh('api',f'repos/{REPO}/releases','--paginate','--slurp')) for r in page]
     existing=next((r for r in listing if r['tag_name']==tag),None)
@@ -83,17 +104,13 @@ def publish(directory, notes):
         while block:=response.read(1024*1024): digest.update(block)
     if digest.hexdigest()!=receipt['sha256']:
         raise RuntimeError('Public download mismatch; feed has not been promoted')
-    # These are the only website files staged by this command. Site build checks
-    # use latest.json as the shared download record for each edition.
-    destination=ROOT/'site/updates'; destination.mkdir(parents=True,exist_ok=True)
-    previous=destination/feed.name
-    if previous.exists():
-        import xml.etree.ElementTree as ET
-        versions=ET.parse(previous).getroot().findall('.//'+prepare_update.SPARKLE+'version')
-        if any(tuple(map(int,v.text.split('.'))) >= tuple(map(int,receipt['build'].split('.'))) for v in versions):
-            raise RuntimeError('A newer feed is already staged. No feed replaced.')
+    # These are the only website files staged by this command. The site selects
+    # production.json for the public download and preserves the Preview channel.
+    destination.mkdir(parents=True,exist_ok=True)
+    # Recheck after network operations in case another publication advanced it.
+    require_newer_build(previous, receipt['build'])
     shutil.copy2(feed,previous)
-    (destination/(receipt['channel']+'.json')).write_text(json.dumps({k:receipt[k] for k in ['version','build','tag','source','download_url','sha256','feed_url']},indent=2)+'\n')
+    (destination/(receipt['channel']+'.json')).write_text(json.dumps(website_record(receipt, feed),indent=2)+'\n')
     print(f'Published and verified https://github.com/{REPO}/releases/tag/{tag}')
     print('Signed feed and download record staged in site/updates. Commit, build, deploy and verify them together.')
 
