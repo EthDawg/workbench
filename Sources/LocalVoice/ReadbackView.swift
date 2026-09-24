@@ -47,7 +47,7 @@ struct ReadbackView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(model.recentSessionURLs, id: \.path) { url in
-                            let problem = model.unavailableSessions[url.standardizedFileURL]
+                            let problem = model.unavailableSessions[url.standardizedFileURL.path]
                             VStack(alignment: .leading, spacing: 4) {
                             Button { model.openRecent(url) } label: {
                                 HStack {
@@ -63,7 +63,7 @@ struct ReadbackView: View {
                                     Button("Locate…") { model.locateSession(url) }
                                         .disabled(model.isRecording || model.isCapturing || model.hasPendingTranscriptions)
                                     Button("Remove") { model.forgetRecentSession(url) }
-                                        .disabled(model.sessionURL == url.standardizedFileURL && (model.isRecording || model.isCapturing))
+                                        .disabled(model.sessionURL?.path == url.standardizedFileURL.path && (model.isRecording || model.isCapturing))
                                         .help("Remove this entry from Recents only; no files are deleted")
                                 }.controlSize(.small)
                             }
