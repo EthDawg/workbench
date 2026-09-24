@@ -27,10 +27,12 @@ public struct ToolbarRow: View {
     private let drag: ToolbarDragActions
     private let textScale: CGFloat
     private let accent: Color
+    private let makeAccessoryMenu: () -> NSMenu
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
 
     public init(state: ToolbarViewState, textScale: CGFloat = 1, accent: Color = .accentColor,
+                makeAccessoryMenu: @escaping () -> NSMenu = { NSMenu() },
                 action: @escaping () -> Void = {}, makeMenu: @escaping () -> NSMenu = { NSMenu() },
                 menuBegan: @escaping (NSMenu) -> Bool = { _ in true }, menuEnded: @escaping () -> Void = {},
                 focusButton: @escaping (NSButton) -> Void = { _ in }, escape: @escaping () -> Void = {},
@@ -38,6 +40,7 @@ public struct ToolbarRow: View {
         self.state = state; self.textScale = textScale; self.accent = accent; self.action = action; self.makeMenu = makeMenu
         self.menuBegan = menuBegan; self.menuEnded = menuEnded; self.focusButton = focusButton
         self.escape = escape; self.drag = drag
+        self.makeAccessoryMenu = makeAccessoryMenu
     }
     private var scale: CGFloat { textScale * systemScale }
     private var side: CGFloat { 36 * scale }
@@ -46,6 +49,7 @@ public struct ToolbarRow: View {
         HStack(spacing: state.tier == .resting ? 0 : 8 * scale) {
             if !state.anchor.growsLeftward { glyph }
             if state.tier == .revealed {
+                if state.anchor.growsLeftward { accessory }
                 if state.anchor.growsLeftward { trailing }
                 Button(state.actionTitle, action: action)
                     .font(.system(size: 13 * scale, weight: .medium))
@@ -53,6 +57,7 @@ public struct ToolbarRow: View {
                     .disabled(!state.isActionEnabled).fixedSize()
                     .accessibilityIdentifier("toolbar.primary")
                 if !state.anchor.growsLeftward { trailing }
+                if !state.anchor.growsLeftward { accessory }
             }
             if state.anchor.growsLeftward { glyph }
         }
@@ -73,6 +78,13 @@ public struct ToolbarRow: View {
         .accessibilityLabel("Workbench floating toolbar")
     }
 
+    @ViewBuilder private var accessory: some View {
+        if let accessoryTitle = state.accessoryTitle {
+            ToolbarAccessory(title: accessoryTitle, makeMenu: makeAccessoryMenu, began: menuBegan, ended: menuEnded)
+                .frame(width: 74 * scale, height: 30 * scale)
+        }
+    }
+
     private var glyph: some View {
         ToolbarGlyph(state: state, size: 15 * scale, accent: accent, makeMenu: makeMenu, began: menuBegan,
                      ended: menuEnded, focus: focusButton, escape: escape, drag: drag)
@@ -87,11 +99,38 @@ public struct ToolbarRow: View {
                 if state.isBusy { Circle().fill(.tint).frame(width: 4, height: 4).padding(.bottom, 3).allowsHitTesting(false) }
             }
     }
-    private var trailing: some View {
+    @ViewBuilder private var trailing: some View {
+        if !state.trailing.readsAsUnavailable {
         Text(state.trailing.text).font(.system(size: 12 * scale))
             .foregroundStyle(.secondary).fixedSize()
             .help(state.trailing.text)
             .overlay { ToolbarDragRegion(drag: drag) }
+        }
+    }
+}
+
+private struct ToolbarAccessory: NSViewRepresentable {
+    let title: String
+    let makeMenu: () -> NSMenu
+    let began: (NSMenu) -> Bool
+    let ended: () -> Void
+    func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
+    func updateNSView(_ view: AccessoryButton, context: Context) {
+        view.title = title + " ⌄"; view.isBordered = false; view.font = .systemFont(ofSize: 12)
+        view.setAccessibilityLabel(title); view.setAccessibilityIdentifier("toolbar.accessory")
+        view.open = { [weak view] in
+            guard let view else { return }
+            let menu = makeMenu(); guard began(menu) else { return }
+            defer { ended() }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
+        }
+    }
+    final class AccessoryButton: NSButton {
+        var open: (() -> Void)?
+        override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(openMenu) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        @objc private func openMenu() { open?() }
     }
 }
 

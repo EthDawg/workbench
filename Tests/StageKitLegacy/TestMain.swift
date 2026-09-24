@@ -318,10 +318,12 @@ struct TestRunner {
         tests.insert(contentsOf: backdropTests, at: 5)
         tests.insert(contentsOf: sceneListTests, at: 5)
         tests.insert(contentsOf: personaControlTests, at: 5)
+        tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))
         if personaControlsOnly {
             tests = personaControlTests + [
                 ("persona independent copies and size", personaSessions.testTwoInstancesOwnIndependentGeometryVisibilityLockAndOrder),
-                ("persona remove and re-add", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible)
+                ("persona remove and re-add", personaSessions.testEmptySetCanBeRevisitedAndLiveFailuresStayVisible),
+                ("shared persona menu generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions)
             ]
         } else if sceneListOnly {
             tests = sceneListTests

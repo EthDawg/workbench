@@ -205,7 +205,7 @@ struct DemoScenesView: View {
                         }.fixedSize().accessibilityLabel("More scene actions")
                     }
                     #if !APP_STORE
-                    Text("Click the edge tile for controls. Esc closes controls, then ends.")
+                    Text(model.usesSharedControls ? "Use the floating toolbar for live controls. Command-/ focuses it." : "Click the edge tile for controls. Esc closes controls, then ends.")
                         .font(.caption).foregroundStyle(.secondary)
                     #else
                     Text("Export your scene, then position a QuickTime movie preview over its device frame.")

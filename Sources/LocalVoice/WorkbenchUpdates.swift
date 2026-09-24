@@ -30,8 +30,11 @@ struct WorkbenchUpdateActivity {
 @MainActor
 final class WorkbenchUpdates: NSObject, ObservableObject {
     static let shared = WorkbenchUpdates()
-    let build = WorkbenchBuild()
+    let build: WorkbenchBuild
+    init(build: WorkbenchBuild = WorkbenchBuild()) { self.build = build; super.init() }
     @Published var status = ""
+    @Published private(set) var checkedCurrent = false
+    @Published private(set) var checking = false
     @Published var availableVersion: String?
     @Published var enabled = false
     @Published var automaticChecks = false
@@ -85,16 +88,25 @@ final class WorkbenchUpdates: NSObject, ObservableObject {
             status = "Finish recording, reading, presenting or editing before updating."
             return
         }
+        checkedCurrent = false
         if let resume = deferredInstall {
             deferredInstall = nil; restartWaiting = false; resume(); return
         }
         #if !APP_STORE
-        controller?.checkForUpdates(sender)
+        if let controller { checking = true; controller.checkForUpdates(sender) }
         #endif
     }
     func copyDetails() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(build.details, forType: .string)
+    }
+    var panelTitle: String {
+        if !build.released { return "Update · Local Build" }
+        if restartWaiting { return "Update · Restart Ready" }
+        if availableVersion != nil { return "Update Ready" }
+        if checking { return "Checking for Updates…" }
+        if checkedCurrent { return "Update · Current" }
+        return canCheck ? "Check for Updates…" : "Update Status Unavailable"
     }
     var buttonTitle: String {
         restartWaiting ? "Restart to update…" : availableVersion != nil ? "Review update…" : "Check for Updates…"
@@ -117,17 +129,18 @@ extension WorkbenchUpdates: SPUUpdaterDelegate, @preconcurrency SPUStandardUserD
         status = "\(build.edition) \(update.displayVersionString) is available. Update when you are ready."
     }
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        checking = false; checkedCurrent = false
         availableVersion = item.displayVersionString
     }
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        availableVersion = nil
+        availableVersion = nil; checking = false; checkedCurrent = true
         status = "You have the latest published \(build.edition.lowercased()) version."
     }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        installing = false
+        checking = false; installing = false
         deferredInstall = nil; restartWaiting = false
         // Sparkle reports no-update through this callback too.
-        if (error as NSError).code != SUError.noUpdateError.rawValue { status = "Update check: \(error.localizedDescription)" }
+        if (error as NSError).code != SUError.noUpdateError.rawValue { checkedCurrent = false; status = "Update check: \(error.localizedDescription)" }
     }
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         installing = true
@@ -138,6 +151,7 @@ extension WorkbenchUpdates: SPUUpdaterDelegate, @preconcurrency SPUStandardUserD
     }
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) { installing = true }
     func standardUserDriverWillFinishUpdateSession() {
+        checking = false
         if !restartWaiting { availableVersion = nil; installing = false }
     }
 }

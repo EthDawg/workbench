@@ -5,6 +5,8 @@ import AVFoundation
 
 final class DemoPresentation: NSObject, NSWindowDelegate {
     var onEnd: (() -> Void)?
+    var onRevealSharedControls: (() -> Void)?
+    private let sharedControls: Bool
     private var window: DemoStageWindow?
     private let capture: DemoCapture
     private let controls: PresentationControlsModel
@@ -19,9 +21,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     private var lifecycle = PresentationLifecycle()
     private let handoff = PresentationHandoff()
     private var keepAwake: NSObjectProtocol?
-    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, mode: PresentationMode = .fullScreen) {
+    init(scene: DemoScene, image: NSImage, logo: NSImage?, hand: NSImage?, persona: NSImage? = nil, ambience: AmbientSceneImages? = nil, screen: NSScreen?, root: URL, mode: PresentationMode = .fullScreen, sharedControls: Bool = false) {
         self.scene = scene; backdrop = image; self.logo = logo; self.hand = hand; self.persona = persona; self.screen = screen
-        self.mode = mode; self.ambience = ambience
+        self.mode = mode; self.ambience = ambience; self.sharedControls = sharedControls
         capture = DemoCapture(root: root)
         controls = PresentationControlsModel(root: root)
         super.init()
@@ -44,13 +46,54 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             if !self.controls.handleEscape() { self.end() }
         }
         window.onReconnect = { [weak self] in self?.capture.reconnect() }
-        window.onRevealControls = { [weak self] in self?.controls.revealForKeyboard() }
-        window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, controls: controls,
+        window.onRevealControls = { [weak self] in
+            guard let self else { return }
+            if self.sharedControls { self.onRevealSharedControls?() } else { self.controls.revealForKeyboard() }
+        }
+        window.contentView = NSHostingView(rootView: DemoStageContent(scene: scene, backdrop: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, capture: capture, controls: controls, sharedControls: sharedControls,
             endAndOpen: { [weak self] in self?.endAndOpen($0) }, end: { [weak self] in self?.end() }))
         self.window = window
         NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
         if mode == .fullScreen { lifecycle.willEnter(); window.toggleFullScreen(nil) }
         if scene.showsPhone { capture.start() }
+    }
+    func makeControlsMenu() -> NSMenu {
+        let menu = NSMenu(title: "Present"); menu.autoenablesItems = false
+        if scene.showsPhone {
+            menu.addItem(StageMenuAction(capture.live ? "Device Connected" : capture.message, enabled: false) {})
+            menu.addSubmenu("Source", items: capture.sources.map { source in
+                StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.capture.select(source.id) }
+            })
+            menu.addItem(StageMenuAction("Source & Connection Help…") { [weak self] in
+                self?.controls.choosingSource = true; self?.bringForward()
+            })
+            menu.addItem(StageMenuAction("Match Device Proportions", checked: controls.fitToSource) { [weak self] in self?.controls.fitToSource.toggle() })
+            menu.addItem(StageMenuAction("Reconnect") { [weak self] in self?.capture.reconnect() })
+        }
+        if scene.gentleMotion == true {
+            menu.addItem(StageMenuAction(controls.motionPaused ? "Play Background Motion" : "Pause Background Motion") { [weak self] in self?.controls.motionPaused.toggle() })
+        }
+        menu.addItem(StageMenuAction("Show Presentation Window") { [weak self] in self?.bringForward() })
+        menu.addItem(StageMenuAction("Full Screen", checked: window?.styleMask.contains(.fullScreen) == true) { [weak self] in self?.window?.toggleFullScreen(nil) })
+        menu.addSubmenu("Window Size", items: [("Compact", CGFloat(640)), ("Medium", CGFloat(900)), ("Large", CGFloat(1100))].map { title, width in
+            StageMenuAction(title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
+                guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
+                let frame = FloatingControlGeometry.clamp(NSRect(origin: window.frame.origin, size: NSSize(width: width, height: width * 0.66)), to: screen.visibleFrame)
+                window.setFrame(frame, display: true)
+            }
+        })
+        menu.addSubmenu("Window Position", items: FloatingControlAnchor.allCases.map { anchor in
+            StageMenuAction(anchor.title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
+                guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
+                window.setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen.visibleFrame), display: true)
+            }
+        })
+        menu.addItem(.separator())
+        for app in NativePresentationApp.allCases {
+            menu.addItem(StageMenuAction("End Preview & Open \(app.title)", enabled: app.isAvailable) { [weak self] in self?.endAndOpen(app) })
+        }
+        menu.addItem(StageMenuAction("End Presentation") { [weak self] in self?.end() })
+        return menu
     }
     func bringForward() { NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil) }
     func end() {
@@ -148,6 +191,9 @@ private final class DemoStageWindow: NSWindow {
 /// controls and placement. Capture and scene state never depend on expansion.
 private final class PresentationControlsModel: ObservableObject {
     @Published private(set) var policy = PresentationControlsPolicy()
+    @Published var fitToSource = true
+    @Published var motionPaused = false
+    @Published var choosingSource = false
     @Published private(set) var focusRequest = 0
     @Published private(set) var placement = PresentationControlPlacement()
     @Published private(set) var dragFrame: CGRect?
@@ -227,18 +273,16 @@ private struct DemoStageContent: View {
     let ambience: AmbientSceneImages?
     @ObservedObject var capture: DemoCapture
     @ObservedObject var controls: PresentationControlsModel
+    let sharedControls: Bool
     let endAndOpen: (NativePresentationApp) -> Void
     let end: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @State private var fitToSource = true
-    @State private var motionPaused = false
-    @State private var choosingSource = false
     @State private var pendingNativeApp: NativePresentationApp?
     @FocusState private var focusedControl: Control?
     private var liveScene: DemoScene {
         var value = scene
-        if fitToSource, capture.dimensions.height > 0 {
+        if controls.fitToSource, capture.dimensions.height > 0 {
             var viewport = scene.viewport ?? .legacy
             viewport.aspect = capture.dimensions.width / capture.dimensions.height
             value.viewport = (try? viewport.validated()) ?? viewport
@@ -262,7 +306,7 @@ private struct DemoStageContent: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, previewLayer: capture.previewLayer, live: capture.live, motion: scene.gentleMotion == true && !motionPaused && !reduceMotion)
+                DemoStageSurface(scene: liveScene, image: backdrop, logo: logo, hand: hand, persona: persona, ambience: ambience, previewLayer: capture.previewLayer, live: capture.live, motion: scene.gentleMotion == true && !controls.motionPaused && !reduceMotion)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if controls.policy.isExpanded { controls.close() } }
                 if scene.showsPhone && !capture.live {
@@ -276,6 +320,7 @@ private struct DemoStageContent: View {
                         .foregroundStyle(.white)
                         .position(x: viewport.midX, y: geometry.size.height - viewport.midY)
                 }
+                if !sharedControls {
                 if let dragFrame = controls.dragFrame {
                     FloatingControlGuides(controlFrame: dragFrame,
                         visibleFrame: CGRect(origin: .zero, size: geometry.size), activeAnchor: controls.snapAnchor)
@@ -296,6 +341,7 @@ private struct DemoStageContent: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.16)))
                 .position(x: frame.midX, y: geometry.size.height - frame.midY)
                 .animation(reduceMotion || controls.dragFrame != nil ? nil : .easeOut(duration: 0.16), value: controls.policy.isExpanded)
+                }
             }.background(.black).coordinateSpace(name: "presentation-controls")
                 .onAppear { controls.start() }
                 .onDisappear { controls.stop() }
@@ -306,7 +352,7 @@ private struct DemoStageContent: View {
                 .onChange(of: controls.focusRequest) { _, _ in
                     focusedControl = controls.policy.isExpanded ? (scene.showsPhone ? .source : .close) : .tile
                 }
-                .sheet(isPresented: $choosingSource, onDismiss: {
+                .sheet(isPresented: $controls.choosingSource, onDismiss: {
                     guard let app = pendingNativeApp else { return }
                     pendingNativeApp = nil
                     endAndOpen(app)
@@ -356,10 +402,10 @@ private struct DemoStageContent: View {
                 }
                 Spacer()
                 if scene.gentleMotion == true {
-                    Button { motionPaused.toggle() } label: {
-                        Image(systemName: motionPaused ? "play.fill" : "pause.fill")
-                    }.accessibilityLabel(motionPaused ? "Play background motion" : "Pause background motion")
-                        .help(motionPaused ? "Play background motion" : "Pause background motion")
+                    Button { controls.motionPaused.toggle() } label: {
+                        Image(systemName: controls.motionPaused ? "play.fill" : "pause.fill")
+                    }.accessibilityLabel(controls.motionPaused ? "Play background motion" : "Pause background motion")
+                        .help(controls.motionPaused ? "Play background motion" : "Pause background motion")
                 }
             }.frame(height: 28)
             Divider()
@@ -384,14 +430,14 @@ private struct DemoStageContent: View {
     }
     private func openSource() {
         controls.close()
-        choosingSource = true
+        controls.choosingSource = true
     }
     private var sourceSheet: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 Text("Device screen").font(.title2.bold())
                 Spacer()
-                Button("Done") { choosingSource = false }.keyboardShortcut(.defaultAction)
+                Button("Done") { controls.choosingSource = false }.keyboardShortcut(.defaultAction)
             }
             Text("Connect an unlocked iPhone or iPad by USB and trust this Mac. External video sources also work; Android needs a compatible video feed.").foregroundStyle(.secondary)
             if capture.sources.isEmpty { Text("No external sources found.") }
@@ -400,7 +446,7 @@ private struct DemoStageContent: View {
                     VStack(spacing: 8) {
                         ForEach(capture.sources) { source in
                             Button {
-                                capture.select(source.id); choosingSource = false
+                                capture.select(source.id); controls.choosingSource = false
                             } label: {
                                 HStack { Image(systemName: "video"); Text(source.name); Spacer(); if capture.selectedID == source.id { Image(systemName: "checkmark") } }
                             }.buttonStyle(.bordered)
@@ -409,7 +455,7 @@ private struct DemoStageContent: View {
                 }.frame(height: min(CGFloat(capture.sources.count) * 36, 160))
             }
             Text(capture.message).font(.caption).foregroundStyle(.secondary)
-            Toggle("Match device proportions", isOn: $fitToSource).toggleStyle(.checkbox)
+            Toggle("Match device proportions", isOn: $controls.fitToSource).toggleStyle(.checkbox)
             if capture.dimensions.width > 0 && capture.dimensions.height > 0 {
                 Text("Video size: \(Int(capture.dimensions.width)) × \(Int(capture.dimensions.height))")
                     .font(.caption).foregroundStyle(.secondary)
@@ -419,9 +465,9 @@ private struct DemoStageContent: View {
             NativePresentationApps(onEndAndOpen: { app in
                 guard pendingNativeApp == nil else { return }
                 pendingNativeApp = app
-                choosingSource = false
+                controls.choosingSource = false
             }) { capture.reportNotice($0) }
-        }.padding(24).frame(width: 460).onExitCommand { choosingSource = false }
+        }.padding(24).frame(width: 460).onExitCommand { controls.choosingSource = false }
     }
 }
 

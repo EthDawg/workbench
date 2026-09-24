@@ -51,17 +51,16 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertNotEqual(drawing?.actionTitle, ToolbarTool.annotate.title)
     }
 
-    func testTheTrailingSlotCarriesStatusWhileWorkingAndAKeyWhenIdle() {
+    func testActiveStatusAndBetweenCaptureCountRemainVisible() {
         for state in ToolbarGallery.activity where state.isBusy && state.tier == .revealed {
             guard case .status = state.trailing else {
                 return XCTFail("\(state.name) shows a key while work is running")
             }
         }
-        for state in ToolbarGallery.states where !state.isBusy {
-            guard case .shortcut = state.trailing else {
-                return XCTFail("\(state.name) shows a status while idle")
-            }
-        }
+        let between = ToolbarGallery.idle.first { $0.name == "idle-session-open" }
+        XCTAssertEqual(between?.trailing.text, "3 Captures · ⌃⌥\\")
+        XCTAssertEqual(between?.isBusy, false, "a saved session does not pretend to be recording")
+        XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle, "Prompts")
     }
 
     func testRunningWorkIsVisibleWithoutHovering() {

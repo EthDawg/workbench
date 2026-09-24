@@ -4,15 +4,17 @@ import StageKit
 
 /// Choosing controls never starts, stops or replaces an independent activity.
 enum WorkbenchControlTool: String, CaseIterable, Identifiable {
-    case dictate, snap, annotate, present, read
+    case dictate, read, snap, annotate, present, persona, timer
     var id: String { rawValue }
     var title: String {
         switch self {
         case .dictate: return "Dictate"
         case .snap: return "Snap & Talk"
-        case .annotate: return "Annotate"
+        case .annotate: return "Draw"
         case .present: return "Present"
         case .read: return "Read"
+        case .persona: return "Persona Overlay"
+        case .timer: return "Timer"
         }
     }
     var shortTitle: String { self == .snap ? "Snap" : title }
@@ -23,12 +25,15 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
         case .annotate: return "pencil.tip"
         case .present: return "iphone"
         case .read: return "speaker.wave.2"
+        case .persona: return "person.crop.rectangle"
+        case .timer: return "timer"
         }
     }
     var page: String {
         switch self {
         case .snap: return "readback"
         case .read: return "speak"
+        case .persona, .timer: return "present"
         default: return rawValue
         }
     }
@@ -49,6 +54,8 @@ struct WorkbenchControlState {
     var mayPresent = true
     var playing = false
     var paused = false
+    var overlays = false
+    var timerRunning = false
 
     func enabled(_ tool: WorkbenchControlTool) -> Bool {
         switch tool {
@@ -59,6 +66,8 @@ struct WorkbenchControlState {
         case .annotate: return drawing || mayDraw
         case .present: return presenting || mayPresent
         case .read: return true
+        case .persona: return overlays || mayPresent
+        case .timer: return timerRunning || mayPresent
         }
     }
     func actionTitle(_ tool: WorkbenchControlTool) -> String {
@@ -74,6 +83,8 @@ struct WorkbenchControlState {
         case .snap: return narrating ? "Finish narration" : capturing ? "Capturing…" : hasSession ? "Capture next" : "Set up session"
         case .annotate: return drawing ? "Done drawing" : "Draw on screen"
         case .present: return presenting ? "End scene" : "Start scene"
+        case .persona: return overlays ? "End Overlays" : "Show Persona"
+        case .timer: return timerRunning ? "Show or hide timer" : "Start Timer"
         case .read: return rendering ? "Cancel generation" : playing ? "Pause reading" : paused ? "Resume reading" : "Open reading"
         }
     }
@@ -96,16 +107,35 @@ struct WorkbenchControlContext {
             pendingNarration: readback.hasPendingTranscriptions, hasSession: readback.sessionURL != nil,
             drawing: stage.isDrawing, presenting: stage.isPresenting,
             mayDraw: stage.mayBeginDrawing?() ?? stage.mayBeginInteraction?() ?? true,
-            mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused)
+            mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
+            overlays: stage.hasActivePersona, timerRunning: stage.isTimerRunning)
     }
     func shortcut(_ tool: WorkbenchControlTool) -> String? {
         switch tool {
         case .dictate: return voiceShortcut(1)
         case .snap: return voiceShortcut(5)
+        case .read: return voiceShortcut(6)
+        case .present: return voiceShortcut(7)
+        case .persona: return stageShortcut("personaToggle")
+        case .timer: return stageShortcut("timer")
         case .annotate:
             guard let shortcut = stage.shortcutDescriptors.first(where: { $0.id == "pen" }) else { return "Shortcut unavailable" }
             return !shortcut.enabled ? "Shortcut off" : shortcut.error != nil ? "Shortcut unavailable" : shortcut.keyLabel
-        default: return nil
+        }
+    }
+    func stageShortcut(_ id: String) -> String? {
+        guard let shortcut = stage.shortcutDescriptors.first(where: { $0.id == id }) else { return nil }
+        return !shortcut.enabled ? "Shortcut off" : shortcut.error != nil ? "Shortcut unavailable" : shortcut.keyLabel
+    }
+    func shortcutID(_ tool: WorkbenchControlTool) -> String {
+        switch tool {
+        case .dictate: return "voice.1"
+        case .read: return "voice.6"
+        case .snap: return "voice.5"
+        case .annotate: return "stage.pen"
+        case .present: return "voice.7"
+        case .persona: return "stage.personaToggle"
+        case .timer: return "stage.timer"
         }
     }
     func voiceShortcut(_ id: UInt32) -> String {
@@ -124,6 +154,8 @@ struct WorkbenchControlContext {
             return readback.hasPendingTranscriptions ? captured + " · transcribing narration…" : readback.sessionURL == nil ? "Capture a screen, then explain it." : captured + " in this session"
         case .annotate: return stage.isDrawing ? stage.drawingToolTitle + " · Done keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
         case .present: return stage.isPresenting ? "Scene stays live while you use other tools." : "Present your selected device scene."
+        case .persona: return stage.hasActivePersona ? "Adjust the current overlays without ending the device scene." : "Show a prepared persona. Organise cards in Workbench."
+        case .timer: return stage.isTimerRunning ? stage.timerText : "Start your saved timer."
         case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }
     }
@@ -136,6 +168,6 @@ struct WorkbenchControlContext {
         if model.phase == .recording { labels.append("Dictating") }
         else if model.phase != .idle { labels.append(model.waitingForDrawing ? "Text ready" : "Processing speech") }
         if model.playing { labels.append("Reading") }
-        return labels.isEmpty ? "Ready when you are" : labels.joined(separator: " · ")
+        return labels.joined(separator: " · ")
     }
 }

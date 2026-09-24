@@ -6,7 +6,7 @@
 /// as an image diff instead of a claim in a report.
 
 public enum ToolbarTool: String, CaseIterable, Sendable {
-    case dictate, snapAndTalk, annotate, present, read
+    case dictate, snapAndTalk, annotate, present, persona, read, timer
 
     public var title: String {
         switch self {
@@ -14,7 +14,9 @@ public enum ToolbarTool: String, CaseIterable, Sendable {
         case .snapAndTalk: return "Snap & Talk"
         case .annotate: return "Draw"
         case .present: return "Present"
-        case .read: return "Read aloud"
+        case .read: return "Read"
+        case .persona: return "Persona Overlay"
+        case .timer: return "Timer"
         }
     }
     /// One symbol per job, shared by the resting glyph, the revealed row and the
@@ -26,6 +28,8 @@ public enum ToolbarTool: String, CaseIterable, Sendable {
         case .annotate: return "pencil.tip"
         case .present: return "iphone"
         case .read: return "speaker.wave.2"
+        case .persona: return "person.crop.rectangle"
+        case .timer: return "timer"
         }
     }
     /// The settings page this tool's options open, from the toolbar's own menu.
@@ -36,6 +40,7 @@ public enum ToolbarTool: String, CaseIterable, Sendable {
         case .annotate: return "annotate"
         case .present: return "present"
         case .read: return "speak"
+        case .persona, .timer: return "present"
         }
     }
     /// Filename-safe and lower case, because these become snapshot filenames on
@@ -64,9 +69,8 @@ public enum ToolbarShortcut: Equatable, Sendable {
     }
 }
 
-/// The revealed row ends in exactly one thing, never two. Idle, that is the key
-/// you could have pressed instead; working, it is what the work is doing. The
-/// old row showed both, so the useful one had nowhere to stand out.
+/// Contextual status and assigned keys. Session counts remain useful between
+/// captures; unavailable bindings are not rendered as toolbar controls.
 public enum ToolbarTrailing: Equatable, Sendable {
     case shortcut(ToolbarShortcut)
     case status(String)
@@ -130,6 +134,7 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var actionTitle: String
     public var isActionEnabled: Bool
     public var trailing: ToolbarTrailing
+    public var accessoryTitle: String?
     /// Work is running. The resting glyph says so; that is the only thing it
     /// says beyond being findable.
     public var isBusy: Bool
@@ -146,6 +151,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.actionTitle = actionTitle ?? tool.title
         self.isActionEnabled = isActionEnabled
         self.trailing = trailing
+        self.accessoryTitle = tool == .present ? "Prompts" : nil
         self.isBusy = isBusy
     }
 }

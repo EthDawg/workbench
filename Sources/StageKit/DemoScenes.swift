@@ -236,6 +236,8 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var sceneSync: MacSceneSync?
     private var window: NSWindow?
     private var presentation: DemoPresentation?
+    var usesSharedControls = false
+    var onFocusSharedControls: (() -> Void)?
     let desktopMotion = MainActor.assumeIsolated { DesktopMotionController() }
     var onOpen: (() -> Void)?
     var onBeginPresentation: (() -> Void)?
@@ -357,14 +359,26 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         if scene.hand != nil && handImage(for: scene) == nil { notice = SceneError.missingHand.localizedDescription; return }
         if scene.persona != nil && personaImage(for: scene) == nil { notice = SceneError.missingPersona.localizedDescription; return }
         if presentation != nil { presentation?.bringForward(); return }
-        personas.pauseOverlaySession()
         onBeginPresentation?()
-        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, mode: mode)
-        presenter.onEnd = { [weak self] in self?.presentation = nil; self?.objectWillChange.send(); self?.show() }
+        let presenter = DemoPresentation(scene: scene, image: image, logo: logoImage(for: scene), hand: handImage(for: scene), persona: personaImage(for: scene), ambience: ambienceImages(for: scene), screen: targetScreen, root: root, mode: mode, sharedControls: usesSharedControls)
+        presenter.onRevealSharedControls = { [weak self] in self?.onFocusSharedControls?() }
+        presenter.onEnd = { [weak self] in self?.presentation = nil; self?.objectWillChange.send(); if self?.usesSharedControls != true { self?.show() } }
         presentation = presenter
         objectWillChange.send()
         window?.orderOut(nil)
         presenter.start()
+    }
+    func makeControlsMenu() -> NSMenu {
+        if let presentation { return presentation.makeControlsMenu() }
+        let menu = NSMenu(title: "Present"); menu.autoenablesItems = false
+        for scene in scenes {
+            menu.addItem(StageMenuAction(scene.name, checked: scene.id == selectedID) { [weak self] in
+                guard let self, self.presentation == nil, self.mayBeginInteraction?() != false else { return }
+                self.selectedID = scene.id; self.startDemo(mode: .windowed)
+            })
+        }
+        if scenes.isEmpty { menu.addItem(StageMenuAction("Prepare a scene in Workbench first.", enabled: false) {}) }
+        return menu
     }
     func endPresentation() { presentation?.end() }
     func shutdown() {

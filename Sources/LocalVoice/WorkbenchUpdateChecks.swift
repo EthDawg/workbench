@@ -21,10 +21,15 @@ enum WorkbenchUpdateChecks {
         #if !APP_STORE
         // Invoke the actual delegates without starting Sparkle, networking or
         // replacing an app. Native old-to-new acceptance remains separate.
-        let policy = WorkbenchUpdates()
+        let policy = WorkbenchUpdates(build: release)
         let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
         let updater = controller.updater
         let item = SUAppcastItem.empty()
+        try require(!policy.checkedCurrent && !policy.panelTitle.contains("Current"), "an unchecked build does not claim current")
+        policy.updaterDidNotFindUpdate(updater)
+        try require(policy.panelTitle == "Update · Current", "only a successful no-update response says current")
+        policy.updater(updater, didAbortWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+        try require(!policy.checkedCurrent && !policy.panelTitle.contains("Current"), "a failed check clears stale current status")
         var busy = true, resumed = 0
         policy.activity = { WorkbenchUpdateActivity(voice: busy) }
         try require(policy.updater(updater, shouldPostponeRelaunchForUpdate: item, untilInvokingBlock: { resumed += 1 }), "busy restart defers")

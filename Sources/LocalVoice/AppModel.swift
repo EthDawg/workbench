@@ -67,7 +67,8 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var editingShortcut: UInt32?
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
-    @Published var controlTool: WorkbenchControlTool = .dictate
+    let promptInsertion = PromptInsertion()
+    @Published var controlTool: WorkbenchControlTool = .snap
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }

@@ -7,6 +7,7 @@ import ServiceManagement
 final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopoverDelegate {
     // The unified app owns the application lifetime, status item and navigation.
     let embedded: Bool
+    lazy var inkColourPicker = InkColourPicker(app: self)
     var onOpenControls: (() -> Void)?
     var onOpenScenes: (() -> Void)?
     var onOpenShortcuts: (() -> Void)?
@@ -585,7 +586,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if let window = notification.object as? NSWindow, window === mainWindow { finishRecording() }
     }
     private func refreshPalette() {
-        let shouldShow = !boardExportInProgress && isDrawing && (!boards.isEmpty ? settings.value.boardPalette != .hide : settings.value.showDrawingPalette)
+        let shouldShow = !embedded && !boardExportInProgress && isDrawing && (!boards.isEmpty ? settings.value.boardPalette != .hide : settings.value.showDrawingPalette)
         guard shouldShow else { palette?.orderOut(nil); return }
         if palette == nil {
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 670, height: 66), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
