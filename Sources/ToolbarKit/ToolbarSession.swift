@@ -40,6 +40,7 @@ import ToolbarCore
     private let clock: ToolbarGraceClock
     private let defaults: UserDefaults
     private weak var menu: NSMenu?
+    private var actionAfterMenu: (() -> Void)?
     // A click on the old pill persisted expansion. Only the explicit new menu
     // choice should keep this two-tier row open across launches.
     public static let keepOpenKey = "floatingToolbarKeepOpen.v2"
@@ -71,17 +72,28 @@ import ToolbarCore
     /// The view must obtain admission immediately before entering native tracking.
     @discardableResult public func beginMenu(_ menu: NSMenu) -> Bool {
         guard isActive else { return false }
+        actionAfterMenu = nil
         self.menu = menu
         send(.holdBegan(.menu))
         return true
     }
 
+    /// Queue a selected action that must not run inside native menu tracking.
+    public func afterMenuTracking(_ action: @escaping () -> Void) {
+        guard isActive, menu != nil, actionAfterMenu == nil else { return }
+        actionAfterMenu = action
+    }
+
+    /// Called by the view only after NSMenu.popUp has returned.
     public func endMenu(pointerInside: Bool) {
+        let action = actionAfterMenu
+        actionAfterMenu = nil
         menu = nil
         // Native menu tracking can swallow the owning window's exit event.
         // Reconcile before releasing the hold, including a stationary pointer.
         send(pointerInside ? .pointerEntered : .pointerLeft)
         send(.holdEnded(.menu))
+        if isActive { action?() }
     }
 
     private func apply(_ event: ToolbarEvent) {
@@ -95,6 +107,7 @@ import ToolbarCore
             case .cancelGrace: clock.cancel()
             case .persistKeepOpen(let on): defaults.set(on, forKey: Self.keepOpenKey)
             case .releaseHolds:
+                actionAfterMenu = nil
                 menu?.cancelTracking(); menu = nil
                 releaseHolds?()
             }

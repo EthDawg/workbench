@@ -83,7 +83,7 @@ struct FloatingToolbar: View {
     var body: some View {
         let state = viewState
         ToolbarRow(state: state, accent: Workbench.accent,
-            makeAccessoryMenu: { SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), prepare: controls.endKeyboardInteraction) },
+            makeAccessoryMenu: { SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction) },
             action: performSelected, makeMenu: toolsMenu,
             menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
             focusButton: { button in
@@ -138,7 +138,7 @@ struct FloatingToolbar: View {
         let drawing = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
         drawing.submenu = stage.makeAnnotationMenu(includeSettings: false); menu.addItem(drawing)
         let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
-        prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), prepare: controls.endKeyboardInteraction)
+        prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction)
         menu.addItem(prompts)
         menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
         if stage.isDrawing && model.controlTool != .annotate {

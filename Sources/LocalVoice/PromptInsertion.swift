@@ -45,7 +45,8 @@ final class PromptInsertion: ObservableObject {
             status = "Choose a readable destination text field, then open Prompts again. Nothing was inserted."
             return
         }
-        running = true; status = "Inserting Prompt…"
+        let destinationName = target.app.localizedName ?? "Selected app"
+        running = true; status = "Inserting Prompt into \(destinationName)…"
         if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
             if event.keyCode == 53 { self?.cancel() }
         }) { escapeMonitors.append(monitor) }
@@ -53,8 +54,8 @@ final class PromptInsertion: ObservableObject {
             guard event.keyCode == 53 else { return event }
             self?.cancel(); return nil
         }) { escapeMonitors.append(monitor) }
-        // This task runs after native menu tracking unwinds. Keyboard access
-        // returns focus first; pointer access never activated Workbench.
+        // The menu owner starts insertion only after NSMenu.popUp returns.
+        // Revalidate the frozen field and selection before any write.
         task = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -89,7 +90,8 @@ final class PromptInsertion: ObservableObject {
                                                           validateTarget: unchanged, expectedValue: expected.value, expectedSelection: expected.selection)
                     return result.wasPasted ? "Prompt pasted. This field does not support progressive insertion." : result.message
                 })
-            status = await PromptInsertionRunner.run(text: text, destination: destination, driver: driver)
+            let result = await PromptInsertionRunner.run(text: text, destination: destination, driver: driver)
+            status = "\(destinationName) · \(result)"
         }
     }
 
@@ -107,14 +109,17 @@ final class PromptInsertion: ObservableObject {
 
 @MainActor
 enum SavedPromptMenu {
-    static func make(library: DemoLibraryModel, delivery: PromptInsertion, target: TextDelivery.Target?, prepare: @escaping () -> Void = {}) -> NSMenu {
+    static func make(library: DemoLibraryModel, delivery: PromptInsertion, target: TextDelivery.Target?,
+                     afterTracking: @escaping (@escaping () -> Void) -> Void, prepare: @escaping () -> Void = {}) -> NSMenu {
         let menu = NSMenu(title: "Saved Prompts"); menu.autoenablesItems = false
         // Freeze order, content and destination for this open menu. The library
         // still owns records, favourites and both tags; nothing is copied to a
         // second store and no shortcut collection is registered.
         let prompts = DemoResource.matching(library.resources.filter { $0.kind == .prompt && !$0.content.isEmpty }, query: "")
         func item(_ prompt: DemoResource) -> NSMenuItem {
-            ToolbarMenuAction(prompt.title, enabled: !delivery.running) { prepare(); delivery.insert(prompt.content, into: target) }
+            ToolbarMenuAction(prompt.title, enabled: !delivery.running) {
+                afterTracking { prepare(); delivery.insert(prompt.content, into: target) }
+            }
         }
         if prompts.isEmpty { menu.addItem(ToolbarMenuAction("Save a prompt in Saved Resources first.", enabled: false) {}) }
         else {
