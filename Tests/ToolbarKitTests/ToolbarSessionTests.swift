@@ -19,6 +19,32 @@ final class ToolbarSessionTests: XCTestCase {
         return (ToolbarSession(defaults: defaults, clock: clock), clock, defaults, domain)
     }
 
+    @MainActor func testSelectedActionWaitsForMenuReturnAndCannotSurviveTeardown() {
+        let (session, _, defaults, domain) = fixture()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let menu = NSMenu()
+        var calls = 0
+        session.activate(); session.beginMenu(menu)
+        session.afterMenuTracking {
+            XCTAssertFalse(session.state.holds.contains(.menu))
+            calls += 1
+        }
+        session.afterMenuTracking { calls += 100 }
+        session.send(.pointerLeft)
+        XCTAssertEqual(calls, 0, "selection must not start delivery while popUp is tracking")
+        session.endMenu(pointerInside: false)
+        session.endMenu(pointerInside: false)
+        XCTAssertEqual(calls, 1, "menu return runs the selected action exactly once")
+
+        session.beginMenu(menu)
+        session.afterMenuTracking { calls += 1 }
+        session.suspend(); session.endMenu(pointerInside: false)
+        session.activate(); session.endMenu(pointerInside: false)
+        session.afterMenuTracking { calls += 1 }
+        session.endMenu(pointerInside: false)
+        XCTAssertEqual(calls, 1, "teardown and calls outside menu tracking cannot replay a queued action")
+    }
+
     @MainActor func testMenuClosingOutsideStartsExactlyOneGraceAndCollapses() {
         let (session, clock, defaults, domain) = fixture()
         defer { defaults.removePersistentDomain(forName: domain) }
