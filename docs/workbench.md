@@ -74,6 +74,8 @@ Home introduces useful actions, first-use access requests explain themselves, an
 
 ## Identity, migration and release
 
+[Installation and updates](updating.md) owns the two editions, updater behavior, build provenance and the shared contributor delivery workflow.
+
 The unified identities are `com.ethdawg.workbench` and `com.ethdawg.workbench.preview`; packaged executables are `Workbench` and `WorkbenchPreview`. `LocalVoice` remains the internal Swift executable target/module. `StageKit` is a library in the same process, with no independent status item or application lifecycle.
 
 Preview lives at `~/Applications/Workbench Preview.app` and has its own saved files, preferences and permissions. Supported legacy Voice/StageMark files are copied once into missing unified component directories; original data remains untouched. Do not run repeated merges from old app state. Do not reset privacy permissions or erase user data to simplify a release. Keep the signing identity and installation path consistent.

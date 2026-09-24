@@ -8,6 +8,7 @@ struct WorkbenchHome: View {
     @ObservedObject var stage: StageKitController
     @ObservedObject var keyboard: KeyboardCoachModel
     @ObservedObject var readback: ReadbackModel
+    @ObservedObject private var updates = WorkbenchUpdates.shared
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
@@ -32,8 +33,12 @@ struct WorkbenchHome: View {
                     }.buttonStyle(.plain)
                 }
                 Spacer()
+                if updates.availableVersion != nil || updates.restartWaiting {
+                    Button(updates.buttonTitle) { model.page = "settings"; updates.checkForUpdates() }
+                        .font(.caption).buttonStyle(.bordered)
+                }
                 WorkbenchAppearancePicker().controlSize(.small)
-                Text("PREVIEW · 2.0").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 10)
+                Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 10)
             }.padding(16).frame(width: 215).background(Workbench.surface.opacity(0.6))
             Divider()
             Group {
@@ -141,6 +146,8 @@ struct WorkbenchHome: View {
                 catch { loginError = error.localizedDescription }
             }))
             if let loginError { Text(loginError).foregroundStyle(.orange) }
+            Divider()
+            WorkbenchUpdateSettings()
             Divider()
             PhotoHandoffSettings(handoff: model.photoHandoff)
             Divider()

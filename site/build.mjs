@@ -1,4 +1,5 @@
 import { mkdir, copyFile, cp, rm, readFile, writeFile } from 'node:fs/promises';
+import { renderPublishedRelease } from './release.mjs';
 import { renderHandbook, validateContract, agentBrief } from './handbook/render.mjs';
 // Explicit allowlist: source tests, host configuration and local files never ship.
 await rm(new URL('./public/',import.meta.url),{recursive:true,force:true});
@@ -10,7 +11,8 @@ await mkdir(new URL('./public/scenes/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/personas/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/phone-presenting/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/scenes/ambient/',import.meta.url),{recursive:true});
-for (const name of ['index.html','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
+for (const name of ['index.html','privacy.html','style.css','app.mjs','report.mjs','release.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
+await cp(new URL('updates/',import.meta.url),new URL('public/updates/',import.meta.url),{recursive:true});
 await cp(new URL('assets/',import.meta.url),new URL('public/assets/',import.meta.url),{recursive:true});
 const contract = validateContract(JSON.parse(await readFile(new URL('./handbook/contract.json', import.meta.url), 'utf8')));
 const template = await readFile(new URL('./handbook/index.html', import.meta.url), 'utf8');
@@ -19,4 +21,9 @@ await writeFile(new URL('./public/handbook/contract.json', import.meta.url), JSO
 await writeFile(new URL('./public/handbook/contract.mjs', import.meta.url), `export default ${JSON.stringify(contract)};\n`);
 await writeFile(new URL('./public/handbook/agent-brief.txt', import.meta.url), agentBrief(contract));
 for (const name of ['handbook.css', 'handbook.mjs']) await copyFile(new URL(`handbook/${name}`, import.meta.url), new URL(`public/handbook/${name}`, import.meta.url));
+// One published release record owns the website download and source links.
+for (const name of ['index.html', 'guide/index.html']) {
+    const path = new URL(`public/${name}`, import.meta.url);
+    await writeFile(path, renderPublishedRelease(await readFile(path, 'utf8')));
+}
 console.log('Built static Workbench site in site/public');

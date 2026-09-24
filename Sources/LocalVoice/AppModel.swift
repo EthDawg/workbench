@@ -966,6 +966,13 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         let work = DispatchWorkItem { [weak self] in self?.saveNow() }
         persistWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
+    func saveBeforeUpdate() -> Bool {
+        guard loaded else { return false }
+        do {
+            try store.save(SavedState(draft: transcript, speechText: speechText, history: history, replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
+            return true
+        } catch { self.error = "Could not save before updating. \(error.localizedDescription)"; return false }
+    }
     func saveNow() {
         guard loaded else { return }
         do { try store.save(SavedState(draft: transcript, speechText: speechText, history: history, replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript)) }

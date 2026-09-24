@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { renderPublishedRelease } from '../release.mjs';
 import { apps, createReport, agentHandoff } from '../report.mjs';
 const input = { app:'voice',version:'1.2.1',environment:'M2, macOS 26',task:'Copy a capture & preserve “café”',expected:'The original words',observed:'Different text\nSecond line',impact:'Small friction',help:'I can test a fix' };
 test('routes both Workbench areas to the unified repository and preserves feedback through URL encoding',()=>{
@@ -30,7 +31,7 @@ test('bounds long reports without silently truncating observations',()=>{
 });
 
 test('download versions and in-page destinations remain consistent',async()=>{
-  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+  const html=renderPublishedRelease(await readFile(new URL('../index.html',import.meta.url),'utf8'));
   for(const app of Object.values(apps)){
     assert.ok(html.includes(`https://github.com/EthDawg/${app.repo}/releases/tag/v${app.version}`));
     assert.ok(html.includes(`https://github.com/EthDawg/${app.repo}/releases/download/v${app.version}/SHA256SUMS.txt`));

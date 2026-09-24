@@ -11,4 +11,5 @@
 <!-- For visible UI changes, use synthetic content. Delete this section otherwise. -->
 
 - [ ] I reviewed the diff and included no private data or generated build products.
-- [ ] If I changed the shared Workbench shell, I linked the sibling PR (otherwise not applicable).
+- [ ] I followed docs/updating.md and identified the source revision and installed build actually tested.
+- [ ] I distinguished source checks, installed acceptance and published delivery; release changes preserve the signing identity, data and update edition.

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Build or update an isolated Workbench Preview without changing production.
 
-Mirrored in both repositories. Uses the existing Developer ID from Keychain;
+One installer for the unified repository. Uses the existing Developer ID from Keychain;
 never handles credentials. No publication, app-data removal or TCC reset.
 """
 import argparse
+import fcntl
+import hashlib
+from contextlib import contextmanager
+import build_info
 from datetime import datetime, timezone
 import importlib.util
 import json
@@ -93,6 +97,11 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
     if ad_hoc and identity:
         raise RuntimeError("Choose Developer ID signing or --ad-hoc, not both")
     selected, team = (None, None) if ad_hoc else developer_identity(identity)
+    if not photo_cloud_profile and not ad_hoc and config["channel"] == "preview" and os.environ.get("WORKBENCH_RELEASE") != "1":
+        existing = Path.home() / "Applications" / config["bundle"]
+        info_path = existing / "Contents/Info.plist"
+        if info_path.exists() and plistlib.loads(info_path.read_bytes()).get("WorkbenchPhotoCloudProvisioned"):
+            photo_cloud_profile = existing / "Contents/embedded.provisionprofile"
     if photo_cloud_profile:
         if ad_hoc or config["identifier"] != "com.ethdawg.workbench.preview":
             raise RuntimeError("Photo handoff requires the signed Workbench Preview identity")
@@ -111,7 +120,7 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
     archive = ROOT / config["preview_archive"]
     with tempfile.TemporaryDirectory(prefix="preview-", dir=ROOT / ".build") as temporary:
         staging = Path(temporary)
-        run("ditto", "-x", "-k", ROOT / config["archive"], staging)
+        run("ditto", "-x", "-k", ROOT / config.get("component_archive", config["archive"]), staging)
         original = staging / config["production_bundle"]
         app = staging / config["bundle"]
         original.rename(app)
@@ -120,6 +129,10 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
         executable = app / "Contents/MacOS" / info["CFBundleExecutable"]
         executable.rename(executable.with_name(config["executable"]))
         update_bundle_info(info, config, datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
+        build_info.stamp(info, config["channel"], released=os.environ.get("WORKBENCH_RELEASE") == "1", build=info["CFBundleVersion"])
+        iconset = staging / "Preview.iconset"
+        run("swift", ROOT / "scripts/icon.swift", iconset, "--preview")
+        run("iconutil", "-c", "icns", iconset, "-o", app / "Contents/Resources/AppIcon.icns")
         photo_entitlements = None
         if photo_cloud_profile:
             photo_entitlements = staging / "photo-cloud.entitlements"
@@ -134,6 +147,8 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
         for path in release.signing_targets(app):
             command = ["codesign", "--force", "--sign", selected or "-"]
             if selected:
+                if path != app:
+                    command += ["--preserve-metadata=entitlements"]
                 command += ["--timestamp", "--options", "runtime"]
                 if path == app and (photo_entitlements or config.get("entitlements")):
                     command += ["--entitlements", str(photo_entitlements or ROOT / config["entitlements"])]
@@ -152,7 +167,36 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
     return archive
 
 
-def install(config, archive, ad_hoc=False, open_app=True):
+def bundle_fingerprint(app):
+    info = app / "Contents/Info.plist"
+    if not info.exists():
+        return None
+    value = plistlib.loads(info.read_bytes())
+    executable = app / "Contents/MacOS" / value["CFBundleExecutable"]
+    return hashlib.sha256(info.read_bytes() + executable.read_bytes()).hexdigest()
+
+
+@contextmanager
+def install_lock(config):
+    directory = Path.home() / "Library/Caches/com.ethdawg.workbench"
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / (config["channel"] + ".install.lock")).open("a") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("Another installer owns this edition. Wait for it to finish.") from error
+        try:
+            yield
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def install(config, archive, ad_hoc=False, open_app=True, expected=None):
+    with install_lock(config):
+        return install_locked(config, archive, ad_hoc, open_app, expected)
+
+
+def install_locked(config, archive, ad_hoc=False, open_app=True, expected=None):
     # Separate executable names mean production can remain installed and running.
     # The user chooses which app owns the shared global shortcuts at launch.
     running = subprocess.run(["pgrep", "-x", config["executable"]], stdout=subprocess.DEVNULL)
@@ -163,6 +207,8 @@ def install(config, archive, ad_hoc=False, open_app=True):
     applications = Path("/Applications") if config["channel"] == "production" and config["executable"] == "StageMark" else Path.home() / "Applications"
     applications.mkdir(exist_ok=True)
     destination = applications / config["bundle"]
+    if expected is not None and (bundle_fingerprint(destination) or "") != expected:
+        raise RuntimeError("The installed app changed while this candidate was building. Review the current build before installing.")
     with tempfile.TemporaryDirectory(prefix=".workbench-preview-", dir=applications) as temporary:
         staging = Path(temporary)
         run("ditto", "-x", "-k", archive, staging)
@@ -172,6 +218,10 @@ def install(config, archive, ad_hoc=False, open_app=True):
             run("xcrun", "stapler", "validate", app)
             run("spctl", "--assess", "--type", "execute", app)
         if destination.exists():
+            old_info = plistlib.loads((destination / "Contents/Info.plist").read_bytes())
+            new_info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+            if old_info.get("WorkbenchPhotoCloudProvisioned") and not new_info.get("WorkbenchPhotoCloudProvisioned"):
+                raise RuntimeError("This app has personal sync capability. Use a release that retains its verified cloud profile.")
             if config["channel"] == "production" and (destination / "Contents/_MASReceipt/receipt").exists():
                 raise RuntimeError("This production copy is managed by the Mac App Store. Update it there to retain its sandbox data and permissions.")
             previous = validate_bundle(destination, config, allow_ad_hoc=True, require_services=False)
@@ -223,9 +273,14 @@ def main():
         parser.error("--photo-cloud-profile is only for building a signed Workbench Preview")
     os.chdir(ROOT)
     config = configuration(production=args.production)
+    destination = Path.home() / "Applications" / config["bundle"]
+    expected = (bundle_fingerprint(destination) or "") if args.command == "install" else None
     archive = args.archive.resolve() if args.archive else build(config, args.identity, args.ad_hoc, args.native, args.photo_cloud_profile)
     if args.command == "install":
-        install(config, archive, args.ad_hoc, not args.no_open)
+        spec = importlib.util.spec_from_file_location("workbench_archive_validation", ROOT / "scripts/release/release.py")
+        validator = importlib.util.module_from_spec(spec); spec.loader.exec_module(validator)
+        validator.validate_archive(archive, config)
+        install(config, archive, args.ad_hoc, not args.no_open, expected)
 
 
 if __name__ == "__main__":

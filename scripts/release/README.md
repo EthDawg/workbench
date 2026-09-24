@@ -22,7 +22,7 @@ bash scripts/install.sh --no-open
 
 After quitting Preview, run the same command to update it. The installer uses an existing Developer ID certificate in Keychain, validates the replacement, keeps a rollback ZIP and swaps only the Preview app. It does not remove app data or reset macOS permissions.
 
-Preview has its own first-run permission prompts. Keeping the signing identity, bundle ID and installed path stable helps preserve later grants; macOS controls the final decision. Contributors can use `--ad-hoc` for disposable builds. The normal installer requires Developer ID signing unless the disposable mode is explicitly selected. Select a public certificate fingerprint with `--identity` when more than one Developer ID is available.
+Preview has its own first-run permission prompts. Keeping the signing identity, bundle ID and installed path stable helps preserve later grants; macOS controls the final decision. Contributors can use `--ad-hoc` for disposable builds. The normal installer reuses an existing verified Preview cloud profile when present and refuses to silently remove personal-sync capability. It requires Developer ID signing unless the disposable mode is explicitly selected. Select a public certificate fingerprint with `--identity` when more than one Developer ID is available.
 
 Build a local signed candidate without installing:
 
@@ -152,3 +152,29 @@ Reference: [Apple's notarization guidance](https://developer.apple.com/documenta
 ### GitHub asset filenames
 
 GitHub normalizes spaces in uploaded asset names: `Workbench Preview.zip` is delivered as `Workbench.Preview.zip`. Preserve the app bytes and SHA-256, but prepare the public checksum file and `release.json` using the actual delivered asset filename. Download the uploaded ZIP and checksum, then run `shasum -a 256 -c SHA256SUMS.txt` in that directory before updating website links. Local packaging receipts retain the original local archive name. Never publish the intermediate `submission.zip`.
+
+## Shared update delivery
+
+[docs/updating.md](../../docs/updating.md) is the user/contributor contract. `bash scripts/build.sh` now makes a disposable Preview package. `--component-package` is an internal packaging step, not an installable developer distribution. Persistent installs use `scripts/install.sh` and the existing Developer ID. Local development packages carry provenance but no update feed. Official release builds receive their edition's feed and the committed public Ed25519 key. The corresponding private update key stays in the release Mac's Keychain under account `com.ethdawg.workbench`; do not export it into CI, chat or source control.
+
+After this document's notarization and acceptance steps, prepare the feed from the immutable final directory:
+
+```sh
+python3 scripts/release/prepare_update.py --release .build/releases/VERSION-BUILD-preview \
+  --tag vVERSION-preview.N --notes /path/to/release-notes.html --output .build/publish/VERSION-BUILD
+```
+
+Use an HTML fragment for concise user-facing release notes. Sparkle generates the appcast, signs the final archive and signs the feed. The helper verifies provenance, keys, edition, signature, notarization, increasing build number and enclosure URL/size. Never manually edit a signed XML file.
+
+After integrating the verified source into `main`, package that exact clean commit and publish:
+
+```sh
+python3 scripts/release/publish_update.py --prepared .build/publish/VERSION-BUILD \
+  --notes /path/to/release-notes.md
+```
+
+This requires the existing maintainer `gh` login. It refuses an existing tag/release or a source other than current main. It uploads a draft, reads back its archive, publishes, verifies the unauthenticated public download digest, then stages `site/updates/EDITION.xml` and the corresponding download record. Commit/deploy that site change together; the website build derives matching download links from the record. Verify the live signed feed and download links after deployment. Other-edition feeds remain unchanged. A failed step does not authorise overwriting an existing release: inspect the recorded GitHub state before a deliberate recovery.
+
+Sparkle helpers are copied with symlinks intact and signed inside-out with their original entitlements preserved. The package includes Sparkle's license. Public builds require signed feeds and verification before archive extraction. Both Preview and production now use monotonically increasing UTC build numbers; their marketing versions remain separate human-facing labels. Preview is a separate identity, so production promotion requires a separately signed/notarized production artifact and its own native acceptance.
+
+For the first updater release, install an older updater-enabled test artifact and verify the full signed old-to-new update before exposing the feed. Existing public versions cannot discover this first update automatically; the website and release notes must explain the one-time manual installation. Do not claim that a command-line package check proves fresh-Mac permissions, a customer's data or live UI acceptance.

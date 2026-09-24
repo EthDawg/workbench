@@ -91,6 +91,8 @@ def build_archive(root, config, identity, photo_cloud_profile=None):
         raise RuntimeError("Photo cloud provisioning is only supported for Workbench Preview")
     # The Preview helper starts its own build subprocess. Require real action
     # metadata through that entire chain, even if the caller disabled the gate.
+    previous_release = os.environ.get("WORKBENCH_RELEASE")
+    os.environ["WORKBENCH_RELEASE"] = "1"
     previous = os.environ.get("REQUIRE_APP_INTENTS")
     os.environ["REQUIRE_APP_INTENTS"] = "1"
     try:
@@ -98,8 +100,12 @@ def build_archive(root, config, identity, photo_cloud_profile=None):
             return preview_tools().build(config, identity=identity,
                                          photo_cloud_profile=photo_cloud_profile)
         run(*config["build"])
-        return root / config["archive"]
+        return root / config.get("component_archive", config["archive"])
     finally:
+        if previous_release is None:
+            os.environ.pop("WORKBENCH_RELEASE", None)
+        else:
+            os.environ["WORKBENCH_RELEASE"] = previous_release
         if previous is None:
             os.environ.pop("REQUIRE_APP_INTENTS", None)
         else:
@@ -235,6 +241,8 @@ def main():
         for path in signing_targets(app) if config["channel"] == "production" else []:
             command = ["codesign", "--force", "--sign", args.identity,
                        "--timestamp", "--options", "runtime"]
+            if path != app:
+                command += ["--preserve-metadata=entitlements"]
             if path == app and config.get("entitlements"):
                 command += ["--entitlements", str(root / config["entitlements"])]
             run(*command, path)

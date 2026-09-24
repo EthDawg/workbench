@@ -15,7 +15,8 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [.executable(name: "LocalVoice", targets: ["LocalVoice"]),
                .executable(name: "WorkbenchBrowserHost", targets: ["WorkbenchBrowserHost"])],
-    dependencies: [.package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6")],
+    dependencies: [.package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6"),
+                   .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")],
     targets: [
         .target(name: "ToolbarCore"),
         .target(name: "ToolbarKit", dependencies: ["ToolbarCore"]),
@@ -30,7 +31,7 @@ let package = Package(
         .target(name: "SceneSyncKit"),
         .testTarget(name: "SceneSyncKitTests", dependencies: ["SceneSyncKit"]),
         .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit"], linkerSettings: [.linkedFramework("Carbon")]),
-        .executableTarget(name: "LocalVoice", dependencies: ["ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon")])
+        .executableTarget(name: "LocalVoice", dependencies: ["ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon"), .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ])
     ],
     swiftLanguageModes: [.v5]
 )

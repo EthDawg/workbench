@@ -27,6 +27,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let editions = ["com.ethdawg.workbench", "com.ethdawg.workbench.preview", "com.ethdawg.localvoice", "com.ethdawg.localvoice.preview", "local.ethan.StageMark", "local.ethan.StageMark.preview"]
+        if let other = NSWorkspace.shared.runningApplications.first(where: { editions.contains($0.bundleIdentifier ?? "") && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
+            let alert = NSAlert()
+            alert.messageText = "Another Workbench is already running"
+            alert.informativeText = "\(other.localizedName ?? "Workbench") owns the tools and shortcuts. Quit that copy before opening \(Workbench.displayName). Your saved work stays in place."
+            alert.addButton(withTitle: "Open running app")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn { other.activate(options: [.activateAllWindows]) }
+            NSApp.terminate(nil); return
+        }
         Workbench.preparePreviewData(component: "LocalVoice", files: ["state.json", "demo-library.json"])
         _ = WorkbenchSettings.shared
         model = AppModel()
@@ -185,6 +195,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let page = notification.object as? String else { return }
             Task { @MainActor in self?.navigate(page) }
         }
+        WorkbenchUpdates.shared.activity = { [weak self] in
+            guard let self else { return WorkbenchUpdateActivity(interaction: true) }
+            return WorkbenchUpdateActivity(voice: self.model.phase != .idle || self.model.preparing,
+                reading: self.model.rendering || self.model.playing || self.model.paused,
+                capture: self.readback.blocksDictation || self.stage.isTakingScreenshot,
+                presentation: self.stage.isPresenting || self.stage.hasActivePersonaSession, drawing: self.stage.isDrawing,
+                timer: self.stage.isTimerRunning,
+                interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
+        }
+        WorkbenchUpdates.shared.start()
         setupMenus()
         readSelectionService = ReadSelectionService { [weak self] selection in
             self?.model.receiveReadingSelection(selection)
@@ -250,6 +270,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func setupMenus() {
         let main = NSMenu(); let application = NSMenuItem(); let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Copy build details", action: #selector(copyBuildDetails), keyEquivalent: "")
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
         let services = NSMenu(title: "Services")
@@ -292,6 +314,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func statusClicked(_ sender: Any?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
+            let identity = NSMenuItem(title: WorkbenchUpdates.shared.build.label, action: nil, keyEquivalent: "")
+            menu.addItem(identity)
+            menu.addItem(withTitle: WorkbenchUpdates.shared.buttonTitle, action: #selector(showUpdates), keyEquivalent: "")
+            menu.addItem(.separator())
             let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
             annotate.submenu = stage.makeAnnotationMenu(); menu.addItem(annotate)
             menu.addItem(.separator())
@@ -415,9 +441,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         icon?.isTemplate = true
         statusItem?.button?.image = icon
         statusItem?.button?.setAccessibilityLabel("Workbench · " + state)
-        statusItem?.button?.toolTip = "Workbench · " + state + " · " + model.preferences.controlsShortcut.label
+        statusItem?.button?.toolTip = WorkbenchUpdates.shared.build.label + " · " + state + " · " + model.preferences.controlsShortcut.label
         capturePanel?.update(model: model)
     }
+    @objc func showUpdates() { showSettings(); WorkbenchUpdates.shared.checkForUpdates() }
+    @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
     @objc func showHistory() { model.page = "history"; showWindow() }
@@ -432,9 +460,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.savePrompt(text)
     }
     @objc func showWindow() { closeControls(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
-    @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Workbench", .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development", .credits: NSAttributedString(string: "Everyday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
+    @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) { readback?.refreshPermissionState() }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if WorkbenchUpdates.shared.installing && WorkbenchUpdates.shared.activity().busy {
+            WorkbenchUpdates.shared.status = "Finish your current activity before restarting to update."
+            return .terminateCancel
+        }
+        if WorkbenchUpdates.shared.installing && model?.saveBeforeUpdate() != true {
+            WorkbenchUpdates.shared.status = "Update paused because your current session could not be saved."
+            return .terminateCancel
+        }
+        return .terminateNow
+    }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         terminating = true
@@ -480,7 +519,12 @@ func runCLI(_ args: [String]) async -> Int32 {
         switch args.first {
         case "--check-presenter":
             try await PresenterChecks.run()
+        case "--build-info":
+            print(WorkbenchBuild().details)
+        case "--check-updates":
+            try WorkbenchUpdateChecks.run()
         case "--check-core":
+            try WorkbenchUpdateChecks.run()
             try await WorkbenchControlChecks.run()
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()

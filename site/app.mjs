@@ -35,7 +35,7 @@ const form = document.getElementById('feedback-form');
 const result = document.getElementById('report-result');
 const appSelect = document.getElementById('feedback-app');
 function invalidateReport() { result.hidden = true; report = undefined; document.getElementById('copy-status').textContent = ''; }
-function selectFeedback(app) { appSelect.value = app; document.getElementById('version').value = apps[app].version; invalidateReport(); }
+function selectFeedback(app) { appSelect.value = app; invalidateReport(); }
 appSelect.addEventListener('change', () => selectFeedback(appSelect.value));
 document.querySelectorAll('[data-feedback-app]').forEach(link => link.addEventListener('click', () => selectFeedback(link.dataset.feedbackApp)));
 form.addEventListener('input', invalidateReport);
