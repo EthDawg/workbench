@@ -11,6 +11,12 @@ test('one receipt changes every current download and notes link together', async
   assert.ok(result.includes('/tag/v2.1.0-preview.9'));
   assert.ok(result.includes('2.1.0 Preview 9'));
   assert.ok(result.includes('one-time manual installation'));
+  assert.ok(result.includes('automatic downloads are optional'));
+  assert.ok(!result.includes('no automatic updater'));
+  const older = renderPublishedRelease(html, { ...value, feed_url: undefined });
+  assert.ok(older.includes('no automatic updater'));
+  assert.ok(!older.includes('automatic downloads are optional'));
+  assert.ok(result.includes('same Applications folder'));
   assert.ok(!result.includes('{{'));
   assert.ok(!result.includes('value="2.0.0-preview.4"'));
   assert.throws(()=>renderPublishedRelease(html, { ...value, download_url:'https://other.example/update.zip' }));

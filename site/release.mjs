@@ -7,5 +7,8 @@ export function renderPublishedRelease(html, value = currentRelease) {
     .replaceAll('{{PREVIEW_VERSION}}', `${value.version} Preview ${value.tag.split('.').at(-1)}`)
     .replaceAll('{{UPDATE_INSTALL_NOTE}}', value.feed_url
       ? 'After this one-time manual installation, Settings → Workbench updates keeps this edition current. Scheduled updates show a quiet reminder and wait for your work.'
-      : 'Future Preview updates keep that copy.');
+      : 'Future Preview updates keep that copy.')
+    .replaceAll('{{UPDATE_DETAILS}}', value.feed_url
+      ? 'Use Settings → Workbench updates to check for a new Preview. Automatic checks show a quiet reminder; automatic downloads are optional. Versions without the updater need one manual replacement first.'
+      : 'This published version has no automatic updater. To update, quit Workbench Preview and replace the existing app in the same Applications folder with the next Preview download.');
 }
