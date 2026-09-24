@@ -248,4 +248,73 @@ enum ReadbackChecks {
         print("READBACK_ADMISSION_CHECKS_OK: \(passed) checks")
     }
 
+    @MainActor
+    static func runAvailabilityChecks() async throws {
+        var passed = 0
+        func check(_ value: @autoclosure () -> Bool, _ message: String) throws {
+            guard value() else { throw ReadbackError.message("READBACK_AVAILABILITY_CHECK_FAILED: \(message)") }
+            passed += 1
+        }
+        let fm = FileManager.default
+        let fixture = fm.temporaryDirectory.appendingPathComponent("Workbench-session-availability-\(UUID().uuidString)")
+        try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
+        let root = fixture.appendingPathComponent("Original"), moved = fixture.appendingPathComponent("Moved")
+        let other = fixture.appendingPathComponent("Different")
+        let domain = "Workbench.SessionAvailability.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain); try? fm.removeItem(at: fixture) }
+        let original = try ReadbackStore.create(at: root, title: "Synthetic session")
+        _ = try ReadbackStore.create(at: other, title: "Different session")
+        defaults.set([root.path, other.path], forKey: "readback.recentSessionPaths.v1")
+        var captures = 0
+        let model = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults) {
+            captures += 1
+            return ReadbackScreenshot(data: Data(), displayName: "Synthetic", screenFrame: .zero)
+        }
+        defer { model.shutdown() }
+        try check(model.currentSessionProblem == nil && model.manifest?.id == original.id, "existing session starts available")
+        let originalBytes = try Data(contentsOf: root.appendingPathComponent("session.json"))
+        try fm.moveItem(at: root, to: moved)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem != nil, "moving the open folder is reflected in current UI state")
+        try check(model.unavailableSessions[root.standardizedFileURL] != nil, "missing recent gets an unavailable badge")
+        try check(model.manifest?.id == original.id && model.recentSessionURLs.count == 2, "missing paths retain session identity and recents for recovery")
+        await model.captureNewSection(fromEditor: false)
+        try check(captures == 0 && !fm.fileExists(atPath: root.path), "capture refuses before permission/capture and never recreates the folder")
+        do {
+            try ReadbackStore.createPrivateDirectory(root.appendingPathComponent("items/\(UUID().uuidString)"), includingParents: false)
+            throw ReadbackError.message("READBACK_AVAILABILITY_CHECK_FAILED: missing parents were recreated")
+        } catch {
+            try check(!fm.fileExists(atPath: root.path), "section creation cannot recreate parents even if the folder disappears after validation")
+        }
+        model.handOff(to: .claude)
+        try check(model.notice?.contains("Locate") == true, "missing session cannot hand off stale paths")
+        try check(!model.relinkSession(root, to: other), "locating cannot substitute a different active session")
+        try check(model.sessionURL == root.standardizedFileURL, "failed locate preserves the old selection")
+        try fm.moveItem(at: moved, to: root)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem == nil, "restoring a folder clears its unavailable state")
+        let manifestURL = root.appendingPathComponent("session.json"), held = fixture.appendingPathComponent("held.json")
+        try fm.moveItem(at: manifestURL, to: held)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem != nil, "missing manifest also marks the session unavailable")
+        try fm.moveItem(at: held, to: manifestURL)
+        model.refreshSessionAvailability()
+        try check(model.currentSessionProblem == nil, "manifest restoration recovers without restarting")
+        try fm.moveItem(at: root, to: moved)
+        model.refreshSessionAvailability()
+        try check(model.relinkSession(root, to: moved), "locating the moved session succeeds")
+        try check(model.sessionURL == moved.standardizedFileURL && !model.recentSessionURLs.contains(root.standardizedFileURL), "relink replaces the stale path without duplicates")
+        let movedBytes = try Data(contentsOf: moved.appendingPathComponent("session.json"))
+        try check(movedBytes == originalBytes && !fm.fileExists(atPath: root.path), "locating does not rewrite or recreate session files")
+        model.forgetRecentSession(moved)
+        try check(model.sessionURL == nil && model.manifest == nil, "forgetting the current entry clears the editor")
+        try check(fm.fileExists(atPath: moved.appendingPathComponent("session.json").path), "forgetting never deletes the user's session")
+        try check(defaults.stringArray(forKey: "readback.recentSessionPaths.v1") == [other.path], "forgetting persists and preserves other recents")
+        let reopened = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults)
+        defer { reopened.shutdown() }
+        try check(reopened.recentSessionURLs == [other.standardizedFileURL], "forgotten entry stays removed after reopening")
+        print("READBACK_AVAILABILITY_CHECKS_OK: \(passed) checks")
+    }
+
 }

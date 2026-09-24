@@ -203,6 +203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 if self.readback.sessionURL == nil {
                     self.readback.notice = "Create or open a Snap & Talk session before using the capture shortcut."
                     self.navigate("readback")
+                } else if self.readback.currentSessionProblem != nil && !self.readback.isRecording {
+                    self.navigate("readback")
                 } else if !self.readback.permissionsReady {
                     self.readback.notice = "Snap & Talk needs Screen Recording and Microphone access first."
                     self.navigate("readback")
@@ -589,6 +591,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try InputChecks.run() }
         case "--check-readback":
             try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks()
+            try await ReadbackChecks.runAvailabilityChecks()
             try await MainActor.run { try ReadbackOrderingChecks.run() }
         case "--check-readback-ordering-ui":
             let output = args.count > 1 ? URL(fileURLWithPath: args[1]) : nil
