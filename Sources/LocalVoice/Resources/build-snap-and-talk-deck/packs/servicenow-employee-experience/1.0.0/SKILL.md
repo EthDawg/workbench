@@ -27,6 +27,8 @@ The helper keeps eligible captures in manifest order, preserves notes exactly an
 
 Look at every kept screenshot and read its narration. Fill each outline slide's `headline` and `takeaways` with concise copy grounded in that narration. Use a plain subject title or a supported takeaway, not an invented benefit. A headline fits within 60 characters; use 1–3 takeaways of at most 60 characters each. Preserve important names, numbers and qualifications. If a name conflicts with the screenshot, flag it rather than silently changing notes. Do not pad short narration to fill the layout.
 
+Character limits are ceilings, not a guarantee that text fits. If the builder rejects visible copy that would overflow, shorten that copy or use fewer takeaways; preserve the complete edited narration in notes.
+
 Keep `section_id`, `image` and `notes` unchanged. A default outline has one chapter and no extra slides, so the output remains one slide per capture. For a requested fuller presentation, enable `cover`, `dividers` and `closing`, and optionally supply a four-card `summary`. Chapters may split the existing sequence, never reorder it. Do not convert a capture into a summary instead of its screenshot slide. Omit unsupported presenter details and summary claims.
 
 Optional outline fields understood by the builder:
@@ -56,7 +58,7 @@ Read `brand/brand.json` for exact coordinates, colours and typography:
 
 - Purple gradient background, green `63DF4E` headlines and rules, white body text, translucent navy cards. Use the supplied logo and artwork unchanged. Closing uses the supplied teal/navy background.
 - Content card on the left, large screenshot on the right, letterboxed to preserve every edge. Native editable titles and takeaways; narration in notes.
-- ServiceNow Sans families, with the supplied size rules (26/23 pt headlines, 15 pt takeaways). Fonts are referenced, not embedded or supplied. If unavailable, report substitution and inspect for overflow; do not promise pixel-perfect typography.
+- Portable output uses Arial by default, with the supplied size rules (26/23 pt headlines, 15 pt takeaways). The original ServiceNow font names remain in `brand/brand.json`. Set outline `font_mode` to `"brand"` only when the author confirms licensed ServiceNow fonts are available for rendering and the recipient, then render and verify the result. Fonts are referenced, not embedded or supplied; report any remaining substitution and do not promise pixel-perfect typography.
 - Cover/divider decoration and footer geometry come from the brand file. Brand marks remain their owners' property; their presence does not imply endorsement or a font licence.
 
 ```sh

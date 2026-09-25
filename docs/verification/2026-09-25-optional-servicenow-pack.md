@@ -1,6 +1,6 @@
 # Optional ServiceNow Snap & Talk skill pack · 25 September 2026
 
-This native Mac increment adapts Matt's branding contribution (`2172ab0`) into an optional pack. The neutral skill remains the initial default and retains the existing `template.pptx` route. All eleven ServiceNow payload files were moved byte-for-byte into `Sources/LocalVoice/Resources/build-snap-and-talk-deck/packs/servicenow-employee-experience/1.0.0/`; no supplied assets, helper contracts or font references were removed.
+This native Mac increment adapts Matt's branding contribution (`2172ab0`) into an optional pack. The neutral skill remains the initial default and retains the existing `template.pptx` route. At native-pack commit `aa13521`, all eleven ServiceNow payload files were moved byte-for-byte into `Sources/LocalVoice/Resources/build-snap-and-talk-deck/packs/servicenow-employee-experience/1.0.0/`; no supplied assets, helper contracts or font references were removed. A coordinated rendering follow-up clarifies the pack skill's deliberate Arial default, optional verified brand-font mode and visible-copy fit requirement; original branding assets remain intact.
 
 ## App flow and ownership
 
