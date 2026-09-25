@@ -58,7 +58,7 @@ final class ToolbarGalleryTests: XCTestCase {
             }
         }
         let between = ToolbarGallery.idle.first { $0.name == "idle-session-open" }
-        XCTAssertEqual(between?.trailing.text, "3 Captures · ⌃⌥\\")
+        XCTAssertEqual(between?.trailing.text, "3 Captures · ⌥C")
         XCTAssertEqual(between?.isBusy, false, "a saved session does not pretend to be recording")
         XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle, "Prompts")
     }

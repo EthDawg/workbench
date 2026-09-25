@@ -291,6 +291,7 @@ struct TestRunner {
             ("corrupt board safety", suite.testCorruptBoardFailsWithoutOverwriting),
             ("missing and future board versions", suite.testMissingBoardStartsEmptyAndUnknownVersionFails),
             ("shortcut uniqueness", suite.testDefaultShortcutsAreUniqueAndComplete),
+            ("flat shape drag draws a straight line", suite.testFlatShapeDragDrawsAStraightLine),
             ("presenter-first shortcut update", suite.testUpdateMovesOnlyUntouchedShortcutsToPresenterDefaults),
             ("new defaults never take a chosen key", suite.testNewDefaultNeverTakesAChosenCombination),
             ("update returns app commands to other apps", suite.testUpdateReturnsAppCommandsToOtherApps),

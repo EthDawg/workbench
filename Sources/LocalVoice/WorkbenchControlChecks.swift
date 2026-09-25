@@ -16,7 +16,7 @@ enum WorkbenchControlChecks {
         legacy.removeValue(forKey: "readingShortcut"); legacy.removeValue(forKey: "presentationShortcut")
         let migrated = try JSONDecoder().decode(VoicePreferences.self, from: JSONSerialization.data(withJSONObject: legacy))
         try check(migrated.dictationShortcut == saved.dictationShortcut && migrated.shortcut(5) == saved.shortcut(5), "adding utility shortcuts preserves existing and disabled bindings")
-        try check(!migrated.shortcut(6).enabled && !migrated.shortcut(7).enabled, "Read and Present add no enabled default bindings")
+        try check(!migrated.shortcut(6).enabled && migrated.shortcut(7) == VoicePreferences.defaultPresentationShortcut, "Read stays opt-in and Present starts on its presenter key")
         saved.setShortcut(VoiceShortcut(keyCode: 20), for: 6); saved.setShortcut(VoiceShortcut(keyCode: 21), for: 7)
         let restored = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(saved))
         try check(restored.shortcut(6) == saved.shortcut(6) && restored.shortcut(7) == saved.shortcut(7), "opt-in utility shortcut assignments survive reload")

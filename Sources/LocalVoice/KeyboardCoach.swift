@@ -54,6 +54,7 @@ enum ShortcutConflict {
             return familiar[key]
         }
         if key == UInt32(kVK_ANSI_Z), mods == command | shift { return "Redo" }
+        if mods == option, [UInt32(kVK_ANSI_E), UInt32(kVK_ANSI_U), UInt32(kVK_ANSI_I), UInt32(kVK_ANSI_N), UInt32(kVK_ANSI_Grave)].contains(key) { return "typing accented letters" }
         return nil
     }
 }

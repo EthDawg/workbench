@@ -80,6 +80,16 @@ struct Annotation: Codable, Identifiable, Equatable {
                          height: (ys.max() ?? 0) - (ys.min() ?? 0))
         return box.insetBy(dx: -max(width, 24), dy: -max(width, 24))
     }
+    /// Shape draws a box; a flat drag, like an underline, draws a straight line instead.
+    func asBoxOrLine() -> Annotation {
+        var shaped = self
+        let width = abs(last.x - first.x), height = abs(last.y - first.y)
+        if min(width, height) <= 12 && max(width, height) >= 36 {
+            shaped.tool = .line
+            shaped.points = [points[0], InkPoint(width >= height ? CGPoint(x: last.x, y: first.y) : CGPoint(x: first.x, y: last.y))]
+        } else { shaped.tool = .rectangle }
+        return shaped
+    }
     func opacity(at time: TimeInterval, fadeDelay: Double?) -> Double {
         guard let delay = fadeDelay else { return 1 }
         return min(1, max(0, 1 - (time - created - delay) / 0.8))

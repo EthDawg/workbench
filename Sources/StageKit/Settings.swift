@@ -41,23 +41,22 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         default: return rawValue.capitalized
         }
     }
-    /// On by default: what a presenter reaches for mid-demo. Hold Draw, Highlighter or Arrow to
-    /// mark the screen and let go to return to the demo; Undo and Clear tidy up; the persona keys
-    /// step through a persona demo. Everything else starts off and is one recording away.
-    static let presenterEssentials: Set<Action> = [.pen, .highlighter, .arrow, .undo, .clear, .personaToggle, .personaPrevious, .personaNext]
+    /// On by default: the killer presenter keys, Option plus one key under the left hand while the
+    /// right hand stays on the mouse. Home row marks (A Arrow, S Shape, D Draw, F Persona on/off),
+    /// the row below fixes (Z Undo, X Clear) and R steps personas. Voice owns Q, W, C and V.
+    /// Hold a mark key to draw and let go to return to the demo. Everything else starts off.
+    static let presenterKeys: [Action: Int] = [.arrow: kVK_ANSI_A, .rectangle: kVK_ANSI_S, .pen: kVK_ANSI_D,
+        .personaToggle: kVK_ANSI_F, .personaNext: kVK_ANSI_R, .undo: kVK_ANSI_Z, .clear: kVK_ANSI_X]
+    static var presenterEssentials: Set<Action> { Set(presenterKeys.keys) }
     var defaultShortcut: Shortcut {
-        var shortcut = legacyDefaultShortcut
-        // Rectangle and Magnet ship ⌃⌥D, ⌃⌥I and ⌃⌥←/→ as window keys (First Third, Top Right,
-        // Left and Right Half), and only one app can hold a key.
-        switch self {
-        case .pen: shortcut.keyCode = UInt32(kVK_ANSI_S)
-        case .personaToggle: shortcut.keyCode = UInt32(kVK_ANSI_P)
-        case .personaPrevious: shortcut.keyCode = UInt32(kVK_ANSI_Comma)
-        case .personaNext: shortcut.keyCode = UInt32(kVK_ANSI_Period)
-        default: break
-        }
-        shortcut.enabled = Self.presenterEssentials.contains(self)
-        return shortcut
+        // Control-letter would take Terminal's ⌃C and ⌃Z, and Control-Option letters are Rectangle
+        // and Magnet window keys, so the presenter keys use Option alone.
+        if let key = Self.presenterKeys[self] { return Shortcut(keyCode: UInt32(key), modifiers: UInt32(optionKey)) }
+        // Shift steps back, ready for anyone who turns Previous persona on.
+        if self == .personaPrevious { return Shortcut(keyCode: UInt32(kVK_ANSI_R), modifiers: UInt32(optionKey | shiftKey), enabled: false) }
+        var dormant = legacyDefaultShortcut
+        dormant.enabled = false
+        return dormant
     }
     /// The 2.0.0 defaults. An update moves a shortcut only while it still matches one of these.
     var legacyDefaultShortcut: Shortcut {

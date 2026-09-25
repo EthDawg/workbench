@@ -792,7 +792,12 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         }
         var hint: [String] = []
         if let toggle = live(.personaToggle) { hint.append("\(toggle) shows or hides") }
-        if let previous = live(.personaPrevious), let next = live(.personaNext) { hint.append("\(previous) and \(next) switch cards") }
+        switch (live(.personaPrevious), live(.personaNext)) {
+        case let (previous?, next?): hint.append("\(previous) and \(next) switch cards")
+        case let (nil, next?): hint.append("\(next) switches cards")
+        case let (previous?, nil): hint.append("\(previous) switches cards")
+        case (nil, nil): break
+        }
         demoScenes.personas.shortcutHint = hint.isEmpty ? nil : hint.joined(separator: "; ") + "."
     }
     func setLaunchAtLogin(_ enabled: Bool) {
