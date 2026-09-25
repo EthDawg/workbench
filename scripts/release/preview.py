@@ -161,6 +161,7 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
                 "--team", team, "--environment", "Production", "--app", app)
         # Exercise the renamed, signed Preview before publishing its package.
         run(app / "Contents/MacOS" / config["executable"], "--check-readback-resources")
+        run(app / "Contents/MacOS" / config["executable"], "--check-readback-pack")
         temporary_archive = staging / archive.name
         run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, temporary_archive)
         # Keep the last good package if this build fails before validation.

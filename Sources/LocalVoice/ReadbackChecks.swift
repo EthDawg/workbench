@@ -7,15 +7,19 @@ enum ReadbackChecks {
     static func runPackagedResources() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-packaged-session-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let expected = try ReadbackResources.deckSkill()
+        let expected = try ReadbackResources.deckPayload()
         let session = try ReadbackStore.create(at: root, title: "Synthetic packaged session")
-        let copied = try Data(contentsOf: root.appendingPathComponent("SKILL.md"))
+        for (path, bytes) in expected {
+            guard try Data(contentsOf: root.appendingPathComponent(path)) == bytes else {
+                throw ReadbackError.message("Packaged Snap & Talk companion differs: \(path)")
+            }
+        }
         let reopened = try ReadbackStore.load(from: root)
-        guard copied == expected, reopened.id == session.id,
+        guard reopened.id == session.id,
               FileManager.default.fileExists(atPath: root.appendingPathComponent("README.md").path) else {
             throw ReadbackError.message("Packaged Snap & Talk session creation did not preserve its companion files.")
         }
-        print("READBACK_PACKAGED_RESOURCES_OK: new session, exact skill bytes, README and reopened manifest")
+        print("READBACK_PACKAGED_RESOURCES_OK: new session, exact complete skill payload, README and reopened manifest")
     }
 
     static func run() throws {
@@ -39,8 +43,13 @@ enum ReadbackChecks {
         let manifestMode = try FileManager.default.attributesOfItem(atPath: root.appendingPathComponent(ReadbackStore.manifestName).path)[.posixPermissions] as? NSNumber
         try check(rootMode?.intValue == 0o700 && manifestMode?.intValue == 0o600, "new session metadata is private to the user")
         let skill = try String(contentsOf: root.appendingPathComponent("SKILL.md"), encoding: .utf8)
-        try check(skill.contains("name: build-snap-and-talk-deck") && skill.contains("speaker notes verbatim"), "skill preserves the agreed deck contract")
-        try check(skill.contains("template.pptx") && skill.contains("visible title") && skill.contains("supporting copy"), "skill describes the optional template and visible narration-grounded copy")
+        try check(skill.hasPrefix("---\nname: build-snap-and-talk-deck\n"), "portable skill retains its discoverable identity")
+        try check(skill.contains("template.pptx") && skill.contains("visible title") && skill.contains("supporting copy"), "neutral skill retains the optional-template route and narration-grounded copy")
+        let payload = try ReadbackResources.deckPayload()
+        let copiesMatch = try payload.allSatisfy { path, bytes in
+            try Data(contentsOf: root.appendingPathComponent(path)) == bytes
+        }
+        try check(copiesMatch && manifest.skillPack == .neutral, "new session defaults to the complete, exact neutral payload")
         let readme = try String(contentsOf: root.appendingPathComponent("README.md"), encoding: .utf8)
         try check(readme.contains("complete edited narration verbatim") && readme.contains("does not upload or submit"), "portable README explains slide copy and local handoff")
         let handoffRoot = root.appendingPathComponent("Folder with spaces", isDirectory: true)
@@ -332,6 +341,7 @@ enum ReadbackChecks {
         try check(reopened.recentSessionURLs.map(\.path) == [other.standardizedFileURL.path], "forgotten entry stays removed after reopening")
         print("READBACK_AVAILABILITY_CHECKS_OK: \(passed) checks")
         try await runRecoveryChecks()
+        try ReadbackPackChecks.run()
     }
 
     @MainActor
