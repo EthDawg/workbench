@@ -110,6 +110,7 @@ struct PackLibraryView: View {
                 }
                 Spacer()
                 if model.login != nil {
+                    Button("Reconnect") { model.connect() }.disabled(model.isBusy)
                     Button("Disconnect") { model.disconnect() }.disabled(model.isBusy)
                 } else {
                     Button("Connect GitHub") { model.connect() }.buttonStyle(.borderedProminent)
@@ -125,7 +126,7 @@ struct PackLibraryView: View {
                             .textSelection(.enabled).accessibilityLabel("GitHub verification code: \(code)")
                     }
                     Spacer()
-                    Button("Copy code and open GitHub") { model.openDeviceLogin() }
+                    Button("Copy code and open GitHub") { model.openDeviceLogin(copyCode: true) }
                     Button("Cancel") { model.cancel() }
                 }
             }
@@ -143,9 +144,14 @@ struct PackLibraryView: View {
                     .disabled(model.isBusy || model.login == nil || source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if model.login == nil {
-                Text("Connect GitHub first. Your team must invite your account to its private repository.")
+                Text("Connect GitHub first to add your team’s pack.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            HStack {
+                Text("Your account and Workbench Packs both need access to the repository.")
+                    .foregroundStyle(.secondary)
+                Link("Pack owner setup", destination: URL(string: "https://github.com/apps/workbench-packs")!)
+            }.font(.caption)
         }
     }
 

@@ -61,8 +61,12 @@ final class PackLibraryModel: ObservableObject {
             self.notice = "Connected as \(login). Add a repository your team has invited you to."
         }
     }
-    func openDeviceLogin() {
+    func openDeviceLogin(copyCode: Bool = false) {
         guard let url = verificationURL, url.absoluteString == "https://github.com/login/device" else { return }
+        if copyCode, let code = deviceCode {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(code, forType: .string)
+        }
         NSWorkspace.shared.open(url)
     }
     func disconnect() {
@@ -137,9 +141,19 @@ final class PackLibraryModel: ObservableObject {
         lastUpdateAttempt = Date()
         run("Checking pack updates…", clearNotice: false) {
             await self.loadInstalled()
+            var failures: [String] = []
             for pack in self.records.values.sorted(by: { $0.id < $1.id }) {
                 try Task.checkCancellation()
-                try await self.install(pack.source)
+                do { try await self.install(pack.source) }
+                catch is CancellationError { throw CancellationError() }
+                catch {
+                    try Task.checkCancellation()
+                    failures.append("\(pack.manifest.name): \(error.localizedDescription)")
+                }
+            }
+            if !failures.isEmpty {
+                self.hasError = true
+                self.notice = "Some packs could not update. Their installed content remains available.\n" + failures.joined(separator: "\n")
             }
         }
     }

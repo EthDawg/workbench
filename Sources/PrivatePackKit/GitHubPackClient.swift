@@ -123,7 +123,7 @@ public struct GitHubPackClient: PackContentSource {
         let request = try PackHTTPRequest(url: url, host: Self.host, accept: accept,
                                           authorization: token, limit: limit)
         let response = try await client.send(request)
-        try GitHubStatus.check(response, what: what)
+        try GitHubStatus.check(response, what: what, repository: true)
         return response
     }
 
@@ -144,7 +144,7 @@ public struct GitHubPackClient: PackContentSource {
 }
 
 enum GitHubStatus {
-    static func check(_ response: PackHTTPResponse, what: String) throws {
+    static func check(_ response: PackHTTPResponse, what: String, repository: Bool = false) throws {
         switch response.status {
         case 200...299:
             return
@@ -153,9 +153,13 @@ enum GitHubStatus {
         case 403 where response.headers["x-ratelimit-remaining"] == "0", 429:
             throw PackError.transport("GitHub is rate-limiting Workbench. Try again later; the installed pack is unchanged.")
         case 403:
-            throw PackError.authorization("This GitHub account cannot read \(what). Ask the repository owner for access.")
+            throw PackError.authorization(repository
+                ? "GitHub denied access to \(what). Ask the owner to give both your account and the Workbench Packs app access to this repository."
+                : "GitHub denied access to \(what). Check your account’s access and reconnect.")
         case 404:
-            throw PackError.content("GitHub could not find \(what). Check the repository address and that this account can read it.")
+            throw PackError.content(repository
+                ? "GitHub could not find \(what). Check the address and ask the owner to give both your account and the Workbench Packs app access to this repository."
+                : "GitHub could not find \(what). Check your account’s access and reconnect.")
         case 500...599:
             throw PackError.transport("GitHub could not answer for \(what) (HTTP \(response.status)). The installed pack is unchanged.")
         default:
