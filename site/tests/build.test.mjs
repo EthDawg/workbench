@@ -11,7 +11,7 @@ async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'workbench-site-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   // Exact source allowlist; never copy local environment or deployment files.
-  for (const name of ['build.mjs', 'release.mjs', 'report.mjs', 'app.mjs', 'index.html', 'privacy.html', 'style.css', 'guide', 'mobile', 'handoff', 'scenes', 'personas', 'phone-presenting', 'handbook']) {
+  for (const name of ['build.mjs', 'release.mjs', 'report.mjs', 'app.mjs', 'index.html', 'privacy.html', 'style.css', 'packs', 'guide', 'mobile', 'handoff', 'scenes', 'personas', 'phone-presenting', 'handbook']) {
     await cp(new URL(`../${name}`, import.meta.url), join(directory, name), { recursive: true });
   }
   await mkdir(join(directory, 'assets'));

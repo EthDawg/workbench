@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum ReadbackPackChecks {
     @MainActor
@@ -25,9 +26,24 @@ enum ReadbackPackChecks {
         try check(neutralManifest.skillPack == .neutral && neutralSkill.contains("template.pptx"), "neutral sessions snapshot their identity and keep the template route")
         try check(!fm.fileExists(atPath: neutral.appendingPathComponent("brand").path), "neutral sessions have no optional branding or helpers")
 
-        model.installServiceNowPack()
+        // Preserve the legacy receipt contract using synthetic content. Company
+        // artwork and helpers no longer ship inside the public app bundle.
+        let expected = ReadbackSkillPackSnapshot(reference: .serviceNow,
+            files: Dictionary(uniqueKeysWithValues: ReadbackResources.serviceNowFiles.map { ($0, Data(("Synthetic fixture: " + $0).utf8)) }))
+        func installFixture() throws {
+            let destination = store.root.appendingPathComponent(ReadbackSkillPackReference.serviceNow.id)
+            for (path, data) in expected.files {
+                let file = destination.appendingPathComponent(path)
+                try ReadbackStore.createPrivateDirectory(file.deletingLastPathComponent())
+                try ReadbackStore.writePrivate(data, to: file)
+            }
+            let files = expected.files.mapValues { data in SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+            let receipt: [String: Any] = ["formatVersion": 1, "pack": ["id": expected.reference.id, "version": expected.reference.version, "name": expected.reference.name], "files": files]
+            try ReadbackStore.writePrivate(JSONSerialization.data(withJSONObject: receipt), to: destination.appendingPathComponent("pack.json"))
+            model.selectNewSessionStyle(.serviceNow)
+        }
+        try installFixture()
         try check(model.newSessionStyle == .serviceNow && model.installedServiceNow == .serviceNow && model.newSessionStyleProblem == nil, "one install action enables ServiceNow for future sessions")
-        let expected = try ReadbackResources.bundledSnapshot(.serviceNow)
         let branded = fixture.appendingPathComponent("ServiceNow session")
         var brandedManifest = try model.createSession(at: branded, title: "ServiceNow synthetic")
         try check(brandedManifest.skillPack == .serviceNow, "ServiceNow sessions freeze pack id and version")
@@ -65,7 +81,7 @@ enum ReadbackPackChecks {
         try check(reopened.manifest?.sections.map(\.id) == brandedManifest.sections.map(\.id), "reopening preserves captured section order")
         try check(reopened.transcriptDrafts[brandedManifest.sections[0].id] == " First edited narration.\n", "reopening preserves exact edited narration")
 
-        model.installServiceNowPack()
+        try installFixture()
         model.selectNewSessionStyle(.neutral)
         let afterReinstall = try filesInSession()
         try check(afterReinstall == originalFiles, "reinstalling a pack and changing future style never rewrite an existing session or custom skill")
@@ -85,12 +101,12 @@ enum ReadbackPackChecks {
         let laterNeutral = try model.createSession(at: fixture.appendingPathComponent("Later neutral"), title: "Neutral still works")
         try check(laterNeutral.skillPack == .neutral && model.newSessionStyleProblem == nil, "ordinary neutral sessions work with no optional pack installed")
 
-        model.installServiceNowPack()
+        try installFixture()
         let installedSkill = store.root.appendingPathComponent(ReadbackSkillPackReference.serviceNow.id + "/SKILL.md")
         try Data("Incomplete changed installed pack".utf8).write(to: installedSkill)
         model.refreshSkillPacks()
         try check(model.newSessionStyleProblem != nil && model.installedServiceNow == nil, "changed installed payload is rejected instead of claiming the original version")
-        model.installServiceNowPack()
+        try installFixture()
         try check(model.installedServiceNow == .serviceNow && model.newSessionStyleProblem == nil, "an explicit reinstall repairs the optional pack")
 
         // This is the Codable shape shipped before skill packs. Older-app edits

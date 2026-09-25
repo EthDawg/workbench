@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 import Carbon
+import SceneSyncKit
 
 /// Carbon key codes and modifier masks, shared with macOS global shortcuts.
 public struct StageShortcutDescriptor: Identifiable, Equatable {
@@ -145,6 +146,22 @@ public final class StageKitController: ObservableObject {
     }
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
+
+    /// Installing a pack supplies starters; importing explicitly creates a personal copy.
+    public func importPackScene(at url: URL) throws {
+        guard let library = coordinator.demoScenes.sceneSync?.library else {
+            throw SceneDocumentError.invalid("The scene library is unavailable. Reopen Workbench and try again.")
+        }
+        let record = try library.importPackage(SceneFile.read(url))
+        coordinator.demoScenes.query = ""
+        coordinator.demoScenes.selectedID = record.id
+        coordinator.demoScenes.notice = "Added a personal scene copy. Pack updates will not change it."
+    }
+
+    public func importPackPersona(at url: URL, name: String) throws {
+        _ = try coordinator.demoScenes.personas.addImage(url, name: name,
+                                                        card: PersonaCardStyle(label: name))
+    }
     public var quickControlsView: AnyView { AnyView(QuickControlsView(app: coordinator, settings: coordinator.settings)) }
     /// One native menu for the application menu bar or the shell's status menu.
     /// It refreshes tool state and shortcut labels whenever it opens; StageKit

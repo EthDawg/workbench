@@ -12,9 +12,17 @@ struct ReadbackSkillPackReference: Codable, Equatable {
     var id: String
     var version: String
     var name: String
+    var origin: ReadbackSkillOrigin? = nil
 
     static let neutral = Self(id: "workbench-neutral", version: "1.0.0", name: "Neutral")
     static let serviceNow = Self(id: "servicenow-employee-experience", version: "1.0.0", name: "ServiceNow")
+}
+
+struct ReadbackSkillOrigin: Codable, Equatable {
+    var repository: String
+    var revision: String
+    var packID: String
+    var entryID: String
 }
 
 struct ReadbackSkillPackProvenance: Codable {
@@ -27,15 +35,39 @@ struct ReadbackSkillPackSnapshot {
     let files: [String: Data]
 
     func validate() throws {
-        let paths: [String]
-        switch reference.id {
-        case ReadbackSkillPackReference.neutral.id: paths = ReadbackResources.deckFiles
-        case ReadbackSkillPackReference.serviceNow.id: paths = ReadbackResources.serviceNowFiles
-        default: throw ReadbackError.message("The selected skill pack is unsupported. No session was created.")
+        if reference.id == ReadbackSkillPackReference.neutral.id, Set(files.keys) != Set(ReadbackResources.deckFiles) {
+            throw ReadbackError.message("The bundled neutral skill is incomplete.")
         }
-        guard Set(files.keys) == Set(paths), files.values.allSatisfy({ !$0.isEmpty && $0.count < 16_000_000 }),
-              let skill = files["SKILL.md"], String(data: skill, encoding: .utf8) != nil else {
-            throw ReadbackError.message("The selected skill pack is incomplete. No session was created.")
+        if reference.id == ReadbackSkillPackReference.serviceNow.id, Set(files.keys) != Set(ReadbackResources.serviceNowFiles) {
+            throw ReadbackError.message("The previously installed company skill is incomplete.")
+        }
+        guard reference.id.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", options: .regularExpression) != nil,
+              reference.version.range(of: #"^[0-9]+\.[0-9]+\.[0-9]+$"#, options: .regularExpression) != nil,
+              !reference.name.isEmpty, reference.name.count <= 160,
+              (1...512).contains(files.count),
+              let skill = files["SKILL.md"], !skill.isEmpty, skill.count <= 4_194_304,
+              String(data: skill, encoding: .utf8) != nil else {
+            throw ReadbackError.message("The selected skill is incomplete or unsupported. No session was created.")
+        }
+        var folded = Set<String>(); var bytes = 0
+        let reserved = ["session.json", "skill-pack.json", "handoff.json", "readme.md", "items", "inputs", "outputs"]
+        for (path, data) in files {
+            let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+            guard path.utf8.count <= 400, !parts.isEmpty, parts.count <= 12,
+                  parts.allSatisfy({ !$0.isEmpty && !$0.hasPrefix(".") && !$0.contains("\\") && !$0.contains(":") && !$0.contains(where: { $0.isNewline || $0.isASCII && $0.asciiValue! < 32 }) }),
+                  !reserved.contains(String(parts[0]).lowercased()),
+                  folded.insert(path.lowercased().precomposedStringWithCanonicalMapping).inserted,
+                  !data.isEmpty, data.count <= 104_857_600 else {
+                throw ReadbackError.message("The selected skill contains an unsafe, duplicated or oversized file. No session was created.")
+            }
+            bytes += data.count
+            guard bytes <= 268_435_456 else { throw ReadbackError.message("The selected skill is too large.") }
+        }
+        for path in folded {
+            let parts = path.split(separator: "/")
+            for count in 1..<parts.count where folded.contains(parts.prefix(count).joined(separator: "/")) {
+                throw ReadbackError.message("The selected skill contains conflicting file and folder names.")
+            }
         }
     }
 }
@@ -58,7 +90,8 @@ enum ReadbackResources {
     }
 
     static func bundledSnapshot(_ style: ReadbackDeckStyle, in application: Bundle = .main) throws -> ReadbackSkillPackSnapshot {
-        let reference: ReadbackSkillPackReference = style == .neutral ? .neutral : .serviceNow
+        guard style == .neutral else { throw ReadbackError.message("Company packs are installed from Packs. Existing local copies remain available.") }
+        let reference: ReadbackSkillPackReference = .neutral
         let relative = "build-snap-and-talk-deck" + (style == .neutral ? "" : "/packs/\(reference.id)/\(reference.version)")
         let paths = style == .neutral ? deckFiles : serviceNowFiles
         let name = "Workbench_LocalVoice.bundle"
@@ -137,29 +170,7 @@ struct ReadbackSkillPackStore {
 
     @discardableResult
     func installServiceNow() throws -> ReadbackSkillPackReference {
-        let snapshot = try ReadbackResources.bundledSnapshot(.serviceNow, in: resources)
-        let fm = FileManager.default
-        try ReadbackStore.createPrivateDirectory(root)
-        let staged = root.appendingPathComponent(".install-\(UUID().uuidString)", isDirectory: true)
-        let backup = root.appendingPathComponent(".previous-\(UUID().uuidString)", isDirectory: true)
-        try ReadbackStore.createPrivateDirectory(staged, includingParents: false)
-        defer { try? fm.removeItem(at: staged) }
-        for (path, data) in snapshot.files {
-            let file = staged.appendingPathComponent(path)
-            try ReadbackStore.createPrivateDirectory(file.deletingLastPathComponent())
-            try ReadbackStore.writePrivate(data, to: file)
-        }
-        let receipt = Receipt(pack: snapshot.reference, files: snapshot.files.mapValues(digest))
-        try ReadbackStore.writePrivate(JSONEncoder().encode(receipt), to: staged.appendingPathComponent("pack.json"))
-        let hadPrevious = fm.fileExists(atPath: destination.path)
-        if hadPrevious { try fm.moveItem(at: destination, to: backup) }
-        do { try fm.moveItem(at: staged, to: destination) }
-        catch {
-            if hadPrevious { try? fm.moveItem(at: backup, to: destination) }
-            throw error
-        }
-        if hadPrevious { try? fm.removeItem(at: backup) }
-        return snapshot.reference
+        throw ReadbackError.message("Open Packs to install the current company pack from its private repository. Existing sessions remain available.")
     }
 
     func uninstallServiceNow() throws {

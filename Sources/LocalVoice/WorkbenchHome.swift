@@ -8,6 +8,7 @@ struct WorkbenchHome: View {
     @ObservedObject var stage: StageKitController
     @ObservedObject var keyboard: KeyboardCoachModel
     @ObservedObject var readback: ReadbackModel
+    @ObservedObject private var packs = PackLibraryModel.shared
     @ObservedObject private var updates = WorkbenchUpdates.shared
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
@@ -18,11 +19,16 @@ struct WorkbenchHome: View {
         ("speak", "Read aloud", "speaker.wave.2"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
         ("present", "Present a device", "iphone"), ("history", "Recent transcripts", "clock"),
         ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
-        ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
+        ("packs", "Packs", "shippingbox"), ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 5) {
-                WorkbenchHeader(title: "Workbench", subtitle: "Everyday tools. A little less friction.", symbol: "square.stack.3d.up.fill")
+                if let logo = packs.brandLogo {
+                    Image(nsImage: logo).resizable().scaledToFit().frame(maxWidth: 150, maxHeight: 36)
+                        .padding(8).background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityLabel(packs.brandLabel ?? "Workspace")
+                }
+                WorkbenchHeader(title: packs.brandLabel ?? "Workbench", subtitle: packs.brandLabel == nil ? "Everyday tools. A little less friction." : "Your workspace in Workbench", symbol: "square.stack.3d.up.fill")
                     .padding(.vertical, 20)
                 ForEach(navItems, id: \.0) { page, title, symbol in
                     Button { keyboard.stopInteraction(); model.page = page } label: {
@@ -44,7 +50,12 @@ struct WorkbenchHome: View {
             Group {
                 switch model.page {
                 case "home": welcome
-                case "readback": ReadbackView(model: readback)
+                case "readback": ReadbackView(model: readback, onOpenPacks: { model.page = "packs" })
+                case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
+                case "history": VStack(alignment: .leading, spacing: 20) {
+                    Text("Pick up a thought.").font(.largeTitle.weight(.semibold))
+                    CaptureHistoryView(model: model, handoffSkills: { packs.transcriptSkills }, preferredHandoffSkillID: packs.preferredTranscriptSkillID, selectedSnapTalkSession: readback.sessionURL)
+                }.padding(32)
                 case "annotate": stage.controlsView
                 case "present": stage.scenesView
                 case "shortcuts": KeyboardCoachView(model: keyboard)

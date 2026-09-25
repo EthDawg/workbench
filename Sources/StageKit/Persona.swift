@@ -364,8 +364,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
         catch { reportImport(error) }
     }
 
-    @discardableResult func addImage(_ url: URL, card: PersonaCardStyle? = nil) throws -> SavedPersona {
-        try add(LogoImport.read(url), card: card)
+    @discardableResult func addImage(_ url: URL, name: String? = nil, card: PersonaCardStyle? = nil) throws -> SavedPersona {
+        try add(LogoImport.read(url), fallbackName: name, card: card)
     }
 
     private func add(_ imported: LogoImport.Image, fallbackName: String? = nil, card: PersonaCardStyle? = nil) throws -> SavedPersona {

@@ -108,7 +108,7 @@ The selected-text Service is the only Services adapter: it declares plain-text i
 
 ## Snap & Talk skill packs
 
-`ReadbackResources` resolves neutral resources and the optional ServiceNow payload separately. `ReadbackSkillPackStore` installs only the bundled allowlisted pack into the edition-owned `SnapTalkSkillPacks` directory and verifies its private receipt and hashes. `ReadbackModel` owns the remembered new-session style and explicit install/reinstall/remove actions. New sessions receive a full payload snapshot and immutable `skill-pack.json`; the manifest's in-memory pack reference is derived from that companion and is not encoded into `session.json`. Older app saves therefore retain provenance without a manifest migration. Existing/custom sessions remain their own source of instructions. The current pack uses ordinary skill, asset and script files; no marketplace, global agent registration or execution service is added.
+`PrivatePackKit` owns validated catalogues, immutable releases, commit-pinned GitHub reads and atomic activation in the edition-owned `Packs` directory. `PackLibraryModel` owns optional GitHub App device sign-in, Keychain credentials, six-hour update checks and adapters into existing stores. Pack entries declare compatible handoff inputs; helpers are copied, never executed by Workbench. Imported scenes/personas become personal copies. `ReadbackResources` supplies the neutral default and reads legacy installed packs; company payloads are no longer bundled. New sessions retain complete skill snapshots and immutable `skill-pack.json`, while `session.json` remains compatible with older applications. Selected transcript handoffs use `handoff.json`, `SKILL.md`, `inputs/` and `outputs/`, with an explicit dictation role and source-linked original/cleaned wording. No hosted session store or AI execution service is introduced. See [the pack contract](private-packs.md).
 
 ## Capture recovery
 
@@ -131,7 +131,7 @@ Quit stops work and preserves pending recovery. On reopening, an acknowledged jo
 | Appearance | Shared `com.ethdawg.workbench.preview` suite |
 | Speko key | Keychain service derived from the current bundle ID; not copied from a legacy app |
 | Snap & Talk sessions | User-chosen Finder folders containing `session.json`, media, transcripts, recovery files and a complete selected skill snapshot; immutable `skill-pack.json` records new-session provenance |
-| Optional Snap & Talk packs | Edition-owned `SnapTalkSkillPacks` under application support; selected new-session style in the same edition’s preferences |
+| Optional content packs | Edition-owned `Packs` under application support; Keychain owns GitHub tokens; preferences own selected skills and optional workspace appearance. `SnapTalkSkillPacks` remains readable for older local installations. |
 
 Non-Preview files use `Application Support/Workbench`; identity and preference domains drop the `.preview` suffix.
 

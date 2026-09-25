@@ -18,6 +18,8 @@ let package = Package(
     dependencies: [.package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6"),
                    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")],
     targets: [
+        .target(name: "PrivatePackKit"),
+        .testTarget(name: "PrivatePackKitTests", dependencies: ["PrivatePackKit"]),
         .target(name: "ToolbarCore"),
         .target(name: "ToolbarKit", dependencies: ["ToolbarCore"]),
         .executableTarget(name: "ToolbarGalleryRenderer", dependencies: ["ToolbarKit", "StageKit"]),
@@ -31,7 +33,7 @@ let package = Package(
         .target(name: "SceneSyncKit"),
         .testTarget(name: "SceneSyncKitTests", dependencies: ["SceneSyncKit"]),
         .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit"], linkerSettings: [.linkedFramework("Carbon")]),
-        .executableTarget(name: "LocalVoice", dependencies: ["ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon"), .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ])
+        .executableTarget(name: "LocalVoice", dependencies: ["PrivatePackKit", "ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon"), .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ])
     ],
     swiftLanguageModes: [.v5]
 )

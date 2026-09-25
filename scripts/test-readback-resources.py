@@ -58,48 +58,20 @@ __STORE__
             try Data("User custom skill".utf8).write(to: destination.appendingPathComponent("SKILL.md"))
             _ = try ReadbackStore.load(from: destination)
             guard try String(contentsOf: destination.appendingPathComponent("SKILL.md"), encoding: .utf8) == "User custom skill" else { fatalError("Open overwrote custom skill") }
-            let packs = ReadbackSkillPackStore(root: fixture.appendingPathComponent("Installed packs"))
-            if optionalMissing {
-                do {
-                    _ = try packs.installServiceNow()
-                    fatalError("Incomplete optional pack was installed")
-                } catch {
-                    guard error.localizedDescription.contains("ServiceNow") else { throw error }
-                }
-                guard !fm.fileExists(atPath: packs.root.path) else { fatalError("Incomplete optional install left files") }
-                print("PASS missing optional assets do not break neutral sessions or partially install a pack")
-            } else {
-                let reference = try packs.installServiceNow()
-                let pack = try packs.snapshot(for: .serviceNow)
-                let branded = fixture.appendingPathComponent("Branded session")
-                let brandedManifest = try ReadbackStore.create(at: branded, title: "Synthetic branded", skillPack: pack)
-                guard reference == .serviceNow, brandedManifest.skillPack == reference else { fatalError("Pack identity missing") }
-                for (path, bytes) in pack.files {
-                    guard try Data(contentsOf: branded.appendingPathComponent(path)) == bytes else { fatalError("Optional payload differs") }
-                }
-                try Data("Custom branded session skill".utf8).write(to: branded.appendingPathComponent("SKILL.md"))
-                _ = try packs.installServiceNow()
-                try packs.uninstallServiceNow()
-                _ = try ReadbackStore.load(from: branded)
-                guard try String(contentsOf: branded.appendingPathComponent("SKILL.md"), encoding: .utf8) == "Custom branded session skill" else {
-                    fatalError("Pack management changed a session")
-                }
-                do {
-                    _ = try packs.snapshot(for: .serviceNow)
-                    fatalError("Uninstalled explicit pack silently resolved")
-                } catch {
-                    guard error.localizedDescription.contains("unavailable") else { throw error }
-                }
-                let malformed = ReadbackSkillPackSnapshot(reference: .neutral, files: ["../escape": Data("Must not write".utf8)])
-                let rejected = fixture.appendingPathComponent("Rejected")
-                do {
-                    _ = try ReadbackStore.create(at: rejected, title: "Rejected", skillPack: malformed)
-                    fatalError("Unsafe payload accepted")
-                } catch {
-                    guard !fm.fileExists(atPath: rejected.path) else { fatalError("Unsafe payload created a session") }
-                }
-                print("PASS neutral default, complete installed pack snapshot/id/version, private files and existing custom skills preserved")
+            let snapshot = ReadbackSkillPackSnapshot(reference: .init(id: "example-private", version: "1.0.0", name: "Example"),
+                files: ["SKILL.md": Data("Prepare a draft".utf8), "assets/example.txt": Data("Synthetic asset".utf8)])
+            let branded = fixture.appendingPathComponent("Private skill session")
+            _ = try ReadbackStore.create(at: branded, title: "Synthetic", skillPack: snapshot)
+            guard try Data(contentsOf: branded.appendingPathComponent("assets/example.txt")) == snapshot.files["assets/example.txt"] else { fatalError("Snapshot lost an asset") }
+            let malformed = ReadbackSkillPackSnapshot(reference: snapshot.reference, files: ["SKILL.md": Data("Skill".utf8), "../escape": Data("Must not write".utf8)])
+            let rejected = fixture.appendingPathComponent("Rejected")
+            do {
+                _ = try ReadbackStore.create(at: rejected, title: "Rejected", skillPack: malformed)
+                fatalError("Unsafe payload accepted")
+            } catch {
+                guard !fm.fileExists(atPath: rejected.path) else { fatalError("Unsafe payload created a session") }
             }
+            print("PASS neutral default, private snapshot and original session preservation")
         }
     }
 }
@@ -136,14 +108,11 @@ with tempfile.TemporaryDirectory(prefix="workbench-resource-check-", dir="/priva
         moved.parent.mkdir(exist_ok=True)
         app.rename(moved)
         subprocess.run([str(moved / "Contents/MacOS" / binary)], check=True, timeout=30)
-        asset = moved / "Contents/Resources" / bundle.name / "build-snap-and-talk-deck/packs/servicenow-employee-experience/1.0.0/brand/assets/bg_purple.jpg"
-        saved = asset.read_bytes()
-        asset.unlink()
-        subprocess.run([str(moved / "Contents/MacOS" / binary), "--optional-missing"], check=True, timeout=30)
-        asset.write_bytes(saved)
+        optional = moved / "Contents/Resources" / bundle.name / "build-snap-and-talk-deck/packs"
+        assert not optional.exists(), "Company payload must not ship in the public bundle"
         skill = moved / "Contents/Resources" / bundle.name / "build-snap-and-talk-deck/SKILL.md"
         skill.unlink()
         subprocess.run([str(moved / "Contents/MacOS" / binary), "--missing"], check=True, timeout=30)
         shutil.rmtree(moved / "Contents/Resources" / bundle.name)
         subprocess.run([str(moved / "Contents/MacOS" / binary), "--missing"], check=True, timeout=30)
-print("READBACK_RESOURCE_LAYOUTS_OK: 11 process checks using actual store and resolver; no app installation")
+print("READBACK_RESOURCE_LAYOUTS_OK: 9 process checks using actual store and resolver; no app installation")

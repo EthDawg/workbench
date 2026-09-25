@@ -28,3 +28,6 @@ node --test BrowserExtension/tests/*.test.js
 "$BIN_DIR/LocalVoice" --check-providers
 "$BIN_DIR/LocalVoice" --check-refinement
 bash scripts/test-stage.sh --ci
+
+"$BIN_DIR/LocalVoice" --check-transcript-handoff
+"$BIN_DIR/LocalVoice" --check-readback-pack
