@@ -2,6 +2,22 @@ import Carbon
 import Foundation
 
 enum ReadbackChecks {
+    /// Safe to run from an extracted app: no app lifecycle, permissions, models,
+    /// or user preferences. This exercises the actual new-session resource path.
+    static func runPackagedResources() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-packaged-session-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let expected = try ReadbackResources.deckSkill()
+        let session = try ReadbackStore.create(at: root, title: "Synthetic packaged session")
+        let copied = try Data(contentsOf: root.appendingPathComponent("SKILL.md"))
+        let reopened = try ReadbackStore.load(from: root)
+        guard copied == expected, reopened.id == session.id,
+              FileManager.default.fileExists(atPath: root.appendingPathComponent("README.md").path) else {
+            throw ReadbackError.message("Packaged Snap & Talk session creation did not preserve its companion files.")
+        }
+        print("READBACK_PACKAGED_RESOURCES_OK: new session, exact skill bytes, README and reopened manifest")
+    }
+
     static func run() throws {
         var passed = 0
         func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {

@@ -35,6 +35,7 @@ The installer holds a per-edition OS file lock during replacement and detects a 
 ## Release acceptance
 
 - Confirm the clean source, edition, source revision, build number, update key and feed in the final extracted app match its release receipt.
+- Run the extracted app executable with `--check-readback-resources`. It creates and removes only a disposable synthetic session, verifying packaged Snap & Talk skill lookup, exact companion bytes and reopening without microphone/screen access. The component packaging script runs the same check before producing its ZIP. This does not replace the installed New session UI check.
 - Verify nested Sparkle code, Developer ID signature, Apple notarization, stapled ticket and Gatekeeper on the final ZIP.
 - Exercise an actual old-to-new Sparkle update, including a refused/busy restart and successful idle restart. Confirm one app at the same location, retained saved work, expected code requirement, unchanged update preference and exact new build.
 - Test failed/offline checks, a bad signature, cross-edition metadata and a local development build. None may replace the installed app.

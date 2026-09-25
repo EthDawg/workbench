@@ -106,7 +106,9 @@ enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
 enum ReadbackStore {
     static let manifestName = "session.json"
 
-    static func create(at root: URL, title: String) throws -> ReadbackManifest {
+    static func create(at root: URL, title: String, resources: Bundle = .main) throws -> ReadbackManifest {
+        // Check packaged resources before creating a folder or publishing session.json.
+        let skill = try ReadbackResources.deckSkill(in: resources)
         let fm = FileManager.default
         let root = root.standardizedFileURL
         if fm.fileExists(atPath: root.path) {
@@ -126,7 +128,7 @@ enum ReadbackStore {
         let now = Date()
         let manifest = ReadbackManifest(id: UUID(), title: title, createdAt: now, updatedAt: now, sections: [])
         try save(manifest, at: root)
-        try writeCompanionFiles(at: root, title: title)
+        try writeCompanionFiles(at: root, title: title, skill: skill)
         return manifest
     }
 
@@ -221,11 +223,8 @@ enum ReadbackStore {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private static func writeCompanionFiles(at root: URL, title: String) throws {
-        let skillSource = Bundle.module.url(forResource: "SKILL", withExtension: "md", subdirectory: "build-snap-and-talk-deck")
-        guard let skillSource else { throw ReadbackError.message("The slide-building skill is missing from this Workbench build.") }
-        try FileManager.default.copyItem(at: skillSource, to: root.appendingPathComponent("SKILL.md"))
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: root.appendingPathComponent("SKILL.md").path)
+    private static func writeCompanionFiles(at root: URL, title: String, skill: Data) throws {
+        try writePrivate(skill, to: root.appendingPathComponent("SKILL.md"))
         let readme = """
         # \(title)
 
