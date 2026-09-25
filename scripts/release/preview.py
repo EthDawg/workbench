@@ -159,6 +159,8 @@ def build(config, identity=None, ad_hoc=False, native=False, photo_cloud_profile
         if photo_cloud_profile:
             run(sys.executable, ROOT / "scripts/check-photo-cloud.py", "--platform", "macos",
                 "--team", team, "--environment", "Production", "--app", app)
+        # Exercise the renamed, signed Preview before publishing its package.
+        run(app / "Contents/MacOS" / config["executable"], "--check-readback-resources")
         temporary_archive = staging / archive.name
         run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, temporary_archive)
         # Keep the last good package if this build fails before validation.
