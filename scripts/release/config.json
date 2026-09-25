@@ -33,6 +33,9 @@
       "--check-readback-resources"
     ],
     [
+      "--check-readback-pack"
+    ],
+    [
       "--check-reading-service-native"
     ]
   ],

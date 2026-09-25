@@ -21,3 +21,11 @@ Installed-pack checks validate the complete file list and recorded SHA-256 diges
 - `git diff --check` passed.
 
 This is source, resource and synthetic model evidence. No app was signed, installed, opened through LaunchServices or published by this task. Native control layout/VoiceOver acceptance and final released-package acceptance belong to integration. Deck rendering and any narrowly demonstrated helper/layout fixes are recorded by the separate rendering review; these test results do not assert ServiceNow-font fidelity or visual approval.
+
+## Integrated rendering checks
+
+The rendering follow-up preserves Matt’s five artwork files and original commit ancestry. It corrects the overlapping cover title/subtitle geometry, adds a conservative pre-output text-fit check and deliberately encodes Arial for portable output. Explicit brand-font mode keeps the original ServiceNow typeface names. The updated helper suite passes 11 tests, including wide-glyph overflow rejection, long worded copy and font mode.
+
+All ten final synthetic slides were rendered with the bundled LibreOffice runtime and inspected by both the rendering worker and integration owner: three representative 16:9, 4:3 and portrait captures, plus seven slides with maximum supported worded copy and optional cover/divider/summary/closing. Screenshots retain all four corners, proportions and original bytes; capture order and complete edited notes match. No clipping, footer collision or text overlap was visible. The renderer used Liberation Sans for the deliberately encoded Arial. Native PowerPoint and ServiceNow-font fidelity are not asserted.
+
+The guide now documents the one-click employee installation and existing Hand off flow. Final package gates also execute the real pack store/model checks in temporary preferences and session folders, so a package cannot pass solely because neutral resources were included.
