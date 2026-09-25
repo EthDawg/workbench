@@ -124,6 +124,77 @@ class DeckTests(unittest.TestCase):
         self.assertEqual(len(deck.slides), 6)
         self.assertEqual(deck.slides[2].notes_slide.notes_text_frame.text, "  Um, hello.\n\n")
 
+    def test_supported_long_copy_and_cover_spacing(self):
+        self.outline.update(cover=True, dividers=True, closing=True,
+            title={"lead": "Employee", "rest": "request management for a complete workplace journey"},
+            subtitle="Full views of the synthetic employee journey.",
+            presenter="QA presenter", role="Example team",
+            summary={"eyebrow": "Employee request summary", "title_white": "Complete capture", "title_green": " overview",
+                     "cards": [{"head": "Complete employee request view", "body": "Whole display captures retain every corner of the workspace and preserve the screenshot for later review here."}] * 4})
+        chapter = self.outline["chapters"][0]
+        chapter.update(eyebrow="Employee request summary", divider_title="Workplace experience")
+        for slide in chapter["slides"]:
+            slide.update(headline="Whole screenshots preserve every detail of the staff journey",
+                         takeaways=["The visible list still includes all items in this full view."] * 3)
+        deck = Presentation(self.build())
+        cover = deck.slides[0]
+        title = next(s for s in cover.shapes if s.name == "Cover title")
+        subtitle = next(s for s in cover.shapes if s.name == "Cover subtitle")
+        self.assertEqual(title.text, "Employee request management for a complete workplace journey")
+        self.assertEqual(title.text_frame.paragraphs[0].runs[0].font.size.pt, 48)
+        self.assertGreater(subtitle.top, title.top + title.height)
+        self.assertEqual(deck.slides[2].notes_slide.notes_text_frame.text, "  Um, hello.\n\n")
+
+    def test_reject_visual_overflow_within_character_caps_before_output(self):
+        summary = {"eyebrow": "Summary", "title_white": "Capture", "title_green": " overview",
+                   "cards": [{"head": "Greeting", "body": "A greeting"}] * 4}
+        cases = []
+        for field, value, label in [("headline", "W" * 60, "headline"), ("takeaways", ["W" * 60] * 3, "takeaways"),
+                                    ("takeaways", ["x\n" * 29], "takeaways")]:
+            outline = copy.deepcopy(self.outline)
+            outline["chapters"][0]["slides"][0][field] = value
+            if field == "headline": outline["chapters"][0]["eyebrow"] = "W" * 24
+            cases.append((outline, label))
+        for field, value in [("title", {"lead": "W" * 20, "rest": "W" * 39}),
+                             ("subtitle", "W" * 45), ("presenter", "W" * 60), ("role", "W" * 100)]:
+            outline = copy.deepcopy(self.outline)
+            outline.update(cover=True, **{field: value})
+            cases.append((outline, "Cover " + field))
+        outline = copy.deepcopy(self.outline)
+        outline["dividers"] = True
+        outline["chapters"][0]["divider_title"] = "W" * 20
+        cases.append((outline, "Divider title"))
+        for field, value in [("head", "W" * 30), ("body", "W" * 110)]:
+            outline = copy.deepcopy(self.outline)
+            outline["summary"] = copy.deepcopy(summary)
+            outline["summary"]["cards"][0] = {"head": "Greeting", "body": "A greeting", field: value}
+            cases.append((outline, "Summary card 1"))
+        outline = copy.deepcopy(self.outline)
+        outline["summary"] = dict(summary, title_white="W" * 200)
+        cases.append((outline, "Summary title"))
+        for outline, label in cases:
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, label):
+                self.build(outline)
+            self.assertFalse((self.session / "deck.pptx").exists())
+
+    def test_portable_fonts_default_and_explicit_brand_fonts(self):
+        def fonts(deck):
+            return {node.get("typeface") for slide in deck.slides
+                    for node in slide._element.iter(build_deck.A + "latin")}
+
+        self.outline.update(cover=True, dividers=True, closing=True)
+        portable = Presentation(self.build(destination=self.session / "portable.pptx"))
+        self.assertEqual(fonts(portable), {"Arial"})
+        self.outline["font_mode"] = "brand"
+        branded = Presentation(self.build(destination=self.session / "branded.pptx"))
+        self.assertEqual(fonts(branded), {build_deck.F[role] for role in ("body", "display", "medium", "light")})
+        self.assertEqual(portable.slides[2].notes_slide.notes_text_frame.text,
+                         branded.slides[2].notes_slide.notes_text_frame.text)
+        self.outline["font_mode"] = "unknown"
+        with self.assertRaisesRegex(ValueError, "font_mode"):
+            self.build()
+        self.assertFalse((self.session / "deck.pptx").exists())
+
     def test_unsupported_format(self):
         self.manifest["formatVersion"] = 999
         self.save_manifest()

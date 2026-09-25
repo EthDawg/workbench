@@ -4,9 +4,11 @@
 usage: python build_deck.py outline.json "<session folder>" out.pptx
 
 Everything visual comes from ../brand/brand.json and ../brand/assets/.
+Text defaults to portable Arial. An explicit outline font_mode of "brand"
+requires the original ServiceNow fonts in the rendering/receiving environment.
 Requires: python-pptx, Pillow, lxml.
 """
-import io, json, os, sys, datetime
+import io, json, os, sys, datetime, unicodedata
 from lxml import etree
 from PIL import Image
 from pptx import Presentation
@@ -38,8 +40,60 @@ def picture(slide, path, g):
 def background(slide, key):
     slide.shapes.add_picture(asset(key), 0, 0, Inches(B["canvas"]["width"]), Inches(B["canvas"]["height"]))
 
+def _advance(character, size):
+    """Conservative layout budget, not a measurement of a recipient's font."""
+    if unicodedata.combining(character): return 0
+    if character.isspace(): units = 0.32
+    elif unicodedata.east_asian_width(character) in ("W", "F") or character in "MW@#%&": units = 1.1
+    elif character in "mw": units = 0.95
+    elif character in "ilIjtfr.,:;!'`|": units = 0.32
+    elif character.isupper(): units = 0.75
+    else: units = 0.55
+    return units * size
+
+def _wrapped_lines(runs, width):
+    lines, used, word = 1, 0.0, []
+    def flush():
+        nonlocal lines, used, word
+        if used and used + sum(word) > width:
+            lines += 1; used = 0.0
+        for advance in word:
+            if used and used + advance > width:
+                lines += 1; used = 0.0
+            used += advance
+        word = []
+    for run in runs:
+        for character in run["t"]:
+            if character.isspace():
+                flush()
+                if character in "\r\n\v\f\u2028\u2029":
+                    lines += 1; used = 0.0
+                elif used:
+                    used += _advance(character, run["size"])
+            else:
+                word.append(_advance(character, run["size"]))
+    flush()
+    return lines
+
+def check_text_fit(g, paras, insets, label):
+    """Reject obvious overflow before creating an output; still render final decks."""
+    width = (g["w"] - insets[0] - insets[2]) * 72
+    height = (g["h"] - insets[1] - insets[3]) * 72
+    needed = 0.0
+    for index, paragraph in enumerate(paras):
+        runs = paragraph["runs"]
+        if not any(run["t"] for run in runs): continue
+        size = max(run["size"] for run in runs)
+        pitch = paragraph.get("line_pts", size * 1.25 * paragraph.get("line", 1.0))
+        needed += size + (_wrapped_lines(runs, width) - 1) * pitch
+        if index < len(paras) - 1:
+            needed += max(0, pitch - size) + paragraph.get("space_after", 0)
+    if needed > height:
+        raise ValueError(f"{label} may overflow the fixed brand layout; shorten visible copy and render again")
+
 def text(slide, g, paras, anchor="t", insets=(0, 0, 0, 0), name=None):
     """paras: list of dicts {runs:[{t, font, size, bold, colour, tracking}], line (pct float) | line_pts, space_after, align}"""
+    check_text_fit(g, paras, insets, name or "Visible text")
     tb = slide.shapes.add_textbox(*box(slide, g))
     if name: tb.name = name
     tf = tb.text_frame
@@ -155,17 +209,19 @@ def cover(prs, o, year):
     picture(sl, asset("decoration"), S["decoration"])
     picture(sl, asset("logo"), S["logo"])
     t = S["title"]
-    text(sl, t, [{"runs": [{"t": o["title"]["lead"] + " ", "font": "display", "size": t["size"], "bold": True, "colour": "green"},
-                          {"t": o["title"].get("rest", ""), "font": "display", "size": t["size"], "bold": True, "colour": "white"}],
-                 "line": t["line"]}], anchor=t["anchor"])
+    title = o["title"]["lead"] + " " + o["title"].get("rest", "")
+    size = next(r["size"] for r in t["size_rule"] if len(title) <= r["max_chars"])
+    text(sl, t, [{"runs": [{"t": o["title"]["lead"] + " ", "font": "display", "size": size, "bold": True, "colour": "green"},
+                          {"t": o["title"].get("rest", ""), "font": "display", "size": size, "bold": True, "colour": "white"}],
+                 "line": t["line"]}], anchor=t["anchor"], name="Cover title")
     st = S["subtitle"]
     text(sl, st, [{"runs": [{"t": o.get("subtitle", ""), "font": "medium", "size": st["size"]}], "line": st["line"]}],
-         insets=(0.1, 0.05, 0.1, 0.05))
+         insets=(0.1, 0.05, 0.1, 0.05), name="Cover subtitle")
     pr = S["presenter"]
-    text(sl, pr, [{"runs": [{"t": o.get("presenter", ""), "font": "body", "size": pr["size"], "bold": pr.get("bold", False), "colour": "green"}], "line": pr["line"]}], anchor="ctr")
+    text(sl, pr, [{"runs": [{"t": o.get("presenter", ""), "font": "body", "size": pr["size"], "bold": pr.get("bold", False), "colour": "green"}], "line": pr["line"]}], anchor="ctr", name="Cover presenter")
     ro = S["role"]
     text(sl, ro, [{"runs": [{"t": o.get("role", ""), "font": "body", "size": ro["size"]}], "line": ro["line"]}],
-         insets=(0.1, 0.05, 0.1, 0.05))
+         insets=(0.1, 0.05, 0.1, 0.05), name="Cover role")
     footer(sl, len(prs.slides), year)
     notes(sl, o.get("cover_notes"))
 
@@ -177,7 +233,7 @@ def divider(prs, n, name, note):
     t = S["title"]
     text(sl, t, [{"runs": [{"t": f"{n:02d}", "font": "display", "size": t["size"], "bold": True, "colour": "green"}], "line": t["line"]},
                  {"runs": [{"t": name, "font": "display", "size": t["size"], "bold": True, "colour": "white"}], "line": t["line"]}],
-         anchor=t["anchor"])
+         anchor=t["anchor"], name="Divider title")
     notes(sl, note)
 
 def content(prs, i, chapter, s, session_dir, year):
@@ -191,11 +247,11 @@ def content(prs, i, chapter, s, session_dir, year):
                   {"t": "   " + chapter.upper(), "size": S["eyebrow"]["size"], "bold": True, "colour": "green"}],
          "line_pts": S["number"]["line_pts"]},
         {"runs": [{"t": head, "size": size, "bold": True, "colour": "green", "tracking": S["headline"]["tracking"]}],
-         "line": S["headline"]["line"]}], anchor="b", insets=(0.1, 0.05, 0.1, 0.05))
+         "line": S["headline"]["line"]}], anchor="b", insets=(0.1, 0.05, 0.1, 0.05), name="Capture headline and eyebrow")
     rule(sl, S["rule"]["x"], S["rule"]["y"])
     tk = S["takeaway"]
     text(sl, S["body_box"], [{"runs": [{"t": p, "size": tk["size"]}], "line": 1.0, "space_after": tk["space_after_pt"]}
-                            for p in s["takeaways"]], insets=(0.1, 0.05, 0.1, 0.05))
+                            for p in s["takeaways"]], insets=(0.1, 0.05, 0.1, 0.05), name="Capture takeaways")
     framed_screenshot(sl, local_file(session_dir, s["image"]), head)
     footer(sl, len(prs.slides), year)
     notes(sl, s.get("notes"))
@@ -207,7 +263,7 @@ def summary(prs, o, year):
         {"runs": [{"t": o["eyebrow"].upper(), "size": S["eyebrow"]["size"], "bold": True, "colour": "green"}], "line_pts": S["eyebrow"]["line_pts"]},
         {"runs": [{"t": o["title_white"], "size": S["title"]["size"], "bold": True, "colour": "white", "tracking": -50},
                   {"t": o["title_green"], "size": S["title"]["size"], "bold": True, "colour": "green", "tracking": -50}],
-         "line": S["title"]["line"]}], insets=(0.1, 0.05, 0.1, 0.05))
+         "line": S["title"]["line"]}], insets=(0.1, 0.05, 0.1, 0.05), name="Summary title and eyebrow")
     cg, ct = S["cards"], S["card_text"]
     for k, c in enumerate(o["cards"]):
         x = cg["x"] + k * (cg["w"] + cg["gap"]); y = cg["y"]
@@ -215,10 +271,10 @@ def summary(prs, o, year):
         text(sl, {"x": x + 0.22, "y": y + 0.3, "w": cg["w"] - 0.44, "h": ct["head_box_h"]}, [
             {"runs": [{"t": f"{k + 1:02d}", "size": ct["number_size"], "bold": True, "tracking": -50}], "line_pts": 40},
             {"runs": [{"t": c["head"], "size": ct["head_size"], "bold": True, "colour": "green", "tracking": -50}], "line": 0.8}],
-            insets=(0.1, 0.05, 0.1, 0.05))
+            insets=(0.1, 0.05, 0.1, 0.05), name=f"Summary card {k + 1} heading")
         rule(sl, x + 0.32, y + ct["rule_dy"], 0.6)
         text(sl, {"x": x + 0.22, "y": y + ct["body_dy"], "w": cg["w"] - 0.44, "h": cg["h"] - ct["body_dy"] - 0.2},
-             [{"runs": [{"t": c["body"], "size": ct["body_size"]}]}], insets=(0.1, 0.05, 0.1, 0.05))
+             [{"runs": [{"t": c["body"], "size": ct["body_size"]}]}], insets=(0.1, 0.05, 0.1, 0.05), name=f"Summary card {k + 1} body")
     footer(sl, len(prs.slides), year)
     notes(sl, o.get("notes"))
 
@@ -236,6 +292,8 @@ def bounded(value, limit, label):
 
 
 def validate_outline(o, session_dir):
+    if o.get("font_mode", "portable") not in ("portable", "brand"):
+        raise ValueError('font_mode must be "portable" or "brand"')
     _, expected, excluded = captures(session_dir)
     actual = [s for chapter in o["chapters"] for s in chapter["slides"]]
     if not expected or len(actual) != len(expected):
@@ -285,6 +343,14 @@ def main(outline_path, session_dir, out):
             content(prs, i, ch.get("eyebrow", ch["name"]), s, session_dir, year)
     if o.get("summary"): summary(prs, o["summary"], year)
     if o.get("closing", False): closing(prs)
+    if o.get("font_mode", "portable") == "portable":
+        # Include slide-number fields, which are not exposed as ordinary runs.
+        # A local font probe cannot establish availability on a recipient's Mac.
+        brand_fonts = {value for key, value in F.items() if not key.startswith("_")}
+        for slide in prs.slides:
+            for face in slide._element.iter(A + "latin"):
+                if face.get("typeface") in brand_fonts:
+                    face.set("typeface", B["portable_font"])
     prs.core_properties.title = (o["title"]["lead"] + " " + o["title"].get("rest", "")).strip()
     # Finish serialization before exclusively creating a new output file.
     data = io.BytesIO()

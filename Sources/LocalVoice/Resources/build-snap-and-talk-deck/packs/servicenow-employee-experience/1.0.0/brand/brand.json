@@ -8,8 +8,10 @@
     "body": "ServiceNow Sans",
     "medium": "ServiceNow Sans Medium",
     "light": "ServiceNow Sans Light",
-    "_note": "Fonts are NOT embedded or supplied. Confirm availability in the receiving environment and visually check substituted fonts for overflow."
+    "_note": "Fonts are NOT embedded or supplied. Portable output uses Arial. Set outline font_mode to brand only with licensed ServiceNow fonts available for rendering and recipients, and visually verify the result."
   },
+
+  "portable_font": "Arial",
 
   "colours": {
     "green": "63DF4E",
@@ -56,8 +58,9 @@
       "decoration": { "x": 0.0, "y": 2.303, "w": 11.705, "h": 5.197 },
       "logo":       { "x": 0.591, "y": 0.631, "w": 2.25, "h": 0.643 },
       "title":      { "x": 0.632, "y": 1.862, "w": 9.468, "h": 2.828, "font": "display", "size": 72, "line": 0.85, "anchor": "t",
+                      "size_rule": [ { "max_chars": 34, "size": 72 }, { "max_chars": 60, "size": 48 } ],
                       "_style": "first word(s) green, remainder white, e.g. [Demo](green) [walkthrough](white)" },
-      "subtitle":   { "x": 0.571, "y": 4.104, "w": 9.603, "h": 0.502, "font": "medium", "size": 28, "colour": "white", "line": 0.85 },
+      "subtitle":   { "x": 0.571, "y": 4.8, "w": 9.603, "h": 0.502, "font": "medium", "size": 28, "colour": "white", "line": 0.85 },
       "presenter":  { "x": 0.648, "y": 5.744, "w": 3.41,  "h": 0.764, "font": "body", "size": 28, "bold": true, "colour": "green", "anchor": "ctr", "line": 0.9 },
       "role":       { "x": 0.571, "y": 6.332, "w": 6.669, "h": 0.343, "font": "body", "size": 16, "colour": "white", "line": 0.9 }
     },
