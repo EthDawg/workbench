@@ -19,6 +19,7 @@ swift test --disable-sandbox
 swift build -c release --disable-sandbox
 BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
 "$BIN_DIR/LocalVoice" --check-core
+"$BIN_DIR/LocalVoice" --check-shortcut-migration
 "$BIN_DIR/LocalVoice" --check-readback
 "$BIN_DIR/LocalVoice" --check-presenter
 node --test BrowserExtension/tests/*.test.js

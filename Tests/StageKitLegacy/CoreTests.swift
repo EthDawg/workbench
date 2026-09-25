@@ -308,6 +308,21 @@ final class CoreTests: XCTestCase {
         let store = SettingsStore(defaults: defaults)
         XCTAssertNotNil(store.notice)
         XCTAssertEqual(defaults.data(forKey: "preferences.recovery"), corrupt)
+        XCTAssertEqual(defaults.data(forKey: "preferences.v1"), corrupt, "Loading must not write fallback settings over unreadable originals")
+    }
+    func testDuplicateShortcutRegistrationPlanPausesBothWithoutChangingSettings() {
+        var preferences = Preferences()
+        let chosen = Shortcut(keyCode: UInt32(kVK_ANSI_Y), modifiers: UInt32(optionKey))
+        preferences.shortcuts[Action.timer.rawValue] = chosen
+        preferences.shortcuts[Action.pointer.rawValue] = chosen
+        let failures = StageShortcutSettings.registrationFailures(in: StageShortcutSettings.descriptors(for: preferences))
+        XCTAssertEqual(Set(failures.keys), [Action.timer.rawValue, Action.pointer.rawValue])
+        XCTAssertTrue(failures[Action.timer.rawValue]?.contains(Action.pointer.title) == true)
+        XCTAssertTrue(failures[Action.pointer.rawValue]?.contains(Action.timer.title) == true)
+        XCTAssertEqual(preferences.shortcut(for: .timer), chosen)
+        XCTAssertEqual(preferences.shortcut(for: .pointer), chosen)
+        preferences.shortcuts[Action.pointer.rawValue]?.enabled = false
+        XCTAssertTrue(StageShortcutSettings.registrationFailures(in: StageShortcutSettings.descriptors(for: preferences)).isEmpty)
     }
     func testAllToolsRenderToRealPixels() throws {
         _ = NSApplication.shared

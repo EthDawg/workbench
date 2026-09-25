@@ -106,6 +106,7 @@ struct Shortcut: Codable, Equatable, Hashable {
     var keyCode: UInt32
     var modifiers: UInt32
     var enabled = true
+    var combination: GlobalShortcutCombination { .init(keyCode: keyCode, modifiers: modifiers) }
     var label: String {
         guard enabled else { return "Off" }
         var prefix = ""
@@ -196,9 +197,47 @@ struct Preferences: Codable, Equatable {
     }
 }
 
+/// Data-only access for the host to reserve saved Stage choices before migrating Voice.
+public enum StageShortcutSettings {
+    public static func migrationReservations(defaults supplied: UserDefaults? = nil) -> Set<GlobalShortcutCombination> {
+        if supplied == nil { _ = Workbench.prepareStageData() }
+        let defaults = supplied ?? Workbench.stageDefaults
+        guard let data = defaults.data(forKey: "preferences.v1"),
+              let preferences = try? JSONDecoder().decode(Preferences.self, from: data) else { return [] }
+        return Set(Action.allCases.filter { action in
+            defaults.integer(forKey: "preferences.schema") >= 4 || !SettingsStore.isUntouched(action, in: preferences)
+        }.map { preferences.shortcut(for: $0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
+    }
+
+    public static func load(defaults: UserDefaults, reserving combinations: Set<GlobalShortcutCombination> = []) -> [StageShortcutDescriptor] {
+        descriptors(for: SettingsStore(defaults: defaults, reserving: combinations).value)
+    }
+
+    public static func registrationFailures(in entries: [StageShortcutDescriptor],
+        validateExternal: ((UInt32, UInt32) -> String?)? = nil) -> [String: String] {
+        var failures: [String: String] = [:]
+        for entry in entries where entry.enabled {
+            let other = entries.first { $0.id != entry.id && $0.enabled && $0.keyCode == entry.keyCode && $0.modifiers == entry.modifiers }
+            failures[entry.id] = other.map { "Also assigned to \($0.label). Both shortcuts are paused; change or turn off one in Keyboard shortcuts." }
+                ?? validateExternal?(entry.keyCode, entry.modifiers)
+        }
+        return failures
+    }
+
+    static func descriptors(for preferences: Preferences, failures: [Action: String] = [:]) -> [StageShortcutDescriptor] {
+        Action.allCases.map { action in
+            let shortcut = preferences.shortcut(for: action)
+            return StageShortcutDescriptor(id: action.rawValue, label: action.title,
+                keyCode: shortcut.keyCode, modifiers: shortcut.modifiers, enabled: shortcut.enabled,
+                error: failures[action], keyLabel: shortcut.label)
+        }
+    }
+}
+
 final class SettingsStore: ObservableObject {
     @Published var value: Preferences {
         didSet {
+            guard !loading else { return }
             var checked = value; checked.validate()
             if checked != value { value = checked; return }
             save(); onChange?()
@@ -206,8 +245,9 @@ final class SettingsStore: ObservableObject {
     }
     @Published var notice: String?
     var onChange: (() -> Void)?
+    private var loading = true
     private let defaults: UserDefaults
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, reserving combinations: Set<GlobalShortcutCombination> = []) {
         self.defaults = defaults
         let savedData = defaults.data(forKey: "preferences.v1")
         var decoded = false
@@ -239,30 +279,34 @@ final class SettingsStore: ObservableObject {
             value = migrated
             defaults.set(3, forKey: "preferences.schema")
         }
-        if defaults.integer(forKey: "preferences.schema") < 4 {
-            // Fresh and unreadable settings already hold the current defaults. Observers do not run
-            // during init, so the move is saved here rather than recomputed on every launch.
-            if decoded { value = Self.movingUntouchedShortcuts(value); save() }
+        if defaults.integer(forKey: "preferences.schema") < 4 || !decoded {
+            // Save the migration once. Observer writes stay suppressed during loading, including
+            // validation, so unreadable original bytes remain available for recovery.
+            value = Self.movingUntouchedShortcuts(value, reserving: combinations, fresh: !decoded)
+            if decoded || savedData == nil { save() }
             defaults.set(4, forKey: "preferences.schema")
         }
+        loading = false
     }
     /// Moves each shortcut still on its 2.0.0 default, or on an app command Workbench no longer
     /// takes (⌘S, ⌘W), to its presenter-first default. Any other chosen combination always wins:
     /// a new default that would take one keeps its old combination.
-    static func movingUntouchedShortcuts(_ preferences: Preferences) -> Preferences {
-        func keys(_ shortcut: Shortcut) -> [UInt32] { [shortcut.keyCode, shortcut.modifiers] }
-        let untouched = Action.allCases.filter { action in
-            guard let saved = preferences.shortcuts[action.rawValue] else { return true }
-            return saved == action.legacyDefaultShortcut || saved.enabled && !GlobalShortcutRule.allows(modifiers: saved.modifiers)
-        }
-        var taken = Set(Action.allCases.filter { !untouched.contains($0) }
-            .map { preferences.shortcut(for: $0) }.filter(\.enabled).map(keys))
+    static func isUntouched(_ action: Action, in preferences: Preferences) -> Bool {
+        guard let saved = preferences.shortcuts[action.rawValue] else { return true }
+        return saved == action.legacyDefaultShortcut || saved.enabled && !GlobalShortcutRule.allows(modifiers: saved.modifiers)
+    }
+    static func movingUntouchedShortcuts(_ preferences: Preferences, reserving combinations: Set<GlobalShortcutCombination> = [], fresh: Bool = false) -> Preferences {
+        let untouched = Action.allCases.filter { fresh || isUntouched($0, in: preferences) }
+        var taken = combinations.union(Action.allCases.filter { !untouched.contains($0) }
+            .map { preferences.shortcut(for: $0) }.filter(\.enabled).map(\.combination))
         var result = preferences
         for action in untouched {
             var next = action.defaultShortcut
-            if next.enabled && taken.contains(keys(next)) { next = action.legacyDefaultShortcut }
+            if next.enabled && taken.contains(next.combination) { next = action.legacyDefaultShortcut }
+            // A fallback is also a new assignment. Leave it off if that key was chosen elsewhere.
+            if next.enabled && taken.contains(next.combination) { next.enabled = false }
             result.shortcuts[action.rawValue] = next
-            if next.enabled { taken.insert(keys(next)) }
+            if next.enabled { taken.insert(next.combination) }
         }
         return result
     }

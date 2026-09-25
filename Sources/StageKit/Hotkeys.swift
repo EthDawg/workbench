@@ -1,6 +1,13 @@
 import AppKit
 import Carbon
 
+/// A key combination shared by the Voice and Stage settings owners, without either owner's IDs.
+public struct GlobalShortcutCombination: Hashable {
+    public let keyCode: UInt32
+    public let modifiers: UInt32
+    public init(keyCode: UInt32, modifiers: UInt32) { self.keyCode = keyCode; self.modifiers = modifiers }
+}
+
 /// Workbench shortcuts work in every app. A combination without Control or Option (⌘T, ⇧⌘N)
 /// belongs to the app in front, so Workbench never takes one.
 public enum GlobalShortcutRule {

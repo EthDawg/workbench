@@ -9,6 +9,7 @@ struct VoiceShortcut: Codable, Equatable {
     var keyCode: UInt32 = UInt32(kVK_Space)
     var modifiers: UInt32 = UInt32(controlKey | optionKey)
     var enabled = true
+    var combination: GlobalShortcutCombination { .init(keyCode: keyCode, modifiers: modifiers) }
     var label: String {
         guard enabled else { return "Off" }
         var label = ""
@@ -97,6 +98,9 @@ struct VoicePreferences: Codable, Equatable {
         return preferences
     }
     static let shortcutRevisionKey = "voicePreferences.shortcutRevision"
+    var enabledCombinations: Set<GlobalShortcutCombination> {
+        Set((UInt32(1)...7).map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
+    }
     private func stored(_ id: UInt32) -> VoiceShortcut? {
         switch id {
         case 1: dictationShortcut
@@ -111,33 +115,36 @@ struct VoicePreferences: Codable, Equatable {
     /// Runs once. Moves each shortcut still on its 2.0.0 default, or on an app command Workbench no
     /// longer takes (⌘3), to its presenter default. Any other chosen combination is kept, and a new
     /// default that would take one keeps its old combination.
-    static func movingUntouchedShortcuts(_ preferences: VoicePreferences) -> VoicePreferences {
-        func keys(_ shortcut: VoiceShortcut) -> [UInt32] { [shortcut.keyCode, shortcut.modifiers] }
+    static func movingUntouchedShortcuts(_ preferences: VoicePreferences, reserving combinations: Set<GlobalShortcutCombination> = [], fresh: Bool = false) -> VoicePreferences {
         let ids = Array(UInt32(1)...7)
         let untouched = ids.filter { id in
-            guard let saved = preferences.stored(id) else { return true }
-            return saved == legacyDefaults[id] || saved.enabled && !GlobalShortcutRule.allows(modifiers: saved.modifiers)
+            guard !fresh, let saved = preferences.stored(id) else { return true }
+            return saved == legacyDefaults[id] || id == 5 && saved == legacyReadbackShortcut
+                || saved.enabled && !GlobalShortcutRule.allows(modifiers: saved.modifiers)
         }
-        var taken = Set(ids.filter { !untouched.contains($0) }.map { preferences.shortcut($0) }.filter(\.enabled).map(keys))
+        var taken = combinations.union(ids.filter { !untouched.contains($0) }.map { preferences.shortcut($0) }.filter(\.enabled).map(\.combination))
         var result = preferences
         for id in untouched {
             var next = VoicePreferences().shortcut(id)
-            if next.enabled && taken.contains(keys(next)) { next = legacyDefaults[id] ?? next }
+            if next.enabled && taken.contains(next.combination) { next = legacyDefaults[id] ?? next }
+            if next.enabled && taken.contains(next.combination) { next.enabled = false }
             result.setShortcut(next, for: id)
-            if next.enabled { taken.insert(keys(next)) }
+            if next.enabled { taken.insert(next.combination) }
         }
         return result
     }
-    static func load(from defaults: UserDefaults = .standard) -> VoicePreferences {
-        guard let data = defaults.data(forKey: key), let saved = try? JSONDecoder().decode(Self.self, from: data) else {
-            // Fresh settings already hold the current defaults.
+    static func load(from defaults: UserDefaults = .standard, reserving combinations: Set<GlobalShortcutCombination> = []) -> VoicePreferences {
+        let savedData = defaults.data(forKey: key)
+        guard let data = savedData, let saved = try? JSONDecoder().decode(Self.self, from: data) else {
+            let preferences = movingUntouchedShortcuts(VoicePreferences(), reserving: combinations, fresh: true)
+            if savedData == nil { preferences.save(to: defaults) }
             defaults.set(1, forKey: shortcutRevisionKey)
-            return VoicePreferences()
+            return preferences
         }
-        var preferences = migratingLegacyDefaults(saved)
+        var preferences = saved
         if defaults.integer(forKey: shortcutRevisionKey) < 1 {
             // Saved once, so a shortcut someone turns back on stays on.
-            preferences = movingUntouchedShortcuts(preferences)
+            preferences = movingUntouchedShortcuts(preferences, reserving: combinations)
             preferences.save(to: defaults)
             defaults.set(1, forKey: shortcutRevisionKey)
         }

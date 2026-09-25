@@ -32,6 +32,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published private(set) var timerPlacementAnchor: FloatingControlAnchor?
     @Published private(set) var timerPlacementNotice: String?
     @Published var shortcutFailures: [Action: String] = [:]
+    var onShortcutsChanged: (() -> Void)?
     @Published var recordingAction: Action?
     @Published var selectedTab = "Present"
     @Published var quickTab = QuickTab.draw
@@ -71,6 +72,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var recorderMonitor: Any?
     private var saveWork: DispatchWorkItem?
     private var registeredShortcuts: [String: Shortcut] = [:]
+    private var registeredShortcutConflicts: [String: String] = [:]
     private var countdown = Countdown()
     @Published private(set) var timerSessionStarted = false
     private var storageBlocked = false
@@ -403,9 +405,11 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if error != nil { showControls(tab: "Drawing", preservingCanvas: true) }
     }
     func settingsChanged() {
-        if !shortcutsSuspended && recordingAction == nil && registeredShortcuts != settings.value.shortcuts {
+        let shortcutsChanged = registeredShortcuts != settings.value.shortcuts
+        if !shortcutsSuspended && recordingAction == nil && shortcutsChanged {
             registerShortcuts()
         }
+        if shortcutsChanged { onShortcutsChanged?() }
         refreshWindows(); refreshPalette(); refreshEffects()
         for canvas in canvases.values { canvas.needsDisplay = true }
         timerWindow?.alphaValue = settings.value.timerOpacity
@@ -769,15 +773,22 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             finishRecording(); stopDrawing(); hotkeys.unregister(); hotkeys.setEscapeEnabled(false)
         } else { registerShortcuts(); refreshWindows() }
     }
+    func refreshShortcutRegistration() {
+        guard !shortcutsSuspended, recordingAction == nil else { return }
+        let conflicts = StageShortcutSettings.registrationFailures(in: StageShortcutSettings.descriptors(for: settings.value), validateExternal: validateExternalShortcut)
+        guard conflicts != registeredShortcutConflicts else { return }
+        registerShortcuts()
+    }
     private func registerShortcuts() {
         // Re-registration discards the pressed-key record. Finish only a held
         // drawing session before its key-up can be lost; latched tools stay on.
         if heldAction != nil && !latched { stopDrawing() }
         var preferences = settings.value
         var conflicts: [Action: String] = [:]
+        let failures = StageShortcutSettings.registrationFailures(in: StageShortcutSettings.descriptors(for: preferences), validateExternal: validateExternalShortcut)
         for action in Action.allCases {
             var shortcut = preferences.shortcut(for: action)
-            if shortcut.enabled, let message = validateExternalShortcut?(shortcut.keyCode, shortcut.modifiers) {
+            if shortcut.enabled, let message = failures[action.rawValue] {
                 conflicts[action] = message
                 shortcut.enabled = false
                 preferences.shortcuts[action.rawValue] = shortcut
@@ -785,6 +796,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         }
         hotkeys.register(preferences)
         registeredShortcuts = settings.value.shortcuts
+        registeredShortcutConflicts = failures
         shortcutFailures = hotkeys.failures.merging(conflicts) { _, conflict in conflict }
         let live = { (action: Action) -> String? in
             let shortcut = self.settings.value.shortcut(for: action)

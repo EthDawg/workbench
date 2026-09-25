@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var receiptObservations = Set<AnyCancellable>()
     var readSelectionService: ReadSelectionService!
     private var receiptStatus: String?
+    private var registeredVoiceShortcutConflicts: [String: String] = [:]
     private var terminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -44,9 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         Workbench.preparePreviewData(component: "LocalVoice", files: ["state.json", "demo-library.json"])
         _ = WorkbenchSettings.shared
-        model = AppModel()
+        // Read chosen Stage keys before either catalogue's new defaults can claim them.
+        let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations())
+        model = AppModel(preferences: preferences)
         readback = ReadbackModel(engine: model.engine)
-        stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") })
+        stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
@@ -78,9 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         stage.validateExternalShortcut = { [weak self] code, modifiers in
             guard let self else { return nil }
-            for id in [UInt32(1), 2, 3, 4, 5, 6, 7] {
-                let saved = self.model.preferences.shortcut(id)
-                if saved.enabled && saved.keyCode == code && saved.modifiers == modifiers { return "Already used by a Workbench voice action." }
+            for entry in self.voiceShortcutEntries() {
+                let saved = entry.shortcut
+                if saved.enabled && saved.keyCode == code && saved.modifiers == modifiers {
+                    return "Also assigned to \(entry.title). Both shortcuts are paused; change or turn off one in Keyboard shortcuts."
+                }
             }
             return nil
         }
@@ -166,6 +171,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.updateRecordingUI()
         }
         model.onShortcutsChanged = { [weak self] in self?.registerShortcuts() }
+        stage.onShortcutsChanged = { [weak self] in
+            guard let self else { return }
+            let conflicts = ShortcutConflict.duplicateFailures(in: self.shortcutEntries()).filter { $0.key.hasPrefix("voice.") }
+            // An unrelated Stage edit must not discard the key-up of held dictation.
+            if conflicts != self.registeredVoiceShortcutConflicts { self.registerShortcuts() }
+        }
         model.onEditShortcut = { [weak self] id in self?.navigate("shortcuts") }
         model.onShowEditor = { [weak self] page in self?.model.page = page; self?.showWindow() }
         model.onShowAnnotationMenu = { [weak self] in self?.showAnnotationMenu() }
@@ -262,8 +273,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     func registerShortcuts() {
         guard model.editingShortcut == nil, !shortcutsSuspended else { return }
-        hotkeys.register(model.preferences); model.shortcutFailures = hotkeys.failures
-        readback?.setShortcutFailure(hotkeys.failures[5])
+        let conflicts = ShortcutConflict.duplicateFailures(in: shortcutEntries()).filter { $0.key.hasPrefix("voice.") }
+        hotkeys.register(ShortcutConflict.voiceRegistrationPreferences(model.preferences, failures: conflicts))
+        registeredVoiceShortcutConflicts = conflicts
+        model.shortcutFailures = hotkeys.failures
+        for id in UInt32(1)...7 { if let message = conflicts["voice.\(id)"] { model.shortcutFailures[id] = message } }
+        stage.refreshShortcutRegistration()
+        readback?.setShortcutFailure(model.shortcutFailures[5])
     }
     func editShortcut(_ id: UInt32) {
         guard model.phase == .idle else { return }
@@ -501,18 +517,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func navigate(_ page: String) {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
-    func shortcutEntries() -> [ShortcutEntry] {
-        let voiceEntries = [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk"), (UInt32(6), "Read"), (UInt32(7), "Present")].map { id, title in
+    func voiceShortcutEntries() -> [ShortcutEntry] {
+        [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk"), (UInt32(6), "Read"), (UInt32(7), "Present")].map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
         }
-        let entries = voiceEntries + stage.shortcutDescriptors.map { entry in
+    }
+    func shortcutEntries() -> [ShortcutEntry] {
+        let entries = voiceShortcutEntries() + stage.shortcutDescriptors.map { entry in
             ShortcutEntry(id: "stage." + entry.id, title: entry.label, shortcut: VoiceShortcut(keyCode: entry.keyCode, modifiers: entry.modifiers, enabled: entry.enabled), error: entry.error)
         }
         // Imported custom combinations are preserved, but their conflicts must be
         // just as visible as conflicts discovered while assigning new keys.
+        let conflicts = ShortcutConflict.duplicateFailures(in: entries)
         return entries.map { entry in
             var result = entry
-            if result.error == nil { result.error = ShortcutConflict.message(for: entry.shortcut, replacing: entry.id, in: entries) }
+            result.error = conflicts[entry.id] ?? result.error ?? ShortcutConflict.message(for: entry.shortcut, replacing: entry.id, in: entries)
             return result
         }
     }
@@ -536,6 +555,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await PresenterChecks.run()
         case "--build-info":
             print(WorkbenchBuild().details)
+        case "--check-shortcut-migration":
+            try ShortcutMigrationChecks.run()
         case "--check-updates":
             try await WorkbenchUpdateChecks.run()
         case "--check-core":

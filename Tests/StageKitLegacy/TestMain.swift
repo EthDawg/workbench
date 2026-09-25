@@ -4,6 +4,28 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--shortcut-settings-only"] {
+            // Data-only: do not create NSApplication, monitors, windows or global registrations.
+            let suite = CoreTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("shortcut defaults", suite.testDefaultShortcutsAreUniqueAndComplete),
+                ("untouched shortcut migration", suite.testUpdateMovesOnlyUntouchedShortcutsToPresenterDefaults),
+                ("chosen shortcut preservation", suite.testNewDefaultNeverTakesAChosenCombination),
+                ("app command migration", suite.testUpdateReturnsAppCommandsToOtherApps),
+                ("later old-key choices", suite.testFreshInstallKeepsLaterChoicesOfOldKeys),
+                ("settings persistence and validation", suite.testPreferencesPersistAndClamp),
+                ("persona migration preserves existing assignments", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
+                ("unreadable settings preservation", suite.testCorruptPreferencesArePreservedForRecovery),
+                ("duplicate registration plan", suite.testDuplicateShortcutRegistrationPlanPausesBothWithoutChangingSettings)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--annotation-menu-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -300,6 +322,7 @@ struct TestRunner {
             ("persona shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
             ("settings persistence and bounds", suite.testPreferencesPersistAndClamp),
             ("settings recovery", suite.testCorruptPreferencesArePreservedForRecovery),
+            ("duplicate shortcut registration plan", suite.testDuplicateShortcutRegistrationPlanPausesBothWithoutChangingSettings),
             ("ink colour accessibility descriptions", suite.testInkColourAccessibilityDescriptions),
             ("actual rendering for every tool", suite.testAllToolsRenderToRealPixels),
             ("native mouse handlers and text commit", integration.testActualMouseHandlersAndTextCommit),

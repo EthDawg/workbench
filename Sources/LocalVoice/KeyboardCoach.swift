@@ -18,6 +18,26 @@ struct ShortcutEntry: Identifiable, Equatable {
 enum ShortcutConflict {
     static let supportedModifiers = UInt32(controlKey | optionKey | shiftKey | cmdKey)
 
+    /// Preserve saved choices, but do not let registration order choose which duplicate action runs.
+    static func duplicateFailures(in entries: [ShortcutEntry]) -> [String: String] {
+        var failures: [String: String] = [:]
+        for entry in entries where entry.shortcut.enabled {
+            if let other = entries.first(where: { $0.id != entry.id && $0.shortcut.enabled && $0.shortcut.combination == entry.shortcut.combination }) {
+                failures[entry.id] = "Also assigned to \(other.title). Both shortcuts are paused; change or turn off one in Keyboard shortcuts."
+            }
+        }
+        return failures
+    }
+
+    static func voiceRegistrationPreferences(_ preferences: VoicePreferences, failures: [String: String]) -> VoicePreferences {
+        var result = preferences
+        for id in UInt32(1)...7 where failures["voice.\(id)"] != nil {
+            var shortcut = result.shortcut(id); shortcut.enabled = false
+            result.setShortcut(shortcut, for: id)
+        }
+        return result
+    }
+
     static func message(for candidate: VoiceShortcut, replacing id: String, in entries: [ShortcutEntry]) -> String? {
         guard candidate.enabled else { return nil }
         guard candidate.modifiers & UInt32(controlKey | optionKey | cmdKey) != 0 else {

@@ -35,6 +35,9 @@ public final class StageKitController: ObservableObject {
         get { onOpenShortcuts }
         set { onOpenShortcuts = newValue }
     }
+    public var onShortcutsChanged: (() -> Void)? {
+        didSet { coordinator.onShortcutsChanged = onShortcutsChanged }
+    }
     public var mayBeginInteraction: (() -> Bool)? {
         didSet {
             coordinator.mayBeginInteraction = mayBeginInteraction; coordinator.demoScenes.mayBeginInteraction = mayBeginInteraction
@@ -62,16 +65,16 @@ public final class StageKitController: ObservableObject {
     /// Return a concise reason when the combination belongs to another module.
     public var validateExternalShortcut: ((UInt32, UInt32) -> String?)? {
         didSet {
-            coordinator.validateExternalShortcut = { [weak self] code, modifiers in
-                self?.validateExternalShortcut?(code, modifiers) ?? Self.reservedVoiceShortcut(code, modifiers)
-            }
+            // A host's nil result means available. Only standalone Stage uses fixed reservations.
+            coordinator.validateExternalShortcut = validateExternalShortcut ?? Self.reservedVoiceShortcut
             if started { coordinator.setShortcutsSuspended(true); coordinator.setShortcutsSuspended(false) }
         }
     }
 
-    public init(onOpenControls: (() -> Void)? = nil, onOpenScenes: (() -> Void)? = nil) {
+    public init(onOpenControls: (() -> Void)? = nil, onOpenScenes: (() -> Void)? = nil,
+                reserving shortcuts: Set<GlobalShortcutCombination> = []) {
         let migrationNotice = Workbench.prepareStageData()
-        let settings = SettingsStore(defaults: Workbench.stageDefaults)
+        let settings = SettingsStore(defaults: Workbench.stageDefaults, reserving: shortcuts)
         let coordinator = AppCoordinator(settings: settings, embedded: true, migrationFailure: migrationNotice)
         self.coordinator = coordinator
         self.onOpenControls = onOpenControls
@@ -205,14 +208,10 @@ public final class StageKitController: ObservableObject {
     }
     public func setShortcutsSuspended(_ suspended: Bool) { coordinator.setShortcutsSuspended(suspended) }
     public func resetShortcuts() { coordinator.restoreShortcuts() }
+    public func refreshShortcutRegistration() { if started { coordinator.refreshShortcutRegistration() } }
 
     public var shortcutDescriptors: [StageShortcutDescriptor] {
-        Action.allCases.map { action in
-            let shortcut = coordinator.settings.value.shortcut(for: action)
-            return StageShortcutDescriptor(id: action.rawValue, label: action.title,
-                keyCode: shortcut.keyCode, modifiers: shortcut.modifiers, enabled: shortcut.enabled,
-                error: coordinator.shortcutFailures[action], keyLabel: shortcut.label)
-        }
+        StageShortcutSettings.descriptors(for: coordinator.settings.value, failures: coordinator.shortcutFailures)
     }
 
     /// Returns a validation failure without changing the saved shortcut.
