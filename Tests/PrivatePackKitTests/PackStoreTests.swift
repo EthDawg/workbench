@@ -108,6 +108,40 @@ final class PackStoreTests: XCTestCase {
         catch { XCTAssertTrue(error is PackError) }
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: target.path), [])
     }
+    func testStartupCollectsOnlyAbandonedStaging() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = PackStore(root: root)
+        let installed = try await store.install(from: FixtureSource(), appVersion: app)
+        let directory = root.appendingPathComponent(installed.pack.id)
+        let abandoned = directory.appendingPathComponent("staging-" + UUID().uuidString)
+        let unrelated = directory.appendingPathComponent("staging-personal-notes")
+        let orphan = directory.appendingPathComponent("versions/9.0.0-" + String(repeating: "b", count: 16))
+        for folder in [abandoned, unrelated, orphan] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        try Data("partial download".utf8).write(to: abandoned.appendingPathComponent("partial"))
+        let restarted = PackStore(root: root)
+        let packs = try await restarted.installed()
+        XCTAssertEqual(packs, [installed.pack])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: abandoned.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+        _ = try await restarted.payload(for: installed.pack)
+    }
+
+    func testFirstInstallCrashRemovesOnlyQualifiedUnactivatedCache() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = try PackSource.parse("company/pack")
+        let interrupted = root.appendingPathComponent(source.storageKey)
+        let unrelated = root.appendingPathComponent("github-personal-notes")
+        for folder in [interrupted.appendingPathComponent("blobs"), unrelated] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("partial".utf8).write(to: interrupted.appendingPathComponent("blobs/" + String(repeating: "a", count: 64)))
+        let packs = try await PackStore(root: root).installed()
+        XCTAssertTrue(packs.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: interrupted.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+    }
+
     func testSourcesRejectCredentialAndURLConfusion() throws {
         XCTAssertEqual(try PackSource.parse("https://github.com/Company/Pack.git"), try .parse("company/pack"))
         for value in ["https://token@github.com/a/b", "http://github.com/a/b", "https://github.com.evil.test/a/b", "https://github.com/a/b?ref=secret", "a/../b", "https://github.com/a/b#token"] {

@@ -29,10 +29,12 @@ public actor PackStore {
     public func installed() throws -> [InstalledPack] {
         try prepareRoot()
         return try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix("github-") }
+            .filter { $0.lastPathComponent.range(of: "^github-[0-9a-f]{32}$", options: .regularExpression) != nil }
             .compactMap { directory in
-                // One damaged pack must not hide all the other packs.
-                try? readActive(directory)
+                // Never collect an in-flight staging directory across an actor
+                // suspension. At startup, abandoned directories are owned data.
+                if !updating { try? recover(directory) }
+                return try? readActive(directory)
             }.sorted { $0.manifest.name.localizedStandardCompare($1.manifest.name) == .orderedAscending }
     }
 
@@ -55,6 +57,7 @@ public actor PackStore {
         try prepareRoot()
         let directory = try sourceDirectory(source.source)
         try mkdir(directory)
+        try clearAbandonedStaging(in: directory)
         let previous = try activeIfPresent(directory)
         let revision = try await source.currentRevision()
         let catalog = try await source.catalog(at: revision).validated()
@@ -183,6 +186,27 @@ public actor PackStore {
         try data.write(to: url, options: .atomic)
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
+    private func recover(_ directory: URL) throws {
+        try noSymlinks(directory)
+        try clearAbandonedStaging(in: directory)
+        let active = directory.appendingPathComponent("active.json")
+        try noSymlinks(active)
+        // A first install interrupted before activation has no user-selected
+        // version to preserve. This qualified directory contains only downloads.
+        guard fm.fileExists(atPath: active.path) else { try fm.removeItem(at: directory); return }
+        try prune(directory)
+    }
+
+    private func clearAbandonedStaging(in directory: URL) throws {
+        try noSymlinks(directory)
+        for child in try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            let name = child.lastPathComponent
+            guard name.hasPrefix("staging-"), UUID(uuidString: String(name.dropFirst(8))) != nil else { continue }
+            try noSymlinks(child)
+            try fm.removeItem(at: child)
+        }
+    }
+
     private func prune(_ directory: URL) throws {
         guard let active = try activeIfPresent(directory) else { return }
         let versions = directory.appendingPathComponent("versions")
@@ -193,6 +217,11 @@ public actor PackStore {
                let record = try? JSONDecoder().decode(InstalledPack.self, from: bytes), record.source == active.source,
                record.directory == candidate.lastPathComponent, (try? record.manifest.validated()) != nil {
                 records.append((candidate, record))
+            } else if candidate.lastPathComponent != active.directory,
+                      candidate.lastPathComponent.range(of: #"^[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{16}$"#, options: .regularExpression) != nil {
+                // A crash after directory promotion but before its receipt was
+                // written must not leave an unbounded collection of payloads.
+                try noSymlinks(candidate); try fm.removeItem(at: candidate)
             }
         }
         records.sort { $0.1.installedAt > $1.1.installedAt }

@@ -97,9 +97,12 @@ final class PackLibraryModel: ObservableObject {
     private func install(_ source: PackSource) async throws {
         let token = try await accessToken()
         let client = try GitHubPackClient(source: source, client: URLSessionPackClient(), token: token)
+        let previousVersion = records[source.storageKey]?.manifest.version
         let result = try await store.install(from: client, appVersion: appVersion)
         await loadInstalled()
-        notice = "\(result.pack.manifest.name) \(result.pack.manifest.version) ready. \(result.downloadedFiles) files downloaded, \(result.reusedFiles) reused."
+        notice = previousVersion == result.pack.manifest.version
+            ? "\(result.pack.manifest.name) is up to date (\(result.pack.manifest.version))."
+            : "\(result.pack.manifest.name) \(result.pack.manifest.version) is ready to use."
     }
     func update(_ id: String) {
         guard let pack = records[id] else { return }
