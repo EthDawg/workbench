@@ -118,7 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false; window.center()
-        if PackLibraryModel.shared.pendingSource != nil { model.page = "packs"; showWindow() }
+        // The normal launch below opens the window after its controls exist.
+        if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
         capturePanel = CapturePanelController(model: model, readback: readback, stage: stage,
             dictate: { [weak self] in self?.toolbarDictation() },
             snap: { [weak self] in self?.toolbarSnap() },
