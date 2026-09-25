@@ -75,6 +75,28 @@ enum ReadbackError: LocalizedError {
     }
 }
 
+/// What a copied handoff prompt should point the chosen assistant at. The
+/// default keeps the existing Snap & Talk deck wording exactly; other callers
+/// supply their own skill entry point, manifest and task.
+struct ReadbackHandoffBrief {
+    var skillEntryPoint = "SKILL.md"
+    var folderDescription: String
+    var pathLabel: String
+    var scopeDescription: String
+    var manifestName: String
+    var task: String
+    var preservation: String
+    var extra: String? = nil
+
+    static let snapTalkDeck = Self(
+        folderDescription: "Workbench Snap & Talk session folder",
+        pathLabel: "Session folder",
+        scopeDescription: "session folder",
+        manifestName: ReadbackStore.manifestName,
+        task: "build the requested slide deck",
+        preservation: "Keep the original session and any `template.pptx` unchanged.")
+}
+
 enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
     case claude
     case chatGPT
@@ -98,13 +120,17 @@ enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
         }
     }
 
-    func prompt(for sessionURL: URL) -> String {
-        """
-        Use the `SKILL.md` in this Workbench Snap & Talk session folder as the task instructions.
+    /// The Snap & Talk deck brief stays the default, so existing callers keep the
+    /// prompt they have today. Another handoff supplies its own skill entry
+    /// point, manifest and task instead of forcing a deck.
+    func prompt(for folderURL: URL, brief: ReadbackHandoffBrief = .snapTalkDeck) -> String {
+        let extra = brief.extra.map { "\n\n" + $0 } ?? ""
+        return """
+        Use the `\(brief.skillEntryPoint)` in this \(brief.folderDescription) as the task instructions.
 
-        Session folder: \(sessionURL.standardizedFileURL.path)
+        \(brief.pathLabel): \(folderURL.standardizedFileURL.path)
 
-        Read `session.json`, use only files inside the session folder, and build the requested slide deck. Keep the original session and any `template.pptx` unchanged. Keep the work local unless I explicitly authorize an external upload or service.
+        Read `\(brief.manifestName)`, use only files inside the \(brief.scopeDescription), and \(brief.task). \(brief.preservation) Keep the work local unless I explicitly authorize an external upload or service.\(extra)
         """
     }
 }
@@ -339,6 +365,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var shortcutFailure: String?
     @Published var notice: String?
     @Published private(set) var transcriptDrafts: [UUID: String] = [:]
+    @Published private(set) var newSessionSkillID: String?
+    @Published private(set) var packSkills: [TranscriptHandoffSkill] = []
     @Published private(set) var newSessionStyle: ReadbackDeckStyle = .neutral
     @Published private(set) var installedServiceNow: ReadbackSkillPackReference?
     @Published private(set) var newSessionStyleProblem: String?
@@ -379,6 +407,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.skillPacks = skillPacks ?? ReadbackSkillPackStore(root: Workbench.supportDirectory(component: "SnapTalkSkillPacks"))
         self.captureDisplay = captureDisplay
         super.init()
+        newSessionSkillID = defaults.string(forKey: "readback.newSessionSkillID.v1")
         newSessionStyle = defaults.string(forKey: Self.styleKey).flatMap(ReadbackDeckStyle.init(rawValue:)) ?? .neutral
         refreshSkillPacks()
         recentSessionURLs = (defaults.stringArray(forKey: Self.recentsKey) ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -487,22 +516,46 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     @discardableResult
     func createSession(at url: URL, title: String) throws -> ReadbackManifest {
-        let snapshot = try skillPacks.snapshot(for: newSessionStyle)
+        let snapshot = try selectedSkillSnapshot()
         let created = try ReadbackStore.create(at: url, title: title, skillPack: snapshot)
         setCurrent(url: url, manifest: created)
         return created
     }
 
     func selectNewSessionStyle(_ style: ReadbackDeckStyle) {
+        newSessionSkillID = nil
+        defaults.removeObject(forKey: "readback.newSessionSkillID.v1")
         newSessionStyle = style
         defaults.set(style.rawValue, forKey: Self.styleKey)
         skillPackNotice = nil
         refreshSkillPacks()
     }
 
+    var selectedSkillChoice: String { newSessionSkillID ?? "legacy-" + newSessionStyle.rawValue }
+    func setPackSkills(_ skills: [TranscriptHandoffSkill]) {
+        packSkills = skills
+        refreshSkillPacks()
+    }
+    func selectSkill(_ id: String) {
+        if id == "legacy-neutral" { selectNewSessionStyle(.neutral); return }
+        if id == "legacy-serviceNow" { selectNewSessionStyle(.serviceNow); return }
+        newSessionSkillID = id
+        defaults.set(id, forKey: "readback.newSessionSkillID.v1")
+        refreshSkillPacks()
+    }
+    private func selectedSkillSnapshot() throws -> ReadbackSkillPackSnapshot {
+        if let id = newSessionSkillID {
+            guard let skill = packSkills.first(where: { $0.id == id }) else {
+                throw ReadbackError.message("The selected skill is unavailable. Restore its pack in Packs or choose another skill. Existing sessions are unchanged.")
+            }
+            return try skill.load()
+        }
+        return try skillPacks.snapshot(for: newSessionStyle)
+    }
+
     func refreshSkillPacks() {
         installedServiceNow = (try? skillPacks.snapshot(for: .serviceNow))?.reference
-        do { _ = try skillPacks.snapshot(for: newSessionStyle); newSessionStyleProblem = nil }
+        do { _ = try selectedSkillSnapshot(); newSessionStyleProblem = nil }
         catch { newSessionStyleProblem = error.localizedDescription }
     }
 

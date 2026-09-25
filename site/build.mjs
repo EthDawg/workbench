@@ -16,6 +16,7 @@ if (currentRelease.feed_url) {
 }
 // Explicit allowlist: source tests, host configuration and local files never ship.
 await rm(new URL('./public/',import.meta.url),{recursive:true,force:true});
+await mkdir(new URL('./public/packs/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/guide/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/handbook/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/mobile/',import.meta.url),{recursive:true});
@@ -24,7 +25,7 @@ await mkdir(new URL('./public/scenes/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/personas/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/phone-presenting/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/scenes/ambient/',import.meta.url),{recursive:true});
-for (const name of ['index.html','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
+for (const name of ['packs/index.html','packs/open.mjs','packs/packs.css','index.html','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
 await mkdir(new URL('./public/updates/', import.meta.url), { recursive: true });
 for (const channel of ['production', 'preview']) for (const extension of ['json', 'xml']) {
     try {

@@ -304,6 +304,7 @@ def main():
         # Test session creation from the exact extracted, notarized download.
         run(delivered / "Contents/MacOS" / config["executable"], "--check-readback-resources")
         run(delivered / "Contents/MacOS" / config["executable"], "--check-readback-pack")
+        run(delivered / "Contents/MacOS" / config["executable"], "--check-transcript-handoff")
         digest = hashlib.sha256(packaged.read_bytes()).hexdigest()
         shutil.copy2(packaged, final)
         (output / "SHA256SUMS.txt").write_text(f"{digest}  {final.name}\n")

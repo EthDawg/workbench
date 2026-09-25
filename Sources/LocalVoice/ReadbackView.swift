@@ -5,6 +5,7 @@ import SwiftUI
 
 struct ReadbackView: View {
     @ObservedObject var model: ReadbackModel
+    var onOpenPacks: () -> Void = {}
     @State private var orderingSections = false
     @State private var confirmEmptyTrash = false
 
@@ -81,28 +82,18 @@ struct ReadbackView: View {
 
     private var newSessionStyle: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("New session style").font(.caption).foregroundStyle(.secondary)
-            Picker("New session style", selection: Binding(get: { model.newSessionStyle }, set: { model.selectNewSessionStyle($0) })) {
-                ForEach(ReadbackDeckStyle.allCases) { style in Text(style.title).tag(style) }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .accessibilityLabel("Deck style for new Snap and Talk sessions")
-            if let pack = model.installedServiceNow {
-                HStack {
-                    Text("ServiceNow \(pack.version) installed").font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                    Menu {
-                        Button("Reinstall bundled pack") { model.installServiceNowPack() }
-                        Button("Remove installed pack", role: .destructive) { model.uninstallServiceNowPack() }
-                    } label: { Image(systemName: "ellipsis.circle") }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .accessibilityLabel("Manage ServiceNow skill pack")
+            Text("Skill for new sessions").font(.caption).foregroundStyle(.secondary)
+            Picker("Skill for new sessions", selection: Binding(get: { model.selectedSkillChoice }, set: { model.selectSkill($0) })) {
+                Text("Neutral slides").tag("legacy-neutral")
+                if model.installedServiceNow != nil || model.newSessionStyle == .serviceNow {
+                    Text("ServiceNow (previously installed)").tag("legacy-serviceNow")
                 }
-            } else {
-                Button("Install ServiceNow pack") { model.installServiceNowPack() }.controlSize(.small)
-            }
+                ForEach(model.packSkills) { skill in Text(skill.title).tag(skill.id) }
+                if let id = model.newSessionSkillID, !model.packSkills.contains(where: { $0.id == id }) {
+                    Text("Unavailable skill").tag(id)
+                }
+            }.pickerStyle(.menu).labelsHidden()
+            Button("Manage packs…", action: onOpenPacks).controlSize(.small)
             Text("New sessions keep their own copy of the selected style.").font(.caption).foregroundStyle(.secondary)
             if let problem = model.newSessionStyleProblem {
                 Text(problem).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)

@@ -33,7 +33,8 @@
       "--check-readback-resources"
     ],
     [
-      "--check-readback-pack"
+      "--check-readback-pack",
+      "--check-transcript-handoff"
     ],
     [
       "--check-reading-service-native"

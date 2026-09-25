@@ -49,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations())
         model = AppModel(preferences: preferences)
         readback = ReadbackModel(engine: model.engine)
+        PackLibraryModel.shared.onSkillsChanged = { [weak self] skills in self?.readback.setPackSkills(skills) }
+        PackLibraryModel.shared.start()
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
         stage.mayBeginInteraction = { [weak self] in
@@ -116,6 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false; window.center()
+        // The normal launch below opens the window after its controls exist.
+        if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
         capturePanel = CapturePanelController(model: model, readback: readback, stage: stage,
             dictate: { [weak self] in self?.toolbarDictation() },
             snap: { [weak self] in self?.toolbarSnap() },
@@ -501,7 +505,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
     @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
-    func applicationDidBecomeActive(_ notification: Notification) { readback?.refreshPermissionState() }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        readback?.refreshPermissionState()
+        PackLibraryModel.shared.checkAutomatically()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where PackLibraryModel.shared.acceptLink(url) {
+            model?.page = "packs"
+            if window != nil { showWindow() }
+        }
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         WorkbenchUpdates.shared.canTerminate { model?.saveBeforeUpdate() == true } ? .terminateNow : .terminateCancel
     }
@@ -607,6 +621,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try ReadbackOrderingChecks.run() }
         case "--check-readback-resources":
             try ReadbackChecks.runPackagedResources()
+        case "--check-transcript-handoff":
+            try await MainActor.run { try TranscriptHandoffChecks.runAll() }
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
         case "--check-readback-ordering-ui":

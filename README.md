@@ -37,7 +37,7 @@ Closing the desktop window leaves Workbench available. Quit Workbench stops the 
 
 The [product guide](https://workbench-mac.vercel.app/guide/) explains dictation, reading, Snap & Talk, drawing, device presentation, personas and saved resources. Device presentation is video-only; Apple's QuickTime and iPhone Mirroring remain separate apps. A connected iPhone used as a Mac presentation source does not imply an active Workbench iOS release.
 
-**ServiceNow teams:** in Snap & Talk, choose **Install ServiceNow pack** once. New sessions carry the complete versioned deck skill and branding for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and Workbench download with colleagues. Neutral remains the initial default; existing sessions keep their own files.
+**Team packs (2.2+):** open **Packs**, connect GitHub and add the private repository link your team shares. Choose a compatible skill or import your own scene/persona copy. New sessions carry the complete versioned skill and resources for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and pack link with colleagues. Ordinary Workbench tools remain account-free; existing sessions keep their own files.
 
 ## Build and install Preview
 
@@ -80,6 +80,6 @@ Use [GitHub issues](https://github.com/EthDawg/workbench/issues) as the work que
 - Apple AppKit, SwiftUI, AVFoundation and installed macOS voices.
 - Workflow inspiration: [Pat Simmons's local Wispr Flow replacement](https://www.youtube.com/watch?v=IMQw3aHjf2Q&t=437s).
 - Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed Apple Shortcuts dictation and optional Speko reading in [#10](https://github.com/EthDawg/workbench/issues/10) and [#11](https://github.com/EthDawg/workbench/issues/11).
-- Matt's [Snap & Talk crash fix](https://github.com/EthDawg/workbench/pull/103) and [ServiceNow deck skill, artwork and generation helpers](https://github.com/EthDawg/workbench/pull/104) ship in Workbench. The optional pack preserves his contribution and each session's chosen version.
+- Matt's [Snap & Talk crash fix](https://github.com/EthDawg/workbench/pull/103) ships in Workbench. His original [ServiceNow deck skill, artwork and generation helpers](https://github.com/EthDawg/workbench/pull/104) are preserved in the private company pack, alongside their public contribution history. Existing sessions retain their chosen complete version.
 
 The app code is [MIT licensed](LICENSE). Third-party components retain their own licenses. Contribution credit does not imply a GitHub permission level or approval of this branch.
