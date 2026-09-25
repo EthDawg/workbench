@@ -44,11 +44,12 @@ enum ReadbackChecks {
         try check(rootMode?.intValue == 0o700 && manifestMode?.intValue == 0o600, "new session metadata is private to the user")
         let skill = try String(contentsOf: root.appendingPathComponent("SKILL.md"), encoding: .utf8)
         try check(skill.hasPrefix("---\nname: build-snap-and-talk-deck\n"), "portable skill retains its discoverable identity")
+        try check(skill.contains("template.pptx") && skill.contains("visible title") && skill.contains("supporting copy"), "neutral skill retains the optional-template route and narration-grounded copy")
         let payload = try ReadbackResources.deckPayload()
         let copiesMatch = try payload.allSatisfy { path, bytes in
             try Data(contentsOf: root.appendingPathComponent(path)) == bytes
         }
-        try check(copiesMatch, "new session contains the complete, exact brand and helper payload")
+        try check(copiesMatch && manifest.skillPack == .neutral, "new session defaults to the complete, exact neutral payload")
         let readme = try String(contentsOf: root.appendingPathComponent("README.md"), encoding: .utf8)
         try check(readme.contains("complete edited narration verbatim") && readme.contains("does not upload or submit"), "portable README explains slide copy and local handoff")
         let handoffRoot = root.appendingPathComponent("Folder with spaces", isDirectory: true)
@@ -340,6 +341,7 @@ enum ReadbackChecks {
         try check(reopened.recentSessionURLs.map(\.path) == [other.standardizedFileURL.path], "forgotten entry stays removed after reopening")
         print("READBACK_AVAILABILITY_CHECKS_OK: \(passed) checks")
         try await runRecoveryChecks()
+        try ReadbackPackChecks.run()
     }
 
     @MainActor

@@ -21,6 +21,7 @@ struct ReadbackView: View {
             if let root = model.sessionURL { ReadbackOrderingView(model: model, sessionURL: root) }
         }
         .task {
+            model.refreshSkillPacks()
             // Only poll while this workspace is mounted; app activation also checks.
             while !Task.isCancelled {
                 model.refreshSessionAvailability()
@@ -36,8 +37,9 @@ struct ReadbackView: View {
     private var recentSessions: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("SNAP & TALK SESSIONS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            newSessionStyle
             Button { model.createSession() } label: { Label("New session…", systemImage: "folder.badge.plus") }
-                .buttonStyle(.borderedProminent).disabled(model.isRecording)
+                .buttonStyle(.borderedProminent).disabled(model.isRecording || model.newSessionStyleProblem != nil)
             Button { model.openSession() } label: { Label("Open folder…", systemImage: "folder") }
                 .buttonStyle(.bordered).disabled(model.isRecording)
             Divider()
@@ -77,14 +79,48 @@ struct ReadbackView: View {
         }.padding(16).frame(width: 220).background(Workbench.surface.opacity(0.45))
     }
 
+    private var newSessionStyle: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("New session style").font(.caption).foregroundStyle(.secondary)
+            Picker("New session style", selection: Binding(get: { model.newSessionStyle }, set: { model.selectNewSessionStyle($0) })) {
+                ForEach(ReadbackDeckStyle.allCases) { style in Text(style.title).tag(style) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .accessibilityLabel("Deck style for new Snap and Talk sessions")
+            if let pack = model.installedServiceNow {
+                HStack {
+                    Text("ServiceNow \(pack.version) installed").font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Menu {
+                        Button("Reinstall bundled pack") { model.installServiceNowPack() }
+                        Button("Remove installed pack", role: .destructive) { model.uninstallServiceNowPack() }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .accessibilityLabel("Manage ServiceNow skill pack")
+                }
+            } else {
+                Button("Install ServiceNow pack") { model.installServiceNowPack() }.controlSize(.small)
+            }
+            Text("New sessions keep their own copy of the selected style.").font(.caption).foregroundStyle(.secondary)
+            if let problem = model.newSessionStyleProblem {
+                Text(problem).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            } else if let notice = model.skillPackNotice {
+                Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var emptyState: some View {
         ContentUnavailableView {
             Label("Start a Snap & Talk session", systemImage: "rectangle.and.pencil.and.ellipsis")
         } description: {
             Text("Create a named Finder folder, then use one shortcut to capture the display under your pointer and narrate it.")
+            if let notice = model.notice { Text(notice).foregroundStyle(.secondary) }
         } actions: {
             HStack {
-                Button("New session…") { model.createSession() }.buttonStyle(.borderedProminent)
+                Button("New session…") { model.createSession() }.buttonStyle(.borderedProminent).disabled(model.newSessionStyleProblem != nil)
                 Button("Open session…") { model.openSession() }
             }
         }
@@ -148,6 +184,7 @@ struct ReadbackView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.manifest?.title ?? "Snap & Talk").font(.title2.weight(.semibold))
                 Text(model.sessionURL?.path ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Text("Deck style: \(model.manifest?.skillPack?.name ?? "Session skill")").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             if model.pendingTranscriptionCount > 0 {

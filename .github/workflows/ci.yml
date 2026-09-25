@@ -22,7 +22,7 @@ jobs:
       - name: Check portable PowerPoint helpers with synthetic sessions
         run: |
           python3 -m venv .deck-test
-          .deck-test/bin/pip install -r Sources/LocalVoice/Resources/build-snap-and-talk-deck/requirements.txt
+          .deck-test/bin/pip install -r Sources/LocalVoice/Resources/build-snap-and-talk-deck/packs/servicenow-employee-experience/1.0.0/requirements.txt
           .deck-test/bin/python scripts/test-snap-talk-deck.py
   site:
     name: Site

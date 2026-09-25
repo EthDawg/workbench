@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pptx import Presentation
 
-PACK = Path(__file__).resolve().parents[1] / "Sources/LocalVoice/Resources/build-snap-and-talk-deck"
+PACK = Path(__file__).resolve().parents[1] / "Sources/LocalVoice/Resources/build-snap-and-talk-deck/packs/servicenow-employee-experience/1.0.0"
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(PACK / "scripts"))
 import build_deck
