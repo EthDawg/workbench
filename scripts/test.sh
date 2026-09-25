@@ -11,6 +11,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-persistence.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-remember-correction.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-reading-playback.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-selection-service.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-readback-resources.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-speko-catalog.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py
 PYTHONDONTWRITEBYTECODE=1 python3 BrowserExtension/tests/package_test.py
