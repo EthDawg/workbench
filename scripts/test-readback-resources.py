@@ -38,13 +38,21 @@ __STORE__
             }
             print("PASS missing resources report an error without a trap or partial session")
         } else {
-            let bytes = try ReadbackResources.deckSkill()
+            let payload = try ReadbackResources.deckPayload()
             let created = try ReadbackStore.create(at: destination, title: "Synthetic")
-            let copied = try Data(contentsOf: destination.appendingPathComponent("SKILL.md"))
+            for (path, bytes) in payload {
+                let file = destination.appendingPathComponent(path)
+                guard try Data(contentsOf: file) == bytes else { fatalError("Payload differs: \(path)") }
+                let mode = try fm.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber
+                guard mode?.intValue == 0o600 else { fatalError("Nonprivate companion: \(path)") }
+            }
             let reopened = try ReadbackStore.load(from: destination)
-            guard bytes == copied, created.id == reopened.id,
+            guard created.id == reopened.id,
                   fm.fileExists(atPath: destination.appendingPathComponent("README.md").path) else { fatalError("Invalid created session") }
-            print("PASS exact skill bytes, README and reopened session")
+            try Data("User custom skill".utf8).write(to: destination.appendingPathComponent("SKILL.md"))
+            _ = try ReadbackStore.load(from: destination)
+            guard try String(contentsOf: destination.appendingPathComponent("SKILL.md"), encoding: .utf8) == "User custom skill" else { fatalError("Open overwrote custom skill") }
+            print("PASS complete payload bytes, private permissions, README, reopened session and custom skill retained")
         }
     }
 }
@@ -81,9 +89,14 @@ with tempfile.TemporaryDirectory(prefix="workbench-resource-check-", dir="/priva
         moved.parent.mkdir(exist_ok=True)
         app.rename(moved)
         subprocess.run([str(moved / "Contents/MacOS" / binary)], check=True, timeout=30)
+        asset = moved / "Contents/Resources" / bundle.name / "build-snap-and-talk-deck/brand/assets/bg_purple.jpg"
+        saved = asset.read_bytes()
+        asset.unlink()
+        subprocess.run([str(moved / "Contents/MacOS" / binary), "--missing"], check=True, timeout=30)
+        asset.write_bytes(saved)
         skill = moved / "Contents/Resources" / bundle.name / "build-snap-and-talk-deck/SKILL.md"
         skill.unlink()
         subprocess.run([str(moved / "Contents/MacOS" / binary), "--missing"], check=True, timeout=30)
         shutil.rmtree(moved / "Contents/Resources" / bundle.name)
         subprocess.run([str(moved / "Contents/MacOS" / binary), "--missing"], check=True, timeout=30)
-print("READBACK_RESOURCE_LAYOUTS_OK: 9 process checks using actual store and resolver; no app installation")
+print("READBACK_RESOURCE_LAYOUTS_OK: 11 process checks using actual store and resolver; no app installation")

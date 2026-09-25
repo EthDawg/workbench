@@ -1,0 +1,103 @@
+{
+  "_about": "Brand system extracted from the ServiceNow Employee Experience (EmployeeWorks/EXOS) master deck. All geometry in inches on a 13.333 x 7.5 in (16:9 widescreen) canvas. Colours are hex without '#'. build_deck.py reads this file; change values here, not in the script.",
+
+  "canvas": { "width": 13.333, "height": 7.5 },
+
+  "fonts": {
+    "display": "ServiceNow Sans Display Bold",
+    "body": "ServiceNow Sans",
+    "medium": "ServiceNow Sans Medium",
+    "light": "ServiceNow Sans Light",
+    "_note": "Fonts are NOT embedded or supplied. Confirm availability in the receiving environment and visually check substituted fonts for overflow."
+  },
+
+  "colours": {
+    "green": "63DF4E",
+    "white": "FFFFFF",
+    "navy": "032D42",
+    "shadow": "061F35",
+    "purple": "7661FF",
+    "lilac": "BDBAFD",
+    "blue": "52B8FF",
+    "mint": "DEFFD9",
+    "_usage": "Green = the emphasised part of any headline, numbers' companion text, eyebrows, rules. White = everything else. Navy only inside cards (translucent). Never put text on a white fill; every slide sits on a dark or purple background."
+  },
+
+  "assets": {
+    "background": "assets/bg_purple.jpg",
+    "decoration": "assets/deco_hex.png",
+    "closing_background": "assets/bg_thankyou.jpg",
+    "logo": "assets/logo_wordmark.png",
+    "closing_logo": "assets/logo_wordmark_closing.png"
+  },
+
+  "footer": {
+    "_applies_to": "cover, content, summary slides (not dividers, not closing)",
+    "logo":      { "x": 0.523, "y": 6.95,  "w": 1.073, "h": 0.306 },
+    "copyright": { "x": 8.927, "y": 7.016, "w": 3.382, "h": 0.235, "size": 8, "font": "light", "align": "right",
+                   "text": "© {year} ServiceNow, Inc. All Rights Reserved." },
+    "number":    { "x": 12.096, "y": 7.014, "w": 0.633, "h": 0.25, "size": 8, "align": "right", "_note": "live slide-number field, not typed text; right-aligned so it ends at x=12.729" }
+  },
+
+  "card": {
+    "_what": "The signature element: translucent navy rounded panel with a hairline white border and a deep drop shadow.",
+    "radius_adj": 15695,
+    "fill_stops": [ { "pos": 71000, "colour": "navy", "alpha": 60000 }, { "pos": 96000, "colour": "navy", "alpha": 72000 } ],
+    "fill_type": "path-rect (radial from centre)",
+    "line": { "colour": "white", "alpha": 22000, "width_pt": 0.75 },
+    "shadow": { "blurRad": 301583, "dist": 335463, "dir": 5400000, "colour": "shadow", "alpha": 65000 }
+  },
+
+  "rule": { "_what": "Short green line under a card headline", "colour": "green", "width_pt": 1.0, "length": 0.75 },
+
+  "slides": {
+    "cover": {
+      "background": "background",
+      "decoration": { "x": 0.0, "y": 2.303, "w": 11.705, "h": 5.197 },
+      "logo":       { "x": 0.591, "y": 0.631, "w": 2.25, "h": 0.643 },
+      "title":      { "x": 0.632, "y": 1.862, "w": 9.468, "h": 2.828, "font": "display", "size": 72, "line": 0.85, "anchor": "t",
+                      "_style": "first word(s) green, remainder white, e.g. [Demo](green) [walkthrough](white)" },
+      "subtitle":   { "x": 0.571, "y": 4.104, "w": 9.603, "h": 0.502, "font": "medium", "size": 28, "colour": "white", "line": 0.85 },
+      "presenter":  { "x": 0.648, "y": 5.744, "w": 3.41,  "h": 0.764, "font": "body", "size": 28, "bold": true, "colour": "green", "anchor": "ctr", "line": 0.9 },
+      "role":       { "x": 0.571, "y": 6.332, "w": 6.669, "h": 0.343, "font": "body", "size": 16, "colour": "white", "line": 0.9 }
+    },
+    "divider": {
+      "background": "background",
+      "decoration": { "x": 0.0, "y": 2.303, "w": 10.426, "h": 5.197 },
+      "logo":       { "x": 0.435, "y": 0.884, "w": 2.62, "h": 0.749 },
+      "title":      { "x": 0.6, "y": 2.26, "w": 6.985, "h": 4.451, "font": "display", "size": 88, "line": 0.85, "anchor": "ctr",
+                      "_style": "line 1 = two-digit chapter number in green; line 2 = chapter name in white (max ~20 chars, wraps to 2 lines)" }
+    },
+    "content": {
+      "_what": "One capture per slide: card on the left (number, eyebrow, claim headline, rule, 2-3 takeaways), framed screenshot on the right.",
+      "background": "background",
+      "card":       { "x": 0.35, "y": 0.75, "w": 3.75, "h": 6.0 },
+      "headline_box": { "x": 0.62, "y": 1.0, "w": 3.35, "h": 2.75, "anchor": "b" },
+      "number":     { "font": "body", "size": 24, "bold": true, "colour": "white", "line_pts": 40 },
+      "eyebrow":    { "font": "body", "size": 11, "bold": true, "colour": "green", "caps": true, "_note": "same paragraph as the number, 3 spaces after it" },
+      "headline":   { "font": "body", "bold": true, "colour": "green", "line": 0.8, "tracking": -50,
+                      "size_rule": [ { "max_chars": 40, "size": 26 }, { "max_chars": 60, "size": 23 } ],
+                      "_hard_limit": "60 characters; rewrite anything longer" },
+      "rule":       { "x": 0.72, "y": 3.95 },
+      "body_box":   { "x": 0.62, "y": 4.1, "w": 3.35, "h": 2.5, "anchor": "t" },
+      "takeaway":   { "font": "body", "size": 15, "colour": "white", "space_after_pt": 10, "max": 3, "max_chars_each": 60 },
+      "screenshot": { "x": 4.45, "y": 1.3, "w": 8.55, "h": 4.81, "radius_adj": 2500,
+                      "line": { "colour": "white", "alpha": 30000, "width_pt": 0.75 },
+                      "shadow": { "blurRad": 301583, "dist": 200000, "dir": 5400000, "colour": "shadow", "alpha": 65000 },
+                      "_fit": "16:9 box. Non-16:9 captures are letterboxed inside the box, never stretched." }
+    },
+    "summary": {
+      "background": "background",
+      "heading_box": { "x": 0.6, "y": 0.55, "w": 12.1, "h": 1.6, "anchor": "t" },
+      "eyebrow":  { "font": "body", "size": 14, "bold": true, "colour": "green", "caps": true, "line_pts": 40 },
+      "title":    { "font": "body", "size": 36, "bold": true, "line": 0.8, "tracking": -50, "_style": "first clause white, closing clause green" },
+      "cards":    { "count": 4, "x": 0.6, "y": 2.55, "w": 2.85, "h": 4.1, "gap": 0.28 },
+      "card_text": { "number_size": 24, "head_size": 22, "body_size": 14, "head_box_h": 1.75, "rule_dy": 2.15, "body_dy": 2.3 }
+    },
+    "closing": {
+      "background": "closing_background",
+      "logo":  { "x": 9.534, "y": 6.363, "w": 3.487, "h": 1.006 },
+      "title": { "x": 0.6, "y": 0.601, "w": 9.05, "h": 3.927, "font": "display", "size": 72, "colour": "white", "line": 0.85, "anchor": "b", "text": "Thank you" }
+    }
+  }
+}

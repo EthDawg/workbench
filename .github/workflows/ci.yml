@@ -10,6 +10,20 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  snap-talk-deck:
+    name: Snap & Talk deck helpers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check portable PowerPoint helpers with synthetic sessions
+        run: |
+          python3 -m venv .deck-test
+          .deck-test/bin/pip install -r Sources/LocalVoice/Resources/build-snap-and-talk-deck/requirements.txt
+          .deck-test/bin/python scripts/test-snap-talk-deck.py
   site:
     name: Site
     runs-on: ubuntu-latest

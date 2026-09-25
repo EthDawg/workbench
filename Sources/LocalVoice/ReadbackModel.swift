@@ -108,7 +108,7 @@ enum ReadbackStore {
 
     static func create(at root: URL, title: String, resources: Bundle = .main) throws -> ReadbackManifest {
         // Check packaged resources before creating a folder or publishing session.json.
-        let skill = try ReadbackResources.deckSkill(in: resources)
+        let skill = try ReadbackResources.deckPayload(in: resources)
         let fm = FileManager.default
         let root = root.standardizedFileURL
         if fm.fileExists(atPath: root.path) {
@@ -223,14 +223,20 @@ enum ReadbackStore {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private static func writeCompanionFiles(at root: URL, title: String, skill: Data) throws {
-        try writePrivate(skill, to: root.appendingPathComponent("SKILL.md"))
+    private static func writeCompanionFiles(at root: URL, title: String, skill: [String: Data]) throws {
+        for path in skill.keys.sorted() {
+            let destination = root.appendingPathComponent(path)
+            try createPrivateDirectory(destination.deletingLastPathComponent())
+            try writePrivate(skill[path]!, to: destination)
+        }
         let readme = """
         # \(title)
 
         This is a portable Workbench Snap & Talk session. `session.json` owns section order and links each screenshot to its original audio, original transcript and editable narration. Deleted sections stay recoverable under `trash/` until Recently Deleted is emptied in Workbench.
 
         Give this folder to an agent together with `SKILL.md` to create a 16:9 PowerPoint with one uncropped screenshot per slide, concise narration-grounded titles and supporting copy on the slide, and the complete edited narration verbatim in speaker notes.
+
+        The included `brand/`, `scripts/` and `requirements.txt` provide the ServiceNow slide design and local PowerPoint helpers. Keep them with `SKILL.md` when sharing the folder. No separate template is needed. Workbench does not install Python dependencies or run the helpers automatically. Existing sessions and customised skills are never updated on open.
 
         Workbench's Hand off menu copies a ready-to-paste prompt, reveals this folder and opens an installed Claude, ChatGPT or Codex app. Workbench does not upload or submit the session for you.
 
