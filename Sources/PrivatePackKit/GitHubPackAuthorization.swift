@@ -22,7 +22,7 @@ public struct GitHubPackAuthorization: Sendable {
     public init(clientID: String, client: any PackHTTPClient = URLSessionPackClient()) throws {
         guard !clientID.isEmpty, clientID.count <= 100,
               clientID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "_") }) else {
-            throw PackError.authorization("This Workbench build does not have its GitHub sign-in registration. Install the current official release.")
+            throw PackError.authorization("GitHub connection is not available in this build yet. Installed packs remain usable.")
         }
         self.clientID = clientID; self.client = client
     }
