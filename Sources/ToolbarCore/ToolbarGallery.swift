@@ -22,9 +22,9 @@ public enum ToolbarGallery {
 
     private static func exampleShortcut(_ tool: ToolbarTool) -> ToolbarShortcut {
         switch tool {
-        case .dictate: return .assigned("⌃⌥Space")
-        case .snapAndTalk: return .assigned("⌃⌥\\")
-        case .annotate: return .assigned("⌃⌥D")
+        case .dictate: return .assigned("⌥V")
+        case .snapAndTalk: return .assigned("⌥C")
+        case .annotate: return .assigned("⌥D")
         case .present, .persona, .read, .timer: return .off
         }
     }
@@ -56,9 +56,9 @@ public enum ToolbarGallery {
     /// Between captures, show the count and an assigned key together.
     public static let idle: [ToolbarViewState] = [
         ToolbarViewState(name: "idle-session-open", tier: .revealed, tool: .snapAndTalk,
-                         actionTitle: "Capture next", trailing: .status("3 Captures · ⌃⌥\\")),
+                         actionTitle: "Capture next", trailing: .status("3 Captures · ⌥C")),
         ToolbarViewState(name: "idle-speech-preparing", tier: .revealed, tool: .dictate,
-                         isActionEnabled: false, trailing: .shortcut(.assigned("⌃⌥Space")))
+                         isActionEnabled: false, trailing: .shortcut(.assigned("⌥V")))
     ]
 
     /// Everything, in a stable order.

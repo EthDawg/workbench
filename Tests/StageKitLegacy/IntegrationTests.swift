@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 final class IntegrationTests: XCTestCase {
     func testFirstStrokeAfterActivationReachesInactiveCanvas() throws {
@@ -144,7 +145,10 @@ final class IntegrationTests: XCTestCase {
         app.start()
         defer { app.shutdown() }
         let shortcut = settings.value.shortcut(for: .pen)
-        let keyDown = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .option], timestamp: 1,
+        var flags = NSEvent.ModifierFlags()
+        for (bit, flag) in [(controlKey, NSEvent.ModifierFlags.control), (optionKey, .option), (shiftKey, .shift), (cmdKey, .command)]
+            where shortcut.modifiers & UInt32(bit) != 0 { flags.insert(flag) }
+        let keyDown = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 1,
             windowNumber: 0, context: nil, characters: "d", charactersIgnoringModifiers: "d", isARepeat: false, keyCode: UInt16(shortcut.keyCode))!
         let keyUp = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [], timestamp: 2,
             windowNumber: 0, context: nil, characters: "d", charactersIgnoringModifiers: "d", isARepeat: false, keyCode: UInt16(shortcut.keyCode))!

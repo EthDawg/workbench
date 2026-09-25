@@ -21,6 +21,13 @@ enum KeyboardCoachChecks {
         for (key, modifiers) in [(kVK_Space, cmdKey), (kVK_Tab, cmdKey), (kVK_ANSI_Q, controlKey | cmdKey), (kVK_ANSI_4, shiftKey | cmdKey), (kVK_LeftArrow, controlKey), (kVK_ANSI_Q, cmdKey), (kVK_ANSI_Z, cmdKey | shiftKey)] {
             try check(ShortcutConflict.message(for: VoiceShortcut(keyCode: UInt32(key), modifiers: UInt32(modifiers)), replacing: "voice.dictation", in: entries) != nil, "common Mac command must stay available: \(key), \(modifiers)")
         }
+        // Any chord without Control or Option is an app command somewhere, not only the familiar ones.
+        for (key, modifiers) in [(kVK_ANSI_T, cmdKey), (kVK_ANSI_R, cmdKey), (kVK_ANSI_1, cmdKey), (kVK_ANSI_N, cmdKey | shiftKey)] {
+            try check(ShortcutConflict.message(for: VoiceShortcut(keyCode: UInt32(key), modifiers: UInt32(modifiers)), replacing: "voice.dictation", in: entries)?.contains("Control or Option") == true, "app command must stay with the app: \(key), \(modifiers)")
+        }
+        try check(ShortcutConflict.message(for: VoiceShortcut(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(controlKey | cmdKey)), replacing: "voice.dictation", in: entries) == nil, "Control makes a Command chord a Workbench key")
+        try check(ShortcutConflict.message(for: VoiceShortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(optionKey)), replacing: "voice.dictation", in: entries)?.contains("accented") == true, "Option-E stays the accent key")
+        try checkPresenterFirstVoiceDefaults()
 
         var practice = ShortcutPracticeState(target: target)
         practice.keyUp(target.keyCode)
@@ -100,5 +107,43 @@ enum KeyboardCoachChecks {
         try check(model.handle(event(.keyDown, shortcut: escape)) == nil && !model.isInteracting, "Escape must consume and cancel recording")
         try check(model.handle(event(.keyDown, shortcut: candidate)) != nil, "inactive coach must leave ordinary app controls alone")
         print("KEYBOARD_COACH_CHECKS_OK: cross-module conflicts, native controls, transactional failure, complete press/release practice, event consumption and balanced suspension")
+    }
+    /// Dictate, Quick controls, Snap & Talk and Present start on Option keys; an update moves untouched ones once.
+    static func checkPresenterFirstVoiceDefaults() throws {
+        func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+            guard condition() else { throw VoiceError.message("Shortcut defaults: \(message)") }
+        }
+        let fresh = VoicePreferences()
+        try check([UInt32(1), 2, 5, 7].allSatisfy { fresh.shortcut($0).enabled && fresh.shortcut($0).modifiers == UInt32(optionKey) } && ![UInt32(3), 4, 6].contains { fresh.shortcut($0).enabled }, "only Dictate, Quick controls, Snap & Talk and Present start on, each Option plus one key")
+        let suite = "WorkbenchShortcutChecks.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var previous = VoicePreferences()
+        previous.dictationShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_3), modifiers: UInt32(cmdKey))
+        previous.libraryShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+        let chosen = VoiceShortcut(keyCode: UInt32(kVK_ANSI_G), modifiers: UInt32(controlKey | optionKey | cmdKey))
+        previous.presenterShortcut = chosen
+        let chosenSnap = VoiceShortcut(keyCode: UInt32(kVK_ANSI_Q), modifiers: UInt32(optionKey))
+        previous.readbackShortcut = chosenSnap
+        previous.save(to: defaults)
+        let updated = VoicePreferences.load(from: defaults)
+        try check(!updated.shortcut(3).enabled, "an untouched ⌃⌥J turns off")
+        try check(updated.shortcut(1) == VoicePreferences().dictationShortcut, "Dictate leaves ⌘3 to other apps and returns to ⌃⌥Space")
+        try check(updated.shortcut(4) == chosen, "a chosen combination is kept")
+        try check(updated.shortcut(5) == chosenSnap && !updated.shortcut(7).enabled, "Present's new ⌥Q never takes a key someone chose")
+        var turnedBackOn = updated
+        turnedBackOn.libraryShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_J))
+        turnedBackOn.save(to: defaults)
+        try check(VoicePreferences.load(from: defaults).shortcut(3).enabled, "turning ⌃⌥J back on sticks after relaunch")
+
+        var commandOnly = VoicePreferences()
+        commandOnly.dictationShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(cmdKey))
+        commandOnly.controlsShortcut.enabled = false
+        commandOnly.readbackShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_C), enabled: false)
+        commandOnly.presentationShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_Q), enabled: false)
+        let keys = VoiceHotkeys()
+        keys.register(commandOnly)
+        try check(keys.failures[1]?.contains("Control or Option") == true, "⌘T is never registered as a global shortcut")
+        keys.unregister()
     }
 }

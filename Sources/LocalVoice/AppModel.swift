@@ -56,10 +56,10 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         [.requesting, .recording].contains(phase) || ([.transcribing, .cleaning].contains(phase) && transcriptionTask != nil)
     }
     func dismissCaptureFailure() { captureFailure = nil }
-    @Published var preferences = VoicePreferences.load() {
+    @Published var preferences: VoicePreferences {
         didSet {
             preferences.save()
-            if oldValue.dictationShortcut != preferences.dictationShortcut || oldValue.controlsShortcut != preferences.controlsShortcut || oldValue.libraryShortcut != preferences.libraryShortcut || oldValue.presenterShortcut != preferences.presenterShortcut || oldValue.readbackShortcut != preferences.readbackShortcut { onShortcutsChanged?() }
+            if (UInt32(1)...7).contains(where: { oldValue.shortcut($0) != preferences.shortcut($0) }) { onShortcutsChanged?() }
         }
     }
     @Published var rawTranscript = ""
@@ -244,7 +244,8 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
     var voices: [String] = []
 
-    override init() {
+    init(preferences: VoicePreferences) {
+        self.preferences = preferences
         super.init()
         Self.intentModel = self
         photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)

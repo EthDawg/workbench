@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 final class CoreTests: XCTestCase {
     func stroke(_ tool: DrawingTool = .pen, from: CGPoint = .zero, to: CGPoint = CGPoint(x: 100, y: 100), created: Double = 100) -> Annotation {
@@ -160,12 +161,110 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(Set(shortcuts).count, Action.allCases.count)
         XCTAssertEqual(DrawingTool.allCases.count, Action.allCases.filter { $0.tool != nil }.count)
         XCTAssertTrue(shortcuts.allSatisfy { $0.modifiers != 0 })
-        let optIn: Set<Action> = [.overlayControls, .overlayNext, .overlayPrevious, .overlayVisibility, .overlayEnd]
-        XCTAssertTrue(optIn.allSatisfy { !prefs.shortcut(for: $0).enabled }, "New overlay keys must not take over existing app shortcuts")
-        XCTAssertTrue(Action.allCases.filter { !optIn.contains($0) }.allSatisfy { prefs.shortcut(for: $0).enabled }, "Existing shortcut defaults stay enabled")
-        XCTAssertEqual(prefs.shortcut(for: .personaToggle).label, "⌃⌥I")
-        XCTAssertEqual(prefs.shortcut(for: .personaPrevious).label, "⌃⌥←")
-        XCTAssertEqual(prefs.shortcut(for: .personaNext).label, "⌃⌥→")
+        let on = Set(Action.allCases.filter { prefs.shortcut(for: $0).enabled })
+        XCTAssertEqual(on, Action.presenterEssentials, "Only the presenter essentials start on; everything else is one recording away")
+        let labels = Dictionary(uniqueKeysWithValues: on.map { ($0, prefs.shortcut(for: $0).label) })
+        XCTAssertEqual(labels, [.arrow: "⌥A", .rectangle: "⌥S", .pen: "⌥D", .personaToggle: "⌥F", .personaNext: "⌥R", .undo: "⌥Z", .clear: "⌥X"])
+        // Two keys, one hand: Option plus a key under the left hand, never an accent key (⌥E).
+        let leftHand = Set([kVK_ANSI_Q, kVK_ANSI_W, kVK_ANSI_R, kVK_ANSI_T, kVK_ANSI_A, kVK_ANSI_S, kVK_ANSI_D, kVK_ANSI_F,
+                            kVK_ANSI_Z, kVK_ANSI_X, kVK_ANSI_C, kVK_ANSI_V, kVK_ANSI_B].map(UInt32.init))
+        for action in on {
+            let shortcut = prefs.shortcut(for: action)
+            XCTAssertEqual(shortcut.modifiers, UInt32(optionKey), "\(action) is Option plus one key")
+            XCTAssertTrue(leftHand.contains(shortcut.keyCode), "\(action) sits under the left hand")
+        }
+    }
+    func testFlatShapeDragDrawsAStraightLine() {
+        func drag(to end: CGPoint) -> Annotation {
+            Annotation(tool: .rectangle, color: .coral, width: 4, points: [InkPoint(CGPoint(x: 100, y: 100)), InkPoint(end)]).asBoxOrLine()
+        }
+        let underline = drag(to: CGPoint(x: 320, y: 108))
+        XCTAssertEqual(underline.tool, .line, "A flat drag reads as an underline")
+        XCTAssertEqual(underline.last, CGPoint(x: 320, y: 100), "The line is straight")
+        XCTAssertEqual(drag(to: CGPoint(x: 94, y: 260)).tool, .line, "Upright flat drags straighten too")
+        XCTAssertEqual(drag(to: CGPoint(x: 320, y: 180)).tool, .rectangle, "A real box stays a box")
+        XCTAssertEqual(drag(to: CGPoint(x: 120, y: 104)).tool, .rectangle, "A short nudge is not a line")
+        XCTAssertEqual(underline.asBoxOrLine().tool, .line)
+    }
+    func testUpdateMovesOnlyUntouchedShortcutsToPresenterDefaults() throws {
+        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var previous = Preferences()
+        for action in Action.allCases { previous.shortcuts[action.rawValue] = action.legacyDefaultShortcut }
+        let chosen = Shortcut(keyCode: UInt32(kVK_ANSI_Y), modifiers: UInt32(controlKey | optionKey))
+        previous.shortcuts[Action.timer.rawValue] = chosen
+        defaults.set(try JSONEncoder().encode(previous), forKey: "preferences.v1")
+        defaults.set(3, forKey: "preferences.schema")
+        let updated = SettingsStore(defaults: defaults)
+        for action in Action.allCases where action != .timer {
+            XCTAssertEqual(updated.value.shortcut(for: action), action.defaultShortcut, "\(action) was untouched, so it moves")
+        }
+        XCTAssertEqual(updated.value.shortcut(for: .timer), chosen, "A chosen shortcut is kept")
+        XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 4)
+        XCTAssertEqual(SettingsStore(defaults: defaults).value.shortcuts, updated.value.shortcuts, "The move is saved, not recomputed on every launch")
+    }
+    func testNewDefaultNeverTakesAChosenCombination() throws {
+        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var previous = Preferences()
+        for action in Action.allCases { previous.shortcuts[action.rawValue] = action.legacyDefaultShortcut }
+        // Someone already gave ⌥D to the timer.
+        previous.shortcuts[Action.timer.rawValue] = Shortcut(keyCode: UInt32(kVK_ANSI_D), modifiers: UInt32(optionKey))
+        defaults.set(try JSONEncoder().encode(previous), forKey: "preferences.v1")
+        defaults.set(3, forKey: "preferences.schema")
+        let updated = SettingsStore(defaults: defaults)
+        XCTAssertEqual(updated.value.shortcut(for: .timer).label, "⌥D")
+        XCTAssertEqual(updated.value.shortcut(for: .pen), Action.pen.legacyDefaultShortcut, "Draw keeps ⌃⌥D rather than take the timer's key")
+        XCTAssertEqual(updated.value.shortcut(for: .personaToggle).label, "⌥F", "Other untouched essentials still move")
+    }
+    func testUpdateReturnsAppCommandsToOtherApps() throws {
+        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var previous = Preferences()
+        for action in Action.allCases { previous.shortcuts[action.rawValue] = action.legacyDefaultShortcut }
+        // Chords a shortcut recorder captured from the top row; each one blocked a command in every app.
+        for (action, key) in [(Action.pen, kVK_ANSI_E), (.highlighter, kVK_ANSI_W), (.arrow, kVK_ANSI_Q), (.clear, kVK_ANSI_R),
+                              (.eraser, kVK_ANSI_S), (.whiteboard, kVK_ANSI_T), (.undo, kVK_ANSI_1)] {
+            previous.shortcuts[action.rawValue] = Shortcut(keyCode: UInt32(key), modifiers: UInt32(cmdKey))
+        }
+        defaults.set(try JSONEncoder().encode(previous), forKey: "preferences.v1")
+        defaults.set(3, forKey: "preferences.schema")
+        let updated = SettingsStore(defaults: defaults)
+        XCTAssertTrue(Action.allCases.allSatisfy { action in
+            let shortcut = updated.value.shortcut(for: action)
+            return !shortcut.enabled || GlobalShortcutRule.allows(modifiers: shortcut.modifiers)
+        }, "No app command stays assigned")
+        XCTAssertEqual(updated.value.shortcut(for: .pen).label, "⌥D", "Draw lands on the presenter key, not on nothing")
+        XCTAssertEqual(updated.value.shortcut(for: .arrow).label, "⌥A")
+        XCTAssertEqual(updated.value.shortcut(for: .clear).label, "⌥X")
+        XCTAssertEqual(updated.value.shortcut(for: .undo).label, "⌥Z")
+        XCTAssertFalse(updated.value.shortcut(for: .highlighter).enabled, "Tools outside the essentials start off")
+        XCTAssertFalse(updated.value.shortcut(for: .eraser).enabled)
+    }
+    func testFreshInstallKeepsLaterChoicesOfOldKeys() throws {
+        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fresh = SettingsStore(defaults: defaults)
+        XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 4)
+        fresh.value.shortcuts[Action.timer.rawValue] = Action.timer.legacyDefaultShortcut
+        XCTAssertTrue(SettingsStore(defaults: defaults).value.shortcut(for: .timer).enabled, "Turning a shortcut on with its old key sticks")
+    }
+    func testAppCommandsAreNeverRegisteredGlobally() {
+        _ = NSApplication.shared
+        var prefs = Preferences()
+        for action in Action.allCases { var shortcut = action.defaultShortcut; shortcut.enabled = false; prefs.shortcuts[action.rawValue] = shortcut }
+        prefs.shortcuts[Action.timer.rawValue] = Shortcut(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(cmdKey))
+        prefs.shortcuts[Action.redo.rawValue] = Shortcut(keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(cmdKey | shiftKey))
+        let manager = HotkeyManager()
+        manager.register(prefs)
+        XCTAssertEqual(Set(manager.failures.keys), [.timer, .redo])
+        XCTAssertTrue(manager.failures[.timer]?.contains("Control or Option") == true, "The row explains how to fix it")
+        manager.unregister()
+        XCTAssertTrue(GlobalShortcutRule.problem(label: "⌃⌘T", modifiers: UInt32(controlKey | cmdKey)) == nil, "Control or Option makes it a Workbench key")
     }
     func testPreferencesPersistAndClamp() throws {
         let suite = "StageMarkTests.\(UUID().uuidString)"
@@ -189,17 +288,17 @@ final class CoreTests: XCTestCase {
         previous.shortcuts.removeValue(forKey: Action.personaPrevious.rawValue)
         previous.shortcuts.removeValue(forKey: Action.personaNext.rawValue)
         previous.shortcuts[Action.overlayControls.rawValue] = Shortcut(
-            keyCode: Action.personaToggle.defaultShortcut.keyCode,
-            modifiers: Action.personaToggle.defaultShortcut.modifiers,
+            keyCode: Action.personaToggle.legacyDefaultShortcut.keyCode,
+            modifiers: Action.personaToggle.legacyDefaultShortcut.modifiers,
             enabled: true)
         defaults.set(try JSONEncoder().encode(previous), forKey: "preferences.v1")
         defaults.set(2, forKey: "preferences.schema")
         let migrated = SettingsStore(defaults: defaults)
         XCTAssertFalse(migrated.value.shortcut(for: .personaToggle).enabled,
             "A new default must not take over an existing enabled assignment")
-        XCTAssertTrue(migrated.value.shortcut(for: .personaPrevious).enabled)
+        XCTAssertFalse(migrated.value.shortcut(for: .personaPrevious).enabled, "Previous persona is opt-in")
         XCTAssertTrue(migrated.value.shortcut(for: .personaNext).enabled)
-        XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 3)
+        XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 4)
     }
     func testCorruptPreferencesArePreservedForRecovery() {
         let suite = "StageMarkTests.\(UUID().uuidString)"
@@ -209,6 +308,21 @@ final class CoreTests: XCTestCase {
         let store = SettingsStore(defaults: defaults)
         XCTAssertNotNil(store.notice)
         XCTAssertEqual(defaults.data(forKey: "preferences.recovery"), corrupt)
+        XCTAssertEqual(defaults.data(forKey: "preferences.v1"), corrupt, "Loading must not write fallback settings over unreadable originals")
+    }
+    func testDuplicateShortcutRegistrationPlanPausesBothWithoutChangingSettings() {
+        var preferences = Preferences()
+        let chosen = Shortcut(keyCode: UInt32(kVK_ANSI_Y), modifiers: UInt32(optionKey))
+        preferences.shortcuts[Action.timer.rawValue] = chosen
+        preferences.shortcuts[Action.pointer.rawValue] = chosen
+        let failures = StageShortcutSettings.registrationFailures(in: StageShortcutSettings.descriptors(for: preferences))
+        XCTAssertEqual(Set(failures.keys), [Action.timer.rawValue, Action.pointer.rawValue])
+        XCTAssertTrue(failures[Action.timer.rawValue]?.contains(Action.pointer.title) == true)
+        XCTAssertTrue(failures[Action.pointer.rawValue]?.contains(Action.timer.title) == true)
+        XCTAssertEqual(preferences.shortcut(for: .timer), chosen)
+        XCTAssertEqual(preferences.shortcut(for: .pointer), chosen)
+        preferences.shortcuts[Action.pointer.rawValue]?.enabled = false
+        XCTAssertTrue(StageShortcutSettings.registrationFailures(in: StageShortcutSettings.descriptors(for: preferences)).isEmpty)
     }
     func testAllToolsRenderToRealPixels() throws {
         _ = NSApplication.shared

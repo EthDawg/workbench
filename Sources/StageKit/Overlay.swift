@@ -243,8 +243,9 @@ final class AnnotationView: NSView {
                 annotation.points.append(point)
             }
         } else {
-            let end = event.modifierFlags.contains(.shift) ? Geometry.constrained(point.point, from: annotation.first, tool: annotation.tool) : point.point
+            let end = event.modifierFlags.contains(.shift) ? Geometry.constrained(point.point, from: annotation.first, tool: app.tool) : point.point
             annotation.points = [annotation.points[0], InkPoint(end)]
+            if app.tool == .rectangle { annotation = annotation.asBoxOrLine() }
         }
         draft = annotation; setNeedsDisplay(oldBounds.union(annotation.bounds))
     }
