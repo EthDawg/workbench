@@ -1,5 +1,7 @@
 # Snap & Talk ServiceNow deck pack · 25 September 2026
 
+Historical evidence for Matt's initial contribution. The shipped behavior is an **optional install-once pack**, with Neutral as the initial default. Use the [integrated pack and release verification](2026-09-25-optional-servicenow-pack.md) for current acceptance; the checks and limits below describe this earlier contribution stage.
+
 Scope: integrate the supplied ServiceNow Employee Experience branding and local PowerPoint builder into newly created Snap & Talk sessions. Built from main `2140acb` with the resource-resolution prerequisite from PR #103 (`da8ebe2`). The contribution's commit/PR identifies the final source revision. No app installation or publication took place.
 
 ## Payload and preservation

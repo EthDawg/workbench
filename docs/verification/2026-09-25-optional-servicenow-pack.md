@@ -10,7 +10,7 @@ Every new session receives a private copy of its selected skill payload. `skill-
 
 Installed-pack checks validate the complete file list and recorded SHA-256 digests. An explicit reinstall repairs or replaces only the app-owned installed copy. Removing that copy preserves every existing session. If ServiceNow remains explicitly selected but its pack is missing or invalid, new-session creation explains how to reinstall or choose Neutral and stops before creating files. Neutral resource resolution does not depend on any ServiceNow asset. Existing Hand off uses the session's own `SKILL.md` and complete payload; the user still grants the chosen agent folder access and submits the prompt.
 
-## Verification
+## Initial model and resource checks
 
 - Full Mac debug `LocalVoice` build passed. A cloned dependency cache was reused; its path-specific module cache was rebuilt. No dependency versions changed.
 - The full debug executable's `--check-readback` passed **178 checks**: 73 storage/contract, 11 admission, 19 availability, 18 recovery, 32 pack and 25 ordering checks.
@@ -20,7 +20,7 @@ Installed-pack checks validate the complete file list and recorded SHA-256 diges
 - The existing **8 synthetic deck-helper tests** passed from the relocated pack using the bundled workspace Python runtime. No dependencies were installed by this work. A byte comparison confirmed the eleven payload files match Matt's contribution and the neutral skill matches `main` at `c413668`.
 - `git diff --check` passed.
 
-This is source, resource and synthetic model evidence. No app was signed, installed, opened through LaunchServices or published by this task. Native control layout/VoiceOver acceptance and final released-package acceptance belong to integration. Deck rendering and any narrowly demonstrated helper/layout fixes are recorded by the separate rendering review; these test results do not assert ServiceNow-font fidelity or visual approval.
+These initial worker checks establish source, resource and synthetic model behavior. They did not include signing, installation, LaunchServices or publication. Integrated rendering and native acceptance are recorded separately below; no ServiceNow-font fidelity or VoiceOver coverage is implied.
 
 ## Integrated rendering checks
 
@@ -29,3 +29,13 @@ The rendering follow-up preserves Matt’s five artwork files and original commi
 All ten final synthetic slides were rendered with the bundled LibreOffice runtime and inspected by both the rendering worker and integration owner: three representative 16:9, 4:3 and portrait captures, plus seven slides with maximum supported worded copy and optional cover/divider/summary/closing. Screenshots retain all four corners, proportions and original bytes; capture order and complete edited notes match. No clipping, footer collision or text overlap was visible. The renderer used Liberation Sans for the deliberately encoded Arial. Native PowerPoint and ServiceNow-font fidelity are not asserted.
 
 The guide now documents the one-click employee installation and existing Hand off flow. Final package gates also execute the real pack store/model checks in temporary preferences and session folders, so a package cannot pass solely because neutral resources were included.
+
+## Integrated native and release acceptance
+
+Signed Preview `2.1.0 (20260925062649)`, clean source `83fe3c07cb48073ae87a49667f9b13445d5bbc2a`, passed native Neutral creation, one-click ServiceNow installation, complete eleven-file branded session creation, relaunch persistence, removal/reinstall recovery and the existing Codex Hand off flow. Each session retained its own files throughout. The handoff copied a prompt and opened the selected agent; no prompt was submitted and no session was uploaded. Original Recents and all four original core saved records were preserved after removing only the synthetic test entries.
+
+The combined signed Preview `2.1.0 (20260925064621)`, clean source `e09b5bd2d11b88a07354f26e87f345fb593dc869`, also passed native shortcut migration, rejected Command-Q as a global assignment, and preserved ordinary TextEdit Save/Close/Quit and Workbench Quit. The release-only input fixture correction in #107 passed from the actual packaged executable.
+
+Production package `2.1.0 (20260925071655)` is built from clean merged source `b0ec3daa90fbe0924ba107f33a3a89641e335a66`. The full release suite passed: 177 Swift tests, 157 StageKit tests / 3,091 assertions, 30 cross-module migration checks, packaged input registration, synthetic speech round-trip, Snap & Talk checks and native reading-service checks. Apple notarization, stapling, Gatekeeper, final ZIP re-extraction, actual session creation and all 32 pack checks passed. SHA-256: `18090fa32bee5c240a352c94093a7c881bea133f8f9f617a2cb62ba4618a8276`.
+
+The [2.1.0 release notes](https://github.com/EthDawg/workbench/releases/tag/v2.1.0) record acceptance of that exact installed production package and the public update cycle. The signed feed and website record promote the same archive. Fresh-Mac, older-macOS, hardware/meeting-receiver and native PowerPoint checks remain outside this evidence.

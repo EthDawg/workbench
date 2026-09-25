@@ -14,6 +14,8 @@ Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contri
 
 Repository collaborators can push their own feature branches after accepting their GitHub invitation. No fork or shared credentials are needed. Coordinate scope in the issue or PR before touching another contributor's active work.
 
+Matt's ServiceNow branding and deck helpers are the optional Snap & Talk pack from [#104](https://github.com/EthDawg/workbench/pull/104). Improve that existing pack through this repository; preserve original artwork and credit, give changed payloads a new pack version, verify rendered slides, and leave existing sessions' snapshots unchanged. Employees install it through Workbench using the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack). A shared Markdown attachment or a separate plugin distribution is unnecessary for this workflow.
+
 ## Choose a first step
 
 1. Check the [open issues](https://github.com/EthDawg/workbench/issues). An unassigned [good first issue](https://github.com/EthDawg/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
