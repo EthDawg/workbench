@@ -301,6 +301,8 @@ def main():
             raise RuntimeError("The final archive cloud configuration does not match the notarized candidate")
         run("xcrun", "stapler", "validate", delivered)
         run("spctl", "--assess", "--type", "execute", "--verbose=4", delivered)
+        # Test session creation from the exact extracted, notarized download.
+        run(delivered / "Contents/MacOS" / config["executable"], "--check-readback-resources")
         digest = hashlib.sha256(packaged.read_bytes()).hexdigest()
         shutil.copy2(packaged, final)
         (output / "SHA256SUMS.txt").write_text(f"{digest}  {final.name}\n")
