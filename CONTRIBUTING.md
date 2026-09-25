@@ -14,7 +14,7 @@ Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contri
 
 Repository collaborators can push their own feature branches after accepting their GitHub invitation. No fork or shared credentials are needed. Coordinate scope in the issue or PR before touching another contributor's active work.
 
-Matt's ServiceNow branding and deck helpers are the optional Snap & Talk pack from [#104](https://github.com/EthDawg/workbench/pull/104). Improve that existing pack through this repository; preserve original artwork and credit, give changed payloads a new pack version, verify rendered slides, and leave existing sessions' snapshots unchanged. Employees install it through Workbench using the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack). A shared Markdown attachment or a separate plugin distribution is unnecessary for this workflow.
+Matt's ServiceNow branding and deck helpers originated in [#104](https://github.com/EthDawg/workbench/pull/104), whose authorship and public history remain intact. From 2.2, company content is maintained in its private pack repository; open its source link in Packs to contribute there. Changes to Workbench's generic loader and handoff contracts belong in this public repository. Preserve original artwork and credit, publish changed payloads as a new pack version, verify rendered examples in the pack repository, and leave existing sessions' snapshots unchanged. Colleagues use the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and their team's pack link.
 
 ## Choose a first step
 
