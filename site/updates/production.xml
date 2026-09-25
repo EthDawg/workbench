@@ -6,6 +6,18 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Workbench</title>
         <item>
+            <title>2.1.0</title>
+            <pubDate>Fri, 25 Sep 2026 17:17:51 +1000</pubDate>
+            <sparkle:version>20260925071655</sparkle:version>
+            <sparkle:shortVersionString>2.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<p>Install the optional ServiceNow Snap &amp; Talk skill pack once, then use it for new sessions. Each session keeps its own instructions, branding assets and helper scripts for handoff to your chosen agent. Neutral remains the initial default; existing and custom sessions keep their files. Thanks to Matt for the original branding and deck helpers.</p>
+<p>Workbench also keeps normal Mac commands such as Command-Q available. Core presenter shortcuts use Option plus one key. Safe custom choices are retained; duplicate saved assignments are paused with a repair explanation in Keyboard.</p>
+<p>Includes the packaged New session crash fix from 2.0.1. Mac desktop quality remains the priority; iOS, iPadOS and Chrome extension work is paused.</p>]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.1.0/Workbench.zip" length="67523612" type="application/octet-stream" sparkle:edSignature="oyHQ2ijaO/lMPEOAxLQ1lYVjTxITBAjbHZ/bTMPV8NxHHPMy6NA0NHkwITcX1mA+pBPNBnwcXEan22UA86yRCg=="/>
+        </item>
+        <item>
             <title>2.0.1</title>
             <pubDate>Fri, 25 Sep 2026 15:51:19 +1000</pubDate>
             <sparkle:version>20260925055025</sparkle:version>
@@ -34,6 +46,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 41zZXuwF7LLu2V6bY3RFIdyK4vwWARvLG2R2maCPCyU7xsK/FTGQLIXxr1J1tUayoH87+jwCkYbapyK8LwTnBQ==
-length: 3013
+edSignature: UnuVGoQkZIWgD4Ljw3ETHAmmM+RrxWutbe8PFfBhRgZQMoverFjsJdmBV5/jpzy7n8ijBQQadsa6FTV9h+7YCg==
+length: 4501
 -->
