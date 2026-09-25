@@ -106,6 +106,10 @@ The shared **Connection & audio…** guide separates picture, voice conversation
 
 The selected-text Service is the only Services adapter: it declares plain-text input and no return type, and production/Preview packages use distinct port names. No Share extension, private iPhone Mirroring integration or general app-automation bridge is added. Those remain future adapters only if a useful workflow justifies them. Windows portability is likewise a future design decision: isolate platform-facing code, but do not promise portability for AppKit, AVFoundation device capture, Carbon, Services or App Intents.
 
+## Snap & Talk skill packs
+
+`ReadbackResources` resolves neutral resources and the optional ServiceNow payload separately. `ReadbackSkillPackStore` installs only the bundled allowlisted pack into the edition-owned `SnapTalkSkillPacks` directory and verifies its private receipt and hashes. `ReadbackModel` owns the remembered new-session style and explicit install/reinstall/remove actions. New sessions receive a full payload snapshot and immutable `skill-pack.json`; the manifest's in-memory pack reference is derived from that companion and is not encoded into `session.json`. Older app saves therefore retain provenance without a manifest migration. Existing/custom sessions remain their own source of instructions. The current pack uses ordinary skill, asset and script files; no marketplace, global agent registration or execution service is added.
+
 ## Capture recovery
 
 `ReadbackAvailability` performs read-only folder/manifest availability checks for Snap & Talk. `ReadbackModel` owns published unavailable-path state, explicit recent-entry removal and validated relocation. The mounted workspace polls at two-second intervals and app activation refreshes it too; no global directory scan, automatic path guessing or deletion is introduced. An unavailable active session retains its in-memory identity/drafts for recovery while its stale grid is replaced by Locate/Check/Remove controls. Active recording controls and independent recognition jobs retain their owners.
@@ -126,7 +130,8 @@ Quit stops work and preserves pending recovery. On reopening, an acknowledged jo
 | Stage preferences | `com.ethdawg.workbench.preview.stage` defaults suite |
 | Appearance | Shared `com.ethdawg.workbench.preview` suite |
 | Speko key | Keychain service derived from the current bundle ID; not copied from a legacy app |
-| Snap & Talk sessions | User-chosen Finder folders containing `session.json`, media, transcripts, recovery files and the bundled deck skill |
+| Snap & Talk sessions | User-chosen Finder folders containing `session.json`, media, transcripts, recovery files and a complete selected skill snapshot; immutable `skill-pack.json` records new-session provenance |
+| Optional Snap & Talk packs | Edition-owned `SnapTalkSkillPacks` under application support; selected new-session style in the same edition’s preferences |
 
 Non-Preview files use `Application Support/Workbench`; identity and preference domains drop the `.preview` suffix.
 

@@ -48,6 +48,7 @@ ditto "$PROJECT_DIR/Resources/PersonaPortraits" "$APP_DIR/Contents/Resources/Per
 bash "$PROJECT_DIR/scripts/app-intents.sh" "$APP_DIR"
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
+"$APP_DIR/Contents/MacOS/Workbench" --check-readback-resources
 ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$PACKAGE_DIR/Workbench.zip"
 mv "$PACKAGE_DIR/Workbench.zip" "$PROJECT_DIR/.build/component/Workbench.zip"
 echo "Built internal component: $PROJECT_DIR/.build/component/Workbench.zip"

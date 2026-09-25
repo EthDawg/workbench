@@ -59,6 +59,12 @@ struct ReadbackManifest: Codable, Equatable {
     var createdAt: Date
     var updatedAt: Date
     var sections: [ReadbackSection]
+    // Derived from skill-pack.json; session.json is not a second metadata owner.
+    var skillPack: ReadbackSkillPackReference? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion, id, title, createdAt, updatedAt, sections
+    }
 }
 
 enum ReadbackError: LocalizedError {
@@ -105,8 +111,13 @@ enum ReadbackHandoffTarget: String, CaseIterable, Identifiable {
 
 enum ReadbackStore {
     static let manifestName = "session.json"
+    static let skillPackReceiptName = "skill-pack.json"
 
-    static func create(at root: URL, title: String) throws -> ReadbackManifest {
+    static func create(at root: URL, title: String, resources: Bundle = .main,
+                       skillPack: ReadbackSkillPackSnapshot? = nil) throws -> ReadbackManifest {
+        // Check packaged resources before creating a folder or publishing session.json.
+        let skill = try skillPack ?? ReadbackResources.bundledSnapshot(.neutral, in: resources)
+        try skill.validate()
         let fm = FileManager.default
         let root = root.standardizedFileURL
         if fm.fileExists(atPath: root.path) {
@@ -124,9 +135,9 @@ enum ReadbackStore {
         try createPrivateDirectory(root.appendingPathComponent("items", isDirectory: true))
         try createPrivateDirectory(root.appendingPathComponent("trash", isDirectory: true))
         let now = Date()
-        let manifest = ReadbackManifest(id: UUID(), title: title, createdAt: now, updatedAt: now, sections: [])
+        let manifest = ReadbackManifest(id: UUID(), title: title, createdAt: now, updatedAt: now, sections: [], skillPack: skill.reference)
+        try writeCompanionFiles(at: root, title: title, skill: skill)
         try save(manifest, at: root)
-        try writeCompanionFiles(at: root, title: title)
         return manifest
     }
 
@@ -134,11 +145,18 @@ enum ReadbackStore {
         let url = root.appendingPathComponent(manifestName)
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        let manifest = try decoder.decode(ReadbackManifest.self, from: data)
+        var manifest = try decoder.decode(ReadbackManifest.self, from: data)
         guard manifest.formatVersion == ReadbackManifest.currentFormat else {
             throw ReadbackError.message("This Snap & Talk session uses format \(manifest.formatVersion), but this Workbench supports format \(ReadbackManifest.currentFormat). The folder was not changed.")
         }
         try validate(manifest, at: root)
+        // The immutable companion owns provenance. Older app saves leave it
+        // untouched, and legacy/custom sessions need no migration.
+        if let receiptURL = try? safeURL(root: root, relative: skillPackReceiptName),
+           let data = try? Data(contentsOf: receiptURL),
+           let receipt = try? JSONDecoder().decode(ReadbackSkillPackProvenance.self, from: data), receipt.formatVersion == 1 {
+            manifest.skillPack = receipt.pack
+        }
         return manifest
     }
 
@@ -221,17 +239,27 @@ enum ReadbackStore {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private static func writeCompanionFiles(at root: URL, title: String) throws {
-        let skillSource = Bundle.module.url(forResource: "SKILL", withExtension: "md", subdirectory: "build-snap-and-talk-deck")
-        guard let skillSource else { throw ReadbackError.message("The slide-building skill is missing from this Workbench build.") }
-        try FileManager.default.copyItem(at: skillSource, to: root.appendingPathComponent("SKILL.md"))
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: root.appendingPathComponent("SKILL.md").path)
+    private static func writeCompanionFiles(at root: URL, title: String, skill: ReadbackSkillPackSnapshot) throws {
+        for path in skill.files.keys.sorted() {
+            let destination = root.appendingPathComponent(path)
+            try createPrivateDirectory(destination.deletingLastPathComponent())
+            try writePrivate(skill.files[path]!, to: destination)
+        }
+        let provenance = ReadbackSkillPackProvenance(pack: skill.reference)
+        try writePrivate(JSONEncoder().encode(provenance), to: root.appendingPathComponent(skillPackReceiptName))
+        let styleInstructions = skill.reference.id == ReadbackSkillPackReference.serviceNow.id
+            ? "The included brand/, scripts/ and requirements.txt are the complete ServiceNow skill pack. No separate template or individual skill upload is needed. Workbench does not install Python dependencies or execute these helpers."
+            : "The neutral skill supports an optional template.pptx in this folder. Keep the original template unchanged."
         let readme = """
         # \(title)
 
         This is a portable Workbench Snap & Talk session. `session.json` owns section order and links each screenshot to its original audio, original transcript and editable narration. Deleted sections stay recoverable under `trash/` until Recently Deleted is emptied in Workbench.
 
         Give this folder to an agent together with `SKILL.md` to create a 16:9 PowerPoint with one uncropped screenshot per slide, concise narration-grounded titles and supporting copy on the slide, and the complete edited narration verbatim in speaker notes.
+
+        Deck style: \(skill.reference.name), pack \(skill.reference.id) version \(skill.reference.version).
+
+        \(styleInstructions) This session owns a fixed copy of its chosen skill. App updates, pack changes and reopening never rewrite it or a customised skill.
 
         Workbench's Hand off menu copies a ready-to-paste prompt, reveals this folder and opens an installed Claude, ChatGPT or Codex app. Workbench does not upload or submit the session for you.
 
@@ -311,6 +339,10 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var shortcutFailure: String?
     @Published var notice: String?
     @Published private(set) var transcriptDrafts: [UUID: String] = [:]
+    @Published private(set) var newSessionStyle: ReadbackDeckStyle = .neutral
+    @Published private(set) var installedServiceNow: ReadbackSkillPackReference?
+    @Published private(set) var newSessionStyleProblem: String?
+    @Published private(set) var skillPackNotice: String?
 
     var onStateChange: (() -> Void)?
     var onHideForEditorCapture: (() -> Void)?
@@ -326,6 +358,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     private let transcribeAudio: @MainActor (URL) async throws -> String
     private let defaults: UserDefaults
+    private let skillPacks: ReadbackSkillPackStore
     private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
     private var recorder: AVAudioRecorder?
     private var meter: Timer?
@@ -335,14 +368,19 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var processor: Task<Void, Never>?
     private var activeJob: Job?
     private static let recentsKey = "readback.recentSessionPaths.v1"
+    private static let styleKey = "readback.newSessionDeckStyle.v1"
 
     init(engine: RecognitionEngine, defaults: UserDefaults = .standard,
          captureDisplay: @escaping @MainActor () async throws -> ReadbackScreenshot = { try await ReadbackScreenCapture.currentDisplay() },
-         transcribeAudio: (@MainActor (URL) async throws -> String)? = nil) {
+         transcribeAudio: (@MainActor (URL) async throws -> String)? = nil,
+         skillPacks: ReadbackSkillPackStore? = nil) {
         self.transcribeAudio = transcribeAudio ?? { try await engine.transcribe($0) }
         self.defaults = defaults
+        self.skillPacks = skillPacks ?? ReadbackSkillPackStore(root: Workbench.supportDirectory(component: "SnapTalkSkillPacks"))
         self.captureDisplay = captureDisplay
         super.init()
+        newSessionStyle = defaults.string(forKey: Self.styleKey).flatMap(ReadbackDeckStyle.init(rawValue:)) ?? .neutral
+        refreshSkillPacks()
         recentSessionURLs = (defaults.stringArray(forKey: Self.recentsKey) ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) }
         if let recent = recentSessionURLs.first, let loaded = try? ReadbackStore.load(from: recent) {
             let restored = recovered(loaded, at: recent)
@@ -417,6 +455,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func refreshPermissionState() {
         refreshSessionAvailability()
+        refreshSkillPacks()
         screenPermissionGranted = CGPreflightScreenCaptureAccess()
         microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         stateChanged()
@@ -429,19 +468,58 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func createSession() {
         guard !isRecording else { notice = "Finish the current narration before creating another session."; return }
+        refreshSkillPacks()
+        guard newSessionStyleProblem == nil else { notice = newSessionStyleProblem; return }
         let panel = NSSavePanel()
         panel.title = "Create Snap & Talk Session"
         panel.prompt = "Create Session"
         panel.nameFieldLabel = "Session name:"
         panel.nameFieldStringValue = "New Snap & Talk"
+        panel.message = "New session style: \(newSessionStyle.title). Existing sessions keep their own style."
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let title = url.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
-            let created = try ReadbackStore.create(at: url, title: title.isEmpty ? "Snap & Talk" : title)
-            setCurrent(url: url, manifest: created)
+            _ = try createSession(at: url, title: title.isEmpty ? "Snap & Talk" : title)
             Task { await preflightPermissions() }
         } catch { notice = error.localizedDescription }
+    }
+
+    @discardableResult
+    func createSession(at url: URL, title: String) throws -> ReadbackManifest {
+        let snapshot = try skillPacks.snapshot(for: newSessionStyle)
+        let created = try ReadbackStore.create(at: url, title: title, skillPack: snapshot)
+        setCurrent(url: url, manifest: created)
+        return created
+    }
+
+    func selectNewSessionStyle(_ style: ReadbackDeckStyle) {
+        newSessionStyle = style
+        defaults.set(style.rawValue, forKey: Self.styleKey)
+        skillPackNotice = nil
+        refreshSkillPacks()
+    }
+
+    func refreshSkillPacks() {
+        installedServiceNow = (try? skillPacks.snapshot(for: .serviceNow))?.reference
+        do { _ = try skillPacks.snapshot(for: newSessionStyle); newSessionStyleProblem = nil }
+        catch { newSessionStyleProblem = error.localizedDescription }
+    }
+
+    func installServiceNowPack() {
+        do {
+            let installed = try skillPacks.installServiceNow()
+            selectNewSessionStyle(.serviceNow)
+            skillPackNotice = "ServiceNow \(installed.version) installed for new sessions. Existing sessions keep their current style."
+        } catch { skillPackNotice = error.localizedDescription; refreshSkillPacks() }
+    }
+
+    func uninstallServiceNowPack() {
+        do {
+            try skillPacks.uninstallServiceNow()
+            skillPackNotice = "ServiceNow pack removed. Existing sessions keep their complete copy. Choose Neutral or reinstall before creating another ServiceNow session."
+        } catch { skillPackNotice = error.localizedDescription }
+        refreshSkillPacks()
     }
 
     func openSession() {
