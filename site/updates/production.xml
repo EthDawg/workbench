@@ -6,6 +6,21 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Workbench</title>
         <item>
+            <title>2.2.0</title>
+            <pubDate>Sat, 26 Sep 2026 07:57:46 +1000</pubDate>
+            <sparkle:version>20260925215646</sparkle:version>
+            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Team packs, ready to use</h2>
+<p>Add an optional private GitHub pack for your team's skills, scenes, personas and workspace appearance. Compatible pack updates preserve existing sessions and personal copies. Everyday Workbench tools remain account-free.</p>
+<h2>Hand off selected transcripts</h2>
+<p>Choose captures from Recent transcripts, mark them as your instructions or reference material, and optionally include a Snap &amp; Talk session. Workbench prepares the folder and prompt for your chosen assistant.</p>
+<p>Existing branded sessions remain usable. New company content comes from your team's private pack. <a href="https://workbench-mac.vercel.app/guide/#servicenow-pack">Read the team guide</a>.</p>
+]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.2.0/Workbench.zip" length="67346634" type="application/octet-stream" sparkle:edSignature="KoqcDDdlT0A6EYRk7p0DAb57y+LVtDvGNKFBXDbgNrqyBLw78wpcoUpjvLGAsfvXu455xoYz30NuI4KdciZ1Aw=="/>
+        </item>
+        <item>
             <title>2.1.0</title>
             <pubDate>Fri, 25 Sep 2026 17:17:51 +1000</pubDate>
             <sparkle:version>20260925071655</sparkle:version>
@@ -30,22 +45,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.0.1/Workbench.zip" length="66785858" type="application/octet-stream" sparkle:edSignature="lD6Liynsb4VGn0BuaOHrdC63GxNo4DL0Hb4PFDpdOPu/cQNYgBAFr4qpE9Q7hg651aJpNy4Br3a9id4bEcAbAA=="/>
         </item>
-        <item>
-            <title>2.0.0</title>
-            <pubDate>Fri, 25 Sep 2026 05:31:53 +1000</pubDate>
-            <sparkle:version>20260924193053</sparkle:version>
-            <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Workbench for Mac</h2>
-<ul><li>Seven fixed menu-bar actions, shortcut editing and clear clipboard feedback.</li><li>Shared live controls for drawing, presentation, persona overlays and saved prompts.</li><li>Safer selected-field prompt insertion and missing-folder recovery for Snap &amp; Talk.</li><li>Automatic checks and background downloads, with signed updates that install on normal Quit or a safe explicit restart. Exact build details are in Settings.</li></ul>
-<p>Workbench and Workbench Preview keep separate libraries and settings. This Workbench edition uses local storage. iPhone, iPad and Chrome extension work is paused while Mac quality is the priority.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.0.0/Workbench.zip" length="66784792" type="application/octet-stream" sparkle:edSignature="rh5yhypMLv39MXtVUR2HgQmRKCUViRrA8jv+8H2JYIf/rqUEqxXjEMPdxTtAWj612lUi9hWDBPo00CT7uTQ7Dw=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: UnuVGoQkZIWgD4Ljw3ETHAmmM+RrxWutbe8PFfBhRgZQMoverFjsJdmBV5/jpzy7n8ijBQQadsa6FTV9h+7YCg==
-length: 4501
+edSignature: vztSciXdo1NJ5t9Kim+SOuQQwib7DcOaieAXyi9/8EL1G1OMSv0tmINVbl1coGVGydLWAlv7EYEMCsUklueICg==
+length: 4541
 -->
