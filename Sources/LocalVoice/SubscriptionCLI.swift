@@ -443,6 +443,7 @@ enum SubscriptionSandbox {
                 lines.append("(allow file-read-metadata (literal (string-append (param \"USER_ROOT\") \"\(path)\")))")
             }
             lines.append("(allow file-read* (literal (string-append (param \"USER_ROOT\") \"/.codex/installation_id\")))")
+            lines.append("(allow file-read* (literal (string-append (param \"USER_ROOT\") \"/.codex/auth.json\")))")
             // The native CLI opens its own installation identifier read/write
             // while initializing. Credential files remain read-only here.
             lines.append("(allow file-write* (literal (string-append (param \"USER_ROOT\") \"/.codex/installation_id\")))")
@@ -1209,8 +1210,10 @@ enum SubscriptionCLI {
             // Cached readiness is only a UI hint. The CLI may have changed
             // accounts since discovery. Check its current auth mode under the
             // same configuration as inference, without editing native login.
-            guard let status = await sandboxedProbe(connection.provider, executable: executable,
-                                                     arguments: authArguments(for: connection.provider), home: home) else {
+            let checkedStatus = await sandboxedProbe(connection.provider, executable: executable,
+                                                       arguments: authArguments(for: connection.provider), home: home)
+            try Task.checkCancellation()
+            guard let status = checkedStatus else {
                 throw SubscriptionCLIError.unavailable("Workbench could not verify the current subscription sign-in. Check the connection and try again.")
             }
             switch SubscriptionAuth.status(for: connection.provider, status: status) {
@@ -1240,6 +1243,7 @@ enum SubscriptionCLI {
                                         inactivityTimeout: SubscriptionCLILimits.inactivityTimeout,
                                         onLine: { [sink] line in sink.accept(line) })
         let completion = try await child.run()
+        try Task.checkCancellation()
         switch completion.stop {
         case .cancelled:
             throw CancellationError()

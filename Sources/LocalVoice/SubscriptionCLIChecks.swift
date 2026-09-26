@@ -173,6 +173,9 @@ enum SubscriptionCLIChecks {
         try check(!claudeProfile.contains(".codex"), "one provider's profile never opens the other's files")
         try check(codexProfile.contains("\"/.codex/auth.json\"") && !codexProfile.contains("config.toml"), "an inference turn never sees Codex configuration")
         try check(codexStatusProfile.contains("config.toml"), "the CLI status command can read its configuration")
+        let nativeWrites = codexProfile.split(separator: "\n").filter { $0.contains("allow file-write") }
+        try check(nativeWrites.filter { $0.contains("installation_id") }.count == 1, "only the installation identifier receives a native-home write allowance")
+        try check(!nativeWrites.contains(where: { $0.contains("auth.json") || $0.contains("keychain") }), "credential files receive no write allowance")
         guard let denyIndex = claudeProfile.range(of: "(deny file-read*")?.lowerBound,
               let allowIndex = claudeProfile.range(of: "(param \"WRITE_ROOT\")")?.lowerBound else {
             throw VoiceError.message("SUBSCRIPTION CLI CHECK FAILED: profile rule order")
@@ -559,19 +562,30 @@ enum SubscriptionCLIChecks {
         try Data("unselected synthetic content".utf8).write(to: outside)
         let selected = job.root.appendingPathComponent("selected.txt")
         try Data("selected synthetic content".utf8).write(to: selected)
+        let fixtureHome = root.appendingPathComponent("synthetic-home")
+        let native = fixtureHome.appendingPathComponent(".codex")
+        try FileManager.default.createDirectory(at: native, withIntermediateDirectories: true)
+        let syntheticAuth = native.appendingPathComponent("auth.json")
+        let syntheticID = native.appendingPathComponent("installation_id")
+        try Data("synthetic auth fixture".utf8).write(to: syntheticAuth)
+        try Data("synthetic installation".utf8).write(to: syntheticID)
         let shell = URL(fileURLWithPath: "/bin/sh")
         let installation = SubscriptionSandbox.installRoot(for: shell)
         try job.prepare(SubscriptionSandbox.profile(for: .codex, purpose: .inference, directory: job.root, installation: installation))
-        let script = "cat selected.txt; if cat \"$1\" 2>/dev/null; then exit 11; fi; if (printf changed >\"$1\") 2>/dev/null; then exit 12; fi"
+        let script = "cat selected.txt; cat \"$2\" >/dev/null || exit 14; if cat \"$1\" 2>/dev/null; then exit 11; fi; if (printf changed >\"$1\") 2>/dev/null; then exit 12; fi; if (printf changed >\"$2\") 2>/dev/null; then exit 13; fi; printf 'synthetic installation updated' >\"$3\""
         let args = SubscriptionSandbox.arguments(profile: job.profile, writeRoot: job.root,
-            userRoot: URL(fileURLWithPath: NSHomeDirectory()), installRoot: installation, executable: shell,
-            arguments: ["-c", script, "fixture", outside.path])
+            userRoot: fixtureHome, installRoot: installation, executable: shell,
+            arguments: ["-c", script, "fixture", outside.path, syntheticAuth.path, syntheticID.path])
         let boundary = try await SubscriptionProcess(executable: SubscriptionSandbox.executable, arguments: args,
             environment: ["PATH": "/usr/bin:/bin"], directory: job.root, input: Data(),
             limit: 65536, timeout: 3, collectOutput: true).run()
-        try check(boundary.status == 0 && boundary.standardOutput == "selected synthetic content", "selected file is readable and sibling contents are denied")
+        try check(boundary.status == 0 && boundary.standardOutput == "selected synthetic content", "selected file is readable and sibling contents are denied (status \(boundary.status): \(SubscriptionRedaction.short(boundary.standardError)))")
         let retained = try String(contentsOf: outside, encoding: .utf8)
         try check(retained == "unselected synthetic content", "the sibling write was denied")
+        let retainedAuth = try String(contentsOf: syntheticAuth, encoding: .utf8)
+        let updatedID = try String(contentsOf: syntheticID, encoding: .utf8)
+        try check(retainedAuth == "synthetic auth fixture", "native credential writes remain denied")
+        try check(updatedID == "synthetic installation updated", "only native installation ID maintenance is permitted")
 
         let runtime = root.appendingPathComponent("runtime/bin")
         try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: true)
