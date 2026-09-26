@@ -73,7 +73,7 @@ enum SubscriptionCLIChecks {
             "ANTHROPIC_API_KEY": "fixture-secret", "OPENAI_API_KEY": "fixture-secret",
             "ANTHROPIC_BASE_URL": "http://127.0.0.1:1", "ANTHROPIC_AUTH_TOKEN": "fixture-secret",
             "CLAUDE_CODE_OAUTH_TOKEN": "fixture-secret", "CODEX_HOME": "/tmp/fixture-codex",
-            "CLAUDE_CONFIG_DIR": "/tmp/fixture-claude", "AWS_SECRET_ACCESS_KEY": "fixture-secret",
+            "CLAUDE_CODE_TMPDIR": "/tmp/fixture-shared-claude", "CLAUDE_CONFIG_DIR": "/tmp/fixture-claude", "AWS_SECRET_ACCESS_KEY": "fixture-secret",
             "SSH_AUTH_SOCK": "/tmp/fixture.sock", "NODE_OPTIONS": "--inspect", "HTTPS_PROXY": "http://127.0.0.1:2",
             "TMPDIR": "/private/var/folders/fixture/",
         ]
@@ -88,6 +88,12 @@ enum SubscriptionCLIChecks {
         let scoped = SubscriptionEnvironment.sanitized(inherited, scratch: scratch)
         try check(scoped["TMPDIR"] == scratch.path, "temporary files are kept inside the job folder")
         try check(scoped["HOME"] == "/Users/fixture", "the CLI keeps its own home so it finds its own sign-in")
+        try check(sanitized["CLAUDE_CODE_TMPDIR"] == nil, "an inherited Claude temp override is excluded")
+        let claudeScoped = SubscriptionEnvironment.sanitized(inherited, scratch: scratch, provider: .claude)
+        try check(claudeScoped["CLAUDE_CODE_TMPDIR"] == scratch.path && claudeScoped["TMPDIR"] == scratch.path,
+                  "Claude internal and ordinary temporary files use the app-owned job scratch directory")
+        let codexScoped = SubscriptionEnvironment.sanitized(inherited, scratch: scratch, provider: .codex)
+        try check(codexScoped["CLAUDE_CODE_TMPDIR"] == nil, "the Claude-specific override is not forwarded to Codex")
 
         // Claude argument construction
         let claudeArguments = SubscriptionCLIPlanner.claude()
@@ -173,6 +179,9 @@ enum SubscriptionCLIChecks {
         try check(!claudeProfile.contains(".codex"), "one provider's profile never opens the other's files")
         try check(codexProfile.contains("\"/.codex/auth.json\"") && !codexProfile.contains("config.toml"), "an inference turn never sees Codex configuration")
         try check(codexStatusProfile.contains("config.toml"), "the CLI status command can read its configuration")
+        try job.prepare(codexProfile)
+        let scratchPermissions = try FileManager.default.attributesOfItem(atPath: job.scratch.path)[.posixPermissions] as? NSNumber
+        try check(scratchPermissions?.intValue == 0o700, "the app-owned temp base is private to this user")
         let nativeWrites = codexProfile.split(separator: "\n").filter { $0.contains("allow file-write") }
         try check(nativeWrites.filter { $0.contains("installation_id") }.count == 1, "only the installation identifier receives a native-home write allowance")
         try check(!nativeWrites.contains(where: { $0.contains("auth.json") || $0.contains("keychain") }), "credential files receive no write allowance")

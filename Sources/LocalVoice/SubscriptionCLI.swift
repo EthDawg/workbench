@@ -112,14 +112,21 @@ enum SubscriptionEnvironment {
     /// `scratch` is an app-owned directory inside the job root. It is set by
     /// Workbench rather than inherited, so the CLI's temporary files stay in the
     /// one place the sandbox profile allows writing.
-    static func sanitized(_ source: [String: String], scratch: URL? = nil) -> [String: String] {
+    static func sanitized(_ source: [String: String], scratch: URL? = nil,
+                          provider: SubscriptionProvider? = nil) -> [String: String] {
         var result: [String: String] = [:]
         for (name, value) in source {
             guard allowedNames.contains(name) || allowedPrefixes.contains(where: { name.hasPrefix($0) }) else { continue }
             guard !isProviderOverride(name) else { continue }
             result[name] = value
         }
-        if let scratch { result["TMPDIR"] = scratch.path }
+        if let scratch {
+            result["TMPDIR"] = scratch.path
+            // Claude uses /tmp on macOS unless this documented internal temp
+            // override is set. It appends claude-{uid} inside the chosen base.
+            // This value is app-owned; inherited provider overrides stay denied.
+            if provider == .claude { result["CLAUDE_CODE_TMPDIR"] = scratch.path }
+        }
         return result
     }
 }
@@ -337,6 +344,7 @@ struct SubscriptionJobPaths {
         for directory in [support, logs, state, scratch] {
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scratch.path)
         try Data(profileText.utf8).write(to: profile, options: .atomic)
     }
 }
@@ -1126,7 +1134,7 @@ enum SubscriptionCLI {
         let passed = SubscriptionSandbox.arguments(profile: job.profile, writeRoot: job.root, userRoot: home,
                                                   installRoot: SubscriptionSandbox.installRoot(for: executable),
                                                   executable: executable, arguments: arguments)
-        let environment = SubscriptionEnvironment.sanitized(ProcessInfo.processInfo.environment, scratch: job.scratch)
+        let environment = SubscriptionEnvironment.sanitized(ProcessInfo.processInfo.environment, scratch: job.scratch, provider: provider)
         return await launchProbe(SubscriptionSandbox.executable, passed, environment, job.root)
     }
 
@@ -1201,7 +1209,7 @@ enum SubscriptionCLI {
         let arguments = SubscriptionSandbox.arguments(profile: job.profile, writeRoot: job.root, userRoot: home,
                                                      installRoot: SubscriptionSandbox.installRoot(for: executable),
                                                      executable: executable, arguments: inner)
-        let environment = SubscriptionEnvironment.sanitized(ProcessInfo.processInfo.environment, scratch: job.scratch)
+        let environment = SubscriptionEnvironment.sanitized(ProcessInfo.processInfo.environment, scratch: job.scratch, provider: connection.provider)
 
         guard await SubscriptionCLIGate.shared.acquire() else {
             throw SubscriptionCLIError.unavailable("Another handoff is already running. Wait for it to finish or stop it first.")
