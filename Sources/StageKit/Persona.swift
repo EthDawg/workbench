@@ -609,6 +609,22 @@ final class PersonaLibrary: NSObject, ObservableObject {
         else { hud?.focusControls() }
     }
 
+    /// The main Persona action hides/resumes a prepared arrangement instead of
+    /// discarding its frozen cards. The single-card global shortcut below keeps
+    /// its existing refusal to replace an active prepared session.
+    @discardableResult func togglePersonaVisibility() -> Result<Void, Error> {
+        switch sessionState.phase {
+        case .active:
+            pauseOverlaySession(); return .success(())
+        case .paused:
+            do { try resumeOverlaySession(); return .success(()) }
+            catch { notice = error.localizedDescription; return .failure(error) }
+        case .idle:
+            if overlayVisible { hideOverlay(); return .success(()) }
+            return showOverlay()
+        }
+    }
+
     func toggleQuickPersona() {
         guard session == nil else {
             notice = "End the prepared overlay session before showing one floating persona."

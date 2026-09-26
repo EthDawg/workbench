@@ -1,8 +1,44 @@
 import SwiftUI
 
+enum PersonaLibraryMode { case sheet, workspace }
+
+/// Sheets release preparation before showing artwork; the independent workspace
+/// can act immediately. Consume deferred requests once so unrelated navigation
+/// cannot replay an earlier Start or Resume.
+struct PersonaLibraryLaunchState {
+    enum Request {
+        case oneCard
+        case prepared(groupIDs: [UUID], softReveal: Bool)
+        case resume
+        var isResume: Bool { if case .resume = self { return true }; return false }
+        func perform(in library: PersonaLibrary) -> Result<Void, Error> {
+            switch self {
+            case .oneCard: return library.showOverlay()
+            case .prepared(let groupIDs, let softReveal):
+                return Result {
+                    guard let first = groupIDs.first else { throw PersonaSessionError.missingGroup }
+                    try library.startOverlaySession(groupIDs: groupIDs, initialGroupID: first, softReveal: softReveal)
+                }
+            case .resume: return Result { try library.resumeOverlaySession() }
+            }
+        }
+    }
+    private(set) var pending: Request?
+    mutating func request(_ request: Request, from mode: PersonaLibraryMode, in library: PersonaLibrary) -> Result<Void, Error>? {
+        if mode == .sheet { pending = request; return nil }
+        return request.perform(in: library)
+    }
+    mutating func dismissed(in library: PersonaLibrary) -> Result<Void, Error>? {
+        guard let request = pending else { return nil }
+        pending = nil
+        return request.perform(in: library)
+    }
+}
+
 struct PersonaLibraryView: View {
     @ObservedObject var library: PersonaLibrary
     var onChoose: ((SavedPersona) -> Void)? = nil
+    var mode: PersonaLibraryMode = .sheet
     @Environment(\.dismiss) private var dismiss
     @State private var renaming: UUID?
     @State private var name = ""
@@ -13,17 +49,31 @@ struct PersonaLibraryView: View {
     @State private var editingCard: SavedPersona?
     @State private var choosingStarter = false
     @State private var starterToEdit: SavedPersona?
-    @State private var showAfterDismiss = false
     @State private var preparingPresentation = false
-    @State private var startPreparedAfterDismiss: (groupIDs: [UUID], softReveal: Bool)?
-    @State private var resumeAfterDismiss = false
+    @State private var launchState = PersonaLibraryLaunchState()
     @State private var unsavedPresentationLayout = false
     @State private var confirmingDiscard = false
     @State private var dismissAfterDiscard = false
     @State private var removingPersona: SavedPersona?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        Group {
+            if mode == .workspace {
+                GeometryReader { geometry in
+                    ScrollView {
+                        content(availableWidth: geometry.size.width)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                }
+            } else { content(availableWidth: preparingPresentation ? 780 : 660) }
+        }.background(Workbench.background).workbenchTheme()
+    }
+
+    private func content(availableWidth: CGFloat) -> some View {
+        let usesColumns = availableWidth >= 640
+        let layout = usesColumns ? AnyLayout(HStackLayout(alignment: .top, spacing: 20))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+        return VStack(alignment: .leading, spacing: 16) {
             HStack {
                 if preparingPresentation {
                     Button { leavePreparation(dismissLibrary: false) } label: { Label("Personas", systemImage: "chevron.left") }
@@ -42,28 +92,19 @@ struct PersonaLibraryView: View {
                     } label: { Label("Add persona…", systemImage: "plus.circle.fill") }
                         .menuStyle(.borderlessButton).fixedSize().disabled(library.isReadOnly)
                 }
-                Button("Done") { leavePreparation(dismissLibrary: true) }.keyboardShortcut(.cancelAction)
+                if mode == .sheet || preparingPresentation {
+                    Button("Done") { leavePreparation(dismissLibrary: mode == .sheet) }.keyboardShortcut(.cancelAction)
+                }
             }
             if !preparingPresentation {
                 Text(onChoose == nil ? "Show a persona card over your apps, or arrange several cards together." : "Choose a persona card to place in this scene.")
                     .font(.callout).foregroundStyle(.secondary)
-                HStack {
-                    Picker("Group", selection: Binding(get: { library.activeGroupID }, set: { library.prepareGroup($0) })) {
-                        Text("All saved · one at a time").tag(UUID?.none)
-                        ForEach(library.groups) { group in Text(group.name).tag(Optional(group.id)) }
-                    }.disabled(library.isReadOnly)
-                    Button("New…") { groupName = ""; creatingGroup = true }.disabled(library.isReadOnly)
-                        .accessibilityLabel("Create persona group")
-                    if let group = library.activeGroup {
-                        Button("Add / remove members…") { editingGroup = group }.disabled(library.isReadOnly)
-                        Menu("Edit group") {
-                            Button("Choose members…") { editingGroup = group }
-                            Button("Rename…") { groupName = group.name; renamingGroup = true }
-                            Button("Remove group", role: .destructive) { library.removeGroup(group.id) }
-                        }.disabled(library.isReadOnly)
-                    }
+                if onChoose == nil { overlayActions }
+                ViewThatFits(in: .horizontal) {
+                    HStack { groupPicker; groupActions }
+                    VStack(alignment: .leading, spacing: 8) { groupPicker; groupActions }
                 }
-                HStack(alignment: .top, spacing: 20) {
+                layout {
                     List(selection: $library.selectedID) {
                         ForEach(library.visibleItems) { persona in
                             HStack(spacing: 10) {
@@ -80,7 +121,7 @@ struct PersonaLibraryView: View {
                                     }
                                 }
                         }
-                    }.frame(width: 250, height: 360).overlay {
+                    }.frame(width: usesColumns ? 250 : nil, height: usesColumns ? 360 : 220).overlay {
                         if library.visibleItems.isEmpty {
                             VStack(spacing: 10) {
                                 Text(library.activeGroup == nil ? "Your saved personas appear here." : "Choose this group's members.")
@@ -110,19 +151,6 @@ struct PersonaLibraryView: View {
                                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             HStack {
-                                if onChoose == nil {
-                                    if library.sessionState.phase == .idle {
-                                        Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
-                                            if library.overlayVisible { library.hideOverlay() }
-                                            else { showAfterDismiss = true; dismiss() }
-                                        }.disabled(!library.overlayVisible && library.renderedImage(for: selected) == nil)
-                                    } else {
-                                        if library.sessionState.phase == .paused {
-                                            Button("Resume overlays") { resumeAfterDismiss = true; dismiss() }
-                                        } else { Button("Hide all") { library.pauseOverlaySession() } }
-                                        Button("End overlays") { library.endOverlaySession() }
-                                    }
-                                }
                                 if let onChoose {
                                     Button("Use in scene") { onChoose(selected); dismiss() }
                                         .disabled(library.renderedImage(for: selected) == nil)
@@ -166,13 +194,13 @@ struct PersonaLibraryView: View {
                         } else {
                             Image(systemName: "person.crop.rectangle.stack").font(.system(size: 38)).foregroundStyle(.secondary)
                             Text("Choose or import a persona").font(.headline)
-                            Text("Use the same saved image over your browser or inside a mobile scene.")
+                            Text("Use the same saved image over your browser or inside a Present scene.")
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                         if onChoose == nil && (library.overlayVisible || library.sessionState.phase != .idle) {
                             Button("Focus floating controls for keyboard") { library.focusOverlayControls() }
                         }
-                    }.frame(width: 320, alignment: .leading)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if onChoose == nil {
                     HStack {
@@ -185,8 +213,8 @@ struct PersonaLibraryView: View {
                 }
             } else {
                 PersonaPresentationPreparation(library: library, onStart: { ids, softReveal in
-                    startPreparedAfterDismiss = (ids, softReveal); dismiss()
-                }, onResume: { resumeAfterDismiss = true; dismiss() },
+                    requestLaunch(.prepared(groupIDs: ids, softReveal: softReveal))
+                }, onResume: { requestLaunch(.resume) },
                    onManageGroups: { leavePreparation(dismissLibrary: false) },
                    onDraftChanged: { unsavedPresentationLayout = $0 })
             }
@@ -195,7 +223,7 @@ struct PersonaLibraryView: View {
             }
             Text("Whole-screen sharing includes preparation and floating controls. Use a persona in a scene when sharing that presentation window.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(24).frame(width: preparingPresentation ? 780 : 660).background(Workbench.background).workbenchTheme()
+        }.padding(24).frame(width: mode == .sheet ? (preparingPresentation ? 780 : 660) : nil)
             .alert("Remove saved persona?", isPresented: Binding(get: { removingPersona != nil }, set: { if !$0 { removingPersona = nil } })) {
                 Button("Cancel", role: .cancel) { removingPersona = nil }
                 Button("Remove", role: .destructive) {
@@ -206,20 +234,9 @@ struct PersonaLibraryView: View {
                 Text("This removes \(removingPersona?.name ?? "the persona") from the library, groups and active overlays. Its original image is retained for saved scenes. To only hide an on-screen card, use Hide instead.")
             }
             .onDisappear {
-                if let request = startPreparedAfterDismiss {
-                    startPreparedAfterDismiss = nil
-                    do { if let first = request.groupIDs.first {
-                        try library.startOverlaySession(groupIDs: request.groupIDs, initialGroupID: first, softReveal: request.softReveal)
-                    } }
-                    catch { reportLaunchFailure(error, resuming: false) }
-                } else if resumeAfterDismiss {
-                    resumeAfterDismiss = false
-                    do { try library.resumeOverlaySession() } catch { reportLaunchFailure(error, resuming: true) }
-                } else if showAfterDismiss {
-                    showAfterDismiss = false
-                    if case .failure(let error) = library.showOverlay() {
-                        reportLaunchFailure(error, resuming: false)
-                    }
+                let resuming = launchState.pending?.isResume == true
+                if case .failure(let error) = launchState.dismissed(in: library) {
+                    reportLaunchFailure(error, resuming: resuming)
                 }
             }
             .confirmationDialog("Discard the unsaved layout?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
@@ -254,6 +271,56 @@ struct PersonaLibraryView: View {
                 Button("Save") { if let id = library.activeGroupID { library.renameGroup(id, name: groupName) } }
                 Button("Cancel", role: .cancel) { }
             }
+    }
+
+    private var groupPicker: some View {
+        Picker("Group", selection: Binding(get: { library.activeGroupID }, set: { library.prepareGroup($0) })) {
+            Text("All saved · one at a time").tag(UUID?.none)
+            ForEach(library.groups) { group in Text(group.name).tag(Optional(group.id)) }
+        }.disabled(library.isReadOnly)
+    }
+    private var groupActions: some View {
+        HStack {
+            Button("New…") { groupName = ""; creatingGroup = true }.disabled(library.isReadOnly)
+                .accessibilityLabel("Create persona group")
+            if let group = library.activeGroup {
+                Button("Members…") { editingGroup = group }.disabled(library.isReadOnly)
+                    .accessibilityLabel("Add or remove persona group members")
+                Menu("Edit group") {
+                    Button("Choose members…") { editingGroup = group }
+                    Button("Rename…") { groupName = group.name; renamingGroup = true }
+                    Button("Remove group", role: .destructive) { library.removeGroup(group.id) }
+                }.disabled(library.isReadOnly)
+            }
+        }.fixedSize()
+    }
+    private var overlayActions: some View {
+        HStack(spacing: 10) {
+            if library.sessionState.phase == .idle {
+                Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
+                    if library.overlayVisible { library.hideOverlay() }
+                    else { requestLaunch(.oneCard) }
+                }.buttonStyle(.borderedProminent)
+                    .disabled(!library.overlayVisible && library.selected.flatMap { library.renderedImage(for: $0) } == nil)
+                Text(library.overlayVisible ? "Shown over your apps" : "Separate from Present")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                if library.sessionState.phase == .paused {
+                    Button("Resume overlays") { requestLaunch(.resume) }.buttonStyle(.borderedProminent)
+                } else {
+                    Button("Hide all") { library.pauseOverlaySession() }.buttonStyle(.borderedProminent)
+                }
+                Button("End overlays") { library.endOverlaySession() }
+                Text(library.sessionState.phase == .paused ? "Hidden · layout retained" : "Overlays active")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+    private func requestLaunch(_ request: PersonaLibraryLaunchState.Request) {
+        if let result = launchState.request(request, from: mode, in: library) {
+            if case .failure(let error) = result { reportLaunchFailure(error, resuming: request.isResume) }
+        } else { dismiss() }
     }
 
     private func reportLaunchFailure(_ error: Error, resuming: Bool) {
