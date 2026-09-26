@@ -68,7 +68,13 @@ enum CoreChecks {
         }
         var many: [Transcript] = []
         for i in 0...TranscriptHistory.limit { many = TranscriptHistory.adding(Transcript(text: "Capture \(i)", seconds: 1), to: many) }
-        try check(many.count == TranscriptHistory.limit && many.first?.text == "Capture 100" && many.last?.text == "Capture 1", "bounded history retains the newest 100 captures")
+        try check(many.count == TranscriptHistory.limit + 1 && many.first?.text == "Capture 100" && many.last?.text == "Capture 0",
+                  "the 101st capture keeps every earlier one, newest first")
+        let updatedOldest = Transcript(id: many[many.count - 1].id, date: many[many.count - 1].date, text: "Corrected oldest wording", seconds: 1)
+        let afterUpdate = TranscriptHistory.adding(updatedOldest, to: many)
+        try check(afterUpdate.count == many.count && afterUpdate.filter { $0.id == updatedOldest.id }.count == 1
+                    && afterUpdate.first?.text == "Corrected oldest wording",
+                  "saving an existing capture id updates one record instead of duplicating it")
         try store.save(SavedState(draft: "Independently edited draft", history: captures))
         let recovered = try store.load()
         try check(recovered.history.map(\.id) == captures.map(\.id) && recovered.history.last?.rawText == earlier.rawText, "multiple captures and originals survive saving an unrelated draft")
