@@ -29,6 +29,8 @@ public final class StageKitController: ObservableObject {
     public var onOpenScenes: (() -> Void)? {
         didSet { coordinator.onOpenScenes = onOpenScenes; coordinator.demoScenes.onOpen = onOpenScenes }
     }
+    /// Opens the host’s independent Persona workspace. Scene selection keeps its own sheet.
+    public var onOpenPersonas: (() -> Void)?
     public var onOpenShortcuts: (() -> Void)? {
         didSet { coordinator.onOpenShortcuts = onOpenShortcuts }
     }
@@ -111,8 +113,7 @@ public final class StageKitController: ObservableObject {
         return library.overlayVisible ? "Shown" : ""
     }
     public func togglePersona() {
-        if hasActivePersona { coordinator.demoScenes.personas.hideOverlay() }
-        else if case .failure = coordinator.demoScenes.personas.showOverlay() { showPersonas() }
+        if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }
     }
     public func makePersonaMenu(includePreparation: Bool = false) -> NSMenu {
         let menu = coordinator.demoScenes.personas.makeControlsMenu()
@@ -146,6 +147,7 @@ public final class StageKitController: ObservableObject {
     }
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
+    public var personasView: AnyView { AnyView(PersonaLibraryView(library: coordinator.demoScenes.personas, mode: .workspace)) }
 
     /// Installing a pack supplies starters; importing explicitly creates a personal copy.
     public func importPackScene(at url: URL) throws {
@@ -212,7 +214,10 @@ public final class StageKitController: ObservableObject {
     public func showBoard() { coordinator.toggleBoard(.white) }
     public func showTimer() { coordinator.toggleTimer() }
     public func showScenes() { coordinator.showDemoScenes() }
-    public func showPersonas() { coordinator.demoScenes.showPersonas() }
+    public func showPersonas() {
+        if let onOpenPersonas { onOpenPersonas() }
+        else { coordinator.demoScenes.showPersonas() }
+    }
     public func focusOverlayControls() { coordinator.demoScenes.personas.focusOverlayControls() }
     public func stepOverlaySet(_ offset: Int) { coordinator.demoScenes.personas.performOverlayAction(.stepGroup(offset)) }
     public func toggleOverlayVisibility() { coordinator.demoScenes.personas.performOverlayAction(.pauseResume) }

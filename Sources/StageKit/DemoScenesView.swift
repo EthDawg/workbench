@@ -1,6 +1,20 @@
 import AppKit
 import SwiftUI
 
+/// The editor reserves room for everyday controls and its fixed action bar.
+/// Expanded details scroll; the preview never asks for a wider canvas than the editor.
+struct DemoScenesLayout {
+    static let padding: CGFloat = 18
+    static func sidebarWidth(in width: CGFloat) -> CGFloat { width < 900 ? 210 : 245 }
+    static func previewSize(in editor: CGSize, aspect: CGFloat) -> CGSize {
+        let width = max(1, editor.width - padding * 2)
+        let availableHeight = max(1, editor.height)
+        let height = min(availableHeight * 0.5, max(120, availableHeight - 420))
+        let ratio = aspect.isFinite && aspect > 0 ? aspect : 16 / 9
+        return CGSize(width: min(width, height * ratio), height: min(width / ratio, height))
+    }
+}
+
 struct DemoScenesView: View {
     @ObservedObject var model: DemoScenes
     @State private var removalRequest: SceneRemovalRequest?
@@ -11,11 +25,16 @@ struct DemoScenesView: View {
     @State private var previewPaused = false
     @State private var previewMotionState = SceneMotionState.off
     @State private var adjustingLayout = false
+    @State private var adjustingPersona = false
+    @State private var personaSelectionAfterPopover: UUID?
+    @State private var showingConnectionGuide = false
+    @State private var pendingNativeApp: NativePresentationApp?
     @State private var resizingDevice = false
     @State private var creatingTextLogo = false
     @State private var textLogoName = "Your company"
     @State private var backdropReplacement: BackdropReplacement?
     var body: some View {
+        GeometryReader { workspace in
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -35,16 +54,17 @@ struct DemoScenesView: View {
                 } label: { Label("Add scene", systemImage: "plus") }
                     .disabled(model.storageBlocked)
                 if let adapter = model.sceneSync { MacSceneSyncControls(adapter: adapter) }
-            }.padding(18).frame(width: 245)
+            }.padding(18).frame(width: DemoScenesLayout.sidebarWidth(in: workspace.size.width))
             Divider()
             GeometryReader { editor in
             VStack(spacing: 0) {
             ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 if let scene = model.selected {
                     HStack {
-                        Text(scene.name).font(.title2.weight(.semibold))
-                        Spacer()
+                        Text(scene.name).font(.title2.weight(.semibold)).lineLimit(2).truncationMode(.tail)
+                            .help(scene.name).frame(maxWidth: .infinity, alignment: .leading)
+                        scenePersonaButton(scene)
                         Menu {
                             Button("Save editable copy…") { model.exportSceneCopy() }
                                 .disabled(model.isSceneReadOnly(scene))
@@ -56,24 +76,23 @@ struct DemoScenesView: View {
                     if let image = model.image(for: scene) {
                         SceneCanvas(scene: scene, image: image, logoImage: model.logoImage(for: scene), handImage: model.handImage(for: scene), personaImage: model.personaImage(for: scene), editable: !model.isSceneReadOnly(scene),
                                     paused: previewPaused, editing: adjustingLayout || resizingDevice,
-                                    covered: searchingLogo || choosingLogo || choosingStarter || backdropReplacement != nil || model.choosingPersonas,
+                                    covered: searchingLogo || choosingLogo || choosingStarter || backdropReplacement != nil || model.choosingPersonas || adjustingPersona || showingConnectionGuide,
                                     loadAmbience: model.ambienceImages, motionChanged: { state in
                             DispatchQueue.main.async { if model.selectedID == scene.id { previewMotionState = state } }
                         }) { value in
                             model.update(value) ? model.scenes.first(where: { $0.id == value.id }) : nil
                         }
-                            .frame(width: previewSize(in: editor.size).width, height: previewSize(in: editor.size).height)
+                            .frame(width: DemoScenesLayout.previewSize(in: editor.size, aspect: model.screenAspect).width, height: DemoScenesLayout.previewSize(in: editor.size, aspect: model.screenAspect).height)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.12)))
                             .accessibilityLabel("Scene preview. Drag the phone or persona to position it; drag the background to crop it.")
                             .frame(maxWidth: .infinity)
                             .onChange(of: scene.id) { _, _ in previewPaused = false; adjustingLayout = false; resizingDevice = false }
                         HStack {
-                            Text("Drag to position · saved on release")
+                            Text("Drag to position · saves automatically").fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Button("Change backdrop…") { backdropReplacement = BackdropReplacement(scene: model.selected ?? scene, root: model.root) }
                                 .disabled(model.storageBlocked)
-                            Text("Layout saved automatically").foregroundStyle(Workbench.accent)
                         }.font(.caption).foregroundStyle(.secondary)
                         HStack(spacing: 22) {
                             Toggle("Device frame", isOn: binding(\.showsPhone)).toggleStyle(.switch)
@@ -102,10 +121,9 @@ struct DemoScenesView: View {
                             Spacer(minLength: 0)
                         }
                         #endif
-                        logoControls(scene)
-                        personaControls(scene)
-                        DisclosureGroup("Adjust layout", isExpanded: $adjustingLayout) {
+                        DisclosureGroup("Scene details", isExpanded: $adjustingLayout) {
                         VStack(alignment: .leading, spacing: 16) {
+                        logoControls(scene)
                             HStack {
                                 Text("Backdrop zoom").font(.caption).foregroundStyle(.secondary)
                                 Slider(value: binding(\.zoom), in: 1...3).accessibilityLabel("Backdrop zoom")
@@ -180,29 +198,25 @@ struct DemoScenesView: View {
                     }
                 }
                 #endif
-            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }.padding(DemoScenesLayout.padding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }.disabled(model.selected.map { model.isSceneReadOnly($0) } ?? false)
             #if !APP_STORE
-            DesktopMotionControls(controller: model.desktopMotion).padding(.horizontal, 24)
+            DesktopMotionControls(controller: model.desktopMotion).padding(.horizontal, DemoScenesLayout.padding)
             #endif
             if let scene = model.selected, model.image(for: scene) != nil {
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        #if !APP_STORE
-                        Button("Present full screen") { model.startDemo() }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                        Button("Present in window") { model.startDemo(mode: .windowed) }.controlSize(.large).disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                        #else
-                        Button("Export image…") { model.exportPNG() }.buttonStyle(.borderedProminent).controlSize(.large)
-                        #endif
-                        Spacer()
-                        Menu("More") {
-                        #if !APP_STORE
-                        Button("Export image…") { model.exportPNG() }
-                        Button("Use as desktop") { model.applyDesktop() }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                        Button("Use as animated desktop") { model.applyDesktop(animate: true) }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
-                        #endif
-                        }.fixedSize().accessibilityLabel("More scene actions")
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            presentationButtons
+                            Spacer(minLength: 0)
+                            connectionButton
+                            sceneActions
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack { presentationButtons; Spacer(minLength: 0) }
+                            HStack { connectionButton; Spacer(minLength: 0); sceneActions }
+                        }
                     }
                     #if !APP_STORE
                     Text(model.usesSharedControls ? "Use the floating toolbar for live controls. Command-/ focuses it." : "Click the edge tile for controls. Esc closes controls, then ends.")
@@ -211,13 +225,24 @@ struct DemoScenesView: View {
                     Text("Export your scene, then position a QuickTime movie preview over its device frame.")
                         .font(.caption).foregroundStyle(.secondary)
                     #endif
-                    NativePresentationApps { model.notice = $0 }
-                }.padding(.horizontal, 24).padding(.vertical, 16).background(Workbench.surface)
+                }.padding(.horizontal, DemoScenesLayout.padding).padding(.vertical, 12).background(Workbench.surface)
             }
             }
             }
         }
+        }
         .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
+        .onChange(of: model.selectedID) { _, _ in adjustingPersona = false }
+        .sheet(isPresented: $showingConnectionGuide, onDismiss: {
+            guard let app = pendingNativeApp else { return }
+            pendingNativeApp = nil
+            app.open { model.notice = $0 }
+        }) {
+            PhonePresentationGuide(openApp: { app in
+                pendingNativeApp = app
+                showingConnectionGuide = false
+            })
+        }
         .sheet(item: $backdropReplacement) { draft in BackdropReplacementView(model: model, draft: draft) }
         .sheet(item: $removalRequest) { request in
             SceneRemovalConfirmation(request: request) { model.removeScenes(request.scenes) }
@@ -251,40 +276,89 @@ struct DemoScenesView: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text("A simple wordmark you can use now and replace with the real logo later.") }
     }
-    private func previewSize(in editor: CGSize) -> CGSize {
-        // Keep the saved scene and everyday controls together at the minimum
-        // window size. Expanded adjustments can scroll without stretching it.
-        let width = max(1, editor.width - 48)
-        let logoControlsHeight: CGFloat = model.selected?.logo == nil ? 0 : 64
-        let height = max(200, editor.height - 365 - logoControlsHeight)
-        return CGSize(width: min(width, height * model.screenAspect), height: min(width / model.screenAspect, height))
+    private var presentationButtons: some View {
+        HStack(spacing: 8) {
+            #if !APP_STORE
+            Button("Full screen") { model.startDemo() }.buttonStyle(.borderedProminent)
+                .disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+                .accessibilityLabel("Present full screen")
+            Button("Window") { model.startDemo(mode: .windowed) }
+                .disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+                .accessibilityLabel("Present in window")
+            #else
+            Button("Export image…") { model.exportPNG() }.buttonStyle(.borderedProminent)
+            #endif
+        }.fixedSize()
+    }
+    private var connectionButton: some View {
+        Button { showingConnectionGuide = true } label: {
+            Label("Connection & audio…", systemImage: "cable.connector")
+        }.fixedSize().help("Device connection, phone audio and Apple app alternatives")
+    }
+    private var sceneActions: some View {
+        Menu("More") {
+            #if !APP_STORE
+            Button("Export image…") { model.exportPNG() }
+            Button("Use as desktop") { model.applyDesktop() }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+            Button("Use as animated desktop") { model.applyDesktop(animate: true) }.disabled(model.desktopBusy || !model.systemIntegrationEnabled)
+            #endif
+        }.fixedSize().accessibilityLabel("More scene actions")
+    }
+    private func scenePersonaButton(_ scene: DemoScene) -> some View {
+        Button {
+            if scene.persona == nil { model.showPersonas(for: scene.id) }
+            else { adjustingPersona = true }
+        } label: {
+            Label(scene.persona == nil ? "Add persona…" : "Persona…", systemImage: "person.crop.rectangle")
+        }.fixedSize().disabled(model.storageBlocked)
+            .accessibilityLabel(scene.persona == nil ? "Add persona to scene" : "Persona in this scene")
+            .popover(isPresented: $adjustingPersona, arrowEdge: .bottom) {
+                personaControls(scene).padding(18).frame(width: 310)
+                    .onDisappear {
+                        guard let sceneID = personaSelectionAfterPopover else { return }
+                        personaSelectionAfterPopover = nil
+                        model.showPersonas(for: sceneID)
+                    }
+            }
     }
     private func personaControls(_ scene: DemoScene) -> some View {
-        HStack(spacing: 12) {
-            Button { model.showPersonas(for: scene.id) } label: {
-                Label(scene.persona == nil ? "Add persona…" : "Change persona…", systemImage: "person.crop.rectangle")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Persona in this scene").font(.headline)
+                Spacer()
+                Button("Done") { adjustingPersona = false }.keyboardShortcut(.cancelAction)
+            }
+            Text("Part of this presentation window. Use Persona for a separate overlay over other apps.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button("Change persona…") {
+                personaSelectionAfterPopover = scene.id
+                adjustingPersona = false
             }.disabled(model.storageBlocked)
             if let persona = scene.persona {
                 Text("Size").font(.caption).foregroundStyle(.secondary)
                 Slider(value: Binding(get: { model.selected?.persona?.width ?? persona.width }, set: { width in
                     guard var value = model.selected, value.id == scene.id else { return }
                     value.persona?.width = width; model.update(value)
-                }), in: 0.06...0.40).accessibilityLabel("Persona size")
-                Menu("Position") {
-                    Button("Bottom left") { movePersona(scene, x: 0.02, y: 0.02) }
-                    Button("Bottom right") { movePersona(scene, x: 0.98, y: 0.02) }
-                    Button("Top left") { movePersona(scene, x: 0.02, y: 0.98) }
-                    Button("Top right") { movePersona(scene, x: 0.98, y: 0.98) }
-                }.fixedSize()
-                Button { var value = scene; value.persona = nil; model.update(value) } label: {
-                    Image(systemName: "xmark.circle")
-                }.buttonStyle(.plain).accessibilityLabel("Remove persona from scene")
+                }), in: 0.06...0.40).accessibilityLabel("Persona size in scene")
+                HStack {
+                    Menu("Position") {
+                        Button("Bottom left") { movePersona(scene, x: 0.02, y: 0.02) }
+                        Button("Bottom right") { movePersona(scene, x: 0.98, y: 0.02) }
+                        Button("Top left") { movePersona(scene, x: 0.02, y: 0.98) }
+                        Button("Top right") { movePersona(scene, x: 0.98, y: 0.98) }
+                    }.fixedSize()
+                    Spacer()
+                    Button("Remove from scene") {
+                        guard var value = model.selected, value.id == scene.id else { return }
+                        value.persona = nil; model.update(value); adjustingPersona = false
+                    }
+                }
             }
-            Spacer(minLength: 0)
-        }.font(.caption)
+        }
     }
     private func movePersona(_ scene: DemoScene, x: Double, y: Double) {
-        var value = scene; value.persona?.x = x; value.persona?.y = y; model.update(value)
+        guard var value = model.selected, value.id == scene.id else { return }
+        value.persona?.x = x; value.persona?.y = y; model.update(value)
     }
     @ViewBuilder private func viewportControls(_ scene: DemoScene) -> some View {
         if scene.showsPhone {
