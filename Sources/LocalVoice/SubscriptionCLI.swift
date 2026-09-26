@@ -77,6 +77,7 @@ enum SubscriptionCLILimits {
     /// stdout for one run. A stream-json transcript is far smaller; this only
     /// stops a runaway producer from filling memory.
     static let maximumOutputBytes = 8 * 1024 * 1024
+    static let maximumReplyBytes = 8 * 1024 * 1024
     static let maximumProbeBytes = 64 * 1024
     static let maximumLineBytes = 2 * 1024 * 1024
     static let maximumErrorBytes = 64 * 1024
@@ -327,6 +328,7 @@ struct SubscriptionJobPaths {
     let logs: URL
     let state: URL
     let scratch: URL
+    let finalMessage: URL
 
     init(root: URL) {
         let root = SubscriptionPaths.resolved(root)
@@ -337,15 +339,91 @@ struct SubscriptionJobPaths {
         self.logs = support.appendingPathComponent("logs", isDirectory: true)
         self.state = support.appendingPathComponent("state", isDirectory: true)
         self.scratch = support.appendingPathComponent("tmp", isDirectory: true)
+        self.finalMessage = support.appendingPathComponent("final-" + UUID().uuidString + ".txt")
     }
 
     func prepare(_ profileText: String) throws {
         let manager = FileManager.default
         for directory in [support, logs, state, scratch] {
+            guard SubscriptionPaths.resolved(directory).path == directory.path else {
+                throw SubscriptionCLIError.boundary("A handoff support folder points outside its prepared location.")
+            }
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
         try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scratch.path)
         try Data(profileText.utf8).write(to: profile, options: .atomic)
+    }
+}
+
+/// Codex writes only its final reply here. A fresh name prevents a previous
+/// attempt from satisfying this run. Keep the parent directory open across
+/// dispatch, then open the file relative to that descriptor without following
+/// symlinks. Neither a replaced directory nor a special file can redirect or
+/// block the read. This never reads a stream message as a fallback.
+final class SubscriptionFinalMessageFile {
+    private let directory: Int32
+    private let name: String
+
+    init(job: SubscriptionJobPaths) throws {
+        let flags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        let root = open(job.root.path, flags)
+        guard root >= 0 else {
+            throw SubscriptionCLIError.boundary("Workbench could not open the prepared reply folder safely.")
+        }
+        defer { close(root) }
+        let directory = openat(root, job.support.lastPathComponent, flags)
+        guard directory >= 0 else {
+            throw SubscriptionCLIError.boundary("Workbench could not open the prepared reply folder safely.")
+        }
+        let name = job.finalMessage.lastPathComponent
+        var existing = stat()
+        guard fstatat(directory, name, &existing, AT_SYMLINK_NOFOLLOW) != 0, errno == ENOENT else {
+            close(directory)
+            throw SubscriptionCLIError.boundary("The reply file already exists; this handoff needs a fresh result.")
+        }
+        self.directory = directory
+        self.name = name
+    }
+
+    deinit {
+        unlinkat(directory, name, 0)
+        close(directory)
+    }
+
+    func read() throws -> String? {
+        let descriptor = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else {
+            if errno == ENOENT { return nil }
+            throw SubscriptionCLIError.boundary("Codex's final reply could not be opened safely.")
+        }
+        defer { close(descriptor) }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              info.st_nlink == 1, info.st_uid == geteuid() else {
+            throw SubscriptionCLIError.boundary("Codex's final reply is not an owned regular file.")
+        }
+        let limit = SubscriptionCLILimits.maximumReplyBytes
+        guard info.st_size >= 0, info.st_size <= limit else {
+            throw SubscriptionCLIError.boundary("Codex's final reply exceeds Workbench's size limit.")
+        }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let received = Darwin.read(descriptor, &buffer, min(buffer.count, limit + 1 - data.count))
+            if received == 0 { break }
+            if received < 0 {
+                if errno == EINTR { continue }
+                throw SubscriptionCLIError.incomplete("Codex's final reply could not be read completely.")
+            }
+            data.append(contentsOf: buffer.prefix(received))
+            guard data.count <= limit else {
+                throw SubscriptionCLIError.boundary("Codex's final reply exceeds Workbench's size limit.")
+            }
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw SubscriptionCLIError.incomplete("Codex's final reply was not valid UTF-8 text.")
+        }
+        return text
     }
 }
 
@@ -540,6 +618,7 @@ enum SubscriptionCLIPlanner {
             "--ignore-rules",
             "--ephemeral",
             "--skip-git-repo-check",
+            "--output-last-message", job.finalMessage.path,
             "--sandbox", "read-only",
             "-c", "approval_policy=\"never\"",
             "-c", "web_search=\"disabled\"",
@@ -565,8 +644,6 @@ enum SubscriptionCLIPlanner {
 /// One parsed line of a provider's JSON event stream.
 enum SubscriptionStreamEvent: Equatable {
     case session(String)
-    /// Reply text to append.
-    case text(String)
     /// The turn ended. `failure` is set when the provider reported an error.
     case result(text: String?, session: String?, failure: String?)
     /// A tool or capability the boundary forbids appeared in the stream.
@@ -631,9 +708,8 @@ enum SubscriptionStreamParser {
             if forbiddenCodexTypes.contains(itemType) {
                 return .forbidden("The Codex CLI attempted \(itemType), which this handoff does not allow.")
             }
-            if type == "item.completed", itemType == "agent_message", let text = item["text"] as? String {
-                return .text(text)
-            }
+            // agent_message includes commentary as well as final replies.
+            // --output-last-message is the documented final-only channel.
             return .ignored
         }
         switch type {
@@ -657,7 +733,6 @@ enum SubscriptionStreamParser {
 /// The folded state of one run's event stream.
 struct SubscriptionStreamState {
     var session: String?
-    var texts: [String] = []
     var resultText: String?
     var failure: String?
     var completed = false
@@ -667,8 +742,6 @@ struct SubscriptionStreamState {
         switch event {
         case .session(let id):
             if session == nil { session = id }
-        case .text(let text):
-            texts.append(text)
         case .result(let text, let id, let failure):
             completed = true
             if let text, !text.isEmpty { resultText = text }
@@ -681,13 +754,10 @@ struct SubscriptionStreamState {
         }
     }
 
-    var text: String {
-        (resultText ?? texts.joined(separator: "\n\n")).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// A zero exit status alone is not success: a usable run needs the
     /// provider's own terminal event and non-empty text.
-    func resolve(provider: SubscriptionProvider, status: Int32, standardError: String) throws -> SubscriptionCLIResult {
+    func resolve(provider: SubscriptionProvider, status: Int32, standardError: String,
+                 codexFinalMessage: () throws -> String? = { nil }) throws -> SubscriptionCLIResult {
         if let violation { throw SubscriptionCLIError.boundary(violation) }
         if let failure {
             throw SubscriptionCLIError.failed("\(provider.title) reported: \(SubscriptionRedaction.short(failure))")
@@ -701,7 +771,14 @@ struct SubscriptionStreamState {
             let reason = trailing.isEmpty ? "exit code \(status)" : trailing
             throw SubscriptionCLIError.failed("\(provider.title) finished with a failure (\(reason)).")
         }
-        let text = self.text
+        let reply = try provider == .codex ? codexFinalMessage() : resultText
+        guard let reply else {
+            throw SubscriptionCLIError.incomplete("\(provider.title) finished without a final reply.")
+        }
+        guard reply.utf8.count <= SubscriptionCLILimits.maximumReplyBytes else {
+            throw SubscriptionCLIError.boundary("\(provider.title)'s final reply exceeds Workbench's size limit.")
+        }
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             throw SubscriptionCLIError.incomplete("\(provider.title) finished without any reply text.")
         }
@@ -1243,6 +1320,7 @@ enum SubscriptionCLI {
     private static func dispatch(_ connection: SubscriptionConnection, arguments: [String],
                                  environment: [String: String], job: SubscriptionJobPaths, input: Data,
                                  onSession: @escaping @Sendable (String) -> Void) async throws -> SubscriptionCLIResult {
+        let finalMessage = connection.provider == .codex ? try SubscriptionFinalMessageFile(job: job) : nil
         let sink = SubscriptionStreamSink(provider: connection.provider, onSession: onSession)
         let child = SubscriptionProcess(executable: SubscriptionSandbox.executable, arguments: arguments,
                                         environment: environment, directory: job.root, input: input,
@@ -1267,7 +1345,8 @@ enum SubscriptionCLI {
             break
         }
         return try sink.snapshot().resolve(provider: connection.provider, status: completion.status,
-                                           standardError: completion.standardError)
+                                           standardError: completion.standardError,
+                                           codexFinalMessage: { try finalMessage?.read() })
     }
 
     static let supportedImageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp"]

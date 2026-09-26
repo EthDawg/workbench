@@ -128,6 +128,8 @@ enum SubscriptionCLIChecks {
             try check(codexArguments.contains(flag), "Codex flag \(flag)")
         }
         try check(value(after: "--sandbox", in: codexArguments) == "read-only", "Codex's own sandbox is read-only")
+        try check(value(after: "--output-last-message", in: codexArguments) == job.finalMessage.path, "Codex writes its final message into this job")
+        try check(job.finalMessage != SubscriptionJobPaths(root: job.root).finalMessage, "each attempt gets a different final-message path")
         let settings = codexArguments.enumerated().filter { $0.element == "-c" }.map { codexArguments[$0.offset + 1] }
         for setting in ["approval_policy=\"never\"", "web_search=\"disabled\"", "cli_auth_credentials_store=\"file\"", "project_doc_max_bytes=0",
                         "log_dir=\"\(job.logs.path)\"", "sqlite_home=\"\(job.state.path)\"",
@@ -221,8 +223,8 @@ enum SubscriptionCLIChecks {
 
         // Codex event stream
         try check(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"thread.started\",\"thread_id\":\"thread-fixture\"}") == .session("thread-fixture"), "the Codex thread identifier is reported")
-        try check(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Prepared draft.\"}}") == .text("Prepared draft."), "an agent message is reply text")
-        try check(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"item.completed\",\"item\":{\"item_type\":\"agent_message\",\"text\":\"Second form.\"}}") == .text("Second form."), "the alternative item key is understood")
+        try check(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Prepared draft.\"}}") == .ignored, "stream agent messages are not a final-reply source")
+        try check(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"item.completed\",\"item\":{\"item_type\":\"agent_message\",\"text\":\"Second form.\"}}") == .ignored, "the alternative agent-message key is also ignored")
         try check(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"turn.completed\"}") == .result(text: nil, session: nil, failure: nil), "a completed turn ends the run")
         if case .result(_, _, let failure) = SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"turn.failed\",\"error\":{\"message\":\"usage limit reached\"}}") {
             try check(failure == "usage limit reached", "a failed turn reports its reason")
@@ -241,23 +243,116 @@ enum SubscriptionCLIChecks {
         var complete = SubscriptionStreamState()
         for line in ["{\"type\":\"thread.started\",\"thread_id\":\"thread-fixture\"}",
                      "{\"type\":\"item.completed\",\"item\":{\"type\":\"reasoning\"}}",
-                     "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"First part.\"}}",
-                     "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Second part.\"}}",
+                     "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"I am checking the selected images.\"}}",
+                     "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Final reply is in the output file.\"}}",
                      "{\"type\":\"turn.completed\"}"] {
             complete.apply(SubscriptionStreamParser.event(provider: .codex, line: line))
         }
-        let resolved = try complete.resolve(provider: .codex, status: 0, standardError: "")
-        try check(resolved.providerSessionID == "thread-fixture" && resolved.text == "First part.\n\nSecond part.", "a complete Codex turn returns its whole reply")
+        let finalJSON = "{\"title\":\"Synthetic final\",\"tags\":[\"fixture\"]}"
+        let resolved = try complete.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { finalJSON })
+        try check(resolved.providerSessionID == "thread-fixture" && resolved.text == finalJSON, "commentary and stream messages never contaminate the final reply")
+        let metadata = try JSONSerialization.jsonObject(with: Data(resolved.text.utf8)) as? [String: Any]
+        try check(metadata?["title"] as? String == "Synthetic final", "the returned metadata remains strict JSON")
+        try rejects("a complete stream without its final-message file is incomplete") {
+            _ = try complete.resolve(provider: .codex, status: 0, standardError: "")
+        }
+        try rejects("a whitespace-only final-message file is incomplete") {
+            _ = try complete.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { "  \n" })
+        }
 
         var partial = SubscriptionStreamState()
         partial.apply(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"thread.started\",\"thread_id\":\"thread-fixture\"}"))
         partial.apply(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Half an answer\"}}"))
-        try rejects("a partial stream is never returned as a result") { _ = try partial.resolve(provider: .codex, status: 0, standardError: "") }
+        try rejects("a final file without the terminal event is never returned") {
+            _ = try partial.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { finalJSON })
+        }
 
         var successThenFailure = SubscriptionStreamState()
         successThenFailure.apply(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Text\"}}"))
         successThenFailure.apply(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"turn.completed\"}"))
-        try rejects("a non-zero exit is a failure even with a complete turn") { _ = try successThenFailure.resolve(provider: .codex, status: 3, standardError: "codex: broken pipe") }
+        try rejects("a non-zero exit fails even with a complete turn and final file") {
+            _ = try successThenFailure.resolve(provider: .codex, status: 3, standardError: "codex: broken pipe", codexFinalMessage: { finalJSON })
+        }
+        successThenFailure.apply(SubscriptionStreamParser.event(provider: .codex, line: "{\"type\":\"turn.failed\",\"error\":{\"message\":\"synthetic failure\"}}"))
+        try rejects("a failure event invalidates a final file even with status zero") {
+            _ = try successThenFailure.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { finalJSON })
+        }
+        var forbiddenWithFinal = complete
+        forbiddenWithFinal.apply(.forbidden("Synthetic forbidden tool"))
+        try rejects("a forbidden tool invalidates a successful final file") {
+            _ = try forbiddenWithFinal.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { finalJSON })
+        }
+
+        // Actual final-message files: stale output, unsafe types, encoding and
+        // size cannot turn a completed event stream into a usable reply.
+        func withFinalFile(_ exercise: (SubscriptionJobPaths, SubscriptionFinalMessageFile) throws -> Void) throws {
+            let attempt = SubscriptionJobPaths(root: job.root)
+            let file = try SubscriptionFinalMessageFile(job: attempt)
+            try exercise(attempt, file)
+        }
+        try withFinalFile { attempt, file in
+            try check(try file.read() == nil, "a missing final file is reported as missing")
+            try Data(finalJSON.utf8).write(to: attempt.finalMessage)
+            let receipt = try complete.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { try file.read() })
+            try check(receipt.text == finalJSON, "a complete turn returns the actual final file only")
+            try rejects("an existing final path cannot be reused") { _ = try SubscriptionFinalMessageFile(job: attempt) }
+        }
+        let staleAttempt = SubscriptionJobPaths(root: job.root)
+        try Data("Stale reply from a previous attempt".utf8).write(to: staleAttempt.finalMessage)
+        try withFinalFile { _, file in
+            try rejects("a stale file cannot satisfy a later completed run without its own final") {
+                _ = try complete.resolve(provider: .codex, status: 0, standardError: "", codexFinalMessage: { try file.read() })
+            }
+        }
+        let unselected = directory.deletingLastPathComponent().appendingPathComponent("unselected-reply-" + UUID().uuidString)
+        try Data("Unselected synthetic text".utf8).write(to: unselected)
+        defer { try? FileManager.default.removeItem(at: unselected) }
+        try withFinalFile { attempt, file in
+            try FileManager.default.createSymbolicLink(at: attempt.finalMessage, withDestinationURL: unselected)
+            try rejects("a final-message symlink cannot read outside the job") { _ = try file.read() }
+        }
+        try withFinalFile { attempt, file in
+            try FileManager.default.linkItem(at: unselected, to: attempt.finalMessage)
+            try rejects("a hard-linked final reply is refused") { _ = try file.read() }
+        }
+        try withFinalFile { attempt, file in
+            guard mkfifo(attempt.finalMessage.path, 0o600) == 0 else { throw VoiceError.message("Could not create synthetic FIFO") }
+            try rejects("a FIFO reply is refused without waiting for a writer") { _ = try file.read() }
+        }
+        try withFinalFile { attempt, file in
+            try FileManager.default.createDirectory(at: attempt.finalMessage, withIntermediateDirectories: false)
+            try rejects("a directory is not a reply") { _ = try file.read() }
+        }
+        try withFinalFile { attempt, file in
+            try Data([0xFF, 0xFE]).write(to: attempt.finalMessage)
+            try rejects("a final reply must be valid UTF-8") { _ = try file.read() }
+        }
+        try withFinalFile { attempt, file in
+            let descriptor = open(attempt.finalMessage.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard descriptor >= 0 else { throw VoiceError.message("Could not create synthetic oversized reply") }
+            defer { close(descriptor) }
+            guard ftruncate(descriptor, off_t(SubscriptionCLILimits.maximumReplyBytes + 1)) == 0 else {
+                throw VoiceError.message("Could not size synthetic reply")
+            }
+            try rejects("an oversized final file is refused before loading it") { _ = try file.read() }
+        }
+        let escaped = SubscriptionJobPaths(root: directory.appendingPathComponent("escape-check"))
+        let outsideSupport = directory.appendingPathComponent("unselected-support")
+        try FileManager.default.createDirectory(at: escaped.root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outsideSupport, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: escaped.support, withDestinationURL: outsideSupport)
+        try rejects("preparation refuses a redirected support folder") { try escaped.prepare(codexProfile) }
+        try rejects("final-message setup refuses a redirected support folder") { _ = try SubscriptionFinalMessageFile(job: escaped) }
+        try check(!FileManager.default.fileExists(atPath: outsideSupport.appendingPathComponent("sandbox.sb").path), "preparation writes nothing through the support symlink")
+
+        let replaced = SubscriptionJobPaths(root: directory.appendingPathComponent("replacement-check"))
+        try FileManager.default.createDirectory(at: replaced.root, withIntermediateDirectories: true)
+        try replaced.prepare(codexProfile)
+        let pinnedFile = try SubscriptionFinalMessageFile(job: replaced)
+        try FileManager.default.moveItem(at: replaced.support, to: replaced.root.appendingPathComponent("original-support"))
+        try Data("Unselected replacement reply".utf8).write(to: outsideSupport.appendingPathComponent(replaced.finalMessage.lastPathComponent))
+        try FileManager.default.createSymbolicLink(at: replaced.support, withDestinationURL: outsideSupport)
+        try check(try pinnedFile.read() == nil, "a support-directory replacement cannot redirect the pinned reply read")
 
         var claudeState = SubscriptionStreamState()
         claudeState.apply(SubscriptionStreamParser.event(provider: .claude, line: claudeInit))
@@ -600,7 +695,7 @@ enum SubscriptionCLIChecks {
         try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: true)
         let cli = runtime.appendingPathComponent("codex")
         let marker = job.root.appendingPathComponent("inference-started")
-        func installFixture(authLine: String, status: Int32 = 0) throws {
+        func installFixture(authLine: String, status: Int32 = 0, resultMode: String = "complete") throws {
             let script = """
             #!/bin/sh
             if [ "$1" = login ]; then
@@ -610,7 +705,25 @@ enum SubscriptionCLIChecks {
             if [ "$1" = exec ]; then
                 printf started > inference-started
                 cat >/dev/null
-                printf '%s\\n' '{"type":"thread.started","thread_id":"synthetic-dispatch"}' '{"type":"item.completed","item":{"type":"agent_message","text":"Synthetic dispatch completed."}}' '{"type":"turn.completed"}'
+                output=
+                while [ "$#" -gt 0 ]; do
+                    if [ "$1" = --output-last-message ]; then shift; output="$1"; fi
+                    shift
+                done
+                [ -n "$output" ] || exit 20
+                if [ '\(resultMode)' != missing-final ]; then
+                    printf '%s' '{"title":"Synthetic final","tags":["fixture"]}' > "$output"
+                fi
+                printf '%s\\n' '{"type":"thread.started","thread_id":"synthetic-dispatch"}' '{"type":"item.completed","item":{"type":"agent_message","text":"I am checking the selected images."}}' '{"type":"item.completed","item":{"type":"agent_message","text":"Final reply is in the output file."}}'
+                if [ '\(resultMode)' = forbidden ]; then
+                    printf '%s\\n' '{"type":"item.started","item":{"type":"command_execution"}}'
+                fi
+                if [ '\(resultMode)' = failure ]; then
+                    printf '%s\\n' '{"type":"turn.failed","error":{"message":"Synthetic failure"}}'
+                elif [ '\(resultMode)' != missing-terminal ]; then
+                    printf '%s\\n' '{"type":"turn.completed"}'
+                fi
+                if [ '\(resultMode)' = nonzero ]; then exit 3; fi
                 exit 0
             fi
             exit 19
@@ -630,8 +743,24 @@ enum SubscriptionCLIChecks {
         }
         try installFixture(authLine: "Logged in using ChatGPT")
         let receipt = try await SubscriptionCLI.run(cachedReady, prompt: "Synthetic input", images: [], directory: job.root, onSession: { _ in })
-        try check(receipt.providerSessionID == "synthetic-dispatch" && receipt.text == "Synthetic dispatch completed.", "a current subscription sign-in allows a complete synthetic dispatch")
+        try check(receipt.providerSessionID == "synthetic-dispatch" && receipt.text == "{\"title\":\"Synthetic final\",\"tags\":[\"fixture\"]}", "actual synthetic dispatch returns final JSON without progress commentary")
         try check(FileManager.default.fileExists(atPath: marker.path), "successful receipt follows the actual inference branch")
+        try Data("Stale final from an earlier attempt".utf8).write(to: job.finalMessage)
+        for mode in ["missing-final", "missing-terminal", "failure", "nonzero", "forbidden"] {
+            try installFixture(authLine: "Logged in using ChatGPT", resultMode: mode)
+            do {
+                _ = try await SubscriptionCLI.run(cachedReady, prompt: "Synthetic input", images: [], directory: job.root, onSession: { _ in })
+                throw VoiceError.message("SUBSCRIPTION SANDBOX CHECK FAILED: \(mode) returned a result")
+            } catch let error as SubscriptionCLIError {
+                let expected: Bool
+                switch (mode, error) {
+                case ("missing-final", .incomplete), ("missing-terminal", .incomplete),
+                     ("failure", .failed), ("nonzero", .failed), ("forbidden", .boundary): expected = true
+                default: expected = false
+                }
+                try check(expected, "\(mode) refuses a receipt even with stale or newly written final text")
+            }
+        }
         print("SUBSCRIPTION_SANDBOX_CHECKS_OK: \(count) checks passed")
     }
 
