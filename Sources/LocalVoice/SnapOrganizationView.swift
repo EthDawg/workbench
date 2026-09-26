@@ -4,6 +4,7 @@ import AppKit
 struct SnapOrganizationView: View {
     @ObservedObject var model: SnapModel
     let selectedIDs: Set<UUID>
+    var savedSelectionID: UUID?
     let onHandOff: (String) -> Void
     @State private var plan: SnapOrganizationPlan?
     @State private var proposed: Set<UUID> = []
@@ -50,7 +51,7 @@ struct SnapOrganizationView: View {
         }.padding(24).frame(width: 620).onAppear { prepare() }
     }
     private func prepare() {
-        do { let plan = try SnapOrganization.prepare(store: model.store, ids: selectedIDs); self.plan = plan; proposed = Set(plan.duplicates.map(\.id)); notice = nil }
+        do { let plan = try SnapOrganization.prepare(store: model.store, ids: selectedIDs, selectionID: savedSelectionID); self.plan = plan; proposed = Set(plan.duplicates.map(\.id)); notice = nil }
         catch { notice = error.localizedDescription }
     }
     @discardableResult private func save(_ plan: SnapOrganizationPlan) -> Bool {

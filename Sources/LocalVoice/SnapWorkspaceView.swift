@@ -5,6 +5,7 @@ import ImageIO
 struct SnapWorkspaceView: View {
     @ObservedObject var model: SnapModel
     @Binding var selectedIDs: Set<UUID>
+    var savedSelectionID: UUID?
     var selectionControls = AnyView(EmptyView())
     var onHandOff: () -> Void = {}
     var onAddToNarratedSession: ([UUID]) -> Void = { _ in }
@@ -71,7 +72,7 @@ struct SnapWorkspaceView: View {
         }.padding(24)
             .sheet(item: $model.draft) { draft in SnapEditorView(model: model, draft: draft) }
             .sheet(isPresented: $reviewingOrganization) {
-                SnapOrganizationView(model: model, selectedIDs: selectedIDs, onHandOff: onOrganiseHandOff)
+                SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID, onHandOff: onOrganiseHandOff)
             }
             .onAppear { model.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refresh() }
