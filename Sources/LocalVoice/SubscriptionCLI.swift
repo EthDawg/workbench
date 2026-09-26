@@ -375,11 +375,10 @@ enum SubscriptionJobDirectory {
 // MARK: - OS sandbox
 
 /// Every child runs under `sandbox-exec`. The profile denies reading the
-/// person's files and denies writing anywhere except the job folder, so the
-/// selected snapshot is the only material the CLI can reach even if a tool flag
-/// were wrong. The only exceptions are the paths the unmodified CLI needs to
-/// read its own installation and its own sign-in; Workbench never reads those
-/// bytes itself.
+/// person's files and limits work data to the selected job folder. The only
+/// exceptions are the unmodified CLI's installation, its own installation ID,
+/// and read-only native sign-in files; Workbench never reads credential bytes.
+/// Saved session contents remain denied even when the CLI checks their metadata.
 enum SubscriptionSandbox {
     static let executable = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
 
@@ -444,7 +443,9 @@ enum SubscriptionSandbox {
                 lines.append("(allow file-read-metadata (literal (string-append (param \"USER_ROOT\") \"\(path)\")))")
             }
             lines.append("(allow file-read* (literal (string-append (param \"USER_ROOT\") \"/.codex/installation_id\")))")
-            lines.append("(allow file-read* (literal (string-append (param \"USER_ROOT\") \"/.codex/auth.json\")))")
+            // The native CLI opens its own installation identifier read/write
+            // while initializing. Credential files remain read-only here.
+            lines.append("(allow file-write* (literal (string-append (param \"USER_ROOT\") \"/.codex/installation_id\")))")
             if purpose == .status {
                 lines.append("(allow file-read* (literal (string-append (param \"USER_ROOT\") \"/.codex/config.toml\")))")
             }
@@ -1147,8 +1148,9 @@ enum SubscriptionCLI {
     /// Hands the prepared prompt to the connected CLI and returns its reply.
     ///
     /// `directory` must be the immutable, app-managed snapshot for this job: it
-    /// holds only material the person selected, and it is the only place the
-    /// child can read or write. Tools are off, so the CLI cannot run commands,
+    /// holds only material the person selected. Outside it, only the CLI's
+    /// runtime, installation ID and read-only native sign-in are allowed. Tools are off, so
+    /// the CLI cannot run commands,
     /// browse, write files elsewhere or start another agent. Nothing is
     /// retried, no provider is substituted and no usage is purchased.
     static func run(_ connection: SubscriptionConnection, prompt: String, images: [URL], directory: URL,
