@@ -36,9 +36,13 @@ Reusing what you captured (History, then Hand off) supports these moments. It is
 
 **Hand off** is an action on selected History items: a recipe (skill) and a destination (Copy instructions, Claude or Codex), with the result returning to History. It is not a destination of its own.
 
+### Composition
+
+Every use of Workbench is at most three visible choices: the capability, an optional recipe, and where the result goes (the field you were in, History, Claude or Codex, a file or the speakers). The source follows from where you started or what you selected, and is offered only when it is genuinely ambiguous, such as which app's audio to transcribe. A recipe is a skill file; Dictate's text styles stay its own cleanup options because they promise to keep your wording. A named workflow is a composition worth naming because it is a moment: Snap & Talk is Snap with narration, the Deck recipe and a file. A new idea should be a recipe or a destination before it is a capability.
+
 ### Places
 
-- **History**: everything captured or produced (dictations, meetings and calls, Snaps, Snap & Talk decks, Hand off results), reached through one door and searched and selected together. Existing stores stay where they are; History is a view over them.
+- **History**: everything captured or produced (dictations, meetings and calls, Snaps, Snap & Talk decks, Hand off results), each keeping the material that produced it, reached through one door and searched and selected together. Existing stores stay where they are; History is a view over them.
 - **Library**: things prepared for reuse (scenes, personas, saved prompts and links, skills and packs).
 - **Settings**: preferences, keyboard, models and connections.
 
@@ -50,7 +54,7 @@ Reusing what you captured (History, then Hand off) supports these moments. It is
 
 ### Names
 
-One capability has one name on every surface, menu and shortcut. Action labels may follow state ("Read", "Stop reading"). A shortened label is allowed only if it cannot be mistaken for another capability. The same action uses the same words everywhere: one set of words for stopping, cancelling, hiding and ending, and one set of drawing tools and colours whether you mark the screen or a Snap.
+One capability has one name on every surface, menu and shortcut. Action labels may follow state ("Read", "Stop reading"). A shortened label is allowed only if it cannot be mistaken for another capability. The same action uses the same words everywhere: one set of words for stopping, cancelling, hiding and ending, and one set of drawing tools and colours whether you mark the screen or a Snap. Persona means your on-screen presence only; how you speak or write is a Style.
 
 ### Rules for every change
 
@@ -61,12 +65,13 @@ One capability has one name on every surface, menu and shortcut. Action labels m
 
    A rename that keeps the same thing in the same place is Quality. Another door to an existing capability or place (a menu item, card or button that opens it) counts as an Option of what it opens and needs a reason, because each extra door is sprawl.
 2. **Avoid branching.** An option inside an option folds into its parent or waits, unless it is a necessary source or privacy control.
-3. **One door for captured work.** New stores, review folders, workspaces or result lists appear inside History. New ways to process captures are Hand off recipes.
+3. **One door for captured work.** New stores, review folders, workspaces or result lists appear inside History. New ways to process captures are recipes.
 4. **Recipes are content.** Built-in and shared skills use one file format. Getting a shared skill should be as easy as opening a file a colleague sent.
 5. **Proactive features only offer.** Detection, collection and suggestions ask first, have one switch each, and change no system setting without an explicit opt-in.
 6. **No dead ends.** Every entry opens its destination, shows active state and has a way back. Visible changes include renders of the surfaces they touch, with synthetic content.
 7. **Foundations first.** A change that depends on another is not promoted until its foundation passes installed Preview acceptance.
 8. **The surface map is checked.** CI compares every entry point against [the surface registry](surfaces.json). An entry point starts a capability, opens a place or page, or changes a setting that reaches beyond one page, wherever it appears: the panel and its menus, the toolbar, app menus, sidebar and Home, shortcuts, Settings and offers. Controls that act only on a page's own content are out of scope. A new or renamed entry point needs a deliberate registry change classified by these rules; the registry's kinds describe what an entry is, while the classification above describes a change. The check finds changes; people decide taste.
+9. **Engines are chosen once, by job.** Recognition, writing and speech engines are set in Models, not per capability; a recipe may override them where it is edited. Each run shows where it happens, on this Mac or the named service, and work never moves from this Mac to a cloud service without an explicit choice.
 
 ## Scope
 
