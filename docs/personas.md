@@ -12,13 +12,26 @@ From any app, the default **Option–F** shows or hides one persona and **Option
 
 ## Persona and Present
 
-The Persona workspace uses the existing saved library and overlay session. Opening it, changing pages or closing preparation leaves a shown overlay running over browsers and other windows. Use **Hide floating persona** for one card, **Hide all** / **Resume overlays** for a prepared arrangement, or **End overlays** to finish. These controls remain available even if no saved card is selected. The floating controls retain movement, locking/click-through, size, screen recovery and frozen live choices. **React to my voice** is off by default. When turned on, a ring of bars around each shown persona follows the presenter's loudness; the artwork is inset, never covered, and Reduce Motion keeps the bars still and shows loudness through opacity. It opens the microphone only while the ring is on and a persona is showing, measures loudness only and records nothing. Hiding every persona, End, Quit, turning it off, a denied permission or a lost input device stops the microphone; the choice is remembered.
+The Persona workspace uses the existing saved library and overlay session. Opening it, changing pages or closing preparation leaves a shown overlay running over browsers and other windows. Use **Hide floating persona** for one card, **Hide all** / **Resume overlays** for a prepared arrangement, or **End overlays** to finish. These controls remain available even if no saved card is selected. The floating controls retain movement, locking/click-through, size, screen recovery and frozen live choices. [React to my voice](#react-to-my-voice) adds an optional voice ring.
 
 Present’s compact **Persona…** control sits beside the scene name above the preview. Add or change a card, set its size and position, or remove only its scene placement. A card placed in a scene is rendered into that presentation; a floating Persona is a separate window. Both use the same saved artwork without silently changing each other’s placements or live image snapshots.
 
 Present keeps **Full screen**, **Window**, **Connection & audio…** and **More** below the editor. At narrower widths these actions wrap into two rows. **Scene details** contains logo, crop, device-shape and hand adjustments. The connection button opens the existing route guide, including QuickTime and iPhone Mirroring launch actions; device capture, audio limits and native fallback ownership are unchanged.
 
 `StageKitController.personasView` supplies the standalone workspace. The host routes **Prepare Personas…** with `onOpenPersonas`; a host without that callback retains the existing preparation sheet. Scene-specific selection always uses its own sheet and keeps the original scene binding.
+
+## React to my voice
+
+**React to my voice** puts a ring around the shown persona that moves as you speak, so the audience can see who is talking, like the floating profile a streamer uses. Turn it on in **Persona** or in the live **Persona Overlay** menu. It is off by default and remembered.
+
+- **Shape and colour come from the artwork.** A round badge gets a ring around its circle; anything breaking out of the badge, such as a hat or a name label, stays in front of the ring. Cards and other artwork get a ring around the rounded rectangle of their visible pixels. The colour is the artwork's most prominent vivid colour, brightened to read on screen, or Workbench mint when it has none.
+- **It follows your voice, not the room.** Loudness is measured against the room's own noise and your recent speaking level, so a laptop microphone, a headset and a quiet room all fill the ring, while breaths and fans leave it at rest. A thin line shows it is listening while you are quiet. Six pitch bands shape waves that travel around the ring and ease at the display's frame rate, so they read smoothly at a meeting app's lower frame rate too.
+- **The artwork keeps its size.** The persona's window grows to make room for the ring. Near a screen edge the persona moves in only as far as the ring needs to stay on screen and clear of the Dock; turning the ring off puts it back.
+- **One speaker at a time.** In a prepared set the ring frames the selected overlay, so choosing another overlay passes the voice to it. A hidden selection has no ring.
+- **Microphone use is bounded.** Turning it on asks macOS for microphone access at once, while you prepare, never later in front of an audience. The microphone runs only while the ring is on and the persona it frames is showing, and the menu item's second line names the input it is listening to. It measures loudness and pitch balance; nothing is recorded, kept or sent. Hiding the persona, Hide all, End, Quit, turning it off, a refused permission or a lost input stops it with a notice; a newly connected headset is picked up automatically.
+- **Accessibility settings are followed.** Reduce Motion keeps the bars away and lets the line brighten while you speak. Increase Contrast strengthens the ring's dark edge.
+
+It measures alongside Dictate, meeting capture and Snap & Talk narration without taking their microphone, and none of them stops the ring.
 
 ## Prepare several overlays
 
