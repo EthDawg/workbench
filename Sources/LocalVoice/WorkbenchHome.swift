@@ -8,18 +8,27 @@ struct WorkbenchHome: View {
     @ObservedObject var stage: StageKitController
     @ObservedObject var keyboard: KeyboardCoachModel
     @ObservedObject var readback: ReadbackModel
+    @ObservedObject var snap: SnapModel
+    @ObservedObject var history: WorkbenchHistoryModel
     @ObservedObject private var packs = PackLibraryModel.shared
     @ObservedObject private var updates = WorkbenchUpdates.shared
     @StateObject private var introduction = FounderIntroductionModel()
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var photoBackdrop: PhotoBackdropRequest?
+    @State private var handoffReview: HandoffReviewRequest?
+    @State private var suggestionReview: MetadataSuggestionReview?
     private let navItems: [(String, String, String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
-        ("speak", "Read aloud", "speaker.wave.2"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
-        ("present", "Present a device", "iphone"), ("history", "Recent transcripts", "clock"),
+        ("speak", "Read aloud", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
+        ("present", "Present a device", "iphone"), ("personas", "Persona", "person.crop.circle"),
+        ("history", "Recent transcripts", "clock"), ("handoffs", "Handoffs", "arrow.up.forward.app"),
         ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
         ("packs", "Packs", "shippingbox"), ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
+    init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel) {
+        self.model = model; self.stage = stage; self.keyboard = keyboard; self.readback = readback
+        self.snap = snap; self.history = model.historyLibrary
+    }
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 5) {
@@ -30,15 +39,16 @@ struct WorkbenchHome: View {
                 }
                 WorkbenchHeader(title: packs.brandLabel ?? "Workbench", subtitle: packs.brandLabel == nil ? "Everyday tools. A little less friction." : "Your workspace in Workbench", symbol: "square.stack.3d.up.fill")
                     .padding(.vertical, 20)
-                ForEach(navItems, id: \.0) { page, title, symbol in
+                ScrollView {
+                VStack(spacing: 4) { ForEach(navItems, id: \.0) { page, title, symbol in
                     Button { keyboard.stopInteraction(); model.page = page } label: {
                         Label(title, systemImage: symbol).font(.system(size: 13, weight: model.page == page ? .semibold : .regular))
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 9)
                             .foregroundStyle(model.page == page ? Workbench.accent : .primary)
                             .background(model.page == page ? Workbench.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
                     }.buttonStyle(.plain)
+                } }
                 }
-                Spacer()
                 if updates.availableVersion != nil || updates.restartWaiting {
                     Button(updates.buttonTitle) { model.page = "settings"; updates.checkForUpdates() }
                         .font(.caption).buttonStyle(.bordered)
@@ -50,17 +60,42 @@ struct WorkbenchHome: View {
             Group {
                 switch model.page {
                 case "home": welcome
-                case "readback": ReadbackView(model: readback, onOpenPacks: { model.page = "packs" })
+                case "readback": ReadbackView(model: readback, onOpenPacks: { model.page = "packs" },
+                    onChooseSnaps: { model.page = "snap" }, onReviewHandoff: {
+                        guard let session = readback.sessionURL else { return }
+                        handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
+                    })
+                case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
+                    Set(history.selected.filter { $0.kind == .snap }.map(\.id))
+                }, set: { ids in
+                    history.setSelected(Set(history.selected.filter { $0.kind != .snap }).union(ids.map { .init(kind: .snap, id: $0) }))
+                }), savedSelectionID: history.activeSelectionID,
+                    selectionControls: AnyView(HistorySelectionControls(history: history) { handoffReview = HandoffReviewRequest() }),
+                    onHandOff: { handoffReview = HandoffReviewRequest() },
+                    onAddToNarratedSession: { ids in
+                        do {
+                            let snapshots = try snap.handoffSnapshots(ids: Set(ids))
+                            readback.importSnapSnapshots(snapshots); model.page = "readback"
+                        } catch { snap.notice = error.localizedDescription }
+                    }, onOrganiseHandOff: { task in handoffReview = HandoffReviewRequest(task: task) })
                 case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
                 case "history": VStack(alignment: .leading, spacing: 20) {
                     Text("Pick up a thought.").font(.largeTitle.weight(.semibold))
-                    CaptureHistoryView(model: model, handoffSkills: { packs.transcriptSkills }, preferredHandoffSkillID: packs.preferredTranscriptSkillID, selectedSnapTalkSession: readback.sessionURL)
+                    CaptureHistoryView(model: model)
                 }.padding(32)
+                case "handoffs": ScrollView {
+                    HandoffJobsView(jobs: model.handoffJobs) { job, result in
+                        do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
+                        catch { model.handoffJobs.error = error.localizedDescription }
+                    }.padding(32)
+                }
+                case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.page = "history" })
                 case "annotate": stage.controlsView
                 case "present": stage.scenesView
+                case "personas": stage.personasView
                 case "shortcuts": KeyboardCoachView(model: keyboard)
                 case "models": ScrollView { VStack(alignment: .leading, spacing: 28) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
@@ -72,6 +107,10 @@ struct WorkbenchHome: View {
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }.frame(minWidth: 1050, minHeight: 730).tint(Workbench.accent).workbenchTheme()
             .onAppear {
+                model.onHandOffSelection = { task in handoffReview = HandoffReviewRequest(task: task) }
+                model.onSuggestTranscriptDetails = { id in
+                    handoffReview = HandoffReviewRequest(task: MetadataSuggestionReview.task, transcriptID: id)
+                }
                 model.onUsePhotoAsBackdrop = { url, title in
                     keyboard.stopInteraction()
                     photoBackdrop = PhotoBackdropRequest(url: url, title: title)
@@ -80,6 +119,25 @@ struct WorkbenchHome: View {
             }
             .sheet(item: $photoBackdrop) { request in
                 stage.backdropReplacementView(imageURL: request.url, title: request.title)
+            }
+            .sheet(item: $handoffReview) { request in
+                HandoffReviewView(history: model.historyLibrary, jobs: model.handoffJobs,
+                    skills: request.transcriptID == nil ? [.followUp] + packs.transcriptSkills : [.followUp],
+                    initialTask: request.task,
+                    preferredSkillID: request.transcriptID == nil ? packs.preferredTranscriptSkillID : nil,
+                    selectedSnapTalkSession: request.transcriptID == nil ? readback.sessionURL : nil,
+                    initialEvidenceURL: request.evidenceURL,
+                    resolveSources: {
+                        if request.evidenceURL != nil { return [] }
+                        var sources = try model.selectedHandoffSources(references: request.transcriptID.map { Set([WorkbenchItemReference(kind: .transcript, id: $0)]) })
+                        if request.transcriptID != nil {
+                            for index in sources.indices { sources[index].role = .reference }
+                        }
+                        return sources
+                    }, onConnections: { model.page = "settings" }, onPrepared: { model.page = "handoffs" })
+            }
+            .sheet(item: $suggestionReview) { suggestion in
+                MetadataSuggestionView(review: suggestion, library: model.historyLibrary)
             }
     }
     private var welcome: some View {
@@ -97,9 +155,11 @@ struct WorkbenchHome: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     card("Dictate", "A thought, ready to use.", "mic.fill", model.preferences.dictationShortcut.label) { model.page = "dictate" }
                     card("Read aloud", "Hear a draft. Save a reading.", "speaker.wave.2.fill", "Mac voices included") { model.page = "speak" }
+                    card("Snap", "Capture, mark up and keep what matters.", "viewfinder", "Region, window or screen") { model.page = "snap" }
                     card("Snap & Talk", "Capture a screen. Narrate the why.", "rectangle.and.pencil.and.ellipsis", model.preferences.shortcut(5).label) { model.page = "readback" }
                     card("Annotate", "Point, draw and return to your demo.", "pencil.tip.crop.circle", "Live screen tools") { model.page = "annotate" }
                     card("Present a device", "Your phone, ready for an audience.", "iphone", "Saved scenes and branding") { model.page = "present" }
+                    card("Persona", "Choose a voice and a presence.", "person.crop.circle", "Independent of a scene") { model.page = "personas" }
                 }
                 PhotoHandoffArrivalCue(handoff: model.photoHandoff) {
                     model.showingPhonePhotos = true
@@ -159,6 +219,10 @@ struct WorkbenchHome: View {
             if let loginError { Text(loginError).foregroundStyle(.orange) }
             Divider()
             WorkbenchUpdateSettings()
+            Divider()
+            MeetingDetectionSettings(model: model.meetings)
+            Divider()
+            SubscriptionSettingsView(jobs: model.handoffJobs)
             if model.photoHandoff.isConfigured {
                 Divider()
                 PhotoHandoffSettings(handoff: model.photoHandoff)

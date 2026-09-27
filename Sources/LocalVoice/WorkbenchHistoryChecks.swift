@@ -307,6 +307,24 @@ enum WorkbenchHistoryChecks {
         firstOwner.saveSelection(name: "Stale update", id: removedID)
         try check(firstOwner.error != nil && firstOwner.savedSelections.isEmpty, "an explicit missing id cannot resurrect a removed selection")
         try check(Data(contentsOf: firstOwner.store.url) == beforeStaleUpdate, "stale selection edit preserves exact bytes")
+        let named = WorkbenchHistoryModel(directory: try makeDirectory("Named"), now: clock)
+        named.setSelected([snapRef]); named.saveSelection(name: "Stable overview")
+        let stableID = named.savedSelections[0].id
+        try check(named.activeSelectionID == stableID, "explicit save sets one active named identity")
+        named.setSelected([snapRef, .init(kind: .transcript, id: oldest.id)])
+        try check(named.activeSelectionID == nil, "changing membership becomes ad hoc until deliberate Update")
+        named.saveSelection(name: "Updated overview", id: stableID)
+        try check(named.activeSelectionID == stableID, "deliberate update keeps overview identity")
+        let reloadedNamed = WorkbenchHistoryModel(directory: named.store.url.deletingLastPathComponent())
+        try check(reloadedNamed.activeSelectionID == stableID, "named identity survives relaunch")
+        named.removeSelection(stableID)
+        try check(named.activeSelectionID == nil, "removing the saved selection clears its active identity")
+        var warningMetadata = TranscriptMetadata(purpose: .meeting)
+        warningMetadata.captureNotes = ["The selected app stopped producing audio."]
+        warningMetadata.reviewedSuggestion = "Codex · synthetic receipt"
+        named.setMetadata(warningMetadata, for: oldest.id)
+        let notesReloaded = WorkbenchHistoryModel(directory: named.store.url.deletingLastPathComponent())
+        try check(notesReloaded.metadata(for: oldest.id) == warningMetadata, "capture warning and reviewed provenance survive relaunch")
         print("WORKBENCH_HISTORY_CHECKS_OK: \(passed) checks")
     }
 }

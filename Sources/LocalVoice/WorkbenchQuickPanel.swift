@@ -51,6 +51,7 @@ struct WorkbenchQuickPanel: View {
                 }
             }
             Divider()
+            MeetingQuickStatus(model: model.meetings) { open("meeting") }
             // Feedback grows below the tools; an idle panel has no empty well.
             if hasFeedback {
                 if editingShortcut { shortcutEditor }
@@ -77,6 +78,7 @@ struct WorkbenchQuickPanel: View {
             }
             HStack {
                 Button("Open Workbench") { open("home") }
+                Button("Snap") { open("snap") }
                 Spacer(minLength: 8)
                 Button("Settings") { open("settings") }
                 Button("Shortcuts") { open("shortcuts") }
@@ -145,6 +147,7 @@ struct WorkbenchQuickPanel: View {
                 }
                 Divider()
                 Button("Recent Transcripts…") { open("history") }
+                Button("Transcribe Meeting or Call…") { open("meeting") }
                 Button("Dictation Settings…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()
         case .read:

@@ -18,6 +18,8 @@ Stable and Preview use separate feeds, preferences and saved data. They never si
 
 Do not delete saved-data directories when replacing an app. A binary rollback is not a data rollback. Release changes that alter storage must provide a migration backup and establish whether the old binary can safely read the new data. This update adds no storage schema migration. Moving from Preview to Stable is an explicit future migration with its own verification; installing Stable must never silently copy Preview's live data or cloud permissions.
 
+The capability Preview tracked in [issue #112](https://github.com/EthDawg/workbench/issues/112) keeps transcript details, saved selections, Snaps, meeting drafts and handoff receipts in separate local records. It also stops removing old transcripts when a new capture is saved. Earlier binaries still cap history at 100 on the next capture, so preserve the complete saved-data folder before downgrading that Preview. Replacing only the app does not protect a longer history from the older retention rule.
+
 ## One workflow for Ethan, Matt and coding agents
 
 Run `python3 scripts/release/status.py` to inspect both Applications folders and ordinary extracted apps directly in Downloads. It labels installed and downloaded copies separately and warns when identities repeat; it never moves or deletes anything. `--json` retains the existing array and provenance fields, adding `location` and `duplicate_identity`. This inventory does not select the installer's destination: the installer still selects an existing copy only from the two Applications folders. It is a bounded inspection, not an exhaustive Spotlight index or a saved status ledger.

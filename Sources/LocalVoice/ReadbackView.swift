@@ -7,6 +7,7 @@ struct ReadbackView: View {
     @ObservedObject var model: ReadbackModel
     var onOpenPacks: () -> Void = {}
     var onChooseSnaps: (() -> Void)?
+    var onReviewHandoff: (() -> Void)?
     @State private var orderingSections = false
     @State private var confirmEmptyTrash = false
 
@@ -186,6 +187,10 @@ struct ReadbackView: View {
                 .disabled(model.currentSessionProblem != nil || model.activeSections.count < 2 || model.isRecording || model.isCapturing)
                 .help("Arrange sections in a compact list")
             Menu {
+                if let onReviewHandoff {
+                    Button("Review selected evidence…", action: onReviewHandoff)
+                    Divider()
+                }
                 ForEach(ReadbackHandoffTarget.allCases) { target in
                     Button { model.handOff(to: target) } label: {
                         Label(target.title, systemImage: target == .claude ? "sparkles" : "bubble.left.and.text.bubble.right")

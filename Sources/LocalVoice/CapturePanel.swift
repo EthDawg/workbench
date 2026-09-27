@@ -67,6 +67,7 @@ final class CaptureHUDControls: ObservableObject {
 
 @MainActor
 final class CapturePanelController: NSWindowController, NSWindowDelegate, FloatingHUDDragController {
+    var independentScreenCapture: () -> Bool = { false }
     private let positionKey = "capturePanelOrigin.v1"
     private let anchorKey = "capturePanelAnchor.v2"
     private let sizeKey = "capturePanelSize.v1"
@@ -181,7 +182,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         guard let window else { return }
         let previousSurface = self.surface
         let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible || stage?.isDrawing == true || stage?.isPresenting == true || stage?.hasActivePersona == true || model.promptInsertion.running,
-            capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true,
+            capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture(),
             dictation: Self.showsDictation(model), narration: readback?.isRecording == true,
             reading: model.rendering || model.playing || model.paused)
         if surface != self.surface {

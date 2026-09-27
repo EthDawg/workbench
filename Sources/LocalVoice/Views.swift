@@ -117,6 +117,8 @@ struct ContentView: View {
     private var dictate: some View {
         VStack(alignment: .leading, spacing: 24) {
             heading("Speak your mind.", "Turn a thought into text. Record here, or use the shortcut from any app.")
+            Button("Transcribe a meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
+                .buttonStyle(.link).disabled(model.phase != .idle)
             HStack(spacing: 22) {
                 Button { model.toggleRecording() } label: {
                     Image(systemName: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic.fill")

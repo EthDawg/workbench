@@ -65,6 +65,8 @@ final class AVAudioPlayer {
     func stop() { stops += 1; isPlaying = false }
 }
 @MainActor final class AppModelPlaybackHarness {
+    struct MeetingWork { var isBusy = false }
+    var meetings = MeetingWork()
     enum Phase { case idle, recording }
     var phase: Phase = .idle
     var rendering = false
@@ -268,6 +270,8 @@ import AVFoundation
 enum VoiceError: Error { case message(String) }
 enum ReadingProvider { case mac, speko }
 @MainActor final class RealPlayerHarness: NSObject, AVAudioPlayerDelegate {
+    struct MeetingWork { var isBusy = false }
+    var meetings = MeetingWork()
     enum Phase { case idle }
     var phase: Phase = .idle
     var rendering = false

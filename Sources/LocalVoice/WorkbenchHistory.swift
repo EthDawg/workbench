@@ -4,7 +4,7 @@ import Foundation
 /// What a selection can point at. Snap & Talk keeps its own session storage and
 /// dictation keeps its own history; this owner only records that one was chosen.
 enum WorkbenchItemKind: String, Codable {
-    case transcript, snap
+    case transcript, snap, snapAndTalk
 }
 
 /// A reference, never a copy. No transcript text, audio or screenshot bytes are
@@ -43,12 +43,14 @@ enum TranscriptPurpose: String, Codable, CaseIterable {
 /// the state a capture already had, so an older transcript keeps its original
 /// text and reads as an ordinary Prompt without being changed.
 struct TranscriptMetadata: Codable, Equatable {
-    enum CodingKeys: String, CodingKey { case purpose, person, company, tags }
+    enum CodingKeys: String, CodingKey { case purpose, person, company, tags, reviewedSuggestion, captureNotes }
 
     var purpose: TranscriptPurpose = .prompt
     var person: String = ""
     var company: String = ""
     var tags: [String] = []
+    var reviewedSuggestion: String? = nil
+    var captureNotes: [String] = []
 
     /// The fields search looks at beside the transcript's own wording.
     var searchFields: [String] { [purpose.title, person, company] + tags }
@@ -68,6 +70,13 @@ struct TranscriptMetadata: Codable, Equatable {
             throw WorkbenchHistoryError.invalid("a capture cannot carry more than \(WorkbenchHistoryLibrary.maximumTags) tags")
         }
         cleaned.tags = kept
+        if let reviewedSuggestion {
+            cleaned.reviewedSuggestion = try WorkbenchHistoryLibrary.field(reviewedSuggestion, limit: 200, label: "A suggestion receipt")
+        }
+        guard captureNotes.count <= 32 else { throw WorkbenchHistoryError.invalid("too many capture notes") }
+        cleaned.captureNotes = try captureNotes.map {
+            try WorkbenchHistoryLibrary.field($0, limit: 500, label: "A capture note")
+        }
         return cleaned
     }
 }
@@ -81,6 +90,8 @@ extension TranscriptMetadata {
         person = try container.decodeIfPresent(String.self, forKey: .person) ?? ""
         company = try container.decodeIfPresent(String.self, forKey: .company) ?? ""
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        reviewedSuggestion = try container.decodeIfPresent(String.self, forKey: .reviewedSuggestion)
+        captureNotes = try container.decodeIfPresent([String].self, forKey: .captureNotes) ?? []
     }
 }
 
@@ -113,7 +124,7 @@ enum WorkbenchHistoryError: LocalizedError, Equatable {
 /// details added to captures. Transcript text, recordings and Snap & Talk media
 /// stay with their own owners.
 struct WorkbenchHistoryLibrary: Codable, Equatable {
-    enum CodingKeys: String, CodingKey { case version, selected, savedSelections, transcripts }
+    enum CodingKeys: String, CodingKey { case version, selected, savedSelections, transcripts, activeSelectionID }
 
     static let currentVersion = 1
     // Bounds a person can reach only by mistake. History is no longer trimmed, so
@@ -131,6 +142,7 @@ struct WorkbenchHistoryLibrary: Codable, Equatable {
     var selected: [WorkbenchItemReference] = []
     var savedSelections: [SavedWorkbenchSelection] = []
     var transcripts: [WorkbenchTranscriptRecord] = []
+    var activeSelectionID: UUID? = nil
 
     /// A deterministic order, so identical state always produces identical bytes.
     static func ordered(_ references: [WorkbenchItemReference]) -> [WorkbenchItemReference] {
@@ -189,7 +201,13 @@ struct WorkbenchHistoryLibrary: Codable, Equatable {
             throw WorkbenchHistoryError.invalid("details cannot be kept for more than \(Self.maximumTranscripts) captures")
         }
         records.sort { $0.id.uuidString < $1.id.uuidString }
-        return Self(version: Self.currentVersion, selected: selected, savedSelections: selections, transcripts: records)
+        if let activeSelectionID {
+            guard let active = selections.first(where: { $0.id == activeSelectionID }), active.items == selected else {
+                throw WorkbenchHistoryError.invalid("the active saved selection does not match its selected items")
+            }
+        }
+        return Self(version: Self.currentVersion, selected: selected, savedSelections: selections,
+                    transcripts: records, activeSelectionID: activeSelectionID)
     }
 }
 
@@ -202,6 +220,7 @@ extension WorkbenchHistoryLibrary {
         selected = try container.decodeIfPresent([WorkbenchItemReference].self, forKey: .selected) ?? []
         savedSelections = try container.decodeIfPresent([SavedWorkbenchSelection].self, forKey: .savedSelections) ?? []
         transcripts = try container.decodeIfPresent([WorkbenchTranscriptRecord].self, forKey: .transcripts) ?? []
+        activeSelectionID = try container.decodeIfPresent(UUID.self, forKey: .activeSelectionID)
     }
 }
 
@@ -312,6 +331,7 @@ final class WorkbenchHistoryModel: ObservableObject {
     @Published private(set) var selected: Set<WorkbenchItemReference> = []
     @Published private(set) var savedSelections: [SavedWorkbenchSelection] = []
     @Published private(set) var error: String?
+    @Published private(set) var activeSelectionID: UUID?
 
     let store: WorkbenchHistoryStore
     /// Set when the sidecar could not be understood. Nothing is written while it
@@ -329,6 +349,7 @@ final class WorkbenchHistoryModel: ObservableObject {
             let library = try store.load()
             selected = Set(library.selected)
             savedSelections = library.savedSelections
+            activeSelectionID = library.activeSelectionID
             metadataByID = Dictionary(uniqueKeysWithValues: library.transcripts.map { ($0.id, $0.metadata) })
         } catch {
             let failure = error as? WorkbenchHistoryError ?? .unreadable
@@ -338,7 +359,10 @@ final class WorkbenchHistoryModel: ObservableObject {
     }
 
     func setSelected(_ refs: Set<WorkbenchItemReference>) {
-        apply { $0.selected = Array(refs) }
+        apply {
+            if Set($0.selected) != refs { $0.activeSelectionID = nil }
+            $0.selected = Array(refs)
+        }
     }
 
     /// Freezes the current selection under a name. Passing an existing id renames
@@ -346,6 +370,7 @@ final class WorkbenchHistoryModel: ObservableObject {
     func saveSelection(name: String, id: UUID? = nil) {
         let items = WorkbenchHistoryLibrary.ordered(Array(selected))
         let stamp = now()
+        let savedID = id ?? UUID()
         apply { library in
             if let id {
                 guard let index = library.savedSelections.firstIndex(where: { $0.id == id }) else {
@@ -355,8 +380,9 @@ final class WorkbenchHistoryModel: ObservableObject {
                 library.savedSelections[index].items = items
                 library.savedSelections[index].updatedAt = stamp
             } else {
-                library.savedSelections.append(SavedWorkbenchSelection(id: UUID(), name: name, items: items, updatedAt: stamp))
+                library.savedSelections.append(SavedWorkbenchSelection(id: savedID, name: name, items: items, updatedAt: stamp))
             }
+            library.activeSelectionID = savedID
         }
     }
 
@@ -368,6 +394,7 @@ final class WorkbenchHistoryModel: ObservableObject {
                 throw WorkbenchHistoryError.unknownSelection
             }
             library.selected = selection.items
+            library.activeSelectionID = id
         }
     }
 
@@ -377,6 +404,7 @@ final class WorkbenchHistoryModel: ObservableObject {
                 throw WorkbenchHistoryError.unknownSelection
             }
             library.savedSelections.remove(at: index)
+            if library.activeSelectionID == id { library.activeSelectionID = nil }
         }
     }
 
@@ -421,7 +449,8 @@ final class WorkbenchHistoryModel: ObservableObject {
         WorkbenchHistoryLibrary(version: WorkbenchHistoryLibrary.currentVersion,
                                 selected: Array(selected),
                                 savedSelections: savedSelections,
-                                transcripts: metadataByID.map { WorkbenchTranscriptRecord(id: $0.key, metadata: $0.value) })
+                                transcripts: metadataByID.map { WorkbenchTranscriptRecord(id: $0.key, metadata: $0.value) },
+                                activeSelectionID: activeSelectionID)
     }
 
     /// Published state follows the disk. A refused or failed write keeps the
@@ -449,6 +478,7 @@ final class WorkbenchHistoryModel: ObservableObject {
     private func publish(_ library: WorkbenchHistoryLibrary) {
         selected = Set(library.selected)
         savedSelections = library.savedSelections
+        activeSelectionID = library.activeSelectionID
         metadataByID = Dictionary(uniqueKeysWithValues: library.transcripts.map { ($0.id, $0.metadata) })
     }
 
