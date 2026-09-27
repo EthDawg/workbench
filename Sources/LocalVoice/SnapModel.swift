@@ -134,19 +134,25 @@ final class SnapModel: ObservableObject {
 
     /// Moves the listed Desktop screenshots into Snap History. Originals go to
     /// the Trash only after each Snap is stored and read back.
-    func tidyDesktopScreenshots(_ files: [URL]) async {
-        guard !tidyingScreenshots, !isBusy else { return }
+    /// Returns the Snaps it added, so the workspace can select them for Organise.
+    @discardableResult
+    func tidyDesktopScreenshots(_ files: [URL]) async -> [UUID] {
+        guard !tidyingScreenshots, !isBusy else { return [] }
         tidyingScreenshots = true
         defer { tidyingScreenshots = false }
-        var moved = 0, kept: [String] = [], known = Set(items.map(\.originalSHA256))
+        var moved = 0, added: [UUID] = [], kept: [String] = [], known = Set(items.map(\.originalSHA256))
         for file in files {
-            do { try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash); moved += 1 }
-            catch { kept.append(file.lastPathComponent) }
+            do {
+                if let item = try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) { added.append(item.id) }
+                moved += 1
+            } catch { kept.append(file.lastPathComponent) }
             await Task.yield()
         }
         refresh()
         notice = "Moved \(moved) screenshot\(moved == 1 ? "" : "s") from the Desktop into Snap History. The originals are in the Trash."
+            + (added.isEmpty ? "" : " They are selected: choose Organise… to find repeats and summarise the themes.")
             + (kept.isEmpty ? "" : " \(kept.count) could not be added and stayed on the Desktop.")
+        return added
     }
 
     func refresh() {
