@@ -20,10 +20,11 @@ final class CaptureHostingView<Content: View>: NSHostingView<Content> {
 @MainActor
 final class CaptureHUDControls: ObservableObject {
     let toolbar: ToolbarSession
-    @Published var toolbarSize = NSSize(width: 36, height: 36)
-    private var measuredRowSize = NSSize(width: 280, height: 36)
-    private var glyphSize = NSSize(width: 36, height: 36)
-    private var glyphMeasured = false
+    @Published var toolbarSize = NSSize(width: 132, height: 36)
+    private var measuredRowSize = NSSize(width: 400, height: 36)
+    /// The resting element, `[glyph][next action]`, seeded until measured.
+    private(set) var restingSize = NSSize(width: 132, height: 36)
+    private var restingMeasured = false
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
     var promptDestination: (() -> TextDelivery.Target?)?
@@ -31,8 +32,8 @@ final class CaptureHUDControls: ObservableObject {
     var focusFirstControl: (() -> Void)?
     var dragActions = ToolbarDragActions()
     var menuDidClose: (() -> Void)?
-    var preferredToolbarSize: NSSize { toolbar.state.tier == .resting ? glyphSize : measuredRowSize }
-    var glyphWidth: CGFloat { glyphSize.width }
+    var preferredToolbarSize: NSSize { toolbar.state.tier == .resting ? restingSize : measuredRowSize }
+    var restingWidth: CGFloat { restingSize.width }
 
     init(defaults: UserDefaults = .standard) {
         toolbar = ToolbarSession(defaults: defaults)
@@ -44,10 +45,11 @@ final class CaptureHUDControls: ObservableObject {
         guard tier == toolbar.state.tier, size.width > 0, size.height > 0 else { return }
         let size = NSSize(width: ceil(size.width), height: ceil(size.height))
         let previous = preferredToolbarSize
-        // Estimate the glyph from the row only until the glyph itself has been
-        // measured; afterwards the two sizes must not trade places on every reveal.
-        if tier == .resting { glyphSize = size; glyphMeasured = true }
-        else { measuredRowSize = size; if !glyphMeasured { glyphSize = NSSize(width: size.height, height: size.height) } }
+        // Estimate the resting height from the row only until the resting
+        // element itself has been measured; afterwards the two sizes must not
+        // trade places on every reveal.
+        if tier == .resting { restingSize = size; restingMeasured = true }
+        else { measuredRowSize = size; if !restingMeasured { restingSize.height = size.height } }
         if previous != preferredToolbarSize { resize?() }
     }
     func focusToolbar() { toolbar.send(.holdBegan(.keyboard)) }
@@ -87,6 +89,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     init(model: AppModel, readback: ReadbackModel, stage: StageKitController,
          dictate: @escaping () -> Void, snap: @escaping () -> Void,
+         snapCapture: @escaping () -> Void = {},
          draw: @escaping () -> Void, present: @escaping () -> Void,
          controls suppliedControls: CaptureHUDControls? = nil) {
         let controls = suppliedControls ?? CaptureHUDControls()
@@ -131,12 +134,18 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
-            stage: stage, controls: controls, dictate: dictate, snap: snap, draw: draw, present: present))
+            stage: stage, controls: controls, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present))
         hosting.sizingOptions = []
         hosting.autoresizingMask = [.width, .height]
         let tracking = ToolbarTrackingView(content: hosting)
         tracking.autoresizingMask = [.width, .height]
         tracking.event = { [weak controls] in controls?.toolbar.send($0) }
+        // A pass-through never springs the row: entry is debounced while the
+        // window shows only the resting element.
+        tracking.isRestingSized = { [weak self, weak controls] in
+            guard let self, let controls, let window = self.window else { return false }
+            return window.frame.width <= controls.restingWidth + 0.5
+        }
         self.tracking = tracking
         panel.contentView = tracking
         motion.settled = { [weak self] in
@@ -269,7 +278,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let screen = CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: size),
             screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
         let frame = surface == .tools
-            ? ToolbarGeometry.frame(size: size, glyphWidth: controls.glyphWidth,
+            ? ToolbarGeometry.frame(size: size, restingWidth: controls.restingWidth,
                 anchor: (controls.anchor ?? .bottom).toolbarAnchor, screen: screen)
             : CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
                 screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
@@ -350,7 +359,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.anchor = anchor
         let size = surface == .tools ? controls.preferredToolbarSize : window.frame.size
         let frame = surface == .tools
-            ? ToolbarGeometry.frame(size: size, glyphWidth: controls.glyphWidth,
+            ? ToolbarGeometry.frame(size: size, restingWidth: controls.restingWidth,
                 anchor: anchor.toolbarAnchor, screen: screen)
             : FloatingControlGeometry.frame(anchor: anchor, size: size, visibleFrame: screen)
         setFrame(frame, animated: surface == .tools)

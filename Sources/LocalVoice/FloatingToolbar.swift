@@ -18,73 +18,96 @@ enum FloatingToolbarSurface: Equatable {
     }
 }
 
+extension ToolbarMode {
+    /// The panel row that shares this mode's shortcut and admission. Snap has
+    /// no row of its own: the panel's Snap opens the workspace.
+    var controlTool: WorkbenchControlTool? {
+        switch self {
+        case .dictate: return .dictate
+        case .read: return .read
+        case .snap: return nil
+        case .snapAndTalk: return .snapAndTalk
+        case .draw: return .annotate
+        case .present: return .present
+        case .persona: return .persona
+        }
+    }
+}
+
+/// The toolbar's mode follows the journey. This view freezes what is live into
+/// one `ToolbarLiveState` per render, asks the core for the next action, and
+/// maps each operation back to the owner that already does it.
 struct FloatingToolbar: View {
     @ObservedObject var model: AppModel
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var controls: CaptureHUDControls
     @ObservedObject var promptInsertion: PromptInsertion
+    @ObservedObject var meetings: MeetingModel
     let dictate: () -> Void
     let snap: () -> Void
+    let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
 
-    var viewState: ToolbarViewState {
-        let tool = model.controlTool
-        let coreTool: ToolbarTool
-        switch tool {
-        case .dictate: coreTool = .dictate
-        case .snapAndTalk: coreTool = .snapAndTalk
-        case .annotate: coreTool = .annotate
-        case .present: coreTool = .present
-        case .read: coreTool = .read
-        case .persona: coreTool = .persona
-        case .timer: coreTool = .timer
+    var live: ToolbarLiveState {
+        let dictation: ToolbarLiveState.Dictation
+        switch model.phase {
+        case .idle: dictation = .idle
+        case .requesting: dictation = .requesting
+        case .recording: dictation = .recording
+        case .cancelling: dictation = .cancelling
+        case .transcribing, .cleaning, .delivering: dictation = .processing
         }
-        let shortcut: ToolbarShortcut
+        let persona: ToolbarLiveState.Persona = stage.isPersonaSessionPaused ? .sessionHidden
+            : stage.hasActivePersonaSession ? .session : stage.hasActivePersona ? .shown : .none
+        let mode = model.toolbarMode
+        let state = context.state
+        let mayStart = mode.controlTool.map(state.enabled)
+            ?? (model.phase == .idle && !readback.isCapturing && !readback.isRecording && !stage.isTakingScreenshot)
+        return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: model.canRecordAgain,
+            reading: model.rendering ? .preparing : model.playing ? .playing : model.paused ? .paused : .idle,
+            narrating: readback.isRecording,
+            capturingScreen: readback.isCapturing || stage.isTakingScreenshot,
+            pendingNarration: readback.hasPendingTranscriptions,
+            captureCount: readback.sessionURL == nil ? nil : readback.activeSections.count,
+            drawing: stage.isDrawing, presenting: stage.isPresenting, persona: persona,
+            timer: stage.hasTimerSession ? (stage.isTimerRunning ? .running : .paused) : .none,
+            insertingPrompt: promptInsertion.running, meetingRecording: meetings.isRecording, mayStart: mayStart)
+    }
+
+    /// The assigned key for a mode, or nil when it is off or failed: an
+    /// unusable binding is omitted rather than shown as text nobody can use.
+    private func key(_ mode: ToolbarMode) -> String? {
+        guard let tool = mode.controlTool else { return nil }
         switch context.shortcut(tool) {
-        case "Shortcut off", nil: shortcut = .off
-        case "Shortcut unavailable": shortcut = .unavailable
-        case .some(let keys): shortcut = .assigned(keys)
+        case "Shortcut off", "Shortcut unavailable", nil: return nil
+        case .some(let keys): return keys
         }
-        var trailing: ToolbarTrailing = shortcut.isUsable ? .shortcut(shortcut) : .status("")
-        var busy = false
-        var title = context.state.actionTitle(tool)
-        switch tool {
-        case .dictate:
-            title = model.canRecordAgain ? "Record again" : "Dictate"
-        case .snapAndTalk:
-            if readback.hasPendingTranscriptions { trailing = .status("\(readback.activeSections.count) · Saving"); busy = true }
-            else if readback.sessionURL != nil { trailing = .status("\(readback.activeSections.count) Captures" + (shortcut.isUsable ? " · " + shortcut.label : "")) }
-        case .annotate:
-            if stage.isDrawing { trailing = .status("Drawing"); busy = true }
-            else { title = "Draw" }
-        case .present:
-            if stage.isPresenting { trailing = .status("Presenting"); busy = true }
-            else { title = "Present" }
-        case .persona:
-            trailing = .status(stage.personaStatus); busy = stage.hasActivePersona
-        case .timer:
-            trailing = .status(stage.hasTimerSession ? stage.timerText : ""); busy = stage.hasActiveTimer
-        case .read:
-            if model.rendering { trailing = .status("Preparing audio"); busy = true }
-            else if model.playing || model.paused {
-                title = "Stop reading"; trailing = .status(model.paused ? "Paused" : "Reading"); busy = true
-            } else { title = "Read aloud" }
-        }
-        if promptInsertion.running { title = "Stop Inserting"; trailing = .status("Inserting Prompt"); busy = true }
+    }
+
+    var viewState: ToolbarViewState {
+        let live = self.live
+        let action = ToolbarNextAction.resolve(live)
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: (controls.anchor ?? .bottom).toolbarAnchor,
-            tool: coreTool, actionTitle: title, isActionEnabled: promptInsertion.running || context.state.enabled(tool),
-            trailing: trailing, isBusy: busy)
+            mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
+            actionHint: action.hint(key: key(action.operation.mode ?? live.mode)),
+            switcher: ToolbarNextAction.switcher(for: live, key: key),
+            isBusy: live.isLive(live.mode))
+    }
+
+    private var detail: String {
+        if let tool = model.toolbarMode.controlTool { return context.detail(tool) }
+        return "Capture a region of the screen into Snap."
     }
 
     var body: some View {
         let state = viewState
         ToolbarRow(state: state, accent: Workbench.accent,
             makeAccessoryMenu: { SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction) },
-            action: performSelected, makeMenu: toolsMenu,
+            action: performSelected, selectMode: { model.toolbarMode = $0 }, makeMenu: toolsMenu,
             menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
             focusButton: { button in
                 controls.focusFirstControl = { [weak button] in
@@ -97,58 +120,80 @@ struct FloatingToolbar: View {
             })
             .onPreferenceChange(ToolbarMeasuredSize.self) { measurement in controls.reportSize(measurement.size, tier: measurement.tier) }
             .pinnedToDock(state.anchor)
-            .help(context.detail(model.controlTool))
+            .help(detail)
             .tint(Workbench.accent).workbenchTheme()
     }
 
+    /// Each operation goes to the owner that already does it. The toolbar never
+    /// ends anything but what its label names.
     private func performSelected() {
-        if promptInsertion.running { promptInsertion.cancel(); return }
-        switch model.controlTool {
-        case .dictate: dictate()
-        case .snapAndTalk: snap()
-        case .annotate: draw()
-        case .present: present()
-        case .persona: stage.togglePersona()
-        case .timer: stage.showTimer()
-        case .read:
-            if model.rendering { model.cancelReading() }
-            else if model.playing || model.paused { model.stopPlayback() }
-            else { model.onShowEditor?("speak") }
+        perform(ToolbarNextAction.resolve(live).operation)
+    }
+
+    private func perform(_ operation: ToolbarOperation) {
+        switch operation {
+        case .stopInserting: promptInsertion.cancel()
+        case .cancelDictationRequest: model.cancelRecording()
+        case .stopDictation: model.stopRecording()
+        case .finishNarration: readback.stopNarration()
+        case .finishDrawing: stage.finishDrawing()
+        case .pauseReading, .resumeReading: model.listen()
+        case .cancelReading: model.cancelReading()
+        case .hidePersona, .pauseOverlays, .resumeOverlays: stage.togglePersona()
+        case .captureNext: snap()
+        case .stopMeetingTranscription: Task { await meetings.stop() }
+        case .endPresentation: stage.endDeviceScene()
+        case .wait: break
+        case .start(let mode):
+            model.toolbarMode = mode
+            switch mode {
+            case .dictate: dictate()
+            case .read: model.onShowEditor?("speak")
+            case .snap: snapCapture()
+            case .snapAndTalk: snap()
+            case .draw: draw()
+            case .present: present()
+            case .persona: stage.togglePersona()
+            }
         }
     }
 
+    /// The mode's own options, then the constant tail. Dictate, Read and Snap
+    /// are start and stop here: their preparation stays in Workbench, one door
+    /// away. Cross-mode finish items stay so nothing is a dead end.
     private func toolsMenu() -> NSMenu {
         let menu = NSMenu(title: "Workbench"); menu.autoenablesItems = false
-        menu.addItem(ToolbarMenuAction(viewState.actionTitle, enabled: viewState.isActionEnabled, run: performSelected))
-        let tools = NSMenuItem(title: "Change tool", action: nil, keyEquivalent: "")
-        let choices = NSMenu(); choices.autoenablesItems = false
-        for tool in [WorkbenchControlTool.snapAndTalk, .annotate, .present, .persona] {
-            choices.addItem(ToolbarMenuAction(tool.title, checked: model.controlTool == tool) { model.controlTool = tool })
-        }
-        tools.submenu = choices; menu.addItem(tools)
-        // Independent jobs stay available in a fixed order. Opening these
-        // controls neither selects another tool nor resets its active state.
-        if model.controlTool == .snapAndTalk {
+        let live = self.live
+        let action = ToolbarNextAction.resolve(live)
+        let mode = live.mode
+        let next = ToolbarMenuAction(action.title, enabled: action.isEnabled) { perform(action.operation) }
+        Self.showKey(key(action.operation.mode ?? mode), on: next)
+        menu.addItem(next)
+        switch mode {
+        case .dictate:
+            menu.addItem(ToolbarMenuAction("Dictate settings…") { model.onShowEditor?("dictate") })
+        case .read:
+            menu.addItem(ToolbarMenuAction("Open reading…") { model.onShowEditor?("speak") })
+        case .snap:
+            menu.addItem(ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") })
+        case .snapAndTalk:
             menu.addItem(ToolbarMenuAction("Review Snap & Talk · \(readback.activeSections.count) Captures…") { model.onShowEditor?("readback") })
+        case .draw:
+            Self.inline(stage.makeAnnotationMenu(includeSettings: false), into: menu)
+        case .present:
+            Self.inline(stage.makePresentationMenu(), into: menu)
+            let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
+            prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction)
+            menu.addItem(prompts)
+            menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
+        case .persona:
+            Self.inline(stage.makePersonaMenu(), into: menu)
         }
-        let presentation = NSMenuItem(title: "Present", action: nil, keyEquivalent: "")
-        presentation.submenu = stage.makePresentationMenu(); menu.addItem(presentation)
-        let personas = NSMenuItem(title: "Persona Overlay", action: nil, keyEquivalent: "")
-        personas.submenu = stage.makePersonaMenu(); menu.addItem(personas)
-        let drawing = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
-        drawing.submenu = stage.makeAnnotationMenu(includeSettings: false); menu.addItem(drawing)
-        let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
-        prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction)
-        menu.addItem(prompts)
-        menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
-        if stage.isDrawing && model.controlTool != .annotate {
-            menu.addItem(ToolbarMenuAction("Done drawing · keep marks") { stage.finishDrawing() })
+        if stage.isDrawing && mode != .draw && action.operation != .finishDrawing {
+            menu.addItem(ToolbarMenuAction("Stop drawing") { stage.finishDrawing() })
         }
-        if stage.isPresenting && model.controlTool != .present {
-            menu.addItem(ToolbarMenuAction("End device scene") { stage.endDeviceScene() })
-        }
-        if (model.playing || model.paused) && model.controlTool != .read {
-            menu.addItem(ToolbarMenuAction("Stop reading") { model.stopPlayback() })
+        if stage.isPresenting && mode != .present && action.operation != .endPresentation {
+            menu.addItem(ToolbarMenuAction("End presentation") { stage.endDeviceScene() })
         }
         menu.addItem(.separator())
         let position = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
@@ -163,6 +208,30 @@ struct FloatingToolbar: View {
         menu.addItem(ToolbarMenuAction("Hide toolbar") { model.floatingToolbarVisible = false })
         menu.addItem(ToolbarMenuAction("Settings…") { model.onShowEditor?("settings") })
         return menu
+    }
+
+    /// Move a builder's items into this menu, so the mode's options sit at the
+    /// top level instead of behind a wrapper named after the mode.
+    private static func inline(_ source: NSMenu, into menu: NSMenu) {
+        for item in source.items { source.removeItem(item); menu.addItem(item) }
+    }
+
+    /// Show an assigned key beside the item, from the same label the hint uses.
+    /// Keys the menu cannot spell (function and arrow keys) are left off.
+    static func showKey(_ label: String?, on item: NSMenuItem) {
+        guard var keys = label else { return }
+        var mask: NSEvent.ModifierFlags = []
+        let modifiers: [(Character, NSEvent.ModifierFlags)] = [("⌃", .control), ("⌥", .option), ("⇧", .shift), ("⌘", .command)]
+        for (symbol, flag) in modifiers where keys.first == symbol {
+            mask.insert(flag); keys.removeFirst()
+        }
+        for (symbol, flag) in modifiers where keys.first == symbol {
+            mask.insert(flag); keys.removeFirst()
+        }
+        let equivalent = keys == "Space" ? " " : keys.count == 1 ? keys.lowercased() : nil
+        guard let equivalent else { return }
+        item.keyEquivalent = equivalent
+        item.keyEquivalentModifierMask = mask
     }
 
     static func shortcutLabel(_ shortcut: VoiceShortcut, failure: String?) -> String {
@@ -188,6 +257,7 @@ struct WorkbenchFloatingContent: View {
     @ObservedObject var controls: CaptureHUDControls
     let dictate: () -> Void
     let snap: () -> Void
+    let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
 
@@ -201,7 +271,7 @@ struct WorkbenchFloatingContent: View {
             ReadingControls(model: model)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
-                            dictate: dictate, snap: snap, draw: draw, present: present)
+                            meetings: model.meetings, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present)
         }
     }
 }

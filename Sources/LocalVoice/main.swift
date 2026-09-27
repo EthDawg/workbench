@@ -4,6 +4,7 @@ import Carbon
 import AVFoundation
 import Combine
 import StageKit
+import ToolbarCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
@@ -177,17 +178,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel = CapturePanelController(model: model, readback: readback, stage: stage,
             dictate: { [weak self] in self?.toolbarDictation() },
             snap: { [weak self] in self?.toolbarSnap() },
+            snapCapture: { [weak self] in self?.toolbarSnapCapture() },
             draw: { [weak self] in
                 guard let self else { return }
-                if self.stage.isDrawing { self.stage.finishDrawing() } else { self.stage.draw() }
+                if self.stage.isDrawing { self.stage.finishDrawing() }
+                else { self.model.toolbarMode = .draw; self.stage.draw() }
             }, present: { [weak self] in
                 guard let self else { return }
-                if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
+                if self.stage.isPresenting { self.stage.endDeviceScene() }
+                else { self.model.toolbarMode = .present; self.stage.presentSelectedScene() }
             })
         capturePanel.independentScreenCapture = { [weak snap] in snap?.isCapturing == true }
         stage.onFocusActivityControls = { [weak self] tool in
             guard let self else { return }
-            self.model.controlTool = tool == "persona" ? .persona : .present
+            self.model.toolbarMode = tool == "persona" ? .persona : .present
             self.capturePanel.focusToolbar()
         }
         model.promptInsertion.mayInsert = { [weak self] in
@@ -472,16 +476,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func menuRecording() {
         if model.phase == .requesting { closeControls(); model.cancelRecording(); return }
         if model.phase == .recording { closeControls(); model.stopRecording(); return }
+        model.toolbarMode = .dictate
         resumeTarget { [weak self] target in self?.model.toggleRecording(target: target) }
     }
     func toolbarDictation() {
         // The toolbar is nonactivating. Capture the current field at the click,
         // never reuse an old popover target for a later toolbar operation.
         let target = capturePanel.targetForDictation()
+        model.toolbarMode = .dictate
         model.toggleRecording(target: target)
+    }
+    /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
+    /// used mode, so the toolbar captures a region.
+    func toolbarSnapCapture() {
+        model.toolbarMode = .snap
+        closeControls()
+        Task { await snap.capture(.region) }
     }
     func toolbarSnap() {
         if readback.isRecording { readback.stopNarration(); return }
+        model.toolbarMode = .snapAndTalk
         readback.refreshPermissionState()
         guard readback.sessionURL != nil, readback.permissionsReady else {
             navigate("readback"); return
