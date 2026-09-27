@@ -860,6 +860,11 @@ def quick_panel_surface(swift, index, api):
         cases = [v[k + 2] for k in range(switch, index) if v[k] == 'case' and v[k + 1] == '.']
         if cases:
             return f'quick panel {cases[-1]} options'
+    # A fixed control inside the rows loop, ForEach(WorkbenchControlTool.allCases), is a row.
+    for p in blocks:
+        call = swift.openers.get(p - 1)
+        if call is not None and v[call - 1] == 'ForEach' and 'WorkbenchControlTool' in v[call:p]:
+            return 'quick panel rows'
     funcs = [s for s in swift.scopes if s[2] == 'func' and s[0] < index < s[1]]
     if funcs and 'WorkbenchControlTool' in v[max(funcs)[4]:max(funcs)[0]]:
         return 'quick panel row controls'

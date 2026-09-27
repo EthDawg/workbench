@@ -156,6 +156,17 @@ class SurfaceTests(unittest.TestCase):
         self.file.write_text(self.file.read_text().replace('func options', 'func rowOptions'))
         self.assertEqual(before, {e['surface']: e['id'] for e in self.entries()})
 
+    def test_a_fixed_row_inside_the_rows_loop_is_a_row(self):
+        self.file.write_text(PANEL % '''
+          ForEach(WorkbenchControlTool.allCases) { tool in
+            if tool == .snapAndTalk { Button { open("snap") } label: { Text("Snap") } }
+            Button { perform(tool) } label: { Text(tool.title) }
+          }
+          Button("Settings") { open("settings") }''')
+        surfaces = {e['label']: e['surface'] for e in self.entries()}
+        self.assertEqual('quick panel rows', surfaces['Snap'])
+        self.assertEqual('quick panel footer', surfaces['Settings'])
+
     def test_shortcut_editor_is_not_an_entry_point(self):
         self.file.write_text('''struct WorkbenchQuickPanel: View {
           var body: some View { Button("Read") {} }
