@@ -250,7 +250,7 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.snap",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.snapAndTalk",
     "surface": "floating toolbar glyph menu",
     "label": "Snap & Talk",
     "kind": "workflow",
@@ -372,6 +372,107 @@
     "belongsTo": "app",
     "aliasOf": "app",
     "note": "Existing contextual \"Copy\" label inside app; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.check-connections",
+    "surface": "settings page",
+    "label": "Check connections",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.claude",
+    "surface": "settings page",
+    "label": "Install or sign in with Claude Code",
+    "case": "claude",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Link.codex",
+    "surface": "settings page",
+    "label": "Install or sign in with Codex",
+    "case": "codex",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Toggle.claude",
+    "surface": "settings page",
+    "label": "Use installed Claude Code",
+    "case": "claude",
+    "kind": "setting",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Toggle.codex",
+    "surface": "settings page",
+    "label": "Use installed Codex",
+    "case": "codex",
+    "kind": "setting",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingDetectionSettings.Toggle.detect-meetings-calls",
+    "surface": "settings page",
+    "label": "Detect Meetings & Calls",
+    "kind": "setting",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Button.not-now",
+    "surface": "proactive offer MeetingOfferPanelController",
+    "label": "Not now",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "aliasOf": "dictate",
+    "note": "Contextual dismissal inside the meeting offer; the founder card uses the same words."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Button.review",
+    "surface": "proactive offer MeetingOfferPanelController",
+    "label": "Review",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Button.snooze",
+    "surface": "proactive offer MeetingOfferPanelController",
+    "label": "Snooze",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingOfferPanelController.Label.runtime-ce4398117a5f",
+    "surface": "proactive offer MeetingOfferPanelController",
+    "label": null,
+    "expression": "MeetingDetector . offerTitle ( for : offer )",
+    "kind": "status",
+    "belongsTo": "dictate",
+    "note": "The meeting offer title: \"Possible call in <app>\" or \"Possible call on this Mac\". Runtime label from MeetingDetector . offerTitle ( for : offer )."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.cancel",
+    "surface": "quick panel status rows",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-aeac18b23690",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "model . isRecording ? \"Meeting · recording\" : \"Meeting · processing\"",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Live state of Transcribe meeting or call; opens its page. Runtime label from model . isRecording ? \"Meeting · recording\" : \"Meeting · processing\"."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop",
+    "surface": "quick panel status rows",
+    "label": "Stop",
+    "kind": "action",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
@@ -522,10 +623,10 @@
     "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.persona",
     "surface": "floating toolbar hover action",
     "label": null,
-    "expression": "overlays ? \"End Overlays\" : \"Show Persona\"",
+    "expression": "if overlaysPaused { return \"Show Again\" } if overlaySession { return \"Hide All Temporarily\" } return overlays ? \"Hide Persona\" : \"Show Persona\"",
     "kind": "action",
     "belongsTo": "persona",
-    "note": "Runtime label from overlays ? \"End Overlays\" : \"Show Persona\"; no rendered text assumed."
+    "note": "Runtime label from if overlaysPaused { return \"Show Again\" } if overlaySession { return \"Hide All Temporarily\" } return overlays ? \"Hide Persona\" : \"Show Persona\"; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.present",
@@ -560,7 +661,7 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.snap",
+    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.snapAndTalk",
     "surface": "floating toolbar hover action",
     "label": null,
     "expression": "narrating ? \"Finish narration\" : capturing ? \"Capturing…\" : hasSession ? \"Capture next\" : \"Set up session\"",
@@ -691,6 +792,13 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.persona",
+    "surface": "window home",
+    "label": "Persona",
+    "kind": "capability",
+    "belongsTo": "persona"
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.present-a-device",
     "surface": "window home",
     "label": "Present a device",
@@ -707,6 +815,13 @@
     "belongsTo": "read",
     "aliasOf": "read",
     "note": "unify under Grammar Names"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.snap",
+    "surface": "window home",
+    "label": "Snap",
+    "kind": "capability",
+    "belongsTo": "snap"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.snap-talk",
@@ -732,6 +847,15 @@
     "page": "dictate",
     "kind": "capability",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.handoffs",
+    "surface": "window sidebar",
+    "label": "Handoffs",
+    "page": "handoffs",
+    "kind": "place",
+    "belongsTo": "history",
+    "note": "Transitional door: Hand off tasks and results fold into History (#124 step 4)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.history",
@@ -778,6 +902,14 @@
     "belongsTo": "library"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.personas",
+    "surface": "window sidebar",
+    "label": "Persona",
+    "page": "personas",
+    "kind": "capability",
+    "belongsTo": "persona"
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.present",
     "surface": "window sidebar",
     "label": "Present a device",
@@ -814,6 +946,14 @@
     "note": "unify under Grammar Names"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.snap",
+    "surface": "window sidebar",
+    "label": "Snap",
+    "page": "snap",
+    "kind": "capability",
+    "belongsTo": "snap"
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.speak",
     "surface": "window sidebar",
     "label": "Read aloud",
@@ -843,6 +983,13 @@
     "label": "Recent Transcripts…",
     "kind": "action",
     "belongsTo": "history"
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.transcribe-meeting-or-call",
+    "surface": "quick panel dictate options",
+    "label": "Transcribe Meeting or Call…",
+    "kind": "workflow",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Menu.options",
@@ -964,8 +1111,16 @@
     "note": "Runtime label from entry ? . shortcut . enabled == true ? ( entry ? . shortcut . label ?? \"Set\" ) : \"Set\"; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-snap-options.Button.runtime-b2b8eb234158",
-    "surface": "quick panel snap options",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-rows.Button.snap",
+    "surface": "quick panel rows",
+    "label": "Snap",
+    "kind": "capability",
+    "belongsTo": "snap",
+    "note": "Standalone Snap row directly above Snap & Talk; opens the Snap page."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-snapandtalk-options.Button.runtime-b2b8eb234158",
+    "surface": "quick panel snapAndTalk options",
     "label": null,
     "expression": "readback . sessionURL == nil ? \"Set Up\" : \"\\(readback.activeSections.count) · Review\"",
     "kind": "action",
@@ -1152,6 +1307,13 @@
     "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.persona",
+    "surface": "app menu bar",
+    "label": "Persona",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.quick-controls",
     "surface": "app menu bar",
     "label": "Quick controls",
@@ -1210,6 +1372,14 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.snap-history",
+    "surface": "app menu bar",
+    "label": "Snap History",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Transitional door: opens the Snap page today; Snaps fold into History (#124 step 4)."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.snap-talk-sessions",
     "surface": "app menu bar",
     "label": "Snap & Talk sessions",
@@ -1222,6 +1392,13 @@
     "label": "Switch to…",
     "kind": "action",
     "belongsTo": "present"
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.transcribe-meeting-or-call",
+    "surface": "app menu bar",
+    "label": "Transcribe meeting or call…",
+    "kind": "workflow",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.undo",
@@ -2040,10 +2217,10 @@
     "belongsTo": "read"
   },
   {
-    "id": "quick-panel.row.snap",
+    "id": "quick-panel.row.snapAndTalk",
     "surface": "quick panel rows",
     "label": "Snap & Talk",
-    "case": "snap",
+    "case": "snapAndTalk",
     "kind": "workflow",
     "belongsTo": "snapAndTalk"
   },
