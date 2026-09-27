@@ -156,14 +156,47 @@ struct MeetingProcessor {
             return Outcome(manifest: next, committed: false, notes: notes(next) + [next.failure!])
         }
         try check()
-        let transcript = Transcript(id: manifest.id, date: manifest.createdAt, text: text,
-                                    seconds: manifest.seconds, rawText: text, cleanupMethod: nil)
+        let conversation = await separatedConversation(manifest)
+        try check()
+        let transcript = Transcript(id: manifest.id, date: manifest.createdAt, text: conversation ?? text,
+                                    seconds: manifest.seconds, rawText: text,
+                                    cleanupMethod: conversation == nil ? nil : Self.speakersMethod)
         try await commit(transcript, manifest.purpose, notes(manifest))
         // History has now committed. Complete the journal even if cancellation
         // arrived at that boundary; no delivery/paste follows this commit.
         var next = manifest; next.state = .committed; next.failure = nil
         try await persist(next, replacing: manifest, allowCancelled: true)
         return Outcome(manifest: next, committed: true, notes: notes(next))
+    }
+
+    static let speakersMethod = "You and Others separated on this Mac"
+
+    /// With both the microphone and an app's audio, label who spoke. Nil keeps
+    /// the mixed transcript: one track, no usable speech, a recogniser failure
+    /// or cancellation all leave today's result intact. The mixed words remain
+    /// the original wording either way.
+    private func separatedConversation(_ manifest: MeetingManifest) async -> String? {
+        guard let local = manifest.tracks.first(where: { $0.source == .local }),
+              let remote = manifest.tracks.first(where: { $0.source == .remote }) else { return nil }
+        let session = session
+        let directory = session.appendingPathComponent(".speakers-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        do {
+            let files = try await MeetingFileWork.run {
+                try MeetingStore.createPrivateDirectory(directory)
+                return try MeetingConversation.writeUtterances(track: local, session: session, speaker: .you, directory: directory)
+                    + MeetingConversation.writeUtterances(track: remote, session: session, speaker: .others, directory: directory)
+            }
+            var utterances: [MeetingConversation.Utterance] = []
+            for file in files {
+                try check()
+                // One unrecognisable clip should not cost the whole conversation.
+                guard let text = try? await transcribe(file.url) else { continue }
+                utterances.append(.init(speaker: file.speaker, start: file.start, end: file.end, text: text))
+            }
+            let conversation = MeetingConversation.conversation(utterances)
+            return conversation.isEmpty ? nil : conversation
+        } catch { return nil }
     }
 
     private func notes(_ manifest: MeetingManifest) -> [String] { manifest.gaps + MeetingSummary.gaps(for: manifest) }

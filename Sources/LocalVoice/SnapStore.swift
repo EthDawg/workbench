@@ -152,7 +152,8 @@ final class SnapStore {
 
     @discardableResult
     func insert(originalPNG: Data, renderedPNG: Data? = nil, width: Int, height: Int,
-                title: String, source: SnapSource, edit: SnapEdit = .init(), notes: String = "", tags: [String] = [], id: UUID = UUID()) throws -> SnapItem {
+                title: String, source: SnapSource, edit: SnapEdit = .init(), notes: String = "", tags: [String] = [], id: UUID = UUID(),
+                createdAt: Date = Date()) throws -> SnapItem {
         guard !originalPNG.isEmpty, originalPNG.count <= Self.maximumImageBytes,
               renderedPNG.map({ !$0.isEmpty && $0.count <= Self.maximumImageBytes }) ?? true else {
             throw SnapError.message("Choose an image smaller than 100 MB.")
@@ -163,7 +164,7 @@ final class SnapStore {
         let staging = root.appendingPathComponent(".pending-\(UUID().uuidString)", isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: staging) }
-        var item = SnapItem(id: id, createdAt: Date(), updatedAt: Date(), title: title, source: source,
+        var item = SnapItem(id: id, createdAt: createdAt, updatedAt: Date(), title: title, source: source,
                             pixelWidth: width, pixelHeight: height, originalSHA256: Self.digest(originalPNG), imageSHA256: Self.digest(originalPNG), edit: edit)
         item.notes = notes; item.tags = tags
         try item.validate()

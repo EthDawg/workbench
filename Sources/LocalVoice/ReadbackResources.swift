@@ -89,11 +89,9 @@ enum ReadbackResources {
         try bundledSnapshot(.neutral, in: application).files
     }
 
-    static func bundledSnapshot(_ style: ReadbackDeckStyle, in application: Bundle = .main) throws -> ReadbackSkillPackSnapshot {
-        guard style == .neutral else { throw ReadbackError.message("Company packs are installed from Packs. Existing local copies remain available.") }
-        let reference: ReadbackSkillPackReference = .neutral
-        let relative = "build-snap-and-talk-deck" + (style == .neutral ? "" : "/packs/\(reference.id)/\(reference.version)")
-        let paths = style == .neutral ? deckFiles : serviceNowFiles
+    /// Where the app's resource bundle can be: inside a packaged app, or beside
+    /// the executable for development and check runs.
+    static func bundleLocations(in application: Bundle = .main) -> [URL] {
         let name = "Workbench_LocalVoice.bundle"
         var locations = [application.resourceURL?.appendingPathComponent(name)].compactMap { $0 }
         if application.bundleURL.pathExtension != "app" {
@@ -102,7 +100,15 @@ enum ReadbackResources {
                 locations.append(executable.deletingLastPathComponent().appendingPathComponent(name))
             }
         }
-        for location in locations {
+        return locations
+    }
+
+    static func bundledSnapshot(_ style: ReadbackDeckStyle, in application: Bundle = .main) throws -> ReadbackSkillPackSnapshot {
+        guard style == .neutral else { throw ReadbackError.message("Company packs are installed from Packs. Existing local copies remain available.") }
+        let reference: ReadbackSkillPackReference = .neutral
+        let relative = "build-snap-and-talk-deck" + (style == .neutral ? "" : "/packs/\(reference.id)/\(reference.version)")
+        let paths = style == .neutral ? deckFiles : serviceNowFiles
+        for location in bundleLocations(in: application) {
             guard let resources = Bundle(url: location), let root = resources.resourceURL?.appendingPathComponent(relative),
                   let payload = try? readPayload(at: root, paths: paths) else { continue }
             return ReadbackSkillPackSnapshot(reference: reference, files: payload)

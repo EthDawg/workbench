@@ -125,7 +125,7 @@ struct WorkbenchHome: View {
             }
             .sheet(item: $handoffReview) { request in
                 HandoffReviewView(history: model.historyLibrary, jobs: model.handoffJobs,
-                    skills: request.transcriptID == nil ? [.followUp] + packs.transcriptSkills : [.followUp],
+                    skills: request.transcriptID == nil ? TranscriptHandoffSkill.builtIns + packs.transcriptSkills : [.followUp],
                     initialTask: request.task,
                     preferredSkillID: request.transcriptID == nil ? packs.preferredTranscriptSkillID : nil,
                     selectedSnapTalkSession: request.transcriptID == nil ? readback.sessionURL : nil,
