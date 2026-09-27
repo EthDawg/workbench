@@ -535,34 +535,6 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Button.enable-automatic-paste",
-    "surface": "settings page",
-    "label": "Enable automatic paste…",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
-    "surface": "settings page",
-    "label": "Activation",
-    "kind": "setting",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.cleanup",
-    "surface": "settings page",
-    "label": "Cleanup",
-    "kind": "setting",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.delivery",
-    "surface": "settings page",
-    "label": "Delivery",
-    "kind": "setting",
-    "belongsTo": "dictate"
-  },
-  {
     "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.cancel",
     "surface": "floating toolbar live controls",
     "label": "Cancel",
@@ -711,6 +683,14 @@
     "note": "Runtime label from receipt . canSuggestPaste ? \"\\(receipt.wordCount) words from Workbench. Paste where you need them.\" : receipt . detail; no rendered text assumed."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.dictate-options",
+    "surface": "settings page",
+    "label": "Dictate options…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option (a door): Dictate's options moved to the Dictate page; this keeps Settings free of dead ends (#134 W3)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.keyboard-and-practice",
     "surface": "settings page",
     "label": "Keyboard and practice",
@@ -723,13 +703,6 @@
     "label": "Models and local server",
     "kind": "action",
     "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.position-dictation-panel",
-    "surface": "settings page",
-    "label": "Position dictation panel…",
-    "kind": "action",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
@@ -753,13 +726,6 @@
     "label": "Try the keyboard",
     "kind": "action",
     "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.your-dictionary",
-    "surface": "settings page",
-    "label": "Your dictionary",
-    "kind": "action",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
@@ -1963,22 +1929,6 @@
     "kind": "option",
     "belongsTo": "present",
     "note": "Runtime label from tool == . present ? \"Prompts\" : nil; no rendered text assumed."
-  },
-  {
-    "id": "choices.CaptureMode.hold",
-    "surface": "choices CaptureMode",
-    "label": "Press & hold",
-    "case": "hold",
-    "kind": "option",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "choices.CaptureMode.toggle",
-    "surface": "choices CaptureMode",
-    "label": "Toggle",
-    "case": "toggle",
-    "kind": "option",
-    "belongsTo": "dictate"
   },
   {
     "id": "choices.CleanupStyle.light",
