@@ -1040,6 +1040,7 @@ final class SubscriptionProcess: @unchecked Sendable {
         var leaderExited = false
         var stoppingAt: TimeInterval?
         var lastActivity = ProcessInfo.processInfo.systemUptime
+        var receivedOutputThisPass = false
         let deadline = lastActivity + timeout
 
         func deliverLines(finishing: Bool = false) {
@@ -1072,6 +1073,7 @@ final class SubscriptionProcess: @unchecked Sendable {
                     return errno == EAGAIN || errno == EWOULDBLOCK
                 }
                 lastActivity = ProcessInfo.processInfo.systemUptime
+                receivedOutputThisPass = true
                 byteCount += count
                 guard byteCount <= limit else { requestStop(.overflowed); return true }
                 let chunk = Data(bytes.prefix(count))
@@ -1093,7 +1095,6 @@ final class SubscriptionProcess: @unchecked Sendable {
         while true {
             let now = ProcessInfo.processInfo.systemUptime
             if now >= deadline { requestStop(.timedOut) }
-            if let inactivityTimeout, now - lastActivity >= inactivityTimeout { requestStop(.inactive) }
             if !stopReason.isPending, stoppingAt == nil {
                 stoppingAt = now
                 // POSIX_SPAWN_SETPGROUP makes this only our child and its
@@ -1121,6 +1122,7 @@ final class SubscriptionProcess: @unchecked Sendable {
                     }
                 }
             }
+            receivedOutputThisPass = false
             if outputOpen { outputOpen = readAvailable(outputFD, isError: false) }
             if errorOpen { errorOpen = readAvailable(errorFD, isError: true) }
             if !leaderExited {
@@ -1132,6 +1134,13 @@ final class SubscriptionProcess: @unchecked Sendable {
                 }
             }
             if leaderExited && !outputOpen && !errorOpen { break }
+            // A busy host may resume this worker with progress already queued
+            // in a pipe. Drain it before deciding that the provider went quiet.
+            // The bounded drain cannot extend the overall deadline above.
+            if !receivedOutputThisPass, let inactivityTimeout,
+               ProcessInfo.processInfo.systemUptime - lastActivity >= inactivityTimeout {
+                requestStop(.inactive)
+            }
             var descriptors: [pollfd] = []
             if outputOpen { descriptors.append(pollfd(fd: outputFD, events: Int16(POLLIN), revents: 0)) }
             if errorOpen { descriptors.append(pollfd(fd: errorFD, events: Int16(POLLIN), revents: 0)) }

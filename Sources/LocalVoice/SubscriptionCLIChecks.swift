@@ -721,19 +721,66 @@ enum SubscriptionCLIChecks {
         let forbidden = try await child("/bin/sh", ["-c", "printf 'forbidden\\n'; /bin/sleep 8"], onLine: { _ in "synthetic boundary refusal" }).run()
         guard case .violation = forbidden.stop else { throw VoiceError.message("SUBSCRIPTION PROCESS CHECK FAILED: forbidden event did not stop child") }
         try check(forbidden.status != 0, "a forbidden stream event stops the actual process")
-        let active = SubscriptionProcess(executable: URL(fileURLWithPath: "/bin/sh"),
-            arguments: ["-c", "for i in 1 2 3 4 5 6; do printf 'progress\\n'; /bin/sleep 0.05; done"],
+        // Use zsh's built-in timer: starting a separate sleep process for
+        // every 50 ms update made this depend on CI process-launch latency.
+        // A one-second fixture window gives scheduling headroom while the
+        // two-second stream must still survive beyond that window.
+        let inactivityWindow: TimeInterval = 1
+        let active = SubscriptionProcess(executable: URL(fileURLWithPath: "/bin/zsh"),
+            arguments: ["-f", "-c", "zmodload zsh/zselect; repeat 20 { print -r -- progress; zselect -t 10; }; exit 0"],
             environment: ["PATH": "/usr/bin:/bin"], directory: root, input: Data(),
-            limit: 65536, timeout: 2, inactivityTimeout: 0.15, collectOutput: true)
+            limit: 65536, timeout: 10, inactivityTimeout: inactivityWindow, collectOutput: true)
+        let activeAt = ProcessInfo.processInfo.systemUptime
         let progressing = try await active.run()
-        try check(progressing.status == 0 && progressing.stop.isPending, "reported progress extends the inactivity window")
+        let activeElapsed = ProcessInfo.processInfo.systemUptime - activeAt
+        let updates = progressing.standardOutput.split(separator: "\n")
+        try check(progressing.status == 0 && progressing.stop.isPending && updates.count == 20,
+                  "reported progress extends the inactivity window (status \(progressing.status), stop \(progressing.stop), \(updates.count) updates, \(String(format: "%.3f", activeElapsed))s)")
+        try check(activeElapsed > inactivityWindow * 1.5, "a progressing run actually lasts beyond its inactivity window")
+        // Fill more than one bounded pipe drain, then delay the eighth line's
+        // consumer while later lines are already queued. Checking inactivity
+        // before the next drain incorrectly rejects this successful child.
+        let bufferedOutput = (0..<12).map {
+            String(format: "%02d", $0) + String(repeating: "x", count: 16 * 1024 - 3) + "\n"
+        }.joined()
+        let buffered = SubscriptionProcess(executable: URL(fileURLWithPath: "/usr/bin/printf"),
+            arguments: ["%s", bufferedOutput], environment: ["PATH": "/usr/bin:/bin"], directory: root,
+            input: Data(), limit: 1024 * 1024, timeout: 10, inactivityTimeout: inactivityWindow, collectOutput: true,
+            onLine: { line in
+                if line.hasPrefix("07") { Thread.sleep(forTimeInterval: 1.25) }
+                return nil
+            })
+        let bufferedResult = try await buffered.run()
+        try check(bufferedResult.status == 0 && bufferedResult.stop.isPending && bufferedResult.standardOutput == bufferedOutput,
+                  "queued progress survives a delayed output consumer without false inactivity")
         let quiet = SubscriptionProcess(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["8"],
             environment: ["PATH": "/usr/bin:/bin"], directory: root, input: Data(),
-            limit: 65536, timeout: 2, inactivityTimeout: 0.1)
+            limit: 65536, timeout: 10, inactivityTimeout: inactivityWindow)
+        let quietAt = ProcessInfo.processInfo.systemUptime
         let inactive = try await quiet.run()
         guard case .inactive = inactive.stop else { throw VoiceError.message("SUBSCRIPTION PROCESS CHECK FAILED: inactivity not reported") }
-        count += 1
-        print("SUBSCRIPTION_PROCESS_CHECKS_OK: \(count) checks passed; inherited-pipe timeout \(String(format: "%.3f", elapsed))s")
+        try check(ProcessInfo.processInfo.systemUptime - quietAt < 5, "a silent producer remains bounded by inactivity")
+        let paused = SubscriptionProcess(executable: URL(fileURLWithPath: "/bin/zsh"),
+            arguments: ["-f", "-c", "zmodload zsh/zselect; repeat 12 { print -r -- progress; zselect -t 10; }; zselect -t 800"],
+            environment: ["PATH": "/usr/bin:/bin"], directory: root, input: Data(),
+            limit: 65536, timeout: 10, inactivityTimeout: inactivityWindow, collectOutput: true)
+        let pausedAt = ProcessInfo.processInfo.systemUptime
+        let stalled = try await paused.run()
+        let pausedElapsed = ProcessInfo.processInfo.systemUptime - pausedAt
+        guard case .inactive = stalled.stop else { throw VoiceError.message("SUBSCRIPTION PROCESS CHECK FAILED: paused progress did not become inactive") }
+        try check(stalled.standardOutput.split(separator: "\n").count == 12 && pausedElapsed > inactivityWindow * 1.5,
+                  "progress is allowed before the producer becomes silent")
+        try check(pausedElapsed < 6, "earlier progress cannot keep a paused producer alive indefinitely")
+        let continuouslyActive = SubscriptionProcess(executable: URL(fileURLWithPath: "/bin/zsh"),
+            arguments: ["-f", "-c", "zmodload zsh/zselect; repeat 100 { print -r -- progress; zselect -t 10; }"],
+            environment: ["PATH": "/usr/bin:/bin"], directory: root, input: Data(),
+            limit: 65536, timeout: 1.5, inactivityTimeout: inactivityWindow, collectOutput: true)
+        let deadlineAt = ProcessInfo.processInfo.systemUptime
+        let deadlineStopped = try await continuouslyActive.run()
+        guard case .timedOut = deadlineStopped.stop else { throw VoiceError.message("SUBSCRIPTION PROCESS CHECK FAILED: progress bypassed the overall deadline") }
+        try check(deadlineStopped.standardOutput.split(separator: "\n").count > 5 && ProcessInfo.processInfo.systemUptime - deadlineAt < 5,
+                  "continuous progress still obeys the independent overall deadline")
+        print("SUBSCRIPTION_PROCESS_CHECKS_OK: \(count) checks passed; inherited-pipe timeout \(String(format: "%.3f", elapsed))s; progressing \(String(format: "%.3f", activeElapsed))s; paused \(String(format: "%.3f", pausedElapsed))s")
     }
 
     // MARK: Real synthetic OS boundary and dispatch
