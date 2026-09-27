@@ -253,6 +253,7 @@ enum HandoffJobsChecks {
                   "logical named review survives the immutable task boundary")
         let link = namedRecord.items[0].images[0]
         let reply = """
+        ```markdown
         # Proposed synthesis
         [Plain](\(link))
         [Angle](<\(link)>)
@@ -266,6 +267,7 @@ enum HandoffJobsChecks {
         [three]:
           ./\(link) 'Source image'
         Suggested rename and exclusion remain proposals.
+        ```
         """
         try HandoffJobStore.write(Data(reply.utf8), to: namedRoot.appendingPathComponent("result.md"))
         let published = try HandoffReviewPublication.publish(job: namedJob, snapshot: namedRecord, result: reply,
@@ -273,6 +275,23 @@ enum HandoffJobsChecks {
         let current = try snaps.readOrganization(key: context.key)!
         try check(current.digest == published && Data(contentsOf: namedRoot.appendingPathComponent("result.md")) == Data(reply.utf8),
                   "current review publishes without changing the immutable provider reply")
+        try check(current.text.hasPrefix("# Proposed synthesis\n") && !current.text.contains("```"),
+                  "whole-document Markdown wrapper is removed only from the published review")
+        func publishedText(_ value: String) -> String {
+            SnapOrganization.rebasedResult(value, inputs: [], jobRoot: namedRoot, destination: current.url)
+        }
+        let innerCode = "# Review\n\n```swift\nlet answer = 42\n```\n"
+        try check(publishedText("````markdown\n" + innerCode + "````\n") == innerCode,
+                  "long outer Markdown fence preserves internal code byte-for-byte")
+        try check(publishedText("\r\n  ~~~MD\r\n# Review 🌿\r\n  ~~~~\r\n") == "# Review 🌿\r\n",
+                  "Markdown-labelled tilde wrapper supports CRLF, Unicode and longer closing fences")
+        for unchanged in ["# Plain review\n", "```swift\nlet answer = 42\n```", "```\n# Code example\n```",
+                          "Intro\n```markdown\n# Example\n```", "```md\n# Example\n```\nAfterword",
+                          "```md\n# One\n```\n```md\n# Two\n```", "```markdown\n# Unclosed",
+                          "```markdown\n" + innerCode + "```", "```markdown\n\n```"] {
+            try check(publishedText(unchanged) == unchanged,
+                      "plain, non-Markdown, partial and ambiguous fenced replies retain their exact text")
+        }
         let expression = try NSRegularExpression(pattern: #"\]\(<?([^> )]+)"#)
         let links = expression.matches(in: current.text, range: NSRange(current.text.startIndex..., in: current.text))
         try check(links.count == 5, "all supported Markdown link forms remain present")
