@@ -86,6 +86,31 @@ enum SubscriptionCLILimits {
     static let maximumTotalImageBytes = 128 * 1024 * 1024
     static let maximumImageBytes = 10 * 1024 * 1024
     static let maximumFailureCharacters = 400
+
+    // The native Claude 2.1.236 image path uses a 5 MiB base64 ceiling.
+    // Stay within that narrower boundary and leave room below the documented
+    // 32 MB request ceiling for the CLI's own prompt and protocol fields.
+    static let claudeMaximumImages = 20
+    static let claudeMaximumImageBytes = 3_932_160
+    static let claudeMaximumTotalImageBytes = 16 * 1024 * 1024
+    static let claudeMaximumRequestBytes = 24 * 1024 * 1024
+
+    static func maximumImages(for provider: SubscriptionProvider) -> Int {
+        provider == .claude ? claudeMaximumImages : maximumImages
+    }
+
+    static func maximumImageBytes(for provider: SubscriptionProvider) -> Int {
+        provider == .claude ? claudeMaximumImageBytes : maximumImageBytes
+    }
+
+    static func maximumTotalImageBytes(for provider: SubscriptionProvider) -> Int {
+        provider == .claude ? claudeMaximumTotalImageBytes : maximumTotalImageBytes
+    }
+
+    /// Codex passes attachment paths; only Claude embeds image bytes in stdin.
+    static func maximumRequestBytes(for provider: SubscriptionProvider) -> Int? {
+        provider == .claude ? claudeMaximumRequestBytes : nil
+    }
 }
 
 // MARK: - Environment
@@ -560,6 +585,85 @@ enum SubscriptionSandbox {
 
 // MARK: - Argument construction
 
+/// Claude's documented stream-json input accepts images as direct content
+/// blocks. Freeze only the selected bytes before dispatch; no file paths,
+/// folder listings or image-reading tools are sent to the model.
+enum SubscriptionClaudeInput {
+    private static let mediaTypes = ["png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                                     "gif": "image/gif", "webp": "image/webp"]
+
+    static func encode(prompt: String, images: [URL], directory: URL) throws -> Data {
+        guard !images.isEmpty else { return Data(prompt.utf8) }
+        let images = try SubscriptionCLI.validated(images, in: directory, provider: .claude)
+        var content: [[String: Any]] = []
+        var totalBytes = 0
+        for image in images {
+            let bytes = try frozenBytes(image, directory: directory)
+            totalBytes += bytes.count
+            guard totalBytes <= SubscriptionCLILimits.claudeMaximumTotalImageBytes else {
+                throw SubscriptionCLIError.unavailable("The selected images exceed the Claude Code handoff's total size limit.")
+            }
+            content.append(["type": "image", "source": ["type": "base64",
+                "media_type": mediaTypes[image.pathExtension.lowercased()]!, "data": bytes.base64EncodedString()]])
+        }
+        content.append(["type": "text", "text": prompt])
+        let message: [String: Any] = ["type": "user", "message": ["role": "user", "content": content],
+                                      "parent_tool_use_id": NSNull()]
+        var input = try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys, .withoutEscapingSlashes])
+        input.append(0x0A)
+        guard input.count <= SubscriptionCLILimits.claudeMaximumRequestBytes else {
+            throw SubscriptionCLIError.unavailable("The encoded images and request exceed the Claude Code handoff's size limit. Select fewer images and try again.")
+        }
+        return input
+    }
+
+    private static func frozenBytes(_ image: URL, directory: URL) throws -> Data {
+        let prefix = directory.path + "/"
+        guard image.path.hasPrefix(prefix) else {
+            throw SubscriptionCLIError.boundary("An attachment is outside this job's folder.")
+        }
+        let components = image.path.dropFirst(prefix.count).split(separator: "/").map(String.init)
+        var parent = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parent >= 0 else { throw SubscriptionCLIError.boundary("The prepared image folder could not be opened safely.") }
+        defer { close(parent) }
+        for component in components.dropLast() {
+            let next = openat(parent, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard next >= 0 else { throw SubscriptionCLIError.boundary("An image folder changed or could not be opened safely.") }
+            close(parent)
+            parent = next
+        }
+        guard let name = components.last else { throw SubscriptionCLIError.boundary("The image path is incomplete.") }
+        let descriptor = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { throw SubscriptionCLIError.boundary("An image changed or could not be opened safely.") }
+        defer { close(descriptor) }
+        let limit = SubscriptionCLILimits.claudeMaximumImageBytes
+        var before = stat()
+        guard fstat(descriptor, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+              before.st_nlink == 1, before.st_size > 0, before.st_size <= limit else {
+            throw SubscriptionCLIError.boundary("An image is not a regular file within the Claude Code size limit.")
+        }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let received = Darwin.read(descriptor, &buffer, min(buffer.count, limit + 1 - data.count))
+            if received == 0 { break }
+            if received < 0 {
+                if errno == EINTR { continue }
+                throw SubscriptionCLIError.incomplete("An image could not be read completely.")
+            }
+            data.append(contentsOf: buffer.prefix(received))
+            guard data.count <= limit else { throw SubscriptionCLIError.boundary("An image grew beyond the Claude Code size limit.") }
+        }
+        var after = stat()
+        guard fstat(descriptor, &after) == 0, before.st_size == data.count, after.st_size == before.st_size,
+              after.st_mtimespec.tv_sec == before.st_mtimespec.tv_sec, after.st_mtimespec.tv_nsec == before.st_mtimespec.tv_nsec,
+              after.st_ctimespec.tv_sec == before.st_ctimespec.tv_sec, after.st_ctimespec.tv_nsec == before.st_ctimespec.tv_nsec else {
+            throw SubscriptionCLIError.boundary("An image changed while Workbench was preparing the handoff. Try again.")
+        }
+        return data
+    }
+}
+
 /// Argument arrays only. No text is ever handed to a shell, so a prompt,
 /// filename or transcript cannot become a command.
 enum SubscriptionCLIPlanner {
@@ -581,8 +685,8 @@ enum SubscriptionCLIPlanner {
 
     /// Like Codex, Claude reads the selected prompt from standard input so it
     /// never appears in another process's argument listing.
-    static func claude() -> [String] {
-        claudeBase + ["-p"]
+    static func claude(hasImages: Bool = false) -> [String] {
+        claudeBase + (hasImages ? ["--input-format", "stream-json"] : []) + ["-p"]
     }
 
     /// Features that would let the turn reach the shell, the network, the
@@ -1125,7 +1229,7 @@ enum SubscriptionCLI {
     /// Injection seam for the checks: logical command in, bounded result out.
     typealias ProbeRunner = @Sendable (URL, [String]) async -> Probe?
 
-    static let claudeImagesVerified = false
+    static let claudeImagesVerified = true
 
     static func versionArguments() -> [String] { ["--version"] }
 
@@ -1270,8 +1374,8 @@ enum SubscriptionCLI {
         let input: Data
         switch connection.provider {
         case .claude:
-            inner = SubscriptionCLIPlanner.claude()
-            input = Data(prompt.utf8)
+            inner = SubscriptionCLIPlanner.claude(hasImages: !images.isEmpty)
+            input = try SubscriptionClaudeInput.encode(prompt: prompt, images: images, directory: root)
         case .codex:
             inner = try SubscriptionCLIPlanner.codex(images: images, job: job)
             input = Data(prompt.utf8)
@@ -1355,14 +1459,9 @@ enum SubscriptionCLI {
     /// never reference a picture the person did not choose.
     static func validated(_ images: [URL], in root: URL, provider: SubscriptionProvider) throws -> [URL] {
         guard !images.isEmpty else { return [] }
-        if provider == .claude, !claudeImagesVerified {
-            // The scoped-read path for Claude Code attachments is not verified
-            // here, and claiming the model saw a picture it never received
-            // would be worse than saying so.
-            throw SubscriptionCLIError.imagesUnsupported("Images cannot be included in a Claude Code handoff yet. Hand off the text only, or use Codex for the pictures.")
-        }
-        guard images.count <= SubscriptionCLILimits.maximumImages else {
-            throw SubscriptionCLIError.unavailable("A handoff accepts at most \(SubscriptionCLILimits.maximumImages) images. Select fewer and try again.")
+        let maximumImages = SubscriptionCLILimits.maximumImages(for: provider)
+        guard images.count <= maximumImages else {
+            throw SubscriptionCLIError.unavailable("A \(provider.title) handoff accepts at most \(maximumImages) images. Select fewer and try again.")
         }
         let prefix = root.path + "/"
         var result: [URL] = []
@@ -1380,11 +1479,11 @@ enum SubscriptionCLI {
                   let size = attributes?[.size] as? NSNumber, size.intValue > 0 else {
                 throw SubscriptionCLIError.unavailable("\(resolved.lastPathComponent) could not be read, so Workbench did not hand it off.")
             }
-            guard size.intValue <= SubscriptionCLILimits.maximumImageBytes else {
+            guard size.intValue <= SubscriptionCLILimits.maximumImageBytes(for: provider) else {
                 throw SubscriptionCLIError.unavailable("\(resolved.lastPathComponent) is too large for this handoff.")
             }
             totalBytes += size.intValue
-            guard totalBytes <= SubscriptionCLILimits.maximumTotalImageBytes else {
+            guard totalBytes <= SubscriptionCLILimits.maximumTotalImageBytes(for: provider) else {
                 throw SubscriptionCLIError.unavailable("The selected images exceed this handoff's total size limit. Select fewer images and try again.")
             }
             result.append(resolved)

@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 /// Focused checks for the optional CLI handoff adapter. They exercise argument
 /// construction, the environment allowlist, the OS sandbox profile, event
@@ -108,6 +109,14 @@ enum SubscriptionCLIChecks {
         for flag in ["--no-chrome", "--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands", "--verbose", "-p"] {
             try check(claudeArguments.contains(flag), "Claude Code flag \(flag)")
         }
+        let claudeImageArguments = SubscriptionCLIPlanner.claude(hasImages: true)
+        try check(value(after: "--input-format", in: claudeImageArguments) == "stream-json", "Claude images use the native streaming input format")
+        try check(Array(claudeImageArguments.prefix(SubscriptionCLIPlanner.claudeBase.count)) == SubscriptionCLIPlanner.claudeBase, "images preserve every tool and customization restriction")
+        try check(!claudeArguments.contains("--input-format"), "text-only handoffs preserve the established input route")
+        try check(SubscriptionCLILimits.maximumImages(for: .codex) == 64 && SubscriptionCLILimits.maximumImageBytes(for: .codex) == 10 * 1024 * 1024 && SubscriptionCLILimits.maximumTotalImageBytes(for: .codex) == 128 * 1024 * 1024, "Codex image limits are unchanged")
+        try check(SubscriptionCLILimits.maximumImages(for: .claude) == 20 && SubscriptionCLILimits.maximumImageBytes(for: .claude) == 3_932_160, "Claude image limits fit the narrower native input path")
+        try check(4 * ((SubscriptionCLILimits.claudeMaximumImageBytes + 2) / 3) == 5 * 1024 * 1024, "the per-image cap includes base64 expansion")
+        try check(SubscriptionCLILimits.maximumTotalImageBytes(for: .claude) == 16 * 1024 * 1024 && SubscriptionCLILimits.maximumRequestBytes(for: .claude) == 24 * 1024 * 1024, "Claude raw and serialized request limits are explicit")
 
         // Codex argument construction
         let directory = FileManager.default.temporaryDirectory
@@ -153,6 +162,87 @@ enum SubscriptionCLIChecks {
         let batchPaths = batchArguments.enumerated().filter { $0.element == "-i" }.map { batchArguments[$0.offset + 1] }
         try check(batchPaths == batch.map(\.path), "a selected 45-image batch retains every image and its order")
         try rejects("a path that cannot be quoted safely") { _ = try SubscriptionCLIPlanner.tomlString("/tmp/job\"name") }
+
+        // Frozen direct-image input. These synthetic byte fixtures exercise
+        // the wire format; native image decoding is checked by the separate
+        // rendered-PNG acceptance run.
+        let bytesOne = Data("selected-image-one /\n".utf8)
+        let bytesTwo = Data("selected-image-two \"content\"".utf8)
+        try bytesOne.write(to: first)
+        try bytesTwo.write(to: second)
+        let excluded = job.root.appendingPathComponent("inputs/unselected.png")
+        let excludedBytes = Data("unselected-image-marker".utf8)
+        try excludedBytes.write(to: excluded)
+        let imagePrompt = "Compare the selected pictures.\nKeep \"quoted\" text intact."
+        let imageInput = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: [second, first], directory: job.root)
+        let decodedInput = try JSONSerialization.jsonObject(with: imageInput) as? [String: Any]
+        let userMessage = decodedInput?["message"] as? [String: Any]
+        let blocks = userMessage?["content"] as? [[String: Any]] ?? []
+        let imageBlocks = blocks.filter { $0["type"] as? String == "image" }
+        let sources = imageBlocks.compactMap { $0["source"] as? [String: Any] }
+        let decodedImages = sources.compactMap { ($0["data"] as? String).flatMap { Data(base64Encoded: $0) } }
+        try check(decodedInput?["type"] as? String == "user" && userMessage?["role"] as? String == "user", "one native user message carries the request")
+        try check(blocks.count == 3 && imageBlocks.count == 2 && blocks.last?["text"] as? String == imagePrompt, "only selected images and the exact prompt are encoded")
+        try check(sources.allSatisfy { $0["type"] as? String == "base64" && $0["media_type"] as? String == "image/png" }, "images use direct base64 content blocks")
+        try check(decodedImages == [bytesTwo, bytesOne], "selected bytes and caller order survive serialization exactly")
+        try check(decodedImages.map { SHA256.hash(data: $0) } == [bytesTwo, bytesOne].map { SHA256.hash(data: $0) }, "input image hashes match the frozen sources in order")
+        try check(imageInput.last == 0x0A && imageInput.filter { $0 == 0x0A }.count == 1, "the request is one newline-delimited JSON message")
+        let imageInputText = String(decoding: imageInput, as: UTF8.self)
+        try check(!imageInputText.contains(excludedBytes.base64EncodedString()) && !imageInputText.contains(job.root.path), "unselected content and local paths are absent from the request")
+        try check(imageInput.count > bytesOne.count + bytesTwo.count + imagePrompt.utf8.count && imageInput.count <= SubscriptionCLILimits.claudeMaximumRequestBytes, "the serialized byte count includes base64 and JSON overhead")
+        try Data("later source replacement".utf8).write(to: first)
+        try check(decodedImages[1] == bytesOne, "later file edits cannot change the prepared input bytes")
+        try bytesOne.write(to: first)
+        try check(try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: [], directory: job.root) == Data(imagePrompt.utf8), "text-only stdin stays byte-for-byte unchanged")
+        for (extensionName, mediaType) in [("jpg", "image/jpeg"), ("jpeg", "image/jpeg"), ("gif", "image/gif"), ("webp", "image/webp")] {
+            let image = job.root.appendingPathComponent("inputs/format." + extensionName)
+            try bytesOne.write(to: image)
+            let payload = try SubscriptionClaudeInput.encode(prompt: "Synthetic input", images: [image], directory: job.root)
+            try check(String(decoding: payload, as: UTF8.self).contains(mediaType), "\(extensionName) maps to its native image media type")
+        }
+        try rejects("too many Claude images are refused before serialization") {
+            _ = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: Array(repeating: first, count: 21), directory: job.root)
+        }
+        let oversizedImage = job.root.appendingPathComponent("inputs/oversized.png")
+        let oversizedDescriptor = open(oversizedImage.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard oversizedDescriptor >= 0 else { throw VoiceError.message("Could not create image limit fixture") }
+        guard ftruncate(oversizedDescriptor, off_t(SubscriptionCLILimits.claudeMaximumImageBytes + 1)) == 0 else { close(oversizedDescriptor); throw VoiceError.message("Could not size image limit fixture") }
+        close(oversizedDescriptor)
+        try rejects("a per-image overflow is refused before reading its bytes") {
+            _ = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: [oversizedImage], directory: job.root)
+        }
+        var aggregateImages: [URL] = []
+        for index in 0..<5 {
+            let image = job.root.appendingPathComponent("inputs/aggregate-\(index).png")
+            let descriptor = open(image.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard descriptor >= 0 else { throw VoiceError.message("Could not create aggregate fixture") }
+            let size = index == 4 ? 1024 * 1024 + 1 : SubscriptionCLILimits.claudeMaximumImageBytes
+            guard ftruncate(descriptor, off_t(size)) == 0 else { close(descriptor); throw VoiceError.message("Could not size aggregate fixture") }
+            close(descriptor)
+            aggregateImages.append(image)
+        }
+        try rejects("aggregate image overflow is refused before encoding") {
+            _ = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: aggregateImages, directory: job.root)
+        }
+        try rejects("the complete serialized request has its own byte limit") {
+            _ = try SubscriptionClaudeInput.encode(prompt: String(repeating: "x", count: SubscriptionCLILimits.claudeMaximumRequestBytes), images: [first], directory: job.root)
+        }
+        let outsideImage = directory.deletingLastPathComponent().appendingPathComponent("outside-image-" + UUID().uuidString + ".png")
+        try excludedBytes.write(to: outsideImage)
+        defer { try? FileManager.default.removeItem(at: outsideImage) }
+        try rejects("an out-of-job Claude image is never encoded") {
+            _ = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: [outsideImage], directory: job.root)
+        }
+        let linkedImage = job.root.appendingPathComponent("inputs/linked.png")
+        try FileManager.default.createSymbolicLink(at: linkedImage, withDestinationURL: outsideImage)
+        try rejects("an image symlink cannot expose unselected bytes") {
+            _ = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: [linkedImage], directory: job.root)
+        }
+        let hardLinkedImage = job.root.appendingPathComponent("inputs/hard-linked.png")
+        try FileManager.default.linkItem(at: outsideImage, to: hardLinkedImage)
+        try rejects("an image hard link cannot expose unselected bytes") {
+            _ = try SubscriptionClaudeInput.encode(prompt: imagePrompt, images: [hardLinkedImage], directory: job.root)
+        }
 
         // Job folder boundary
         try check(try SubscriptionJobDirectory.validate(job.root, home: home).path == SubscriptionPaths.resolved(job.root).path, "a prepared job folder is accepted")
@@ -539,9 +629,9 @@ enum SubscriptionCLIChecks {
                                           images: Array(repeating: image, count: SubscriptionCLILimits.maximumImages + 1),
                                           directory: directory, onSession: { _ in })
         }, { if case .unavailable = $0 { return true } else { return false } })
-        try await refuses("images on the unverified Claude Code path", {
-            try await SubscriptionCLI.run(claudeConnection, prompt: "Describe this", images: [image], directory: directory, onSession: { _ in })
-        }, { if case .imagesUnsupported = $0 { return true } else { return false } })
+        try await refuses("more images than the Claude Code limit", {
+            try await SubscriptionCLI.run(claudeConnection, prompt: "Describe this", images: Array(repeating: image, count: 21), directory: directory, onSession: { _ in })
+        }, { if case .unavailable = $0 { return true } else { return false } })
 
         // Cancellation is honoured before anything is launched. The connection
         // points at a path that does not exist, so no CLI can run either way.
@@ -761,6 +851,35 @@ enum SubscriptionCLIChecks {
                 try check(expected, "\(mode) refuses a receipt even with stale or newly written final text")
             }
         }
+        let claude = runtime.appendingPathComponent("claude")
+        let claudeScript = """
+        #!/bin/sh
+        if [ "$2" = auth ]; then
+            printf '%s\\n' '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"pro"}'
+            exit 0
+        fi
+        cat > captured-claude-input.json
+        printf '%s\\n' '{"type":"system","session_id":"synthetic-claude-images"}' '{"type":"result","subtype":"success","is_error":false,"result":"Synthetic image receipt.","session_id":"synthetic-claude-images"}'
+        """
+        try Data(claudeScript.utf8).write(to: claude)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: claude.path)
+        let imageOne = job.root.appendingPathComponent("one.png")
+        let imageTwo = job.root.appendingPathComponent("two.png")
+        let bytesOne = Data("synthetic first image".utf8)
+        let bytesTwo = Data("synthetic second image".utf8)
+        try bytesOne.write(to: imageOne)
+        try bytesTwo.write(to: imageTwo)
+        let claudeReady = SubscriptionConnection(provider: .claude, executable: claude, version: "2.1.236", ready: true, detail: "Synthetic subscription.")
+        let imageReceipt = try await SubscriptionCLI.run(claudeReady, prompt: "Synthetic selected images", images: [imageTwo, imageOne], directory: job.root, onSession: { _ in })
+        try check(imageReceipt.text == "Synthetic image receipt." && imageReceipt.providerSessionID == "synthetic-claude-images", "a native-shaped Claude image turn completes through actual stdin dispatch")
+        let captured = try Data(contentsOf: job.root.appendingPathComponent("captured-claude-input.json"))
+        let object = try JSONSerialization.jsonObject(with: captured) as? [String: Any]
+        let message = object?["message"] as? [String: Any]
+        let blocks = message?["content"] as? [[String: Any]] ?? []
+        let receivedImages = blocks.compactMap { ($0["source"] as? [String: Any])?["data"] as? String }.compactMap { Data(base64Encoded: $0) }
+        try check(receivedImages == [bytesTwo, bytesOne], "actual stdin delivers only selected image bytes in caller order")
+        try check(receivedImages.map { SHA256.hash(data: $0) } == [bytesTwo, bytesOne].map { SHA256.hash(data: $0) }, "actual dispatched image hashes match the selected files")
+        try check(blocks.count == 3 && blocks.last?["text"] as? String == "Synthetic selected images", "actual stdin excludes neighboring files and adds only the prompt")
         print("SUBSCRIPTION_SANDBOX_CHECKS_OK: \(count) checks passed")
     }
 
