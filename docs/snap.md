@@ -4,6 +4,10 @@ Snap is a deliberate Mac capture utility. Region and Window use Apple's interact
 
 The desktop Snap workspace owns quick crop, pen, arrow and rectangle annotations, titles, optional notes and tags. Paste image and Import image open the same unsaved editor. Save retains the image in Snap History; Save & Copy also places the rendered PNG on the clipboard. Closing or cancelling an unsaved editor leaves history unchanged. Copy and explicit Export use the saved crop and annotations. The original image remains available for later editing; imported external files are never changed.
 
+## Desktop screenshots
+
+**Add image → Import Desktop screenshots…** gathers screenshots taken with the macOS shortcuts. It lists only files macOS marked as screen captures (the `kMDItemIsScreenCapture` attribute, so any language and never ordinary images), confirms the count, adds each to Snap History with its original date and exact PNG bytes, and only then moves the file to the Trash. An image already in Snap History is only cleared, so a retry after a failed Trash move never duplicates a Snap. An unreadable Desktop is reported, never shown as empty. The imported Snaps are selected, so Organise… can find repeats and themes next. App Store builds omit this choice.
+
 ## Ownership and preservation
 
 `SnapModel` is the app's single Snap owner. `SnapStore` keeps one directory per stable UUID in the current Workbench edition's `Snaps` support directory. `original.png` is immutable; edited PNGs have distinct immutable filenames. A versioned `snap.json` links the original, rendered image, non-destructive crop/marks, metadata and an optional archive date. A per-record revision rejects stale editor saves, including after an incidental history reload. Atomic metadata replacement follows private media writes, and oversized metadata is rejected before commit. Unreadable or newer-format records produce recovery notices; valid records remain available and no automatic eviction runs.

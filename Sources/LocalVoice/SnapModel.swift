@@ -27,15 +27,55 @@ final class SnapModel: ObservableObject {
     var onHideForCapture: (() -> Void)?
     var onRestoreAfterCapture: (() -> Void)?
     var mayBeginCapture: (() -> String?)?
+    @Published private(set) var importingScreenshots = false
+    let desktop: URL
+    private let trash: (URL) throws -> Void
     private let captureService = SnapCapture()
     private var captureRequest: UUID?
     var isBusy: Bool { isCapturing || draft != nil }
     var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && $0.matches(search) } }
     var activeCount: Int { items.filter { $0.archivedAt == nil }.count }
 
-    init(store: SnapStore? = nil) {
+    init(store: SnapStore? = nil, desktop: URL? = nil, trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash) {
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
+        self.desktop = desktop ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+        self.trash = trash
         refresh()
+    }
+
+    // MARK: Desktop screenshots
+
+    /// Screenshots macOS saved on the Desktop, for the import confirmation. Nil,
+    /// with a notice, when the Desktop could not be read.
+    func desktopScreenshots() -> [URL]? {
+        do { return try SnapScreenshots.listScreenCaptures(in: desktop) }
+        catch {
+            notice = "Workbench could not read the Desktop. Allow it in System Settings > Privacy & Security > Files and Folders, then try again."
+            return nil
+        }
+    }
+
+    /// Imports the listed Desktop screenshots into Snap History. Each original
+    /// goes to the Trash only after its Snap is stored and read back. Returns
+    /// the Snaps it added, so the workspace can select them for Organise.
+    @discardableResult
+    func importDesktopScreenshots(_ files: [URL]) async -> [UUID] {
+        guard !importingScreenshots, !isBusy else { return [] }
+        importingScreenshots = true
+        defer { importingScreenshots = false }
+        var moved = 0, added: [UUID] = [], kept: [String] = [], known = Set(items.map(\.originalSHA256))
+        for file in files {
+            do {
+                if let item = try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) { added.append(item.id) }
+                moved += 1
+            } catch { kept.append(file.lastPathComponent) }
+            await Task.yield()
+        }
+        refresh()
+        notice = "Imported \(moved) Desktop screenshot\(moved == 1 ? "" : "s") into Snap History. The originals are in the Trash."
+            + (added.isEmpty ? "" : " They are selected, so Use selected, then Organise…, can find repeats and themes.")
+            + (kept.isEmpty ? "" : " \(kept.count) could not be imported and stayed on the Desktop.")
+        return added
     }
 
     func refresh() {
