@@ -245,6 +245,22 @@ final class SnapStore {
         return bytes
     }
 
+    /// Search text and a repeat fingerprint, only while they still describe the
+    /// current image. Missing, stale or unreadable data is simply rebuilt.
+    func derived(for item: SnapItem) -> SnapDerivedData? {
+        guard let directory = try? itemDirectory(item.id),
+              let data = try? readPrivateFile(directory.appendingPathComponent(SnapDerivedData.fileName), maximum: SnapDerivedData.maximumBytes),
+              let value = try? JSONDecoder().decode(SnapDerivedData.self, from: data),
+              value.version == SnapDerivedData.currentVersion, value.imageSHA256 == item.imageSHA256 else { return nil }
+        return value
+    }
+
+    func writeDerived(_ value: SnapDerivedData, for id: UUID) throws {
+        let data = try JSONEncoder().encode(value)
+        guard data.count <= SnapDerivedData.maximumBytes else { throw SnapError.message("This Snap's search data is too large to keep.") }
+        try write(data, to: try itemDirectory(id).appendingPathComponent(SnapDerivedData.fileName))
+    }
+
     func organizationURL(key: String) throws -> URL {
         guard key.count == 64, key.allSatisfy({ $0.isHexDigit }) else {
             throw SnapError.message("This review has an invalid identity.")

@@ -1,4 +1,5 @@
 import Foundation
+import Vision
 
 struct SnapOrganizationSource {
     let item: SnapItem
@@ -9,6 +10,12 @@ struct SnapDuplicateProposal: Identifiable {
     var id: UUID { duplicate.id }
     let duplicate: SnapItem
     let retained: SnapItem
+    /// Nil for byte-identical images; otherwise the Vision feature-print
+    /// distance that made these look like the same screen.
+    var distance: Float? = nil
+    var reason: String {
+        distance == nil ? "These rendered images are identical." : "These look like the same screen captured again."
+    }
 }
 struct SnapOrganizationPlan {
     let key: String
@@ -59,6 +66,19 @@ enum SnapOrganization {
             let item = source.item
             if let first = firstByHash[item.imageSHA256] { duplicates.append(.init(duplicate: item, retained: first)) }
             else { firstByHash[item.imageSHA256] = item }
+        }
+        // Repeats rarely match byte for byte: a clock or pointer moves between
+        // captures. Compare stored feature prints and keep the earliest of each
+        // similar group. Snaps without a print yet are simply not compared.
+        let identical = Set(duplicates.map(\.id))
+        var kept: [(item: SnapItem, print: VNFeaturePrintObservation)] = []
+        for source in sources where source.item.archivedAt == nil && !identical.contains(source.item.id) {
+            guard let data = store.derived(for: source.item)?.featurePrint, let print = SnapAnalysis.observation(data) else { continue }
+            let match = kept.lazy.compactMap { candidate in
+                SnapAnalysis.distance(candidate.print, print).flatMap { $0 < SnapAnalysis.repeatDistance ? (candidate.item, $0) : nil }
+            }.first
+            if let (retained, distance) = match { duplicates.append(.init(duplicate: source.item, retained: retained, distance: distance)) }
+            else { kept.append((source.item, print)) }
         }
         let identity = selectionID.map { "saved-selection:\($0.uuidString.lowercased())" }
             ?? ids.map { $0.uuidString.lowercased() }.sorted().joined(separator: "\n")
@@ -120,7 +140,10 @@ enum SnapOrganization {
             if current.archivedAt != nil { return nil }
             guard current.revision == proposal.duplicate.revision else { throw SnapError.message("A proposed duplicate changed. Review the current Snaps before archiving.") }
             let retained = try store.snapshot(proposal.retained.id)
-            guard retained.item.archivedAt == nil, retained.item.imageSHA256 == current.imageSHA256 else { throw SnapError.message("The retained copy changed or was archived. Review duplicates again.") }
+            // The kept copy must be exactly what was reviewed; identical proposals
+            // must also still match byte for byte.
+            guard retained.item.archivedAt == nil, retained.item.imageSHA256 == proposal.retained.imageSHA256,
+                  proposal.distance != nil || retained.item.imageSHA256 == current.imageSHA256 else { throw SnapError.message("The retained copy changed or was archived. Review duplicates again.") }
             return current
         }
         for var item in chosen { item.archivedAt = Date(); try store.save(item) }
@@ -142,9 +165,10 @@ enum SnapOrganization {
             lines.append("")
         }
         lines += ["## Exclusions and duplicate review", ""]
-        if plan.duplicates.isEmpty { lines.append("No active captures have identical rendered image bytes. Similar-looking images still need human review.") }
+        if plan.duplicates.isEmpty { lines.append("No active captures are identical or look like repeats. Low-value captures still need human review.") }
         for proposal in plan.duplicates {
-            lines.append("- \(archivedIDs.contains(proposal.id) ? "Archived, recoverable" : "Proposed, not applied"): **\(escaped(proposal.duplicate.title))** (`\(proposal.id.uuidString.lowercased())`). Its rendered image is byte-for-byte identical to **\(escaped(proposal.retained.title))** (`\(proposal.retained.id.uuidString.lowercased())`).")
+            let relation = proposal.distance == nil ? "Its rendered image is byte-for-byte identical to" : "It looks like a repeat of"
+            lines.append("- \(archivedIDs.contains(proposal.id) ? "Archived, recoverable" : "Proposed, not applied"): **\(escaped(proposal.duplicate.title))** (`\(proposal.id.uuidString.lowercased())`). \(relation) **\(escaped(proposal.retained.title))** (`\(proposal.retained.id.uuidString.lowercased())`).")
         }
         lines += ["", "Originals remain in Snap History. Archiving never removes images from an existing Snap & Talk session or a running handoff. Repeating this saved selection, or the same ad-hoc selected IDs, updates this document. Image links are relative to this document inside the Snap library; use Hand off to share a portable copy of selected evidence.", ""]
         return lines.joined(separator: "\n")
