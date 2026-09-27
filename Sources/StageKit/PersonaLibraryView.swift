@@ -315,6 +315,9 @@ struct PersonaLibraryView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            Toggle("React to my voice", isOn: Binding(get: { library.voiceRing }, set: { library.setVoiceRing($0) }))
+                .toggleStyle(.switch).controlSize(.small)
+                .help("Adds a ring around shown personas that moves when you speak. It uses the microphone only while a persona is showing and records nothing.")
         }
     }
     private func requestLaunch(_ request: PersonaLibraryLaunchState.Request) {

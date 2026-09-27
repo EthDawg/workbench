@@ -203,6 +203,7 @@ struct TestRunner {
             ("persona controls: selected copy and empty recovery", personaControls.testSessionControlsTargetSelectedCopyAndRecoverFromEmptySet)
         ]
         let personaWorkspace = PersonaWorkspaceTests()
+        let personaVoice = PersonaVoiceTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
@@ -374,7 +375,10 @@ struct TestRunner {
             ("persona workspace single card immediate show and stop", personaWorkspace.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
             ("persona sheet launch only after dismissal", personaWorkspace.testSheetLaunchWaitsForDismissalAndIsConsumedOnce),
             ("persona workspace failure preserves active session", personaWorkspace.testWorkspaceFailureIsImmediateAndDoesNotReplaceSession),
-            ("Present compact preview policy", personaWorkspace.testPresentPreviewReservesControlsAndFitsNarrowEditors)
+            ("Present compact preview policy", personaWorkspace.testPresentPreviewReservesControlsAndFitsNarrowEditors),
+            ("persona voice ring runs only while on and showing", personaVoice.testVoiceRingRunsOnlyWhileOnAndAPersonaIsShowing),
+            ("persona voice ring turns off when the microphone is unavailable", personaVoice.testVoiceRingTurnsOffWhenTheMicrophoneIsUnavailable),
+            ("persona voice ring insets artwork", personaVoice.testVoiceRingInsetsArtworkInsteadOfCoveringIt)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))
         if personaControlsOnly {
