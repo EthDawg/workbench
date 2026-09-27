@@ -38,9 +38,13 @@ enum SnapScreenshots {
 
     /// Screen captures directly inside a folder, oldest first. Hidden, empty,
     /// linked and non-image files are never included.
-    static func screenCaptures(in folder: URL) -> [URL] {
+    static func screenCaptures(in folder: URL) -> [URL] { (try? listScreenCaptures(in: folder)) ?? [] }
+
+    /// Throws when the folder cannot be read, for example before macOS grants
+    /// access to the Desktop, so that is never reported as an empty Desktop.
+    static func listScreenCaptures(in folder: URL) throws -> [URL] {
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .creationDateKey]
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
+        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
         return files.filter { url in
             guard imageExtensions.contains(url.pathExtension.lowercased()),
                   let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true,

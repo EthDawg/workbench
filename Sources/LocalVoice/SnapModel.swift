@@ -119,8 +119,15 @@ final class SnapModel: ObservableObject {
         if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to Snap History." : "\(added) new screenshots were added to Snap History." }
     }
 
-    /// Screenshots macOS saved on the Desktop, for the tidy confirmation.
-    func desktopScreenshots() -> [URL] { SnapScreenshots.screenCaptures(in: desktop) }
+    /// Screenshots macOS saved on the Desktop, for the tidy confirmation. Nil,
+    /// with a notice, when the Desktop could not be read.
+    func desktopScreenshots() -> [URL]? {
+        do { return try SnapScreenshots.listScreenCaptures(in: desktop) }
+        catch {
+            notice = "Workbench could not read the Desktop. Allow it in System Settings > Privacy & Security > Files and Folders, then try again."
+            return nil
+        }
+    }
 
     /// Moves the listed Desktop screenshots into Snap History. Originals go to
     /// the Trash only after each Snap is stored and read back.
