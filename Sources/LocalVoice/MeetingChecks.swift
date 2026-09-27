@@ -280,6 +280,7 @@ enum MeetingChecks {
 
         try await lifecycleChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
+        checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
     }
 
@@ -393,6 +394,23 @@ enum MeetingChecks {
         await model.start()
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
+        let activeID = UUID(uuidString: MeetingStore.sessions(in: root.appendingPathComponent("model"))[0].lastPathComponent)!
+        var removalCommits = 0
+        do {
+            _ = try model.removeCompletedRecording(for: activeID) { removalCommits += 1 }
+            throw MeetingError.message("An active recording allowed removal")
+        } catch {
+            try expect(removalCommits == 0 && model.isRecording && model.hasRecording(for: activeID),
+                       "removing a completed transcript cannot remove an active recording")
+        }
+        var oldMeeting = manifest(state: .committed)
+        oldMeeting.seconds = 1
+        oldMeeting.segments = [.init(index: 0, file: "segments/segment-0000.wav", startSeconds: 0,
+                                      seconds: 1, bytes: 32_000, text: "An earlier completed meeting")]
+        _ = try MeetingStore.create(root: root.appendingPathComponent("model"), manifest: oldMeeting)
+        _ = try model.removeCompletedRecording(for: oldMeeting.id) { removalCommits += 1 }
+        try expect(removalCommits == 1 && model.isRecording && model.hasRecording(for: activeID)
+                   && !model.hasRecording(for: oldMeeting.id), "an unrelated active recording does not prevent an old completed recording's removal")
         await model.stop()
         try expect(!model.isBusy && capture.finished == 1 && history.count == 1 && recognition == 1,
                    "Stop closes capture then saves through the shared history callback")

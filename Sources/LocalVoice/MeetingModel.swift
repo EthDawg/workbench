@@ -50,6 +50,7 @@ final class MeetingModel: ObservableObject {
     private var activeCapture: MeetingCapture?
     private var activeSession: URL?
     private var activeManifest: MeetingManifest?
+    private var processingSessionID: UUID?
     private var shuttingDown = false
 
     convenience init(engine: RecognitionEngine, directory: URL, defaults: UserDefaults = .standard) {
@@ -82,6 +83,19 @@ final class MeetingModel: ObservableObject {
         case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
         default: return false
         }
+    }
+
+    func hasRecording(for transcriptID: UUID) -> Bool {
+        MeetingTranscriptRemoval.hasRecording(root: directory, id: transcriptID)
+    }
+
+    /// No suspension between admission and staging: capture/recovery cannot
+    /// start using this same UUID during a confirmed removal.
+    func removeCompletedRecording(for transcriptID: UUID, commit: () throws -> Void) throws -> String? {
+        guard !shuttingDown, !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
+            throw MeetingError.message("This recording is still in use. Finish or cancel it before removing its transcript and audio.")
+        }
+        return try MeetingTranscriptRemoval.remove(root: directory, id: transcriptID, commit: commit)
     }
 
     func refreshApps() {
@@ -273,6 +287,8 @@ final class MeetingModel: ObservableObject {
 
     private func process(session: URL, token: UUID) async throws {
         try check(token)
+        processingSessionID = UUID(uuidString: session.lastPathComponent)
+        defer { processingSessionID = nil }
         notice = "Transcribing saved audio…"
         let processor = MeetingProcessor(session: session, transcribe: transcribe, commit: { [weak self] transcript, purpose, notes in
             guard let self else { throw CancellationError() }

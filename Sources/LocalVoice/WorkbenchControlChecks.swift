@@ -8,7 +8,7 @@ enum WorkbenchControlChecks {
             guard condition else { throw VoiceError.message("Contextual controls: " + name) }
             count += 1
         }
-        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap & Talk", "Draw", "Present", "Persona Overlay", "Timer"], "seven primary menu labels retain their fixed order")
+        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap & Talk", "Draw", "Present", "Persona Overlay", "Timer"], "shared controls retain their fixed order; standalone Snap is a separate navigation row")
         var saved = VoicePreferences()
         saved.dictationShortcut.keyCode = 42
         saved.readbackShortcut = VoiceShortcut(keyCode: 18, enabled: false)

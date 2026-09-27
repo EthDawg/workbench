@@ -274,8 +274,8 @@ enum MeetingDiskBudget {
 
 /// One app-managed Meetings root. Each session owns a UUID directory holding a
 /// versioned manifest, its original tracks and its bounded segments. Nothing
-/// here deletes a session: only an explicit person-facing action may do that,
-/// and this module never offers one.
+/// here deletes a session. Confirmed transcript removal uses
+/// MeetingTranscriptRemoval to coordinate its recording with saved history.
 enum MeetingStore {
     static let manifestName = "meeting.json"
     static let tracksDirectory = "tracks"
@@ -462,17 +462,7 @@ enum MeetingStore {
     /// atomically rename. A chmod or staging failure never replaces old bytes.
     static func writePrivate(_ data: Data, to url: URL) throws {
         try rejectSymbolicLinks(in: url)
-        let temporary = url.deletingLastPathComponent().appendingPathComponent(".meeting-" + UUID().uuidString)
-        let descriptor = open(temporary.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
-        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        defer { try? handle.close(); try? FileManager.default.removeItem(at: temporary) }
-        try handle.write(contentsOf: data)
-        try handle.synchronize()
-        try handle.close()
-        guard rename(temporary.path, url.path) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
+        try AtomicPrivateFile.write(data, to: url)
     }
 }
 
