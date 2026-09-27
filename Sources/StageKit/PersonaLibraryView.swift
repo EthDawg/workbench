@@ -315,9 +315,16 @@ struct PersonaLibraryView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            Toggle("React to my voice", isOn: Binding(get: { library.voiceRing }, set: { library.setVoiceRing($0) }))
-                .toggleStyle(.switch).controlSize(.small)
-                .help("Adds a ring around shown personas that moves when you speak. It uses the microphone only while a persona is showing and records nothing.")
+            if library.voiceAvailable {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Toggle("React to my voice", isOn: Binding(get: { library.voiceRing }, set: { library.setVoiceRing($0) }))
+                        .toggleStyle(.switch).controlSize(.small)
+                    if let status = library.voiceStatus {
+                        Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                .help("A ring around the shown persona moves as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures loudness and records nothing. In a prepared set, the ring follows the selected overlay.")
+            }
         }
     }
     private func requestLaunch(_ request: PersonaLibraryLaunchState.Request) {

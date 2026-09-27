@@ -24,6 +24,31 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-voice-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let suite = PersonaVoiceTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("persona voice ring listens only while on and showing", suite.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
+                ("persona voice ring asks while preparing and stops when unavailable", suite.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
+                ("persona voice ring single floating persona", suite.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
+                ("persona voice ring placement keeps artwork and ring on screen", suite.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
+                ("persona voice analyzer quiet and loud microphones", suite.testAnalyzerFillsTheRingForQuietAndLoudMicrophonesButNotForTheRoom),
+                ("persona voice analyzer room and startup silence", suite.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
+                ("persona voice analyzer bands follow pitch", suite.testAnalyzerBandsFollowPitch),
+                ("persona voice ring outline fitting", suite.testOutlineFollowsARoundBadgeACardAndAPhoto),
+                ("persona voice ring colour from artwork", suite.testRingColourComesFromTheArtwork),
+                ("persona voice ring geometry scale", suite.testRingGeometryScalesWithTheArtwork),
+                ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--shortcut-settings-only"] {
             // Data-only: do not create NSApplication, monitors, windows or global registrations.
             let suite = CoreTests()
@@ -376,9 +401,17 @@ struct TestRunner {
             ("persona sheet launch only after dismissal", personaWorkspace.testSheetLaunchWaitsForDismissalAndIsConsumedOnce),
             ("persona workspace failure preserves active session", personaWorkspace.testWorkspaceFailureIsImmediateAndDoesNotReplaceSession),
             ("Present compact preview policy", personaWorkspace.testPresentPreviewReservesControlsAndFitsNarrowEditors),
-            ("persona voice ring runs only while on and showing", personaVoice.testVoiceRingRunsOnlyWhileOnAndAPersonaIsShowing),
-            ("persona voice ring turns off when the microphone is unavailable", personaVoice.testVoiceRingTurnsOffWhenTheMicrophoneIsUnavailable),
-            ("persona voice ring insets artwork", personaVoice.testVoiceRingInsetsArtworkInsteadOfCoveringIt)
+            ("persona voice ring listens only while on and showing", personaVoice.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
+            ("persona voice ring asks while preparing and stops when unavailable", personaVoice.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
+            ("persona voice ring single floating persona", personaVoice.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
+            ("persona voice ring placement keeps artwork and ring on screen", personaVoice.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
+            ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerFillsTheRingForQuietAndLoudMicrophonesButNotForTheRoom),
+            ("persona voice analyzer room and startup silence", personaVoice.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
+            ("persona voice analyzer bands follow pitch", personaVoice.testAnalyzerBandsFollowPitch),
+            ("persona voice ring outline fitting", personaVoice.testOutlineFollowsARoundBadgeACardAndAPhoto),
+            ("persona voice ring colour from artwork", personaVoice.testRingColourComesFromTheArtwork),
+            ("persona voice ring geometry scale", personaVoice.testRingGeometryScalesWithTheArtwork),
+            ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))
         if personaControlsOnly {
