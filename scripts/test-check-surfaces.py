@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Synthetic Swift fixtures. Does not compile, launch or modify the Mac app."""
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+sys.dont_write_bytecode = True
+SCRIPT = Path(__file__).with_name('check-surfaces.py')
+spec = importlib.util.spec_from_file_location('surfaces', SCRIPT)
+check = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = check
+spec.loader.exec_module(check)
+
+PANEL = 'struct WorkbenchQuickPanel: View { var body: some View { %s } }'
+
+
+class SurfaceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.file = self.root / 'Sources/LocalVoice/WorkbenchQuickPanel.swift'
+        self.file.parent.mkdir(parents=True)
+        self.file.write_text(PANEL % 'Button("Read") { read() }')
+
+    def write(self, relative, source):
+        path = self.root / 'Sources' / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+        return path
+
+    def entries(self):
+        return check.derive(self.root, require_roots=False)
+
+    def labels(self):
+        return [e['label'] for e in self.entries()]
+
+    def registry(self, entries=None):
+        return [{**e, 'kind': 'action', 'belongsTo': 'read'} for e in (self.entries() if entries is None else entries)]
+
+    def errors(self, entries=None):
+        return check.compare(self.entries(), self.registry() if entries is None else entries)
+
+    def test_pass(self):
+        self.assertEqual([], self.errors())
+
+    def test_unregistered_footer_teaches_without_deciding(self):
+        registered = self.registry()
+        self.file.write_text(self.file.read_text().replace('Button("Read")', 'Button("Snap") { open("snap") }; Button("Read")'))
+        failure = '\n'.join(self.errors(registered))
+        self.assertIn('Unregistered entry on quick panel footer: "Snap".', failure)
+        for phrase in ('docs/workbench.md#grammar', 'Quality', 'Option', "Ethan's decision", '--update'):
+            self.assertIn(phrase, failure)
+
+    def test_stale(self):
+        registered = self.registry()
+        self.file.write_text('struct WorkbenchQuickPanel: View {}')
+        self.assertIn('Stale entry:', '\n'.join(self.errors(registered)))
+
+    def test_unclassified(self):
+        entry = self.registry()[0]
+        entry['kind'] = 'unclassified'
+        self.assertIn('Unclassified entry:', '\n'.join(self.errors([entry])))
+
+    def test_collision(self):
+        first = self.registry()[0]
+        second = {**first, 'id': 'another', 'belongsTo': 'dictate'}
+        self.assertIn('Label collision:', '\n'.join(check.compare([first, second], [first, second])))
+
+    def test_explicit_alias_allows_collision(self):
+        first = self.registry()[0]
+        second = {**first, 'id': 'another', 'belongsTo': 'dictate', 'aliasOf': first['id'], 'note': 'Intentional shared action.'}
+        self.assertEqual([], check.compare([first, second], [first, second]))
+
+    def test_alias_is_not_a_blanket_label_allowlist(self):
+        one = self.registry()[0]
+        two = {**one, 'id': 'two', 'belongsTo': 'draw'}
+        three = {**one, 'id': 'three', 'belongsTo': 'dictate', 'aliasOf': 'dictate', 'note': 'Existing alias.'}
+        self.assertIn('Label collision:', '\n'.join(check.compare([one, two, three], [one, two, three])))
+
+    def test_alias_needs_real_target_and_note(self):
+        entry = {**self.registry()[0], 'aliasOf': 'missing'}
+        errors = '\n'.join(self.errors([entry]))
+        self.assertIn('Invalid aliasOf', errors)
+        self.assertIn('needs a note', errors)
+
+    def test_update_removes_stale_and_requires_classification(self):
+        registered = self.registry()
+        self.file.write_text(PANEL % 'Button("Snap") { snap() }')
+        updated = check.reconcile(self.entries(), registered)
+        self.assertEqual(1, len(updated))
+        self.assertEqual('Snap', updated[0]['label'])
+        self.assertEqual('unclassified', updated[0]['kind'])
+        self.assertTrue(check.compare(self.entries(), updated))
+
+    def test_update_preserves_reviewed_metadata_and_is_deterministic(self):
+        registry = self.registry()
+        registry[0].update(aliasOf='read', note='An intentional alternative.')
+        self.assertEqual(registry, check.reconcile(self.entries(), registry))
+        self.assertEqual(self.entries(), self.entries())
+
+    def test_changed_label_with_stable_catalogue_id_is_unclassified(self):
+        actual = self.entries()
+        registry = self.registry(actual)
+        actual[0] = {**actual[0], 'label': 'Read aloud'}
+        self.assertIn('Changed entry', '\n'.join(check.compare(actual, registry)))
+        self.assertEqual('unclassified', check.reconcile(actual, registry)[0]['kind'])
+
+    def test_comments_strings_and_nested_interpolation(self):
+        self.file.write_text(r'''
+        // Button("Fake") {}
+        /* Button("Also fake") {} /* nested */ */
+        struct WorkbenchQuickPanel: View { var body: some View {
+          Button("Say \"hello\"") {}
+          Button("\(count) \(count == 1 ? "item" : "items")") {}
+          let example = "Button(\"Not a control\")"
+        } }
+        ''')
+        entries = self.entries()
+        self.assertEqual(2, len(entries))
+        self.assertEqual(['Say "hello"'], [e['label'] for e in entries if e['label']])
+        dynamic = next(e for e in entries if e['label'] is None)
+        self.assertIn('Runtime label', dynamic['note'])
+        self.assertIn('count', dynamic['expression'])
+
+    def test_all_swiftui_forms_and_native_menu(self):
+        self.file.write_text(PANEL % '''
+          Button("Start") {}
+          Toggle("Detect", isOn: $enabled)
+          Menu("Tools") { Button("Open") {} }
+          Picker("Mode", selection: $mode) { Text("One").tag(1) }
+          Button {} label: { Label("Capture", systemImage: "camera") }
+          Button {} label: { Text("Stop") }
+          Button(action: review) { Text("Review offer") }
+          NSMenuItem(title: "Preferences", action: nil, keyEquivalent: "")
+          menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
+          Text("A heading is not an entry")''')
+        self.assertEqual({'Start', 'Detect', 'Tools', 'Open', 'Mode', 'One', 'Capture', 'Stop', 'Review offer', 'Preferences', 'Quit'},
+                         set(self.labels()))
+
+    def test_panel_areas_follow_structure_not_helper_names(self):
+        self.file.write_text('''struct WorkbenchQuickPanel: View {
+          var body: some View { Toggle("Floating Toolbar", isOn: $x); Text(notice); Button("Settings") {} }
+          private func options(_ tool: WorkbenchControlTool) -> some View {
+            switch tool { case .read: Button("Stop") {}; case .timer: NativeControlMenu(title: "Options") { menu() } }
+          }
+          private func key(_ tool: WorkbenchControlTool) -> some View { Button {} label: { Text(label) } }
+        }''')
+        before = {e['surface']: e['id'] for e in self.entries()}
+        self.assertEqual({'quick panel header', 'quick panel status rows', 'quick panel footer', 'quick panel read options',
+                          'quick panel timer options', 'quick panel row controls'}, set(before))
+        self.file.write_text(self.file.read_text().replace('func options', 'func rowOptions'))
+        self.assertEqual(before, {e['surface']: e['id'] for e in self.entries()})
+
+    def test_shortcut_editor_is_not_an_entry_point(self):
+        self.file.write_text('''struct WorkbenchQuickPanel: View {
+          var body: some View { Button("Read") {} }
+          private var shortcutEditor: some View { Button("Turn Off") {}; Button("Change") {} }
+        }''')
+        self.assertEqual(['Read'], self.labels())
+
+    def test_duplicate_button_definition_is_visible(self):
+        before = self.registry()
+        self.file.write_text(self.file.read_text().replace('Button("Read") { read() }', 'Button("Read") { read() }; Button("Read") { anotherRead() }'))
+        self.assertEqual(2, len(self.entries()))
+        self.assertIn('Unregistered entry', '\n'.join(self.errors(before)))
+
+    def test_reordering_whitespace_and_new_properties_do_not_churn_ids(self):
+        before = self.entries()
+        self.file.write_text('''struct WorkbenchQuickPanel: View {
+          var model: Model
+          var action: () -> Void
+          var body: some View { /* comment */ Button ( "Read" ) { read() } }
+        }''')
+        self.assertEqual(before, self.entries())
+
+    def test_runtime_label_change_is_visible(self):
+        self.file.write_text(PANEL % 'Button(model.title) {}')
+        before = self.registry()
+        self.file.write_text(self.file.read_text().replace('model.title', 'model.otherTitle'))
+        self.assertIn('Unregistered entry', '\n'.join(self.errors(before)))
+
+    def test_extracting_a_helper_is_not_a_new_entry(self):
+        before = self.entries()
+        self.file.write_text('struct WorkbenchQuickPanel: View { var body: some View { footer }; private var footer: some View { Button("Read") { read() } } }')
+        self.assertEqual(before, self.entries())
+
+    def test_capability_pages_are_out_of_scope(self):
+        before = self.registry()
+        self.write('LocalVoice/SnapEditorView.swift', 'struct SnapEditorView: View { var body: some View { Button("Crop") {}; Button("Save") {} } }')
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          var body: some View { SnapEditorView() }
+          private var welcome: some View { card("Snap", "Capture.", "viewfinder", "") { page = "snap" } }
+          private func card(_ title: String, _ detail: String, _ symbol: String, _ footnote: String, action: @escaping () -> Void) -> some View {
+            Button(action: action) { Text(title) }
+          }
+        }''')
+        self.assertEqual(['Read', 'Snap'], sorted(self.labels()))
+        self.assertIn('Unregistered entry on window home cards: "Snap".', '\n'.join(self.errors(before)))
+
+    def test_views_embedded_in_the_panel_are_status_rows(self):
+        before = self.registry()
+        self.file.write_text(PANEL % 'MeetingQuickStatus(model: meetings) { open("meeting") }; Button("Read") { read() }')
+        self.write('LocalVoice/MeetingWorkspaceView.swift', '''
+          struct MeetingQuickStatus: View { var body: some View { Button(isRecording ? "Meeting · recording" : "Meeting · processing") {}; Button("Stop") {} } }
+          struct MeetingWorkspaceView: View { var body: some View { Button("Start") {} } }''')
+        added = [e for e in self.entries() if e['surface'] == 'quick panel status rows']
+        self.assertEqual({None, 'Stop'}, {e['label'] for e in added})
+        self.assertNotIn('Start', self.labels())
+        self.assertIn('Unregistered entry on quick panel status rows', '\n'.join(self.errors(before)))
+
+    def test_settings_page_counts_toggles_and_pickers_in_embedded_views(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          private var settings: some View { Toggle("Open Workbench at login", isOn: $x); Button("Your dictionary") {}; MeetingDetectionSettings(model: m) }
+        }''')
+        self.write('LocalVoice/MeetingWorkspaceView.swift', '''struct MeetingDetectionSettings: View {
+          var body: some View { Toggle("Detect Meetings & Calls", isOn: $on); Button("Review") {} }
+        }''')
+        settings = [e['label'] for e in self.entries() if e['surface'] == 'settings page']
+        self.assertEqual(['Detect Meetings & Calls', 'Open Workbench at login'], sorted(settings))
+
+    def test_offers_are_found_by_name(self):
+        self.write('LocalVoice/MeetingWorkspaceView.swift', '''final class MeetingOfferPanelController {
+          init() { panel.contentView = NSHostingView(rootView: HStack { Button("Review") {}; Button("Not now") {} }) }
+        }''')
+        offers = {e['label'] for e in self.entries() if e['surface'] == 'proactive offer MeetingOfferPanelController'}
+        self.assertEqual({'Review', 'Not now'}, offers)
+
+    def test_choice_lists_are_recorded_once(self):
+        self.write('StageKit/FloatingControlGeometry.swift', '''enum FloatingControlAnchor: String, CaseIterable {
+          case top, bottom
+          var title: String { switch self { case .top: return "Top centre"; case .bottom: return "Bottom centre" } }
+        }''')
+        self.write('StageKit/StageKitController.swift', '''final class StageKitController {
+          func makeTimerMenu() -> NSMenu {
+            menu.addSubmenu("Position", items: FloatingControlAnchor.allCases.map { anchor in StageMenuAction(anchor.title) { set(anchor) } })
+            return menu
+          }
+          func makePersonaMenu() -> NSMenu {
+            menu.addSubmenu("Position Artwork", items: FloatingControlAnchor.allCases.map { StageMenuAction($0.title) { set($0) } })
+            return menu
+          }
+        }''')
+        entries = self.entries()
+        self.assertEqual(['choices.FloatingControlAnchor.bottom', 'choices.FloatingControlAnchor.top'],
+                         sorted(e['id'] for e in entries if e['id'].startswith('choices.')))
+        self.assertEqual({'Position', 'Position Artwork', 'Top centre', 'Bottom centre', 'Read'}, set(self.labels()))
+
+    def test_runtime_lists_hints_and_helper_parameters_are_not_entries(self):
+        self.write('StageKit/Persona.swift', '''final class PersonaLibrary {
+          func makeControlsMenu() -> NSMenu {
+            func action(_ title: String, _ operation: Op) -> NSMenuItem { StageMenuAction(title) { perform(operation) } }
+            menu.addSubmenu("Choose Set", items: state.groups.map { action($0.label, .select($0.id)) })
+            for scene in scenes { menu.addItem(StageMenuAction(scene.name) { start(scene) }) }
+            menu.addItem(StageMenuAction("Prepare a persona in Workbench first.", enabled: false) {})
+            menu.addItem(action("End Overlays", .end))
+            return menu
+          }
+        }''')
+        persona = sorted(e['label'] for e in self.entries() if e['surface'] == 'Persona menu')
+        self.assertEqual(['Choose Set', 'End Overlays'], persona)
+
+    def test_new_enum_choice_and_catalogue_rename_are_visible(self):
+        self.file.write_text(PANEL % '''
+          Picker("Delivery", selection: $value) { ForEach(DeliveryMode.allCases, id: \\.self) { Text($0.rawValue).tag($0) } }''')
+        owner = self.write('LocalVoice/VoicePreferences.swift', 'enum DeliveryMode: String, CaseIterable { case paste = "Paste" }')
+        before = self.registry()
+        owner.write_text('enum DeliveryMode: String, CaseIterable { case paste = "Paste automatically", copy = "Copy" }')
+        errors = '\n'.join(self.errors(before))
+        self.assertIn('Changed entry on choices DeliveryMode: "Paste automatically"', errors)
+        self.assertIn('Unregistered entry on choices DeliveryMode: "Copy"', errors)
+
+    def test_qualified_enum_does_not_match_unrelated_short_name(self):
+        self.file.write_text(PANEL % '''
+          Picker("Status", selection: $value) { ForEach(ImportReview.Status.allCases) { Text($0.title).tag($0) } }''')
+        self.write('LocalVoice/MeetingModels.swift', 'enum Status: String, CaseIterable { case recording = "Recording" }')
+        self.assertNotIn('Recording', self.labels())
+
+    def test_registry_schema_and_duplicate_ids(self):
+        entry = {**self.registry()[0], 'kind': 'mystery', 'belongsTo': 'workspace'}
+        errors = '\n'.join(self.errors([entry, entry]))
+        self.assertIn('Invalid kind', errors)
+        self.assertIn('Invalid belongsTo', errors)
+        self.assertIn('Duplicate registry id', errors)
+
+    def test_raw_literal(self):
+        self.file.write_text(PANEL % 'Button(#"Read"#) {}')
+        self.assertEqual(['Read'], self.labels())
+
+    def test_sidebar_tuples_and_quick_panel_rows(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          private let navItems: [(String, String, String)] = [("annotate", "Annotate", "pen")]
+        }''')
+        self.write('LocalVoice/WorkbenchControlTool.swift', '''enum WorkbenchControlTool: String, CaseIterable {
+          case snap, read
+          var title: String { switch self { case .snap: return "Snap & Talk"; case .read: return "Read" } }
+        }''')
+        self.file.write_text(PANEL % 'ForEach(WorkbenchControlTool.allCases) { tool in Button { perform(tool) } label: { Text(tool.title) } }')
+        entries = {e['id']: e for e in self.entries()}
+        self.assertEqual('annotate', entries['LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.annotate']['page'])
+        self.assertEqual(('Snap & Talk', 'snap'), (entries['quick-panel.row.snap']['label'], entries['quick-panel.row.snap']['case']))
+        self.assertEqual(3, len(entries))  # No second entry for each row's Text(tool.title).
+
+    def test_voice_and_stage_shortcuts_have_stable_ids(self):
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func voiceShortcutEntries() -> [ShortcutEntry] { [(UInt32(1), "Dictate"), (UInt32(8), "New action")].map { id, title in entry(id, title) } }
+        }''')
+        self.write('StageKit/Settings.swift', '''enum Action: String, CaseIterable {
+          case timer
+          var title: String { switch self { case .timer: return "Break timer" } }
+        }''')
+        entries = {e['id']: e for e in self.entries()}
+        self.assertEqual('New action', entries['shortcut.voice.8']['label'])
+        self.assertEqual('Break timer', entries['shortcut.stage.timer']['label'])
+
+    def test_missing_owner_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, 'Missing surface owner'):
+            check.derive(self.root)
+
+    def test_cli_root_uses_explicit_registry_and_update_exits_nonzero(self):
+        owners = {}
+        for relative, scope, *_ in check.ENTRY_POINTS + check.CATALOGUES:
+            owners.setdefault(relative, []).append(scope)
+        for relative, scopes in owners.items():
+            if relative == 'LocalVoice/WorkbenchQuickPanel.swift':
+                continue
+            body = []
+            for scope in {s for s in scopes if s}:
+                parts = scope.split('.')
+                kind = 'enum' if parts[0] in ('ToolbarTool', 'Action') else 'struct'
+                inner = f'func {parts[1]}() {{}}' if len(parts) > 1 else ''
+                body.append(f'{kind} {parts[0]} {{ {inner} }}')
+            if relative.endswith('WorkbenchHome.swift'):
+                body = ['struct WorkbenchHome { let navItems = []; private var welcome: some View {}; private var settings: some View {} }']
+            self.write(relative, '\n'.join(body) + '\n')
+        registry = self.root / 'registry.json'
+        result = subprocess.run([sys.executable, str(SCRIPT), '--root', str(self.root), '--registry', str(registry), '--update'], capture_output=True, text=True)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual('unclassified', json.loads(registry.read_text())[0]['kind'])
+        registry.write_text(json.dumps(self.registry()))
+        result = subprocess.run([sys.executable, str(SCRIPT), '--root', str(self.root), '--registry', str(registry)], capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('Surface registry OK', result.stdout)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
