@@ -15,7 +15,7 @@ This candidate addresses [issue #112](https://github.com/EthDawg/workbench/issue
 
 ## Evidence already obtained
 
-The combined release build passed. The repository suite passed 194 Swift package tests and 64 browser tests, plus the earlier Python and CLI checks, before reaching five Stage assertions blocked by the running Stable app's ownership of global shortcuts. Those five checks must be rerun with Stable closed; this is not a full-suite pass.
+The combined release build passed. The repository suite passed 194 Swift package tests and 64 browser tests, plus its preceding Python and CLI checks. Its first Stage run hit five shortcut assertions while Stable owned the global shortcuts. After quitting Stable through the normal UI, the complete Stage suite passed 162 tests and 3,337 assertions. Subsequent focused checks below cover the remaining capability checks; the new combined head still requires its CI run.
 
 Focused checks passed for transcript handoff (129 contract and 11 runner checks), Readback packs (32), shared history (83), integrated handoff jobs (53), Snap (66), and meeting capture/recovery (72). The handoff checks exercise named-review continuity, immutable replies, inline and reference-style source links, changed-document protection and explicit replacement recovery. The meeting checks include a synthetic recording longer than 30 minutes; no live audio devices were used.
 
@@ -31,7 +31,7 @@ A real structured suggestion task returned the two explicitly named synthetic id
 
 ## Remaining acceptance
 
-At this checkpoint the Mac was locked. The new candidate had not been installed or verified with Copy build details. Native capture, editor scrolling and keyboard focus, mixed-selection review, excluded-image review, and installed lifecycle checks remain pending. Live remote-app audio, microphone balance, headphones and a routed phone call require actual receiver testing before those paths can be claimed.
+At this source checkpoint the new candidate had not been installed or verified with Copy build details. The Mac became accessible and Stable was quit normally for source verification. Native capture, editor scrolling and keyboard focus, mixed-selection review, excluded-image review, and installed lifecycle checks remain pending. The handoff review now keeps its header and actions outside one scrolling body, capped to the current screen's visible height; native focus and small-screen acceptance remain required. Live remote-app audio, microphone balance, headphones and a routed phone call require actual receiver testing before those paths can be claimed.
 
 The review and saved-job start controls apply each provider's image limits. The complete manual handoff remains available for larger selections and file-producing skills.
 

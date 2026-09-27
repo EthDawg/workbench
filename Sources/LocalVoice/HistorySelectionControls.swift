@@ -269,73 +269,75 @@ struct HandoffReviewView: View {
             Text("Hand off selected work").font(.title2.weight(.semibold))
             Text("\(sources.count) items. Each task keeps this selection, even when you pick different items later.")
                 .foregroundStyle(.secondary)
-            TextField("What should the assistant prepare?", text: $task, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
-            Picker("Skill", selection: $skillID) { ForEach(skills) { Text($0.title).tag($0.id) } }
-            if let reviewContext {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Current review: " + reviewContext.title).font(.callout.weight(.medium))
-                    Text("A successful result updates this review. Existing task results remain available. Suggested exclusions are never applied automatically.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if reviewContext.previousDocument != nil {
-                        HStack {
-                            Toggle("Include the previous review as reference", isOn: $includePreviousReview).toggleStyle(.checkbox)
-                            Button("Read…") { showingPreviousReview = true }
-                        }.font(.caption)
-                    }
-                }
-            }
-            HStack {
-                if let evidenceURL {
-                    Label("Snap & Talk: " + evidenceURL.lastPathComponent, systemImage: "photo.on.rectangle").font(.caption)
-                    Button("Remove evidence") { self.evidenceURL = nil; refreshSources() }.font(.caption)
-                } else {
-                    Menu("Add Snap & Talk evidence…") {
-                        if let selectedSnapTalkSession {
-                            Button("Use the open session") { useEvidence(selectedSnapTalkSession) }
-                        }
-                        Button("Choose a session…") {
-                            if let url = evidencePicker.chooseEvidence() { useEvidence(url) }
-                        }
-                    }.fixedSize().font(.caption)
-                }
-            }
-            if evidenceURL != nil {
-                Text("Includes live screenshots and the saved narration paired with each one. Original audio stays in the session; its own Hand off action retains the complete portable workflow.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(sources, id: \.reference) { source in
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(source.title).font(.callout.weight(.medium)).lineLimit(2)
-                                Text(source.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                                ForEach(source.captureNotes, id: \.self) { note in
-                                    Label(note, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
-                                }
-                                ForEach(Array(source.images.enumerated()), id: \.offset) { _, bytes in
-                                    if let image = NSImage(data: bytes) {
-                                        Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 340, maxHeight: 110)
-                                            .accessibilityLabel("Image to share for " + source.title)
-                                    }
-                                }
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                            Picker("Use as", selection: Binding(get: { roles[source.reference] ?? source.role }, set: { roles[source.reference] = $0 })) {
-                                ForEach(HandoffInputRole.allCases, id: \.self) { Text($0.title).tag($0) }
-                            }.fixedSize().accessibilityLabel("Use \(source.title) as")
-                        }.padding(10).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 14) {
+                    TextField("What should the assistant prepare?", text: $task, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
+                    Picker("Skill", selection: $skillID) { ForEach(skills) { Text($0.title).tag($0.id) } }
+                    if let reviewContext {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Current review: " + reviewContext.title).font(.callout.weight(.medium))
+                            Text("A successful result updates this review. Existing task results remain available. Suggested exclusions are never applied automatically.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            if reviewContext.previousDocument != nil {
+                                HStack {
+                                    Toggle("Include the previous review as reference", isOn: $includePreviousReview).toggleStyle(.checkbox)
+                                    Button("Read…") { showingPreviousReview = true }
+                                }.font(.caption)
+                            }
+                        }
                     }
-                }
-            }.frame(minHeight: 160, maxHeight: 330)
-            Text("Meeting speech and images start as reference material. “My instructions” means you adopt that text as your request. Connected tasks send the reviewed material to the chosen provider and return a draft for review.")
-                .font(.caption).foregroundStyle(.secondary)
-            if skill.id != TranscriptHandoffSkill.followUp.id {
-                Text("This skill uses the manual handoff so your assistant can create its requested files. Copy instructions, then attach the selected work folder.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if sources.contains(where: { !$0.images.isEmpty }) {
-                Text("Codex: up to 64 images, 10 MiB each and 128 MiB together. Claude Code: up to 20 images, 3.75 MiB each and 16 MiB together, with a 24 MiB encoded request limit. Edited Snaps share the visible crop and annotations; originals stay in Snap History. Copy instructions keeps the complete selection.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        if let evidenceURL {
+                            Label("Snap & Talk: " + evidenceURL.lastPathComponent, systemImage: "photo.on.rectangle").font(.caption)
+                            Button("Remove evidence") { self.evidenceURL = nil; refreshSources() }.font(.caption)
+                        } else {
+                            Menu("Add Snap & Talk evidence…") {
+                                if let selectedSnapTalkSession {
+                                    Button("Use the open session") { useEvidence(selectedSnapTalkSession) }
+                                }
+                                Button("Choose a session…") {
+                                    if let url = evidencePicker.chooseEvidence() { useEvidence(url) }
+                                }
+                            }.fixedSize().font(.caption)
+                        }
+                    }
+                    if evidenceURL != nil {
+                        Text("Includes live screenshots and the saved narration paired with each one. Original audio stays in the session; its own Hand off action retains the complete portable workflow.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(sources, id: \.reference) { source in
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(source.title).font(.callout.weight(.medium)).lineLimit(2)
+                                    Text(source.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                                    ForEach(source.captureNotes, id: \.self) { note in
+                                        Label(note, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                                    }
+                                    ForEach(Array(source.images.enumerated()), id: \.offset) { _, bytes in
+                                        if let image = NSImage(data: bytes) {
+                                            Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 340, maxHeight: 110)
+                                                .accessibilityLabel("Image to share for " + source.title)
+                                        }
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                Picker("Use as", selection: Binding(get: { roles[source.reference] ?? source.role }, set: { roles[source.reference] = $0 })) {
+                                    ForEach(HandoffInputRole.allCases, id: \.self) { Text($0.title).tag($0) }
+                                }.fixedSize().accessibilityLabel("Use \(source.title) as")
+                            }.padding(10).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                    Text("Meeting speech and images start as reference material. “My instructions” means you adopt that text as your request. Connected tasks send the reviewed material to the chosen provider and return a draft for review.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if skill.id != TranscriptHandoffSkill.followUp.id {
+                        Text("This skill uses the manual handoff so your assistant can create its requested files. Copy instructions, then attach the selected work folder.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if sources.contains(where: { !$0.images.isEmpty }) {
+                        Text("Codex: up to 64 images, 10 MiB each and 128 MiB together. Claude Code: up to 20 images, 3.75 MiB each and 16 MiB together, with a 24 MiB encoded request limit. Edited Snaps share the visible crop and annotations; originals stay in Snap History. Copy instructions keeps the complete selection.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
             }
             if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
             HStack {
@@ -350,7 +352,8 @@ struct HandoffReviewView: View {
                     }
                 }.disabled(sources.isEmpty || jobs.isBusy || skill.id != TranscriptHandoffSkill.followUp.id).menuStyle(.borderlessButton).fixedSize()
             }
-        }.padding(24).frame(width: 680)
+        }.padding(24)
+            .frame(width: 680, height: min(720, max(400, (NSScreen.main?.visibleFrame.height ?? 820) - 100)))
             .onAppear {
                 guard !initialized else { return }
                 initialized = true
