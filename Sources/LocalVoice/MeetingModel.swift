@@ -23,6 +23,14 @@ final class MeetingModel: ObservableObject {
             configureDetection()
         }
     }
+    /// Calls answered on this Mac (FaceTime, or an iPhone call) can also raise
+    /// an offer. Off by default; it adds no capture scope.
+    @Published var detectMacCalls: Bool {
+        didSet {
+            defaults.set(detectMacCalls, forKey: Self.macCallsKey)
+            configureDetection()
+        }
+    }
     @Published var includeMicrophone = true
     @Published var selectedAppID: Int32?
     @Published var purpose = "meeting"
@@ -33,6 +41,7 @@ final class MeetingModel: ObservableObject {
     var onStateChange: (() -> Void)?
 
     static let detectionKey = "workbench.meeting.detect.v1"
+    static let macCallsKey = "workbench.meeting.detect.mac-calls.v1"
     static let disabledAppsKey = "workbench.meeting.disabled-apps.v1"
     private let directory: URL
     private let defaults: UserDefaults
@@ -71,6 +80,7 @@ final class MeetingModel: ObservableObject {
         self.captureFactory = captureFactory
         self.startupNoticeDelayNanoseconds = startupNoticeDelayNanoseconds
         detectionEnabled = defaults.bool(forKey: Self.detectionKey)
+        detectMacCalls = defaults.bool(forKey: Self.macCallsKey)
         detector.disabledBundleIDs = Set(defaults.stringArray(forKey: Self.disabledAppsKey) ?? [])
         configureDetection()
         recoveryTask = Task { [weak self] in await self?.refreshRecovery() }
@@ -333,6 +343,7 @@ final class MeetingModel: ObservableObject {
     private func configureDetection() {
         detectionTask?.cancel(); detectionTask = nil
         detector.isEnabled = detectionEnabled
+        detector.offersMacCalls = detectMacCalls
         if !detectionEnabled { offer = nil; return }
         guard !shuttingDown else { return }
         if !detector.isAvailable { error = detector.unavailableReason; return }
@@ -347,6 +358,11 @@ final class MeetingModel: ObservableObject {
         }
     }
 
+    /// Chooses the offered source for review. A call on this Mac is saved as a Call.
+    func useOffer(_ app: MeetingAudioApp) {
+        selectedAppID = app.id
+        if MeetingDetector.isCallService(app) { purpose = "call" }
+    }
     func dismissOffer() { if let offer { detector.dismiss(offer) }; offer = nil }
     func snoozeOffers() { detector.snooze(); offer = nil }
     func disableOffers(for app: MeetingAudioApp) {
