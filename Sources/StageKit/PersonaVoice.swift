@@ -34,6 +34,7 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
     private let engine = AVAudioEngine()
     private var wanted = false
     private var running = false
+    private var configurationObserver: NSObjectProtocol?
     // Touched only on the audio tap's thread.
     private var smoothed: Float = 0
     private var lastDelivery: CFAbsoluteTime = 0
@@ -68,10 +69,23 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
             throw PersonaVoiceError.unavailable(error.localizedDescription)
         }
         running = true
+        // A new headset or a lost device stops the engine silently. Restart on the
+        // new input, or turn the ring off rather than freeze it at a stale level.
+        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            guard let self, self.running else { return }
+            self.halt()
+            do { try self.start() } catch { self.wanted = false; self.onUnavailable?(error.localizedDescription) }
+        }
     }
 
     func stop() {
         wanted = false
+        halt()
+    }
+
+    private func halt() {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        configurationObserver = nil
         guard running else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
