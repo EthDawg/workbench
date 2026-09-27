@@ -4,7 +4,7 @@
   "title": "A desktop and a presentation are different commitments",
   "reviewedOn": "2026-09-27",
   "implementationRevision": "6f0f7a045f0a1900668c77f01556b0d7d6080387",
-  "scope": "Presentation preparation, independent Persona overlays, deliberate Snap capture and history, break-timer placement, desktop appearance and coordination with annotation and Mac audio workflows. Issue #112 capabilities have source, focused checks and partial signed Preview acceptance recorded in docs/releases/2026-09-27-capability-preview.md. Remaining native and public release gates stay open. App-wide history, assistant and meeting contracts are in docs/workbench.md and docs/product-spec.md.",
+  "scope": "Presentation preparation, independent Persona overlays, deliberate Snap capture and history, break-timer placement, desktop appearance and coordination with annotation and Mac audio workflows. Issue #112 capabilities are published in Workbench 2.2.0 build 20260927101737 from source f2b8dfa. The notarized archive, bounded native acceptance and remaining hardware and fresh-Mac limits are recorded in docs/releases/2026-09-27-capability-preview.md. Earlier evidence entries retain their original source and test boundaries. App-wide history, assistant and meeting contracts are in docs/workbench.md and docs/product-spec.md.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
     "proposed": "A product contract for review and implementation. No corresponding feature is promised in the current download."
