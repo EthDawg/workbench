@@ -59,7 +59,9 @@ final class SnapModel: ObservableObject {
     /// an open editor, and a failure only leaves that Snap searchable by title.
     private func refreshDerivedData() {
         guard analysis == nil else { analysisRequested = true; return }
-        let store = self.store, items = self.items
+        // A separate store instance: SnapStore keeps unsynchronised load state
+        // for editor conflict checks, which must never be touched off the main thread.
+        let store = SnapStore(root: self.store.root), items = self.items
         analysis = Task.detached(priority: .utility) { [weak self] in
             var texts: [UUID: String] = [:]
             for item in items {
