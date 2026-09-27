@@ -11,6 +11,7 @@ struct SnapWorkspaceView: View {
     var onAddToNarratedSession: ([UUID]) -> Void = { _ in }
     var onOrganiseHandOff: (String) -> Void = { _ in }
     @State private var reviewingOrganization = false
+    @State private var tidyCandidates: [URL] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -33,7 +34,25 @@ struct SnapWorkspaceView: View {
                     }.disabled(model.isBusy)
                 }
                 Spacer()
+                #if APP_STORE
                 Text("No Desktop files").font(.caption).foregroundStyle(.secondary)
+                #else
+                Menu {
+                    Toggle("Keep new screenshots off the Desktop", isOn: Binding(get: { model.keepsScreenshotsOffDesktop },
+                                                                               set: { model.setKeepsScreenshotsOffDesktop($0) }))
+                    Button("Tidy Desktop screenshots…") {
+                        let found = model.desktopScreenshots()
+                        if found.isEmpty { model.notice = "There are no screenshots on the Desktop." } else { tidyCandidates = found }
+                    }
+                } label: {
+                    Label(model.keepsScreenshotsOffDesktop ? "Screenshots go to Snap" : "Desktop screenshots", systemImage: "menubar.dock.rectangle")
+                }.fixedSize().disabled(model.isBusy || model.tidyingScreenshots)
+                    .help("Snap never saves to the Desktop. These choices also gather screenshots taken with macOS shortcuts.")
+                #endif
+            }
+            if model.screenshotRedirectPaused {
+                Text("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             Divider()
             HStack {
@@ -71,7 +90,17 @@ struct SnapWorkspaceView: View {
             }
         }.padding(24)
             .sheet(item: $model.draft) { draft in SnapEditorView(model: model, draft: draft) }
-            .sheet(isPresented: $reviewingOrganization) {
+            .confirmationDialog("Move \(tidyCandidates.count) screenshot\(tidyCandidates.count == 1 ? "" : "s") into Snap History?",
+                            isPresented: Binding(get: { !tidyCandidates.isEmpty }, set: { if !$0 { tidyCandidates = [] } })) {
+            Button("Move \(tidyCandidates.count) screenshot\(tidyCandidates.count == 1 ? "" : "s")") {
+                let files = tidyCandidates; tidyCandidates = []
+                Task { await model.tidyDesktopScreenshots(files) }
+            }
+            Button("Cancel", role: .cancel) { tidyCandidates = [] }
+        } message: {
+            Text("Only files macOS marked as screenshots are moved. Each is added to Snap History first, with its original date; the originals then go to the Trash, where you can restore them.")
+        }
+        .sheet(isPresented: $reviewingOrganization) {
                 SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID,
                     onHandOff: onOrganiseHandOff, onExclude: { ids in selectedIDs.subtract(ids) })
             }

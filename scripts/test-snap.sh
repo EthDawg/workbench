@@ -15,6 +15,7 @@ PY
 swiftc -swift-version 5 -module-cache-path "$CHECK_DIR/ModuleCache" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapStore.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapAnalysis.swift" \
+  "$PROJECT_DIR/Sources/LocalVoice/SnapScreenshots.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapRendering.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapOrganization.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapHandoff.swift" \
