@@ -5,42 +5,46 @@
 /// value the look is reviewed as a gallery of fixtures, and a regression arrives
 /// as an image diff instead of a claim in a report.
 
-public enum ToolbarTool: String, CaseIterable, Sendable {
-    case dictate, snapAndTalk, annotate, present, persona, read, timer
+/// One capability or named workflow the toolbar can be in. The mode follows the
+/// journey: starting anything from any door makes it the mode, and ending leaves
+/// the mode where it was. Timer is not a mode; it stays a panel row.
+public enum ToolbarMode: String, CaseIterable, Sendable {
+    case dictate, read, snap, snapAndTalk, draw, present, persona
 
     public var title: String {
         switch self {
         case .dictate: return "Dictate"
-        case .snapAndTalk: return "Snap & Talk"
-        case .annotate: return "Draw"
-        case .present: return "Present"
         case .read: return "Read"
-        case .persona: return "Persona Overlay"
-        case .timer: return "Timer"
+        case .snap: return "Snap"
+        case .snapAndTalk: return "Snap & Talk"
+        case .draw: return "Draw"
+        case .present: return "Present"
+        case .persona: return "Persona"
         }
     }
-    /// One symbol per job, shared by the resting glyph, the revealed row and the
+    /// One symbol per job, shared by the resting glyph, the mode strip and the
     /// menu-bar panel, so the same job always looks the same wherever it appears.
     public var symbol: String {
         switch self {
         case .dictate: return "mic"
-        case .snapAndTalk: return "rectangle.dashed.badge.record"
-        case .annotate: return "pencil.tip"
-        case .present: return "iphone"
         case .read: return "speaker.wave.2"
+        case .snap: return "viewfinder"
+        case .snapAndTalk: return "rectangle.dashed.badge.record"
+        case .draw: return "pencil.tip"
+        case .present: return "iphone"
         case .persona: return "person.crop.rectangle"
-        case .timer: return "timer"
         }
     }
-    /// The settings page this tool's options open, from the toolbar's own menu.
+    /// The Workbench page this mode's preparation lives on.
     public var page: String {
         switch self {
         case .dictate: return "dictate"
-        case .snapAndTalk: return "readback"
-        case .annotate: return "annotate"
-        case .present: return "present"
         case .read: return "speak"
-        case .persona, .timer: return "present"
+        case .snap: return "snap"
+        case .snapAndTalk: return "readback"
+        case .draw: return "annotate"
+        case .present: return "present"
+        case .persona: return "personas"
         }
     }
     /// Filename-safe and lower case, because these become snapshot filenames on
@@ -67,24 +71,11 @@ public enum ToolbarShortcut: Equatable, Sendable {
         if case .assigned = self { return true }
         return false
     }
-}
-
-/// Contextual status and assigned keys. Session counts remain useful between
-/// captures; unavailable bindings are not rendered as toolbar controls.
-public enum ToolbarTrailing: Equatable, Sendable {
-    case shortcut(ToolbarShortcut)
-    case status(String)
-
-    public var text: String {
-        switch self {
-        case .shortcut(let shortcut): return shortcut.label
-        case .status(let status): return status
-        }
-    }
-    /// True where the text names something the user cannot act on.
-    public var readsAsUnavailable: Bool {
-        if case .shortcut(let shortcut) = self { return !shortcut.isUsable }
-        return false
+    /// The key as a hover hint. An off or failed binding is omitted rather than
+    /// shown as text nobody can act on.
+    public var hintKey: String? {
+        if case .assigned(let keys) = self { return keys }
+        return nil
     }
 }
 
@@ -104,9 +95,9 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
         }
     }
     /// The revealed row grows inward from the docked edge, so a dock on the
-    /// right grows leftward and the glyph keeps its place on screen. This is the
-    /// whole of the side-dock geometry; the old build special-cased a tall pill
-    /// and a taller hover frame to keep a decorative capsule fully visible.
+    /// right grows leftward and the resting element keeps its place on screen.
+    /// This is the whole of the side-dock geometry; the old build special-cased
+    /// a tall pill and a taller hover frame to keep a decorative capsule fully visible.
     public var growsLeftward: Bool { self == .topRight || self == .right || self == .bottomRight }
 
     public var slug: String {
@@ -123,35 +114,54 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
     }
 }
 
+/// One chip in the revealed row's mode strip: a mode that is not selected.
+public struct ToolbarModeChip: Equatable, Sendable {
+    public var mode: ToolbarMode
+    /// That mode's capability is live right now, whichever mode is selected.
+    public var isBusy: Bool
+    public var isEnabled: Bool
+    /// The assigned key, shown in the chip's hover text beside its name.
+    public var key: String?
+
+    public init(mode: ToolbarMode, isBusy: Bool = false, isEnabled: Bool = true, key: String? = nil) {
+        self.mode = mode; self.isBusy = isBusy; self.isEnabled = isEnabled; self.key = key
+    }
+}
+
 public struct ToolbarViewState: Equatable, Sendable {
     /// Stable across runs: the gallery label, and the snapshot filename.
     public var name: String
     public var tier: ToolbarTier
     public var anchor: ToolbarAnchor
-    public var tool: ToolbarTool
-    /// What the one button says. Active work replaces the start action rather
-    /// than adding a finish button beside it.
+    public var mode: ToolbarMode
+    /// What the one button says: the next action for where you are in the
+    /// journey. Active work replaces the start action rather than adding a
+    /// finish button beside it.
     public var actionTitle: String
     public var isActionEnabled: Bool
-    public var trailing: ToolbarTrailing
+    /// The assigned key and any count, shown on hover over the action. The row
+    /// holds no information-only text.
+    public var actionHint: String?
+    /// The other modes, in the strip beside the action once the row is revealed.
+    public var switcher: [ToolbarModeChip]
     public var accessoryTitle: String?
-    /// Work is running. The resting glyph says so; that is the only thing it
-    /// says beyond being findable.
+    /// The selected mode's work is running. The resting glyph says so; that is
+    /// the only thing it says beyond being findable.
     public var isBusy: Bool
 
     public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
-                tool: ToolbarTool = .dictate, actionTitle: String? = nil,
-                isActionEnabled: Bool = true,
-                trailing: ToolbarTrailing = .shortcut(.assigned("⌃⌥Space")),
-                isBusy: Bool = false) {
+                mode: ToolbarMode = .dictate, actionTitle: String? = nil,
+                isActionEnabled: Bool = true, actionHint: String? = nil,
+                switcher: [ToolbarModeChip]? = nil, isBusy: Bool = false) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
-        self.tool = tool
-        self.actionTitle = actionTitle ?? tool.title
+        self.mode = mode
+        self.actionTitle = actionTitle ?? mode.title
         self.isActionEnabled = isActionEnabled
-        self.trailing = trailing
-        self.accessoryTitle = tool == .present ? "Prompts" : nil
+        self.actionHint = actionHint
+        self.switcher = switcher ?? ToolbarMode.allCases.filter { $0 != mode }.map { ToolbarModeChip(mode: $0) }
+        self.accessoryTitle = mode == .present ? "Prompts" : nil
         self.isBusy = isBusy
     }
 }

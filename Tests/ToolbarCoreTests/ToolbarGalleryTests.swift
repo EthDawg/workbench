@@ -16,14 +16,18 @@ final class ToolbarGalleryTests: XCTestCase {
     }
 
     func testSlugsStayUniqueOnACaseInsensitiveDisk() {
-        XCTAssertEqual(Set(ToolbarTool.allCases.map(\.slug)).count, ToolbarTool.allCases.count)
+        XCTAssertEqual(Set(ToolbarMode.allCases.map(\.slug)).count, ToolbarMode.allCases.count)
         XCTAssertEqual(Set(ToolbarAnchor.allCases.map(\.slug)).count, ToolbarAnchor.allCases.count)
     }
 
-    func testEveryTierDockAndToolIsRepresented() {
+    func testEveryTierDockAndModeIsRepresented() {
         XCTAssertEqual(Set(ToolbarGallery.states.map(\.tier)), Set(ToolbarTier.allCases))
         XCTAssertEqual(Set(ToolbarGallery.states.map(\.anchor)), Set(ToolbarAnchor.allCases))
-        XCTAssertEqual(Set(ToolbarGallery.states.map(\.tool)), Set(ToolbarTool.allCases))
+        XCTAssertEqual(Set(ToolbarGallery.states.map(\.mode)), Set(ToolbarMode.allCases))
+        for mode in ToolbarMode.allCases {
+            let tiers = ToolbarGallery.modes.filter { $0.mode == mode }.map(\.tier)
+            XCTAssertEqual(Set(tiers), Set(ToolbarTier.allCases), mode.rawValue)
+        }
     }
 
     func testBothTiersAppearAtEveryDock() {
@@ -33,57 +37,66 @@ final class ToolbarGalleryTests: XCTestCase {
         }
     }
 
-    func testUnusableBindingsAreCoveredAndReadDifferently() {
+    func testUnusableBindingsNeverBecomeHoverText() {
         let kinds: [ToolbarShortcut] = [.off, .unavailable, .assigned("⌃⌥Space")]
         XCTAssertEqual(Set(kinds.map(\.label)).count, 3, "off, failed and assigned must not read the same")
-        XCTAssertTrue(ToolbarTrailing.shortcut(.off).readsAsUnavailable)
-        XCTAssertTrue(ToolbarTrailing.shortcut(.unavailable).readsAsUnavailable)
-        XCTAssertFalse(ToolbarTrailing.shortcut(.assigned("⌃⌥Space")).readsAsUnavailable)
-        XCTAssertFalse(ToolbarTrailing.status("3 captures").readsAsUnavailable, "a status is not a broken binding")
-        let covered = Set(ToolbarGallery.states.map(\.trailing.text))
-        XCTAssertTrue(covered.contains(ToolbarShortcut.off.label))
-        XCTAssertTrue(covered.contains(ToolbarShortcut.unavailable.label))
+        XCTAssertNil(ToolbarShortcut.off.hintKey)
+        XCTAssertNil(ToolbarShortcut.unavailable.hintKey)
+        XCTAssertEqual(ToolbarShortcut.assigned("⌃⌥Space").hintKey, "⌃⌥Space")
+        for state in ToolbarGallery.states {
+            XCTAssertNotEqual(state.actionHint, ToolbarShortcut.off.label, state.name)
+            XCTAssertNotEqual(state.actionHint, ToolbarShortcut.unavailable.label, state.name)
+        }
     }
 
     func testActiveWorkReplacesTheStartActionRatherThanAddingToIt() {
         let drawing = ToolbarGallery.activity.first { $0.name == "activity-drawing" }
-        XCTAssertEqual(drawing?.actionTitle, "Done drawing")
-        XCTAssertNotEqual(drawing?.actionTitle, ToolbarTool.annotate.title)
+        XCTAssertEqual(drawing?.actionTitle, "Stop drawing")
+        XCTAssertNotEqual(drawing?.actionTitle, ToolbarMode.draw.title)
+        XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.actionTitle, "End presentation")
+        XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-personas" }?.actionTitle, "Hide personas")
     }
 
-    func testActiveStatusAndBetweenCaptureCountRemainVisible() {
-        for state in ToolbarGallery.activity where state.isBusy && state.tier == .revealed {
-            guard case .status = state.trailing else {
-                return XCTFail("\(state.name) shows a key while work is running")
-            }
-        }
+    /// Work started from a key while another mode is selected: the label follows
+    /// the work, the glyph stays quiet and that mode's chip lights instead.
+    func testWorkInAnotherModeLightsItsChipNotTheGlyph() throws {
+        let state = try XCTUnwrap(ToolbarGallery.activity.first { $0.name == "activity-drawing-in-dictate" })
+        XCTAssertEqual(state.mode, .dictate)
+        XCTAssertEqual(state.actionTitle, "Stop drawing")
+        XCTAssertFalse(state.isBusy)
+        XCTAssertEqual(state.switcher.filter(\.isBusy).map(\.mode), [.draw])
+        XCTAssertFalse(state.switcher.contains { $0.mode == state.mode }, "the selected mode is the glyph, not a chip")
+    }
+
+    func testTheCountLivesInTheLabelAndTheKeyInTheHint() {
         let between = ToolbarGallery.idle.first { $0.name == "idle-session-open" }
-        XCTAssertEqual(between?.trailing.text, "3 Captures · ⌥C")
+        XCTAssertEqual(between?.actionTitle, "Capture next · 3")
+        XCTAssertEqual(between?.actionHint, "⌥C")
         XCTAssertEqual(between?.isBusy, false, "a saved session does not pretend to be recording")
+        let saving = ToolbarGallery.activity.first { $0.name == "activity-transcribing" }
+        XCTAssertEqual(saving?.actionHint, "saving · ⌥C")
+        XCTAssertEqual(saving?.isBusy, true)
         XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-presenting" }?.accessoryTitle, "Prompts")
+        XCTAssertNil(ToolbarGallery.modes.first { $0.mode == .dictate }?.accessoryTitle)
     }
 
     func testRunningWorkIsVisibleWithoutHovering() {
-        let resting = ToolbarGallery.activity.filter { $0.tier == .resting }
-        XCTAssertFalse(resting.isEmpty, "the resting glyph must be reviewed in its busy state too")
+        let resting = ToolbarGallery.activity.filter { $0.tier == .resting && $0.mode != .dictate }
+        XCTAssertFalse(resting.isEmpty, "the resting element must be reviewed in its busy state too")
         XCTAssertTrue(resting.allSatisfy(\.isBusy))
     }
 
-    /// Found by looking at the gallery: a long status pushed the row past the
-    /// artboard. The row is a glance, not a sentence, and the longest thing it is
-    /// ever allowed to say is "Shortcut unavailable".
-    func testTheTrailingSlotStaysAGlance() {
-        let budget = ToolbarShortcut.unavailable.label.count
-        for state in ToolbarGallery.states {
-            XCTAssertLessThanOrEqual(state.trailing.text.count, budget,
-                                     "\(state.name): \u{201c}\(state.trailing.text)\u{201d}")
-        }
+    func testNoDeadReadingFixtureRemains() {
+        XCTAssertFalse(ToolbarGallery.states.contains { $0.name == "activity-reading" },
+                       "reading shows its own compact controls; the row never renders it")
     }
 
-    func testNoFixtureShipsEmptyText() {
+    /// The row is a glance, not a sentence. The label budget is the next action's.
+    func testEveryLabelStaysAGlance() {
         for state in ToolbarGallery.states {
             XCTAssertFalse(state.actionTitle.isEmpty, state.name)
-            XCTAssertFalse(state.trailing.text.isEmpty, state.name)
+            XCTAssertLessThanOrEqual(state.actionTitle.count, ToolbarNextAction.titleBudget, state.name)
+            XCTAssertEqual(state.switcher.count, ToolbarMode.allCases.count - 1, state.name)
         }
     }
 
@@ -91,8 +104,12 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(ToolbarAnchor.allCases.filter(\.growsLeftward), [.topRight, .right, .bottomRight])
     }
 
-    func testEachToolKeepsOneSymbolAcrossEverySurface() {
-        let symbols = ToolbarTool.allCases.map(\.symbol)
+    func testEachModeKeepsOneSymbolAndOnePageAcrossEverySurface() {
+        let symbols = ToolbarMode.allCases.map(\.symbol)
         XCTAssertEqual(Set(symbols).count, symbols.count)
+        XCTAssertEqual(ToolbarMode.draw.page, "annotate")
+        XCTAssertEqual(ToolbarMode.read.page, "speak")
+        XCTAssertEqual(ToolbarMode.snapAndTalk.page, "readback")
+        XCTAssertEqual(ToolbarMode.persona.page, "personas")
     }
 }

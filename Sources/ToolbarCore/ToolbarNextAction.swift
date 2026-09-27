@@ -1,0 +1,195 @@
+/// What is live right now, frozen. The host builds one of these per render from
+/// the operation owners; nothing here observes anything. Every field is a
+/// finite value so a test can walk the whole product.
+public struct ToolbarLiveState: Hashable, Sendable {
+    public enum Dictation: CaseIterable, Sendable { case idle, requesting, recording, processing, cancelling }
+    public enum Reading: CaseIterable, Sendable { case idle, preparing, playing, paused }
+    public enum Persona: CaseIterable, Sendable { case none, shown, session, sessionHidden }
+    public enum Timer: CaseIterable, Sendable { case none, running, paused, finished }
+
+    public var mode: ToolbarMode
+    public var dictation: Dictation
+    public var canRecordAgain: Bool
+    public var reading: Reading
+    /// Snap & Talk is recording narration.
+    public var narrating: Bool
+    /// Any screen capture is in flight; the toolbar is hidden for it.
+    public var capturingScreen: Bool
+    /// Snap & Talk narration is still being transcribed and saved.
+    public var pendingNarration: Bool
+    /// Captures in the open Snap & Talk session, or nil with no session.
+    public var captureCount: Int?
+    public var drawing: Bool
+    public var presenting: Bool
+    public var persona: Persona
+    /// Recorded for the chip dot only. The timer never claims the label.
+    public var timer: Timer
+    public var insertingPrompt: Bool
+    public var meetingRecording: Bool
+    /// The selected mode may start now. Admission stays with the owners.
+    public var mayStart: Bool
+
+    public init(mode: ToolbarMode, dictation: Dictation = .idle, canRecordAgain: Bool = false,
+                reading: Reading = .idle, narrating: Bool = false, capturingScreen: Bool = false,
+                pendingNarration: Bool = false, captureCount: Int? = nil, drawing: Bool = false,
+                presenting: Bool = false, persona: Persona = .none, timer: Timer = .none,
+                insertingPrompt: Bool = false, meetingRecording: Bool = false, mayStart: Bool = true) {
+        self.mode = mode; self.dictation = dictation; self.canRecordAgain = canRecordAgain
+        self.reading = reading; self.narrating = narrating; self.capturingScreen = capturingScreen
+        self.pendingNarration = pendingNarration; self.captureCount = captureCount
+        self.drawing = drawing; self.presenting = presenting; self.persona = persona; self.timer = timer
+        self.insertingPrompt = insertingPrompt; self.meetingRecording = meetingRecording; self.mayStart = mayStart
+    }
+
+    /// Whether a mode's own capability is running, whichever mode is selected.
+    /// The glyph dot uses it for the selected mode; the strip for the others.
+    public func isLive(_ mode: ToolbarMode) -> Bool {
+        switch mode {
+        case .dictate: return dictation != .idle || meetingRecording
+        case .read: return reading != .idle
+        case .snap: return false
+        case .snapAndTalk: return narrating || pendingNarration
+        case .draw: return drawing
+        case .present: return presenting || insertingPrompt
+        case .persona: return persona != .none
+        }
+    }
+}
+
+/// The one thing the next action does. The host maps each case to the owner
+/// that already does it; the toolbar never ends anything but what it names.
+public enum ToolbarOperation: Hashable, Sendable {
+    case stopInserting, cancelDictationRequest, stopDictation
+    case finishNarration, finishDrawing
+    case pauseReading, resumeReading, cancelReading
+    case hidePersona, pauseOverlays, resumeOverlays
+    case captureNext, stopMeetingTranscription, endPresentation
+    case start(ToolbarMode)
+    /// Nothing to do but wait; the label says why and is disabled.
+    case wait
+
+    /// The capability the operation belongs to, for its key and symbol.
+    public var mode: ToolbarMode? {
+        switch self {
+        case .cancelDictationRequest, .stopDictation, .stopMeetingTranscription: return .dictate
+        case .pauseReading, .resumeReading, .cancelReading: return .read
+        case .finishNarration, .captureNext: return .snapAndTalk
+        case .finishDrawing: return .draw
+        case .stopInserting, .endPresentation: return .present
+        case .hidePersona, .pauseOverlays, .resumeOverlays: return .persona
+        case .start(let mode): return mode
+        case .wait: return nil
+        }
+    }
+}
+
+/// The label under the pointer at rest, and what clicking it does. One pure
+/// function of the live state, with a fixed priority so two identical screens
+/// never read differently: what is consuming your input now, then the cheapest
+/// to undo, then session steps, then the one ending, then the mode's start verb.
+public struct ToolbarNextAction: Equatable, Sendable {
+    public var title: String
+    public var symbol: String
+    public var operation: ToolbarOperation
+    public var isEnabled: Bool
+    /// A count worth knowing beside the key, such as saving captures.
+    public var detail: String?
+
+    /// Stop keeps what it made; Cancel discards; Hide and Show keep; End ends.
+    public static let titleBudget = 24
+
+    public static func resolve(_ live: ToolbarLiveState) -> ToolbarNextAction {
+        let operation = self.operation(for: live)
+        let enabled: Bool
+        switch operation {
+        case .wait: enabled = false
+        case .start: enabled = live.mayStart
+        default: enabled = true
+        }
+        var detail: String?
+        if live.mode == .snapAndTalk, let count = live.captureCount, case .start = operation {
+            detail = "\(count) " + (count == 1 ? "capture" : "captures")
+        }
+        if case .captureNext = operation, live.pendingNarration { detail = "saving" }
+        return ToolbarNextAction(title: title(operation, live: live), symbol: (operation.mode ?? live.mode).symbol,
+                                 operation: operation, isEnabled: enabled, detail: detail)
+    }
+
+    /// The hover hint: any detail, then the assigned key of the operation's capability.
+    public func hint(key: String?) -> String? {
+        let parts = [detail, key].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The other modes as chips, each lit when its capability is live.
+    public static func switcher(for live: ToolbarLiveState, key: (ToolbarMode) -> String? = { _ in nil }) -> [ToolbarModeChip] {
+        ToolbarMode.allCases.filter { $0 != live.mode }.map {
+            ToolbarModeChip(mode: $0, isBusy: live.isLive($0), key: key($0))
+        }
+    }
+
+    /// Every verb a mode can start with. The primary keeps this width so an
+    /// idle mode switch never moves the strip under the pointer.
+    public static let idleVerbs: [String] = ["Record again", "Capture"] + ToolbarMode.allCases.map {
+        title(.start($0), live: ToolbarLiveState(mode: $0))
+    }
+
+    static func operation(for live: ToolbarLiveState) -> ToolbarOperation {
+        if live.insertingPrompt { return .stopInserting }
+        switch live.dictation {
+        case .requesting: return .cancelDictationRequest
+        case .recording: return .stopDictation
+        case .processing, .cancelling: return .wait
+        case .idle: break
+        }
+        if live.capturingScreen { return .wait }
+        if live.narrating { return .finishNarration }
+        if live.drawing { return .finishDrawing }
+        switch live.reading {
+        case .preparing: return .cancelReading
+        case .playing: return .pauseReading
+        case .paused: return .resumeReading
+        case .idle: break
+        }
+        switch live.persona {
+        case .session: return .pauseOverlays
+        case .sessionHidden: return .resumeOverlays
+        case .shown: return .hidePersona
+        case .none: break
+        }
+        if live.mode == .snapAndTalk, live.captureCount != nil { return .captureNext }
+        if live.meetingRecording { return .stopMeetingTranscription }
+        if live.presenting { return .endPresentation }
+        return .start(live.mode)
+    }
+
+    static func title(_ operation: ToolbarOperation, live: ToolbarLiveState) -> String {
+        switch operation {
+        case .stopInserting: return "Stop inserting"
+        case .cancelDictationRequest: return "Cancel request"
+        case .stopDictation: return "Stop"
+        case .finishNarration: return "Stop narration"
+        case .finishDrawing: return "Stop drawing"
+        case .cancelReading: return "Cancel"
+        case .pauseReading: return "Pause reading"
+        case .resumeReading: return "Resume reading"
+        case .pauseOverlays: return "Hide personas"
+        case .resumeOverlays: return "Show personas"
+        case .hidePersona: return "Hide persona"
+        case .captureNext: return "Capture next · \(live.captureCount ?? 0)"
+        case .stopMeetingTranscription: return "Stop transcribing"
+        case .endPresentation: return "End presentation"
+        case .wait: return live.dictation == .cancelling ? "Cancelling…" : live.dictation == .processing ? "Processing…" : "Capturing…"
+        case .start(let mode):
+            switch mode {
+            case .dictate: return live.canRecordAgain ? "Record again" : "Dictate"
+            case .read: return "Read"
+            case .snap: return "Snap"
+            case .snapAndTalk: return "Capture"
+            case .draw: return "Draw"
+            case .present: return "Present"
+            case .persona: return "Show persona"
+            }
+        }
+    }
+}
