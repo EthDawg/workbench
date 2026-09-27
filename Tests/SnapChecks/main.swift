@@ -193,4 +193,70 @@ try MainActor.assumeIsolated {
     try rejects("archived selected capture") { _ = try model.handoffSnapshots(ids: [capture.id]) }
     try check(try canonical.snapshot(capture.id).originalPNG == png, "archiving does not change a narrated original")
 }
-print("SNAP_CHECKS_OK: \(checks) checks for rendering, revision conflicts, private storage, immutable snapshots, reversible review and portable optional narration")
+// Screenshots off the Desktop: only files macOS marked as screen captures move,
+// each reaches Snap History before its file goes to the Trash, and the person's
+// own screenshot location is restored unless they changed it since.
+final class FakeScreenshotLocation: ScreenshotLocationStore { var location: String? }
+func markScreenCapture(_ url: URL) throws {
+    let value = try PropertyListSerialization.data(fromPropertyList: true, format: .binary, options: 0)
+    let status = value.withUnsafeBytes { setxattr(url.path, SnapScreenshots.attribute, $0.baseAddress, value.count, 0, 0) }
+    try check(status == 0, "fixture screen-capture attribute")
+}
+let shots = directory.appendingPathComponent("screenshots"), desktopFolder = shots.appendingPathComponent("Desktop"),
+    inboxFolder = shots.appendingPathComponent("Inbox"), trashed = shots.appendingPathComponent("Trash")
+for folder in [desktopFolder, inboxFolder, trashed] { try fm.createDirectory(at: folder, withIntermediateDirectories: true) }
+let olderShot = desktopFolder.appendingPathComponent("Screenshot 2026-09-01 at 9.00.00 am.png"),
+    newerShot = desktopFolder.appendingPathComponent("Bildschirmfoto 2026-09-02 um 10.00.00.png"),
+    plainImage = desktopFolder.appendingPathComponent("Holiday.png"), notes = desktopFolder.appendingPathComponent("notes.txt"),
+    hidden = desktopFolder.appendingPathComponent(".Screenshot pending.png")
+try png.write(to: olderShot); try cropped.write(to: newerShot); try png.write(to: plainImage); try Data("x".utf8).write(to: notes); try png.write(to: hidden)
+for file in [olderShot, newerShot, notes, hidden] { try markScreenCapture(file) }
+let olderDate = Date(timeIntervalSince1970: 1_756_000_000), newerDate = Date(timeIntervalSince1970: 1_756_090_000)
+try fm.setAttributes([.creationDate: newerDate], ofItemAtPath: newerShot.path)
+try fm.setAttributes([.creationDate: olderDate], ofItemAtPath: olderShot.path)
+try check(SnapScreenshots.screenCaptures(in: desktopFolder).map(\.lastPathComponent) == [olderShot, newerShot].map(\.lastPathComponent),
+          "only images macOS marked as screen captures are found, oldest first, in any language")
+let screenshotStore = SnapStore(root: directory.appendingPathComponent("screenshot-history"))
+var trashCalls: [URL] = [], failTrash = true
+let trashFixture: (URL) throws -> Void = { url in
+    if failTrash { failTrash = false; throw SnapError.message("Synthetic Trash failure") }
+    trashCalls.append(url); try fm.moveItem(at: url, to: trashed.appendingPathComponent(url.lastPathComponent))
+}
+var known = Set<String>()
+try rejects("a Trash failure is reported") { _ = try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture) }
+try check(fm.fileExists(atPath: olderShot.path) && (try screenshotStore.load().items.count) == 1, "the Snap is stored before the file would move")
+try check(try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture) == nil
+          && (try screenshotStore.load().items.count) == 1 && trashCalls == [olderShot],
+          "retrying after a failed Trash move clears the file without a duplicate Snap")
+let adopted = try SnapScreenshots.adopt(newerShot, store: screenshotStore, known: &known, trash: trashFixture)!
+try check(adopted.createdAt == newerDate && adopted.title == "Bildschirmfoto 2026-09-02 um 10.00.00"
+          && (try screenshotStore.snapshot(adopted.id)).originalPNG == cropped,
+          "an adopted screenshot keeps its exact bytes, capture date and name")
+try check(fm.fileExists(atPath: plainImage.path) && fm.fileExists(atPath: notes.path) && fm.fileExists(atPath: hidden.path),
+          "ordinary images, other files and hidden files stay on the Desktop")
+try MainActor.assumeIsolated {
+    let location = FakeScreenshotLocation(), suite = "SnapScreenshots-" + UUID().uuidString, preferences = UserDefaults(suiteName: suite)!
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("inbox-history")), screenshotLocation: location,
+                          preferences: preferences, desktop: desktopFolder, screenshotInbox: inboxFolder,
+                          trash: { url in try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png")) })
+    model.setKeepsScreenshotsOffDesktop(true)
+    try check(location.location == inboxFolder.path && model.keepsScreenshotsOffDesktop, "new screenshots are pointed at the Workbench folder")
+    let incoming = inboxFolder.appendingPathComponent("Screenshot 2026-09-03 at 11.00.00 am.png")
+    try png.write(to: incoming); try markScreenCapture(incoming)
+    model.importInbox()
+    try check(model.activeCount == 0 && fm.fileExists(atPath: incoming.path), "a screenshot still being written waits for its size to settle")
+    model.importInbox()
+    try check(model.activeCount == 1 && !fm.fileExists(atPath: incoming.path), "a settled screenshot moves into Snap History")
+    model.setKeepsScreenshotsOffDesktop(false)
+    try check(location.location == nil && !model.keepsScreenshotsOffDesktop, "turning it off restores the macOS default location")
+    location.location = "/Users/example/Screens"
+    model.setKeepsScreenshotsOffDesktop(true); location.location = "/Users/example/Elsewhere"
+    model.importInbox()
+    try check(model.screenshotRedirectPaused, "a later manual location change pauses collecting instead of fighting it")
+    model.setKeepsScreenshotsOffDesktop(false)
+    try check(location.location == "/Users/example/Elsewhere", "turning it off never overrides the person's later choice")
+    model.setKeepsScreenshotsOffDesktop(true); model.setKeepsScreenshotsOffDesktop(false)
+    try check(location.location == "/Users/example/Elsewhere", "a previous custom location is restored")
+}
+print("SNAP_CHECKS_OK: \(checks) checks for rendering, screenshots off the Desktop, revision conflicts, private storage, immutable snapshots, reversible review and portable optional narration")

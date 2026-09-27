@@ -27,15 +27,116 @@ final class SnapModel: ObservableObject {
     var onHideForCapture: (() -> Void)?
     var onRestoreAfterCapture: (() -> Void)?
     var mayBeginCapture: (() -> String?)?
+    /// Set when new screenshots are redirected into Snap History but macOS now
+    /// saves them somewhere else, for example after a change in the Screenshot app.
+    @Published private(set) var screenshotRedirectPaused = false
+    @Published private(set) var tidyingScreenshots = false
+    let screenshotLocation: any ScreenshotLocationStore
+    let screenshotInbox: URL
+    let desktop: URL
+    private let preferences: UserDefaults
+    private let trash: (URL) throws -> Void
+    private var inboxTimer: Timer?
+    private var inboxSizes: [URL: Int] = [:]
+    static let redirectKey = "workbench.snap.screenshots.redirect.v1"
+    static let previousLocationKey = "workbench.snap.screenshots.previous-location.v1"
     private let captureService = SnapCapture()
     private var captureRequest: UUID?
     var isBusy: Bool { isCapturing || draft != nil }
     var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && $0.matches(search) } }
     var activeCount: Int { items.filter { $0.archivedAt == nil }.count }
 
-    init(store: SnapStore? = nil) {
+    init(store: SnapStore? = nil, screenshotLocation: (any ScreenshotLocationStore)? = nil, preferences: UserDefaults = .standard,
+         desktop: URL? = nil, screenshotInbox: URL? = nil, trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash) {
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        self.screenshotLocation = screenshotLocation ?? SystemScreenshotLocation()
+        self.preferences = preferences
+        self.desktop = desktop ?? home.appendingPathComponent("Desktop", isDirectory: true)
+        self.screenshotInbox = screenshotInbox ?? home.appendingPathComponent("Pictures/Workbench Screenshots", isDirectory: true)
+        self.trash = trash
         refresh()
+        if keepsScreenshotsOffDesktop { startInbox() }
+    }
+
+    // MARK: Screenshots off the Desktop
+
+    var keepsScreenshotsOffDesktop: Bool { preferences.bool(forKey: Self.redirectKey) }
+
+    /// Explicit and reversible. Turning it on points macOS screenshots at a
+    /// Workbench folder that is imported while Workbench runs; turning it off
+    /// restores the previous location unless the person has changed it since.
+    func setKeepsScreenshotsOffDesktop(_ enabled: Bool) {
+        let inboxPath = screenshotInbox.path
+        if enabled {
+            do {
+                try FileManager.default.createDirectory(at: screenshotInbox, withIntermediateDirectories: true)
+                let current = screenshotLocation.location
+                if current != inboxPath { preferences.set(current ?? "", forKey: Self.previousLocationKey) }
+                screenshotLocation.location = inboxPath
+                preferences.set(true, forKey: Self.redirectKey)
+                startInbox()
+                notice = "New screenshots now go straight to Snap History. Turn this off to restore your previous screenshot location."
+            } catch { notice = "Screenshots were not redirected. \(error.localizedDescription)" }
+        } else {
+            if screenshotLocation.location == inboxPath {
+                let previous = preferences.string(forKey: Self.previousLocationKey) ?? ""
+                screenshotLocation.location = previous.isEmpty ? nil : previous
+            }
+            preferences.set(false, forKey: Self.redirectKey)
+            stopInbox()
+            notice = screenshotRedirectPaused ? "Screenshots stay where macOS now saves them." : "Screenshots save where they did before."
+            screenshotRedirectPaused = false
+        }
+        objectWillChange.send()
+    }
+
+    private func startInbox() {
+        stopInbox()
+        importInbox()
+        inboxTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.importInbox() }
+        }
+    }
+    private func stopInbox() { inboxTimer?.invalidate(); inboxTimer = nil; inboxSizes.removeAll() }
+
+    /// Imports screenshots whose size has settled since the last check. A later
+    /// manual location change pauses the redirect instead of fighting it.
+    func importInbox() {
+        guard keepsScreenshotsOffDesktop, !isBusy else { return }
+        screenshotRedirectPaused = screenshotLocation.location != screenshotInbox.path
+        var sizes: [URL: Int] = [:], added = 0, known = Set(items.map(\.originalSHA256))
+        for file in SnapScreenshots.screenCaptures(in: screenshotInbox) {
+            let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            sizes[file] = size
+            guard inboxSizes[file] == size else { continue }
+            do {
+                if try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) != nil { added += 1 }
+                sizes[file] = nil
+            } catch { /* Left in the folder; an identical retry only clears it. */ }
+        }
+        inboxSizes = sizes
+        if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to Snap History." : "\(added) new screenshots were added to Snap History." }
+    }
+
+    /// Screenshots macOS saved on the Desktop, for the tidy confirmation.
+    func desktopScreenshots() -> [URL] { SnapScreenshots.screenCaptures(in: desktop) }
+
+    /// Moves the listed Desktop screenshots into Snap History. Originals go to
+    /// the Trash only after each Snap is stored and read back.
+    func tidyDesktopScreenshots(_ files: [URL]) async {
+        guard !tidyingScreenshots, !isBusy else { return }
+        tidyingScreenshots = true
+        defer { tidyingScreenshots = false }
+        var moved = 0, kept: [String] = [], known = Set(items.map(\.originalSHA256))
+        for file in files {
+            do { try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash); moved += 1 }
+            catch { kept.append(file.lastPathComponent) }
+            await Task.yield()
+        }
+        refresh()
+        notice = "Moved \(moved) screenshot\(moved == 1 ? "" : "s") from the Desktop into Snap History. The originals are in the Trash."
+            + (kept.isEmpty ? "" : " \(kept.count) could not be added and stayed on the Desktop.")
     }
 
     func refresh() {
