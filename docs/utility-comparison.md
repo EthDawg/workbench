@@ -1,6 +1,28 @@
 # The next useful step in each utility
 
-Review date: 13 September 2026. Scope: the existing Workbench categories, not new product lines. The ranking is a product judgment based on source review and documented workflows; it is not a user survey or a feature-parity claim.
+Review date: 13 September 2026. Scope: the existing Workbench categories, not new product lines. The ranking is a product judgment based on source review and documented workflows; it is not a user survey or a feature-parity claim. The September 2026 baseline below updates the comparison against macOS and AI assistants; the rest of this record is unchanged.
+
+## September 2026 baseline
+
+Review date: 27 September 2026. Hands-on on macOS 26.5.1 (Apple M5); macOS 27 and assistant features from official documentation.
+
+Single actions into one assistant are now built in: Claude Code dictation (`/voice`), Claude Desktop Quick entry (screenshots, window sharing, dictation), ChatGPT and Codex Appshots (the front window's image and text), and Visual Intelligence on a selected window in macOS 27. macOS Phone call recording transcribes and summarises Phone and FaceTime calls into Notes and announces itself to every participant. Superwhisper's CLI and MCP server (July 2026) give agents search over dictation history and a notify-and-reply loop. Wispr Flow's Prompt Engineer transform turns dictation into a prompt.
+
+Do not rebuild those. A Workbench verb must be at least as good as the Mac at the action itself, work in any app, keep what it made together with the material that produced it, and move results between the person and any assistant.
+
+| Verb | Standing | Next step | Kind |
+| --- | --- | --- | --- |
+| Read | Below macOS. The Karen default is the lowest voice tier and the only Australian voice installed; Spoken Content with a free Premium voice sounds better. | Best installed voice with its quality shown, word-by-word follow-along, Markdown and agent output read naturally, and a pointer to the free Premium voice for the person's region. Neural voices become a choice only when one beats the best free Apple voice on the same Mac, including first-time setup. | Quality |
+| Dictate | Level. Workbench adds local recognition, original wording and safe delivery into any app. | Sharpen my prompt ([#120](https://github.com/EthDawg/workbench/pull/120)) on a chosen engine, with a check that flags names, numbers and negations from the person's words that the result dropped; style from two or three of their own examples per situation. | Option |
+| Snap | Level. Screenshot and Markup already crop, draw and sign. | Text search ([#116](https://github.com/EthDawg/workbench/pull/116)), screenshots off the Desktop ([#121](https://github.com/EthDawg/workbench/pull/121)), app and window context carried into Hand off. Editing stays with Markup. | Quality |
+| Transcribe meeting or call | Ahead. Silent after opt-in and not limited to Phone and FaceTime. | Any call app, You and Others kept apart, then Hand off. Show when it records and remind the person once that others may need to agree. | Quality |
+| Snap & Talk, Hand off | Only in Workbench. | Ship [#113](https://github.com/EthDawg/workbench/pull/113). Results keep their inputs so they can be revised or heard. | Quality |
+
+Engines measured for Sharpen my prompt, using four synthetic rambles of 380 to 475 words scored on points that had to survive: Claude Code and Codex CLIs kept all points with no fabrication; Gemma 3 4B kept 86% with none; Llama 3.2 3B 67%; Apple's on-device model 65% with one fabrication; Gemma 3 1B 40% with two. Local restructuring is usable only with the missing-details check; Apple's model remains the choice for tagging and faithful cleanup.
+
+Reading timings on the same Mac: `say` rendered 65 to 308 words before any sound in 0.8 to 1.2 seconds. `AVSpeechSynthesizer.write(_:toBufferCallback:)` with the same voices produced first audio in about 0.25 seconds and reported one word range per word while rendering. Kokoro through the pinned FluidAudio 0.15.6 has one English voice, a 510-phoneme limit per call, a 112-second first-time setup, and a vendor warning of an Apple crash on macOS 26.4 to 26.5.
+
+Agent access: a stdio MCP prototype offering History search and reading aloud worked in Claude Code 2.1.236 and Codex 0.158 with per-invocation configuration. Neither CLI's flags confined the agent to that tool, so any agent-facing entry keeps consent inside Workbench: a visible request, allowed once per session and recorded in History. It is a new integration and needs a maintainer decision before work starts.
 
 ## What was compared
 
