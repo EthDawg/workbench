@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// React to my voice owns a live microphone, so these checks pin when it may
@@ -52,7 +53,9 @@ final class PersonaVoiceTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("PersonaVoice-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let picture = root.appendingPathComponent("sample.png")
-        try SceneRenderer.png(DemoScene(background: "sample.png"), image: Self.badge(), size: CGSize(width: 280, height: 280)).write(to: picture)
+        guard let tiff = Self.badge().tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+              let data = bitmap.representation(using: .png, properties: [:]) else { throw PersonaError.unreadableImage }
+        try data.write(to: picture)
         let library = PersonaLibrary(root: root, sessionPanelFactory: { let display = Display(); displays.made.append(display); return display },
                                      sessionHUDEnabled: false, voice: access(microphones, defaults))
         let persona = try library.addImage(picture, name: "Sample presenter")
@@ -425,6 +428,27 @@ final class PersonaVoiceTests {
             }
             try animate(artwork, to: directory.appendingPathComponent("voice-ring-\(name)-speech.gif"))
         }
+        // The Persona page's switch while it listens, with synthetic artwork.
+        let microphones = Microphones(), displays = Displays()
+        let (root, library, _, _) = try fixture(microphones, Choice(), displays)
+        defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
+        library.usesSharedControls = true
+        _ = library.showOverlay()
+        library.setVoiceRing(true)
+        try MainActor.assumeIsolated {
+            for (label, size) in [("narrow", CGSize(width: 620, height: 650)), ("normal", CGSize(width: 834, height: 730))] {
+                let hosting = NSHostingView(rootView: PersonaLibraryView(library: library, mode: .workspace).frame(width: size.width, height: size.height))
+                let window = NSWindow(contentRect: CGRect(origin: CGPoint(x: -10000, y: -10000), size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false; window.contentView = hosting
+                defer { window.close() }
+                hosting.frame = CGRect(origin: .zero, size: size)
+                for _ in 0..<5 { hosting.layoutSubtreeIfNeeded(); RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
+                guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw PersonaError.unreadableImage }
+                hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+                guard let image = bitmap.cgImage else { throw PersonaError.unreadableImage }
+                try png(image, to: directory.appendingPathComponent("persona-page-voice-\(label).png"))
+            }
+        }
     }
     /// Synthetic artwork and its ring over half a light slide, half a dark editor.
     private final class Stage {
@@ -464,24 +488,24 @@ final class PersonaVoiceTests {
         try data.write(to: url)
         print("Offscreen voice ring: " + url.path)
     }
-    /// Four seconds of synthetic speech through the real analyzer, played back
-    /// at a meeting app's 30 frames a second.
+    /// Synthetic speech through the real analyzer, sampled at 20 frames a
+    /// second, about what a meeting app sends of a shared screen.
     private func animate(_ artwork: NSImage, to url: URL) throws {
         let rate = 48_000.0
         var voice = Voice()
         let frames = analyze(voice.render(seconds: 4, rate: rate, speech: -24, noise: -58).samples, rate: rate)
         let stage = try Stage(artwork)
-        let count = 120
+        let count = 64
         guard let gif = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, count, nil) else { throw PersonaError.unreadableImage }
         CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         var heard = 0, elapsed = 0.0
         for index in 0..<count {
-            let time = Double(index) / 30
+            let time = Double(index) / 20
             var batch: [PersonaVoiceFrame] = []
             while heard < frames.count, elapsed < time { batch.append(frames[heard]); elapsed += frames[heard].seconds; heard += 1 }
             if !batch.isEmpty { stage.ring.enqueue(batch) }
-            for _ in 0..<2 { stage.ring.advance(by: 1.0 / 60) }
-            CGImageDestinationAddImage(gif, try stage.snapshot(scale: 1), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / 30]] as CFDictionary)
+            for _ in 0..<3 { stage.ring.advance(by: 1.0 / 60) }
+            CGImageDestinationAddImage(gif, try stage.snapshot(scale: 1), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / 20]] as CFDictionary)
         }
         guard CGImageDestinationFinalize(gif) else { throw PersonaError.unreadableImage }
         print("Offscreen voice ring: " + url.path)

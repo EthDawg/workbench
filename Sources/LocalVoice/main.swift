@@ -693,13 +693,13 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
         case "--check-persona-voice-native":
             guard args.count >= 2 else { throw VoiceError.message("Usage: --check-persona-voice-native NEW_OUTPUT_FOLDER [--speak]") }
-            try await MainActor.run {
+            await MainActor.run {
                 _ = NSApplication.shared
                 NSApp.setActivationPolicy(.accessory)
                 NSApp.finishLaunching()
-                print(try PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: args.dropFirst(2).contains("--speak")))
-                print(WorkbenchBuild().details)
             }
+            print(try await PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: args.dropFirst(2).contains("--speak")))
+            print(WorkbenchBuild().details)
         case "--render-reading-service-fixture":
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-reading-service-fixture OUTPUT.png") }
             try await MainActor.run {

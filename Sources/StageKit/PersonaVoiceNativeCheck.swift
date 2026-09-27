@@ -15,7 +15,9 @@ import CoreAudio
 /// range is heard through the air. The receipt and window renders are written
 /// to NEW_FOLDER.
 public enum PersonaVoiceNativeCheck {
-    public static func run(output: URL, speak: Bool) throws -> String {
+    /// Awaits between steps, so the main queue delivers the ring's frames as it
+    /// does in the running app.
+    @MainActor public static func run(output: URL, speak: Bool) async throws -> String {
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw PersonaVoiceError.unavailable("Microphone access is not allowed for this app. Open it with open -n -a so its own permission applies.")
         }
@@ -26,7 +28,7 @@ public enum PersonaVoiceNativeCheck {
         defer { try? FileManager.default.removeItem(at: root) }
         let check = Run(root: root, output: output)
         defer { check.library.shutdown() }
-        try check.perform(speak: speak)
+        try await check.perform(speak: speak)
         let data = try JSONSerialization.data(withJSONObject: check.receipt, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: output.appendingPathComponent("receipt.json"))
         let summary = check.summary.joined(separator: "\n")
@@ -55,7 +57,7 @@ public enum PersonaVoiceNativeCheck {
         func stop() { inner.stop() }
     }
 
-    private final class Run {
+    @MainActor private final class Run {
         /// Every source the library made, in order.
         final class Made { var sources: [Observed] = [] }
         let library: PersonaLibrary
@@ -81,13 +83,13 @@ public enum PersonaVoiceNativeCheck {
             summary.append((passed ? "PASS " : "FAIL ") + message)
             if !passed { failures.append(message) }
         }
-        func wait(_ seconds: Double) { RunLoop.current.run(until: Date().addingTimeInterval(seconds)) }
+        func wait(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
         /// Milliseconds until the condition holds, or nil after the limit.
-        func until(_ limit: Double = 3, _ condition: () -> Bool) -> Double? {
+        func until(_ limit: Double = 3, _ condition: () -> Bool) async -> Double? {
             let start = CFAbsoluteTimeGetCurrent()
             while CFAbsoluteTimeGetCurrent() - start < limit {
                 if condition() { return (CFAbsoluteTimeGetCurrent() - start) * 1_000 }
-                RunLoop.current.run(until: Date().addingTimeInterval(0.005))
+                await wait(0.002)
             }
             return condition() ? (CFAbsoluteTimeGetCurrent() - start) * 1_000 : nil
         }
@@ -123,7 +125,7 @@ public enum PersonaVoiceNativeCheck {
         }
         func microphoneOpen() -> Bool { Self.inputRunning() ?? (library.voiceDevice != nil) }
 
-        func perform(speak: Bool) throws {
+        func perform(speak: Bool) async throws {
             let badge = root.appendingPathComponent("synthetic-badge.png")
             guard let tiff = PersonaVoiceNativeCheck.badge().tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
                   let png = bitmap.representation(using: .png, properties: [:]) else { throw PersonaError.unreadableImage }
@@ -133,13 +135,13 @@ public enum PersonaVoiceNativeCheck {
 
             expect(!microphoneOpen(), "microphone closed before anything is shown")
             guard case .success = library.showOverlay() else { throw PersonaError.unreadableImage }
-            wait(0.6)
+            await wait(0.6)
             expect(!microphoneOpen() && libraryMadeSources().isEmpty, "showing a persona alone never opens the microphone")
 
             let on = CFAbsoluteTimeGetCurrent()
             library.setVoiceRing(true)
-            let firstFrame = until { !delivered(since: on).isEmpty }
-            let opened = until { microphoneOpen() }
+            let firstFrame = await until { !delivered(since: on).isEmpty }
+            let opened = await until { microphoneOpen() }
             receipt["device"] = library.voiceDevice ?? "unknown"
             receipt["firstFramesMs"] = firstFrame ?? -1
             receipt["microphoneOpenMs"] = opened ?? -1
@@ -148,7 +150,7 @@ public enum PersonaVoiceNativeCheck {
 
             // The room, as it is.
             let quiet = CFAbsoluteTimeGetCurrent()
-            wait(4)
+            await wait(4)
             let room = delivered(since: quiet)
             let batches = room.map(\.frames.count)
             let chunk = room.first?.frames.first?.seconds ?? 0
@@ -167,28 +169,28 @@ public enum PersonaVoiceNativeCheck {
                 synthesizer.speak(sentence)
                 var rendered = false
                 while CFAbsoluteTimeGetCurrent() - start < 12 {
-                    wait(0.05)
+                    await wait(0.05)
                     if !rendered, CFAbsoluteTimeGetCurrent() - start > 2.5 { try render("persona-voice-native-speaking.png"); rendered = true }
                     if CFAbsoluteTimeGetCurrent() - start > 1.5 && !synthesizer.isSpeaking { break }
                 }
                 receipt["speech"] = Self.stats(levels(since: start))
                 let afterward = CFAbsoluteTimeGetCurrent()
-                wait(2)
+                await wait(2)
                 receipt["afterSpeech"] = Self.stats(levels(since: afterward))
             }
 
-            try coexist(name: "recorder", label: "Dictate and Snap & Talk narration settings (AVAudioRecorder, 16 kHz PCM)") { try self.recorder() }
-            try coexist(name: "engine", label: "meeting capture microphone (second AVAudioEngine, 4,096-frame tap)") { try self.engine() }
+            try await coexist(name: "recorder", label: "Dictate and Snap & Talk narration settings (AVAudioRecorder, 16 kHz PCM)") { try self.recorder() }
+            try await coexist(name: "engine", label: "meeting capture microphone (second AVAudioEngine, 4,096-frame tap)") { try self.engine() }
 
             // A recording already running when the ring is turned on.
             library.setVoiceRing(false)
-            _ = until(1) { !microphoneOpen() }
+            _ = await until(1) { !microphoneOpen() }
             let running = try recorder()
-            wait(0.5)
+            await wait(0.5)
             let late = CFAbsoluteTimeGetCurrent()
             library.setVoiceRing(true)
-            let joined = until { !delivered(since: late).isEmpty }
-            wait(2)
+            let joined = await until { !delivered(since: late).isEmpty }
+            await wait(2)
             let result = running.finish()
             receipt["recorderFirst"] = ["ringFramesMs": joined ?? -1, "recording": result]
             expect(joined != nil, "turning the ring on during a recording still hears the microphone")
@@ -197,19 +199,19 @@ public enum PersonaVoiceNativeCheck {
             // Everything that must close the microphone, promptly.
             var stops: [String: Double] = [:]
             library.hideOverlay()
-            stops["hide"] = until { !microphoneOpen() } ?? -1
+            stops["hide"] = await until { !microphoneOpen() } ?? -1
             _ = library.showOverlay()
-            _ = until { microphoneOpen() }
+            _ = await until { microphoneOpen() }
             library.setVoiceRing(false)
-            stops["turnOff"] = until { !microphoneOpen() } ?? -1
+            stops["turnOff"] = await until { !microphoneOpen() } ?? -1
             library.setVoiceRing(true)
-            _ = until { microphoneOpen() }
+            _ = await until { microphoneOpen() }
             library.toggleQuickPersona()
-            stops["personaKey"] = until { !microphoneOpen() } ?? -1
+            stops["personaKey"] = await until { !microphoneOpen() } ?? -1
             _ = library.showOverlay()
-            _ = until { microphoneOpen() }
+            _ = await until { microphoneOpen() }
             library.shutdown()
-            stops["quit"] = until { !microphoneOpen() } ?? -1
+            stops["quit"] = await until { !microphoneOpen() } ?? -1
             receipt["closesMs"] = stops
             for (name, milliseconds) in stops.sorted(by: { $0.key < $1.key }) {
                 expect(milliseconds >= 0 && milliseconds < 500, "\(name) closes the microphone within 0.5 s (\(Int(milliseconds)) ms)")
@@ -218,19 +220,19 @@ public enum PersonaVoiceNativeCheck {
         }
 
         /// Starts a second microphone user beside the ring, then checks both.
-        func coexist(name: String, label: String, start: () throws -> Competitor) throws {
-            _ = until { microphoneOpen() }
+        func coexist(name: String, label: String, start: () throws -> Competitor) async throws {
+            _ = await until { microphoneOpen() }
             let before = CFAbsoluteTimeGetCurrent()
             let competitor = try start()
             var windows: [Int] = []
             for _ in 0..<6 {
                 let window = CFAbsoluteTimeGetCurrent()
-                wait(0.5)
+                await wait(0.5)
                 windows.append(delivered(since: window).count)
             }
             let result = competitor.finish()
             let after = CFAbsoluteTimeGetCurrent()
-            wait(1.5)
+            await wait(1.5)
             let continued = delivered(since: after).count
             receipt[name] = ["label": label, "competitor": result, "ringDeliveriesPerHalfSecond": windows,
                              "ringDeliveriesAfterStop": continued, "ringLevels": Self.stats(levels(since: before))]
