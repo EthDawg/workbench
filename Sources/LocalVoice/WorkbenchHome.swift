@@ -14,7 +14,8 @@ struct WorkbenchHome: View {
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var photoBackdrop: PhotoBackdropRequest?
-    private let navItems: [(String, String, String)] = [
+    /// Every sidebar destination. The surface gallery renders each one.
+    static let navItems: [(String, String, String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
         ("speak", "Read aloud", "speaker.wave.2"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
         ("present", "Present a device", "iphone"), ("history", "Recent transcripts", "clock"),
@@ -30,7 +31,7 @@ struct WorkbenchHome: View {
                 }
                 WorkbenchHeader(title: packs.brandLabel ?? "Workbench", subtitle: packs.brandLabel == nil ? "Everyday tools. A little less friction." : "Your workspace in Workbench", symbol: "square.stack.3d.up.fill")
                     .padding(.vertical, 20)
-                ForEach(navItems, id: \.0) { page, title, symbol in
+                ForEach(Self.navItems, id: \.0) { page, title, symbol in
                     Button { keyboard.stopInteraction(); model.page = page } label: {
                         Label(title, systemImage: symbol).font(.system(size: 13, weight: model.page == page ? .semibold : .regular))
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 10)

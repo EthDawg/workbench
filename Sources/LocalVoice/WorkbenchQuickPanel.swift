@@ -156,20 +156,26 @@ struct WorkbenchQuickPanel: View {
                 .buttonStyle(.plain).foregroundStyle(Workbench.accent)
                 .help("Review captures and prepare the explicit deck handoff")
         case .annotate:
-            NativeControlMenu(title: "Tools") { stage.makeAnnotationMenu() }
+            NativeControlMenu(title: "Tools") { nativeOptions(tool) ?? NSMenu() }
+        case .present, .persona, .timer:
+            NativeControlMenu(title: "Options") { nativeOptions(tool) ?? NSMenu() }
+        }
+    }
+
+    /// Native option menus, built when clicked. The surface gallery lists these same menus.
+    func nativeOptions(_ tool: WorkbenchControlTool) -> NSMenu? {
+        switch tool {
+        case .annotate: return stage.makeAnnotationMenu()
         case .present:
-            NativeControlMenu(title: "Options") {
-                let menu = stage.makePresentationMenu()
-                menu.addItem(.separator())
-                menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
-                menu.addItem(ToolbarMenuAction("Saved Resources…") { open("library") })
-                menu.addItem(ToolbarMenuAction("Prepare Scenes…") { open("present") })
-                return menu
-            }
-        case .persona:
-            NativeControlMenu(title: "Options") { stage.makePersonaMenu(includePreparation: true) }
-        case .timer:
-            NativeControlMenu(title: "Options") { stage.makeTimerMenu() }
+            let menu = stage.makePresentationMenu()
+            menu.addItem(.separator())
+            menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
+            menu.addItem(ToolbarMenuAction("Saved Resources…") { open("library") })
+            menu.addItem(ToolbarMenuAction("Prepare Scenes…") { open("present") })
+            return menu
+        case .persona: return stage.makePersonaMenu(includePreparation: true)
+        case .timer: return stage.makeTimerMenu()
+        case .dictate, .read, .snap: return nil
         }
     }
 

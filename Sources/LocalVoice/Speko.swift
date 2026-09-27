@@ -70,12 +70,14 @@ enum SpekoKeychain {
     static var service: String { (Bundle.main.bundleIdentifier ?? "com.ethdawg.localvoice.development") + ".speko" }
     static var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "api-key"] }
     static var hasKey: Bool {
+        guard !SurfaceGallery.isRendering else { return false }
         var query = query
         query[kSecReturnAttributes as String] = true
         query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
     static func read() throws -> String {
+        guard !SurfaceGallery.isRendering else { throw VoiceError.message("Add your Speko API key in Read aloud first.") }
         var query = query; query[kSecReturnData as String] = true
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)

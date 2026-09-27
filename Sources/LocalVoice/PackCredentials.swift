@@ -29,6 +29,7 @@ enum PackCredentialStore {
     }
 
     static func read() throws -> PackGitHubCredential? {
+        guard !SurfaceGallery.isRendering else { return nil }
         var request = query
         request[kSecReturnData as String] = true
         request[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
