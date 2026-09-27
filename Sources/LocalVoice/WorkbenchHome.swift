@@ -89,7 +89,7 @@ struct WorkbenchHome: View {
                     HandoffJobsView(jobs: model.handoffJobs, applySuggestedMetadata: { job, result in
                         do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                         catch { model.handoffJobs.error = error.localizedDescription }
-                    }, onConnections: { model.page = "settings" }).padding(32)
+                    }).padding(32)
                 }
                 case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.page = "history" })
                 case "annotate": stage.controlsView

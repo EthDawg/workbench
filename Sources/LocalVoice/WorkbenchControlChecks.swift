@@ -28,19 +28,25 @@ enum WorkbenchControlChecks {
                   "all three running activities retain their own finish controls")
         state.ready = false; state.rendering = true; state.narrating = true
         state.mayDraw = false; state.mayPresent = false
-        try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present) && state.enabled(.snap),
+        try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present) && state.enabled(.snapAndTalk),
                   "finish actions remain available when new work is disallowed")
         state.phase = .requesting
         try check(state.enabled(.dictate) && state.actionTitle(.dictate) == "Cancel request", "microphone permission requests remain cancellable")
         state.phase = .idle; state.drawing = false; state.presenting = false; state.narrating = false
-        try check(!state.enabled(.dictate) && !state.enabled(.annotate) && !state.enabled(.present) && !state.enabled(.snap),
+        try check(!state.enabled(.dictate) && !state.enabled(.annotate) && !state.enabled(.present) && !state.enabled(.snapAndTalk),
                   "idle starts respect availability")
         state = WorkbenchControlState(); state.pendingNarration = true
-        try check(!state.enabled(.dictate) && state.enabled(.snap), "ordinary dictation waits for the narration queue while another capture can queue")
+        try check(!state.enabled(.dictate) && state.enabled(.snapAndTalk), "ordinary dictation waits for the narration queue while another capture can queue")
         state.capturing = true
-        try check(!state.enabled(.snap), "screen capture cannot be re-entered")
+        try check(!state.enabled(.snapAndTalk), "screen capture cannot be re-entered")
         state = WorkbenchControlState(); state.hasSession = true
-        try check(state.actionTitle(.snap) == "Capture next", "an existing session continues instead of starting another")
+        try check(state.actionTitle(.snapAndTalk) == "Capture next", "an existing session continues instead of starting another")
+        state = WorkbenchControlState(); state.overlays = true
+        try check(state.actionTitle(.persona) == "Hide Persona", "one floating card is hidden by the main Persona action")
+        state.overlaySession = true
+        try check(state.actionTitle(.persona) == "Hide All Temporarily", "a prepared set's main action names the pause it performs, not an end")
+        state.overlaysPaused = true
+        try check(state.actionTitle(.persona) == "Show Again", "a temporarily hidden set offers to show again")
         state = WorkbenchControlState(); state.timerStarted = true
         try check(state.actionTitle(.timer) == "Show or hide timer", "a paused or finished timer keeps its existing-session action")
         state.timerStarted = false
