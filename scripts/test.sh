@@ -2,6 +2,8 @@
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
+python3 scripts/check-surfaces.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-check-surfaces.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_release.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_preview.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_updates.py
