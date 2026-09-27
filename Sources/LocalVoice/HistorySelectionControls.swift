@@ -357,7 +357,7 @@ struct HandoffReviewView: View {
                     }
                     Text("Meeting speech and images start as reference material. “My instructions” means you adopt that text as your request. Connected tasks send the reviewed material to the chosen provider and return a draft for review.")
                         .font(.caption).foregroundStyle(.secondary)
-                    if skill.id != TranscriptHandoffSkill.followUp.id {
+                    if !skill.repliesInline {
                         Text("This skill uses the manual handoff so your assistant can create its requested files. Copy instructions, then attach the selected work folder.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -378,14 +378,22 @@ struct HandoffReviewView: View {
                         Button("Start with \(provider.title)") { submit(provider: provider) }
                             .disabled(jobs.connections[provider]?.ready != true || !jobs.enabled(provider) || !supports(provider))
                     }
-                }.disabled(sources.isEmpty || jobs.isBusy || skill.id != TranscriptHandoffSkill.followUp.id).menuStyle(.borderlessButton).fixedSize()
+                }.disabled(sources.isEmpty || jobs.isBusy || !skill.repliesInline).menuStyle(.borderlessButton).fixedSize()
             }
         }.padding(24)
             .frame(width: 680, height: min(720, max(400, (NSScreen.main?.visibleFrame.height ?? 820) - 100)))
+            .onChange(of: skillID) { previous, current in
+                // The task follows the chosen skill only while it is still the
+                // previous skill's suggestion; typed requests are never replaced.
+                let before = skills.first(where: { $0.id == previous })?.defaultTask
+                guard initialTask == nil, task.isEmpty || task == before,
+                      let suggested = skills.first(where: { $0.id == current })?.defaultTask else { return }
+                task = suggested
+            }
             .onAppear {
                 guard !initialized else { return }
                 initialized = true
-                task = initialTask ?? "Prepare the requested follow-up from my selected instructions and reference material. Identify any essential missing information."
+                task = initialTask ?? TranscriptHandoffSkill.followUp.defaultTask ?? ""
                 if let preferredSkillID, skills.contains(where: { $0.id == preferredSkillID }) { skillID = preferredSkillID }
                 evidenceURL = initialEvidenceURL
                 refreshSources()
