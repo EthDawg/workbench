@@ -325,6 +325,21 @@ enum WorkbenchHistoryChecks {
         named.setMetadata(warningMetadata, for: oldest.id)
         let notesReloaded = WorkbenchHistoryModel(directory: named.store.url.deletingLastPathComponent())
         try check(notesReloaded.metadata(for: oldest.id) == warningMetadata, "capture warning and reviewed provenance survive relaunch")
+
+        // On-device suggestions: names must be in the words, and nothing typed is replaced.
+        let spoken = "Thanks for joining, Priya. The Acme Health pilot starts on the fourteenth and Tom sends the agreement by Friday."
+        try check(LocalDetailSuggestions.grounded(["Priya", "Tom", "Acme Health", "Jordan", "pilot", "Pilot", "agreement"], in: spoken)
+                  == ["Priya", "Tom", "Acme Health"], "suggested names must appear capitalised in the transcript")
+        let suggestion = LocalDetailSuggestions.Suggestion(purpose: .meeting, people: ["Priya", "Tom"], companies: ["Acme Health"],
+                                                           tags: ["pilot schedule", "data sharing"], source: "synthetic")
+        let filled = LocalDetailSuggestions.merged(TranscriptMetadata(), with: suggestion)
+        try check(filled.purpose == .meeting && filled.person == "Priya, Tom" && filled.company == "Acme Health"
+                  && filled.tags == ["pilot schedule", "data sharing"], "suggestions fill empty details")
+        let typed = TranscriptMetadata(purpose: .note, person: "Sam", company: "", tags: ["Data sharing", "mine"])
+        let kept = LocalDetailSuggestions.merged(typed, with: suggestion)
+        try check(kept.purpose == .note && kept.person == "Sam" && kept.company == "Acme Health"
+                  && kept.tags == ["Data sharing", "mine", "pilot schedule"], "suggestions never replace typed details or duplicate tags")
+        try check((try? kept.validated()) != nil, "merged suggestions pass the saved-detail limits")
         print("WORKBENCH_HISTORY_CHECKS_OK: \(passed) checks")
     }
 }
