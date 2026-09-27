@@ -144,9 +144,9 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.dictate-settings",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
     "surface": "floating toolbar glyph menu",
-    "label": "Dictate settings…",
+    "label": "Open Dictate…",
     "kind": "action",
     "belongsTo": "dictate"
   },
@@ -172,9 +172,9 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-reading",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
     "surface": "floating toolbar glyph menu",
-    "label": "Open reading…",
+    "label": "Open Read…",
     "kind": "action",
     "belongsTo": "read"
   },

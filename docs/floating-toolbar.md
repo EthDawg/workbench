@@ -49,7 +49,8 @@ action with its key, then only the current mode's items, then cross-mode finish
 items (`Stop drawing`, `End presentation`) when that work runs in another mode,
 then Position, Keep open, Hide toolbar and Settings. There is no Change tool.
 Dictate, Read and Snap are start and stop on this surface, so each carries one
-door to its page and nothing else. Snap & Talk offers its review. Draw holds the
+door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and
+`Open Snap…`. Snap & Talk offers its review. Draw holds the
 drawing menu inline. Present holds the presentation items inline, Saved Prompts
 and Switch to Browser Tab; source, reconnect, proportions, motion, window
 placement, native-app handoff and End remain reachable there. Persona holds the

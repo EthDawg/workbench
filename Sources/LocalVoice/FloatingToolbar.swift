@@ -171,9 +171,9 @@ struct FloatingToolbar: View {
         menu.addItem(next)
         switch mode {
         case .dictate:
-            menu.addItem(ToolbarMenuAction("Dictate settings…") { model.onShowEditor?("dictate") })
+            menu.addItem(ToolbarMenuAction("Open Dictate…") { model.onShowEditor?("dictate") })
         case .read:
-            menu.addItem(ToolbarMenuAction("Open reading…") { model.onShowEditor?("speak") })
+            menu.addItem(ToolbarMenuAction("Open Read…") { model.onShowEditor?("speak") })
         case .snap:
             menu.addItem(ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") })
         case .snapAndTalk:
