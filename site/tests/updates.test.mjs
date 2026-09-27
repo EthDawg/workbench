@@ -32,6 +32,22 @@ test('release identity, digest and immutable links must agree', () => {
   ]) assert.throws(() => validateRelease({ ...production, ...change }), /Invalid published release/);
 });
 
+test('production rebuild tag must identify the exact build and keeps immutable links together', () => {
+  const tag = 'v2.1.0+9';
+  const value = { ...production, tag,
+    download_url: `https://github.com/EthDawg/workbench/releases/download/${tag}/Workbench.zip` };
+  assert.equal(validateRelease(value, 'production').tag, tag);
+  assert.equal(renderPublishedRelease('{{RELEASE_TAG}} {{RELEASE_VERSION}} {{DOWNLOAD_URL}}', value),
+    `${tag} 2.1.0 ${value.download_url}`);
+  for (const invalid of ['v2.1.0+8', 'v2.2.0+9', 'v2.1.0-preview.1+9',
+    'v2.1.0+local', 'v2.1.0+', 'v2.1.0+9/other']) {
+    assert.throws(() => validateRelease({ ...value, tag: invalid,
+      download_url: `https://github.com/EthDawg/workbench/releases/download/${invalid}/Workbench.zip` }),
+    /Invalid published release/);
+  }
+  assert.throws(() => validateRelease({ ...value, channel: 'preview' }), /Invalid published release/);
+});
+
 test('one receipt changes every current download and notes link together', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const value = { ...preview, feed_url: 'https://workbench-mac.vercel.app/updates/preview.xml', feed_sha256: 'c'.repeat(64) };

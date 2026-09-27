@@ -6,6 +6,8 @@ import SwiftUI
 struct ReadbackView: View {
     @ObservedObject var model: ReadbackModel
     var onOpenPacks: () -> Void = {}
+    var onChooseSnaps: (() -> Void)?
+    var onReviewHandoff: (() -> Void)?
     @State private var orderingSections = false
     @State private var confirmEmptyTrash = false
 
@@ -185,6 +187,10 @@ struct ReadbackView: View {
                 .disabled(model.currentSessionProblem != nil || model.activeSections.count < 2 || model.isRecording || model.isCapturing)
                 .help("Arrange sections in a compact list")
             Menu {
+                if let onReviewHandoff {
+                    Button("Review selected evidence…", action: onReviewHandoff)
+                    Divider()
+                }
                 ForEach(ReadbackHandoffTarget.allCases) { target in
                     Button { model.handOff(to: target) } label: {
                         Label(target.title, systemImage: target == .claude ? "sparkles" : "bubble.left.and.text.bubble.right")
@@ -239,6 +245,13 @@ struct ReadbackView: View {
                     }.buttonStyle(.borderedProminent).disabled(!model.permissionsReady || model.isCapturing)
                 }
             }
+            if let onChooseSnaps, !model.isRecording {
+                HStack {
+                    Button("Add from Snap History…", action: onChooseSnaps).disabled(model.isCapturing)
+                    Text("Use saved images; narration is optional.").font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+            }
             HStack {
                 Text("Stop and Cancel stay available in the floating recording controls.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -283,18 +296,25 @@ struct ReadbackView: View {
                         .help("Move this section to Recently Deleted")
                     Menu {
                         Button("Replace screenshot…") { Task { await model.replaceScreenshot(section.id) } }
-                        Button("Re-record narration") { model.startNarration(for: section.id) }
+                        Button(section.audio == nil ? "Record narration" : "Re-record narration") { model.startNarration(for: section.id) }
                         Button("Redo screenshot and narration…") { Task { await model.redoBoth(section.id) } }
                     } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
                         .disabled(model.isRecording || model.isCapturing || [.queued, .transcribing].contains(section.status))
                 }
                 if let failure = section.failure { Text(failure).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 if section.status == .ready {
-                    Text("NARRATION · EDITABLE").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                    HStack {
+                        Text(section.audio == nil ? "NOTES · OPTIONAL" : "NARRATION · EDITABLE").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                        Spacer()
+                        if section.audio == nil {
+                            Button("Record narration") { model.startNarration(for: section.id) }.controlSize(.small)
+                                .disabled(model.isRecording || model.isCapturing || model.microphonePermission != .authorized)
+                        }
+                    }
                     TextEditor(text: Binding(get: { model.transcriptDrafts[section.id] ?? "" }, set: { model.updateTranscript($0, for: section.id) }))
                         .font(.body).frame(minHeight: 82).padding(5).background(.background, in: RoundedRectangle(cornerRadius: 7))
                         .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Workbench.border))
-                    Text("The original transcription remains preserved. This edited text becomes the slide's speaker notes.")
+                    Text(section.originalTranscript == nil ? "These optional notes become the slide's speaker notes. Recording narration is a separate action." : "The original transcription remains preserved. This edited text becomes the slide's speaker notes.")
                         .font(.caption2).foregroundStyle(.secondary)
                 } else if section.status == .failed, section.audio != nil {
                     Button("Retry transcription") { model.retryTranscription(section.id) }.buttonStyle(.bordered)

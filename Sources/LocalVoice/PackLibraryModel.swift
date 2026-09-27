@@ -197,8 +197,7 @@ final class PackLibraryModel: ObservableObject {
                 guard (try? selected.validate()) != nil else { return nil }
                 let title = entry.name.localizedCaseInsensitiveContains(pack.manifest.name)
                     ? entry.name : "\(entry.name) (\(pack.manifest.name))"
-                return TranscriptHandoffSkill(id: reference.id, title: title,
-                    detail: "\(pack.manifest.name) · \(pack.manifest.version)", load: { selected })
+                return TranscriptHandoffSkill(selected, title: title, detail: "\(pack.manifest.name) · \(pack.manifest.version)")
             }
         }
     }
@@ -226,7 +225,7 @@ final class PackLibraryModel: ObservableObject {
             try ReadbackStore.writePrivate(data, to: file)
             switch definition.kind {
             case .scene: try stage.importPackScene(at: file); app.page = "present"
-            case .personas: try stage.importPackPersona(at: file, name: entry.name); app.page = "present"
+            case .personas: try stage.importPackPersona(at: file, name: entry.name); app.page = "personas"
             case .resources:
                 let panel = NSSavePanel(); panel.nameFieldStringValue = file.lastPathComponent; panel.title = "Save Resource"
                 guard panel.runModal() == .OK, let destination = panel.url else { return }

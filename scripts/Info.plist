@@ -36,7 +36,9 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Workbench records your microphone when you start dictation. Your chosen speech engine processes the recording.</string>
+	<string>Workbench records your microphone only when you start dictation, narration or a meeting. Your chosen speech engine processes the recording.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Workbench captures audio from the Mac app you select only after you start meeting or call transcription.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSServices</key>

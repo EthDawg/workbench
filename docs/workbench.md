@@ -4,21 +4,109 @@ Workbench is one native Mac app for speaking, explaining, presenting and shaping
 
 This contract describes the direction and current consolidation structure. [The acceptance record](unification.md) distinguishes implementation from tested and released behaviour.
 
+The current [capability delivery, issue #112](https://github.com/EthDawg/workbench/issues/112), adds independent Snap and Persona, reusable selected history, optional assistant tasks and explicit meeting transcription. These are source changes undergoing combined validation. A source check, offscreen render or earlier release does not establish their installed or public availability; the production release record remains authoritative.
+
 **Mac desktop quality is the active focus. iOS, iPad and Chrome extension development and promotion are paused until the Mac experience is dependable.** Existing code and saved work are preserved. The [mobile contract](ios-preview.md) records that separate target's limits; it is not a promise of sync or mobile scope for this Mac delivery.
+
+## Grammar
+
+Workbench stays learnable as more people and agents contribute by speaking one small language: a few capabilities you can reach without looking, options that belong to exactly one of them, and one place where captured work ends up. This section is how new work is judged. It does not by itself move or rename anything.
+
+### Moments
+
+Every entry must make one of these faster or calmer.
+
+1. **Working.** You need a utility for seconds and return to work: Dictate, Snap, Read.
+2. **Capturing.** You explain screens aloud and get a deck in seconds: Snap & Talk.
+3. **Presenting.** You demonstrate with a device, your persona and live marks, and never get flustered: Present, Persona, Draw, Timer.
+
+Reusing what you captured (History, then Hand off) supports these moments. It is not a fourth mode to navigate.
+
+### Capabilities and named workflows
+
+| Capability | Turns | Options live here, and nowhere else |
+| --- | --- | --- |
+| Dictate | voice into text | destination, text style, recent transcripts, **Transcribe meeting or call** |
+| Snap | the screen into an image | region, window or screen; crop and marks on the image; copy |
+| Read | text into speech | voice, source text |
+| Draw | marks over anything | pen, arrow, shape, board, undo, clear |
+| Present | a device or scene into a live stage | scene, device, audio, saved prompts, Persona in the scene |
+| Persona | you onto the screen | cards, size, position, voice framing |
+| Timer | a break into a visible countdown | duration, placement |
+
+**Named workflows** combine capabilities and keep their own name because they are a moment: **Snap & Talk** (Snap with narration, building a deck) and **Transcribe meeting or call** (Dictate with a call's audio, as a longer session). A new named workflow is a new capability for review purposes.
+
+**Hand off** is an action on selected History items: a recipe (skill) and a destination (Copy instructions, Claude or Codex), with the result returning to History. It is not a destination of its own.
+
+### Composition
+
+Every use of Workbench is at most three visible choices: the capability, an optional recipe, and where the result goes (the field you were in, History, Claude or Codex, a file or the speakers). The source follows from where you started or what you selected, and is offered only when it is genuinely ambiguous, such as which app's audio to transcribe. A recipe is a skill file; Dictate's text styles stay its own cleanup options because they promise to keep your wording. A named workflow is a composition worth naming because it is a moment: Snap & Talk is Snap with narration, the Deck recipe and a file. A new idea should be a recipe or a destination before it is a capability.
+
+### Places
+
+- **History**: everything captured or produced (dictations, meetings and calls, Snaps, Snap & Talk decks, Hand off results), each keeping the material that produced it, reached through one door and searched and selected together. Existing stores stay where they are; History is a view over them.
+- **Library**: things prepared for reuse (scenes, personas, saved prompts and links, skills and packs).
+- **Settings**: preferences, keyboard, models and connections.
+
+### Surfaces keep their roles
+
+- **Menu bar panel**: a row per capability or named workflow, with that row's adjustments. Footer: Open Workbench, Settings, Shortcuts.
+- **Floating toolbar**: live controls for Capturing and Presenting (Snap & Talk, Draw, Present, Persona), plus compact Dictate and Read start and stop.
+- **Workbench window**: preparation pages named exactly as their capability, then History, Library and Settings.
+
+### Names
+
+One capability has one name on every surface, menu and shortcut. Action labels may follow state ("Read", "Stop reading"). A shortened label is allowed only if it cannot be mistaken for another capability. The same action uses the same words everywhere: one set of words for stopping, cancelling, hiding and ending, and one set of drawing tools and colours whether you mark the screen or a Snap. Persona means your on-screen presence only; how you speak or write is a Style.
+
+### Rules for every change
+
+1. **Classify before building.** Each user-facing change is:
+   - **Quality**: an existing capability works better with no new entry. Preferred.
+   - **Option**: a new choice inside one capability's own options, named in its words, off by default unless it is that capability's core behaviour.
+   - **New capability, named workflow or place**: needs Ethan's decision, the moment it serves, and why it cannot be an option. Something else should merge or leave.
+
+   A rename that keeps the same thing in the same place is Quality. Another door to an existing capability or place (a menu item, card or button that opens it) counts as an Option of what it opens and needs a reason, because each extra door is sprawl.
+2. **Avoid branching.** An option inside an option folds into its parent or waits, unless it is a necessary source or privacy control.
+3. **One door for captured work.** New stores, review folders, workspaces or result lists appear inside History. New ways to process captures are recipes.
+4. **Recipes are content.** Built-in and shared skills use one file format. Getting a shared skill should be as easy as opening a file a colleague sent.
+5. **Proactive features only offer.** Detection, collection and suggestions ask first, have one switch each, and change no system setting without an explicit opt-in. A recording always starts from the person's choice and shows a plain visible state while it runs.
+6. **No dead ends.** Every entry opens its destination, shows active state and has a way back. Visible changes include renders of the surfaces they touch, with synthetic content.
+7. **Foundations first.** A change that depends on another is not promoted until its foundation passes installed Preview acceptance.
+8. **The surface map is checked.** CI compares every entry point against [the surface registry](surfaces.json). An entry point starts a capability, opens a place or page, or changes a setting that reaches beyond one page, wherever it appears: the panel and its menus, the toolbar, app menus, sidebar and Home, shortcuts, Settings and offers. Controls that act only on a page's own content are out of scope. A new or renamed entry point needs a deliberate registry change classified by these rules; the registry's kinds describe what an entry is, while the classification above describes a change. The check finds changes; people decide taste.
+9. **Engines are chosen once, by job.** Recognition, writing and speech engines are set in Models, not per capability; a recipe may override them where it is edited. Each run shows where it happens, on this Mac or the named service, and work never moves from this Mac to a cloud service without an explicit choice.
 
 ## Scope
 
 | Primitive | Workbench's responsibility | Boundary |
 | --- | --- | --- |
 | Speak → text | Capture/import, recognition, optional cleanup, original wording, history and safe delivery | Other apps own the note, message or document made from the result. |
-| Text → speech | Explicit selected-text handoff, Mac reading voices, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
-| Screen → Snap & Talk | Capture the display under the pointer, retain linked local audio/transcripts and prepare an ordered portable session | Screen Recording and Microphone access are explicit; slide generation does not silently reinterpret narration. |
+| Text → speech | Explicit selected-text handoff, Mac voices with word highlighting, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
+| Screen → Snap | Capture a region, window or display; crop, annotate, copy and keep a searchable local history | Originals survive edits and reversible archive. Cancel creates no empty record or Desktop file. |
+| Snap + narration | Compose saved Snaps or a new pointer-display capture into an ordered portable Snap & Talk session | Narration is optional for saved images. Existing sections, original audio and frozen skill packs remain intact. |
+| Persona | Show saved artwork over windows and browsers, or place it in a Present scene | Independent overlays retain their own placement and lifecycle. No voice-reactive microphone capture is added. |
+| Meeting → transcript | Explicitly capture a selected Mac app's audio and optional microphone, retain recoverable audio and save into existing history | Detection is off by default and only offers transcription. Phone-only audio, protected routes and headset results require separate native evidence. |
 | Explain a screen | Live drawing, pointer emphasis, boards and a clear return to the demo | A meeting app owns distribution to the audience. |
 | Present a device | USB video preview in a saved scene, branding, readable controls and a break timer | [Connection & audio](phone-presenting.md) separates picture, voice and Mac control. QuickTime and iPhone Mirroring remain separate apps; an explicit fallback releases Workbench capture first. |
 | Enjoy a desktop | A distinct wallpaper journey: still-image baseline, independent settings and optional gentle motion | Direct wallpaper management is proposed; current source can apply a rendered scene as a still, with an explicit app-owned motion option in non-App-Store builds. Use native OS support and preserve later manual changes. |
 | Reuse an item | Searchable prompts, links and file references with explicit Quick Look; a named Chrome destination can return to its paired profile/tab | No tenant administration, credential rotation or team knowledge system. |
 
-The explicit Screenshot action hands existing annotations to Apple Screenshot; it hides Workbench controls during capture and preserves the marks afterward. A standalone screenshot editor and Share extensions remain possible later improvements. Snap & Talk uses deliberate whole-display captures for a named narrated session; it is not a general capture editor. The bundled deck skill uses a neutral default. Colleagues can optionally connect a private GitHub content pack in Packs and choose its compatible skills for new sessions. Company content is maintained outside the public application. GitHub sign-in is needed only for private pack downloads and updates. Recent transcripts can also hand off only the selected dictations, with an explicit choice between instructions and reference material and optional chosen Snap & Talk evidence. Each session keeps its complete chosen skill and assets for the existing Hand off flow; updates never rewrite earlier or customised sessions. Branded or user-supplied templates are explicit user choices; optional branding must not be required for neutral session creation. The bounded macOS Service accepts an explicit text selection into Read aloud; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+The [Snap contract](snap.md) owns capture, editing, canonical Snap History, reversible organisation and composition into Snap & Talk. The earlier Screenshot action still hands live annotations to Apple Screenshot and preserves those marks. A new Snap & Talk capture also enters Snap History; older sessions are not bulk-imported. Portable sessions keep their own frozen media so they remain usable independently of the history library.
+
+The bundled deck skill uses a neutral default. Colleagues can optionally connect a private GitHub content pack in Packs and choose its compatible skills for new sessions. Company content is maintained outside the public application. GitHub sign-in is needed only for private pack downloads and updates. Each session keeps its complete chosen skill and assets; updates never rewrite earlier or customised sessions. Branded templates are explicit choices and optional branding cannot block neutral creation. Rich-file/deck skills retain the complete portable manual handoff; Workbench does not execute their helpers or silently replace their output contract with a text-only task.
+
+The bounded macOS Service accepts an explicit text selection into Read aloud; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+
+## History and optional assistance
+
+Recent transcripts retain original wording and editable purpose/person/company/tags. Ordinary dictation defaults to Prompt; meetings and calls are distinct purposes. Search uses original/edited text and metadata. The existing transcript store and one Snap store remain authoritative. One shared selection owner keeps typed UUID references across filters and restarts. Named selections are loaded, renamed and updated deliberately; tags describe items and do not create another grouping store. New recordings cannot evict older selected evidence.
+
+Removing a completed meeting or call transcript asks for confirmation that also names its saved recording. Confirming removes both from this Mac; Cancel preserves them. Existing handoff snapshots and exported copies remain separate. A recording still in use cannot be removed. Stopping or cancelling an active recording retains its existing recovery behavior.
+
+Hand off reviews selected content, its role and destination before starting. Meeting speech and images default to reference material. Edited Snaps share the visible cropped/annotated image by default; retaining the uncropped original locally does not authorize sending it. A job freezes selected bytes, checks them before dispatch and keeps its own receipt, attempts and result. Later selection edits do not change an active job. Repeated identical preparation and retries reuse the known task/result; a deliberately changed task or input creates a separate snapshot.
+
+Local capture, search, tags, selections and Copy instructions work without a provider account. Optional connections use the user's installed official CLI and that provider's native sign-in. This is explicit opt-in, not Workbench account linking, browser-token extraction or a paid API fallback. The bounded connected route supports draft text with selected rendered images through Codex or Claude Code; source and provider limits appear before launch. Missing, signed-out, limited, cancelled, interrupted and failed states remain visible. A launched process is not a completed task. Connection setup retains the open review, and a saved Ready job can start later without reconstructing it. Rich-file skills and complete Snap & Talk packs retain the manual route. An assistant result never automatically becomes a Saved Prompt or overwrites original evidence.
+
+Detect Meetings & Calls is off by default. Enabling it inspects supported Mac audio-activity metadata and can offer Review, Not now or Snooze; it does not record or upload audio. The Mac calling service can offer a possible call only after sustained simultaneous input and output activity. A supported meeting app or browser takes precedence, and other shared audio services remain manual sources. Start is a separate source-reviewed action. The source design supports a selected Mac app's audio with an optional current microphone, local recording recovery and transcription in bounded segments for up to two hours. The existing speech engine and shared audio admission remain authoritative. Actual permission denial, app/route loss, headphones and calls routed through the Mac need signed Preview evidence. Calls that remain solely on a phone are outside this Mac capture.
 
 ## One app, several ways in
 
@@ -45,9 +133,9 @@ flowchart TB
 
 Three surfaces share the same operation and data owners:
 
-- **Menu bar:** a compact quick panel with fixed primary rows: Dictate, Read, Snap & Talk, Draw, Present, Persona Overlay and Timer. Shortcut labels open the existing conflict-checking editor in place. Dictate options put Destination before Text Style and include Recent Transcripts. Open Workbench, Settings and Shortcuts are direct footer actions. Clipboard receipts and errors appear below the action rows; the idle panel has no empty feedback space. The stack icon stays recognisable; update status comes from the actual updater.
+- **Menu bar:** a compact quick panel with fixed rows for Dictate, Read, Snap, Snap & Talk, Draw, Present, Persona Overlay and Timer, in that order. Snap opens its capture, editor and history workspace. Shortcut labels open the conflict-checking editor in place. Dictate options put Destination before Text Style and include Recent Transcripts. Open Workbench, Settings and Shortcuts are direct footer actions. Clipboard receipts and errors appear below the action rows. Exact labels and installed reachability belong to the combined candidate's acceptance.
 - **Floating toolbar:** live Snap & Talk, Draw, Present and Persona Overlay controls. The glyph reveals a row on hover and opens a native menu on click. Keep open is explicit. Present exposes a saved-prompt picker; the shared menu retains device source/reconnect/proportions, motion, window placement, native-app handoff and End. Persona controls retain frozen public labels, selection, size, position, lock, add/remove, hide/show, layout saving and End. Choosing controls never ends another operation. Dictate and Read use compact active controls; their preparation stays in Workbench. Assigned shortcuts are displayed here; editing stays in the menu panel or desktop Keyboard view.
-- **Desktop:** the existing editors, scene/persona preparation, saved resources, models, settings, practice and history.
+- **Desktop:** Snap capture/edit/history, independent Persona preparation, compact Present scenes, transcripts and shared selections, meeting review, assistant connections/task results, saved resources, models, settings and practice. Present keeps its primary actions fixed, its Persona control near the scene heading and Connection & audio in the existing guide.
 
 The toolbar has one window, saved position and lifecycle. It hides during screenshot acquisition. Its two-tier hover, native menu holds, positioning and Reduce Motion behavior are specified in [the floating-toolbar contract](floating-toolbar.md). Window → Focus floating toolbar provides explicit keyboard access; ordinary pointer controls preserve the other app's focus. Window → Show floating toolbar and Restore menu-bar icon recover access when macOS conceals a status item. Closing or minimising Home leaves the utility running; opening Workbench from the Dock restores its window. Quit stops app-owned work. Login launch remains an explicit user setting.
 
@@ -58,7 +146,7 @@ Normal application menus, buttons and editable shortcuts remain available togeth
 ## Interaction rules
 
 - Start microphones and device sessions through an explicit action. Request access when the feature needs it and explain a denied permission in context.
-- Keep one owner for an active microphone operation. Model selection cannot change an in-flight request. The host coordinates ordinary dictation, Snap & Talk narration, drawing and keyboard practice so they do not accidentally trigger each other. Snap & Talk may queue saved audio while the next section records; recognition remains sequential.
+- Keep one owner for an active microphone operation. Model selection cannot change an in-flight request. The host coordinates ordinary dictation, meeting recording, Snap & Talk narration, drawing and keyboard practice. Snap & Talk may queue saved audio while the next section records; recognition remains sequential. Snap editing and active assistant tasks also participate in quit/update admission so work is retained.
 - Keyboard is one catalogue across modules. Duplicate assignments and common Mac command conflicts are explained. Failed registration must not silently replace a usable combination.
 - Shortcuts are presenter-first: two keys, one hand, no looking. Each default is Option plus one key under the left hand while the right hand stays on the mouse. Top row: Q Present on/off, W the Workbench menu (it lists every key), R next persona. Home row marks: A Arrow, S Shape (a box, or a straight line when dragged flat), D Draw, F Persona on/off. Bottom row: Z Undo, X Clear, C Snap & Talk, V Dictate. Hold a mark key to draw and let go to return to the demo; every on/off key stops what it started, and Escape leaves drawing. Everything else starts off and is one recording away in Keyboard. Option avoids Terminal's Control keys (⌃C, ⌃Z), Rectangle and Magnet's Control-Option window keys and ⌘ app commands; it skips accent keys such as ⌥E. Every global shortcut includes Control or Option: a combination such as ⌘S or ⌘T belongs to the app in front, so Workbench never registers one. An update moves only shortcuts still on an old default or on such an app command. A new default never takes a combination someone chose.
 - Keyboard practice pauses Workbench global actions, consumes practice key presses, counts complete press/release repetitions and restores actions when it ends or the window loses focus. It does not claim a complete inventory of other apps' shortcuts.
@@ -71,13 +159,13 @@ Normal application menus, buttons and editable shortcuts remain available togeth
 
 Parakeet is the account-free, on-device default. A separately run, loopback-only transcription server is an explicit alternative. The app preserves the same capture, cleanup, history and delivery flow when recognition changes. A saved configuration is not a connectivity or quality check.
 
-Mac voices are the default for reading. Speko TTS is a separate online choice with its own key and usage; it can use balanced automatic routing or a user-selected compatible catalogue voice. Speko STT is not currently a Workbench recognition provider. No provider failure silently changes between Workbench's local and online choices. User-managed server software controls whether its local endpoint forwards audio beyond the Mac; Workbench cannot promise its end-to-end privacy.
+Mac voices are the default for reading. Workbench lists installed voices with their quality and points to free better ones in System Settings; it never downloads or changes system voices. Speko TTS is a separate online choice with its own key and usage; it can use balanced automatic routing or a user-selected compatible catalogue voice. Speko STT is not currently a Workbench recognition provider. No provider failure silently changes between Workbench's local and online choices. User-managed server software controls whether its local endpoint forwards audio beyond the Mac; Workbench cannot promise its end-to-end privacy.
 
 Prefer a small explicit provider contract over a general agent framework. Add another adapter when a real model/runtime can meet its input, cancellation, readiness and privacy requirements. See [model providers](model-providers.md).
 
 ## Appearance and onboarding
 
-Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. The quick panel uses **Dictate**, **Read**, **Snap & Talk**, **Draw**, **Present**, **Persona Overlay** and **Timer**; preparation pages can retain their more descriptive names. A label should explain an action; a status should describe what actually happened.
+Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. The quick panel and preparation pages follow the [Grammar names](#grammar); names that still differ, such as Annotate for Draw or Read aloud for Read, are recorded as aliases in the surface registry until they are unified. A label should explain an action; a status should describe what actually happened.
 
 Home introduces useful actions, first-use access requests explain themselves, and keyboard practice teaches muscle memory. Prefer these working experiences over an introductory slideshow. Use synthetic scenes, text and recordings in examples. Brand assets can improve later without changing the action or data architecture.
 

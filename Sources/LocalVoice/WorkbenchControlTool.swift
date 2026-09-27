@@ -4,12 +4,12 @@ import StageKit
 
 /// Choosing controls never starts, stops or replaces an independent activity.
 enum WorkbenchControlTool: String, CaseIterable, Identifiable {
-    case dictate, read, snap, annotate, present, persona, timer
+    case dictate, read, snapAndTalk, annotate, present, persona, timer
     var id: String { rawValue }
     var title: String {
         switch self {
         case .dictate: return "Dictate"
-        case .snap: return "Snap & Talk"
+        case .snapAndTalk: return "Snap & Talk"
         case .annotate: return "Draw"
         case .present: return "Present"
         case .read: return "Read"
@@ -17,24 +17,15 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
         case .timer: return "Timer"
         }
     }
-    var shortTitle: String { self == .snap ? "Snap" : title }
     var symbol: String {
         switch self {
         case .dictate: return "mic"
-        case .snap: return "rectangle.and.pencil.and.ellipsis"
+        case .snapAndTalk: return "rectangle.and.pencil.and.ellipsis"
         case .annotate: return "pencil.tip"
         case .present: return "iphone"
         case .read: return "speaker.wave.2"
         case .persona: return "person.crop.rectangle"
         case .timer: return "timer"
-        }
-    }
-    var page: String {
-        switch self {
-        case .snap: return "readback"
-        case .read: return "speak"
-        case .persona, .timer: return "present"
-        default: return rawValue
         }
     }
 }
@@ -55,6 +46,9 @@ struct WorkbenchControlState {
     var playing = false
     var paused = false
     var overlays = false
+    /// A prepared multiple-overlay set is running, shown or temporarily hidden.
+    var overlaySession = false
+    var overlaysPaused = false
     var timerStarted = false
 
     func enabled(_ tool: WorkbenchControlTool) -> Bool {
@@ -62,7 +56,7 @@ struct WorkbenchControlState {
         case .dictate:
             return phase == .requesting || phase == .recording ||
                 (phase == .idle && ready && !rendering && !narrating && !capturing && !pendingNarration)
-        case .snap: return narrating || (phase == .idle && !rendering && !capturing)
+        case .snapAndTalk: return narrating || (phase == .idle && !rendering && !capturing)
         case .annotate: return drawing || mayDraw
         case .present: return presenting || mayPresent
         case .read: return true
@@ -80,10 +74,15 @@ struct WorkbenchControlState {
             case .cancelling: return "Cancelling…"
             default: return "Processing…"
             }
-        case .snap: return narrating ? "Finish narration" : capturing ? "Capturing…" : hasSession ? "Capture next" : "Set up session"
+        case .snapAndTalk: return narrating ? "Finish narration" : capturing ? "Capturing…" : hasSession ? "Capture next" : "Set up session"
         case .annotate: return drawing ? "Done drawing" : "Draw on screen"
         case .present: return presenting ? "End scene" : "Start scene"
-        case .persona: return overlays ? "End Overlays" : "Show Persona"
+        // The main action pauses and resumes a prepared set (docs/personas.md);
+        // ending it stays an explicit menu choice.
+        case .persona:
+            if overlaysPaused { return "Show Again" }
+            if overlaySession { return "Hide All Temporarily" }
+            return overlays ? "Hide Persona" : "Show Persona"
         case .timer: return timerStarted ? "Show or hide timer" : "Start Timer"
         case .read: return rendering ? "Cancel generation" : playing ? "Pause reading" : paused ? "Resume reading" : "Open reading"
         }
@@ -108,12 +107,13 @@ struct WorkbenchControlContext {
             drawing: stage.isDrawing, presenting: stage.isPresenting,
             mayDraw: stage.mayBeginDrawing?() ?? stage.mayBeginInteraction?() ?? true,
             mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
-            overlays: stage.hasActivePersona, timerStarted: stage.hasTimerSession)
+            overlays: stage.hasActivePersona, overlaySession: stage.hasActivePersonaSession,
+            overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession)
     }
     func shortcut(_ tool: WorkbenchControlTool) -> String? {
         switch tool {
         case .dictate: return voiceShortcut(1)
-        case .snap: return voiceShortcut(5)
+        case .snapAndTalk: return voiceShortcut(5)
         case .read: return voiceShortcut(6)
         case .present: return voiceShortcut(7)
         case .persona: return stageShortcut("personaToggle")
@@ -131,7 +131,7 @@ struct WorkbenchControlContext {
         switch tool {
         case .dictate: return "voice.1"
         case .read: return "voice.6"
-        case .snap: return "voice.5"
+        case .snapAndTalk: return "voice.5"
         case .annotate: return "stage.pen"
         case .present: return "voice.7"
         case .persona: return "stage.personaToggle"
@@ -147,7 +147,7 @@ struct WorkbenchControlContext {
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
             if !model.ready { return "Prepare speech in Workbench." }
             return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .paste ? "Paste in a Mac field" : "Copy text")
-        case .snap:
+        case .snapAndTalk:
             if readback.isCapturing { return "Capturing the display under the pointer…" }
             let count = readback.activeSections.count
             let captured = "\(count) " + (count == 1 ? "capture" : "captures")

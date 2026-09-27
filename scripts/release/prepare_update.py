@@ -17,11 +17,13 @@ SPARKLE = '{http://www.andymatuschak.org/xml-namespaces/sparkle}'
 
 
 def validate_tag(receipt, tag):
-    match = re.fullmatch(r'v([0-9]+\.[0-9]+\.[0-9]+)(-preview\.[0-9]+)?', tag)
+    match = re.fullmatch(r'v([0-9]+\.[0-9]+\.[0-9]+)(?:-preview\.([0-9]+)|\+([0-9]+(?:\.[0-9]+)*))?', tag)
     if not match or match[1] != receipt['version']:
         raise RuntimeError('Release tag must match the packaged version')
     if (receipt['channel'] == 'preview') != bool(match[2]):
         raise RuntimeError('Tag and package edition differ')
+    if match[3] is not None and match[3] != receipt.get('build'):
+        raise RuntimeError('Release tag build must match the packaged build')
 
 
 def validate_receipt(receipt, archive, info, config):

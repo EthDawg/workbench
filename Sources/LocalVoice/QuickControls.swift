@@ -186,7 +186,10 @@ struct VoiceQuickControls: View {
                     model.speechText = text; model.listen()
                 } else { model.status = "Copy some text first." }
             }.disabled(model.phase != .idle || model.rendering || model.playing || model.paused)
-            if model.readingProvider == .mac { Picker("Voice", selection: $model.voice) { ForEach(model.voices, id: \.self) { Text($0).tag($0) } }
+            if model.readingProvider == .mac { Picker("Voice", selection: Binding(get: { model.selectedVoiceID }, set: model.chooseVoice)) {
+                if case .missing(let name) = model.voiceChoice { Text("\(name) (not installed)").tag("") }
+                ForEach(model.macVoices) { Text($0.label).tag($0.id) }
+            }
             HStack { Text("Pace"); Slider(value: $model.rate, in: 100...300, step: 5); Text("\(Int(model.rate))").monospacedDigit() } }
             Text(model.speechText.isEmpty ? "Paste or type a longer passage in the editor." : model.speechText).lineLimit(9).foregroundStyle(.secondary)
             HStack {

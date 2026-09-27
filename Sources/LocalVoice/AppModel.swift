@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 import PhotoHandoffKit
 
 @MainActor
-final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate {
+final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioRecorderDelegate {
     static weak var intentModel: AppModel?
     let shortcutRequest = DictationRequest()
     func cancelShortcut(_ id: UUID) {
@@ -15,6 +15,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     func transcribeForShortcut(_ url: URL, id: UUID = UUID()) async throws -> String {
         guard ready else { throw VoiceError.message("Open Workbench and finish preparing the speech model, then run this shortcut again.") }
         guard phase == .idle, !rendering else { throw VoiceError.message("Workbench is busy. Finish the current recording or reading first.") }
+        guard !meetings.isBusy else { throw VoiceError.message("Finish the meeting recording or transcription first.") }
         guard !captureRecovery.hasRecovery else { throw CaptureRecoveryError.pending }
         let file = try AVAudioFile(forReading: url)
         let duration = Double(file.length) / file.processingFormat.sampleRate
@@ -68,7 +69,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
     let promptInsertion = PromptInsertion()
-    @Published var controlTool: WorkbenchControlTool = .snap
+    @Published var controlTool: WorkbenchControlTool = .snapAndTalk
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
@@ -86,9 +87,17 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var transcript = "" { didSet { draftRevision &+= 1; persist() } }
     @Published var speechText = "" { didSet { persist() } }
     @Published var history: [Transcript] = []
+    let historyLibrary = WorkbenchHistoryModel(directory: Workbench.supportDirectory(component: "LocalVoice"))
+    let handoffJobs = HandoffJobsModel(directory: Workbench.supportDirectory(component: "Handoffs"))
+    lazy var meetings = MeetingModel(engine: engine, directory: Workbench.supportDirectory(component: "Meetings"))
+    var onHandOffSelection: ((String?) -> Void)?
+    var onSuggestTranscriptDetails: ((UUID) -> Void)?
+    var resolveAdditionalHandoffItems: ((Set<WorkbenchItemReference>) throws -> [HandoffSourceSnapshot])?
     @Published var replacements: [Replacement] = []
     @Published private(set) var rememberedCorrection: RememberedCorrection?
-    @Published var voice = "Karen" { didSet { persist() } }
+    /// The saved Mac voice: an identifier, or a name an earlier build saved.
+    /// Empty means nothing was chosen, so the best installed voice is used.
+    @Published var voice = "" { didSet { persist() } }
     @Published var rate = 180.0 { didSet { persist() } }
     @Published var elapsed = 0.0
     @Published var level = 0.0
@@ -169,7 +178,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
             if spekoVoiceRefreshID == refreshID { spekoVoiceNotice = error.localizedDescription }
         }
     }
-    private func invalidateAudio() { stopPlayback(); AudioRenderer.remove(audioURL); audioURL = nil; audioSignature = "" }
+    private func invalidateAudio() { stopPlayback(); audio?.discard(); audio = nil }
     func cancelReading() {
         guard readingGenerationActive else { return }
         let mayBeBilled = readingProvider == .speko
@@ -180,6 +189,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         cloudRequestActive = false
         rendering = false
         task?.cancel()
+        pendingRender?.cancel(); pendingRender = nil
         status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
     }
     @Published private(set) var readingGenerationActive = false
@@ -215,11 +225,20 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     private var recorder: AVAudioRecorder?
     private var recordURL: URL?
     private var meter: Timer?
-    private var player: AVAudioPlayer?
+    private var player: ReadingPlayer?
     private var playTimer: Timer?
     private var playbackID: UUID?
-    private var audioURL: URL?
-    private var audioSignature = ""
+    /// The latest reading's audio, reused while its signature matches.
+    private var audio: ReadingTrack?
+    /// What the current player plays; it can differ after Save audio.
+    private var playingTrack: ReadingTrack?
+    /// A Mac voice render that has not produced playable audio yet.
+    private var pendingRender: MacSpeechRenderer?
+    private var audioURL: URL? { audio?.url }
+    private var audioSignature: String { audio?.signature ?? "" }
+    private var voicePreview: AVSpeechSynthesizer?
+    private var voiceObservers: [AnyCancellable] = []
+    private var voiceRefresh: Task<Void, Never>?
     private var peakPower: Float = -160
     private var destination: TextDelivery.Target?
     private var recordingAttempt: UUID?
@@ -242,7 +261,12 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     var onResetShortcuts: (() -> Void)?
     var onResetPanel: (() -> Void)?
     var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
-    var voices: [String] = []
+    @Published private(set) var macVoices: [MacVoice] = []
+    @Published private(set) var voiceLanguage = "en-US"
+    @Published private(set) var previewingVoice = false
+    @Published private(set) var readingHighlight: NSRange?
+    /// Playback started while a Mac voice keeps rendering the rest.
+    @Published private(set) var renderingAhead = false
 
     init(preferences: VoicePreferences) {
         self.preferences = preferences
@@ -256,6 +280,11 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
             transcript = state.draft; speechText = state.speechText; history = state.history
             rawTranscript = state.rawDraft ?? state.draft
             replacements = state.replacements; voice = state.voice; rate = state.rate
+            let removalIssues = MeetingTranscriptRemoval.reconcile(
+                root: Workbench.supportDirectory(component: "Meetings"), history: store)
+            if !removalIssues.isEmpty {
+                self.error = "A recording removal needs attention. " + removalIssues.joined(separator: " ")
+            }
         } catch {
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
             do {
@@ -266,14 +295,15 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                 return
             }
         }
-        voices = NSSpeechSynthesizer.availableVoices.compactMap { id in
-            let info = NSSpeechSynthesizer.attributes(forVoice: id)
-            guard let locale = info[.localeIdentifier] as? String, locale.hasPrefix("en"), let name = info[.name] as? String else { return nil }
-            return name
-        }.sorted()
-        let preferred = ["Karen", "Samantha", "Daniel", "Moira", "Rishi", "Tessa"]
-        voices = preferred.filter { voices.contains($0) } + voices.filter { !preferred.contains($0) }
-        if !voices.contains(voice), let first = voices.first { voice = first }
+        // A saved voice that is missing stays chosen and is reported; it is
+        // never silently replaced. Voices added in Settings appear without a relaunch.
+        refreshVoices()
+        voiceObservers = [
+            NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)
+                .receive(on: RunLoop.main).sink { [weak self] _ in self?.refreshVoices(inBackground: true) },
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+                .sink { [weak self] _ in self?.refreshVoices(inBackground: true) }
+        ]
         loaded = true
         restoreCaptureRecovery()
         Task { await prepare() }
@@ -452,6 +482,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
 
     func importAudio() {
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription first."; return }
         guard phase == .idle, ready else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.audio]; panel.canChooseDirectories = false
         panel.message = "Choose an audio file up to 30 minutes. Your selected speech engine will transcribe it."
@@ -459,6 +490,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         importAudio(url)
     }
     func importAudio(_ url: URL) {
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription first."; return }
         guard phase == .idle, ready else { return }
         do {
             let file = try AVAudioFile(forReading: url)
@@ -776,30 +808,107 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
 
     private var signature: String {
-        let selectedVoice = readingProvider == .speko ? selectedSpekoVoice?.requestSignature ?? "automatic" : voice
-        return "\(readingProvider.rawValue)|\(selectedVoice)|\(Int(rate))|\(speechText)"
+        let selectedVoice = readingProvider == .speko ? selectedSpekoVoice?.requestSignature ?? "automatic" : voiceChoice?.voice?.id ?? "missing:" + voice
+        return "\(readingProvider.rawValue)|\(selectedVoice)|\(Int(rate))|listening-\(ListeningText.version)|\(speechText)"
     }
+
+    // MARK: Mac voices
+
+    /// The chosen voice, the best default when none was chosen, or a missing choice.
+    var voiceChoice: MacVoiceChoice? {
+        MacVoiceCatalog.resolve(voice, in: macVoices, preferredLanguage: voiceLanguage)
+            ?? MacVoiceCatalog.preferredDefault(in: macVoices, preferredLanguage: voiceLanguage).map(MacVoiceChoice.installed)
+    }
+    var selectedVoiceID: String { voiceChoice?.voice?.id ?? "" }
+    var voiceHint: MacVoiceHint? { MacVoiceCatalog.upgradeHint(for: macVoices, preferredLanguage: voiceLanguage) }
+    var missingVoiceMessage: String {
+        if case .missing(let name) = voiceChoice {
+            return "\(name) is not installed on this Mac. Choose another voice, or add it again in \(MacVoiceCatalog.settingsTitle) settings."
+        }
+        return "No Mac voice is installed. Add one in \(MacVoiceCatalog.settingsTitle) settings."
+    }
+    /// Loads installed voices. Launch waits for them; later refreshes (a voice
+    /// added in Settings, or returning to the app) run off the main thread.
+    func refreshVoices(inBackground: Bool = false) {
+        let language = MacVoiceCatalog.preferredLanguage
+        guard inBackground else { applyVoices(MacVoiceCatalog.installed(preferredLanguage: language), language: language); return }
+        guard voiceRefresh == nil else { return }
+        voiceRefresh = Task.detached(priority: .utility) { [weak self] in
+            let voices = MacVoiceCatalog.installed(preferredLanguage: language)
+            await self?.applyVoices(voices, language: language)
+        }
+    }
+    private func applyVoices(_ voices: [MacVoice], language: String) {
+        voiceRefresh = nil
+        if voices != macVoices { macVoices = voices }
+        if language != voiceLanguage { voiceLanguage = language }
+    }
+    func chooseVoice(_ id: String) {
+        guard macVoices.contains(where: { $0.id == id }), id != voice else { return }
+        stopVoicePreview()
+        voice = id
+    }
+    func openVoiceSettings() { NSWorkspace.shared.open(MacVoiceCatalog.settingsURL) }
+    /// A short sample in the chosen voice and pace, so voices can be compared.
+    func toggleVoicePreview() {
+        if previewingVoice { stopVoicePreview(); return }
+        guard !rendering, !playing, phase == .idle, !meetings.isBusy, let voice = voiceChoice?.voice, !voice.sayOnly,
+              let systemVoice = AVSpeechSynthesisVoice(identifier: voice.id) else { return }
+        let utterance = AVSpeechUtterance(string: "This is \(voice.name). Here is how your readings will sound.")
+        utterance.voice = systemVoice
+        utterance.rate = MacVoicePace.utteranceRate(forWordsPerMinute: rate)
+        let synthesizer = AVSpeechSynthesizer()
+        synthesizer.delegate = self
+        voicePreview = synthesizer
+        previewingVoice = true
+        synthesizer.speak(utterance)
+    }
+    func stopVoicePreview() {
+        guard let preview = voicePreview else { return }
+        voicePreview = nil
+        previewingVoice = false
+        preview.delegate = nil
+        preview.stopSpeaking(at: .immediate)
+    }
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            guard self.voicePreview === synthesizer else { return }
+            self.voicePreview = nil; self.previewingVoice = false
+        }
+    }
+
+    // MARK: Reading playback
+
+    /// The text being read, with the spoken word marked, while a Mac voice plays.
+    var followAlongText: String? {
+        guard playing || paused, let playingTrack, playingTrack.marks != nil else { return nil }
+        return playingTrack.text
+    }
+    func makeReadingPlayer(_ source: ReadingAudioSource) throws -> ReadingPlayer { try ReadingPlayer(source: source) }
     var canSeekReading: Bool { !rendering && (playing || paused) && player != nil && audioDuration.isFinite && audioDuration > 0 }
     func seekReading(to seconds: TimeInterval) {
         guard canSeekReading, seconds.isFinite, let player else { return }
-        // Stay on the final audio frame: seeking to/past EOF can make a player
-        // wrap to the beginning. A paused reading stays paused at this position.
-        let lastFrame = max(0, player.duration - 1 / max(1, player.format.sampleRate))
+        // Stay on the final frame that exists: a reading that is still rendering
+        // can only move within what is ready, and a paused reading stays paused.
+        let lastFrame = max(0, player.duration - 1 / max(1, player.sampleRate))
         player.currentTime = min(max(0, seconds), lastFrame)
         playbackTime = player.currentTime
+        showReadingPosition(player)
     }
     func skipReading(by seconds: TimeInterval) {
         guard seconds.isFinite, let player else { return }
         seekReading(to: player.currentTime + seconds)
     }
     func listen() {
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
         guard !rendering, phase == .idle else { return }
+        stopVoicePreview()
         if playing {
             player?.pause(); playbackTime = player?.currentTime ?? 0
             playing = false; paused = true; status = "Reading paused."; return
         }
-        if paused, signature == audioSignature {
-            guard player?.play() == true else {
+        if paused, signature == audioSignature, let player, player.source === audio?.source {
+            guard player.play() else {
                 stopPlayback(); error = "Audio could not resume. Check your Mac's audio output."; return
             }
             playing = true; paused = false; status = "Reading aloud."; return
@@ -816,34 +925,58 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                 }
             }
             do {
-                let url = try await generateAudio(generationID: generationID)
+                let track = try await generateAudio(generationID: generationID)
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
-                let activePlayer = try AVAudioPlayer(contentsOf: url); activePlayer.delegate = self
+                let activePlayer = try makeReadingPlayer(track.source)
+                activePlayer.onFinish = { [weak self] finished, success in self?.readingPlayerDidFinish(finished, successfully: success) }
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 guard activePlayer.play() else { throw VoiceError.message("Audio could not play. Check your Mac's audio output.") }
-                player = activePlayer
+                player = activePlayer; playingTrack = track
+                renderingAhead = track.isRendering
                 let invocation = UUID(); playbackID = invocation
                 playing = true; audioDuration = activePlayer.duration; status = "Reading aloud."
-                playTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-                    Task { @MainActor in
+                // The playback clock, not rendering, drives the elapsed time and
+                // the highlighted word. Common modes keep it running while the
+                // scrubber is dragged.
+                let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated {
                         guard let self, self.playbackID == invocation, let activePlayer = self.player else { return }
-                        self.playbackTime = activePlayer.currentTime
+                        self.followPlayback(activePlayer)
                     }
                 }
+                RunLoop.main.add(timer, forMode: .common)
+                playTimer = timer
             } catch {
                 if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
             }
         }
     }
-    private func generateAudio(generationID: UUID) async throws -> URL {
-        if let audioURL, signature == audioSignature { return audioURL }
+    private func followPlayback(_ activePlayer: ReadingPlayer) {
+        activePlayer.tick()
+        guard player === activePlayer else { return }
+        let time = activePlayer.currentTime
+        if abs(time - playbackTime) >= 0.1 || (!playing && time != playbackTime) { playbackTime = time }
+        if activePlayer.duration != audioDuration { audioDuration = activePlayer.duration }
+        showReadingPosition(activePlayer)
+    }
+    private func showReadingPosition(_ activePlayer: ReadingPlayer) {
+        let range = playingTrack?.marks?.range(at: activePlayer.positionFrame)
+        if range != readingHighlight { readingHighlight = range }
+    }
+    /// Returns audio for the current signature: reused, or newly made. A Mac
+    /// voice returns as soon as the first audio exists and keeps rendering the
+    /// rest into the same file; `complete` waits for all of it.
+    private func generateAudio(generationID: UUID, complete: Bool = false) async throws -> ReadingTrack {
+        if let audio, signature == audioSignature, audio.isComplete || (!complete && audio.isRendering) { return audio }
         guard readingGenerationID == generationID else { throw CancellationError() }
         rendering = true; readingGenerationActive = true; error = nil
-        let text = speechText, selectedVoice = voice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = Int(rate), selectedProvider = readingProvider, originalSignature = signature
+        let text = speechText, prepared = ListeningText(text), selectedChoice = voiceChoice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = rate, selectedProvider = readingProvider, originalSignature = signature
         let limit = selectedProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000
-        guard text.count <= limit else { throw VoiceError.message("This reading is too long for the selected provider.") }
+        // Speko receives the prepared text, which can be a little longer than what is shown.
+        guard text.count <= limit, selectedProvider != .speko || prepared.spoken.count <= limit else { throw VoiceError.message("This reading is too long for the selected provider.") }
+        guard !prepared.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceError.message("This text has nothing to read aloud.") }
         defer {
             if readingGenerationID == generationID {
                 readingGenerationActive = false; cloudRequestActive = false
@@ -853,21 +986,69 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         if selectedProvider == .speko {
             let key = try SpekoKeychain.read()
             cloudRequestActive = true
-            url = try await SpekoRenderer.render(text: text, key: key, voice: selectedSpekoVoice)
+            url = try await SpekoRenderer.render(text: prepared.spoken, key: key, voice: selectedSpekoVoice)
         } else {
-            url = try await AudioRenderer.renderCancellable(text: text, voice: selectedVoice, rate: selectedRate)
+            guard let voice = selectedChoice?.voice else { throw VoiceError.message(missingVoiceMessage) }
+            if !voice.sayOnly {
+                return try await streamMacVoice(voice, text: text, prepared: prepared, rate: selectedRate, signature: originalSignature,
+                                                generationID: generationID, complete: complete)
+            }
+            url = try await AudioRenderer.renderCancellable(text: prepared.spoken, voice: voice.sayName, rate: Int(selectedRate))
         }
         do {
             try Task.checkCancellation()
             guard readingGenerationID == generationID else { throw CancellationError() }
+            let track = ReadingTrack(url: url, source: try ReadingFileSource(url: url), text: text, signature: originalSignature)
+            keepAudio(track)
+            return track
         } catch {
             AudioRenderer.remove(url); throw error
         }
-        AudioRenderer.remove(audioURL); audioURL = url; audioSignature = originalSignature
-        return url
+    }
+    private func streamMacVoice(_ voice: MacVoice, text: String, prepared: ListeningText, rate: Double, signature: String,
+                                generationID: UUID, complete: Bool) async throws -> ReadingTrack {
+        let render = try MacSpeechRenderer(text: prepared)
+        pendingRender?.cancel()
+        pendingRender = render
+        defer { if pendingRender === render { pendingRender = nil } }
+        // Late callbacks from a replaced or stopped render never reach newer audio.
+        render.onAudio = { [weak self, weak render] in
+            guard let self, let render, let player = self.player, self.playingTrack?.renderer === render, player.isWaitingForAudio else { return }
+            player.tick()
+        }
+        render.onFinish = { [weak self, weak render] failure in
+            guard let self, let render, let track = self.audio, track.renderer === render else { return }
+            if let failure {
+                // Audio that stopped partway cannot be replayed or saved.
+                if self.playingTrack === track { self.stopPlayback() }
+                track.discard(); if self.audio === track { self.audio = nil }
+                self.error = failure.localizedDescription
+            } else {
+                track.finishedRendering()
+                if self.playingTrack === track { self.renderingAhead = false; self.player?.tick() }
+            }
+        }
+        do {
+            try render.start(voiceIdentifier: voice.id, rate: MacVoicePace.utteranceRate(forWordsPerMinute: rate))
+            try await render.ready(complete: complete)
+            try Task.checkCancellation()
+            guard readingGenerationID == generationID, pendingRender === render, let file = render.audio else { throw CancellationError() }
+            let track = ReadingTrack(url: file.url, source: file, text: text, signature: signature, renderer: render)
+            keepAudio(track)
+            return track
+        } catch {
+            render.cancel()
+            throw error
+        }
+    }
+    /// The newest audio replaces the reusable copy; audio still playing stays
+    /// readable until its player stops.
+    private func keepAudio(_ track: ReadingTrack) {
+        if let previous = audio, previous !== playingTrack { previous.discard() }
+        audio = track
     }
     func saveAudio() {
-        guard !rendering, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !rendering, !renderingAhead, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         let generationID = UUID()
@@ -881,7 +1062,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                 }
             }
             do {
-                let url = try await generateAudio(generationID: generationID)
+                let url = try await generateAudio(generationID: generationID, complete: true).url
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 try await Task.detached { try AudioRenderer.export(url, to: destination) }.value
@@ -897,13 +1078,22 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         let wasActive = playing || paused
         player?.stop(); player = nil; playing = false; paused = false; playbackTime = 0; audioDuration = 0
         playTimer?.invalidate(); playTimer = nil; playbackID = nil
+        readingHighlight = nil
+        stopVoicePreview()
+        if let render = pendingRender { pendingRender = nil; render.cancel() }
+        // Audio a Mac voice has not finished cannot be reused: discard it.
+        if let track = playingTrack, track.isRendering {
+            track.discard()
+            if audio === track { audio = nil }
+        } else if let track = playingTrack, track !== audio {
+            track.discard()
+        }
+        playingTrack = nil; renderingAhead = false
         if wasActive { status = "Reading stopped." }
     }
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor in
-            guard self.player === player else { return }
-            self.stopPlayback(); self.status = flag ? "Finished reading." : "Playback interrupted."
-        }
+    func readingPlayerDidFinish(_ finished: ReadingPlayer, successfully flag: Bool) {
+        guard self.player === finished else { return }
+        stopPlayback(); status = flag ? "Finished reading." : "Playback interrupted."
     }
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         Task { @MainActor in
@@ -956,7 +1146,72 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         status = restoreDraft ? "Correction undone." : "Dictionary change undone. Your newer draft edits are kept."
     }
     func dismissRememberedCorrection() { rememberedCorrection = nil }
-    func removeTranscript(_ item: Transcript) { history.removeAll { $0.id == item.id }; persist() }
+    func removeTranscript(_ item: Transcript, includingRecording: Bool = false) {
+        guard loaded, history.contains(where: { $0.id == item.id }) else { return }
+        guard includingRecording || !meetings.hasRecording(for: item.id) else {
+            error = "This transcript has a saved recording. Choose Remove again to review removing both."
+            return
+        }
+        let next = history.filter { $0.id != item.id }
+        let commit = {
+            try self.store.save(SavedState(draft: self.transcript, speechText: self.speechText, history: next,
+                replacements: self.replacements, voice: self.voice, rate: self.rate, rawDraft: self.rawTranscript))
+            self.persistWork?.cancel()
+            self.history = next
+        }
+        do {
+            if includingRecording {
+                error = try meetings.removeCompletedRecording(for: item.id, commit: commit)
+                if error == nil { status = "Transcript and recording removed." }
+            } else {
+                try commit()
+                status = "Transcript removed."
+            }
+            // Named selections retain the missing reference until the person
+            // deliberately removes it, so an old selection cannot silently shrink.
+        } catch { self.error = "Could not finish removing the transcript. " + error.localizedDescription }
+    }
+    func retainMeetingTranscript(_ capture: Transcript, purpose: String) throws {
+        guard loaded else { throw VoiceError.message("The transcript library is not ready.") }
+        let next = TranscriptHistory.adding(capture, to: history)
+        // Save metadata first: if history saving fails the meeting's durable
+        // journal retains this same UUID for a safe retry.
+        var metadata = historyLibrary.metadata(for: capture.id)
+        metadata.purpose = purpose == "call" ? .call : .meeting
+        metadata.captureNotes = meetings.pendingTranscriptNotes
+        historyLibrary.setMetadata(metadata, for: capture.id)
+        if let error = historyLibrary.error { throw VoiceError.message(error) }
+        try store.save(SavedState(draft: transcript, speechText: speechText, history: next,
+            replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
+        history = next
+        status = "Meeting saved in Recent transcripts."
+        onPhaseChange?()
+    }
+    func selectedHandoffSources(references: Set<WorkbenchItemReference>? = nil) throws -> [HandoffSourceSnapshot] {
+        let selected = references ?? historyLibrary.selected
+        let ids = Set(selected.filter { $0.kind == .transcript }.map(\.id))
+        let items = history.filter { ids.contains($0.id) }
+        guard items.count == ids.count else {
+            throw VoiceError.message("This selection includes a removed transcript. Remove its missing reference before starting a task.")
+        }
+        var result = items.map { item in
+            let metadata = historyLibrary.metadata(for: item.id)
+            let names = [metadata.person, metadata.company].filter { !$0.isEmpty }
+            let title = metadata.purpose.title + (names.isEmpty ? "" : " · " + names.joined(separator: " · "))
+                + " · " + item.date.formatted(date: .abbreviated, time: .shortened)
+            return HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .transcript, id: item.id),
+                title: title, capturedAt: item.date, text: item.text, originalText: item.rawText ?? item.text,
+                role: metadata.purpose == .prompt ? .instructions : .reference, captureNotes: metadata.captureNotes,
+                seconds: item.seconds)
+        }
+        let additional = Set(selected.filter { $0.kind != .transcript })
+        if !additional.isEmpty {
+            guard let resolveAdditionalHandoffItems else { throw VoiceError.message("The selected Snap library is unavailable.") }
+            result += try resolveAdditionalHandoffItems(additional)
+        }
+        guard Set(result.map(\.reference)) == selected else { throw VoiceError.message("Some selected items are missing. Review the selection before starting.") }
+        return result
+    }
     func fail(_ text: String) {
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
@@ -981,6 +1236,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         catch { self.error = "Could not save this session. \(error.localizedDescription)" }
     }
     func shutdown() {
+        meetings.shutdown(); handoffJobs.shutdown()
         photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
         clipboardReceipt.clear(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil

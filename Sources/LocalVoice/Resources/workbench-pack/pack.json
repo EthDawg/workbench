@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "id": "workbench",
+  "name": "Workbench",
+  "version": "1.0.0",
+  "minimumAppVersion": "2.2.0",
+  "entries": [
+    {
+      "id": "workbench-follow-up",
+      "kind": "skill",
+      "name": "Prepare follow-up",
+      "path": "skills/follow-up/SKILL.md",
+      "inputKinds": [
+        "transcripts"
+      ]
+    },
+    {
+      "id": "workbench-meeting-follow-up",
+      "kind": "skill",
+      "name": "Meeting notes and follow-up",
+      "path": "skills/meeting-notes/SKILL.md",
+      "inputKinds": [
+        "transcripts"
+      ]
+    },
+    {
+      "id": "workbench-sharpen-prompt",
+      "kind": "skill",
+      "name": "Sharpen my prompt",
+      "path": "skills/sharpen-prompt/SKILL.md",
+      "inputKinds": [
+        "transcripts"
+      ]
+    },
+    {
+      "id": "workbench-conversation-coach",
+      "kind": "skill",
+      "name": "Coach my conversation",
+      "path": "skills/coach/SKILL.md",
+      "inputKinds": [
+        "transcripts"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "skills/follow-up/SKILL.md",
+      "size": 1610,
+      "sha256": "ed5def0ae01bc579530177a13cb6f9831ef478be2a4172e502aafa0cc6272a83"
+    },
+    {
+      "path": "skills/meeting-notes/SKILL.md",
+      "size": 1696,
+      "sha256": "1a53a436044cada04f694b8bc89a4500067bf64fd803366ffb8c561de39f40b2"
+    },
+    {
+      "path": "skills/sharpen-prompt/SKILL.md",
+      "size": 1001,
+      "sha256": "92296509b02e2b7c4b09e6a36fafd8e0bc32d05f7623d572de3afbe403bff9a9"
+    },
+    {
+      "path": "skills/coach/SKILL.md",
+      "size": 1306,
+      "sha256": "de0aaca2ec34113b3570c6ac85423b32ad0fe5aa9d5a4e389728cad0cebdfd33"
+    }
+  ]
+}
