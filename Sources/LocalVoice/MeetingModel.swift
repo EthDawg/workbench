@@ -340,11 +340,18 @@ final class MeetingModel: ObservableObject {
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
                 guard let self, self.detectionEnabled, !self.shuttingDown else { return }
-                self.detector.isSuppressed = self.isBusy || self.mayStart?() != nil
-                self.offer = self.detector.evaluate()
-                if let issue = self.detector.lastError, !self.isBusy { self.error = issue }
+                self.refreshDetection()
             }
         }
+    }
+
+    /// One metadata poll, shared by the timer and deterministic lifecycle checks.
+    /// It cannot request permission or open a capture.
+    func refreshDetection() {
+        guard detectionEnabled, !shuttingDown else { offer = nil; return }
+        detector.isSuppressed = isBusy || mayStart?() != nil
+        offer = detector.evaluate()
+        if let issue = detector.lastError, !isBusy { error = issue }
     }
 
     func dismissOffer() { if let offer { detector.dismiss(offer) }; offer = nil }

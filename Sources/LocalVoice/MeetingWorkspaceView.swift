@@ -106,35 +106,79 @@ struct MeetingWorkspaceView: View {
 /// returns to the explicit source/Start controls.
 @MainActor
 final class MeetingOfferPanelController {
+    struct Actions {
+        var review: () -> Void
+        var dismiss: () -> Void
+        var snooze: () -> Void
+    }
+    typealias Present = (MeetingAudioApp, Actions) -> () -> Void
+    typealias Schedule = (TimeInterval, @escaping @MainActor () -> Void) -> Void
+
     private var observation: AnyCancellable?
-    private var panel: NSPanel?
-    private var displayedID: Int32?
-    init(model: MeetingModel, review: @escaping () -> Void) {
+    private var closePanel: (() -> Void)?
+    private var displayedOffer: MeetingAudioApp?
+    private var generation = UUID()
+
+    /// Rendering and time are injectable so checks exercise the actual published
+    /// offer lifecycle without opening windows, audio or device metadata.
+    init(model: MeetingModel, present: Present? = nil, schedule: Schedule? = nil,
+         review: @escaping () -> Void) {
+        let present: Present = present ?? Self.presentPanel
+        let schedule: Schedule = schedule ?? { delay, action in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { action() }
+        }
         observation = model.$offer.sink { [weak self, weak model] offer in
             guard let self else { return }
-            self.panel?.orderOut(nil); self.panel = nil
-            guard let offer, let model, !model.isBusy, self.displayedID != offer.id else { return }
-            self.displayedID = offer.id
-            let bounds = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-            let panel = NSPanel(contentRect: NSRect(x: bounds.maxX - 365, y: bounds.maxY - 175, width: 340, height: 145),
-                styleMask: [.nonactivatingPanel, .titled], backing: .buffered, defer: false)
-            panel.title = "Workbench"; panel.level = .floating; panel.isReleasedWhenClosed = false
-            panel.contentView = NSHostingView(rootView: VStack(alignment: .leading, spacing: 12) {
-                Label("Possible call in " + offer.name, systemImage: "phone").font(.headline)
-                Text("Would you like to transcribe? Nothing is recording.").font(.callout)
-                HStack {
-                    Button("Review") { model.selectedAppID = offer.id; model.dismissOffer(); review() }
-                    Button("Not now") { model.dismissOffer() }
-                    Button("Snooze") { model.snoozeOffers() }
-                }
-            }.padding(18))
-            self.panel = panel
-            panel.orderFrontRegardless()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self, weak panel] in
-                panel?.orderOut(nil)
-                if self?.displayedID == offer.id { self?.displayedID = nil }
+            guard let offer, let model, !model.isBusy else {
+                self.hidePanel(); self.displayedOffer = nil
+                return
+            }
+            // Repeated polls must preserve both a visible offer and an offer
+            // already timed out. A changed/absent offer starts a new lifetime.
+            guard self.displayedOffer != offer else { return }
+            self.hidePanel()
+            self.displayedOffer = offer
+            let token = self.generation
+            self.closePanel = present(offer, Actions(
+                review: { [weak model] in
+                    guard let model else { return }
+                    model.selectedAppID = offer.id; model.dismissOffer(); review()
+                },
+                dismiss: { [weak model] in model?.dismissOffer() },
+                snooze: { [weak model] in model?.snoozeOffers() }
+            ))
+            schedule(20) { [weak self] in
+                guard let self, self.generation == token else { return }
+                self.hidePanel()
             }
         }
     }
-    func close() { observation = nil; panel?.close(); panel = nil }
+
+    private func hidePanel() {
+        generation = UUID()
+        closePanel?(); closePanel = nil
+    }
+
+    func close() {
+        observation = nil
+        hidePanel(); displayedOffer = nil
+    }
+
+    private static func presentPanel(offer: MeetingAudioApp, actions: Actions) -> () -> Void {
+        let bounds = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let panel = NSPanel(contentRect: NSRect(x: bounds.maxX - 365, y: bounds.minY + 25, width: 340, height: 145),
+            styleMask: [.nonactivatingPanel, .titled], backing: .buffered, defer: false)
+        panel.title = "Workbench"; panel.level = .floating; panel.isReleasedWhenClosed = false
+        panel.contentView = NSHostingView(rootView: VStack(alignment: .leading, spacing: 12) {
+            Label("Possible call in " + offer.name, systemImage: "phone").font(.headline)
+            Text("Would you like to transcribe? Nothing is recording.").font(.callout)
+            HStack {
+                Button("Review", action: actions.review)
+                Button("Not now", action: actions.dismiss)
+                Button("Snooze", action: actions.snooze)
+            }
+        }.padding(18))
+        panel.orderFrontRegardless()
+        return { panel.orderOut(nil) }
+    }
 }

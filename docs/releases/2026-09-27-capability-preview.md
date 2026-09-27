@@ -45,7 +45,7 @@ Native transcript details and metadata search passed, and a no-match search reta
 
 Updating an existing saved selection exposed a sheet-state defect: creation guidance appeared with the saved name but Save disabled. The correction presents the mode, saved UUID and initial name together and gives each editor its own draft state. Installed `6f0f7a0` passed membership-only update, deliberate rename, cancelled create/update drafts, Clear and reload, and normal quit/relaunch. The same saved selection UUID retained both members after restart. Independent artifact checks confirmed the saved record and original-data preservation; they did not repeat the owner's UI actions.
 
-The current signed Preview is version 2.2.0, build `20260927022937`, clean source `6f0f7a045f0a1900668c77f01556b0d7d6080387`, verified through native Copy build details at the existing installation path. Its executable matches the verified signed archive. No public release or feed was changed.
+The signed `6f0f7a0` Preview was version 2.2.0, build `20260927022937`, clean source `6f0f7a045f0a1900668c77f01556b0d7d6080387`, verified through native Copy build details at the existing installation path. Its executable matches the verified signed archive. No public release or feed was changed.
 
 On that candidate, a neutral Snap & Talk session accepted a rendered saved Snap once, refused a repeated import and retained typed notes after close/reopen. Its frozen original and rendered media matched the selected source; all 80 pre-existing session files were preserved and the original active session was restored. This checks saved-image composition without live narration.
 
@@ -56,6 +56,12 @@ A quarter-tiled parent window retained both reference sources and the handoff he
 Current-source missing/corrupt-track and overflow/timestamp-gap checks passed 14 assertions. A missing required source stopped processing before recognition or commit; overflow and discontinuity retained the valid prefix, omitted the late marker and reported explicit stop reasons. An independent reviewer reran the same harness against six matching source hashes with the same result, and Claude reviewed the supplied source evidence. These synthetic checks use no live devices.
 
 Ethan subsequently reported the requested Snap Region, Window and Escape checks passed on this installed candidate. He reported the Mac-call test failed while a call relayed from an iPhone reached voicemail. The supplied screenshot shows detection enabled and a six-second call with no offer visible at that moment; it does not establish the cause or any successful two-sided recording. The call-offer failure remains under investigation.
+
+## Mac call offer correction
+
+Investigation confirmed two source defects independently of the short call screenshot: the catalogue used `com.apple.MobilePhone`, while this Mac's Phone app and CoreAudio metadata identify `com.apple.mobilephone`; repeated three-second offer publications also hid the existing panel before checking whether it was the same offer. The correction uses the exact Mac identifier, preserves a visible offer through repeated polls, ignores stale expiry callbacks and permits a fresh offer after activity disappears. A timed-out offer does not repeatedly reopen during continuous activity. The passive panel now sits at the bottom-right of the visible display frame, away from the reported upper-right phone controls.
+
+Release compilation and all 95 synthetic meeting checks passed, including 15 new checks through the real model and panel controller with rendering/time injected. A separate reviewer compiled the current controller/catalogue and passed 17 lifecycle assertions. These checks opened no live audio or UI. The signed replacement and actual call-offer retest must still be verified; neither the source fixes nor idle-process metadata establish which process carried the earlier call or whether both sides can be recorded. Shared Mac audio services remain separate manual sources, and recording still requires explicit review and Start.
 
 ## Remaining acceptance
 

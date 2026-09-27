@@ -215,7 +215,90 @@ enum MeetingChecks {
         try expect(restored.tracks.first?.seconds == recorded.seconds, "writer timing/audio survives close and recovery")
 
         try await lifecycleChecks(root: root, expect: expect)
+        try await offerLifecycleChecks(root: root, expect: expect)
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
+    }
+
+    private static func offerLifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        let suite = "Workbench-MeetingOffers-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ProcessFixture()
+        var permissions = 0, captures = 0, reviews = 0
+        let model = MeetingModel(directory: root.appendingPathComponent("offers"), defaults: defaults,
+            processSource: source, transcribe: { _ in "unused" },
+            microphonePermission: { permissions += 1; return true },
+            captureFactory: { captures += 1; return CaptureFixture() })
+        var created = 0, closed = 0
+        var visible = Set<Int>()
+        var offers: [MeetingAudioApp] = []
+        var actions: [MeetingOfferPanelController.Actions] = []
+        var timers: [@MainActor () -> Void] = []
+        var delays: [TimeInterval] = []
+        let controller = MeetingOfferPanelController(model: model, present: { offer, callbacks in
+            created += 1
+            let id = created
+            visible.insert(id); offers.append(offer); actions.append(callbacks)
+            return { visible.remove(id); closed += 1 }
+        }, schedule: { delay, callback in delays.append(delay); timers.append(callback) },
+        review: { reviews += 1 })
+        model.refreshDetection()
+        try expect(created == 0 && source.calls == 0, "disabled offer controller reads no metadata and presents nothing")
+        model.detectionEnabled = true
+        source.values = [.init(pid: 91_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true)]
+        model.refreshDetection(); model.refreshDetection()
+        try expect(created == 0, "passive offer waits for all three observations")
+        model.refreshDetection()
+        try expect(visible == [1] && created == 1 && closed == 0, "confirmed offer presents exactly one panel")
+        model.refreshDetection(); model.refreshDetection()
+        try expect(visible == [1] && created == 1 && closed == 0 && timers.count == 1,
+                   "repeated Published offers retain the visible panel and its original timeout")
+        actions[0].dismiss()
+        model.refreshDetection()
+        try expect(visible.isEmpty && closed == 1 && model.offer == nil && created == 1,
+                   "Not now clears the panel and cooldown prevents its next poll from reopening")
+
+        source.values = [.init(pid: 91_002, bundleID: "com.apple.FaceTime", isRunningInput: true, isRunningOutput: true)]
+        for _ in 0..<3 { model.refreshDetection() }
+        timers[0]()
+        try expect(visible == [2] && created == 2 && closed == 1,
+                   "a dismissed offer's stale timer cannot hide a replacement")
+        actions[1].review()
+        try expect(visible.isEmpty && reviews == 1 && model.selectedAppID == 91_002 && captures == 0,
+                   "Review selects the exact source and dismisses without starting capture")
+
+        // Phone.app's installed macOS bundle identifier is lowercase.
+        source.values = [.init(pid: 91_003, bundleID: "com.apple.mobilephone", isRunningInput: true, isRunningOutput: true)]
+        for _ in 0..<3 { model.refreshDetection() }
+        try expect(visible == [3] && offers.last?.name == "Phone" && offers.last?.bundleID == "com.apple.mobilephone",
+                   "real macOS Phone bundle identity produces a scoped metadata-only offer")
+        timers[2]()
+        try expect(visible.isEmpty && closed == 3, "the current timeout hides its own panel")
+        for _ in 0..<3 { model.refreshDetection() }
+        try expect(created == 3 && timers.count == 3, "a timed-out offer does not repeatedly reopen during one continuous activity")
+        source.values = []; model.refreshDetection()
+        source.values = [.init(pid: 91_003, bundleID: "com.apple.mobilephone", isRunningInput: true, isRunningOutput: true)]
+        for _ in 0..<3 { model.refreshDetection() }
+        timers[2]()
+        try expect(visible == [4] && created == 4 && closed == 3,
+                   "absent activity permits a new offer with the same PID and invalidates its old timer")
+        source.values[0].pid = 91_004; model.refreshDetection()
+        timers[3]()
+        try expect(visible == [5] && offers.last?.id == 91_004 && closed == 4,
+                   "a changed process replaces the panel and its predecessor cannot dismiss it")
+        controller.close()
+        timers[4](); model.refreshDetection()
+        try expect(visible.isEmpty && closed == 5 && created == 5,
+                   "closing the controller removes its panel and prevents stale timers or publications reopening it")
+        actions[4].snooze()
+        let callsBeforeSnooze = source.calls
+        model.refreshDetection()
+        try expect(model.offer == nil && source.calls == callsBeforeSnooze,
+                   "Snooze suppresses further offer metadata polls")
+        model.detectionEnabled = false
+        await model.prepareForShutdown()
+        try expect(permissions == 0 && captures == 0 && delays.allSatisfy { $0 == 20 },
+                   "all offer paths preserve the timeout and never request microphone or capture access")
     }
 
     private static func lifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {

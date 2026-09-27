@@ -38,7 +38,7 @@ enum MeetingAppCatalogue {
         MeetingKnownApp(bundleID: "com.ringcentral.glip", name: "RingCentral", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.gotomeeting.GoToMeeting", name: "GoTo Meeting", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.apple.FaceTime", name: "FaceTime", kind: .communication, remoteAudioVerified: false),
-        MeetingKnownApp(bundleID: "com.apple.MobilePhone", name: "Phone", kind: .communication, remoteAudioVerified: false),
+        MeetingKnownApp(bundleID: "com.apple.mobilephone", name: "Phone", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.google.Chrome", name: "Google Chrome", kind: .browser, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.apple.Safari", name: "Safari", kind: .browser, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.microsoft.edgemac", name: "Microsoft Edge", kind: .browser, remoteAudioVerified: false),
