@@ -72,7 +72,8 @@ struct SnapWorkspaceView: View {
         }.padding(24)
             .sheet(item: $model.draft) { draft in SnapEditorView(model: model, draft: draft) }
             .sheet(isPresented: $reviewingOrganization) {
-                SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID, onHandOff: onOrganiseHandOff)
+                SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID,
+                    onHandOff: onOrganiseHandOff, onExclude: { ids in selectedIDs.subtract(ids) })
             }
             .onAppear { model.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refresh() }
@@ -85,8 +86,20 @@ struct SnapWorkspaceView: View {
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(selectedIDs.count) Snap\(selectedIDs.count == 1 ? "" : "s") selected").font(.callout.weight(.medium))
-            let hidden = selectedIDs.subtracting(Set(model.visibleItems.map(\.id))).count
-            if hidden > 0 { Text("\(hidden) outside this view").font(.caption).foregroundStyle(.secondary) }
+            let available = Set(model.items.map(\.id))
+            let missing = selectedIDs.subtracting(available)
+            let archived = selectedIDs.intersection(model.items.filter { $0.archivedAt != nil }.map(\.id))
+            let hidden = selectedIDs.subtracting(Set(model.visibleItems.map(\.id))).subtracting(missing).subtracting(archived).count
+            if hidden > 0 { Text("\(hidden) hidden by this view").font(.caption).foregroundStyle(.secondary) }
+            if !missing.isEmpty {
+                Button("Remove \(missing.count) unavailable from selection") { selectedIDs.subtract(missing) }.font(.caption)
+            }
+            if !archived.isEmpty {
+                Button("Exclude \(archived.count) archived from selection") { selectedIDs.subtract(archived) }.font(.caption)
+            }
+            if !missing.isEmpty || !archived.isEmpty {
+                Text("Other selected evidence stays selected. Use Update to change a saved selection.").font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
     private var selectionActions: some View {

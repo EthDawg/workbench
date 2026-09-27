@@ -239,6 +239,84 @@ enum HandoffJobsChecks {
         try check(detailsPrompt.contains("Recording limitations are preserved separately")
             && !detailsPrompt.contains("preserve these qualifications in your result"),
             "details task retains recording limitations without forcing them into the JSON proposal")
+
+        let snaps = SnapStore(root: root.appendingPathComponent("review-snaps"))
+        let snap = try snaps.insert(originalPNG: image, width: 1, height: 1, title: "User-reviewed name", source: .screen)
+        let namedID = UUID()
+        let context = try SnapOrganization.context(store: snaps, ids: [snap.id], selectionID: namedID, title: "Customer research")
+        let namedSource = HandoffSourceSnapshot(reference: .init(kind: .snap, id: snap.id), title: snap.title,
+            capturedAt: snap.createdAt, text: "User note", originalText: "User note", role: .reference, images: [image])
+        var namedJob = try store.prepare(sources: [namedSource], task: SnapOrganization.assistantInstruction, skill: skill, review: context)
+        let namedRoot = store.folder(namedJob)
+        let namedRecord = try HandoffJobStore.read(HandoffSnapshotRecord.self, at: namedRoot.appendingPathComponent("selection.json"))
+        try check(namedRecord.review?.selectionID == namedID && namedJob.reviewKey == context.key,
+                  "logical named review survives the immutable task boundary")
+        let link = namedRecord.items[0].images[0]
+        let reply = """
+        # Proposed synthesis
+        [Plain](\(link))
+        [Angle](<\(link)>)
+        [Title](\(link) "Capture")
+        [Angle title](<\(link)> "Capture")
+        [Dot](./\(link) 'Capture')
+        [Reference][one] and [Reference with title][two].
+
+        [one]: \(link)
+        [two]: <\(link)> "Source image"
+        [three]:
+          ./\(link) 'Source image'
+        Suggested rename and exclusion remain proposals.
+        """
+        try HandoffJobStore.write(Data(reply.utf8), to: namedRoot.appendingPathComponent("result.md"))
+        let published = try HandoffReviewPublication.publish(job: namedJob, snapshot: namedRecord, result: reply,
+            store: snaps, root: namedRoot, replacingChanges: false)
+        let current = try snaps.readOrganization(key: context.key)!
+        try check(current.digest == published && Data(contentsOf: namedRoot.appendingPathComponent("result.md")) == Data(reply.utf8),
+                  "current review publishes without changing the immutable provider reply")
+        let expression = try NSRegularExpression(pattern: #"\]\(<?([^> )]+)"#)
+        let links = expression.matches(in: current.text, range: NSRange(current.text.startIndex..., in: current.text))
+        try check(links.count == 5, "all supported Markdown link forms remain present")
+        for match in links {
+            let destination = (current.text as NSString).substring(with: match.range(at: 1))
+            guard let url = URL(string: destination, relativeTo: current.url)?.absoluteURL else { throw VoiceError.message("A published link is invalid.") }
+            try check(try Data(contentsOf: url) == image, "published source link opens the exact frozen image")
+        }
+        let definitions = try NSRegularExpression(pattern: #"(?m)^\[[^\]]+\]:\s*<?([^> \r\n]+)"#)
+        let references = definitions.matches(in: current.text, range: NSRange(current.text.startIndex..., in: current.text))
+        try check(references.count == 3, "reference-style source definitions retain their labels and titles")
+        for match in references {
+            let destination = (current.text as NSString).substring(with: match.range(at: 1))
+            guard let url = URL(string: destination, relativeTo: current.url)?.absoluteURL else { throw VoiceError.message("A published reference is invalid.") }
+            try check(try Data(contentsOf: url) == image, "published reference-style link opens the exact frozen image")
+        }
+        namedJob.status = .completed; namedJob.publishedReviewDigest = published; namedJob.reviewPublishedAt = Date()
+        try HandoffJobStore.write(HandoffJobStore.encode(namedJob), to: namedRoot.appendingPathComponent("receipt.json"))
+        var changedSource = namedSource; changedSource.text = "Additional user note"
+        let nextContext = try SnapOrganization.context(store: snaps, ids: [snap.id], selectionID: namedID, title: "Customer research")
+        let nextJob = try store.prepare(sources: [changedSource], task: SnapOrganization.assistantInstruction, skill: skill, review: nextContext)
+        let nextRecord = try HandoffJobStore.read(HandoffSnapshotRecord.self, at: store.folder(nextJob).appendingPathComponent("selection.json"))
+        try check(nextJob.id != namedJob.id && nextJob.reviewKey == namedJob.reviewKey && nextRecord.review?.previousDocument == current.text,
+                  "changed named evidence makes a new immutable task with the same current review and prior reference")
+        let reopenedJobs = HandoffJobsModel(directory: root)
+        reopenedJobs.currentReviewDigest = { key in (try? snaps.readOrganization(key: key))?.digest }
+        try check(reopenedJobs.visibleJobs.filter { $0.reviewKey == context.key }.count == 1
+            && reopenedJobs.currentPublishedJob(key: context.key)?.id == namedJob.id,
+            "newer ready task does not hide the last published result and named history groups once")
+        let manualReview = "A newer human-edited review. Keep this."
+        _ = try snaps.writeOrganization(manualReview, key: context.key)
+        try rejects("late completion cannot overwrite a changed review") {
+            _ = try HandoffReviewPublication.publish(job: nextJob, snapshot: nextRecord, result: reply,
+                store: snaps, root: store.folder(nextJob), replacingChanges: false)
+        }
+        try check(try snaps.readOrganization(key: context.key)?.text == manualReview, "conflicted publication preserves the newer human document")
+        _ = try HandoffReviewPublication.publish(job: nextJob, snapshot: nextRecord, result: reply,
+            store: snaps, root: store.folder(nextJob), replacingChanges: true)
+        let backups = try FileManager.default.contentsOfDirectory(at: store.folder(nextJob).appendingPathComponent("outputs"), includingPropertiesForKeys: nil)
+        try check(backups.count == 1 && String(contentsOf: backups[0], encoding: .utf8) == manualReview,
+                  "deliberate replacement preserves the intervening human document")
+        let unchangedSnap = try snaps.read(snap.id)
+        try check(unchangedSnap.title == "User-reviewed name" && unchangedSnap.archivedAt == nil,
+                  "publishing assistant prose never applies a suggested rename or exclusion")
         print("HANDOFF_JOBS_CHECKS_OK: \(passed) checks")
     }
 }

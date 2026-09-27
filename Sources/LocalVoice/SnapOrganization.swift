@@ -16,6 +16,22 @@ struct SnapOrganizationPlan {
     let duplicates: [SnapDuplicateProposal]
 }
 
+/// Context for one logical review. This travels in the immutable handoff;
+/// the existing Snap Reviews document remains the current result owner.
+struct SnapReviewContext: Codable, Equatable {
+    struct Source: Codable, Equatable {
+        var id: UUID
+        var title: String
+        var archived: Bool
+    }
+    var key: String
+    var title: String
+    var selectionID: UUID?
+    var sources: [Source]
+    var previousDocument: String?
+    var previousDigest: String?
+}
+
 enum SnapOrganization {
     static let assistantInstruction = """
     Organise the selected Workbench captures and explicitly selected transcripts into one concise document worth rereading. Return the complete Markdown document as your response; Workbench owns saving it to the job's result, including on retry.
@@ -48,6 +64,50 @@ enum SnapOrganization {
             ?? ids.map { $0.uuidString.lowercased() }.sorted().joined(separator: "\n")
         let key = SnapStore.digest(Data(identity.utf8))
         return .init(key: key, sources: sources, duplicates: duplicates)
+    }
+
+    static func context(store: SnapStore, ids: Set<UUID>, selectionID: UUID?, title: String) throws -> SnapReviewContext {
+        let plan = try prepare(store: store, ids: ids, selectionID: selectionID)
+        let previous = try store.readOrganization(key: plan.key)
+        return SnapReviewContext(key: plan.key, title: title, selectionID: selectionID,
+            sources: plan.sources.map { .init(id: $0.item.id, title: $0.item.title, archived: $0.item.archivedAt != nil) },
+            previousDocument: previous?.text, previousDigest: previous?.digest)
+    }
+
+    /// Only known frozen input links are rebased. The original job reply stays
+    /// byte-for-byte intact; the current review can live in Snaps/Reviews.
+    static func rebasedResult(_ text: String, inputs: [String], jobRoot: URL, destination: URL) -> String {
+        let base = destination.deletingLastPathComponent().standardizedFileURL.pathComponents
+        var result = text
+        for path in inputs where path.hasPrefix("inputs/") {
+            let source = jobRoot.appendingPathComponent(path).standardizedFileURL
+            let target = source.pathComponents
+            let common = zip(base, target).prefix(while: { $0.0 == $0.1 }).count
+            let relative = (Array(repeating: "..", count: base.count - common) + Array(target.dropFirst(common))).joined(separator: "/")
+            let escaped = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "()"))) ?? relative
+            for original in [path, "./" + path, source.path, source.absoluteString] {
+                let literal = NSRegularExpression.escapedPattern(for: original)
+                let suffix = #"(?=\s*(?:"[^"]*"|'[^']*'|\([^)]*\))?\s*\))"#
+                for (pattern, replacement) in [(#"\]\("# + literal + suffix, "](" + escaped),
+                    (#"\]\(<"# + literal + ">" + suffix, "](<" + escaped + ">") ] {
+                    if let expression = try? NSRegularExpression(pattern: pattern) {
+                        result = expression.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result),
+                            withTemplate: NSRegularExpression.escapedTemplate(for: replacement))
+                    }
+                }
+                // Reference-style Markdown puts its destination in a separate
+                // definition, possibly on the next line. Preserve its label,
+                // indentation and optional title while rebasing known inputs.
+                let definition = #"(?m)^([ \t]{0,3}\[(?:\\.|[^\]\\\r\n])+\]:[ \t]*(?:\r?\n[ \t]*)?)"#
+                for (target, replacement) in [(literal, escaped), ("<" + literal + ">", "<" + escaped + ">") ] {
+                    if let expression = try? NSRegularExpression(pattern: definition + target + #"(?=[ \t\r\n]|$)"#) {
+                        result = expression.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result),
+                            withTemplate: "$1" + NSRegularExpression.escapedTemplate(for: replacement))
+                    }
+                }
+            }
+        }
+        return result
     }
 
     static func archiveReviewed(_ ids: Set<UUID>, plan: SnapOrganizationPlan, store: SnapStore) throws {

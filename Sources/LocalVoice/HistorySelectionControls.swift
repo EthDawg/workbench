@@ -139,18 +139,20 @@ struct SubscriptionSettingsView: View {
 struct HandoffJobsView: View {
     @ObservedObject var jobs: HandoffJobsModel
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
+    var onConnections: (() -> Void)? = nil
     @State private var expanded: UUID?
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Handoffs").font(.title2.weight(.semibold))
                 Spacer()
+                if let onConnections { Button("Connections…", action: onConnections) }
                 if jobs.isBusy { Button("Stop task", role: .destructive) { jobs.cancel() } }
             }
             if let notice = jobs.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
             if let error = jobs.error { Text(error).font(.caption).foregroundStyle(.red) }
             if jobs.jobs.isEmpty { Text("Your selected work and its results stay here.").foregroundStyle(.secondary) }
-            ForEach(jobs.jobs) { job in
+            ForEach(jobs.visibleJobs) { job in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(job.title).font(.headline)
@@ -160,21 +162,26 @@ struct HandoffJobsView: View {
                     Text("\(job.itemCount) items · \(job.createdAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption).foregroundStyle(.secondary)
                     Text(job.detail).font(.callout)
+                    if let key = job.reviewKey, jobs.currentReviewDigest?(key) != nil {
+                        HStack {
+                            Button("Open current review") { jobs.onOpenReview?(key) }
+                            if let current = jobs.currentPublishedJob(key: key) {
+                                Text("Current result · " + current.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else { Text("Current document includes local edits or an overview.").font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
                     HStack {
                         Button("Copy instructions") { jobs.copy(job) }
                         Button("Show selected files") { jobs.showInputs(job) }
                         if job.status == .completed {
                             Button(expanded == job.id ? "Hide result" : "Read result") { expanded = expanded == job.id ? nil : job.id }
                             Button("Open result") { jobs.showResult(job) }
+                            if job.reviewKey != nil {
+                                Button("Use as current review") { jobs.publishReview(job, replacingChanges: true) }.disabled(jobs.isBusy)
+                            }
                         }
-                        if [.failed, .cancelled, .interrupted].contains(job.status) {
-                            Menu("Retry…") {
-                                ForEach(SubscriptionProvider.allCases) { provider in
-                                    Button("Retry with \(provider.title)") { jobs.start(job, provider: provider, retry: true) }
-                                        .disabled(jobs.isBusy || !jobs.canRun(job, with: provider))
-                                }
-                            }.fixedSize()
-                        }
+                        startAction(job)
                     }.buttonStyle(.borderless).font(.caption)
                     if let session = job.providerSessionID {
                         Text("Provider receipt: \(session)").textSelection(.enabled).font(.caption2).foregroundStyle(.secondary)
@@ -188,6 +195,25 @@ struct HandoffJobsView: View {
                             }
                         }.font(.caption)
                     }
+                    let others = jobs.otherReviewJobs(job)
+                    if !others.isEmpty {
+                        DisclosureGroup("Other tasks for this review (\(others.count))") {
+                            ForEach(others) { previous in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(previous.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + previous.status.title)
+                                    Text(previous.detail).foregroundStyle(.secondary)
+                                    HStack {
+                                        Button("Show selected files") { jobs.showInputs(previous) }
+                                        if previous.status == .completed {
+                                            Button("Open saved result") { jobs.showResult(previous) }
+                                            Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }.disabled(jobs.isBusy)
+                                        }
+                                        startAction(previous)
+                                    }
+                                }.font(.caption).padding(.vertical, 4)
+                            }
+                        }
+                    }
                     if expanded == job.id, let result = jobs.result(job) {
                         Text(result).textSelection(.enabled).font(.system(.body, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
@@ -197,6 +223,18 @@ struct HandoffJobsView: View {
                     }
                 }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
             }
+        }.task { await jobs.refresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in jobs.objectWillChange.send() }
+    }
+    @ViewBuilder private func startAction(_ job: HandoffJob) -> some View {
+        if job.status == .ready || [.failed, .cancelled, .interrupted].contains(job.status) {
+            Menu(job.status == .ready ? "Start task…" : "Retry…") {
+                ForEach(SubscriptionProvider.allCases) { provider in
+                    Button((job.status == .ready ? "Start with " : "Retry with ") + provider.title) {
+                        jobs.start(job, provider: provider, retry: job.status != .ready)
+                    }.disabled(jobs.isBusy || !jobs.canRun(job, with: provider))
+                }
+            }.fixedSize()
         }
     }
 }
@@ -209,8 +247,8 @@ struct HandoffReviewView: View {
     var preferredSkillID: String? = nil
     var selectedSnapTalkSession: URL? = nil
     var initialEvidenceURL: URL? = nil
+    var resolveReviewContext: (() throws -> SnapReviewContext?)? = nil
     var resolveSources: () throws -> [HandoffSourceSnapshot]
-    var onConnections: () -> Void
     var onPrepared: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @State private var task = ""
@@ -219,6 +257,11 @@ struct HandoffReviewView: View {
     @State private var skillID = TranscriptHandoffSkill.followUp.id
     @State private var problem: String?
     @State private var evidenceURL: URL?
+    @State private var reviewContext: SnapReviewContext?
+    @State private var includePreviousReview = true
+    @State private var showingConnections = false
+    @State private var showingPreviousReview = false
+    @State private var initialized = false
     @StateObject private var evidencePicker = TranscriptHandoffRunner()
     private var skill: TranscriptHandoffSkill { skills.first(where: { $0.id == skillID }) ?? .followUp }
     var body: some View {
@@ -228,6 +271,19 @@ struct HandoffReviewView: View {
                 .foregroundStyle(.secondary)
             TextField("What should the assistant prepare?", text: $task, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
             Picker("Skill", selection: $skillID) { ForEach(skills) { Text($0.title).tag($0.id) } }
+            if let reviewContext {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Current review: " + reviewContext.title).font(.callout.weight(.medium))
+                    Text("A successful result updates this review. Existing task results remain available. Suggested exclusions are never applied automatically.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if reviewContext.previousDocument != nil {
+                        HStack {
+                            Toggle("Include the previous review as reference", isOn: $includePreviousReview).toggleStyle(.checkbox)
+                            Button("Read…") { showingPreviousReview = true }
+                        }.font(.caption)
+                    }
+                }
+            }
             HStack {
                 if let evidenceURL {
                     Label("Snap & Talk: " + evidenceURL.lastPathComponent, systemImage: "photo.on.rectangle").font(.caption)
@@ -278,13 +334,13 @@ struct HandoffReviewView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             if sources.contains(where: { !$0.images.isEmpty }) {
-                Text("Image tasks use Codex. Workbench supports up to \(SubscriptionCLILimits.maximumImages) images, at most 10 MB each and 128 MB together. Edited Snaps share the visible crop and annotations; originals stay in Snap History. Claude Code is available for text tasks. Copy instructions keeps the complete selection.")
+                Text("Codex: up to 64 images, 10 MiB each and 128 MiB together. Claude Code: up to 20 images, 3.75 MiB each and 16 MiB together, with a 24 MiB encoded request limit. Edited Snaps share the visible crop and annotations; originals stay in Snap History. Copy instructions keeps the complete selection.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Connections…") { dismiss(); onConnections() }
+                Button("Connections…") { showingConnections = true }
                 Spacer()
                 Button("Copy instructions") { submit(provider: nil) }.disabled(sources.isEmpty)
                 Menu("Start task") {
@@ -296,33 +352,50 @@ struct HandoffReviewView: View {
             }
         }.padding(24).frame(width: 680)
             .onAppear {
+                guard !initialized else { return }
+                initialized = true
                 task = initialTask ?? "Prepare the requested follow-up from my selected instructions and reference material. Identify any essential missing information."
                 if let preferredSkillID, skills.contains(where: { $0.id == preferredSkillID }) { skillID = preferredSkillID }
                 evidenceURL = initialEvidenceURL
                 refreshSources()
                 Task { await jobs.refresh() }
             }
+            .sheet(isPresented: $showingConnections) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubscriptionSettingsView(jobs: jobs)
+                    HStack { Spacer(); Button("Back to handoff") { showingConnections = false }.keyboardShortcut(.defaultAction) }
+                }.padding(24).frame(width: 530)
+            }
+            .sheet(isPresented: $showingPreviousReview) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Previous review · reference material").font(.title2)
+                    Text("Assistant proposals have not been applied to your Snaps. Current names and archive choices come from Snap History.").font(.caption).foregroundStyle(.secondary)
+                    ScrollView { Text(reviewContext?.previousDocument ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    HStack { Spacer(); Button("Back to handoff") { showingPreviousReview = false }.keyboardShortcut(.defaultAction) }
+                }.padding(24).frame(width: 660, height: 550)
+            }
     }
     private func submit(provider: SubscriptionProvider?) {
         do {
             var latest = try currentSources()
-            guard latest == sources else {
-                sources = latest; roles = [:]
+            var latestReview = try resolveReviewContext?()
+            guard latest == sources, latestReview == reviewContext else {
+                sources = latest; reviewContext = latestReview; roles = [:]
                 problem = "Selected content changed since this review opened. Check the refreshed items and roles, then try again."
                 return
             }
+            if !includePreviousReview { latestReview?.previousDocument = nil }
             for index in latest.indices { latest[index].role = roles[latest[index].reference] ?? latest[index].role }
-            let job = try jobs.prepare(sources: latest, task: task, skill: skill.load())
+            let job = try jobs.prepare(sources: latest, task: task, skill: skill.load(), review: latestReview)
             if let provider { jobs.start(job, provider: provider, retry: [.failed, .cancelled, .interrupted].contains(job.status)) } else { jobs.copy(job) }
             if jobs.error == nil { onPrepared(); dismiss() } else { problem = jobs.error }
         } catch { problem = error.localizedDescription }
     }
     private func supports(_ provider: SubscriptionProvider) -> Bool {
         let images = sources.flatMap(\.images)
-        if provider == .claude { return images.isEmpty }
-        return images.count <= SubscriptionCLILimits.maximumImages
-            && images.allSatisfy { $0.count <= SubscriptionCLILimits.maximumImageBytes }
-            && images.reduce(0, { $0 + $1.count }) <= SubscriptionCLILimits.maximumTotalImageBytes
+        return images.count <= SubscriptionCLILimits.maximumImages(for: provider)
+            && images.allSatisfy { $0.count <= SubscriptionCLILimits.maximumImageBytes(for: provider) }
+            && images.reduce(0, { $0 + $1.count }) <= SubscriptionCLILimits.maximumTotalImageBytes(for: provider)
     }
     private func currentSources() throws -> [HandoffSourceSnapshot] {
         var result = try resolveSources()
@@ -330,7 +403,7 @@ struct HandoffReviewView: View {
         return result
     }
     private func refreshSources() {
-        do { sources = try currentSources(); roles = [:]; problem = nil }
+        do { sources = try currentSources(); reviewContext = try resolveReviewContext?(); roles = [:]; problem = nil }
         catch { problem = error.localizedDescription }
     }
     private func useEvidence(_ url: URL) {

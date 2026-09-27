@@ -74,6 +74,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         snap.onRestoreAfterCapture = { [weak self] in self?.showWindow() }
         snap.onStateChange = { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.onStateChange = { [weak self] in self?.updateRecordingUI() }
+        model.handoffJobs.currentReviewDigest = { [weak snap] key in
+            guard let snap else { return nil }
+            return (try? snap.store.readOrganization(key: key))?.digest
+        }
+        model.handoffJobs.onOpenReview = { [weak snap] key in
+            guard let snap, let current = try? snap.store.readOrganization(key: key) else { return }
+            NSWorkspace.shared.open(current.url)
+        }
+        model.handoffJobs.onPublishReview = { [weak snap, weak model] job, snapshot, text, replace in
+            guard let snap, let model else {
+                throw VoiceError.message("The Snap review owner is unavailable. The task result is kept.")
+            }
+            return try HandoffReviewPublication.publish(job: job, snapshot: snapshot, result: text, store: snap.store,
+                root: model.handoffJobs.folder(job), replacingChanges: replace)
+        }
         model.meetings.saveTranscript = { [weak model] capture, purpose in
             guard let model else { throw VoiceError.message("The transcript library is unavailable.") }
             try model.retainMeetingTranscript(capture, purpose: purpose)

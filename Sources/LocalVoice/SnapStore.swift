@@ -245,6 +245,30 @@ final class SnapStore {
         return bytes
     }
 
+    func organizationURL(key: String) throws -> URL {
+        guard key.count == 64, key.allSatisfy({ $0.isHexDigit }) else {
+            throw SnapError.message("This review has an invalid identity.")
+        }
+        return root.appendingPathComponent("Reviews", isDirectory: true).appendingPathComponent(key + ".md")
+    }
+
+    func readOrganization(key: String) throws -> (url: URL, text: String, digest: String)? {
+        let url = try organizationURL(key: key)
+        guard manager.fileExists(atPath: url.path) else { return nil }
+        try requireDirectory(root)
+        try requireDirectory(url.deletingLastPathComponent())
+        let data = try readPrivateFile(url, maximum: 8 * 1_024 * 1_024)
+        guard let text = String(data: data, encoding: .utf8) else { throw SnapError.message("The current review is not readable text. Its file was kept.") }
+        return (url, text, Self.digest(data))
+    }
+
+    func publishOrganization(_ text: String, key: String, expectedDigest: String?) throws -> URL {
+        guard try readOrganization(key: key)?.digest == expectedDigest else {
+            throw SnapError.message("The current review changed while this task ran. Its newer content was kept. Read the saved task result, then choose Use as current review if you want to replace it.")
+        }
+        return try writeOrganization(text, key: key)
+    }
+
     func writeOrganization(_ text: String, key: String) throws -> URL {
         guard key.count == 64, key.allSatisfy({ $0.isHexDigit }), text.utf8.count <= 8 * 1_024 * 1_024 else {
             throw SnapError.message("This review is too large to save. Choose fewer Snaps.")
@@ -253,7 +277,7 @@ final class SnapStore {
         let directory = root.appendingPathComponent("Reviews", isDirectory: true)
         if !manager.fileExists(atPath: directory.path) { try manager.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700]) }
         try requireDirectory(directory)
-        let url = directory.appendingPathComponent(key + ".md")
+        let url = try organizationURL(key: key)
         try write(Data(text.utf8), to: url)
         return url
     }

@@ -77,17 +77,19 @@ struct WorkbenchHome: View {
                             let snapshots = try snap.handoffSnapshots(ids: Set(ids))
                             readback.importSnapSnapshots(snapshots); model.page = "readback"
                         } catch { snap.notice = error.localizedDescription }
-                    }, onOrganiseHandOff: { task in handoffReview = HandoffReviewRequest(task: task) })
+                    }, onOrganiseHandOff: { task in
+                        handoffReview = HandoffReviewRequest(task: task, snapReview: true, savedSelectionID: history.activeSelectionID)
+                    })
                 case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
                 case "history": VStack(alignment: .leading, spacing: 20) {
                     Text("Pick up a thought.").font(.largeTitle.weight(.semibold))
                     CaptureHistoryView(model: model)
                 }.padding(32)
                 case "handoffs": ScrollView {
-                    HandoffJobsView(jobs: model.handoffJobs) { job, result in
+                    HandoffJobsView(jobs: model.handoffJobs, applySuggestedMetadata: { job, result in
                         do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                         catch { model.handoffJobs.error = error.localizedDescription }
-                    }.padding(32)
+                    }, onConnections: { model.page = "settings" }).padding(32)
                 }
                 case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.page = "history" })
                 case "annotate": stage.controlsView
@@ -127,6 +129,16 @@ struct WorkbenchHome: View {
                     preferredSkillID: request.transcriptID == nil ? packs.preferredTranscriptSkillID : nil,
                     selectedSnapTalkSession: request.transcriptID == nil ? readback.sessionURL : nil,
                     initialEvidenceURL: request.evidenceURL,
+                    resolveReviewContext: {
+                        guard request.snapReview else { return nil }
+                        guard history.activeSelectionID == request.savedSelectionID else {
+                            throw VoiceError.message("The named selection changed. Close this review, deliberately update the saved selection if needed, and open the handoff again.")
+                        }
+                        let name = history.savedSelections.first(where: { $0.id == request.savedSelectionID })?.name ?? "Selected Snap review"
+                        return try SnapOrganization.context(store: snap.store,
+                            ids: Set(history.selected.filter { $0.kind == .snap }.map(\.id)),
+                            selectionID: request.savedSelectionID, title: name)
+                    },
                     resolveSources: {
                         if request.evidenceURL != nil { return [] }
                         var sources = try model.selectedHandoffSources(references: request.transcriptID.map { Set([WorkbenchItemReference(kind: .transcript, id: $0)]) })
@@ -134,7 +146,7 @@ struct WorkbenchHome: View {
                             for index in sources.indices { sources[index].role = .reference }
                         }
                         return sources
-                    }, onConnections: { model.page = "settings" }, onPrepared: { model.page = "handoffs" })
+                    }, onPrepared: { model.page = "handoffs" })
             }
             .sheet(item: $suggestionReview) { suggestion in
                 MetadataSuggestionView(review: suggestion, library: model.historyLibrary)

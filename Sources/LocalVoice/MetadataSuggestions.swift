@@ -5,6 +5,8 @@ struct HandoffReviewRequest: Identifiable {
     var task: String?
     var transcriptID: UUID? = nil
     var evidenceURL: URL? = nil
+    var snapReview = false
+    var savedSelectionID: UUID? = nil
 }
 
 struct MetadataSuggestionReview: Identifiable {
