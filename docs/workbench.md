@@ -13,7 +13,7 @@ The current [capability delivery, issue #112](https://github.com/EthDawg/workben
 | Primitive | Workbench's responsibility | Boundary |
 | --- | --- | --- |
 | Speak → text | Capture/import, recognition, optional cleanup, original wording, history and safe delivery | Other apps own the note, message or document made from the result. |
-| Text → speech | Explicit selected-text handoff, Mac reading voices, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
+| Text → speech | Explicit selected-text handoff, Mac voices with word highlighting, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
 | Screen → Snap | Capture a region, window or display; crop, annotate, copy and keep a searchable local history | Originals survive edits and reversible archive. Cancel creates no empty record or Desktop file. |
 | Snap + narration | Compose saved Snaps or a new pointer-display capture into an ordered portable Snap & Talk session | Narration is optional for saved images. Existing sections, original audio and frozen skill packs remain intact. |
 | Persona | Show saved artwork over windows and browsers, or place it in a Present scene | Independent overlays retain their own placement and lifecycle. No voice-reactive microphone capture is added. |
@@ -90,7 +90,7 @@ Normal application menus, buttons and editable shortcuts remain available togeth
 
 Parakeet is the account-free, on-device default. A separately run, loopback-only transcription server is an explicit alternative. The app preserves the same capture, cleanup, history and delivery flow when recognition changes. A saved configuration is not a connectivity or quality check.
 
-Mac voices are the default for reading. Speko TTS is a separate online choice with its own key and usage; it can use balanced automatic routing or a user-selected compatible catalogue voice. Speko STT is not currently a Workbench recognition provider. No provider failure silently changes between Workbench's local and online choices. User-managed server software controls whether its local endpoint forwards audio beyond the Mac; Workbench cannot promise its end-to-end privacy.
+Mac voices are the default for reading. Workbench lists installed voices with their quality and points to free better ones in System Settings; it never downloads or changes system voices. Speko TTS is a separate online choice with its own key and usage; it can use balanced automatic routing or a user-selected compatible catalogue voice. Speko STT is not currently a Workbench recognition provider. No provider failure silently changes between Workbench's local and online choices. User-managed server software controls whether its local endpoint forwards audio beyond the Mac; Workbench cannot promise its end-to-end privacy.
 
 Prefer a small explicit provider contract over a general agent framework. Add another adapter when a real model/runtime can meet its input, cancellation, readiness and privacy requirements. See [model providers](model-providers.md).
 

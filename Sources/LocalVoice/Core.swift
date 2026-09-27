@@ -11,7 +11,9 @@ struct SavedState: Codable {
     var speechText = ""
     var history: [Transcript] = []
     var replacements: [Replacement] = []
-    var voice = "Karen"
+    /// A voice identifier, or a name an earlier build saved. Empty until
+    /// someone chooses, so a fresh install uses the best installed voice.
+    var voice = ""
     var rate = 180.0
     var rawDraft: String? = nil
 }
