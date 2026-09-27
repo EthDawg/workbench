@@ -68,7 +68,13 @@ enum CoreChecks {
         }
         var many: [Transcript] = []
         for i in 0...TranscriptHistory.limit { many = TranscriptHistory.adding(Transcript(text: "Capture \(i)", seconds: 1), to: many) }
-        try check(many.count == TranscriptHistory.limit && many.first?.text == "Capture 100" && many.last?.text == "Capture 1", "bounded history retains the newest 100 captures")
+        try check(many.count == TranscriptHistory.limit + 1 && many.first?.text == "Capture 100" && many.last?.text == "Capture 0",
+                  "the 101st capture keeps every earlier one, newest first")
+        let updatedOldest = Transcript(id: many[many.count - 1].id, date: many[many.count - 1].date, text: "Corrected oldest wording", seconds: 1)
+        let afterUpdate = TranscriptHistory.adding(updatedOldest, to: many)
+        try check(afterUpdate.count == many.count && afterUpdate.filter { $0.id == updatedOldest.id }.count == 1
+                    && afterUpdate.first?.text == "Corrected oldest wording",
+                  "saving an existing capture id updates one record instead of duplicating it")
         try store.save(SavedState(draft: "Independently edited draft", history: captures))
         let recovered = try store.load()
         try check(recovered.history.map(\.id) == captures.map(\.id) && recovered.history.last?.rawText == earlier.rawText, "multiple captures and originals survive saving an unrelated draft")
@@ -82,6 +88,19 @@ enum CoreChecks {
         try check(restored.replacements == original.replacements && restored.voice == "Daniel" && restored.rate == 210, "dictionary and voice preferences restored")
         let permissions = try FileManager.default.attributesOfItem(atPath: store.url.path)[.posixPermissions] as? NSNumber
         try check(permissions?.intValue == 0o600, "state file private to current user")
+        let priorStateBytes = try Data(contentsOf: store.url)
+        try rejects("failed state encoding leaves the committed file intact") {
+            try store.save(SavedState(history: [Transcript(text: "Invalid duration", seconds: .nan)]))
+        }
+        try check(Data(contentsOf: store.url) == priorStateBytes, "state encoding failure preserves every previous byte")
+        let occupied = directory.appendingPathComponent("occupied", isDirectory: true)
+        try FileManager.default.createDirectory(at: occupied, withIntermediateDirectories: false)
+        let marker = occupied.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: marker)
+        try rejects("failed atomic replacement cannot remove an existing directory") {
+            try AtomicPrivateFile.write(Data("replacement".utf8), to: occupied)
+        }
+        try check(Data(contentsOf: marker) == Data("keep".utf8), "failed replacement preserves the existing contents")
         try Data("not json".utf8).write(to: store.url)
         try rejects("damaged state reports an error") { _ = try store.load() }
         try check(String(contentsOf: store.url, encoding: .utf8) == "not json", "damaged state is not silently erased")

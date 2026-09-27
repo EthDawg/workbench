@@ -35,7 +35,7 @@ struct FloatingToolbar: View {
         let coreTool: ToolbarTool
         switch tool {
         case .dictate: coreTool = .dictate
-        case .snap: coreTool = .snapAndTalk
+        case .snapAndTalk: coreTool = .snapAndTalk
         case .annotate: coreTool = .annotate
         case .present: coreTool = .present
         case .read: coreTool = .read
@@ -54,7 +54,7 @@ struct FloatingToolbar: View {
         switch tool {
         case .dictate:
             title = model.canRecordAgain ? "Record again" : "Dictate"
-        case .snap:
+        case .snapAndTalk:
             if readback.hasPendingTranscriptions { trailing = .status("\(readback.activeSections.count) · Saving"); busy = true }
             else if readback.sessionURL != nil { trailing = .status("\(readback.activeSections.count) Captures" + (shortcut.isUsable ? " · " + shortcut.label : "")) }
         case .annotate:
@@ -105,7 +105,7 @@ struct FloatingToolbar: View {
         if promptInsertion.running { promptInsertion.cancel(); return }
         switch model.controlTool {
         case .dictate: dictate()
-        case .snap: snap()
+        case .snapAndTalk: snap()
         case .annotate: draw()
         case .present: present()
         case .persona: stage.togglePersona()
@@ -122,13 +122,13 @@ struct FloatingToolbar: View {
         menu.addItem(ToolbarMenuAction(viewState.actionTitle, enabled: viewState.isActionEnabled, run: performSelected))
         let tools = NSMenuItem(title: "Change tool", action: nil, keyEquivalent: "")
         let choices = NSMenu(); choices.autoenablesItems = false
-        for tool in [WorkbenchControlTool.snap, .annotate, .present, .persona] {
+        for tool in [WorkbenchControlTool.snapAndTalk, .annotate, .present, .persona] {
             choices.addItem(ToolbarMenuAction(tool.title, checked: model.controlTool == tool) { model.controlTool = tool })
         }
         tools.submenu = choices; menu.addItem(tools)
         // Independent jobs stay available in a fixed order. Opening these
         // controls neither selects another tool nor resets its active state.
-        if model.controlTool == .snap {
+        if model.controlTool == .snapAndTalk {
             menu.addItem(ToolbarMenuAction("Review Snap & Talk · \(readback.activeSections.count) Captures…") { model.onShowEditor?("readback") })
         }
         let presentation = NSMenuItem(title: "Present", action: nil, keyEquivalent: "")

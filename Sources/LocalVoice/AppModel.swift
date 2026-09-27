@@ -15,6 +15,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     func transcribeForShortcut(_ url: URL, id: UUID = UUID()) async throws -> String {
         guard ready else { throw VoiceError.message("Open Workbench and finish preparing the speech model, then run this shortcut again.") }
         guard phase == .idle, !rendering else { throw VoiceError.message("Workbench is busy. Finish the current recording or reading first.") }
+        guard !meetings.isBusy else { throw VoiceError.message("Finish the meeting recording or transcription first.") }
         guard !captureRecovery.hasRecovery else { throw CaptureRecoveryError.pending }
         let file = try AVAudioFile(forReading: url)
         let duration = Double(file.length) / file.processingFormat.sampleRate
@@ -68,7 +69,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
     let promptInsertion = PromptInsertion()
-    @Published var controlTool: WorkbenchControlTool = .snap
+    @Published var controlTool: WorkbenchControlTool = .snapAndTalk
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
@@ -86,6 +87,12 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var transcript = "" { didSet { draftRevision &+= 1; persist() } }
     @Published var speechText = "" { didSet { persist() } }
     @Published var history: [Transcript] = []
+    let historyLibrary = WorkbenchHistoryModel(directory: Workbench.supportDirectory(component: "LocalVoice"))
+    let handoffJobs = HandoffJobsModel(directory: Workbench.supportDirectory(component: "Handoffs"))
+    lazy var meetings = MeetingModel(engine: engine, directory: Workbench.supportDirectory(component: "Meetings"))
+    var onHandOffSelection: ((String?) -> Void)?
+    var onSuggestTranscriptDetails: ((UUID) -> Void)?
+    var resolveAdditionalHandoffItems: ((Set<WorkbenchItemReference>) throws -> [HandoffSourceSnapshot])?
     @Published var replacements: [Replacement] = []
     @Published private(set) var rememberedCorrection: RememberedCorrection?
     @Published var voice = "Karen" { didSet { persist() } }
@@ -256,6 +263,11 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
             transcript = state.draft; speechText = state.speechText; history = state.history
             rawTranscript = state.rawDraft ?? state.draft
             replacements = state.replacements; voice = state.voice; rate = state.rate
+            let removalIssues = MeetingTranscriptRemoval.reconcile(
+                root: Workbench.supportDirectory(component: "Meetings"), history: store)
+            if !removalIssues.isEmpty {
+                self.error = "A recording removal needs attention. " + removalIssues.joined(separator: " ")
+            }
         } catch {
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
             do {
@@ -452,6 +464,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     }
 
     func importAudio() {
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription first."; return }
         guard phase == .idle, ready else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.audio]; panel.canChooseDirectories = false
         panel.message = "Choose an audio file up to 30 minutes. Your selected speech engine will transcribe it."
@@ -459,6 +472,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         importAudio(url)
     }
     func importAudio(_ url: URL) {
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription first."; return }
         guard phase == .idle, ready else { return }
         do {
             let file = try AVAudioFile(forReading: url)
@@ -793,6 +807,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         seekReading(to: player.currentTime + seconds)
     }
     func listen() {
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
         guard !rendering, phase == .idle else { return }
         if playing {
             player?.pause(); playbackTime = player?.currentTime ?? 0
@@ -956,7 +971,72 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         status = restoreDraft ? "Correction undone." : "Dictionary change undone. Your newer draft edits are kept."
     }
     func dismissRememberedCorrection() { rememberedCorrection = nil }
-    func removeTranscript(_ item: Transcript) { history.removeAll { $0.id == item.id }; persist() }
+    func removeTranscript(_ item: Transcript, includingRecording: Bool = false) {
+        guard loaded, history.contains(where: { $0.id == item.id }) else { return }
+        guard includingRecording || !meetings.hasRecording(for: item.id) else {
+            error = "This transcript has a saved recording. Choose Remove again to review removing both."
+            return
+        }
+        let next = history.filter { $0.id != item.id }
+        let commit = {
+            try self.store.save(SavedState(draft: self.transcript, speechText: self.speechText, history: next,
+                replacements: self.replacements, voice: self.voice, rate: self.rate, rawDraft: self.rawTranscript))
+            self.persistWork?.cancel()
+            self.history = next
+        }
+        do {
+            if includingRecording {
+                error = try meetings.removeCompletedRecording(for: item.id, commit: commit)
+                if error == nil { status = "Transcript and recording removed." }
+            } else {
+                try commit()
+                status = "Transcript removed."
+            }
+            // Named selections retain the missing reference until the person
+            // deliberately removes it, so an old selection cannot silently shrink.
+        } catch { self.error = "Could not finish removing the transcript. " + error.localizedDescription }
+    }
+    func retainMeetingTranscript(_ capture: Transcript, purpose: String) throws {
+        guard loaded else { throw VoiceError.message("The transcript library is not ready.") }
+        let next = TranscriptHistory.adding(capture, to: history)
+        // Save metadata first: if history saving fails the meeting's durable
+        // journal retains this same UUID for a safe retry.
+        var metadata = historyLibrary.metadata(for: capture.id)
+        metadata.purpose = purpose == "call" ? .call : .meeting
+        metadata.captureNotes = meetings.pendingTranscriptNotes
+        historyLibrary.setMetadata(metadata, for: capture.id)
+        if let error = historyLibrary.error { throw VoiceError.message(error) }
+        try store.save(SavedState(draft: transcript, speechText: speechText, history: next,
+            replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
+        history = next
+        status = "Meeting saved in Recent transcripts."
+        onPhaseChange?()
+    }
+    func selectedHandoffSources(references: Set<WorkbenchItemReference>? = nil) throws -> [HandoffSourceSnapshot] {
+        let selected = references ?? historyLibrary.selected
+        let ids = Set(selected.filter { $0.kind == .transcript }.map(\.id))
+        let items = history.filter { ids.contains($0.id) }
+        guard items.count == ids.count else {
+            throw VoiceError.message("This selection includes a removed transcript. Remove its missing reference before starting a task.")
+        }
+        var result = items.map { item in
+            let metadata = historyLibrary.metadata(for: item.id)
+            let names = [metadata.person, metadata.company].filter { !$0.isEmpty }
+            let title = metadata.purpose.title + (names.isEmpty ? "" : " · " + names.joined(separator: " · "))
+                + " · " + item.date.formatted(date: .abbreviated, time: .shortened)
+            return HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .transcript, id: item.id),
+                title: title, capturedAt: item.date, text: item.text, originalText: item.rawText ?? item.text,
+                role: metadata.purpose == .prompt ? .instructions : .reference, captureNotes: metadata.captureNotes,
+                seconds: item.seconds)
+        }
+        let additional = Set(selected.filter { $0.kind != .transcript })
+        if !additional.isEmpty {
+            guard let resolveAdditionalHandoffItems else { throw VoiceError.message("The selected Snap library is unavailable.") }
+            result += try resolveAdditionalHandoffItems(additional)
+        }
+        guard Set(result.map(\.reference)) == selected else { throw VoiceError.message("Some selected items are missing. Review the selection before starting.") }
+        return result
+    }
     func fail(_ text: String) {
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
@@ -981,6 +1061,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         catch { self.error = "Could not save this session. \(error.localizedDescription)" }
     }
     func shutdown() {
+        meetings.shutdown(); handoffJobs.shutdown()
         photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
         clipboardReceipt.clear(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil

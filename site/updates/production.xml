@@ -7,6 +7,27 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>Workbench</title>
         <item>
             <title>2.2.0</title>
+            <pubDate>Sun, 27 Sep 2026 20:18:38 +1000</pubDate>
+            <sparkle:version>20260927101737</sparkle:version>
+            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench 2.2.0 — September 27 update</h2>
+<p>Build 20260927101737 adds meeting transcription, reusable selections and reviewed AI handoffs.</p>
+<ul>
+<li>Snap has its own menu-panel row above Snap &amp; Talk. Turn saved Snaps into narrated sections while preserving originals and notes.</li>
+<li>Search transcript details, save selections and review transcript/Snap handoffs before running them with Codex or Claude Code.</li>
+<li>Choose a source and Start to transcribe a meeting. Optional detection is off by default; offers never start recording.</li>
+<li>Removing a completed meeting transcript clearly asks before deleting both its text and saved audio. Cancel keeps both.</li>
+<li>Clearer Persona hide/show controls, imported-persona navigation and a Connections sheet that returns to your handoff.</li>
+</ul>
+<p>Developer ID signed and notarized by Apple. Existing Stable saved work is preserved; Preview keeps a separate library.</p>
+<p>Automated and bounded native checks passed. Routed calls and headphone/two-sided audio, broad keyboard/click-through behavior, external-display/USB combinations and first installation on another Mac remain unverified. Test your intended call route before relying on its recording.</p>
+]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.2.0+20260927101737/Workbench.zip" length="68628002" type="application/octet-stream" sparkle:edSignature="vHccsYHFlMCUQra0bIcrODqC776qNkCfx0oXGm7zt/O8+xFK2ZP6wIpD7SmF7G+SM5I5ApkjcjLvg/6MyXmdDA=="/>
+        </item>
+        <item>
+            <title>2.2.0</title>
             <pubDate>Sat, 26 Sep 2026 07:57:46 +1000</pubDate>
             <sparkle:version>20260925215646</sparkle:version>
             <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
@@ -32,22 +53,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 <p>Includes the packaged New session crash fix from 2.0.1. Mac desktop quality remains the priority; iOS, iPadOS and Chrome extension work is paused.</p>]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.1.0/Workbench.zip" length="67523612" type="application/octet-stream" sparkle:edSignature="oyHQ2ijaO/lMPEOAxLQ1lYVjTxITBAjbHZ/bTMPV8NxHHPMy6NA0NHkwITcX1mA+pBPNBnwcXEan22UA86yRCg=="/>
         </item>
-        <item>
-            <title>2.0.1</title>
-            <pubDate>Fri, 25 Sep 2026 15:51:19 +1000</pubDate>
-            <sparkle:version>20260925055025</sparkle:version>
-            <sparkle:shortVersionString>2.0.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Workbench 2.0.1</h2>
-<p>Fixes a crash when creating a new Snap &amp; Talk session in a downloaded Mac app. Existing captures, narration and session files are preserved. Thanks to Matt for the fix.</p>
-<p>Packaging now checks session creation from the exact delivered app. Workbench remains the public Mac app; the purple-P Preview edition is for development. iOS, iPadOS and Chrome extension work remains paused.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.0.1/Workbench.zip" length="66785858" type="application/octet-stream" sparkle:edSignature="lD6Liynsb4VGn0BuaOHrdC63GxNo4DL0Hb4PFDpdOPu/cQNYgBAFr4qpE9Q7hg651aJpNy4Br3a9id4bEcAbAA=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: vztSciXdo1NJ5t9Kim+SOuQQwib7DcOaieAXyi9/8EL1G1OMSv0tmINVbl1coGVGydLWAlv7EYEMCsUklueICg==
-length: 4541
+edSignature: 7jh+d6GeDGoLoXtPdDbFz7b38HUF91cuQt557k2ZYtoH+PHp1nz64X+LEnRm4jCAnV7NkZ0t5yKEP2psdq9JDg==
+length: 5371
 -->

@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var keyboard: KeyboardCoachModel!
     var presenterPanel: PresenterPanelController!
     var readback: ReadbackModel!
+    var snap: SnapModel!
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
@@ -26,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var receiptStatus: String?
     private var registeredVoiceShortcutConflicts: [String: String] = [:]
     private var terminating = false
+    private var terminationPending = false
+    private var meetingOffer: MeetingOfferPanelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let editions = ["com.ethdawg.workbench", "com.ethdawg.workbench.preview", "com.ethdawg.localvoice", "com.ethdawg.localvoice.preview", "local.ethan.StageMark", "local.ethan.StageMark.preview"]
@@ -49,10 +52,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations())
         model = AppModel(preferences: preferences)
         readback = ReadbackModel(engine: model.engine)
+        snap = SnapModel()
+        readback.onSaveCapturedSnap = { [weak snap] bytes, name in
+            guard let snap else { throw VoiceError.message("Snap History is unavailable.") }
+            return try snap.saveNarratedCapture(bytes, displayName: name)
+        }
+        model.resolveAdditionalHandoffItems = { [weak snap] references in
+            guard let snap, references.allSatisfy({ $0.kind == .snap }) else {
+                throw VoiceError.message("A selected item cannot be found. Review the selection.")
+            }
+            return try snap.handoffSnapshots(ids: Set(references.map(\.id))).map(\.reviewedHandoffSource)
+        }
+        snap.mayBeginCapture = { [weak self] in
+            guard let self, !self.terminating else { return "Workbench is closing." }
+            return self.readback.isCapturing || self.shortcutsSuspended || self.stage?.isTakingScreenshot == true
+                ? "Finish the current screen capture or shortcut edit first." : nil
+        }
+        snap.onHideForCapture = { [weak self] in
+            self?.closeControls(); self?.capturePanel?.window?.orderOut(nil); self?.window?.orderOut(nil)
+        }
+        snap.onRestoreAfterCapture = { [weak self] in self?.showWindow() }
+        snap.onStateChange = { [weak self] in self?.updateRecordingUI() }
+        model.handoffJobs.onStateChange = { [weak self] in self?.updateRecordingUI() }
+        model.handoffJobs.currentReviewDigest = { [weak snap] key in
+            guard let snap else { return nil }
+            return (try? snap.store.readOrganization(key: key))?.digest
+        }
+        model.handoffJobs.onOpenReview = { [weak snap] key in
+            guard let snap, let current = try? snap.store.readOrganization(key: key) else { return }
+            NSWorkspace.shared.open(current.url)
+        }
+        model.handoffJobs.onPublishReview = { [weak snap, weak model] job, snapshot, text, replace in
+            guard let snap, let model else {
+                throw VoiceError.message("The Snap review owner is unavailable. The task result is kept.")
+            }
+            return try HandoffReviewPublication.publish(job: job, snapshot: snapshot, result: text, store: snap.store,
+                root: model.handoffJobs.folder(job), replacingChanges: replace)
+        }
+        model.meetings.saveTranscript = { [weak model] capture, purpose in
+            guard let model else { throw VoiceError.message("The transcript library is unavailable.") }
+            try model.retainMeetingTranscript(capture, purpose: purpose)
+        }
+        model.meetings.mayStart = { [weak self] in
+            guard let self, !self.terminating else { return "Workbench is closing." }
+            guard self.model.ready else { return "Prepare your speech engine in Models first." }
+            return self.model.phase == .idle && !self.model.rendering && !self.readback.blocksDictation && !self.shortcutsSuspended
+                ? nil : "Finish Dictate, reading or Snap & Talk before starting a meeting."
+        }
+        model.meetings.onStateChange = { [weak self] in self?.updateRecordingUI() }
         PackLibraryModel.shared.onSkillsChanged = { [weak self] skills in self?.readback.setPackSkills(skills) }
         PackLibraryModel.shared.start()
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
+        stage.onOpenPersonas = { [weak self] in self?.navigate("personas") }
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
             return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
@@ -60,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage.mayBeginDrawing = { [weak self] in
             guard let self else { return false }
             return WorkbenchDrawingAdmission.allows(phase: self.model.phase, suspended: self.shortcutsSuspended,
-                capturingScreen: self.readback.isCapturing, terminating: self.terminating)
+                capturingScreen: self.readback.isCapturing || self.snap.isCapturing, terminating: self.terminating)
         }
         model.shouldDeferDelivery = { [weak self] in self?.stage.isDrawing == true }
         stage.onDrawingChanged = { [weak self] drawing in
@@ -95,12 +147,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.microphoneStartFailure = { [weak self] target in
             guard let self else { return "Workbench is unavailable." }
             if self.readback.blocksDictation { return "Finish the current Snap & Talk capture, narration and transcription queue before starting ordinary dictation." }
+            if self.model.meetings.isBusy { return "Finish the meeting recording or transcription before starting Dictate." }
             return CaptureInputPolicy.canStart(isPresenting: self.stage.isPresenting, hasExternalMacTarget: target != nil, delivery: self.model.preferences.delivery)
                 ? nil : "Choose Copy to clipboard to capture a thought, or focus a Mac text field. To enter text on your phone, use its keyboard or Dictation button."
         }
         readback.mayBeginCapture = { [weak self] in
             guard let self else { return "Workbench is unavailable." }
-            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended ? nil : "Finish the current dictation or reading before starting Snap & Talk narration."
+            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.model.meetings.isBusy && !self.snap.isCapturing
+                ? nil : "Finish the current dictation, reading or meeting before starting Snap & Talk narration."
         }
         readback.onEditShortcut = { [weak self] in self?.navigate("shortcuts") }
         keyboard = KeyboardCoachModel(entries: shortcutEntries(), update: { [weak self] id, shortcut in guard let self else { return "Workbench is unavailable." }; return self.saveShortcut(id, shortcut) }, suspend: { [weak self] suspended in
@@ -109,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if suspended { self.model.promptInsertion.cancel(); self.hotkeys.unregister(); self.stage.escape(); self.stage.setShortcutsSuspended(true) }
             else { self.stage.setShortcutsSuspended(false); self.registerShortcuts(); self.keyboard.replaceEntries(self.shortcutEntries()) }
         })
-        let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback)))
+        let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)))
         homeWindow.onHide = { [weak self] in self?.model.library.closePreview() }
         window = homeWindow
         window.title = Workbench.displayName
@@ -130,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 guard let self else { return }
                 if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
             })
+        capturePanel.independentScreenCapture = { [weak snap] in snap?.isCapturing == true }
         stage.onFocusActivityControls = { [weak self] tool in
             guard let self else { return }
             self.model.controlTool = tool == "persona" ? .persona : .present
@@ -240,7 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return WorkbenchUpdateActivity(interaction: true) }
             return WorkbenchUpdateActivity(voice: self.model.phase != .idle || self.model.preparing,
                 reading: self.model.rendering || self.model.playing || self.model.paused || self.model.promptInsertion.running,
-                capture: self.readback.blocksDictation || self.stage.isTakingScreenshot,
+                capture: self.readback.blocksDictation || self.snap.isBusy || self.stage.isTakingScreenshot || self.model.meetings.isBusy || self.model.handoffJobs.isBusy,
                 presentation: self.stage.isPresenting || self.stage.hasActivePersona, drawing: self.stage.isDrawing,
                 timer: self.stage.hasActiveTimer,
                 interaction: self.shortcutsSuspended || NSApp.modalWindow != nil || NSApp.windows.contains(where: { $0.attachedSheet != nil }))
@@ -252,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         NSApp.servicesProvider = readSelectionService
         registerShortcuts(); showWindow()
+        meetingOffer = MeetingOfferPanelController(model: model.meetings) { [weak self] in self?.navigate("meeting") }
         model.clipboardReceipt.$receipt.receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -347,6 +403,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
+        menu.addItem(withTitle: "Snap History", action: #selector(showSnap), keyEquivalent: "")
+        menu.addItem(withTitle: "Persona", action: #selector(showPersonas), keyEquivalent: "")
+        menu.addItem(withTitle: "Transcribe meeting or call…", action: #selector(showMeeting), keyEquivalent: "")
         let savePrompt = menu.addItem(withTitle: "Save clipboard as prompt…", action: #selector(saveClipboardPrompt), keyEquivalent: "s")
         savePrompt.keyEquivalentModifierMask = [.command, .shift]
         windows.submenu = menu; main.addItem(windows); NSApp.mainMenu = main; NSApp.windowsMenu = menu
@@ -459,7 +518,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .delivering: state = model.waitingForDrawing ? "Text ready · finish drawing or copy" : "Delivering text"
         case .cancelling: state = "Cancelling"
         case .idle:
-            if readback?.isRecording == true { state = "Recording Snap & Talk narration" }
+            if model.meetings.isRecording { state = "Recording meeting" }
+            else if model.meetings.isStarting { state = "Starting meeting capture" }
+            else if model.meetings.isProcessing { state = "Transcribing meeting" }
+            else if readback?.isRecording == true { state = "Recording Snap & Talk narration" }
             else if (readback?.pendingTranscriptionCount ?? 0) > 0 { state = "Processing Snap & Talk narration" }
             else if stage.isDrawing { state = stage.isPresenting ? "Presenting · Drawing" : "Drawing" }
             else if stage.isPresenting { state = "Presenting" }
@@ -475,7 +537,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             ?? NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: "Workbench")
         // Keep the stack recognisable. A small dot marks activity without
         // turning the app into a clipboard or microphone icon.
-        let busy = model.phase != .idle || model.rendering || model.playing || model.paused || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting || stage.hasActivePersona || model.promptInsertion.running
+        let busy = model.phase != .idle || model.meetings.isBusy || model.handoffJobs.isBusy || model.rendering || model.playing || model.paused || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting || stage.hasActivePersona || model.promptInsertion.running
         let statusIcon = busy ? NSImage(size: NSSize(width: 20, height: 18), flipped: false) { _ in
             icon?.draw(in: NSRect(x: 0, y: 1, width: 16, height: 16))
             NSColor.labelColor.setFill(); NSBezierPath(ovalIn: NSRect(x: 16, y: 0, width: 4, height: 4)).fill()
@@ -493,6 +555,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
     @objc func showHistory() { model.page = "history"; showWindow() }
     @objc func showReadback() { model.page = "readback"; showWindow() }
+    @objc func showSnap() { model.page = "snap"; showWindow() }
+    @objc func showPersonas() { model.page = "personas"; showWindow() }
+    @objc func showMeeting() { model.page = "meeting"; showWindow() }
     @objc func showLibrary() { model.showLibrary() }
     @objc func showPresenter() {
         guard model.phase == .idle, !shortcutsSuspended else { return }
@@ -517,7 +582,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        WorkbenchUpdates.shared.canTerminate { model?.saveBeforeUpdate() == true } ? .terminateNow : .terminateCancel
+        guard WorkbenchUpdates.shared.canTerminate(saveSession: { model?.saveBeforeUpdate() == true }) else { return .terminateCancel }
+        if terminationPending { return .terminateLater }
+        guard let model, model.meetings.isBusy || model.handoffJobs.isBusy else { return .terminateNow }
+        terminationPending = true
+        terminating = true
+        Task {
+            await model.meetings.prepareForShutdown()
+            await model.handoffJobs.prepareForShutdown()
+            _ = model.saveBeforeUpdate()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
@@ -525,6 +601,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.servicesProvider = nil
         presenterPanel?.hide(); model?.presenter.stop()
         capturePanel?.close()
+        meetingOffer?.close()
+        snap?.cancelCapture()
         model?.promptInsertion.cancel(); keyboard?.stopInteraction(); stage?.shutdown(); readback?.shutdown(); model?.shutdown(); hotkeys.unregister()
         if let navigationObserver { NotificationCenter.default.removeObserver(navigationObserver) }
     }
@@ -607,6 +685,19 @@ func runCLI(_ args: [String]) async -> Int32 {
             }
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
+        case "--check-subscription-cli":
+            try SubscriptionCLIChecks.run()
+            try await SubscriptionCLIChecks.runAdapterChecks()
+            try await SubscriptionCLIChecks.runProcessChecks()
+            try await SubscriptionCLIChecks.runSandboxChecks()
+        case "--check-meetings":
+            try await MeetingChecks.run()
+        case "--check-handoff-visual":
+            guard args.count == 3 else { throw VoiceError.message("Usage: --check-handoff-visual SYNTHETIC_IMAGES NEW_OUTPUT_FOLDER") }
+            try await HandoffJobsChecks.runVisualFixture(images: URL(fileURLWithPath: args[1]), output: URL(fileURLWithPath: args[2]))
+        case "--check-handoff-metadata":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --check-handoff-metadata NEW_OUTPUT_FOLDER") }
+            try await HandoffJobsChecks.runMetadataFixture(output: URL(fileURLWithPath: args[1]))
         case "--check-integrations":
             try await MainActor.run { try IntegrationChecks.run() }
         case "--check-speko":
@@ -623,6 +714,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try ReadbackChecks.runPackagedResources()
         case "--check-transcript-handoff":
             try await MainActor.run { try TranscriptHandoffChecks.runAll() }
+        case "--check-history-library":
+            try await MainActor.run { try WorkbenchHistoryChecks.run() }
+        case "--check-handoff-jobs":
+            try await MainActor.run { try HandoffJobsChecks.run() }
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
         case "--check-readback-ordering-ui":
