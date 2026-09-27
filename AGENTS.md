@@ -4,6 +4,8 @@ The active project is `EthDawg/workbench`, with contributions branching from and
 
 **Current scope is Mac desktop quality. iOS, iPadOS and the Chrome extension are paused until explicitly resumed after the [Mac release gate](https://github.com/EthDawg/workbench/issues/7).** Retain their source and history; do not treat older proposals as active requirements. The public product is Workbench; Workbench Preview is the internal development edition.
 
+Before adding or renaming anything a person can click, read the [Grammar](docs/workbench.md#grammar); CI's surface check compares every entry point with [the surface registry](docs/surfaces.json).
+
 Read [the product contract](docs/workbench.md), [the source map](docs/design.md) and [CONTRIBUTING](CONTRIBUTING.md) before changing behavior. Inspect current source and release state; an illustration, passing build or another agent's answer is not proof of a working feature.
 
 For Mac wallpaper and presentation, [the structured experience contract](site/handbook/contract.json) owns capability status, lifecycle and acceptance scenarios. The website generates its human and agent records from it. For the separate iOS target, [the mobile specification](docs/ios-preview.md) owns scope, platform limits and acceptance; the site links that same Markdown. For selected-photo iPhone/Mac transfer, [the photo handoff contract](docs/photo-handoff.md) owns account, transport, deletion and delivery evidence. Mobile image export does not change the status of a Mac desktop capability. Update the owning record when the implemented contract changes; use GitHub issues for agreed work rather than creating another backlog.
