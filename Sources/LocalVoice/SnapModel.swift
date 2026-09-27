@@ -36,6 +36,7 @@ final class SnapModel: ObservableObject {
     let desktop: URL
     private let preferences: UserDefaults
     private let trash: (URL) throws -> Void
+    private let applyScreenshotLocation: () -> Void
     private var inboxTimer: Timer?
     private var inboxSizes: [URL: Int] = [:]
     static let redirectKey = "workbench.snap.screenshots.redirect.v1"
@@ -47,7 +48,8 @@ final class SnapModel: ObservableObject {
     var activeCount: Int { items.filter { $0.archivedAt == nil }.count }
 
     init(store: SnapStore? = nil, screenshotLocation: (any ScreenshotLocationStore)? = nil, preferences: UserDefaults = .standard,
-         desktop: URL? = nil, screenshotInbox: URL? = nil, trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash) {
+         desktop: URL? = nil, screenshotInbox: URL? = nil, trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash,
+         applyScreenshotLocation: @escaping () -> Void = SnapScreenshots.restartScreenshotService) {
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
         let home = FileManager.default.homeDirectoryForCurrentUser
         self.screenshotLocation = screenshotLocation ?? SystemScreenshotLocation()
@@ -55,6 +57,7 @@ final class SnapModel: ObservableObject {
         self.desktop = desktop ?? home.appendingPathComponent("Desktop", isDirectory: true)
         self.screenshotInbox = screenshotInbox ?? home.appendingPathComponent("Pictures/Workbench Screenshots", isDirectory: true)
         self.trash = trash
+        self.applyScreenshotLocation = applyScreenshotLocation
         refresh()
         if keepsScreenshotsOffDesktop { startInbox() }
     }
@@ -72,16 +75,20 @@ final class SnapModel: ObservableObject {
             do {
                 try FileManager.default.createDirectory(at: screenshotInbox, withIntermediateDirectories: true)
                 let current = screenshotLocation.location
-                if current != inboxPath { preferences.set(current ?? "", forKey: Self.previousLocationKey) }
-                screenshotLocation.location = inboxPath
+                if current != inboxPath {
+                    preferences.set(current ?? "", forKey: Self.previousLocationKey)
+                    screenshotLocation.location = inboxPath
+                    applyScreenshotLocation()
+                }
                 preferences.set(true, forKey: Self.redirectKey)
                 startInbox()
-                notice = "New screenshots now go straight to Snap History. Turn this off to restore your previous screenshot location."
+                notice = "New screenshots now go straight to Snap History; the menu bar refreshed once to apply it. Turn this off to restore your previous screenshot location."
             } catch { notice = "Screenshots were not redirected. \(error.localizedDescription)" }
         } else {
             if screenshotLocation.location == inboxPath {
                 let previous = preferences.string(forKey: Self.previousLocationKey) ?? ""
                 screenshotLocation.location = previous.isEmpty ? nil : previous
+                applyScreenshotLocation()
             }
             preferences.set(false, forKey: Self.redirectKey)
             stopInbox()

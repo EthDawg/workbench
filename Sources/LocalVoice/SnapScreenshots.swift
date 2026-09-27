@@ -82,6 +82,18 @@ enum SnapScreenshots {
         return item
     }
 
+    /// macOS applies a changed screenshot location only after its screenshot
+    /// service restarts (macos-defaults.com pairs the setting with
+    /// `killall SystemUIServer`). launchd relaunches it at once; the menu bar
+    /// redraws. Called only after an explicit change of the location.
+    static func restartScreenshotService() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        process.arguments = ["SystemUIServer"]
+        process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+        try? process.run()
+    }
+
     static func moveToTrash(_ url: URL) throws {
         try FileManager.default.trashItem(at: url, resultingItemURL: nil)
     }
