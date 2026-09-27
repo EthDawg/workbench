@@ -100,6 +100,11 @@ protocol PersonaSessionDisplaying: AnyObject {
     func configure(image: NSImage, name: String, state: PersonaOverlayState)
     func hide()
     func shutdown()
+    func setVoiceLevel(_ level: CGFloat?)
+}
+
+extension PersonaSessionDisplaying {
+    func setVoiceLevel(_ level: CGFloat?) {}
 }
 
 struct PersonaPreparedSessionGroup {
@@ -221,6 +226,8 @@ final class PersonaSessionController {
         update(id) { $0.placement.x = min(1, max(0, x)); $0.placement.y = min(1, max(0, y)) }
     }
     func pause() { guard phase == .active else { return }; phase = .paused; panels.values.forEach { $0.hide() }; onChange?() }
+    /// Nil turns the voice ring off on every overlay in this session.
+    func setVoiceLevel(_ level: CGFloat?) { panels.values.forEach { $0.setVoiceLevel(level) } }
     func resume() { guard phase == .paused else { return }; phase = .active; render(animated: false); onChange?() }
     func end() { closePanels(); phase = .idle; selectedInstanceID = nil; groups.removeAll(); savedLayouts.removeAll(); onChange?() }
     func markSaved(_ group: PersonaGroup) {

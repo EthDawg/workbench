@@ -58,6 +58,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         position()
     }
     func hide() { artwork.cancelDragging(); window?.orderOut(nil); window?.alphaValue = 1 }
+    func setVoiceLevel(_ level: CGFloat?) { artwork.voiceLevel = level }
     func shutdown() { hide(); screenChanges = nil; onPlacementChange = nil; onSelection = nil }
 
     private static func screenID(_ screen: NSScreen) -> UInt32? {
@@ -102,6 +103,9 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
 
 private final class PersonaArtworkView: NSView {
     var image: NSImage? { didSet { needsDisplay = true } }
+    /// Nil while the voice ring is off.
+    var voiceLevel: CGFloat? { didSet { if voiceLevel != oldValue || voiceLevel != nil { needsDisplay = true } } }
+    private var ringPhase: CGFloat = 0
     var onFinishDragging: (() -> Void)?
     var onSelection: (() -> Void)?
     private var anchor: CGPoint?
@@ -115,9 +119,18 @@ private final class PersonaArtworkView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         // No generated frame, label, material or shadow is baked over the user's
-        // finished artwork. An opaque imported background remains opaque.
-        image?.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1,
+        // finished artwork. An opaque imported background remains opaque. The
+        // optional voice ring insets the artwork rather than covering it.
+        guard let level = voiceLevel else {
+            image?.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1,
+                        respectFlipped: false, hints: [.interpolation: NSImageInterpolation.high])
+            return
+        }
+        image?.draw(in: PersonaVoiceRing.artworkRect(in: bounds), from: .zero, operation: .sourceOver, fraction: 1,
                     respectFlipped: false, hints: [.interpolation: NSImageInterpolation.high])
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if !still { ringPhase += 0.35 }
+        PersonaVoiceRing.draw(in: bounds, level: level, phase: ringPhase, reduceMotion: still)
     }
     override func mouseDown(with event: NSEvent) {
         guard let window, !window.ignoresMouseEvents else { return }
