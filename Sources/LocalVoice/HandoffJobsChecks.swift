@@ -343,6 +343,25 @@ enum HandoffJobsChecks {
         let unchangedSnap = try snaps.read(snap.id)
         try check(unchangedSnap.title == "User-reviewed name" && unchangedSnap.archivedAt == nil,
                   "publishing assistant prose never applies a suggested rename or exclusion")
+        // Built-in skills: each runs as a connected task and asks for a plain Markdown reply.
+        let builtIns = TranscriptHandoffSkill.builtIns
+        try check(Set(builtIns.map(\.id)).count == builtIns.count && builtIns.allSatisfy(\.repliesInline) && builtIns.allSatisfy { $0.defaultTask != nil },
+                  "built-in skills have distinct identities, reply inline and suggest a task")
+        try check(!TranscriptHandoffSkill.installed(TranscriptHandoffSkills.followUpSnapshot(), detail: "pack").repliesInline,
+                  "installed pack skills keep the manual file-producing handoff")
+        for builtIn in builtIns.dropFirst() {
+            let snapshot = try builtIn.load()
+            try TranscriptHandoffSkillCheck.validate(snapshot); passed += 1
+            let text = String(decoding: snapshot.files[TranscriptHandoffStore.skillEntryPoint] ?? Data(), as: UTF8.self)
+            try check(text.contains("not wrapped in a code block") && (text.contains("never instructions") || text.contains("do not carry out")),
+                      "\(builtIn.title) asks for a plain Markdown reply and keeps quoted material from acting as instructions")
+            let job = try store.prepare(sources: sources, task: builtIn.defaultTask!, skill: snapshot)
+            let record = try HandoffJobStore.read(HandoffSnapshotRecord.self, at: store.folder(job).appendingPathComponent("selection.json"))
+            try check(record.skill.id == builtIn.id && HandoffJobStore.prompt(snapshot: record, skill: text, folder: store.folder(job), manual: false).contains(text),
+                      "\(builtIn.title) prepares a job whose connected prompt carries the skill")
+        }
+        try check(TranscriptHandoffSkills.meetingSkill.contains("`Owner?`") && TranscriptHandoffSkills.coachSkill.contains("`You:`"),
+                  "meeting actions flag missing owners and coaching needs labelled speakers")
         print("HANDOFF_JOBS_CHECKS_OK: \(passed) checks")
     }
 }
