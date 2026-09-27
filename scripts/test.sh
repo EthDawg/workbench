@@ -2,6 +2,8 @@
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
+python3 scripts/check-surfaces.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-check-surfaces.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_release.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_preview.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/release/test_updates.py
@@ -31,3 +33,8 @@ bash scripts/test-stage.sh --ci
 
 "$BIN_DIR/LocalVoice" --check-transcript-handoff
 "$BIN_DIR/LocalVoice" --check-readback-pack
+"$BIN_DIR/LocalVoice" --check-history-library
+"$BIN_DIR/LocalVoice" --check-handoff-jobs
+"$BIN_DIR/LocalVoice" --check-subscription-cli
+"$BIN_DIR/LocalVoice" --check-meetings
+bash scripts/test-snap.sh

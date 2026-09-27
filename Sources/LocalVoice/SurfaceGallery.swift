@@ -291,7 +291,7 @@ enum SurfaceGallery {
     func homeWindow(size: NSSize) -> NSWindow {
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback))
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: SnapModel()))
         window.setContentSize(size)
         return window
     }
@@ -451,7 +451,7 @@ enum SurfaceGallery {
                          action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings")]
             case .read:
                 list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading · Stop or Cancel", "Pauses, resumes, stops or cancels the reading")]
-            case .snap:
+            case .snapAndTalk:
                 list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
                          page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Set Up or N · Review", "readback")]
             case .annotate:

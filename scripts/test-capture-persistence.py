@@ -100,12 +100,18 @@ struct CaptureSettings {
     func record(outcome: TextDelivery.Outcome, wordCount: Int) { receipts += 1 }
 }
 enum AudioRenderer { static func remove(_ url: URL?) {} }
+@MainActor final class AuxiliaryCaptureWork {
+    var isBusy = false
+    var shutdownCount = 0
+    func shutdown() { shutdownCount += 1 }
+}
 
 @MainActor final class CaptureHarness {
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var phase = Phase.idle
     let engine = Engine(), cleanupEngine = Cleanup(), store = StateStore()
     let clipboardReceipt = ClipboardReceipt(), shortcutRequest = DictationRequest()
+    let meetings = AuxiliaryCaptureWork(), handoffJobs = AuxiliaryCaptureWork()
     let captureRecovery: CaptureRecoveryStore
     var captureStateWriter: ((SavedState) throws -> Void)?
     var loaded = true
@@ -161,6 +167,11 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             tag("RIFF"); le(UInt32(32036)); tag("WAVEfmt "); le(UInt32(16)); le(UInt16(1)); le(UInt16(1)); le(UInt32(16000)); le(UInt32(32000)); le(UInt16(2)); le(UInt16(16)); tag("data"); le(UInt32(32000)); data.append(Data(repeating: 0, count: 32000)); return data
         }
         let wav = wave()
+        let meetingBusy = CaptureHarness(directory: folder("meeting-busy"))
+        meetingBusy.meetings.isBusy = true
+        meetingBusy.importAudio(folder("unread.wav"))
+        try check(meetingBusy.error?.contains("meeting") == true && meetingBusy.engine.calls == 0,
+                  "audio import cannot race the meeting recognizer")
         func finish(_ model: CaptureHarness) async { let task = model.transcriptionTask; await task?.value }
         func waitForEngine(_ model: CaptureHarness) async throws {
             for _ in 0..<500 { if model.engine.continuation != nil { return }; await Task.yield() }
@@ -212,6 +223,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let quitting = CaptureHarness(directory: folder("quit")); quitting.store.fails = true
         let quitURL = try quitting.makeRecording(wav)
         quitting.run(quitURL, owned: true); await finish(quitting); quitting.shutdown()
+        try check(quitting.meetings.shutdownCount == 1 && quitting.handoffJobs.shutdownCount == 1,
+                  "ordinary shutdown forwards cancellation to independent work")
         try check(FileManager.default.fileExists(atPath: quitURL.path) && quitting.captureRecovery.hasRecovery, "Quit never deletes a failed capture")
         let cold = CaptureHarness(directory: folder("quit"), state: SavedState()); cold.restore()
         try check(cold.transcript == quitting.transcript && cold.rawTranscript == quitting.rawTranscript && cold.canRetry, "Cold recovery restores recognized draft and original without recognition")
