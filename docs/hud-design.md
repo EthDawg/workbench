@@ -1,8 +1,17 @@
 # Floating controls: design review
 
-Status: implemented for 2.0.0-preview.1. The [interaction specification](product-spec.md) is authoritative; the [release evidence](preview-2.0.md) distinguishes code checks, native observations and remaining acceptance work. The generated studies remain concepts, not screenshots.
+**Status: superseded. Historical record, not current direction.**
 
-## Agreed direction
+This is a September 2026 review of per-job floating controls. Workbench has since moved to three surfaces: one menu-bar panel, one floating toolbar and the desktop app. [The product contract](workbench.md) owns direction, [the floating toolbar contract](floating-toolbar.md) owns toolbar behaviour, and [the interaction specification](product-spec.md) owns surfaces and closure. Read those first. The generated studies here remain concepts, not screenshots.
+
+Two conclusions below were reversed. Do not reapply them as requirements:
+
+- **Hover.** This review concluded that hover must not reveal essential actions, and chose click in deliberate contrast to Superwhisper. The shipped toolbar reveals its row on hover and opens a native menu on click. The underlying rule survives in `product-spec.md`, where the same actions stay reachable by click and keyboard, so no essential action is hover-only. What changed is that hover became a legitimate reveal, not that the rule was dropped.
+- **Per-job placement.** This review gave each job its own remembered placement. The toolbar now has one window, one saved position and one lifecycle. Eight docking positions and the Position menu remain.
+
+The collapsed per-job presentation tile described below was replaced by that single toolbar. The recording guidance still holds: Stop and recording state stay visible while audio is captured, and opening, closing or resizing controls preserves the recording and the intended paste destination.
+
+## Agreed direction (September 2026, partly reversed)
 
 The collapsed presentation control contains a phone icon, divider and chevron. Click opens its controls. It has no “Demo” or “Live” label. Hover must not reveal essential actions. The tile can be repositioned so it does not cover the device, persona or software being demonstrated.
 
@@ -18,7 +27,7 @@ Recording is the core utility. Its Stop action and recording state remain visibl
 
 The selected pairing is A for regular use and C when explicitly expanded. Ethan authorised implementation using the project goals and the form-factor distinction. Generated boards compare the alternatives, refine the presentation tile, and illustrate snapping and recording states. They are design illustrations, not screenshots of shipped behavior.
 
-## Interaction details to validate
+## Interaction details to validate (as reviewed in September 2026)
 
 - Click opens options. Clicking elsewhere closes options without stopping or discarding audio.
 - Snap guides appear only while dragging. A Position menu supplies the same destinations for people who do not drag.
@@ -31,7 +40,7 @@ The selected pairing is A for regular use and C when explicitly expanded. Ethan 
 
 ## Evidence
 
-[Superwhisper's recording-window documentation](https://superwhisper.com/docs/get-started/interface-rec-window) describes mini/full views, mode selection, recording controls and a context menu. Some essential controls appear on hover; Workbench's proposed click behavior deliberately follows Ethan's preference instead.
+[Superwhisper's recording-window documentation](https://superwhisper.com/docs/get-started/interface-rec-window) describes mini/full views, mode selection, recording controls and a context menu. Some essential controls appear on hover; Workbench's proposed click behavior deliberately followed Ethan's preference instead. That preference was later reversed for the floating toolbar, as recorded at the top of this document.
 
 [Superwhisper's changelog](https://superwhisper.com/changelog) records fixes for multi-monitor snapping, window position drift and focus stealing during mode changes. These inform regression cases; they do not establish that Workbench passes them.
 

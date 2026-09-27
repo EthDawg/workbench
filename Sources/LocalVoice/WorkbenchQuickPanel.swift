@@ -36,6 +36,14 @@ struct WorkbenchQuickPanel: View {
             Divider()
             VStack(spacing: 2) {
                 ForEach(WorkbenchControlTool.allCases) { tool in
+                    if tool == .snapAndTalk {
+                        Button { open("snap") } label: {
+                            Text("Snap").font(.system(size: 12, weight: .medium))
+                                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }.buttonStyle(.plain).frame(height: 34)
+                            .help("Open Snap to capture, edit and review screenshots.")
+                    }
                     HStack(spacing: 8) {
                         Button { perform(tool) } label: {
                             Text(tool.title).font(.system(size: 12, weight: .medium))
@@ -78,7 +86,6 @@ struct WorkbenchQuickPanel: View {
             }
             HStack {
                 Button("Open Workbench") { open("home") }
-                Button("Snap") { open("snap") }
                 Spacer(minLength: 8)
                 Button("Settings") { open("settings") }
                 Button("Shortcuts") { open("shortcuts") }

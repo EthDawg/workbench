@@ -56,6 +56,22 @@ enum MeetingChecks {
         try expect(detector.availableApps().isEmpty && detector.lastError != nil, "metadata errors are visible rather than an absent-call claim")
         source.failure = false
 
+        // Identifiers compare without case, and an app can own audio processes
+        // not named `.helper`. Mac call services are never merged into an app.
+        for (process, owner) in [("com.apple.MobilePhone", "com.apple.mobilephone"), ("com.microsoft.teams2.modulehost", "com.microsoft.teams2"),
+                                 ("com.hnc.Discord.helper.Renderer", "com.hnc.Discord"), ("net.whatsapp.WhatsApp", "net.whatsapp.WhatsApp")] {
+            try expect(MeetingAppCatalogue.known(process)?.bundleID == owner, "\(process) belongs to \(owner)")
+        }
+        try expect(MeetingAppCatalogue.known("com.apple.FaceTimeExtra") == nil && MeetingAppCatalogue.known("com.apple.avconferenced") == nil,
+                   "only exact identifiers and an app's own processes match; call services are never merged into an app")
+        let teams = MeetingDetector(source: source)
+        teams.isEnabled = true
+        source.values = [.init(pid: 900, bundleID: "com.microsoft.teams2", isRunningInput: false, isRunningOutput: false),
+                         .init(pid: 901, bundleID: "com.microsoft.teams2.modulehost", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false)]
+        _ = teams.evaluate(now: now); _ = teams.evaluate(now: now)
+        try expect(teams.evaluate(now: now)?.bundleID == "com.microsoft.teams2" && teams.availableApps().map(\.id) == [900],
+                   "a new Teams call in its module host is offered as one Teams choice")
+
         source.values = [
             .init(pid: 800, bundleID: "com.apple.assistantd", isRunningInput: false, isRunningOutput: false,
                   isUserFacingApp: false),
@@ -246,6 +262,78 @@ enum MeetingChecks {
         try expect(history[0].rawText == history[0].text && history[0].cleanupMethod == nil, "original wording is retained without cleanup")
         commitProcessor.writeManifest = nil
 
+        // Speakers: the microphone is "You" and the app's audio is "Others".
+        func bursts(_ source: MeetingTrackSource, seconds: Double, spans: [(Double, Double)], session: URL) throws -> MeetingTrack {
+            let rate = 16_000.0, relative = "tracks/\(source.rawValue).caf"
+            let url = try MeetingStore.safeURL(session: session, relative: relative)
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate,
+                                           AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            do {
+                let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                let total = Int(seconds * rate)
+                let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(total))!
+                buffer.frameLength = AVAudioFrameCount(total)
+                for index in 0..<total {
+                    let time = Double(index) / rate
+                    let speaking = spans.contains { time >= $0.0 && time < $0.1 }
+                    buffer.floatChannelData![0][index] = speaking ? Float(0.2 * sin(2 * .pi * 220 * time)) : (index % 2 == 0 ? 0.0004 : -0.0004)
+                }
+                try file.write(from: buffer)
+            }
+            let timing = MeetingTrackTiming(source: source, startSeconds: 0, sampleRate: rate)
+            try MeetingStore.writePrivate(JSONEncoder().encode(timing), to: url.deletingPathExtension().appendingPathExtension("json"))
+            return MeetingTrack(source: source, file: relative, startSeconds: 0, seconds: seconds, sampleRate: rate, peak: 0.2, droppedSeconds: 0)
+        }
+        let spanManifest = manifest()
+        let spanSession = try MeetingStore.create(root: storeRoot, manifest: spanManifest)
+        let spanTrack = try bursts(.local, seconds: 7, spans: [(1.0, 2.0), (3.5, 4.5), (6.0, 6.1)], session: spanSession)
+        let clips = spanSession.appendingPathComponent("clips", isDirectory: true)
+        try MeetingStore.createPrivateDirectory(clips)
+        let found = try MeetingConversation.writeUtterances(track: spanTrack, session: spanSession, speaker: .you, directory: clips)
+        try expect(found.count == 2 && abs(found[0].start - 0.8) < 0.15 && abs(found[1].start - 3.3) < 0.15
+                   && found.allSatisfy { $0.end > $0.start + 0.9 }, "speech splits into timed utterances and a 0.1 s click is ignored")
+        let heard: [MeetingConversation.Utterance] = [
+            .init(speaker: .others, start: 0, end: 2, text: "Can you send the draft by Friday"),
+            .init(speaker: .you, start: 0.1, end: 1.9, text: "can you send the draft by friday"),
+            .init(speaker: .you, start: 2.5, end: 3.5, text: "Yes I will"),
+            .init(speaker: .you, start: 3.8, end: 4.2, text: "and copy Sam"),
+            .init(speaker: .others, start: 5, end: 6, text: "Thanks")]
+        try expect(MeetingConversation.conversation(heard) == "Others: Can you send the draft by Friday\n\nYou: Yes I will and copy Sam\n\nOthers: Thanks",
+                   "speaker turns are chronological, a speaker echo is dropped and a reply is kept")
+
+        var talk = manifest()
+        let talkSession = try MeetingStore.create(root: storeRoot, manifest: talk)
+        let mine = try bursts(.local, seconds: 5, spans: [(0.5, 1.5)], session: talkSession)
+        let theirs = try bursts(.remote, seconds: 5, spans: [(2.5, 3.5)], session: talkSession)
+        var stoppedTalk = talk; stoppedTalk.tracks = [theirs, mine]; stoppedTalk.seconds = 5
+        try MeetingStore.save(stoppedTalk, at: talkSession, replacing: talk); talk = stoppedTalk
+        var spoken: [Transcript] = []
+        let labelled = MeetingProcessor(session: talkSession, transcribe: { url in
+            let name = url.lastPathComponent
+            return name.hasPrefix("you-") ? "I can do Tuesday" : name.hasPrefix("others-") ? "Does Tuesday work" : "mixed wording"
+        }, commit: { transcript, _, _ in spoken.append(transcript) })
+        _ = try await labelled.run()
+        try expect(spoken.count == 1 && spoken[0].text == "You: I can do Tuesday\n\nOthers: Does Tuesday work"
+                   && spoken[0].rawText == "mixed wording" && spoken[0].cleanupMethod == MeetingProcessor.speakersMethod,
+                   "a two-track meeting saves labelled turns and keeps the mixed words as the original")
+        try expect(!((try? FileManager.default.contentsOfDirectory(atPath: talkSession.path)) ?? []).contains { $0.hasPrefix(".speakers-") },
+                   "speaker clips are removed after use")
+
+        var fallback = manifest()
+        let fallbackSession = try MeetingStore.create(root: storeRoot, manifest: fallback)
+        let fallbackTracks = [try bursts(.local, seconds: 3, spans: [(0.5, 1.5)], session: fallbackSession),
+                              try bursts(.remote, seconds: 3, spans: [(1.5, 2.5)], session: fallbackSession)]
+        var stoppedFallback = fallback; stoppedFallback.tracks = fallbackTracks; stoppedFallback.seconds = 3
+        try MeetingStore.save(stoppedFallback, at: fallbackSession, replacing: fallback); fallback = stoppedFallback
+        var kept: [Transcript] = []
+        let unlabelled = MeetingProcessor(session: fallbackSession, transcribe: { url in
+            if url.lastPathComponent.hasPrefix("segment-") { return "mixed wording" }
+            throw MeetingError.message("Synthetic clip failure")
+        }, commit: { transcript, _, _ in kept.append(transcript) })
+        _ = try await unlabelled.run()
+        try expect(kept.count == 1 && kept[0].text == "mixed wording" && kept[0].cleanupMethod == nil,
+                   "if speakers cannot be separated the mixed transcript is saved unchanged")
+
         // The real bounded writer records timestamp discontinuities as a stop,
         // rather than joining later samples onto an earlier time.
         let recording = manifest(state: .recording)
@@ -264,6 +352,7 @@ enum MeetingChecks {
 
         try await lifecycleChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
+        checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
     }
 
@@ -377,6 +466,23 @@ enum MeetingChecks {
         await model.start()
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
+        let activeID = UUID(uuidString: MeetingStore.sessions(in: root.appendingPathComponent("model"))[0].lastPathComponent)!
+        var removalCommits = 0
+        do {
+            _ = try model.removeCompletedRecording(for: activeID) { removalCommits += 1 }
+            throw MeetingError.message("An active recording allowed removal")
+        } catch {
+            try expect(removalCommits == 0 && model.isRecording && model.hasRecording(for: activeID),
+                       "removing a completed transcript cannot remove an active recording")
+        }
+        var oldMeeting = manifest(state: .committed)
+        oldMeeting.seconds = 1
+        oldMeeting.segments = [.init(index: 0, file: "segments/segment-0000.wav", startSeconds: 0,
+                                      seconds: 1, bytes: 32_000, text: "An earlier completed meeting")]
+        _ = try MeetingStore.create(root: root.appendingPathComponent("model"), manifest: oldMeeting)
+        _ = try model.removeCompletedRecording(for: oldMeeting.id) { removalCommits += 1 }
+        try expect(removalCommits == 1 && model.isRecording && model.hasRecording(for: activeID)
+                   && !model.hasRecording(for: oldMeeting.id), "an unrelated active recording does not prevent an old completed recording's removal")
         await model.stop()
         try expect(!model.isBusy && capture.finished == 1 && history.count == 1 && recognition == 1,
                    "Stop closes capture then saves through the shared history callback")

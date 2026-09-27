@@ -8,6 +8,73 @@ The current [capability delivery, issue #112](https://github.com/EthDawg/workben
 
 **Mac desktop quality is the active focus. iOS, iPad and Chrome extension development and promotion are paused until the Mac experience is dependable.** Existing code and saved work are preserved. The [mobile contract](ios-preview.md) records that separate target's limits; it is not a promise of sync or mobile scope for this Mac delivery.
 
+## Grammar
+
+Workbench stays learnable as more people and agents contribute by speaking one small language: a few capabilities you can reach without looking, options that belong to exactly one of them, and one place where captured work ends up. This section is how new work is judged. It does not by itself move or rename anything.
+
+### Moments
+
+Every entry must make one of these faster or calmer.
+
+1. **Working.** You need a utility for seconds and return to work: Dictate, Snap, Read.
+2. **Capturing.** You explain screens aloud and get a deck in seconds: Snap & Talk.
+3. **Presenting.** You demonstrate with a device, your persona and live marks, and never get flustered: Present, Persona, Draw, Timer.
+
+Reusing what you captured (History, then Hand off) supports these moments. It is not a fourth mode to navigate.
+
+### Capabilities and named workflows
+
+| Capability | Turns | Options live here, and nowhere else |
+| --- | --- | --- |
+| Dictate | voice into text | destination, text style, recent transcripts, **Transcribe meeting or call** |
+| Snap | the screen into an image | region, window or screen; crop and marks on the image; copy |
+| Read | text into speech | voice, source text |
+| Draw | marks over anything | pen, arrow, shape, board, undo, clear |
+| Present | a device or scene into a live stage | scene, device, audio, saved prompts, Persona in the scene |
+| Persona | you onto the screen | cards, size, position, voice framing |
+| Timer | a break into a visible countdown | duration, placement |
+
+**Named workflows** combine capabilities and keep their own name because they are a moment: **Snap & Talk** (Snap with narration, building a deck) and **Transcribe meeting or call** (Dictate with a call's audio, as a longer session). A new named workflow is a new capability for review purposes.
+
+**Hand off** is an action on selected History items: a recipe (skill) and a destination (Copy instructions, Claude or Codex), with the result returning to History. It is not a destination of its own.
+
+### Composition
+
+Every use of Workbench is at most three visible choices: the capability, an optional recipe, and where the result goes (the field you were in, History, Claude or Codex, a file or the speakers). The source follows from where you started or what you selected, and is offered only when it is genuinely ambiguous, such as which app's audio to transcribe. A recipe is a skill file; Dictate's text styles stay its own cleanup options because they promise to keep your wording. A named workflow is a composition worth naming because it is a moment: Snap & Talk is Snap with narration, the Deck recipe and a file. A new idea should be a recipe or a destination before it is a capability.
+
+### Places
+
+- **History**: everything captured or produced (dictations, meetings and calls, Snaps, Snap & Talk decks, Hand off results), each keeping the material that produced it, reached through one door and searched and selected together. Existing stores stay where they are; History is a view over them.
+- **Library**: things prepared for reuse (scenes, personas, saved prompts and links, skills and packs).
+- **Settings**: preferences, keyboard, models and connections.
+
+### Surfaces keep their roles
+
+- **Menu bar panel**: a row per capability or named workflow, with that row's adjustments. Footer: Open Workbench, Settings, Shortcuts.
+- **Floating toolbar**: live controls for Capturing and Presenting (Snap & Talk, Draw, Present, Persona), plus compact Dictate and Read start and stop.
+- **Workbench window**: preparation pages named exactly as their capability, then History, Library and Settings.
+
+### Names
+
+One capability has one name on every surface, menu and shortcut. Action labels may follow state ("Read", "Stop reading"). A shortened label is allowed only if it cannot be mistaken for another capability. The same action uses the same words everywhere: one set of words for stopping, cancelling, hiding and ending, and one set of drawing tools and colours whether you mark the screen or a Snap. Persona means your on-screen presence only; how you speak or write is a Style.
+
+### Rules for every change
+
+1. **Classify before building.** Each user-facing change is:
+   - **Quality**: an existing capability works better with no new entry. Preferred.
+   - **Option**: a new choice inside one capability's own options, named in its words, off by default unless it is that capability's core behaviour.
+   - **New capability, named workflow or place**: needs Ethan's decision, the moment it serves, and why it cannot be an option. Something else should merge or leave.
+
+   A rename that keeps the same thing in the same place is Quality. Another door to an existing capability or place (a menu item, card or button that opens it) counts as an Option of what it opens and needs a reason, because each extra door is sprawl.
+2. **Avoid branching.** An option inside an option folds into its parent or waits, unless it is a necessary source or privacy control.
+3. **One door for captured work.** New stores, review folders, workspaces or result lists appear inside History. New ways to process captures are recipes.
+4. **Recipes are content.** Built-in and shared skills use one file format. Getting a shared skill should be as easy as opening a file a colleague sent.
+5. **Proactive features only offer.** Detection, collection and suggestions ask first, have one switch each, and change no system setting without an explicit opt-in. A recording always starts from the person's choice and shows a plain visible state while it runs.
+6. **No dead ends.** Every entry opens its destination, shows active state and has a way back. Visible changes include renders of the surfaces they touch, with synthetic content.
+7. **Foundations first.** A change that depends on another is not promoted until its foundation passes installed Preview acceptance.
+8. **The surface map is checked.** CI compares every entry point against [the surface registry](surfaces.json). An entry point starts a capability, opens a place or page, or changes a setting that reaches beyond one page, wherever it appears: the panel and its menus, the toolbar, app menus, sidebar and Home, shortcuts, Settings and offers. Controls that act only on a page's own content are out of scope. A new or renamed entry point needs a deliberate registry change classified by these rules; the registry's kinds describe what an entry is, while the classification above describes a change. The check finds changes; people decide taste.
+9. **Engines are chosen once, by job.** Recognition, writing and speech engines are set in Models, not per capability; a recipe may override them where it is edited. Each run shows where it happens, on this Mac or the named service, and work never moves from this Mac to a cloud service without an explicit choice.
+
 ## Scope
 
 | Primitive | Workbench's responsibility | Boundary |
@@ -32,6 +99,8 @@ The bounded macOS Service accepts an explicit text selection into Read aloud; it
 ## History and optional assistance
 
 Recent transcripts retain original wording and editable purpose/person/company/tags. Ordinary dictation defaults to Prompt; meetings and calls are distinct purposes. Search uses original/edited text and metadata. The existing transcript store and one Snap store remain authoritative. One shared selection owner keeps typed UUID references across filters and restarts. Named selections are loaded, renamed and updated deliberately; tags describe items and do not create another grouping store. New recordings cannot evict older selected evidence.
+
+Removing a completed meeting or call transcript asks for confirmation that also names its saved recording. Confirming removes both from this Mac; Cancel preserves them. Existing handoff snapshots and exported copies remain separate. A recording still in use cannot be removed. Stopping or cancelling an active recording retains its existing recovery behavior.
 
 Hand off reviews selected content, its role and destination before starting. Meeting speech and images default to reference material. Edited Snaps share the visible cropped/annotated image by default; retaining the uncropped original locally does not authorize sending it. A job freezes selected bytes, checks them before dispatch and keeps its own receipt, attempts and result. Later selection edits do not change an active job. Repeated identical preparation and retries reuse the known task/result; a deliberately changed task or input creates a separate snapshot.
 
@@ -64,7 +133,7 @@ flowchart TB
 
 Three surfaces share the same operation and data owners:
 
-- **Menu bar:** a compact quick panel with fixed rows for Dictate, Read, Snap & Talk, Draw, Present, Persona Overlay and Timer. Standalone Snap sits directly beside Open Workbench in the footer. Shortcut labels open the conflict-checking editor in place. Dictate options put Destination before Text Style and include Recent Transcripts. Open Workbench, Settings and Shortcuts are direct footer actions. Clipboard receipts and errors appear below the action rows. Exact labels and installed reachability belong to the combined candidate's acceptance.
+- **Menu bar:** a compact quick panel with fixed rows for Dictate, Read, Snap, Snap & Talk, Draw, Present, Persona Overlay and Timer, in that order. Snap opens its capture, editor and history workspace. Shortcut labels open the conflict-checking editor in place. Dictate options put Destination before Text Style and include Recent Transcripts. Open Workbench, Settings and Shortcuts are direct footer actions. Clipboard receipts and errors appear below the action rows. Exact labels and installed reachability belong to the combined candidate's acceptance.
 - **Floating toolbar:** live Snap & Talk, Draw, Present and Persona Overlay controls. The glyph reveals a row on hover and opens a native menu on click. Keep open is explicit. Present exposes a saved-prompt picker; the shared menu retains device source/reconnect/proportions, motion, window placement, native-app handoff and End. Persona controls retain frozen public labels, selection, size, position, lock, add/remove, hide/show, layout saving and End. Choosing controls never ends another operation. Dictate and Read use compact active controls; their preparation stays in Workbench. Assigned shortcuts are displayed here; editing stays in the menu panel or desktop Keyboard view.
 - **Desktop:** Snap capture/edit/history, independent Persona preparation, compact Present scenes, transcripts and shared selections, meeting review, assistant connections/task results, saved resources, models, settings and practice. Present keeps its primary actions fixed, its Persona control near the scene heading and Connection & audio in the existing guide.
 
@@ -96,7 +165,7 @@ Prefer a small explicit provider contract over a general agent framework. Add an
 
 ## Appearance and onboarding
 
-Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. Use direct verbs such as **Dictate**, **Read**, **Snap**, **Draw**, **Present**, **Persona** and **Timer**, while keeping **Snap & Talk** clear as a combination. A label should explain an action; a status should describe what actually happened.
+Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. The quick panel and preparation pages follow the [Grammar names](#grammar); names that still differ, such as Annotate for Draw or Read aloud for Read, are recorded as aliases in the surface registry until they are unified. A label should explain an action; a status should describe what actually happened.
 
 Home introduces useful actions, first-use access requests explain themselves, and keyboard practice teaches muscle memory. Prefer these working experiences over an introductory slideshow. Use synthetic scenes, text and recordings in examples. Brand assets can improve later without changing the action or data architecture.
 

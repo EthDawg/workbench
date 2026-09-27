@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Darwin
 
 enum VoiceError: LocalizedError {
     case message(String)
@@ -30,8 +31,25 @@ struct StateStore {
     func save(_ state: SavedState) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let data = try JSONEncoder().encode(state)
-        try data.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try AtomicPrivateFile.write(data, to: url)
+    }
+}
+
+/// Permissions and synchronization precede the atomic replacement. A reported
+/// failure never means the new state was already committed and then chmod failed.
+enum AtomicPrivateFile {
+    static func write(_ data: Data, to url: URL) throws {
+        let temporary = url.deletingLastPathComponent().appendingPathComponent(".workbench-" + UUID().uuidString)
+        let descriptor = open(temporary.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close(); try? FileManager.default.removeItem(at: temporary) }
+        try handle.write(contentsOf: data)
+        try handle.synchronize()
+        try handle.close()
+        guard rename(temporary.path, url.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 }
 

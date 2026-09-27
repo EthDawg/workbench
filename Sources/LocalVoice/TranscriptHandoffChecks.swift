@@ -113,7 +113,7 @@ enum TranscriptHandoffChecks {
                                      seconds: 7, rawText: "unrelated private capture \(unselectedOriginalMarker)")
 
         // 1. The built-in neutral skill is a complete, structurally valid entry point.
-        let builtIn = TranscriptHandoffSkills.followUpSnapshot()
+        let builtIn = try TranscriptHandoffSkills.followUpSnapshot()
         try TranscriptHandoffSkillCheck.validate(builtIn)
         passed += 1
         guard let entry = builtIn.files[TranscriptHandoffStore.skillEntryPoint],

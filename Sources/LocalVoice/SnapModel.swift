@@ -27,20 +27,99 @@ final class SnapModel: ObservableObject {
     var onHideForCapture: (() -> Void)?
     var onRestoreAfterCapture: (() -> Void)?
     var mayBeginCapture: (() -> String?)?
+    /// Text Vision found in each image, so search finds a Snap by what it shows.
+    @Published private(set) var recognizedText: [UUID: String] = [:]
+    @Published private(set) var importingScreenshots = false
+    let desktop: URL
+    private let trash: (URL) throws -> Void
     private let captureService = SnapCapture()
     private var captureRequest: UUID?
+    private var analysis: Task<Void, Never>?
+    private var analysisRequested = false
     var isBusy: Bool { isCapturing || draft != nil }
-    var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && $0.matches(search) } }
+    var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0) } }
+
+    private func matches(_ item: SnapItem) -> Bool {
+        guard let text = recognizedText[item.id], !text.isEmpty else { return item.matches(search) }
+        let searchable = item.searchableText + "\n" + text
+        return search.split(whereSeparator: \.isWhitespace).allSatisfy { searchable.localizedStandardContains(String($0)) }
+    }
     var activeCount: Int { items.filter { $0.archivedAt == nil }.count }
 
-    init(store: SnapStore? = nil) {
+    init(store: SnapStore? = nil, desktop: URL? = nil, trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash) {
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
+        self.desktop = desktop ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+        self.trash = trash
         refresh()
+    }
+
+    // MARK: Desktop screenshots
+
+    /// Screenshots macOS saved on the Desktop, for the import confirmation. Nil,
+    /// with a notice, when the Desktop could not be read.
+    func desktopScreenshots() -> [URL]? {
+        do { return try SnapScreenshots.listScreenCaptures(in: desktop) }
+        catch {
+            notice = "Workbench could not read the Desktop. Allow it in System Settings > Privacy & Security > Files and Folders, then try again."
+            return nil
+        }
+    }
+
+    /// Imports the listed Desktop screenshots into Snap History. Each original
+    /// goes to the Trash only after its Snap is stored and read back. Returns
+    /// the Snaps it added, so the workspace can select them for Organise.
+    @discardableResult
+    func importDesktopScreenshots(_ files: [URL]) async -> [UUID] {
+        guard !importingScreenshots, !isBusy else { return [] }
+        importingScreenshots = true
+        defer { importingScreenshots = false }
+        var moved = 0, added: [UUID] = [], kept: [String] = [], known = Set(items.map(\.originalSHA256))
+        for file in files {
+            do {
+                if let item = try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) { added.append(item.id) }
+                moved += 1
+            } catch { kept.append(file.lastPathComponent) }
+            await Task.yield()
+        }
+        refresh()
+        notice = "Imported \(moved) Desktop screenshot\(moved == 1 ? "" : "s") into Snap History. The originals are in the Trash."
+            + (added.isEmpty ? "" : " They are selected, so Use selected, then Organise…, can find repeats and themes.")
+            + (kept.isEmpty ? "" : " \(kept.count) could not be imported and stayed on the Desktop.")
+        return added
     }
 
     func refresh() {
         do { let read = try store.load(); items = read.items; problems = read.problems }
         catch { problems = [error.localizedDescription] }
+        refreshDerivedData()
+    }
+
+    /// Reads, or builds once, each Snap's search text and repeat fingerprint off
+    /// the main thread. It never edits a Snap record, so it cannot collide with
+    /// an open editor, and a failure only leaves that Snap searchable by title.
+    private func refreshDerivedData() {
+        guard analysis == nil else { analysisRequested = true; return }
+        // A separate store instance: SnapStore keeps unsynchronised load state
+        // for editor conflict checks, which must never be touched off the main thread.
+        let store = SnapStore(root: self.store.root), items = self.items
+        analysis = Task.detached(priority: .utility) { [weak self] in
+            var texts: [UUID: String] = [:]
+            for item in items {
+                if Task.isCancelled { break }
+                if let derived = store.derived(for: item) { texts[item.id] = derived.text; continue }
+                guard let image = try? store.snapshot(item.id).imagePNG,
+                      let derived = try? SnapAnalysis.analyze(png: image, imageSHA256: item.imageSHA256) else { continue }
+                try? store.writeDerived(derived, for: item.id)
+                texts[item.id] = derived.text
+            }
+            let found = texts
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.recognizedText = found
+                self.analysis = nil
+                if self.analysisRequested { self.analysisRequested = false; self.refreshDerivedData() }
+            }
+        }
     }
 
     func capture(_ mode: SnapCapture.Mode) async {

@@ -22,7 +22,7 @@ struct CaptureHistoryView: View {
     var compact: Bool
     @State private var query = ""
     @State private var original: Transcript?
-    @State private var removal: Transcript?
+    @State private var removal: (transcript: Transcript, includesRecording: Bool)?
     @State private var details: Transcript?
     @State private var selecting = false
 
@@ -30,6 +30,7 @@ struct CaptureHistoryView: View {
         self.model = model; self.library = model.historyLibrary; self.compact = compact
     }
     private var matches: [Transcript] { library.matching(model.history, query: query) }
+    private var removalIncludesRecording: Bool { removal?.includesRecording == true }
     private var selectedIDs: Set<UUID> { Set(library.selected.filter { $0.kind == .transcript }.map(\.id)) }
     private var missingIDs: Set<UUID> { selectedIDs.subtracting(Set(model.history.map(\.id))) }
     private var hiddenCount: Int { selectedIDs.subtracting(Set(matches.map(\.id))).count - missingIDs.count }
@@ -79,10 +80,17 @@ struct CaptureHistoryView: View {
         .sheet(item: $details) { item in
             TranscriptMetadataEditor(transcript: item, library: library, suggest: { model.onSuggestTranscriptDetails?(item.id) })
         }
-        .confirmationDialog("Remove this saved transcript?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
-            Button("Remove transcript", role: .destructive) { if let removal { model.removeTranscript(removal) }; removal = nil }
+        .confirmationDialog(removalIncludesRecording ? "Remove this transcript and its recording?" : "Remove this saved transcript?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
+            Button(removalIncludesRecording ? "Remove transcript and recording" : "Remove transcript", role: .destructive) {
+                if let removal { model.removeTranscript(removal.transcript, includingRecording: removal.includesRecording) }
+                removal = nil
+            }
             Button("Cancel", role: .cancel) { removal = nil }
-        } message: { Text("Saved selections will show this item as missing. Existing handoff snapshots are kept.") }
+        } message: {
+            Text(removalIncludesRecording
+                 ? "Permanently removes this saved transcript and its recording from this Mac. Saved selections will show it as missing. Existing handoff snapshots and exported copies are kept."
+                 : "Saved selections will show this item as missing. Existing handoff snapshots are kept.")
+        }
     }
 
     private func row(_ item: Transcript) -> some View {
@@ -133,7 +141,9 @@ struct CaptureHistoryView: View {
                     }
                     Spacer()
                     if !compact {
-                        Button { removal = item } label: { Image(systemName: "trash") }
+                        Button {
+                            removal = (item, model.meetings.hasRecording(for: item.id))
+                        } label: { Image(systemName: "trash") }
                             .accessibilityLabel(CaptureHistoryAccessibility.label("Remove transcript", context: context))
                     }
                 }.buttonStyle(.borderless).font(.system(size: 11))
