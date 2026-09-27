@@ -4,6 +4,26 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--persona-workspace-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let suite = PersonaWorkspaceTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("persona workspace immediate start and pause preservation", suite.testWorkspaceStartsWithoutDismissalAndPreservesPausedArrangement),
+                ("persona workspace single card immediate show and stop", suite.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
+                ("persona sheet launch only after dismissal", suite.testSheetLaunchWaitsForDismissalAndIsConsumedOnce),
+                ("persona workspace failure preserves active session", suite.testWorkspaceFailureIsImmediateAndDoesNotReplaceSession),
+                ("Present compact preview policy", suite.testPresentPreviewReservesControlsAndFitsNarrowEditors),
+                ("optional offscreen workspace layouts", suite.testOffscreenWorkspaceLayouts)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--shortcut-settings-only"] {
             // Data-only: do not create NSApplication, monitors, windows or global registrations.
             let suite = CoreTests()
@@ -182,6 +202,7 @@ struct TestRunner {
             ("persona controls: single size slider", personaControls.testSingleSizeControlIsVisibleAndRoutesAbsoluteWidth),
             ("persona controls: selected copy and empty recovery", personaControls.testSessionControlsTargetSelectedCopyAndRecoverFromEmptySet)
         ]
+        let personaWorkspace = PersonaWorkspaceTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
@@ -348,6 +369,13 @@ struct TestRunner {
         tests.insert(contentsOf: backdropTests, at: 5)
         tests.insert(contentsOf: sceneListTests, at: 5)
         tests.insert(contentsOf: personaControlTests, at: 5)
+        tests.insert(contentsOf: [
+            ("persona workspace immediate start and pause preservation", personaWorkspace.testWorkspaceStartsWithoutDismissalAndPreservesPausedArrangement),
+            ("persona workspace single card immediate show and stop", personaWorkspace.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
+            ("persona sheet launch only after dismissal", personaWorkspace.testSheetLaunchWaitsForDismissalAndIsConsumedOnce),
+            ("persona workspace failure preserves active session", personaWorkspace.testWorkspaceFailureIsImmediateAndDoesNotReplaceSession),
+            ("Present compact preview policy", personaWorkspace.testPresentPreviewReservesControlsAndFitsNarrowEditors)
+        ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))
         if personaControlsOnly {
             tests = personaControlTests + [

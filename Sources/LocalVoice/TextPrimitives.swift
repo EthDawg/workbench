@@ -29,10 +29,16 @@ struct Transcript: Codable, Identifiable {
 }
 
 enum TranscriptHistory {
+    /// How many captures this history used to keep. Saving no longer deletes any,
+    /// so the figure remains only for callers that still describe a recent window.
     static let limit = 100
     static func adding(_ capture: Transcript, to history: [Transcript]) -> [Transcript] {
         // Separate recordings remain separate even when their words are identical.
-        Array(([capture] + history.filter { $0.id != capture.id }).prefix(limit))
+        // A new dictation never evicts an older capture: the oldest item a saved
+        // selection points at has to survive the next recording, and a capture
+        // leaves history only when someone removes it. Saving an existing id
+        // updates that one record instead of adding a second copy of it.
+        [capture] + history.filter { $0.id != capture.id }
     }
     static func matching(_ history: [Transcript], query: String) -> [Transcript] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)

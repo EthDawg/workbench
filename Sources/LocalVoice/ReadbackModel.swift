@@ -376,6 +376,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var onHideForEditorCapture: (() -> Void)?
     var onRestoreAfterEditorCapture: (() -> Void)?
     var onEditShortcut: (() -> Void)?
+    var onSaveCapturedSnap: ((Data, String) throws -> SnapHandoffSnapshot)?
     var mayBeginCapture: (() -> String?)?
     var activeSections: [ReadbackSection] { manifest?.sections.filter { $0.deletedAt == nil } ?? [] }
     var deletedSections: [ReadbackSection] { manifest?.sections.filter { $0.deletedAt != nil } ?? [] }
@@ -668,6 +669,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard currentSessionProblem == nil else { notice = "Locate this session folder before capturing another section."; return }
         guard permissionsReady else { notice = "Snap & Talk needs Screen Recording and Microphone access first."; stateChanged(); return }
         isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
+        var retainedInSnapHistory = false
         do {
             let capture = try await captureScreen(fromEditor: fromEditor)
             if let reason = mayBeginCapture?() { throw ReadbackError.message(reason) }
@@ -679,22 +681,58 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             guard try ReadbackStore.load(from: root).id == manifest?.id else {
                 throw ReadbackError.message("The session folder changed during capture. Open the session again.")
             }
-            let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
-            let folder = try ReadbackStore.safeURL(root: root, relative: directory)
-            try ReadbackStore.createPrivateDirectory(folder, includingParents: false)
-            let screenshot = directory + "/screen.png"
-            try ReadbackStore.writePrivate(capture.data, to: ReadbackStore.safeURL(root: root, relative: screenshot))
-            let section = ReadbackSection(id: id, capturedAt: Date(), displayName: capture.displayName, directory: directory,
-                screenshot: screenshot, audio: nil, originalTranscript: nil, transcript: nil, status: .needsNarration, failure: nil, deletedAt: nil)
-            let current = try ReadbackStore.append(section, at: root)
+            let current: ReadbackManifest, id: UUID
+            var captureWarning: String?
+            if let onSaveCapturedSnap, let session = manifest {
+                let snapshot = try onSaveCapturedSnap(capture.data, "\(session.title) · \(capture.displayName)")
+                retainedInSnapHistory = true
+                let result = try SnapReadback.importSnapshots([snapshot], at: root, expectedSessionID: session.id)
+                guard result.added == 1, let added = result.manifest.sections.last else {
+                    throw ReadbackError.message("The saved capture could not be added as a new narrated section.")
+                }
+                current = result.manifest; id = added.id; captureWarning = result.warning
+            } else {
+                // Older hosts and isolated fixtures keep the existing session
+                // format. The app host wires the one canonical Snap owner.
+                id = UUID(); let directory = "items/\(id.uuidString.lowercased())"
+                let folder = try ReadbackStore.safeURL(root: root, relative: directory)
+                try ReadbackStore.createPrivateDirectory(folder, includingParents: false)
+                let screenshot = directory + "/screen.png"
+                try ReadbackStore.writePrivate(capture.data, to: ReadbackStore.safeURL(root: root, relative: screenshot))
+                let section = ReadbackSection(id: id, capturedAt: Date(), displayName: capture.displayName, directory: directory,
+                    screenshot: screenshot, audio: nil, originalTranscript: nil, transcript: nil, status: .needsNarration, failure: nil, deletedAt: nil)
+                current = try ReadbackStore.append(section, at: root)
+            }
             publish(current, for: root); recordingThumbnail = NSImage(data: capture.data); recordingScreenFrame = capture.screenFrame
             isCapturing = false
             do { try startNarration(root: root, sectionID: id) }
             catch { markNeedsNarration(root: root, sectionID: id, message: error.localizedDescription) }
+            if let captureWarning { notice = (notice ?? "Capture saved.") + " " + captureWarning; stateChanged() }
         } catch {
             refreshSessionAvailability()
-            isCapturing = false; notice = "The screen was not captured. \(error.localizedDescription)"; stateChanged()
+            isCapturing = false
+            notice = retainedInSnapHistory
+                ? "The capture is saved in Snap History, but could not be added to this session. Reopen the session and add it from Snap History. \(error.localizedDescription)"
+                : "The screen was not captured. \(error.localizedDescription)"
+            stateChanged()
         }
+    }
+
+    /// Reuses saved Snaps without acquiring the screen or microphone. Narration
+    /// can be typed or explicitly recorded after the portable copy is saved.
+    func importSnapSnapshots(_ snapshots: [SnapHandoffSnapshot]) {
+        guard !isCapturing, !isRecording else { notice = "Finish the current capture or narration before adding Snaps."; return }
+        guard let root = sessionURL, let sessionID = manifest?.id else {
+            notice = "Create or open a Snap & Talk session, then add your selected Snaps."; stateChanged(); return
+        }
+        do {
+            let result = try SnapReadback.importSnapshots(snapshots, at: root, expectedSessionID: sessionID)
+            publish(result.manifest, for: root)
+            notice = result.warning ?? (result.added == 0
+                ? "These Snaps are already in this session, including Recently Deleted. Restore a deleted section there."
+                : "Added \(result.added) Snaps. Narration is optional; type notes or choose Record narration." + (result.alreadyAdded > 0 ? " \(result.alreadyAdded) already present were skipped." : ""))
+        } catch { notice = "Snaps could not be added. \(error.localizedDescription)" }
+        stateChanged()
     }
 
     func startNarration(for sectionID: UUID) {
