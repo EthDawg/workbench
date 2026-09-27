@@ -79,6 +79,11 @@ enum MeetingAppCatalogue {
         "com.apple.WebKit.GPU": "WebKit audio service (shared)"
     ]
 
+    /// Calls answered on this Mac, FaceTime or an iPhone call, run their audio in
+    /// the system calling service. It may raise an offer, but only with two-way
+    /// audio; it stays its own manual capture source, never merged into an app.
+    static let callServiceBundleIDs: Set<String> = ["com.apple.avconferenced"]
+
     static func known(_ bundleID: String) -> MeetingKnownApp? {
         supported.first { $0.owns(bundleID) }
     }

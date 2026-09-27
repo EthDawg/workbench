@@ -72,6 +72,27 @@ enum MeetingChecks {
         try expect(teams.evaluate(now: now)?.bundleID == "com.microsoft.teams2" && teams.availableApps().map(\.id) == [900],
                    "a new Teams call in its module host is offered as one Teams choice")
 
+        // A FaceTime or iPhone call answered on this Mac runs in the calling service.
+        let calls = MeetingDetector(source: source)
+        calls.isEnabled = true
+        source.values = [.init(pid: 950, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false)]
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "calls answered on this Mac are not offered until the person includes them")
+        calls.offersMacCalls = true
+        source.values[0].isRunningOutput = false
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "the calling service with only the microphone running is not offered")
+        source.values[0].isRunningOutput = true
+        _ = calls.evaluate(now: now); _ = calls.evaluate(now: now)
+        let call = calls.evaluate(now: now)
+        try expect(call?.id == 950 && call?.bundleID == "com.apple.avconferenced"
+                   && MeetingDetector.offerTitle(for: call!) == "Possible call on this Mac"
+                   && MeetingDetector.offerText(for: call!).contains("FaceTime or phone call"),
+                   "a two-way call on this Mac is offered as a call from its own source")
+        calls.disable(call!)
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "turning off offers for calls on this Mac is respected")
+
         source.values = [
             .init(pid: 800, bundleID: "com.apple.assistantd", isRunningInput: false, isRunningOutput: false,
                   isUserFacingApp: false),
@@ -318,6 +339,9 @@ enum MeetingChecks {
                                  transcribe: { _ in recognition += 1; return "synthetic meeting" },
                                  microphonePermission: { permissions += 1; return true }, captureFactory: { factories += 1; return capture })
         await Task.yield()
+        model.useOffer(MeetingAudioApp(id: 950, name: "Mac calling service", bundleID: "com.apple.avconferenced"))
+        try expect(model.selectedAppID == 950 && model.purpose == "call", "reviewing a call on this Mac records it as a Call")
+        model.purpose = "meeting"; model.selectedAppID = nil
         try expect(!model.detectionEnabled && source.calls == 0 && factories == 0 && permissions == 0,
                    "controller initialization does not detect, ask permission or capture")
         model.mayStart = { "Another Workbench recording is active." }
