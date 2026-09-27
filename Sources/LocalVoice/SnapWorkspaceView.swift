@@ -41,8 +41,9 @@ struct SnapWorkspaceView: View {
                     Toggle("Keep new screenshots off the Desktop", isOn: Binding(get: { model.keepsScreenshotsOffDesktop },
                                                                                set: { model.setKeepsScreenshotsOffDesktop($0) }))
                     Button("Tidy Desktop screenshots…") {
-                        let found = model.desktopScreenshots()
-                        if found.isEmpty { model.notice = "There are no screenshots on the Desktop." } else { tidyCandidates = found }
+                        if let found = model.desktopScreenshots() {
+                            if found.isEmpty { model.notice = "There are no screenshots on the Desktop." } else { tidyCandidates = found }
+                        }
                     }
                 } label: {
                     Label(model.keepsScreenshotsOffDesktop ? "Screenshots go to Snap" : "Desktop screenshots", systemImage: "menubar.dock.rectangle")

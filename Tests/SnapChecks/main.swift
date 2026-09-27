@@ -305,10 +305,14 @@ try MainActor.assumeIsolated {
     let tidyFile = desktopFolder.appendingPathComponent("Screenshot 2026-09-04 at 8.00.00 am.png")
     try ink.write(to: tidyFile); try markScreenCapture(tidyFile)
     var tidied: [UUID]? = nil
-    Task { @MainActor in tidied = await model.tidyDesktopScreenshots(model.desktopScreenshots()) }
+    Task { @MainActor in tidied = await model.tidyDesktopScreenshots(model.desktopScreenshots() ?? []) }
     let until = Date().addingTimeInterval(10)
     while tidied == nil && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     try check(tidied?.count == 1 && !fm.fileExists(atPath: tidyFile.path) && fm.fileExists(atPath: plainImage.path),
               "tidying moves only screenshots and returns them for selection")
+    let unreadable = SnapModel(store: SnapStore(root: directory.appendingPathComponent("unreadable-history")), screenshotLocation: FakeScreenshotLocation(),
+                               preferences: preferences, desktop: shots.appendingPathComponent("Missing Desktop"), screenshotInbox: inboxFolder, trash: { _ in })
+    try check(unreadable.desktopScreenshots() == nil && unreadable.notice?.contains("could not read the Desktop") == true,
+              "an unreadable Desktop is reported, never shown as empty")
 }
 print("SNAP_CHECKS_OK: \(checks) checks for rendering, screenshots off the Desktop, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
