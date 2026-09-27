@@ -58,13 +58,15 @@ One capability has one name on every surface, menu and shortcut. Action labels m
    - **Quality**: an existing capability works better with no new entry. Preferred.
    - **Option**: a new choice inside one capability's own options, named in its words, off by default unless it is that capability's core behaviour.
    - **New capability, named workflow or place**: needs Ethan's decision, the moment it serves, and why it cannot be an option. Something else should merge or leave.
+
+   A rename that keeps the same thing in the same place is Quality. Another door to an existing capability or place (a menu item, card or button that opens it) counts as an Option of what it opens and needs a reason, because each extra door is sprawl.
 2. **Avoid branching.** An option inside an option folds into its parent or waits, unless it is a necessary source or privacy control.
 3. **One door for captured work.** New stores, review folders, workspaces or result lists appear inside History. New ways to process captures are Hand off recipes.
 4. **Recipes are content.** Built-in and shared skills use one file format. Getting a shared skill should be as easy as opening a file a colleague sent.
 5. **Proactive features only offer.** Detection, collection and suggestions ask first, have one switch each, and change no system setting without an explicit opt-in.
 6. **No dead ends.** Every entry opens its destination, shows active state and has a way back. Visible changes include renders of the surfaces they touch, with synthetic content.
 7. **Foundations first.** A change that depends on another is not promoted until its foundation passes installed Preview acceptance.
-8. **The surface map is checked.** CI compares every entry against [the surface registry](surfaces.json). It covers entry points, such as the panel, toolbar, menus, sidebar, shortcuts, Settings toggles and offers, not controls inside pages. A new or renamed entry needs a deliberate registry change classified by these rules. The check finds changes; people decide taste.
+8. **The surface map is checked.** CI compares every entry point against [the surface registry](surfaces.json). An entry point starts a capability, opens a place or page, or changes a setting that reaches beyond one page, wherever it appears: the panel and its menus, the toolbar, app menus, sidebar and Home, shortcuts, Settings and offers. Controls that act only on a page's own content are out of scope. A new or renamed entry point needs a deliberate registry change classified by these rules; the registry's kinds describe what an entry is, while the classification above describes a change. The check finds changes; people decide taste.
 
 ## Scope
 
