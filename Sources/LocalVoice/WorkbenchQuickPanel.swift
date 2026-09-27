@@ -153,7 +153,7 @@ struct WorkbenchQuickPanel: View {
         case .read:
             if model.rendering { Button("Cancel") { model.cancelReading() }.buttonStyle(.plain).foregroundStyle(Workbench.accent) }
             else if model.playing || model.paused { Button("Stop") { model.stopPlayback() }.buttonStyle(.plain).foregroundStyle(Workbench.accent) }
-        case .snap:
+        case .snapAndTalk:
             Button(readback.sessionURL == nil ? "Set Up" : "\(readback.activeSections.count) · Review") { open("readback") }
                 .font(.system(size: 10)).lineLimit(1).fixedSize()
                 .buttonStyle(.plain).foregroundStyle(Workbench.accent)
@@ -185,7 +185,7 @@ struct WorkbenchQuickPanel: View {
             if model.rendering { model.cancelReading() }
             else if model.playing || model.paused { model.listen() }
             else { open("speak") }
-        case .snap: model.controlTool = .snap; snap()
+        case .snapAndTalk: model.controlTool = .snapAndTalk; snap()
         case .annotate: model.controlTool = .annotate; draw()
         case .present: model.controlTool = .present; present()
         case .persona: model.controlTool = .persona; personas()

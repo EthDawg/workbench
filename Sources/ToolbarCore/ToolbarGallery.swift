@@ -44,7 +44,7 @@ public enum ToolbarGallery {
         ToolbarViewState(name: "activity-presenting", tier: .revealed, tool: .present,
                          actionTitle: "End scene", trailing: .status("Presenting"), isBusy: true),
         ToolbarViewState(name: "activity-personas", tier: .revealed, tool: .persona,
-                         actionTitle: "End Overlays", trailing: .status("3 Overlays"), isBusy: true),
+                         actionTitle: "Hide All Temporarily", trailing: .status("3 Overlays"), isBusy: true),
         ToolbarViewState(name: "activity-inserting", tier: .revealed, tool: .present,
                          actionTitle: "Stop Inserting", trailing: .status("Inserting Prompt"), isBusy: true),
         ToolbarViewState(name: "activity-transcribing", tier: .revealed, tool: .snapAndTalk,

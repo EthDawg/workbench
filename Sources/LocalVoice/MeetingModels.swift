@@ -64,6 +64,11 @@ enum MeetingAppCatalogue {
         "com.apple.WebKit.GPU": "WebKit audio service (shared)"
     ]
 
+    /// Observed call activity on this Mac ran through this exact service.
+    /// Two-way activity can offer a possible call, not prove its type or that
+    /// both sides are recordable. Its capture scope stays separate from apps.
+    static let callServiceBundleIDs: Set<String> = ["com.apple.avconferenced"]
+
     static func known(_ bundleID: String) -> MeetingKnownApp? {
         supported.first { bundleID == $0.bundleID || bundleID.hasPrefix($0.bundleID + ".helper") }
     }

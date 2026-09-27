@@ -26,7 +26,7 @@ struct MeetingDetectionSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Detect Meetings & Calls", isOn: $model.detectionEnabled)
-            Text("Offer to transcribe when a supported Mac app appears to be using its microphone. Detection reads audio activity only; it never records or sends audio. You choose whether to start.")
+            Text("Offer to transcribe when a supported Mac app, or a FaceTime or iPhone call answered on this Mac, appears to be using the microphone. Detection reads audio activity only; it never records or sends audio. You choose whether to start. Calls kept on your iPhone are not heard by this Mac.")
                 .font(.caption).foregroundStyle(.secondary)
             if #unavailable(macOS 14.2) {
                 Text("Meeting detection and app audio capture require macOS 14.2 or later. Dictate remains available.")
@@ -47,9 +47,9 @@ struct MeetingWorkspaceView: View {
                     .foregroundStyle(.secondary)
                 if let offer = model.offer {
                     HStack {
-                        Label("Possible call in " + offer.name, systemImage: "phone")
+                        Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone")
                         Spacer()
-                        Button("Use this app") { model.selectedAppID = offer.id; model.dismissOffer() }
+                        Button("Use this source") { model.useOffer(offer); model.dismissOffer() }
                         Button("Not now") { model.dismissOffer() }
                         Button("Snooze") { model.snoozeOffers() }
                     }.padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
@@ -142,7 +142,7 @@ final class MeetingOfferPanelController {
             self.closePanel = present(offer, Actions(
                 review: { [weak model] in
                     guard let model else { return }
-                    model.selectedAppID = offer.id; model.dismissOffer(); review()
+                    model.useOffer(offer); model.dismissOffer(); review()
                 },
                 dismiss: { [weak model] in model?.dismissOffer() },
                 snooze: { [weak model] in model?.snoozeOffers() }
@@ -170,7 +170,7 @@ final class MeetingOfferPanelController {
             styleMask: [.nonactivatingPanel, .titled], backing: .buffered, defer: false)
         panel.title = "Workbench"; panel.level = .floating; panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(rootView: VStack(alignment: .leading, spacing: 12) {
-            Label("Possible call in " + offer.name, systemImage: "phone").font(.headline)
+            Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone").font(.headline)
             Text("Would you like to transcribe? Nothing is recording.").font(.callout)
             HStack {
                 Button("Review", action: actions.review)

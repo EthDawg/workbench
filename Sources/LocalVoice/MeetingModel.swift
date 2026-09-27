@@ -354,6 +354,11 @@ final class MeetingModel: ObservableObject {
         if let issue = detector.lastError, !isBusy { error = issue }
     }
 
+    /// Chooses the offered source for review. A call on this Mac is saved as a Call.
+    func useOffer(_ app: MeetingAudioApp) {
+        selectedAppID = app.id
+        if MeetingDetector.isCallService(app) { purpose = "call" }
+    }
     func dismissOffer() { if let offer { detector.dismiss(offer) }; offer = nil }
     func snoozeOffers() { detector.snooze(); offer = nil }
     func disableOffers(for app: MeetingAudioApp) {

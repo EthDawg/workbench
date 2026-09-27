@@ -179,6 +179,7 @@ public final class StageKitController: ObservableObject {
     public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
     public var hasActivePersonaSession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
+    public var isPersonaSessionPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
     public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }
     public func presentSelectedScene() {
         if coordinator.demoScenes.selected == nil { onOpenScenes?() }

@@ -164,17 +164,31 @@ struct SubscriptionSettingsView: View {
     }
 }
 
+/// One Connections sheet for every handoff surface, so checking a provider
+/// returns to the work in progress instead of leaving it for Settings.
+struct HandoffConnectionsSheet: View {
+    @ObservedObject var jobs: HandoffJobsModel
+    var backTitle: String
+    var back: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SubscriptionSettingsView(jobs: jobs)
+            HStack { Spacer(); Button(backTitle, action: back).keyboardShortcut(.defaultAction) }
+        }.padding(24).frame(width: 530)
+    }
+}
+
 struct HandoffJobsView: View {
     @ObservedObject var jobs: HandoffJobsModel
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
-    var onConnections: (() -> Void)? = nil
     @State private var expanded: UUID?
+    @State private var showingConnections = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Handoffs").font(.title2.weight(.semibold))
                 Spacer()
-                if let onConnections { Button("Connections…", action: onConnections) }
+                Button("Connections…") { showingConnections = true }
                 if jobs.isBusy { Button("Stop task", role: .destructive) { jobs.cancel() } }
             }
             if let notice = jobs.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
@@ -253,6 +267,9 @@ struct HandoffJobsView: View {
             }
         }.task { await jobs.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in jobs.objectWillChange.send() }
+            .sheet(isPresented: $showingConnections) {
+                HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to Handoffs") { showingConnections = false }
+            }
     }
     @ViewBuilder private func startAction(_ job: HandoffJob) -> some View {
         if job.status == .ready || [.failed, .cancelled, .interrupted].contains(job.status) {
@@ -392,10 +409,7 @@ struct HandoffReviewView: View {
                 Task { await jobs.refresh() }
             }
             .sheet(isPresented: $showingConnections) {
-                VStack(alignment: .leading, spacing: 16) {
-                    SubscriptionSettingsView(jobs: jobs)
-                    HStack { Spacer(); Button("Back to handoff") { showingConnections = false }.keyboardShortcut(.defaultAction) }
-                }.padding(24).frame(width: 530)
+                HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to handoff") { showingConnections = false }
             }
             .sheet(isPresented: $showingPreviousReview) {
                 VStack(alignment: .leading, spacing: 16) {
