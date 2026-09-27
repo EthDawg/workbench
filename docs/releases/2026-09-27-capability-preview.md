@@ -15,6 +15,15 @@ This candidate addresses [issue #112](https://github.com/EthDawg/workbench/issue
 - Connection setup preserves the open handoff draft. A saved Ready job can start after a provider is connected. Archived or missing Snaps can be deliberately excluded without clearing other selected evidence; changing a saved selection still requires Update.
 - Suggested transcript details require review and explicit application. The proposal parser requires the complete typed response; malformed output cannot clear existing details. Reviewed changes retain the result receipt and recording limitations.
 
+Additions merged from #114 to #120:
+
+- Meetings recorded with both the microphone and an app's audio save chronological turns labelled You and Others. The mixed transcript stays the original wording, a microphone line that repeats the other side at the same time (laptop speakers) is dropped, and any failure saves the mixed transcript unchanged.
+- Detection and capture recognise the Phone app, new Teams' module host and WhatsApp. An optional "Include calls answered on this Mac" setting, off by default, offers FaceTime and iPhone calls taken on the Mac when the calling service has two-way audio, and records them as a Call from the existing manual source.
+- "Suggest on this Mac" fills empty people, company and tags without an account, using Apple's on-device models and NaturalLanguage. It never suggests purpose, which follows from how the words were captured.
+- Snap History search includes the text Vision reads in each image, and Snap review proposes near-identical recaptures as repeats as well as identical images. This derived data lives beside each Snap and never edits its record.
+- Persona's optional "React to my voice" ring follows the presenter's loudness. It uses the microphone only while the ring is on and a persona is showing, records nothing, and stops on hide, End, Quit or a denied permission.
+- Handoffs add three reply-only skills that run as connected tasks: Meeting notes and follow-up, Sharpen my prompt, and Coach my conversation.
+
 ## Evidence already obtained
 
 The combined release build passed. The repository suite passed 194 Swift package tests and 64 browser tests, plus its preceding Python and CLI checks. Its first Stage run hit five shortcut assertions while Stable owned the global shortcuts. After quitting Stable through the normal UI, the complete Stage suite passed 162 tests and 3,337 assertions. CI runs 36283473900 and 36286096579 passed both jobs for sources `9d4aff1` and `e1ec1f5`; each merge tree matched its source tree. The later saved-selection editor correction passed release compilation and all 83 history checks, with bounded Claude and independent source reviews; both CI jobs passed for `eaee1cd` in run 36287807356. The subsequent duration-export correction passed release compilation, 67 handoff checks and 129 transcript contract plus 11 runner checks, with Claude and independent compatibility reviews. Corrected signed native retests remain required.
