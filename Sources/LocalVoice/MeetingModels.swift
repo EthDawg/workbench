@@ -23,16 +23,31 @@ struct MeetingKnownApp {
     /// False until remote-stream capture from this app has been checked on real
     /// hardware. Nothing in this module may claim a verified two-sided recording.
     let remoteAudioVerified: Bool
+    /// The app's own audio processes that are not named `<bundle>.helper`, such
+    /// as new Teams' module host.
+    var audioProcesses: [String] = []
+
+    /// Bundle identifiers compare without case: macOS reports each app's
+    /// declared spelling, and the Phone app declares `com.apple.mobilephone`.
+    func owns(_ processBundleID: String) -> Bool {
+        let process = processBundleID.lowercased()
+        return ([bundleID] + audioProcesses).contains { owner in
+            let owner = owner.lowercased()
+            return process == owner || process.hasPrefix(owner + ".helper")
+        }
+    }
 }
 
 enum MeetingAppCatalogue {
     static let supported: [MeetingKnownApp] = [
         MeetingKnownApp(bundleID: "us.zoom.xos", name: "Zoom", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.microsoft.teams", name: "Microsoft Teams", kind: .communication, remoteAudioVerified: false),
-        MeetingKnownApp(bundleID: "com.microsoft.teams2", name: "Microsoft Teams", kind: .communication, remoteAudioVerified: false),
+        MeetingKnownApp(bundleID: "com.microsoft.teams2", name: "Microsoft Teams", kind: .communication, remoteAudioVerified: false,
+                        audioProcesses: ["com.microsoft.teams2.modulehost"]),
         MeetingKnownApp(bundleID: "com.cisco.webexmeetingsapp", name: "Webex", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.webex.meetingmanager", name: "Webex Meetings", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.tinyspeck.slackmacgap", name: "Slack", kind: .communication, remoteAudioVerified: false),
+        MeetingKnownApp(bundleID: "net.whatsapp.WhatsApp", name: "WhatsApp", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.hnc.Discord", name: "Discord", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.skype.skype", name: "Skype", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.ringcentral.glip", name: "RingCentral", kind: .communication, remoteAudioVerified: false),
@@ -65,7 +80,7 @@ enum MeetingAppCatalogue {
     ]
 
     static func known(_ bundleID: String) -> MeetingKnownApp? {
-        supported.first { bundleID == $0.bundleID || bundleID.hasPrefix($0.bundleID + ".helper") }
+        supported.first { $0.owns(bundleID) }
     }
 
     static func isExcluded(_ bundleID: String) -> Bool {
