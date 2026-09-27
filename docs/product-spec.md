@@ -1,6 +1,6 @@
 # Workbench: jobs, surfaces and interaction contract
 
-Specification updated: 27 September 2026. Maintained with the code. The release record distinguishes implemented, tested and published behavior. The public guide lives at `/guide/` on the Workbench site. New capability delivery is tracked in [issue #112](https://github.com/EthDawg/workbench/issues/112); meeting/provider native acceptance and the combined signed Preview are pending, not implied by this specification.
+Specification updated: 27 September 2026. Maintained with the code. The release record distinguishes implemented, tested and published behavior. The public guide lives at `/guide/` on the Workbench site. New capability delivery is tracked in [issue #112](https://github.com/EthDawg/workbench/issues/112). The [capability Preview acceptance record](releases/2026-09-27-capability-preview.md) identifies the installed signed candidate, completed checks and remaining native limits; this specification does not establish public release or untested audio/device behavior.
 
 ## Product outcome
 
