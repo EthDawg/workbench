@@ -124,6 +124,19 @@ class UpdatesTests(unittest.TestCase):
                 prepare_update.validate_tag(receipt,tag)
         prepare_update.validate_tag({'channel':'production','version':'2.0.0'},'v2.0.0')
 
+    def test_production_rebuild_tag_identifies_exact_packaged_build(self):
+        receipt = {'channel': 'production', 'version': '2.0.0', 'build': '20260927101737'}
+        prepare_update.validate_tag(receipt, 'v2.0.0+20260927101737')
+        for tag in ['v2.0.0+20260925215646', 'v3.0.0+20260927101737',
+                    'v2.0.0-preview.1+20260927101737', 'v2.0.0+local',
+                    'v2.0.0+', 'v2.0.0+20260927101737/other']:
+            with self.subTest(tag=tag), self.assertRaises(RuntimeError):
+                prepare_update.validate_tag(receipt, tag)
+        with self.assertRaises(RuntimeError):
+            prepare_update.validate_tag({**receipt, 'channel': 'preview'}, 'v2.0.0+20260927101737')
+        with self.assertRaises(RuntimeError):
+            prepare_update.validate_tag({'channel': 'production', 'version': '2.0.0'}, 'v2.0.0+20260927101737')
+
     def test_preexisting_tag_must_resolve_to_delivered_source(self):
         tag='v2.0.0-preview.5'; source='a'*40
         prefix={'ref':f'refs/tags/{tag}0','object':{'type':'commit','sha':'b'*40}}
