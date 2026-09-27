@@ -73,11 +73,14 @@ struct ContentView: View {
         }
     }
 
+    /// Order follows the journey: the microphone first, its label following
+    /// state; then the transcript and its actions; the meeting link; Dictate's
+    /// own options; the Apple Shortcuts caption last. The page scrolls only when
+    /// the window is shorter than that, and the editor takes any spare height.
     private var dictate: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        GeometryReader { proxy in ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
             heading("Speak your mind.", "Turn a thought into text. Record here, or use the shortcut from any app.")
-            Button("Transcribe a meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
-                .buttonStyle(.link).disabled(model.phase != .idle)
             HStack(spacing: 22) {
                 Button { model.toggleRecording() } label: {
                     Image(systemName: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic.fill")
@@ -143,6 +146,8 @@ struct ContentView: View {
                 if model.canRetry { Button(model.retryCaptureLabel) { model.retryTranscription() }.help(model.retryCaptureHelp) }
                 Button { model.importAudio() } label: { Label("Import audio…", systemImage: "arrow.up.doc") }.disabled(!model.ready || model.phase != .idle)
             }.controlSize(.large)
+            Button("Transcribe a meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
+                .buttonStyle(.link).disabled(model.phase != .idle)
             if model.hasCaptureRecovery && model.phase == .idle {
                 HStack {
                     Text(model.canRecordAgain ? "Retry this audio, or record again and keep it for later." : "A capture is kept for recovery.").foregroundStyle(.secondary)
@@ -158,8 +163,24 @@ struct ContentView: View {
             }
             Text(model.preferences.delivery == .paste ? "Automatic paste returns to your starting text field. Up to 5 minutes per recording." : "Finished transcripts are copied. Paste with ⌘V. Up to 5 minutes per recording.")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
+            dictateOptions
             appleShortcutsCaption
-        }
+            }.frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+        } }
+    }
+
+    /// Dictate's options live with Dictate (Grammar: options live with their
+    /// capability). Same controls and labels as before; Settings keeps one
+    /// "Dictate options…" door to here.
+    private var dictateOptions: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("OPTIONS").font(.system(size: 10, weight: .semibold)).tracking(1.6).foregroundStyle(.secondary)
+            VoiceOptions(model: model, showShortcut: false)
+            HStack(spacing: 12) {
+                Button("Your dictionary") { model.page = "dictionary" }
+                Button("Position dictation panel…") { model.showPanelPreview() }.disabled(model.phase != .idle)
+            }
+        }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(panelColor, in: RoundedRectangle(cornerRadius: 16))
     }
 
     /// Audio in, text out through Apple Shortcuts: Dictate's job, so it is noted here.

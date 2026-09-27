@@ -240,9 +240,8 @@ struct WorkbenchHome: View {
                 PhotoHandoffSettings(handoff: model.photoHandoff)
             }
             Divider()
-            VoiceOptions(model: model, showShortcut: false)
-            Button("Your dictionary") { model.page = "dictionary" }
-            Button("Position dictation panel…") { model.showPanelPreview() }.disabled(model.phase != .idle)
+            Button("Dictate options…") { model.page = "dictate" }
+            Text("Activation, cleanup, delivery, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
             Divider()
             Button("Models and local server") { model.page = "models" }
             Button("Keyboard and practice") { model.page = "shortcuts" }
