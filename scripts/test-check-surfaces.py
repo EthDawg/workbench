@@ -241,6 +241,33 @@ class SurfaceTests(unittest.TestCase):
         page.write_text(page.read_text().replace('Button("Copy text")', 'Toggle("Show original", isOn: $showOriginal); Stepper("Pace", value: $rate); Button("Copy text")'))
         self.assertEqual([], self.errors(before))
 
+    def test_doors_on_a_capability_page_are_entries(self):
+        page = self.write('LocalVoice/Views.swift', '''struct ContentView: View {
+          private var dictate: some View {
+            Button("Transcribe a meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
+            Button("Copy text") { model.copyTranscript() }; Button("Original…") { showOriginal = true }
+            Button("Open Apple Shortcuts") { NSWorkspace.shared.open(url) }
+            Button { model.page = "history" } label: { Label("History", systemImage: "clock") }
+          }
+        }''')
+        self.write('LocalVoice/ReadbackView.swift', '''struct ReadbackView: View {
+          var onOpenPacks: () -> Void = {}
+          var body: some View { Button("Manage packs…", action: onOpenPacks); Button("Stop") { model.stop() } }
+        }''')
+        doors = sorted((e['surface'], e['label']) for e in self.entries() if e['surface'].endswith(' page'))
+        self.assertEqual([('dictate page', 'History'), ('dictate page', 'Transcribe a meeting or call…'), ('snap & talk page', 'Manage packs…')], doors)
+        before = self.registry()
+        page.write_text(page.read_text().replace('Button("Copy text")', 'Button("Show in History") { model.page = "history" }; Button("Copy text")'))
+        failure = '\n'.join(self.errors(before))
+        self.assertIn('Unregistered entry on dictate page: "Show in History".', failure)
+        self.assertIn('docs/workbench.md#grammar', failure)
+
+    def test_page_local_actions_are_not_doors(self):
+        page = self.write('LocalVoice/Views.swift', 'struct ContentView: View { private var dictate: some View { Button("Transcribe a meeting or call…") { model.page = "meeting" } } }')
+        before = self.registry()
+        page.write_text(page.read_text().replace('Button("Transcribe', 'Button("Copy text") { model.copyTranscript() }; Button("Transcribe'))
+        self.assertEqual([], self.errors(before))
+
     def test_views_embedded_in_the_panel_are_status_rows(self):
         before = self.registry()
         self.file.write_text(PANEL % 'MeetingQuickStatus(model: meetings) { open("meeting") }; Button("Read") { read() }')
