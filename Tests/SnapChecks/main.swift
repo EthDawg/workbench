@@ -193,4 +193,48 @@ try MainActor.assumeIsolated {
     try rejects("archived selected capture") { _ = try model.handoffSnapshots(ids: [capture.id]) }
     try check(try canonical.snapshot(capture.id).originalPNG == png, "archiving does not change a narrated original")
 }
-print("SNAP_CHECKS_OK: \(checks) checks for rendering, revision conflicts, private storage, immutable snapshots, reversible review and portable optional narration")
+// Search text and repeats: Vision on synthetic screens, entirely on this Mac.
+func screen(_ lines: [String], clock: String, pointer: CGPoint?) -> Data {
+    let width = 1_440, height = 900
+    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    NSColor(calibratedWhite: 0.97, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: width, height: height).fill()
+    (clock as NSString).draw(at: NSPoint(x: width - 90, y: height - 22), withAttributes: [.font: NSFont.systemFont(ofSize: 14)])
+    NSColor.white.setFill(); NSRect(x: 220, y: 120, width: 1_000, height: 640).fill()
+    for (index, line) in lines.enumerated() { (line as NSString).draw(at: NSPoint(x: 260, y: 700 - index * 44), withAttributes: [.font: NSFont.systemFont(ofSize: 22)]) }
+    if let pointer { NSColor.black.setFill(); NSBezierPath(ovalIn: NSRect(x: pointer.x, y: pointer.y, width: 14, height: 14)).fill() }
+    NSGraphicsContext.restoreGraphicsState()
+    return NSBitmapImageRep(cgImage: context.makeImage()!).representation(using: .png, properties: [:])!
+}
+let settingsLines = ["Privacy & Security", "Accessibility", "Workbench Preview    On", "Allow apps to control your computer"]
+let screens = [screen(settingsLines, clock: "10:41", pointer: CGPoint(x: 700, y: 400)),
+               screen(settingsLines, clock: "10:42", pointer: CGPoint(x: 712, y: 396)),
+               screen(["Release report", "21 tests passed, 75 assertions", "6 shortcut conflicts"], clock: "10:43", pointer: nil)]
+let repeatsStore = SnapStore(root: directory.appendingPathComponent("repeats"))
+let repeatItems = try screens.enumerated().map { index, bytes in
+    try repeatsStore.insert(originalPNG: bytes, width: 1_440, height: 900, title: "Screen \(index + 1)", source: .region)
+}
+try check(repeatItems[0].imageSHA256 != repeatItems[1].imageSHA256, "the recapture fixture is not byte-identical")
+for item in repeatItems {
+    try repeatsStore.writeDerived(try SnapAnalysis.analyze(png: try repeatsStore.snapshot(item.id).imagePNG, imageSHA256: item.imageSHA256), for: item.id)
+}
+try check(repeatsStore.derived(for: repeatItems[2])?.text.contains("shortcut conflicts") == true, "Vision reads a Snap's visible text")
+let reportData = repeatsStore.derived(for: repeatItems[2])!
+try repeatsStore.writeDerived(SnapDerivedData(imageSHA256: String(repeating: "0", count: 64), text: "stale", featurePrint: nil), for: repeatItems[2].id)
+try check(repeatsStore.derived(for: repeatItems[2]) == nil, "search data made from another image is ignored")
+try repeatsStore.writeDerived(reportData, for: repeatItems[2].id)
+let repeatPlan = try SnapOrganization.prepare(store: repeatsStore, ids: Set(repeatItems.map(\.id)))
+try check(repeatPlan.duplicates.count == 1 && repeatPlan.duplicates[0].id == repeatItems[1].id
+          && repeatPlan.duplicates[0].retained.id == repeatItems[0].id && repeatPlan.duplicates[0].distance != nil,
+          "a near-identical recapture is proposed as a repeat of the earlier Snap, and a different screen is not")
+try SnapOrganization.archiveReviewed([repeatItems[1].id], plan: repeatPlan, store: repeatsStore)
+try check(try repeatsStore.read(repeatItems[1].id).archivedAt != nil && (try repeatsStore.snapshot(repeatItems[1].id).originalPNG) == screens[1],
+          "archiving a reviewed repeat keeps its original")
+try MainActor.assumeIsolated {
+    let model = SnapModel(store: repeatsStore)
+    let deadline = Date().addingTimeInterval(30)
+    while model.recognizedText.count < repeatItems.count && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    model.search = "shortcut conflicts"
+    try check(model.visibleItems.map(\.id) == [repeatItems[2].id], "search finds a Snap by the text inside its image")
+}
+print("SNAP_CHECKS_OK: \(checks) checks for rendering, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
