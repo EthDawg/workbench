@@ -69,6 +69,8 @@ struct TranscriptMetadataEditor: View {
     @State private var person = ""
     @State private var company = ""
     @State private var tags = ""
+    @State private var suggesting = false
+    @State private var localSuggestion: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Transcript details").font(.title2)
@@ -85,16 +87,28 @@ struct TranscriptMetadataEditor: View {
             if let receipt = library.metadata(for: transcript.id).reviewedSuggestion {
                 Text("Last reviewed suggestion: " + receipt).font(.caption2).foregroundStyle(.secondary)
             }
-            if let suggest {
-                Button("Suggest details with an assistant…") { dismiss(); suggest() }.buttonStyle(.link)
+            HStack(spacing: 16) {
+                Button(suggesting ? "Suggesting…" : "Suggest on this Mac") { suggestOnThisMac() }
+                    .buttonStyle(.link).disabled(suggesting)
+                    .help(LocalDetailSuggestions.usesAppleIntelligence
+                          ? "Uses Apple Intelligence on this Mac. Nothing is sent anywhere."
+                          : "Finds names on this Mac. Turn on Apple Intelligence to also suggest purpose and tags.")
+                if let suggest {
+                    Button("Suggest details with an assistant…") { dismiss(); suggest() }.buttonStyle(.link)
+                }
+            }
+            if let localSuggestion {
+                Text("Suggested on this Mac (\(localSuggestion)). Check names before saving.").font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Save") {
+                    let saved = library.metadata(for: transcript.id)
                     library.setMetadata(TranscriptMetadata(purpose: purpose, person: person, company: company,
                         tags: tags.split(separator: ",").map { String($0) },
-                        captureNotes: library.metadata(for: transcript.id).captureNotes), for: transcript.id)
+                        reviewedSuggestion: localSuggestion.map { "On this Mac · " + $0 } ?? saved.reviewedSuggestion,
+                        captureNotes: saved.captureNotes), for: transcript.id)
                     if library.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction)
             }
@@ -104,6 +118,22 @@ struct TranscriptMetadataEditor: View {
                 let metadata = library.metadata(for: transcript.id)
                 purpose = metadata.purpose; person = metadata.person; company = metadata.company; tags = metadata.tags.joined(separator: ", ")
             }
+    }
+
+    /// Fills only empty details for review. Nothing is saved until Save.
+    private func suggestOnThisMac() {
+        suggesting = true
+        let current = TranscriptMetadata(purpose: purpose, person: person, company: company,
+            tags: tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        let text = transcript.text
+        Task { @MainActor in
+            let suggestion = await LocalDetailSuggestions.suggest(for: text)
+            let merged = LocalDetailSuggestions.merged(current, with: suggestion)
+            purpose = merged.purpose; person = merged.person; company = merged.company
+            tags = merged.tags.joined(separator: ", ")
+            localSuggestion = suggestion.source
+            suggesting = false
+        }
     }
 }
 
