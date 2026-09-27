@@ -23,9 +23,9 @@ struct SnapOrganizationView: View {
                 Text("This keeps other selected evidence. A saved selection changes only when you use Update.").font(.caption).foregroundStyle(.secondary)
             }
             if let plan {
-                Text("\(plan.sources.count) sources · \(plan.duplicates.count) exact duplicates").font(.headline)
+                Text("\(plan.sources.count) sources · \(plan.duplicates.count) proposed repeats").font(.headline)
                 if plan.duplicates.isEmpty {
-                    Text("No active captures have identical rendered image bytes. Similar-looking or low-value captures still need your review.").font(.callout)
+                    Text("No active captures are identical or look like repeats. Low-value captures still need your review.").font(.callout)
                 } else {
                     ScrollView { VStack(alignment: .leading, spacing: 12) {
                         ForEach(plan.duplicates) { proposal in
@@ -34,12 +34,12 @@ struct SnapOrganizationView: View {
                             })) {
                                 VStack(alignment: .leading) {
                                     Text(proposal.duplicate.title).font(.callout.weight(.semibold))
-                                    Text("Keep \(proposal.retained.title). These rendered images are identical.").font(.caption).foregroundStyle(.secondary)
+                                    Text("Keep \(proposal.retained.title). \(proposal.reason)").font(.caption).foregroundStyle(.secondary)
                                 }
                             }.toggleStyle(.checkbox)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 220)
-                    Button("Archive and exclude \(proposed.count) reviewed duplicates") { archive(plan) }.disabled(proposed.isEmpty)
+                    Button("Archive and exclude \(proposed.count) reviewed repeats") { archive(plan) }.disabled(proposed.isEmpty)
                     Text("Archive is reversible. Original files and existing narrated sessions remain intact.").font(.caption).foregroundStyle(.secondary)
                 }
                 Divider()
@@ -81,8 +81,8 @@ struct SnapOrganizationView: View {
             let excluded = proposed
             try SnapOrganization.archiveReviewed(excluded, plan: plan, store: model.store)
             model.refresh(); proposed = []
-            if save(plan) { notice = "Reviewed duplicates archived and overview updated. Restore them from Archived at any time." }
-            else { notice = "Reviewed duplicates are archived and can be restored. \(notice ?? "The overview could not be saved.")" }
+            if save(plan) { notice = "Reviewed repeats archived and overview updated. Restore them from Archived at any time." }
+            else { notice = "Reviewed repeats are archived and can be restored. \(notice ?? "The overview could not be saved.")" }
             onExclude?(excluded)
         } catch { model.refresh(); notice = "Review the current history before retrying. \(error.localizedDescription)" }
     }
