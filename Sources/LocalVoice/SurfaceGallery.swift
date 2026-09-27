@@ -198,7 +198,11 @@ enum SurfaceGallery {
         // Snap storage wants the resolved spelling of its folder, which may name /private as /tmp.
         let snaps = Workbench.supportDirectory(component: "Snaps")
         try FileManager.default.createDirectory(at: snaps, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        snap = SnapModel(store: try SurfacePass.makeSnaps(SnapStore(root: snaps.resolvingSymlinksInPath())))
+        // An empty Desktop in the temporary home, and a trash that refuses: Desktop import never runs here.
+        let desktop = home.appendingPathComponent("Desktop", isDirectory: true)
+        try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        snap = SnapModel(store: try SurfacePass.makeSnaps(SnapStore(root: snaps.resolvingSymlinksInPath())), desktop: desktop,
+                         trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") })
         stage = StageKitController(reserving: preferences.enabledCombinations, defaults: stageDefaults)
         stage.useSharedActivityControls()
         let model = model
@@ -270,7 +274,7 @@ enum SurfaceGallery {
         return root
     }
 
-    /// Three Snaps with fixed dates. They are added through the store, then dated like the history fixtures.
+    /// Three Snaps with fixed dates, added through the store.
     static func makeSnaps(_ store: SnapStore) throws -> SnapStore {
         let titles = ["Pricing table before the change", "Onboarding checklist", "Error shown after saving"]
         for (index, title) in titles.enumerated() {
@@ -284,13 +288,8 @@ enum SurfaceGallery {
                 throw VoiceError.message("Could not draw a synthetic Snap.")
             }
             let id = UUID(uuidString: "5D1C0A1E-0000-4000-8000-00000000020\(index)")!
-            var item = try store.insert(originalPNG: png, width: 640, height: 400, title: title,
-                                        source: [SnapSource.region, .window, .screen][index], tags: index == 0 ? ["pricing"] : [], id: id)
-            item.createdAt = Date(timeIntervalSince1970: 1_789_546_320 - Double(index) * 86_400); item.updatedAt = item.createdAt
-            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let record = store.root.appendingPathComponent(id.uuidString.lowercased()).appendingPathComponent("snap.json")
-            try encoder.encode(item).write(to: record, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: record.path)
+            try store.insert(originalPNG: png, width: 640, height: 400, title: title, source: [SnapSource.region, .window, .screen][index],
+                             tags: index == 0 ? ["pricing"] : [], id: id, createdAt: Date(timeIntervalSince1970: 1_789_546_320 - Double(index) * 86_400))
         }
         return store
     }
@@ -576,6 +575,10 @@ enum SurfaceGallery {
                  page("Settings page", "Keyboard and practice", "shortcuts"), action("Settings page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"), action("Snap page", "Hand off or organise a review", "Opens the handoff review"),
+                 action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
+                 action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
+                 action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
+                 action("Read aloud page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
                  page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "Open history", "history"),
                  page("Handoff review", "Prepared handoff", "handoffs"), page("Remember correction", "Open Dictionary", "dictionary")]
         list += [action(menu, "Workbench › About Workbench", "Shows the About panel"), page(menu, "Workbench › Check for Updates…", "settings"),
