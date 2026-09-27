@@ -56,6 +56,22 @@ enum MeetingChecks {
         try expect(detector.availableApps().isEmpty && detector.lastError != nil, "metadata errors are visible rather than an absent-call claim")
         source.failure = false
 
+        // Identifiers compare without case, and an app can own audio processes
+        // not named `.helper`. Mac call services are never merged into an app.
+        for (process, owner) in [("com.apple.MobilePhone", "com.apple.mobilephone"), ("com.microsoft.teams2.modulehost", "com.microsoft.teams2"),
+                                 ("com.hnc.Discord.helper.Renderer", "com.hnc.Discord"), ("net.whatsapp.WhatsApp", "net.whatsapp.WhatsApp")] {
+            try expect(MeetingAppCatalogue.known(process)?.bundleID == owner, "\(process) belongs to \(owner)")
+        }
+        try expect(MeetingAppCatalogue.known("com.apple.FaceTimeExtra") == nil && MeetingAppCatalogue.known("com.apple.avconferenced") == nil,
+                   "only exact identifiers and an app's own processes match; call services are never merged into an app")
+        let teams = MeetingDetector(source: source)
+        teams.isEnabled = true
+        source.values = [.init(pid: 900, bundleID: "com.microsoft.teams2", isRunningInput: false, isRunningOutput: false),
+                         .init(pid: 901, bundleID: "com.microsoft.teams2.modulehost", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false)]
+        _ = teams.evaluate(now: now); _ = teams.evaluate(now: now)
+        try expect(teams.evaluate(now: now)?.bundleID == "com.microsoft.teams2" && teams.availableApps().map(\.id) == [900],
+                   "a new Teams call in its module host is offered as one Teams choice")
+
         source.values = [
             .init(pid: 800, bundleID: "com.apple.assistantd", isRunningInput: false, isRunningOutput: false,
                   isUserFacingApp: false),
@@ -88,8 +104,56 @@ enum MeetingChecks {
                    "known audio helpers remain available when the main process has no CoreAudio object")
         source.values.removeAll { $0.bundleID.hasPrefix("com.google.Chrome") }
         detector.forgetObservations()
+        _ = detector.evaluate(now: now); _ = detector.evaluate(now: now)
+        try expect(detector.evaluate(now: now)?.id == 830,
+                   "the calling service with two-way audio is the one manual service that raises an offer, because a call answered on this Mac runs there")
+        source.values.removeAll { $0.bundleID == "com.apple.avconferenced" }
+        detector.forgetObservations()
         for _ in 0..<4 { _ = detector.evaluate(now: now) }
-        try expect(detector.evaluate(now: now) == nil, "manual service visibility does not enable new passive call detection")
+        try expect(detector.evaluate(now: now) == nil,
+                   "every other manual service, including Mac telephony and shared WebKit audio, stays manual even with two-way audio")
+
+        // A FaceTime or iPhone call answered on this Mac runs in the calling
+        // service, which Detect Meetings & Calls covers only with two-way audio.
+        let calls = MeetingDetector(source: source)
+        calls.isEnabled = true
+        source.values = [.init(pid: 950, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: false, isUserFacingApp: false)]
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "the calling service with only the microphone running is not offered")
+        source.values[0].isRunningInput = false; source.values[0].isRunningOutput = true
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "calling-service playback without input does not offer")
+        source.values = [
+            .init(pid: 950, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: false, isUserFacingApp: false),
+            .init(pid: 951, bundleID: "com.apple.avconferenced", isRunningInput: false, isRunningOutput: true, isUserFacingApp: false)
+        ]
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "directions from different service processes cannot invent a two-way source")
+        source.values.removeLast(); source.values[0].isRunningOutput = true
+        try expect(calls.evaluate(now: now) == nil && calls.evaluate(now: now) == nil,
+                   "calling-service activity needs the complete confirmation streak")
+        source.values[0].isRunningOutput = false
+        try expect(calls.evaluate(now: now) == nil, "losing one direction interrupts the service streak")
+        source.values[0].isRunningOutput = true
+        try expect(calls.evaluate(now: now) == nil && calls.evaluate(now: now) == nil,
+                   "both directions must remain present for a fresh full streak")
+        let call = calls.evaluate(now: now)
+        try expect(call?.id == 950 && call?.bundleID == "com.apple.avconferenced"
+                   && MeetingDetector.offerTitle(for: call!) == "Possible call on this Mac"
+                   && MeetingDetector.offerText(for: call!).contains("FaceTime or phone call"),
+                   "a two-way call on this Mac is offered as a call from its own source")
+        calls.dismiss(call!, now: now)
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "calling-service dismissal retains the usual cooldown")
+        let afterCooldown = now.addingTimeInterval(1_201)
+        try expect(calls.evaluate(now: afterCooldown)?.id == 950, "calling-service offers can return after cooldown")
+        calls.snooze(now: afterCooldown)
+        let readsBeforeSnooze = source.calls
+        try expect(calls.evaluate(now: afterCooldown.addingTimeInterval(10)) == nil && source.calls == readsBeforeSnooze,
+                   "snoozing a service offer stops metadata reads")
+        calls.snoozedUntil = nil; calls.disable(call!)
+        for _ in 0..<4 { _ = calls.evaluate(now: afterCooldown) }
+        try expect(calls.evaluate(now: afterCooldown) == nil, "turning off offers for calls on this Mac is respected")
 
         for duration in [301.0, 1_801, 2_700, 3_600, 7_200, 600.1] {
             let windows = MeetingSegmentPlan.plan(totalSeconds: duration)
@@ -198,6 +262,78 @@ enum MeetingChecks {
         try expect(history[0].rawText == history[0].text && history[0].cleanupMethod == nil, "original wording is retained without cleanup")
         commitProcessor.writeManifest = nil
 
+        // Speakers: the microphone is "You" and the app's audio is "Others".
+        func bursts(_ source: MeetingTrackSource, seconds: Double, spans: [(Double, Double)], session: URL) throws -> MeetingTrack {
+            let rate = 16_000.0, relative = "tracks/\(source.rawValue).caf"
+            let url = try MeetingStore.safeURL(session: session, relative: relative)
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate,
+                                           AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            do {
+                let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                let total = Int(seconds * rate)
+                let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(total))!
+                buffer.frameLength = AVAudioFrameCount(total)
+                for index in 0..<total {
+                    let time = Double(index) / rate
+                    let speaking = spans.contains { time >= $0.0 && time < $0.1 }
+                    buffer.floatChannelData![0][index] = speaking ? Float(0.2 * sin(2 * .pi * 220 * time)) : (index % 2 == 0 ? 0.0004 : -0.0004)
+                }
+                try file.write(from: buffer)
+            }
+            let timing = MeetingTrackTiming(source: source, startSeconds: 0, sampleRate: rate)
+            try MeetingStore.writePrivate(JSONEncoder().encode(timing), to: url.deletingPathExtension().appendingPathExtension("json"))
+            return MeetingTrack(source: source, file: relative, startSeconds: 0, seconds: seconds, sampleRate: rate, peak: 0.2, droppedSeconds: 0)
+        }
+        let spanManifest = manifest()
+        let spanSession = try MeetingStore.create(root: storeRoot, manifest: spanManifest)
+        let spanTrack = try bursts(.local, seconds: 7, spans: [(1.0, 2.0), (3.5, 4.5), (6.0, 6.1)], session: spanSession)
+        let clips = spanSession.appendingPathComponent("clips", isDirectory: true)
+        try MeetingStore.createPrivateDirectory(clips)
+        let found = try MeetingConversation.writeUtterances(track: spanTrack, session: spanSession, speaker: .you, directory: clips)
+        try expect(found.count == 2 && abs(found[0].start - 0.8) < 0.15 && abs(found[1].start - 3.3) < 0.15
+                   && found.allSatisfy { $0.end > $0.start + 0.9 }, "speech splits into timed utterances and a 0.1 s click is ignored")
+        let heard: [MeetingConversation.Utterance] = [
+            .init(speaker: .others, start: 0, end: 2, text: "Can you send the draft by Friday"),
+            .init(speaker: .you, start: 0.1, end: 1.9, text: "can you send the draft by friday"),
+            .init(speaker: .you, start: 2.5, end: 3.5, text: "Yes I will"),
+            .init(speaker: .you, start: 3.8, end: 4.2, text: "and copy Sam"),
+            .init(speaker: .others, start: 5, end: 6, text: "Thanks")]
+        try expect(MeetingConversation.conversation(heard) == "Others: Can you send the draft by Friday\n\nYou: Yes I will and copy Sam\n\nOthers: Thanks",
+                   "speaker turns are chronological, a speaker echo is dropped and a reply is kept")
+
+        var talk = manifest()
+        let talkSession = try MeetingStore.create(root: storeRoot, manifest: talk)
+        let mine = try bursts(.local, seconds: 5, spans: [(0.5, 1.5)], session: talkSession)
+        let theirs = try bursts(.remote, seconds: 5, spans: [(2.5, 3.5)], session: talkSession)
+        var stoppedTalk = talk; stoppedTalk.tracks = [theirs, mine]; stoppedTalk.seconds = 5
+        try MeetingStore.save(stoppedTalk, at: talkSession, replacing: talk); talk = stoppedTalk
+        var spoken: [Transcript] = []
+        let labelled = MeetingProcessor(session: talkSession, transcribe: { url in
+            let name = url.lastPathComponent
+            return name.hasPrefix("you-") ? "I can do Tuesday" : name.hasPrefix("others-") ? "Does Tuesday work" : "mixed wording"
+        }, commit: { transcript, _, _ in spoken.append(transcript) })
+        _ = try await labelled.run()
+        try expect(spoken.count == 1 && spoken[0].text == "You: I can do Tuesday\n\nOthers: Does Tuesday work"
+                   && spoken[0].rawText == "mixed wording" && spoken[0].cleanupMethod == MeetingProcessor.speakersMethod,
+                   "a two-track meeting saves labelled turns and keeps the mixed words as the original")
+        try expect(!((try? FileManager.default.contentsOfDirectory(atPath: talkSession.path)) ?? []).contains { $0.hasPrefix(".speakers-") },
+                   "speaker clips are removed after use")
+
+        var fallback = manifest()
+        let fallbackSession = try MeetingStore.create(root: storeRoot, manifest: fallback)
+        let fallbackTracks = [try bursts(.local, seconds: 3, spans: [(0.5, 1.5)], session: fallbackSession),
+                              try bursts(.remote, seconds: 3, spans: [(1.5, 2.5)], session: fallbackSession)]
+        var stoppedFallback = fallback; stoppedFallback.tracks = fallbackTracks; stoppedFallback.seconds = 3
+        try MeetingStore.save(stoppedFallback, at: fallbackSession, replacing: fallback); fallback = stoppedFallback
+        var kept: [Transcript] = []
+        let unlabelled = MeetingProcessor(session: fallbackSession, transcribe: { url in
+            if url.lastPathComponent.hasPrefix("segment-") { return "mixed wording" }
+            throw MeetingError.message("Synthetic clip failure")
+        }, commit: { transcript, _, _ in kept.append(transcript) })
+        _ = try await unlabelled.run()
+        try expect(kept.count == 1 && kept[0].text == "mixed wording" && kept[0].cleanupMethod == nil,
+                   "if speakers cannot be separated the mixed transcript is saved unchanged")
+
         // The real bounded writer records timestamp discontinuities as a stop,
         // rather than joining later samples onto an earlier time.
         let recording = manifest(state: .recording)
@@ -215,7 +351,91 @@ enum MeetingChecks {
         try expect(restored.tracks.first?.seconds == recorded.seconds, "writer timing/audio survives close and recovery")
 
         try await lifecycleChecks(root: root, expect: expect)
+        try await offerLifecycleChecks(root: root, expect: expect)
+        checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
+    }
+
+    private static func offerLifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        let suite = "Workbench-MeetingOffers-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ProcessFixture()
+        var permissions = 0, captures = 0, reviews = 0
+        let model = MeetingModel(directory: root.appendingPathComponent("offers"), defaults: defaults,
+            processSource: source, transcribe: { _ in "unused" },
+            microphonePermission: { permissions += 1; return true },
+            captureFactory: { captures += 1; return CaptureFixture() })
+        var created = 0, closed = 0
+        var visible = Set<Int>()
+        var offers: [MeetingAudioApp] = []
+        var actions: [MeetingOfferPanelController.Actions] = []
+        var timers: [@MainActor () -> Void] = []
+        var delays: [TimeInterval] = []
+        let controller = MeetingOfferPanelController(model: model, present: { offer, callbacks in
+            created += 1
+            let id = created
+            visible.insert(id); offers.append(offer); actions.append(callbacks)
+            return { visible.remove(id); closed += 1 }
+        }, schedule: { delay, callback in delays.append(delay); timers.append(callback) },
+        review: { reviews += 1 })
+        model.refreshDetection()
+        try expect(created == 0 && source.calls == 0, "disabled offer controller reads no metadata and presents nothing")
+        model.detectionEnabled = true
+        source.values = [.init(pid: 91_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true)]
+        model.refreshDetection(); model.refreshDetection()
+        try expect(created == 0, "passive offer waits for all three observations")
+        model.refreshDetection()
+        try expect(visible == [1] && created == 1 && closed == 0, "confirmed offer presents exactly one panel")
+        model.refreshDetection(); model.refreshDetection()
+        try expect(visible == [1] && created == 1 && closed == 0 && timers.count == 1,
+                   "repeated Published offers retain the visible panel and its original timeout")
+        actions[0].dismiss()
+        model.refreshDetection()
+        try expect(visible.isEmpty && closed == 1 && model.offer == nil && created == 1,
+                   "Not now clears the panel and cooldown prevents its next poll from reopening")
+
+        source.values = [.init(pid: 91_002, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false)]
+        for _ in 0..<3 { model.refreshDetection() }
+        timers[0]()
+        try expect(visible == [2] && created == 2 && closed == 1,
+                   "a dismissed offer's stale timer cannot hide a replacement")
+        actions[1].review()
+        try expect(visible.isEmpty && reviews == 1 && model.selectedAppID == 91_002 && model.purpose == "call" && captures == 0,
+                   "Review selects the exact calling-service source and Call purpose without starting capture")
+
+        // Phone.app's installed macOS bundle identifier is lowercase.
+        source.values = [.init(pid: 91_003, bundleID: "com.apple.mobilephone", isRunningInput: true, isRunningOutput: true)]
+        for _ in 0..<3 { model.refreshDetection() }
+        try expect(visible == [3] && offers.last?.name == "Phone" && offers.last?.bundleID == "com.apple.mobilephone",
+                   "real macOS Phone bundle identity produces a scoped metadata-only offer")
+        timers[2]()
+        try expect(visible.isEmpty && closed == 3, "the current timeout hides its own panel")
+        for _ in 0..<3 { model.refreshDetection() }
+        try expect(created == 3 && timers.count == 3, "a timed-out offer does not repeatedly reopen during one continuous activity")
+        source.values = []; model.refreshDetection()
+        source.values = [.init(pid: 91_003, bundleID: "com.apple.mobilephone", isRunningInput: true, isRunningOutput: true)]
+        for _ in 0..<3 { model.refreshDetection() }
+        timers[2]()
+        try expect(visible == [4] && created == 4 && closed == 3,
+                   "absent activity permits a new offer with the same PID and invalidates its old timer")
+        source.values[0].pid = 91_004; model.refreshDetection()
+        timers[3]()
+        try expect(visible == [5] && offers.last?.id == 91_004 && closed == 4,
+                   "a changed process replaces the panel and its predecessor cannot dismiss it")
+        controller.close()
+        timers[4](); model.refreshDetection()
+        try expect(visible.isEmpty && closed == 5 && created == 5,
+                   "closing the controller removes its panel and prevents stale timers or publications reopening it")
+        actions[4].snooze()
+        let callsBeforeSnooze = source.calls
+        model.refreshDetection()
+        try expect(model.offer == nil && source.calls == callsBeforeSnooze,
+                   "Snooze suppresses further offer metadata polls")
+        model.detectionEnabled = false
+        await model.prepareForShutdown()
+        try expect(permissions == 0 && captures == 0 && delays.allSatisfy { $0 == 20 },
+                   "all offer paths preserve the timeout and never request microphone or capture access")
     }
 
     private static func lifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
@@ -230,6 +450,9 @@ enum MeetingChecks {
                                  transcribe: { _ in recognition += 1; return "synthetic meeting" },
                                  microphonePermission: { permissions += 1; return true }, captureFactory: { factories += 1; return capture })
         await Task.yield()
+        model.useOffer(MeetingAudioApp(id: 950, name: "Mac calling service", bundleID: "com.apple.avconferenced"))
+        try expect(model.selectedAppID == 950 && model.purpose == "call", "reviewing a call on this Mac records it as a Call")
+        model.purpose = "meeting"; model.selectedAppID = nil
         try expect(!model.detectionEnabled && source.calls == 0 && factories == 0 && permissions == 0,
                    "controller initialization does not detect, ask permission or capture")
         model.mayStart = { "Another Workbench recording is active." }
@@ -243,6 +466,23 @@ enum MeetingChecks {
         await model.start()
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
+        let activeID = UUID(uuidString: MeetingStore.sessions(in: root.appendingPathComponent("model"))[0].lastPathComponent)!
+        var removalCommits = 0
+        do {
+            _ = try model.removeCompletedRecording(for: activeID) { removalCommits += 1 }
+            throw MeetingError.message("An active recording allowed removal")
+        } catch {
+            try expect(removalCommits == 0 && model.isRecording && model.hasRecording(for: activeID),
+                       "removing a completed transcript cannot remove an active recording")
+        }
+        var oldMeeting = manifest(state: .committed)
+        oldMeeting.seconds = 1
+        oldMeeting.segments = [.init(index: 0, file: "segments/segment-0000.wav", startSeconds: 0,
+                                      seconds: 1, bytes: 32_000, text: "An earlier completed meeting")]
+        _ = try MeetingStore.create(root: root.appendingPathComponent("model"), manifest: oldMeeting)
+        _ = try model.removeCompletedRecording(for: oldMeeting.id) { removalCommits += 1 }
+        try expect(removalCommits == 1 && model.isRecording && model.hasRecording(for: activeID)
+                   && !model.hasRecording(for: oldMeeting.id), "an unrelated active recording does not prevent an old completed recording's removal")
         await model.stop()
         try expect(!model.isBusy && capture.finished == 1 && history.count == 1 && recognition == 1,
                    "Stop closes capture then saves through the shared history callback")

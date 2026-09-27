@@ -95,8 +95,8 @@ final class MeetingDetector {
         // Show one choice for that same scope, preferring its stable main process.
         let ordered = processes.sorted { left, right in
             if left.isUserFacingApp != right.isUserFacingApp { return left.isUserFacingApp }
-            let leftMain = MeetingAppCatalogue.known(left.bundleID)?.bundleID == left.bundleID
-            let rightMain = MeetingAppCatalogue.known(right.bundleID)?.bundleID == right.bundleID
+            let leftMain = MeetingAppCatalogue.known(left.bundleID)?.bundleID.caseInsensitiveCompare(left.bundleID) == .orderedSame
+            let rightMain = MeetingAppCatalogue.known(right.bundleID)?.bundleID.caseInsensitiveCompare(right.bundleID) == .orderedSame
             if leftMain != rightMain { return leftMain }
             return left.pid < right.pid
         }
@@ -138,6 +138,13 @@ final class MeetingDetector {
                   process.isRunningInput else { continue }
             candidates[known.bundleID] = choices[known.bundleID]
         }
+        // Observed Mac call activity uses this service. Requiring both
+        // directions avoids input-only checks and output-only sounds, but is
+        // still only a possible-call signal. Other manual services stay manual.
+        for process in processes where MeetingAppCatalogue.callServiceBundleIDs.contains(process.bundleID)
+            && process.isRunningInput && process.isRunningOutput && !disabledBundleIDs.contains(process.bundleID) {
+            candidates[process.bundleID] = choices[process.bundleID]
+        }
         for bundleID in Array(streaks.keys) where candidates[bundleID] == nil { streaks[bundleID] = 0 }
         for bundleID in candidates.keys { streaks[bundleID, default: 0] += 1 }
         let ready = candidates.values.filter { app in
@@ -145,10 +152,11 @@ final class MeetingDetector {
             if let until = cooldowns[app.bundleID], until > now { return false }
             return true
         }
+        // A known app is the more specific signal; the calling service is offered
+        // only when no meeting app or browser qualifies.
         return ready.sorted { left, right in
-            let leftKind = MeetingAppCatalogue.known(left.bundleID)?.kind ?? .browser
-            let rightKind = MeetingAppCatalogue.known(right.bundleID)?.kind ?? .browser
-            if leftKind != rightKind { return leftKind == .communication }
+            let leftRank = Self.offerRank(left.bundleID), rightRank = Self.offerRank(right.bundleID)
+            if leftRank != rightRank { return leftRank < rightRank }
             return left.bundleID < right.bundleID
         }.first
     }
@@ -186,6 +194,18 @@ final class MeetingDetector {
 
     /// The wording the surface shows. It claims a possibility, never a fact.
     static func offerText(for app: MeetingAudioApp) -> String {
-        "\(app.name) is using the microphone, so a call may be running. Record this meeting?"
+        if isCallService(app) { return "A FaceTime or phone call may be active on this Mac. Review the audio source before recording." }
+        return "\(app.name) is using the microphone, so a call may be running. Record this meeting?"
+    }
+
+    static func offerTitle(for app: MeetingAudioApp) -> String {
+        isCallService(app) ? "Possible call on this Mac" : "Possible call in " + app.name
+    }
+
+    static func isCallService(_ app: MeetingAudioApp) -> Bool { MeetingAppCatalogue.callServiceBundleIDs.contains(app.bundleID) }
+
+    private static func offerRank(_ bundleID: String) -> Int {
+        if MeetingAppCatalogue.callServiceBundleIDs.contains(bundleID) { return 2 }
+        return MeetingAppCatalogue.known(bundleID)?.kind == .communication ? 0 : 1
     }
 }
