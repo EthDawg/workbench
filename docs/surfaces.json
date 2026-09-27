@@ -1,5 +1,135 @@
 [
   {
+    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
+    "surface": "floating toolbar live controls",
+    "label": "Reset to bottom centre",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.settings-for-next-capture",
+    "surface": "floating toolbar live controls",
+    "label": "Settings for next capture",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Menu.runtime-e93c1d1636eb",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : \"ellipsis\" )",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from Image ( systemName : \"ellipsis\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.review",
+    "surface": "floating toolbar live controls",
+    "label": "Review",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.runtime-772d4201867d",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : \"xmark\" )",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.runtime-7b59630aeb09",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" )",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.cancel",
+    "surface": "floating toolbar live controls",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "aliasOf": "dictate",
+    "note": "Existing contextual \"Cancel\" label inside dictate; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.copy-now",
+    "surface": "floating toolbar live controls",
+    "label": "Copy now",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.done-drawing",
+    "surface": "floating toolbar live controls",
+    "label": "Done drawing",
+    "kind": "action",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.open-workbench",
+    "surface": "floating toolbar live controls",
+    "label": "Open Workbench",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.record-again",
+    "surface": "floating toolbar live controls",
+    "label": "Record again",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-343c7a0bb03c",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "model . retryCaptureLabel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from model . retryCaptureLabel; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-37613dff80ae",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "model . previewingPanel ? \"Done\" : \"Stop\"",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from model . previewingPanel ? \"Done\" : \"Stop\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-772d4201867d",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : \"xmark\" )",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-8181053a682c",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" )",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-f8c29b226e48",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" )",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" ); no rendered text assumed."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.change-tool",
     "surface": "floating toolbar glyph menu",
     "label": "Change tool",
@@ -44,6 +174,13 @@
     "belongsTo": "present"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.annotate",
+    "surface": "floating toolbar glyph menu",
+    "label": "Draw",
+    "kind": "capability",
+    "belongsTo": "draw"
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.done-drawing-keep-marks",
     "surface": "floating toolbar glyph menu",
     "label": "Done drawing · keep marks",
@@ -72,6 +209,22 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.persona",
+    "surface": "floating toolbar glyph menu",
+    "label": "Persona Overlay",
+    "kind": "capability",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "unify under Grammar Names"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.present",
+    "surface": "floating toolbar glyph menu",
+    "label": "Present",
+    "kind": "capability",
+    "belongsTo": "present"
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-3f14675974be",
     "surface": "floating toolbar glyph menu",
     "label": null,
@@ -97,6 +250,13 @@
     "belongsTo": "settings"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.snap",
+    "surface": "floating toolbar glyph menu",
+    "label": "Snap & Talk",
+    "kind": "workflow",
+    "belongsTo": "snapAndTalk"
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-reading",
     "surface": "floating toolbar glyph menu",
     "label": "Stop reading",
@@ -109,40 +269,6 @@
     "label": "Switch to Browser Tab…",
     "kind": "action",
     "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.choice.annotate",
-    "surface": "floating toolbar glyph menu",
-    "label": "Draw",
-    "case": "annotate",
-    "kind": "capability",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.choice.persona",
-    "surface": "floating toolbar glyph menu",
-    "label": "Persona Overlay",
-    "case": "persona",
-    "kind": "capability",
-    "belongsTo": "persona",
-    "aliasOf": "persona",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.choice.present",
-    "surface": "floating toolbar glyph menu",
-    "label": "Present",
-    "case": "present",
-    "kind": "capability",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.choice.snap",
-    "surface": "floating toolbar glyph menu",
-    "label": "Snap & Talk",
-    "case": "snap",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.draw",
@@ -192,7 +318,7 @@
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-d5d0cbd9ef56",
-    "surface": "floating toolbar reading controls",
+    "surface": "floating toolbar live controls",
     "label": null,
     "expression": "model . paused ? \"Resume\" : \"Pause\"",
     "kind": "action",
@@ -201,7 +327,7 @@
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-da89eeb49706",
-    "surface": "floating toolbar reading controls",
+    "surface": "floating toolbar live controls",
     "label": null,
     "expression": "model . rendering ? \"Cancel\" : \"Stop\"",
     "kind": "action",
@@ -248,17 +374,47 @@
     "note": "Existing contextual \"Copy\" label inside app; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.control-label.from-iphone",
+    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
     "surface": "proactive offer PhotoHandoffArrivalCue",
     "label": "From iPhone",
     "kind": "action",
     "belongsTo": "library"
   },
   {
+    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.enable-photo-handoff",
+    "surface": "settings page",
+    "label": "Enable photo handoff",
+    "kind": "setting",
+    "belongsTo": "library"
+  },
+  {
+    "id": "LocalVoice.PhotoHandoffView.PhotoHandoffSettings.Button.turn-off",
+    "surface": "settings page",
+    "label": "Turn off",
+    "kind": "setting",
+    "belongsTo": "library",
+    "aliasOf": "library",
+    "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
+  },
+  {
     "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.all-prompts",
     "surface": "Saved Prompts menu",
     "label": "All Prompts",
     "kind": "action",
+    "belongsTo": "present"
+  },
+  {
+    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.by-persona",
+    "surface": "Saved Prompts menu",
+    "label": "By Persona",
+    "kind": "option",
+    "belongsTo": "present"
+  },
+  {
+    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.by-product",
+    "surface": "Saved Prompts menu",
+    "label": "By Product",
+    "kind": "option",
     "belongsTo": "present"
   },
   {
@@ -278,18 +434,11 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.choice.by-persona",
-    "surface": "Saved Prompts menu",
-    "label": "By Persona",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.choice.by-product",
-    "surface": "Saved Prompts menu",
-    "label": "By Product",
-    "kind": "option",
-    "belongsTo": "present"
+    "id": "LocalVoice.QuickControls.VoiceOptions.Button.enable-automatic-paste",
+    "surface": "settings page",
+    "label": "Enable automatic paste…",
+    "kind": "action",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
@@ -311,6 +460,33 @@
     "label": "Delivery",
     "kind": "setting",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.cancel",
+    "surface": "floating toolbar live controls",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Existing contextual \"Cancel\" label inside snapAndTalk; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.runtime-8181053a682c",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" )",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Runtime label from Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.stop",
+    "surface": "floating toolbar live controls",
+    "label": "Stop",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability."
   },
   {
     "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
@@ -434,6 +610,57 @@
     "note": "Runtime label from receipt . canSuggestPaste ? \"\\(receipt.wordCount) words from Workbench. Paste where you need them.\" : receipt . detail; no rendered text assumed."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.keyboard-and-practice",
+    "surface": "settings page",
+    "label": "Keyboard and practice",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.models-and-local-server",
+    "surface": "settings page",
+    "label": "Models and local server",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.position-dictation-panel",
+    "surface": "settings page",
+    "label": "Position dictation panel…",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
+    "surface": "window sidebar",
+    "label": null,
+    "expression": "updates . buttonTitle",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.speech-settings",
+    "surface": "window home",
+    "label": "Speech settings",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.try-the-keyboard",
+    "surface": "window home",
+    "label": "Try the keyboard",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.your-dictionary",
+    "surface": "settings page",
+    "label": "Your dictionary",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
     "surface": "settings page",
     "label": "Open Workbench at login",
@@ -449,7 +676,7 @@
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.annotate",
-    "surface": "window home cards",
+    "surface": "window home",
     "label": "Annotate",
     "kind": "capability",
     "belongsTo": "draw",
@@ -458,14 +685,14 @@
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.dictate",
-    "surface": "window home cards",
+    "surface": "window home",
     "label": "Dictate",
     "kind": "capability",
     "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.present-a-device",
-    "surface": "window home cards",
+    "surface": "window home",
     "label": "Present a device",
     "kind": "capability",
     "belongsTo": "present",
@@ -474,7 +701,7 @@
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.read-aloud",
-    "surface": "window home cards",
+    "surface": "window home",
     "label": "Read aloud",
     "kind": "capability",
     "belongsTo": "read",
@@ -483,7 +710,7 @@
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.snap-talk",
-    "surface": "window home cards",
+    "surface": "window home",
     "label": "Snap & Talk",
     "kind": "workflow",
     "belongsTo": "snapAndTalk"
@@ -728,7 +955,7 @@
     "note": "Existing contextual \"Stop\" label inside read; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-row-controls.control-label.runtime-6a4307689762",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-row-controls.Button.runtime-6a4307689762",
     "surface": "quick panel row controls",
     "label": null,
     "expression": "entry ? . shortcut . enabled == true ? ( entry ? . shortcut . label ?? \"Set\" ) : \"Set\"",
@@ -791,6 +1018,29 @@
     "note": "Existing contextual \"Options\" label inside timer; shared wording, not a separate capability."
   },
   {
+    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Button.copy-build-details",
+    "surface": "settings page",
+    "label": "Copy build details",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Button.runtime-e9b18abfdfc4",
+    "surface": "settings page",
+    "label": null,
+    "expression": "updates . buttonTitle",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Link.release-notes-and-downloads",
+    "surface": "settings page",
+    "label": "Release notes and downloads",
+    "kind": "action",
+    "belongsTo": "settings"
+  },
+  {
     "id": "LocalVoice.WorkbenchUpdates.WorkbenchUpdateSettings.Toggle.check-for-updates-automatically",
     "surface": "settings page",
     "label": "Check for updates automatically",
@@ -842,11 +1092,27 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.copy",
+    "surface": "app menu bar",
+    "label": "Copy",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "app",
+    "note": "Existing contextual \"Copy\" label inside app; shared wording, not a separate capability."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.copy-build-details",
     "surface": "app menu bar",
     "label": "Copy build details",
     "kind": "action",
     "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.cut",
+    "surface": "app menu bar",
+    "label": "Cut",
+    "kind": "action",
+    "belongsTo": "app"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.focus-floating-toolbar",
@@ -875,6 +1141,15 @@
     "label": "Open Workbench",
     "kind": "action",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.paste",
+    "surface": "app menu bar",
+    "label": "Paste",
+    "kind": "action",
+    "belongsTo": "app",
+    "aliasOf": "app",
+    "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.quick-controls",
@@ -914,6 +1189,13 @@
     "note": "unify under Grammar Names"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.select-all",
+    "surface": "app menu bar",
+    "label": "Select All",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.settings",
     "surface": "app menu bar",
     "label": "Settings…",
@@ -942,52 +1224,20 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.workbench-guide",
-    "surface": "app menu bar",
-    "label": "Workbench Guide",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.choice.copy",
-    "surface": "app menu bar",
-    "label": "Copy",
-    "kind": "action",
-    "belongsTo": "app",
-    "aliasOf": "app",
-    "note": "Existing contextual \"Copy\" label inside app; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.choice.cut",
-    "surface": "app menu bar",
-    "label": "Cut",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.choice.paste",
-    "surface": "app menu bar",
-    "label": "Paste",
-    "kind": "action",
-    "belongsTo": "app",
-    "aliasOf": "app",
-    "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.choice.select-all",
-    "surface": "app menu bar",
-    "label": "Select All",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.choice.undo",
+    "id": "LocalVoice.main.AppDelegate.addItem.undo",
     "surface": "app menu bar",
     "label": "Undo",
     "kind": "action",
     "belongsTo": "app",
     "aliasOf": "app",
     "note": "Existing contextual \"Undo\" label inside app; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.addItem.workbench-guide",
+    "surface": "app menu bar",
+    "label": "Workbench Guide",
+    "kind": "action",
+    "belongsTo": "app"
   },
   {
     "id": "LocalVoice.main.AppDelegate.menu-title.edit",
@@ -1013,20 +1263,18 @@
     "belongsTo": "app"
   },
   {
+    "id": "StageKit.ActivityMenus.PersonaSizeMenuView.native-control.persona-size",
+    "surface": "Persona menu",
+    "label": "Persona Size",
+    "kind": "option",
+    "belongsTo": "persona"
+  },
+  {
     "id": "StageKit.AnnotationMenu.AnnotationMenu.NSMenuItem.ink-colour",
     "surface": "Draw menu",
     "label": "Ink Colour",
     "kind": "action",
     "belongsTo": "draw"
-  },
-  {
-    "id": "StageKit.AnnotationMenu.AnnotationMenu.NSMenuItem.runtime-a4e3634ea278",
-    "surface": "Draw menu",
-    "label": null,
-    "expression": "\"Custom \\(app.settings.value.color.hex)\"",
-    "kind": "action",
-    "belongsTo": "draw",
-    "note": "Runtime label from \"Custom \\(app.settings.value.color.hex)\"; no rendered text assumed."
   },
   {
     "id": "StageKit.AnnotationMenu.AnnotationMenu.actionItem.redo-annotation",
@@ -1070,15 +1318,6 @@
     "kind": "action",
     "belongsTo": "draw",
     "note": "Runtime label from . clear; no rendered text assumed."
-  },
-  {
-    "id": "StageKit.AnnotationMenu.AnnotationMenu.actionItem.runtime-bd938c688f49",
-    "surface": "Draw menu",
-    "label": null,
-    "expression": "action",
-    "kind": "action",
-    "belongsTo": "draw",
-    "note": "Runtime label from action; no rendered text assumed."
   },
   {
     "id": "StageKit.AnnotationMenu.AnnotationMenu.actionItem.runtime-ffdd8fa08fc6",
@@ -1132,6 +1371,13 @@
     "belongsTo": "settings"
   },
   {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.compact",
+    "surface": "Present menu",
+    "label": "Compact",
+    "kind": "option",
+    "belongsTo": "present"
+  },
+  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.end-presentation",
     "surface": "Present menu",
     "label": "End Presentation",
@@ -1146,9 +1392,39 @@
     "belongsTo": "present"
   },
   {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.iPhoneMirroring",
+    "surface": "Present menu",
+    "label": "End Preview & Open iPhone Mirroring",
+    "case": "iPhoneMirroring",
+    "kind": "action",
+    "belongsTo": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.large",
+    "surface": "Present menu",
+    "label": "Large",
+    "kind": "option",
+    "belongsTo": "present"
+  },
+  {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.match-device-proportions",
     "surface": "Present menu",
     "label": "Match Device Proportions",
+    "kind": "action",
+    "belongsTo": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.medium",
+    "surface": "Present menu",
+    "label": "Medium",
+    "kind": "option",
+    "belongsTo": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.quickTime",
+    "surface": "Present menu",
+    "label": "End Preview & Open QuickTime Player",
+    "case": "quickTime",
     "kind": "action",
     "belongsTo": "present"
   },
@@ -1160,15 +1436,6 @@
     "belongsTo": "present",
     "aliasOf": "present",
     "note": "Existing contextual \"Reconnect\" label inside present; shared wording, not a separate capability."
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.runtime-cc16a6599349",
-    "surface": "Present menu",
-    "label": null,
-    "expression": "\"End Preview & Open \\(app.title)\"",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Runtime label from \"End Preview & Open \\(app.title)\"; no rendered text assumed."
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.runtime-f4f4aad1a8e8",
@@ -1211,27 +1478,6 @@
     "id": "StageKit.DemoPresentation.DemoPresentation.addSubmenu.window-size",
     "surface": "Present menu",
     "label": "Window Size",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.choice.compact",
-    "surface": "Present menu",
-    "label": "Compact",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.choice.large",
-    "surface": "Present menu",
-    "label": "Large",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "StageKit.DemoPresentation.DemoPresentation.choice.medium",
-    "surface": "Present menu",
-    "label": "Medium",
     "kind": "option",
     "belongsTo": "present"
   },
@@ -1373,6 +1619,48 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.1-min",
+    "surface": "Timer menu",
+    "label": "1 min",
+    "kind": "option",
+    "belongsTo": "timer"
+  },
+  {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.10-min",
+    "surface": "Timer menu",
+    "label": "10 min",
+    "kind": "option",
+    "belongsTo": "timer"
+  },
+  {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.15-min",
+    "surface": "Timer menu",
+    "label": "15 min",
+    "kind": "option",
+    "belongsTo": "timer"
+  },
+  {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.30-min",
+    "surface": "Timer menu",
+    "label": "30 min",
+    "kind": "option",
+    "belongsTo": "timer"
+  },
+  {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.5-min",
+    "surface": "Timer menu",
+    "label": "5 min",
+    "kind": "option",
+    "belongsTo": "timer"
+  },
+  {
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.60-min",
+    "surface": "Timer menu",
+    "label": "60 min",
+    "kind": "option",
+    "belongsTo": "timer"
+  },
+  {
     "id": "StageKit.StageKitController.StageKitController.StageMenuAction.chime-when-finished",
     "surface": "Timer menu",
     "label": "Chime When Finished",
@@ -1392,15 +1680,6 @@
     "label": "Reset Timer",
     "kind": "action",
     "belongsTo": "timer"
-  },
-  {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-aed4831fd5a8",
-    "surface": "Timer menu",
-    "label": null,
-    "expression": "\"\\(minutes) min\"",
-    "kind": "action",
-    "belongsTo": "timer",
-    "note": "Runtime label from \"\\(minutes) min\"; no rendered text assumed."
   },
   {
     "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-be0e55863d8d",
@@ -1563,6 +1842,70 @@
     "case": "paste",
     "kind": "option",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "choices.DrawingTool.arrow",
+    "surface": "choices DrawingTool",
+    "label": "Arrow",
+    "case": "arrow",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.ellipse",
+    "surface": "choices DrawingTool",
+    "label": "Oval",
+    "case": "ellipse",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.eraser",
+    "surface": "choices DrawingTool",
+    "label": "Eraser",
+    "case": "eraser",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.highlighter",
+    "surface": "choices DrawingTool",
+    "label": "Highlighter",
+    "case": "highlighter",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.line",
+    "surface": "choices DrawingTool",
+    "label": "Line",
+    "case": "line",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.pen",
+    "surface": "choices DrawingTool",
+    "label": "Pen",
+    "case": "pen",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.rectangle",
+    "surface": "choices DrawingTool",
+    "label": "Rectangle",
+    "case": "rectangle",
+    "kind": "option",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "choices.DrawingTool.text",
+    "surface": "choices DrawingTool",
+    "label": "Text",
+    "case": "text",
+    "kind": "option",
+    "belongsTo": "draw"
   },
   {
     "id": "choices.FloatingControlAnchor.bottom",

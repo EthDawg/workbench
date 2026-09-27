@@ -200,7 +200,7 @@ class SurfaceTests(unittest.TestCase):
           }
         }''')
         self.assertEqual(['Read', 'Snap'], sorted(self.labels()))
-        self.assertIn('Unregistered entry on window home cards: "Snap".', '\n'.join(self.errors(before)))
+        self.assertIn('Unregistered entry on window home: "Snap".', '\n'.join(self.errors(before)))
 
     def test_views_embedded_in_the_panel_are_status_rows(self):
         before = self.registry()
@@ -213,15 +213,18 @@ class SurfaceTests(unittest.TestCase):
         self.assertNotIn('Start', self.labels())
         self.assertIn('Unregistered entry on quick panel status rows', '\n'.join(self.errors(before)))
 
-    def test_settings_page_counts_toggles_and_pickers_in_embedded_views(self):
+    def test_settings_page_counts_its_controls_and_embedded_views(self):
         self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
-          private var settings: some View { Toggle("Open Workbench at login", isOn: $x); Button("Your dictionary") {}; MeetingDetectionSettings(model: m) }
+          private var settings: some View {
+            Text("Make yourself at home."); Label("Photo handoff", systemImage: "icloud")
+            Toggle("Open Workbench at login", isOn: $x); Button("Your dictionary") {}; MeetingDetectionSettings(model: m)
+          }
         }''')
         self.write('LocalVoice/MeetingWorkspaceView.swift', '''struct MeetingDetectionSettings: View {
           var body: some View { Toggle("Detect Meetings & Calls", isOn: $on); Button("Review") {} }
         }''')
         settings = [e['label'] for e in self.entries() if e['surface'] == 'settings page']
-        self.assertEqual(['Detect Meetings & Calls', 'Open Workbench at login'], sorted(settings))
+        self.assertEqual(['Detect Meetings & Calls', 'Open Workbench at login', 'Review', 'Your dictionary'], sorted(settings))
 
     def test_offers_are_found_by_name(self):
         self.write('LocalVoice/MeetingWorkspaceView.swift', '''final class MeetingOfferPanelController {
@@ -257,12 +260,107 @@ class SurfaceTests(unittest.TestCase):
             menu.addSubmenu("Choose Set", items: state.groups.map { action($0.label, .select($0.id)) })
             for scene in scenes { menu.addItem(StageMenuAction(scene.name) { start(scene) }) }
             menu.addItem(StageMenuAction("Prepare a persona in Workbench first.", enabled: false) {})
+            let custom = NSMenuItem(title: "Custom \\(hex)", action: nil, keyEquivalent: ""); custom.isEnabled = false; menu.addItem(custom)
+            let colours = NSMenuItem(title: "Ink Colour", action: nil, keyEquivalent: ""); colours.submenu = inks; menu.addItem(colours)
             menu.addItem(action("End Overlays", .end))
             return menu
           }
         }''')
         persona = sorted(e['label'] for e in self.entries() if e['surface'] == 'Persona menu')
-        self.assertEqual(['Choose Set', 'End Overlays'], persona)
+        self.assertEqual(['Choose Set', 'End Overlays', 'Ink Colour'], persona)
+
+    def test_enum_titles_worded_into_an_item_are_entries(self):
+        self.write('StageKit/NativePresentationApps.swift', '''enum NativePresentationApp: String, CaseIterable {
+          case quickTime, iPhoneMirroring
+          var title: String { self == .quickTime ? "QuickTime Player" : "iPhone Mirroring" }
+        }''')
+        self.write('StageKit/DemoPresentation.swift', '''final class DemoPresentation {
+          func makeControlsMenu() -> NSMenu {
+            for app in NativePresentationApp.allCases { menu.addItem(StageMenuAction("End Preview & Open \\(app.title)") { open(app) }) }
+            return menu
+          }
+        }''')
+        self.assertIn('End Preview & Open QuickTime Player', self.labels())
+        before = self.registry()
+        owner = self.root / 'Sources/StageKit/NativePresentationApps.swift'
+        owner.write_text(owner.read_text().replace('"QuickTime Player"', '"QuickTime"'))
+        self.assertIn('Changed entry on Present menu: "End Preview & Open QuickTime".', '\n'.join(self.errors(before)))
+
+    def test_numbers_in_a_literal_list_are_entries(self):
+        timer = self.write('StageKit/StageKitController.swift', '''final class StageKitController {
+          func makeTimerMenu() -> NSMenu {
+            menu.addSubmenu("Duration", items: [1, 5].map { minutes in StageMenuAction("\\(minutes) min") { set(minutes) } })
+            return menu
+          }
+        }''')
+        self.assertEqual({'Duration', '1 min', '5 min', 'Read'}, set(self.labels()))
+        before = self.registry()
+        timer.write_text(timer.read_text().replace('[1, 5]', '[1, 5, 45]'))
+        self.assertIn('Unregistered entry on Timer menu: "45 min".', '\n'.join(self.errors(before)))
+
+    def test_navigation_on_home_settings_and_the_sidebar_is_an_entry(self):
+        home = self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          private let navItems: [(String, String, String)] = [("home", "Home", "house")]
+          var body: some View {
+            ForEach(navItems, id: \\.0) { page, title, symbol in Button { go(page) } label: { Label(title, systemImage: symbol) } }
+            Button(updates.buttonTitle) { page = "settings" }
+            switch page { case "snap": SnapWorkspaceView(); default: welcome }
+          }
+          private var welcome: some View { Button("Try the keyboard") { page = "shortcuts" }; Label("Free tools", systemImage: "checkmark") }
+          private var settings: some View { Button("Your dictionary") { page = "dictionary" } }
+        }''')
+        self.write('LocalVoice/SnapWorkspaceView.swift', 'struct SnapWorkspaceView: View { var body: some View { Button("Crop") {} } }')
+        surfaces = {(e['surface'], e['label']) for e in self.entries()}
+        for entry in [('window sidebar', 'Home'), ('window sidebar', None), ('window home', 'Try the keyboard'),
+                      ('settings page', 'Your dictionary')]:
+            self.assertIn(entry, surfaces)
+        self.assertNotIn('Crop', self.labels())
+        self.assertNotIn('Free tools', self.labels())
+        before = self.registry()
+        home.write_text(home.read_text().replace('Button("Your dictionary")', 'Button("Packs") { page = "packs" }; Button("Your dictionary")')
+                        .replace('Button(updates.buttonTitle)', 'Button("Guide") { openGuide() }; Button(updates.buttonTitle)'))
+        errors = '\n'.join(self.errors(before))
+        self.assertIn('Unregistered entry on settings page: "Packs".', errors)
+        self.assertIn('Unregistered entry on window sidebar: "Guide".', errors)
+
+    def test_native_views_in_menus_are_followed(self):
+        self.write('StageKit/Persona.swift', '''final class PersonaLibrary {
+          func makeControlsMenu() -> NSMenu { let size = NSMenuItem(); size.view = PersonaSizeMenuView(width: 0.2) { set($0) }; menu.addItem(size); return menu }
+        }''')
+        self.write('StageKit/ActivityMenus.swift', '''final class PersonaSizeMenuView: NSView {
+          init(width: Double, change: @escaping (Double) -> Void) { slider.setAccessibilityLabel("Persona Size"); label.setAccessibilityLabel(title) }
+        }''')
+        self.assertEqual([('Persona menu', 'Persona Size')], [(e['surface'], e['label']) for e in self.entries() if e['label'] != 'Read'])
+
+    def test_fixed_actions_inside_a_list_of_content_are_entries(self):
+        scenes = self.write('StageKit/DemoScenes.swift', '''final class DemoScenes {
+          func makeControlsMenu() -> NSMenu {
+            for scene in scenes { menu.addItem(StageMenuAction(scene.name) { start(scene) }) }
+            return menu
+          }
+        }''')
+        before = self.registry()
+        scenes.write_text(scenes.read_text().replace('start(scene) }) }', 'start(scene) }); menu.addItem(StageMenuAction("Inspect source") { inspect(scene) }) }'))
+        self.assertEqual({'Read', 'Inspect source'}, set(self.labels()))
+        self.assertIn('Unregistered entry on Present menu: "Inspect source".', '\n'.join(self.errors(before)))
+
+    def test_a_control_keeps_its_id_whether_its_label_is_an_argument_or_a_view(self):
+        home = self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          private var settings: some View { Toggle("Show floating toolbar", isOn: $visible) }
+        }''')
+        self.file.write_text(PANEL % 'Button("Stop") { stop() }')
+        before = self.registry()
+        home.write_text(home.read_text().replace('Toggle("Show floating toolbar", isOn: $visible)',
+                                                 'Toggle(isOn: $visible) { Label("Show floating toolbar", systemImage: "rectangle") }'))
+        self.file.write_text(PANEL % 'Button { stop() } label: { Text("Stop") }')
+        self.assertEqual([], self.errors(before))
+        home.write_text(home.read_text().replace('Toggle(isOn:', 'Toggle(isOn: $shown) { Label("Show timer", systemImage: "timer") }; Toggle(isOn:'))
+        self.assertIn('Unregistered entry on settings page: "Show timer".', '\n'.join(self.errors(before)))
+
+    def test_stale_entries_ask_for_confirmation(self):
+        registered = self.registry()
+        self.file.write_text('struct WorkbenchQuickPanel: View {}')
+        self.assertIn('Confirm it is really gone', '\n'.join(self.errors(registered)))
 
     def test_new_enum_choice_and_catalogue_rename_are_visible(self):
         self.file.write_text(PANEL % '''
@@ -335,7 +433,7 @@ class SurfaceTests(unittest.TestCase):
                 inner = f'func {parts[1]}() {{}}' if len(parts) > 1 else ''
                 body.append(f'{kind} {parts[0]} {{ {inner} }}')
             if relative.endswith('WorkbenchHome.swift'):
-                body = ['struct WorkbenchHome { let navItems = []; private var welcome: some View {}; private var settings: some View {} }']
+                body = ['struct WorkbenchHome { let navItems = []; var body: some View {}; private var welcome: some View {}; private var settings: some View {} }']
             self.write(relative, '\n'.join(body) + '\n')
         registry = self.root / 'registry.json'
         result = subprocess.run([sys.executable, str(SCRIPT), '--root', str(self.root), '--registry', str(registry), '--update'], capture_output=True, text=True)

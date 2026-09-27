@@ -1,35 +1,44 @@
 #!/usr/bin/env python3
 """Check Workbench's entry points against docs/surfaces.json.
 
-An entry point is a place where a person starts or reaches a capability. A new
-or renamed one needs a deliberate registry change, classified under the Grammar
-(docs/workbench.md#grammar). The check finds changes; people decide taste.
+An entry point starts a capability, opens a place or page, or changes a setting
+that reaches beyond one page (docs/workbench.md#grammar, rule 8). A new or
+renamed one needs a deliberate registry change classified under the Grammar.
+The check finds changes; people decide taste.
 
 Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
 views embedded in it); the Draw, Present, Persona, Timer and Saved Prompts
-menus that the rows, the floating toolbar and the app menu bar open; the
-floating toolbar's tools, action and hover labels, accessory and glyph menu;
-the app menu bar and any status item menu built in AppDelegate; the window
-sidebar and Home capability cards; the global shortcut catalogue; toggles and
-pickers on the Settings page, including views embedded in it; and proactive
-offers, found as types named *Offer* or *Cue plus OFFER_TYPES. Controls inside
-capability pages, workspaces, editors, sheets, dialogs and list rows are out,
-even though they are buttons.
+menus that the rows, the floating toolbar and the app menu bar open, with any
+native views embedded in them; the floating toolbar's tools, action and hover
+labels, accessory and glyph menu, and the live dictation, narration and reading
+controls shown in the same window; the app menu bar and any status item menu
+built in AppDelegate; the window sidebar; every control on Home and on the
+Settings page, including views embedded in them; the global shortcut
+catalogue; and proactive offers, found as types named *Offer* or *Cue plus
+OFFER_TYPES. Headings and status lines on Home and Settings are not entries.
+Controls that act only on a page's own content are out, and so are the inline
+shortcut editors in EXCLUDED: the shortcut catalogue records those shortcuts.
 
 Entries: an ID joins module, file, enclosing type, control API and the literal
 label, or a hash of a runtime label's source expression. Quick panel IDs also
 name the panel area, and catalogues use their case or shortcut id. IDs carry
 no line numbers or helper names, so reordering, comments and extracting a
-helper do not change them; identical repeated definitions get occurrence
-suffixes. A literal rename is a new entry plus a stale one; a catalogue rename
-keeps its ID and reports a change. A runtime label is recorded as its source
-expression with label null, never as guessed text. An enum's choice list
-(Enum.allCases) is recorded once, wherever it appears. Items generated from
+helper do not change them, and a control keeps its ID whether its label is an
+argument or a Text or Label inside it. Identical repeated definitions get
+occurrence suffixes. A literal rename is a new entry plus a stale one; a
+catalogue rename keeps its ID and reports a change. A runtime label is recorded
+as its source expression with label null, never as guessed text.
+
+Lists: an item that shows its own title from an enum (Enum.allCases) is
+recorded once per enum, wherever it appears. An item worded around an enum
+case or a literal list element, such as "Open \(app.title)" or
+"\(minutes) min", becomes one entry per case or element. Items generated from
 runtime content (the person's scenes, personas, prompts or devices) are rows,
-and the menu or picker holding them is the entry. A disabled menu item without
-an action is a note. A label that a helper receives as a String parameter
-belongs to the helper's call sites.
+and the menu or picker holding them is the entry, but fixed actions inside
+such a loop are entries. A disabled item without an action is a note. A label
+that a helper receives as a String parameter belongs to the helper's call
+sites.
 
 Registry: every entry needs a kind and belongsTo. --update adds new or changed
 entries as unclassified, so the check fails until someone classifies them, and
@@ -44,8 +53,10 @@ conditions. A new kind of entry point (another menu builder, a status menu
 outside AppDelegate, an offer named differently, a new label-taking helper,
 localized or generated labels) needs ENTRY_POINTS, OFFER_TYPES or the
 extractors updated. A moved or renamed owner fails as missing instead of
-passing silently, and moving a definition to another file or type changes its
-ID. The registry is not proof of installed acceptance or of Ethan's approval.
+passing silently. Moving a definition to another file or type changes its ID,
+and a stale entry can mean the check stopped recognising a control, so confirm
+it is gone before removing it. The registry is not proof of installed
+acceptance or of Ethan's approval.
 
 --root measures another source tree against this checkout's registry,
 --registry selects another registry and --json prints entries and errors.
@@ -73,14 +84,16 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
             "(python3 scripts/check-surfaces.py --update adds it as unclassified).")
 
 # (file under Sources, type or function that builds it, surface, what counts)
-#   panel     every labelled control, runtime Text status rows, embedded views
-#   controls  every labelled control and menu item
-#   cards     Home's card(...) calls
-#   settings  Toggle and Picker with their choices, including embedded views
+#   panel     every labelled control; runtime Text and standalone Labels are
+#             status rows; embedded SwiftUI and native views count
+#   controls  every labelled control and menu item, and embedded native views
+#   page      every labelled control except headings and status lines, and
+#             embedded SwiftUI and native views
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar glyph menu', 'controls'),
-    ('LocalVoice/FloatingToolbar.swift', 'ReadingControls', 'floating toolbar reading controls', 'controls'),
+    # The same window's live dictation, narration and reading controls.
+    ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('StageKit/AnnotationMenu.swift', 'AnnotationMenu', 'Draw menu', 'controls'),
     ('StageKit/DemoScenes.swift', 'DemoScenes.makeControlsMenu', 'Present menu', 'controls'),
     ('StageKit/DemoPresentation.swift', 'DemoPresentation.makeControlsMenu', 'Present menu', 'controls'),
@@ -89,11 +102,14 @@ ENTRY_POINTS = [
     ('StageKit/StageKitController.swift', 'StageKitController.makeTimerMenu', 'Timer menu', 'controls'),
     ('LocalVoice/PromptInsertion.swift', 'SavedPromptMenu', 'Saved Prompts menu', 'controls'),
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
-    ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home cards', 'cards'),
-    ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'settings'),
+    ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
+    ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),
+    # The window's own controls around the pages: the sidebar column.
+    ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.body', 'window sidebar', 'controls'),
 ]
-# The quick panel's inline key editor is an editor, not an entry point.
-EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor']}
+# Inline shortcut editors: the global shortcut catalogue records these shortcuts.
+EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
+            'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}
 # Catalogue owners that must exist; their extractors are below.
 CATALOGUES = [
     ('LocalVoice/WorkbenchControlTool.swift', 'WorkbenchControlState.actionTitle'),
@@ -213,6 +229,35 @@ def slug(value):
 def simple(tokens):
     """An item's own title inside a loop: x, x.title or $0.rawValue."""
     return bool(re.fullmatch(IDENT + r'(?: \. ' + IDENT + ')?', expression(tokens)))
+
+
+def references(tokens, names):
+    """Does a label use one of a loop's names, directly or interpolated?"""
+    for n, token in enumerate(tokens):
+        if token.value in names and (n == 0 or tokens[n - 1].value != '.'):
+            return True
+        if token.value[:1] == '"' and any(re.search(r'\\\(\s*' + re.escape(name) + r'\b', token.value) for name in names):
+            return True
+    return False
+
+
+def template(tokens, names):
+    """A string worded around the item alone: "\\(x) min", "Open \\(x.title)"."""
+    if len(tokens) != 1 or not tokens[0].value.startswith('"') or tokens[0].value.startswith('"""'):
+        return None
+    parts = re.split(r'\\\(\s*([\w$]+)\s*(?:\.\s*(\w+)\s*)?\)', tokens[0].value[1:-1])
+    texts, slots = parts[0::3], list(zip(parts[1::3], parts[2::3]))
+    if not slots or any('\\(' in text for text in texts) or any(name not in names for name, _ in slots):
+        return None
+    try:
+        return [json.loads('"' + text + '"') for text in texts], slots
+    except ValueError:
+        return None
+
+
+def fill(form, values):
+    texts, _ = form
+    return ''.join(text + value for text, value in zip(texts, values)) + texts[-1]
 
 
 class Swift:
@@ -413,17 +458,24 @@ class Tree:
         return self.swift(path) if path in self.texts else None
 
     def declaring(self, kind, name, near=None):
-        """Files declaring `kind name`, the referencing module first."""
-        pattern = re.compile(r'\b' + kind + r'\s+' + re.escape(name) + r'\b')
-        paths = [p for p in self.paths if pattern.search(self.texts[p])]
+        """Files declaring `kind name` (kind is a regex such as struct|class), the referencing module first."""
+        if not hasattr(self, '_declared'):
+            self._declared = {}
+            for p in self.paths:
+                for m in re.finditer(r'\b(struct|class|enum)\s+(\w+)', self.texts[p]):
+                    self._declared.setdefault((m[1], m[2]), []).append(p)
+        paths = {p for k in ('struct', 'class', 'enum') if re.fullmatch(kind, k) for p in self._declared.get((k, name), [])}
         return sorted(paths, key=lambda p: (p.parent.name != near, str(p)))
 
-    def view_names(self):
-        if not hasattr(self, '_views'):
-            pattern = re.compile(r'\bstruct\s+(\w+)\s*:\s*([^{]*)\{')
-            self._views = {m[1] for p in self.paths for m in pattern.finditer(self.texts[p])
-                           if re.search(r'\b(View|NSViewRepresentable)\b', m[2])}
-        return self._views
+    def views(self, native):
+        """Names of SwiftUI views, or of AppKit views, declared in the modules."""
+        key = '_native' if native else '_swiftui'
+        if not hasattr(self, key):
+            pattern = re.compile(r'\b(struct|class)\s+(\w+)\s*:\s*([^{]*)\{')
+            kinds = r'\b(NS\w*View|NSControl|NSButton)\b' if native else r'\b(View|NSViewRepresentable)\b'
+            setattr(self, key, {m[2]: m[1] for p in self.paths for m in pattern.finditer(self.texts[p])
+                                if (m[1] == 'class') == native and re.search(kinds, m[3].split(',')[0] if native else m[3])})
+        return getattr(self, key)
 
 
 class Inventory:
@@ -510,60 +562,96 @@ class Inventory:
             bound = [v[j + 1] for j in range(body[0], body[1] - 2) if v[j] == 'let' and v[j + 2] == '=']
             yield i, collection, body, var + ['$0'], bound
 
-    def choices(self, swift, inside, surface):
-        """Record choice lists from enums and literal lists.
+    def use_enum(self, found, member):
+        self.enums.setdefault(found[0].type_context(found[1] + 1), (found, member or 'title'))
 
-        Returns the loop bodies whose item titles those lists cover, and the
-        bodies that list runtime content (the user's scenes, prompts, sources):
-        those items are rows, and the menu or picker holding them is the entry.
-        """
-        covered, rows = [], []
-        for i, (first, last), body, names, bound in self.iterations(swift, inside):
-            if any(a < i < b for a, b in rows):
-                rows.append(body)  # A loop inside a row is part of that row.
-                continue
-            values = swift.v[first:last]
-            # A loop that shows each item's own title: Text(x.title), Label($0.rawValue, ...).
-            member = next((swift.v[j + 2] for j in range(body[0] + 1, body[1] - 3)
-                           if swift.v[j] in names and swift.v[j + 1] == '.' and swift.v[j + 2] in ('title', 'rawValue')
-                           and swift.v[j + 3] in (')', ',') and (swift.v[j - 1] == '(' or swift.v[j - 2:j] == ['title', ':'])), None)
-            if 'allCases' in values:
-                k = values.index('allCases') - 1
-                parts = []
-                while k > 0 and re.fullmatch(IDENT, values[k - 1]):
-                    parts.insert(0, values[k - 1])
-                    if k > 1 and values[k - 2] == '.':
-                        k -= 2
-                    else:
-                        break
-                found = self.find_enum(swift, '.'.join(parts))
-                if not found:
-                    rows.append(body)
-                elif member:
-                    self.enums.setdefault(found[0].type_context(found[1] + 1), (found, member))
-                    covered.append((*body, names + bound))
-                # Otherwise the item has its own wording and stays one runtime entry.
-            elif values[:1] == ['['] and swift.pairs.get(first) == last - 1:
-                listed, recorded = '', len(self.entries)
-                for element in swift.args(first):
-                    words = [t.value for t in element]
-                    if len(words) >= 2 and words[-2] == '.' and all(re.fullmatch(IDENT + r'|\.', w) for w in words):
-                        listed = '.'.join(w for w in words[:-2] if w != '.') or listed
-                        found = self.find_enum(swift, listed)
-                        if found:
-                            label, expr = choice_labels(*found, member or 'title').get(words[-1], (None, words[-1]))
-                            self.add(swift, i, 'choice', [Token(json.dumps(label), 0, 0)] if label is not None else lex(expr),
-                                     surface(swift, i, 'choice'), identity=words[-1], case=words[-1])
-                        continue
-                    if words[:1] == ['('] and len(element) > 2:
-                        element = swift.args(swift.tokens.index(element[0]))[0]
-                    if literal(element):
-                        self.add(swift, i, 'choice', element, surface(swift, i, 'choice'))
-                if len(self.entries) > recorded:
-                    covered.append((*body, names + bound))
-            else:
-                rows.append(body)
-        return covered, rows
+    def element(self, swift, element, position, member, hint):
+        """(label, identity) of one literal list element, or None if it is not literal."""
+        words = [t.value for t in element]
+        if words[:1] == ['('] and swift.pairs.get(swift.tokens.index(element[0])) == swift.tokens.index(element[-1]):
+            parts = swift.args(swift.tokens.index(element[0]))
+            return self.element(swift, parts[position], 0, member, hint) if position < len(parts) else None
+        if len(words) >= 2 and words[-2] == '.' and all(re.fullmatch(IDENT + r'|\.', w) for w in words):
+            found = self.find_enum(swift, '.'.join(w for w in words[:-2] if w != '.') or hint)
+            label = choice_labels(*found, member or 'title').get(words[-1], (None,))[0] if found else None
+            return (label, words[-1]) if label is not None else None
+        text = literal(element)
+        if member is None and text is None and len(words) == 1 and re.fullmatch(r'\d+(?:\.\d+)?', words[0]):
+            text = words[0]
+        return (text, None) if text is not None and member is None else None
+
+    def items(self, swift, i, api, tokens, where, loop):
+        """A label that shows a loop's item stands for every item in the list."""
+        _, (first, last), _, names, bound = loop
+        values = swift.v[first:last]
+        own = simple(tokens) and tokens[0].value in names + bound
+        member = tokens[2].value if own and len(tokens) == 3 and tokens[0].value in names else None
+        form = template(tokens, names)
+
+        def text(label):
+            return [Token(json.dumps(label), 0, 0)]
+        if 'allCases' in values:
+            k = values.index('allCases') - 1
+            parts = []
+            while k > 0 and re.fullmatch(IDENT, values[k - 1]):
+                parts.insert(0, values[k - 1])
+                if k > 1 and values[k - 2] == '.':
+                    k -= 2
+                else:
+                    break
+            found = self.find_enum(swift, '.'.join(parts))
+            if not found:
+                return  # Cases defined outside the Mac modules are treated as content.
+            if own:
+                self.use_enum(found, member)  # Recorded once, wherever the list appears.
+                return
+            if form:
+                cases = list(enum_cases(*found))
+                labels = {m: choice_labels(*found, m) for _, m in form[1] if m}
+                filled = [(case, [labels[m][case][0] if m else case for _, m in form[1]]) for case in cases]
+                if all(None not in parts for _, parts in filled):
+                    for case, parts in filled:
+                        self.add(swift, i, api, text(fill(form, parts)), where, identity=case, case=case)
+                    return
+            self.use_enum(found, None)
+            self.add(swift, i, api, tokens, where)
+            return
+        if values[:1] == ['['] and swift.pairs.get(first) == last - 1:
+            elements = swift.args(first)
+            hint = next(('.'.join(w for w in words[:-2] if w != '.') for words in ([t.value for t in e] for e in elements)
+                         if len(words) > 2 and words[-2] == '.'), '')
+            order = [n for n in names if n != '$0']
+
+            def value(element, name, part):
+                return self.element(swift, element, order.index(name) if name in order else 0, part, hint)
+            if own or form:
+                slots = [(tokens[0].value, member)] if own else form[1]
+                found = [[value(element, name, part) for name, part in slots] for element in elements]
+                if all(None not in row for row in found):
+                    for row in found:
+                        label = row[0][0] if own else fill(form, [label for label, _ in row])
+                        self.add(swift, i, api, text(label), where, identity=row[0][1])
+                    return
+            # Another wording: keep it, and record the list's literal values.
+            for element in elements:
+                item = self.element(swift, element, 0, None, hint)
+                if item:
+                    self.add(swift, i, 'choice', text(item[0]), where, identity=item[1])
+            self.add(swift, i, api, tokens, where)
+        # Otherwise the list is runtime content (the person's scenes, prompts or
+        # devices): its items are rows, and the menu or picker holding them is the entry.
+
+    def note(self, swift, i, args, end):
+        """A disabled item without an action is a note, not an entry point."""
+        v = swift.v
+        if expression(named_arg(args, 'enabled') or []) == 'false' and v[end + 1:end + 3] == ['{', '}']:
+            return True
+        if expression(named_arg(args, 'action') or []) == 'nil' and v[i - 3] in ('let', 'var') and v[i - 1] == '=':
+            block = min((q for p, q in swift.pairs.items() if v[p] == '{' and p < i < q), default=len(v))
+            after = expression(swift.tokens[end:block])
+            name = v[i - 2]
+            return f'{name} . isEnabled = false' in after and f'{name} . submenu =' not in after
+        return False
 
     def find_enum(self, swift, name):
         last = name.split('.')[-1]
@@ -576,44 +664,60 @@ class Inventory:
         return None
 
     def collect(self, swift, ranges, surface, mode, exclude=(), follow=False):
+        v = swift.v
+
         def inside(i):
             return any(a < i < b for a, b in ranges) and not any(a < i < b for a, b in exclude)
-        covered, rows = self.choices(swift, inside, surface)
+        loops = sorted(self.iterations(swift, inside), key=lambda loop: -loop[2][0])  # Innermost first.
 
-        def counted(i):
-            return inside(i) and not any(a < i < b for a, b in rows)
-
-        def repeated(i, tokens):
-            return (literal(tokens) is None and simple(tokens) and
-                    any(a < i < b and tokens[0].value in names for a, b, names in covered))
-
-        def passed_through(i, tokens):
+        def record(i, api, tokens):
             names = swift.string_parameters(i)
-            return any(t.value in names for n, t in enumerate(tokens) if n == 0 or tokens[n - 1].value != '.')
+            if any(t.value in names for n, t in enumerate(tokens) if n == 0 or tokens[n - 1].value != '.'):
+                return  # A helper's String parameter: its call sites are the entries.
+            where = surface(swift, i, api)
+            loop = next((loop for loop in loops if loop[2][0] < i < loop[2][1] and references(tokens, loop[3] + loop[4])), None)
+            if loop:
+                self.items(swift, i, api, tokens, where, loop)
+            else:
+                self.add(swift, i, api, tokens, where)
 
-        # Closures that label a control: Button(action:) { ... } and label: { ... }.
-        labels = []
-        for i, api, args, end in swift.calls({'Button', 'Toggle', 'Menu'}):
-            if inside(i) and swift.v[end + 1:end + 2] == ['{'] and (named_arg(args, 'action') is not None or
-                                                                     (api == 'Toggle' and named_arg(args, 'isOn') is not None and len(args) == 1)):
-                labels.append((i, api, end + 1, swift.pairs[end + 1]))
-        for i, value in enumerate(swift.v):
-            if value == 'label' and swift.v[i + 1:i + 3] == [':', '{'] and inside(i):
+        # A closure that labels a control: Button(action:) { ... }, Toggle(isOn:) { ... },
+        # Link(destination:) { ... } or label: { ... }. Its first Text or Label is the
+        # control's label, so both ways of writing a control keep one ID.
+        closures = []
+        for i, api, args, end in swift.calls({'Button', 'Toggle', 'Link'}):
+            titled = named_arg(args, 'title') is not None or (args and not (len(args[0]) > 1 and args[0][1].value == ':'))
+            if inside(i) and not titled and v[end + 1:end + 2] == ['{']:
+                closures.append((i, api, end + 1, swift.pairs[end + 1]))
+        for i, value in enumerate(v):
+            if value == 'label' and v[i + 1:i + 3] == [':', '{'] and inside(i):
                 j = i - 1
-                if swift.v[j] == '}':
+                if v[j] == '}':
                     j = swift.openers[j] - 1
-                if swift.v[j] == ')':
+                if v[j] == ')':
                     j = swift.openers[j] - 1
-                labels.append((i, swift.v[j], i + 2, swift.pairs[i + 2]))
-        in_label = lambda i: any(a < i < b for _, _, a, b in labels)
+                closures.append((i, v[j], i + 2, swift.pairs[i + 2]))
+        consumed = set()
+        for i, owner, start, end in closures:
+            texts = [j for j in range(start + 1, end - 1) if v[j] in ('Text', 'Label') and v[j + 1] == '(' and swift.args(j + 1)]
+            icons = [j for j in range(start + 1, end - 1) if v[j] == 'Image' and v[j + 1] == '(']
+            if texts:
+                consumed.add(texts[0])
+                record(i, owner, swift.args(texts[0] + 1)[0])
+            elif icons:
+                # An icon is not visible text. Its source expression is evidence.
+                record(i, owner, swift.tokens[icons[0]:swift.pairs[icons[0] + 1] + 1])
 
-        wanted = {'cards': {'card'}, 'settings': {'Toggle', 'Picker'}}.get(mode, CONTROLS - {'card'})
-        declared = {swift.v[k + 1] for k in range(len(swift.v) - 1) if swift.v[k] == 'func'}
+        def in_closure(i):
+            return any(a < i < b for _, _, a, b in closures)
+
+        declared = {v[k + 1] for k in range(len(v) - 1) if v[k] == 'func'}
         for i, api, args, end in swift.calls(CONTROLS):
-            if not counted(i) or api not in wanted or (api in HELPERS and api not in declared):
+            if not inside(i) or i in consumed or (api in HELPERS and api not in declared):
                 continue
-            # A disabled item with no action is a note, not an entry point.
-            if expression(named_arg(args, 'enabled') or []) == 'false' and swift.v[end + 1:end + 3] == ['{', '}']:
+            if api == 'Label' and (in_closure(i) or mode == 'page'):
+                continue  # Outside a control, a Label is a heading or a status line.
+            if self.note(swift, i, args, end):
                 continue
             tokens = named_arg(args, 'title')
             if api == 'NSButton':
@@ -624,45 +728,25 @@ class Inventory:
                 tokens = args[0]
             if not tokens or (literal(tokens) == '' and api not in ('TextField', 'SecureField')):
                 continue
-            if repeated(i, tokens) or passed_through(i, tokens):
+            record(i, api, tokens)
+
+        for i, _, args, end in swift.calls({'Text', 'setAccessibilityLabel'}):
+            if not inside(i) or not args or i in consumed:
                 continue
-            self.add(swift, i, api, tokens, surface(swift, i, api))
+            if v[i] == 'setAccessibilityLabel':
+                if literal(args[0]):
+                    record(i, 'native-control', args[0])  # An AppKit control's only label.
+            elif v[end + 1:end + 4] == ['.', 'tag', '(']:
+                record(i, 'choice', args[0])  # Text tags are a picker's choices.
+            elif mode == 'panel' and literal(args[0]) is None and not in_closure(i):
+                record(i, 'status', args[0])  # Runtime Text in the panel is a status row.
 
-        if mode != 'cards':
-            # Text tags are concrete picker choices; prose Text is not an entry.
-            for i, api, args, end in swift.calls({'Text'}):
-                if counted(i) and args and swift.v[end + 1:end + 4] == ['.', 'tag', '('] and not repeated(i, args[0]):
-                    self.add(swift, i, 'choice', args[0], surface(swift, i, 'choice'))
-            for i, owner, start, end in labels:
-                if not counted(i) or (mode == 'settings' and owner not in ('Toggle', 'Picker')):
-                    continue
-                calls = [(j, swift.v[j]) for j in range(start + 1, end - 1)
-                         if swift.v[j] in ('Text', 'Label', 'Image') and swift.v[j + 1] == '(']
-                if not calls or any(api == 'Label' for _, api in calls):
-                    continue  # A Label is already its own entry.
-                j, api = next(((j, api) for j, api in calls if api == 'Text'), calls[0])
-                args = swift.args(j + 1)
-                if not args or repeated(j, args[0]) or passed_through(j, args[0]):
-                    continue
-                if api == 'Image':
-                    # An icon is not visible text. Its source expression is evidence.
-                    self.add(swift, i, 'icon-control', swift.tokens[j:swift.pairs[j + 1] + 1], surface(swift, i, api))
-                else:
-                    self.add(swift, i, 'control-label', args[0], surface(swift, i, api))
+        if mode != 'page':
+            self.live_labels(swift, inside)
+        if follow or mode != 'page':
+            self.follow(swift, inside, mode, surface, swiftui=follow)
 
-        if mode == 'panel':
-            # Runtime Text in the panel is a status row. Literal Text is a heading.
-            for i, api, args, end in swift.calls({'Text'}):
-                if (counted(i) and args and literal(args[0]) is None and not in_label(i)
-                        and swift.v[end + 1:end + 3] != ['.', 'tag'] and not repeated(i, args[0])):
-                    self.add(swift, i, 'status', args[0], surface(swift, i, 'status'))
-
-        if mode in ('panel', 'controls'):
-            self.live_labels(swift, counted, surface)
-        if follow:
-            self.follow(swift, inside, mode, surface)
-
-    def live_labels(self, swift, inside, surface):
+    def live_labels(self, swift, inside):
         """Titles assigned in code rather than passed to a control."""
         v = swift.v
         for i in range(len(v) - 3):
@@ -670,7 +754,7 @@ class Inventory:
                 continue
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
-                self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], surface(swift, i, 'menu-title'), identity=v[i - 1])
+                self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':
@@ -682,19 +766,24 @@ class Inventory:
                 if '(' not in v[j:k]:
                     self.add(swift, i, 'hover-title', swift.tokens[j:k], 'floating toolbar hover action')
 
-    def follow(self, swift, inside, mode, surface):
-        """Views embedded in the panel, the Settings page or an offer belong to it."""
-        views = self.tree.view_names()
+    def follow(self, swift, inside, mode, surface, swiftui):
+        """Views embedded in a surface belong to it. Menus embed only AppKit views."""
+        kinds = [('class', self.tree.views(native=True))] + ([('struct', self.tree.views(native=False))] if swiftui else [])
         for i, name in enumerate(swift.v[:-1]):
-            if (inside(i) and name in views and swift.v[i + 1] == '(' and swift.v[i - 1] not in ('.', 'struct', 'func')):
-                for path in self.tree.declaring('struct', name, near=swift.module)[:1]:
-                    if (path, name) in self.visited:
+            if not inside(i) or swift.v[i + 1] != '(' or swift.v[i - 1] in ('.', 'struct', 'class', 'func'):
+                continue
+            for kind, views in kinds:
+                if name not in views:
+                    continue
+                for path in self.tree.declaring(kind, name, near=swift.module)[:1]:
+                    relative = path.relative_to(self.tree.root / 'Sources').as_posix()
+                    if (path, name) in self.visited or name in EXCLUDED.get(relative, []):
                         continue
                     self.visited.add((path, name))
                     owner = self.tree.swift(path)
-                    ranges = [(s[0], s[1]) for s in owner.scopes if s[2] == 'struct' and s[3] == name]
+                    ranges = [(s[0], s[1]) for s in owner.scopes if s[2] == kind and s[3] == name]
                     embedded = 'quick panel status rows' if mode == 'panel' else surface(swift, i, '')
-                    self.collect(owner, ranges, lambda *_, e=embedded: e, mode, follow=True)
+                    self.collect(owner, ranges, lambda *_, e=embedded: e, mode, follow=swiftui)
 
     def catalogues(self):
         def labelled(label, expr):
@@ -786,7 +875,7 @@ def derive(root, require_roots=True):
     # that embeds an offer does not claim it.
     offers = {(p, m[1]) for p in tree.paths if p.parent.name in ('LocalVoice', 'StageKit') for m in OFFER_NAME.finditer(tree.texts[p])}
     for name in OFFER_TYPES:
-        offers.update((p, name) for p in tree.declaring(r'(?:struct|class)', name))
+        offers.update((p, name) for p in tree.declaring('struct|class', name))
     for path, name in sorted(offers):
         swift = tree.swift(path)
         ranges = [(s[0], s[1]) for s in swift.scopes if s[2] in ('struct', 'class') and s[3] == name]
@@ -796,9 +885,11 @@ def derive(root, require_roots=True):
         swift, ranges = inventory.owner(relative, scope)
         if not ranges:
             continue
+        if '.' not in scope:
+            inventory.visited.add((tree.root / 'Sources' / relative, scope))  # Not collected again when embedded.
         exclude = [s[:2] for path in EXCLUDED.get(relative, []) for s in swift.find(path)]
         surface = quick_panel_surface if where == 'quick panel' else lambda *_, w=where: w
-        inventory.collect(swift, ranges, surface, mode, exclude, follow=mode in ('panel', 'settings'))
+        inventory.collect(swift, ranges, surface, mode, exclude, follow=mode in ('panel', 'page'))
     inventory.catalogues()
     inventory.enum_choices()
     # Count repeated definitions as separate entries. IDs do not contain line
@@ -848,7 +939,7 @@ def compare(actual, registered):
         elif any(entry.get(field) != registry[key].get(field) for field in SOURCE_FIELDS):
             errors.append(f'Changed entry on {entry["surface"]}: {label}. {GUIDANCE} [{key}]')
     for key in sorted(registry.keys() - source.keys(), key=str):
-        errors.append(f'Stale entry: {key}. It is no longer in the defining sources; --update removes it.')
+        errors.append(f'Stale entry: {key}. The check no longer finds this control. Confirm it is really gone before removing its registration (--update removes it): a stale entry can also mean the check stopped recognising it after a move or a new way of writing it.')
     for entry in registered:
         key = entry.get('id')
         if not isinstance(key, str) or not key or not isinstance(entry.get('surface'), str):
