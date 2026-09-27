@@ -12,18 +12,17 @@ import StageKit
 /// file store resolves there (`CFFIXED_USER_HOME`). cfprefsd ignores that variable, so the child
 /// also keeps every preference in plist files beside that home; see `isolatePreferences`.
 enum SurfaceGallery {
+    /// Speko.swift and PackCredentials.swift check this same argument and never query Keychain in a pass.
     static let passFlag = "--render-surfaces-pass"
     static let workPrefix = ".surface-pass-"
-    /// Set only inside an isolated pass. Keychain readers then report that nothing is saved.
-    nonisolated(unsafe) static var isRendering = false
     /// AppDelegate opens Home at 1180 × 800. Its 1050 × 730 minimum grows by the title bar.
     static let sizes: [(name: String, size: NSSize)] = [("default", NSSize(width: 1180, height: 800)), ("narrow", NSSize(width: 1050, height: 730))]
-    /// Pages with no sidebar item. Settings → Your dictionary opens this one.
-    static let extraPages = [("dictionary", "Your dictionary")]
+    /// Pages with no sidebar item: Settings opens Your dictionary; Dictate opens the meeting page.
+    static let extraPages = [("dictionary", "Your dictionary"), ("meeting", "Meeting or call")]
     static let unknownRoute = "surface-gallery-unknown-route"
 
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
-    struct Page: Codable { var route: String; var title: String; var fallsThrough: Bool; var shots: [Shot] }
+    struct Page: Codable { var route: String; var title: String; var fallsThrough: Bool; var blank = false; var shots: [Shot] }
     /// `ran` marks a destination learned from the app's own code rather than the catalogue.
     struct Entry: Codable { var surface: String; var label: String; var leads: String; var route: String?; var ran = false }
     struct Listing: Codable { var title: String; var lines: [String] }
@@ -38,7 +37,11 @@ enum SurfaceGallery {
         guard let executable = Bundle.main.executableURL, let real = realpath(output.path, nil) else {
             throw VoiceError.message("LocalVoice could not prepare \(output.path).")
         }
-        let output = URL(fileURLWithPath: String(cString: real), isDirectory: true); free(real)
+        // Foundation reports a home under /private/tmp or /private/var as /tmp or /var, which are
+        // symbolic links that meeting and pack storage refuse. The Data volume names the same folder
+        // without one.
+        let canonical = String(cString: real); free(real)
+        let output = URL(fileURLWithPath: canonical.hasPrefix("/private/") ? "/System/Volumes/Data" + canonical : canonical, isDirectory: true)
         var running: [(theme: String, process: Process, root: URL)] = []
         defer { for pass in running { if pass.process.isRunning { pass.process.terminate() }; try? fm.removeItem(at: pass.root) } }
         for theme in ["light", "dark"] {
@@ -100,6 +103,13 @@ enum SurfaceGallery {
               Workbench.supportDirectory(component: "LocalVoice").path.hasPrefix(home.path + "/") else {
             throw VoiceError.message("Surface passes run only inside the temporary home that --render-surfaces creates.")
         }
+        var part = URL(fileURLWithPath: "/", isDirectory: true)
+        for component in home.pathComponents.dropFirst() {
+            part.appendPathComponent(component)
+            if (try? part.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                throw VoiceError.message("The temporary home \(home.path) passes through a symbolic link, which Snap, meeting and pack storage refuse.")
+            }
+        }
         return home
     }
 
@@ -144,6 +154,10 @@ enum SurfaceGallery {
     let stage: StageKitController
     let readback: ReadbackModel
     let sessionReadback: ReadbackModel
+    let snap: SnapModel
+    /// Meeting owners with a fixed audio-app list and a capture that records nothing.
+    let meetings: MeetingModel
+    let recordingMeetings: MeetingModel
     let keyboard: KeyboardCoachModel
     /// Supplies the app's own shortcut catalogue. It registers nothing unless launched.
     private let shell = AppDelegate()
@@ -156,7 +170,6 @@ enum SurfaceGallery {
         self.theme = theme
         home = try SurfaceGallery.verifiedHome(output: output)
         try SurfaceGallery.isolatePreferences(home: home, appearance: theme == "dark" ? "Dark" : "Light")
-        SurfaceGallery.isRendering = true
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         NSApp.finishLaunching()
@@ -165,6 +178,11 @@ enum SurfaceGallery {
         stageDefaults.set(true, forKey: "legacyStagePreferencesSeeded.v1")
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations(defaults: stageDefaults))
         model = AppModel(preferences: preferences)
+        // Before anything reads the app's lazy meeting owner, which would list live audio processes.
+        let support = Workbench.supportDirectory(component: "Meetings")
+        meetings = SurfacePass.syntheticMeetings(support)
+        recordingMeetings = SurfacePass.syntheticMeetings(support.deletingLastPathComponent().appendingPathComponent("Meetings (panel state)"))
+        model.meetings = meetings
         // Set before the initialiser's prepare() task runs, so no speech model is loaded or downloaded.
         model.ready = true
         model.accessibilityGranted = false
@@ -177,6 +195,10 @@ enum SurfaceGallery {
         let sessionDefaults = try SurfaceGallery.isolatedDefaults("SnapSession", home: home)
         sessionDefaults.set([session.path], forKey: "readback.recentSessionPaths.v1")
         sessionReadback = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech)
+        // Snap storage wants the resolved spelling of its folder, which may name /private as /tmp.
+        let snaps = Workbench.supportDirectory(component: "Snaps")
+        try FileManager.default.createDirectory(at: snaps, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        snap = SnapModel(store: try SurfacePass.makeSnaps(SnapStore(root: snaps.resolvingSymlinksInPath())))
         stage = StageKitController(reserving: preferences.enabledCombinations, defaults: stageDefaults)
         stage.useSharedActivityControls()
         let model = model
@@ -186,15 +208,20 @@ enum SurfaceGallery {
         keyboard = KeyboardCoachModel(entries: shell.shortcutEntries(), update: { _, _ in "The surface gallery does not save shortcuts." },
                                       suspend: { _ in }, probe: { _ in nil })
         model.onShowPresenter = { [weak self] in self?.actions.append("Opens the Switch to panel") }
+        // StageKit's page callbacks, wired to the routes AppDelegate gives them.
+        stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
+        stage.onOpenScenes = { [weak self] in self?.opened.append("present") }
+        stage.onOpenPersonas = { [weak self] in self?.opened.append("personas") }
+        stage.onEditShortcuts = { [weak self] in self?.opened.append("shortcuts") }
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
-            state.apply()
+            try state.apply()
             let rep = try renderPanel(state.readback)
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
-            state.reset()
+            try state.reset()
         }
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
@@ -204,6 +231,7 @@ enum SurfaceGallery {
             for index in pages.indices {
                 let (rep, drawn) = try renderPage(pages[index].route, in: window)
                 if let fallback { pages[index].fallsThrough = SurfacePass.contentPixels(rep) == fallback }
+                if SurfacePass.isBlank(rep, size: size) { pages[index].blank = true }
                 pages[index].shots.append(try save(rep, id: name, title: "\(name == "default" ? "Default" : "Minimum") window, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
                                                    detail: "", file: "page-\(pages[index].route)-\(name)-\(theme).png", to: output))
             }
@@ -242,7 +270,55 @@ enum SurfaceGallery {
         return root
     }
 
-    struct PanelState { var id, title, detail: String; var readback: ReadbackModel; var apply: () -> Void = {}; var reset: () -> Void = {} }
+    /// Three Snaps with fixed dates. They are added through the store, then dated like the history fixtures.
+    static func makeSnaps(_ store: SnapStore) throws -> SnapStore {
+        let titles = ["Pricing table before the change", "Onboarding checklist", "Error shown after saving"]
+        for (index, title) in titles.enumerated() {
+            let image = NSImage(size: NSSize(width: 640, height: 400))
+            image.lockFocus()
+            NSColor(calibratedHue: 0.12 + CGFloat(index) * 0.22, saturation: 0.22, brightness: 0.95, alpha: 1).setFill()
+            NSRect(x: 0, y: 0, width: 640, height: 400).fill()
+            (title as NSString).draw(in: NSRect(x: 40, y: 170, width: 560, height: 60), withAttributes: [.font: NSFont.systemFont(ofSize: 30, weight: .semibold), .foregroundColor: NSColor.black])
+            image.unlockFocus()
+            guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
+                throw VoiceError.message("Could not draw a synthetic Snap.")
+            }
+            let id = UUID(uuidString: "5D1C0A1E-0000-4000-8000-00000000020\(index)")!
+            var item = try store.insert(originalPNG: png, width: 640, height: 400, title: title,
+                                        source: [SnapSource.region, .window, .screen][index], tags: index == 0 ? ["pricing"] : [], id: id)
+            item.createdAt = Date(timeIntervalSince1970: 1_789_546_320 - Double(index) * 86_400); item.updatedAt = item.createdAt
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let record = store.root.appendingPathComponent(id.uuidString.lowercased()).appendingPathComponent("snap.json")
+            try encoder.encode(item).write(to: record, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: record.path)
+        }
+        return store
+    }
+
+    static func syntheticMeetings(_ directory: URL) -> MeetingModel {
+        MeetingModel(directory: directory, defaults: .standard, processSource: SyntheticAudioApps(),
+                     transcribe: { _ in throw MeetingError.message("The surface gallery never transcribes audio.") },
+                     microphonePermission: { false }, captureFactory: { SilentMeetingCapture() })
+    }
+
+    /// Starts or cancels the synthetic meeting and waits on the main run loop, where its tasks run.
+    /// A state that is not reached fails the pass rather than rendering the wrong panel.
+    func drive(_ meetings: MeetingModel, start: Bool) throws {
+        if start {
+            meetings.includeMicrophone = false
+            meetings.refreshApps(); meetings.selectedAppID = meetings.apps.first?.id
+            Task { await meetings.start() }
+        } else { Task { await meetings.cancel() } }
+        let deadline = Date().addingTimeInterval(5)
+        while (start ? !meetings.isRecording : meetings.isBusy) && Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+        guard start ? meetings.isRecording : !meetings.isBusy else {
+            throw VoiceError.message("The synthetic meeting did not \(start ? "start" : "stop"): \(meetings.error ?? meetings.notice)")
+        }
+    }
+
+    struct PanelState { var id, title, detail: String; var readback: ReadbackModel; var apply: () throws -> Void = {}; var reset: () throws -> Void = {} }
 
     /// Only the voice-owned states. Drawing, presenting, personas and the timer need live StageKit
     /// windows or device capture, so the index lists them as not rendered.
@@ -264,7 +340,10 @@ enum SurfaceGallery {
                        reset: { model.clipboardReceipt.clear() }),
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
                        apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
-                       reset: { model.error = nil })]
+                       reset: { model.error = nil }),
+            PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
+                       apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
+                       reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings })]
     }
 
     // MARK: Rendering
@@ -291,7 +370,7 @@ enum SurfaceGallery {
     func homeWindow(size: NSSize) -> NSWindow {
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: SnapModel()))
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap))
         window.setContentSize(size)
         return window
     }
@@ -321,9 +400,10 @@ enum SurfaceGallery {
         view.layoutSubtreeIfNeeded()
     }
 
-    /// Draws the window's layer tree, as the screen would. `cacheDisplay` misses SwiftUI content
-    /// inside scroll views. A layer render gets it, except where a scroll view shows its document
-    /// through a portal (its source layer is transparent), so those documents are drawn again.
+    /// Draws the window's layer tree, as the screen would. Neither `cacheDisplay` nor a layer render
+    /// of the window reliably includes a scroll view's document (macOS may show it through the
+    /// scroll edge portal), so each visible document is hidden for the window pass and then drawn
+    /// on its own, outer ones first, clipped to its scroll view.
     func snapshot(_ root: NSView) throws -> NSBitmapImageRep {
         root.window?.display()
         let scale = root.window?.backingScaleFactor ?? 2, bounds = root.bounds
@@ -333,6 +413,12 @@ enum SurfaceGallery {
             throw VoiceError.message("Could not allocate a render.")
         }
         context.scaleBy(x: scale, y: scale)
+        // The window background is not in the layer tree, so paint it first, in the window's appearance.
+        var background = NSColor.windowBackgroundColor.cgColor
+        (root.window?.effectiveAppearance ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
+            background = NSColor.windowBackgroundColor.cgColor
+        }
+        context.setFillColor(background); context.fill(bounds)
         func draw(_ view: NSView, in rect: NSRect) {
             guard let layer = view.layer else { return }
             context.saveGState()
@@ -342,17 +428,15 @@ enum SurfaceGallery {
             context.restoreGState()
         }
         func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
-        func transparent(_ view: NSView) -> Bool {
-            var layer = view.layer
-            while let current = layer, current !== root.layer {
-                if current.isHidden || current.opacity == 0 { return true }
-                layer = current.superlayer
-            }
-            return false
-        }
+        let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
+        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
+        let opacities = documents.map(\.opacity)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
+        documents.forEach { $0.isHidden = true }
         draw(root, in: SurfacePass.unflipped(root.bounds, of: root, in: root))
-        for clip in clipViews(root) where !clip.isHiddenOrHasHiddenAncestor {
-            guard let document = clip.documentView, transparent(document) else { continue }
+        for (clip, document) in scrolled {
+            document.layer?.isHidden = false; document.layer?.opacity = 1
             context.saveGState()
             context.clip(to: SurfacePass.unflipped(clip.bounds, of: clip, in: root))
             draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
@@ -375,6 +459,19 @@ enum SurfaceGallery {
         return .init(id: id, title: title, detail: detail, file: file, width: rep.pixelsWide, height: rep.pixelsHigh)
     }
 
+    /// True when nothing is drawn in the page area (right of the sidebar, below the title bar and
+    /// inside the window edge): a capture failure, not a design.
+    static func isBlank(_ rep: NSBitmapImageRep, size: NSSize) -> Bool {
+        let scale = CGFloat(rep.pixelsWide) / size.width, bytes = rep.bitsPerPixel / 8
+        guard let base = rep.bitmapData, !rep.isPlanar, bytes >= 3 else { return false }
+        let left = Int(232 * scale), right = rep.pixelsWide - Int(12 * scale), top = Int(40 * scale), bottom = rep.pixelsHigh - Int(12 * scale)
+        func pixel(_ x: Int, _ y: Int) -> [UInt8] { (0..<bytes).map { base[y * rep.bytesPerRow + x * bytes + $0] } }
+        let background = pixel(right - 1, rep.pixelsHigh / 2)
+        var drawn = 0, total = 0
+        for y in stride(from: top, to: bottom, by: 4) { for x in stride(from: left, to: right, by: 4) { total += 1; if pixel(x, y) != background { drawn += 1 } } }
+        return total > 0 && Double(drawn) / Double(total) < 0.002
+    }
+
     /// Pixels right of the 215-point sidebar and its divider. A route whose page matches the
     /// unknown route's page has no content of its own.
     static func contentPixels(_ rep: NSBitmapImageRep) -> Data {
@@ -389,11 +486,11 @@ enum SurfaceGallery {
 
     static let pages: [(String, String)] = WorkbenchHome.navItems.map { ($0.0, $0.1) } + SurfaceGallery.extraPages
 
-    /// StageKit menu items that open a page, as AppDelegate wires StageKit's callbacks.
-    static let stageLinks = ["Drawing Controls…": "annotate", "Keyboard Shortcuts…": "shortcuts", "Prepare Personas…": "present"]
+    /// StageKit items that only open a page. They are run with StageKit's page callbacks recording.
+    static let stageLinks: Set<String> = ["Drawing Controls…", "Keyboard Shortcuts…", "Prepare Personas…"]
 
-    /// Native option menus as the panel builds them. Items the panel adds itself are run with
-    /// recording closures to learn their destination; StageKit items are listed, never run.
+    /// Native option menus as the panel builds them. The panel's own items and StageKit's page links
+    /// are run with recording callbacks to learn their destination; other StageKit items are listed only.
     func menus() -> [SurfaceGallery.Listing] {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
@@ -416,15 +513,12 @@ enum SurfaceGallery {
             if let key = SurfacePass.keyLabel(item) { line += "  \(key)" }
             if !item.isEnabled { line += "  (disabled)" }
             let label = "\(path) · \(item.title)"
-            if item is ToolbarMenuAction, let action = item.action {
+            if item is ToolbarMenuAction || SurfacePass.stageLinks.contains(item.title), let action = item.action {
                 opened.removeAll(); actions.removeAll()
                 NSApp.sendAction(action, to: item.target, from: item)
                 let route = opened.first, leads = route.map { "Page: \($0)" } ?? actions.first ?? "No effect"
                 line += "  → " + (route ?? leads)
                 menuEntries.append(.init(surface: "Menu-bar panel", label: label, leads: leads, route: route, ran: true))
-            } else if let route = SurfacePass.stageLinks[item.title] {
-                line += "  → \(route)"
-                menuEntries.append(.init(surface: "Menu-bar panel", label: label, leads: "Page: \(route)", route: route))
             }
             return [line] + (item.submenu.map { lines($0, depth: depth + 1, path: label) } ?? [])
         }
@@ -447,12 +541,14 @@ enum SurfaceGallery {
             switch tool {
             case .dictate:
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
-                         page(panel, "Dictate · Options · Recent Transcripts…", "history"), page(panel, "Dictate · Options · Dictation Settings…", "dictate"),
+                         page(panel, "Dictate · Options · Recent Transcripts…", "history"), page(panel, "Dictate · Options · Transcribe Meeting or Call…", "meeting"),
+                         page(panel, "Dictate · Options · Dictation Settings…", "dictate"),
                          action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings")]
             case .read:
                 list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading · Stop or Cancel", "Pauses, resumes, stops or cancels the reading")]
             case .snapAndTalk:
-                list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
+                list += [page(panel, "Snap (the row above Snap & Talk)", "snap"),
+                         action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
                          page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Set Up or N · Review", "readback")]
             case .annotate:
                 list += [action(panel, "Draw", "Starts drawing on screen"), action(panel, "Draw · Tools", "Native menu, listed below")]
@@ -461,7 +557,7 @@ enum SurfaceGallery {
                          page(panel, "Present, without a scene", "present"), action(panel, "Present · Options", "Native menu, listed below")]
             case .persona:
                 list += [action(panel, "Persona Overlay", "Shows the prepared persona, or its live controls"),
-                         page(panel, "Persona Overlay, with nothing prepared", "present"), action(panel, "Persona Overlay · Options", "Native menu, listed below")]
+                         page(panel, "Persona Overlay, with nothing prepared", "personas"), action(panel, "Persona Overlay · Options", "Native menu, listed below")]
             case .timer:
                 list += [action(panel, "Timer", "Starts the saved timer, or shows the running one"), action(panel, "Timer · Options", "Native menu, listed below")]
             }
@@ -469,29 +565,35 @@ enum SurfaceGallery {
         list += [action(panel, "Shortcut label on each row", "Edits that shortcut inside the panel"),
                  page(panel, "Open Workbench", "home"), page(panel, "Settings", "settings"), page(panel, "Shortcuts", "shortcuts"),
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
-                 page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue")]
+                 page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
+                 page(panel, "Meeting status row, while a meeting is busy", "meeting"), action(panel, "Meeting status row · Stop or Cancel", "Stops or cancels the meeting")]
         list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.1, leads: "Page: \($0.0)", route: $0.0, ran: true) }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings"), action("Home sidebar", "Suite appearance", "Changes the appearance")]
-        list += [page(home, "Dictate card", "dictate"), page(home, "Read aloud card", "speak"), page(home, "Snap & Talk card", "readback"),
-                 page(home, "Annotate card", "annotate"), page(home, "Present a device card", "present"), page(home, "Try the keyboard", "shortcuts"),
+        list += [page(home, "Dictate card", "dictate"), page(home, "Read aloud card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
+                 page(home, "Annotate card", "annotate"), page(home, "Present a device card", "present"), page(home, "Persona card", "personas"), page(home, "Try the keyboard", "shortcuts"),
                  page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "library"),
                  page("Settings page", "Your dictionary", "dictionary"), page("Settings page", "Models and local server", "models"),
                  page("Settings page", "Keyboard and practice", "shortcuts"), action("Settings page", "Position dictation panel…", "Shows the dictation panel preview"),
-                 page("Snap & Talk page", "Manage packs…", "packs")]
+                 page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
+                 page("Snap page", "Add to narrated session", "readback"), action("Snap page", "Hand off or organise a review", "Opens the handoff review"),
+                 page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "Open history", "history"),
+                 page("Handoff review", "Prepared handoff", "handoffs"), page("Remember correction", "Open Dictionary", "dictionary")]
         list += [action(menu, "Workbench › About Workbench", "Shows the About panel"), page(menu, "Workbench › Check for Updates…", "settings"),
                  action(menu, "Workbench › Copy build details", "Copies build details"), page(menu, "Workbench › Settings…", "settings"),
                  page(menu, "Workbench › Keyboard shortcuts…", "shortcuts"), action(menu, "Window › Open Workbench", "Opens Home on its current page"),
                  action(menu, "Window › Quick controls", "Opens this panel"), action(menu, "Window › Show floating toolbar", "Shows the toolbar"),
                  action(menu, "Window › Focus floating toolbar", "Moves keyboard focus to the toolbar"), action(menu, "Window › Restore menu-bar icon", "Shows the icon and the toolbar"),
                  page(menu, "Window › Saved resources", "library"), action(menu, "Window › Switch to…", "Opens the Switch to panel"),
-                 page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › Save clipboard as prompt…", "library"),
+                 page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › Snap History", "snap"), page(menu, "Window › Persona", "personas"),
+                 page(menu, "Window › Transcribe meeting or call…", "meeting"), page(menu, "Window › Save clipboard as prompt…", "library"),
                  action(menu, "Help › Workbench Guide", "Opens the web guide")]
         list += [page(other, "Saved resources shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
                  action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),
                  page(other, "Read aloud Service (selected text)", "speak"), page(other, "Private pack link", "packs"),
+                 page(other, "Meeting offer panel", "meeting"), page(other, "Pack persona import", "personas"),
                  page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
-                 page(other, "StageKit shortcut editing", "shortcuts")]
+                 page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
         return list
     }
 }
@@ -512,6 +614,9 @@ private struct SurfaceIndex {
             let reached = light.entries.filter { $0.route == page.route && $0.surface != "Home sidebar" }
             if reached.isEmpty && !WorkbenchHome.navItems.contains(where: { $0.0 == page.route }) { flags.append("No entry opens \(page.title) (\(page.route)).") }
             if page.fallsThrough && page.route != "dictate" { flags.append("\(page.title) (\(page.route)) renders the Dictate page: the route has no page of its own.") }
+            if passes.contains(where: { $0.pages.first { $0.route == page.route }?.blank == true }) {
+                flags.append("\(page.title) (\(page.route)) rendered blank: the gallery could not capture it.")
+            }
         }
         var html = """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -564,6 +669,8 @@ private struct SurfaceIndex {
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
             "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Screen Recording and Microphone access.",
+            "Handoffs shows its empty state: a prepared handoff records the time it was made. Snap shows three synthetic Snaps with fixed dates.",
+            "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
@@ -582,4 +689,23 @@ private struct SurfaceIndex {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
     }
+}
+
+/// Two known meeting apps with audio, so the meeting page lists choices without reading CoreAudio.
+private final class SyntheticAudioApps: MeetingProcessSource {
+    var isAvailable: Bool { true }
+    var unavailableReason: String { "" }
+    func snapshot() throws -> [MeetingProcessSnapshot] {
+        [.init(pid: 41_001, bundleID: "us.zoom.xos", isRunningInput: true, isRunningOutput: true, name: "Zoom"),
+         .init(pid: 41_002, bundleID: "com.microsoft.teams2", isRunningInput: false, isRunningOutput: true, name: "Microsoft Teams")]
+    }
+}
+
+/// Reports a started capture and records nothing: no device, tap or permission is touched.
+private final class SilentMeetingCapture: MeetingCapture {
+    func start(_ request: MeetingCaptureRequest) async throws {}
+    func finish() async -> MeetingCaptureReport { MeetingCaptureReport() }
+    func requestStop() {}
+    var elapsedSeconds: Double { 0 }
+    var stopReason: String? { nil }
 }
