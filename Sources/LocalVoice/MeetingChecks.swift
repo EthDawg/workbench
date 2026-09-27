@@ -88,8 +88,32 @@ enum MeetingChecks {
                    "known audio helpers remain available when the main process has no CoreAudio object")
         source.values.removeAll { $0.bundleID.hasPrefix("com.google.Chrome") }
         detector.forgetObservations()
+        _ = detector.evaluate(now: now); _ = detector.evaluate(now: now)
+        try expect(detector.evaluate(now: now)?.id == 830,
+                   "the calling service with two-way audio is the one manual service that raises an offer, because a call answered on this Mac runs there")
+        source.values.removeAll { $0.bundleID == "com.apple.avconferenced" }
+        detector.forgetObservations()
         for _ in 0..<4 { _ = detector.evaluate(now: now) }
-        try expect(detector.evaluate(now: now) == nil, "manual service visibility does not enable new passive call detection")
+        try expect(detector.evaluate(now: now) == nil,
+                   "every other manual service, including Mac telephony and shared WebKit audio, stays manual even with two-way audio")
+
+        // A FaceTime or iPhone call answered on this Mac runs in the calling
+        // service, which Detect Meetings & Calls covers only with two-way audio.
+        let calls = MeetingDetector(source: source)
+        calls.isEnabled = true
+        source.values = [.init(pid: 950, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: false, isUserFacingApp: false)]
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "the calling service with only the microphone running is not offered")
+        source.values[0].isRunningOutput = true
+        _ = calls.evaluate(now: now); _ = calls.evaluate(now: now)
+        let call = calls.evaluate(now: now)
+        try expect(call?.id == 950 && call?.bundleID == "com.apple.avconferenced"
+                   && MeetingDetector.offerTitle(for: call!) == "Possible call on this Mac"
+                   && MeetingDetector.offerText(for: call!).contains("FaceTime or phone call"),
+                   "a two-way call on this Mac is offered as a call from its own source")
+        calls.disable(call!)
+        for _ in 0..<4 { _ = calls.evaluate(now: now) }
+        try expect(calls.evaluate(now: now) == nil, "turning off offers for calls on this Mac is respected")
 
         for duration in [301.0, 1_801, 2_700, 3_600, 7_200, 600.1] {
             let windows = MeetingSegmentPlan.plan(totalSeconds: duration)
@@ -313,6 +337,9 @@ enum MeetingChecks {
                                  transcribe: { _ in recognition += 1; return "synthetic meeting" },
                                  microphonePermission: { permissions += 1; return true }, captureFactory: { factories += 1; return capture })
         await Task.yield()
+        model.useOffer(MeetingAudioApp(id: 950, name: "Mac calling service", bundleID: "com.apple.avconferenced"))
+        try expect(model.selectedAppID == 950 && model.purpose == "call", "reviewing a call on this Mac records it as a Call")
+        model.purpose = "meeting"; model.selectedAppID = nil
         try expect(!model.detectionEnabled && source.calls == 0 && factories == 0 && permissions == 0,
                    "controller initialization does not detect, ask permission or capture")
         model.mayStart = { "Another Workbench recording is active." }
