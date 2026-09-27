@@ -27,7 +27,7 @@ enum HandoffJobsChecks {
         }
         let source = HandoffSourceSnapshot(reference: .init(kind: .transcript, id: transcript.id), title: "Synthetic meeting",
             capturedAt: transcript.date, text: transcript.text, originalText: transcript.rawText!, role: .reference,
-            captureNotes: original.captureNotes)
+            captureNotes: original.captureNotes, seconds: transcript.seconds)
         let job = try model.prepare(sources: [source], task: MetadataSuggestionReview.task, skill: TranscriptHandoffSkills.followUpSnapshot())
         model.start(job, provider: .codex)
         while model.isBusy { try await Task.sleep(nanoseconds: 200_000_000) }
@@ -129,7 +129,7 @@ enum HandoffJobsChecks {
         let sources = [
             HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .transcript, id: id), title: "Synthetic meeting",
                 capturedAt: Date(timeIntervalSince1970: 100), text: phrase, originalText: "um " + phrase, role: .reference,
-                captureNotes: ["The selected app stopped producing audio."]),
+                captureNotes: ["The selected app stopped producing audio."], seconds: 53.86666666666667),
             HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .snap, id: snapID), title: "Synthetic Snap",
                 capturedAt: Date(timeIntervalSince1970: 101), text: "One selected screenshot", originalText: "One selected screenshot",
                 role: .reference, images: [image])
@@ -147,6 +147,13 @@ enum HandoffJobsChecks {
         try check(snapshot.items[1].images.count == 1, "selected image stays paired with its own text")
         let legacy = try HandoffJobStore.read(TranscriptHandoffManifest.self, at: folder.appendingPathComponent("handoff.json"))
         try check(legacy.transcripts.count == 1 && legacy.transcriptRole == .reference, "portable transcript skill manifest remains readable")
+        try check(snapshot.items[0].seconds == 53.86666666666667 && legacy.transcripts[0].seconds == 53.86666666666667,
+                  "the recorded duration survives the frozen selection and portable transcript export")
+        var oldInput = try JSONSerialization.jsonObject(with: HandoffJobStore.encode(snapshot.items[0])) as! [String: Any]
+        oldInput.removeValue(forKey: "seconds")
+        let oldRecord = try JSONDecoder().decode(HandoffInputRecord.self, from: JSONSerialization.data(withJSONObject: oldInput))
+        try check(oldRecord.seconds == nil && oldRecord.reference == snapshot.items[0].reference,
+                  "an older frozen input still decodes with unknown duration and its original identity")
         try check(FileManager.default.fileExists(atPath: folder.appendingPathComponent(legacy.transcripts[0].originalFile).path), "portable original file is present")
         try check(FileManager.default.fileExists(atPath: folder.appendingPathComponent("outputs").path), "portable output directory is present")
         let manual = HandoffJobStore.prompt(snapshot: snapshot, skill: TranscriptHandoffSkills.followUpSkill, folder: folder, manual: true)

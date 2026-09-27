@@ -1006,7 +1006,8 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
                 + " · " + item.date.formatted(date: .abbreviated, time: .shortened)
             return HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .transcript, id: item.id),
                 title: title, capturedAt: item.date, text: item.text, originalText: item.rawText ?? item.text,
-                role: metadata.purpose == .prompt ? .instructions : .reference, captureNotes: metadata.captureNotes)
+                role: metadata.purpose == .prompt ? .instructions : .reference, captureNotes: metadata.captureNotes,
+                seconds: item.seconds)
         }
         let additional = Set(selected.filter { $0.kind != .transcript })
         if !additional.isEmpty {
