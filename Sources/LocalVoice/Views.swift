@@ -7,7 +7,9 @@ private let mint = Workbench.accent
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
-    var embedded = false
+    /// The Workbench window embeds this view for the dictate, speak, library and
+    /// dictionary pages; each page draws its own title, so no shared chrome.
+    var embedded = true
     @State private var showOriginal = false
     @State private var showCorrection = false
     @State private var selectedCorrection = ""
@@ -16,13 +18,7 @@ struct ContentView: View {
     @State private var confirmingRecoveryDiscard = false
     var body: some View {
         HStack(spacing: 0) {
-            if !embedded { sidebar }
             VStack(alignment: .leading, spacing: 24) {
-                HStack {
-                    Label(model.page == "speak" && model.readingProvider == .speko ? "SPEKO · ONLINE READING" : "SPEECH & TEXT", systemImage: model.page == "speak" && model.readingProvider == .speko ? "network" : "waveform").font(.system(size: 10, weight: .semibold)).tracking(1.6).foregroundStyle(mint)
-                    Spacer()
-                    ShortcutControl(model: model, id: 1, title: "Dictation").frame(width: 300)
-                }
                 if let error = model.error {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
@@ -34,11 +30,8 @@ struct ContentView: View {
                 Group {
                     switch model.page {
                     case "speak": speak
-                    case "history": history
                     case "library": DemoLibraryView(library: model.library, model: model)
                     case "dictionary": DictionaryView(model: model)
-                    case "settings": settings
-                    case "shortcuts": shortcuts
                     default: dictate
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -46,11 +39,10 @@ struct ContentView: View {
                     Circle().fill(model.phase == .recording ? .red : mint).frame(width: 6, height: 6)
                     Text(model.status).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
                     Spacer()
-                    Text("WORKBENCH  /  \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")\(Workbench.isPreview ? " PREVIEW" : "")").font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1).foregroundStyle(.tertiary)
                 }
             }.padding(32).background(ink)
         }
-        .frame(minWidth: embedded ? 650 : 900, minHeight: 680)
+        .frame(minWidth: 650, minHeight: 680)
         .tint(mint).workbenchTheme()
         .sheet(isPresented: $showOriginal) {
             VStack(alignment: .leading, spacing: 16) {
@@ -74,39 +66,6 @@ struct ContentView: View {
             active: model.page == "dictate" && !showCorrection, selection: $selectedCorrection))
     }
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            WorkbenchHeader(title: "Voice", subtitle: "A little less typing.", symbol: "waveform")
-                .padding(.bottom, 24).padding(.top, 12)
-            nav("dictate", "Dictate", "mic")
-            nav("speak", "Read aloud", "speaker.wave.2")
-            Divider().padding(.vertical, 14)
-            nav("history", "Recent transcripts", "clock")
-            nav("library", "Demo library", "square.stack.3d.up")
-            nav("dictionary", "Your dictionary", "text.book.closed")
-            nav("shortcuts", "Shortcuts", "command")
-            nav("settings", "Settings", "slider.horizontal.3")
-            Spacer()
-            WorkbenchSwitcher { model.stopPlayback() }.disabled(model.phase != .idle)
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 6) {
-                    Circle().fill(model.ready ? mint : .orange).frame(width: 6, height: 6)
-                    Text(model.ready ? "Local engine ready" : "Preparing engine").font(.system(size: 11, weight: .medium))
-                }
-                Text(model.ready ? (model.readingProvider == .speko ? "Local dictation.\nSpeko reading sends text online." : "No account. No usage meter.\nYour words stay here.") : model.modelMessage).font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(4)
-                if !model.ready && !model.preparing { Button("Retry model") { Task { await model.prepare() } }.font(.system(size: 11)) }
-            }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(panelColor, in: RoundedRectangle(cornerRadius: 12))
-        }.padding(20).frame(width: 210).background(Workbench.surface.opacity(0.65))
-    }
-    private func nav(_ page: String, _ title: String, _ icon: String) -> some View {
-        Button { model.page = page } label: {
-            HStack(spacing: 10) { Image(systemName: icon).frame(width: 18); Text(title); Spacer() }
-                .font(.system(size: 12, weight: model.page == page ? .semibold : .regular))
-                .padding(.horizontal, 12).padding(.vertical, 12)
-                .foregroundStyle(model.page == page ? mint : .secondary)
-                .background(model.page == page ? mint.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        }.buttonStyle(.plain).accessibilityLabel(title)
-    }
     private func heading(_ title: String, _ subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(title).font(.system(size: 34, weight: .semibold)).tracking(-1)
@@ -199,7 +158,18 @@ struct ContentView: View {
             }
             Text(model.preferences.delivery == .paste ? "Automatic paste returns to your starting text field. Up to 5 minutes per recording." : "Finished transcripts are copied. Paste with ⌘V. Up to 5 minutes per recording.")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
+            appleShortcutsCaption
         }
+    }
+
+    /// Audio in, text out through Apple Shortcuts: Dictate's job, so it is noted here.
+    private var appleShortcutsCaption: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(Bundle.main.url(forResource: "Metadata", withExtension: "appintents") != nil ? "Apple Shortcuts: add Record Audio, then Transcribe with Workbench, then Create Note, Copy to Clipboard, or another text action. Shortcuts handles recording; Workbench returns your words." : "Apple Shortcuts: this development build has no Apple Shortcuts metadata. Use the full-Xcode package for the Transcribe with Workbench action.")
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Open Apple Shortcuts") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app")) }
+                .buttonStyle(.link).fixedSize()
+        }.font(.system(size: 10)).foregroundStyle(.tertiary)
     }
 
     private var speak: some View {
@@ -261,60 +231,6 @@ struct ContentView: View {
         }
     }
 
-    private var history: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            heading("Pick up a thought.", "Every completed capture is saved here, with its original words.")
-            CaptureHistoryView(model: model)
-        }
-    }
-
-    private var shortcuts: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            heading("Make it your shortcut.", "Change keys here or directly in quick controls, just like StageMark.")
-            VoiceShortcutSettings(model: model).padding(22).background(panelColor, in: RoundedRectangle(cornerRadius: 14))
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Apple Shortcuts").font(.headline)
-                Text(Bundle.main.url(forResource: "Metadata", withExtension: "appintents") != nil ? "Add Record Audio, then Transcribe with Workbench, then Create Note, Copy to Clipboard, or another text action. Shortcuts handles recording; Workbench returns your words." : "This development build has no Apple Shortcuts metadata. Use the full-Xcode package for the Transcribe with Workbench action.").foregroundStyle(.secondary)
-                Button("Open Apple Shortcuts") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app")) }
-            }
-            Spacer()
-        }
-    }
-
-    private var settings: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 24) {
-            heading("Ready, set, speak.", "A few simple controls. Everything else is taken care of.")
-            VStack(alignment: .leading, spacing: 22) {
-                settingRow("Speech model", model.modelMessage, "cpu") {
-                    if model.preparing { ProgressView().controlSize(.small) }
-                    else if model.ready { Label("Ready", systemImage: "checkmark.circle.fill").foregroundStyle(mint) }
-                    else { Button("Retry model") { Task { await model.prepare() } } }
-                }
-                Divider()
-                settingRow("Microphone", "Workbench records only when you start a recording.", "mic") { Button("Open settings") { model.openMicrophoneSettings() } }
-                Divider()
-                VoiceOptions(model: model, showShortcut: false)
-                Divider()
-                VoiceShortcutSettings(model: model)
-                Divider()
-                Button("Position dictation panel…") { model.showPanelPreview() }.disabled(model.phase != .idle)
-                Text("Drag the grip on the panel. Its position is remembered between recordings and app launches.").font(.caption).foregroundStyle(.secondary)
-                Divider()
-                WorkbenchAppearancePicker()
-            }.padding(22).background(panelColor, in: RoundedRectangle(cornerRadius: 14))
-            Text("Local by design").font(.system(size: 16, weight: .medium))
-            Text("Built-in Parakeet dictation and Mac voices work on your Mac without an account after the initial model download. A local transcription server receives your audio and may forward it, depending on how you configure that server. Optional Speko reading sends the text you choose to its cloud service and selected provider; usage may be billed. Drafts, your dictionary and history remain local. Apple Shortcuts controls any downstream destinations. No analytics are included.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5).textSelection(.enabled)
-            Spacer()
-        } }
-    }
-    private func settingRow<Accessory: View>(_ title: String, _ subtitle: String, _ icon: String, @ViewBuilder accessory: () -> Accessory) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon).foregroundStyle(mint).frame(width: 20)
-            VStack(alignment: .leading, spacing: 6) { Text(title).font(.system(size: 13, weight: .medium)); Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary) }
-            Spacer(); accessory().font(.system(size: 11))
-        }
-    }
     private func editor(text: Binding<String>, placeholder: String, label: String) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 12).fill(panelColor.opacity(0.6))
