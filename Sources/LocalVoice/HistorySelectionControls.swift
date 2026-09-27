@@ -97,6 +97,8 @@ struct TranscriptMetadataEditor: View {
     @State private var person = ""
     @State private var company = ""
     @State private var tags = ""
+    @State private var suggesting = false
+    @State private var localSuggestion: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Transcript details").font(.title2)
@@ -113,16 +115,32 @@ struct TranscriptMetadataEditor: View {
             if let receipt = library.metadata(for: transcript.id).reviewedSuggestion {
                 Text("Last reviewed suggestion: " + receipt).font(.caption2).foregroundStyle(.secondary)
             }
-            if let suggest {
-                Button("Suggest details with an assistant…") { dismiss(); suggest() }.buttonStyle(.link)
+            // One Suggest action: this Mac first, an assistant as a choice.
+            Group {
+                if let suggest {
+                    Menu(suggesting ? "Suggesting…" : "Suggest details") {
+                        Button("Ask an assistant…") { dismiss(); suggest() }
+                    } primaryAction: { suggestOnThisMac() }
+                } else {
+                    Button(suggesting ? "Suggesting…" : "Suggest details") { suggestOnThisMac() }
+                }
+            }.fixedSize().disabled(suggesting)
+                .help((LocalDetailSuggestions.usesAppleIntelligence
+                       ? "Fills empty names and adds tags using Apple Intelligence on this Mac. Nothing is sent anywhere."
+                       : "Fills empty names on this Mac. Nothing is sent anywhere. Turn on Apple Intelligence to also suggest tags.")
+                      + (suggest == nil ? "" : " For a fuller suggestion you review, choose Ask an assistant… from its menu."))
+            if let localSuggestion {
+                Text("Suggested on this Mac (\(localSuggestion)). Check names before saving.").font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Save") {
+                    let saved = library.metadata(for: transcript.id)
                     library.setMetadata(TranscriptMetadata(purpose: purpose, person: person, company: company,
                         tags: tags.split(separator: ",").map { String($0) },
-                        captureNotes: library.metadata(for: transcript.id).captureNotes), for: transcript.id)
+                        reviewedSuggestion: localSuggestion.map { "On this Mac · " + $0 } ?? saved.reviewedSuggestion,
+                        captureNotes: saved.captureNotes), for: transcript.id)
                     if library.error == nil { dismiss() }
                 }.keyboardShortcut(.defaultAction)
             }
@@ -132,6 +150,22 @@ struct TranscriptMetadataEditor: View {
                 let metadata = library.metadata(for: transcript.id)
                 purpose = metadata.purpose; person = metadata.person; company = metadata.company; tags = metadata.tags.joined(separator: ", ")
             }
+    }
+
+    /// Fills only empty details for review. Nothing is saved until Save.
+    private func suggestOnThisMac() {
+        suggesting = true
+        let current = TranscriptMetadata(purpose: purpose, person: person, company: company,
+            tags: tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        let text = transcript.text
+        Task { @MainActor in
+            let suggestion = await LocalDetailSuggestions.suggest(for: text)
+            let merged = LocalDetailSuggestions.merged(current, with: suggestion)
+            purpose = merged.purpose; person = merged.person; company = merged.company
+            tags = merged.tags.joined(separator: ", ")
+            localSuggestion = suggestion.source
+            suggesting = false
+        }
     }
 }
 
@@ -164,17 +198,31 @@ struct SubscriptionSettingsView: View {
     }
 }
 
+/// One Connections sheet for every handoff surface, so checking a provider
+/// returns to the work in progress instead of leaving it for Settings.
+struct HandoffConnectionsSheet: View {
+    @ObservedObject var jobs: HandoffJobsModel
+    var backTitle: String
+    var back: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SubscriptionSettingsView(jobs: jobs)
+            HStack { Spacer(); Button(backTitle, action: back).keyboardShortcut(.defaultAction) }
+        }.padding(24).frame(width: 530)
+    }
+}
+
 struct HandoffJobsView: View {
     @ObservedObject var jobs: HandoffJobsModel
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
-    var onConnections: (() -> Void)? = nil
     @State private var expanded: UUID?
+    @State private var showingConnections = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Handoffs").font(.title2.weight(.semibold))
                 Spacer()
-                if let onConnections { Button("Connections…", action: onConnections) }
+                Button("Connections…") { showingConnections = true }
                 if jobs.isBusy { Button("Stop task", role: .destructive) { jobs.cancel() } }
             }
             if let notice = jobs.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
@@ -253,6 +301,9 @@ struct HandoffJobsView: View {
             }
         }.task { await jobs.refresh() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in jobs.objectWillChange.send() }
+            .sheet(isPresented: $showingConnections) {
+                HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to Handoffs") { showingConnections = false }
+            }
     }
     @ViewBuilder private func startAction(_ job: HandoffJob) -> some View {
         if job.status == .ready || [.failed, .cancelled, .interrupted].contains(job.status) {
@@ -357,7 +408,7 @@ struct HandoffReviewView: View {
                     }
                     Text("Meeting speech and images start as reference material. “My instructions” means you adopt that text as your request. Connected tasks send the reviewed material to the chosen provider and return a draft for review.")
                         .font(.caption).foregroundStyle(.secondary)
-                    if skill.id != TranscriptHandoffSkill.followUp.id {
+                    if !skill.repliesInline {
                         Text("This skill uses the manual handoff so your assistant can create its requested files. Copy instructions, then attach the selected work folder.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -378,24 +429,29 @@ struct HandoffReviewView: View {
                         Button("Start with \(provider.title)") { submit(provider: provider) }
                             .disabled(jobs.connections[provider]?.ready != true || !jobs.enabled(provider) || !supports(provider))
                     }
-                }.disabled(sources.isEmpty || jobs.isBusy || skill.id != TranscriptHandoffSkill.followUp.id).menuStyle(.borderlessButton).fixedSize()
+                }.disabled(sources.isEmpty || jobs.isBusy || !skill.repliesInline).menuStyle(.borderlessButton).fixedSize()
             }
         }.padding(24)
             .frame(width: 680, height: min(720, max(400, (NSScreen.main?.visibleFrame.height ?? 820) - 100)))
+            .onChange(of: skillID) { previous, current in
+                // The task follows the chosen skill only while it is still the
+                // previous skill's suggestion; typed requests are never replaced.
+                let before = skills.first(where: { $0.id == previous })?.defaultTask
+                guard initialTask == nil, task.isEmpty || task == before,
+                      let suggested = skills.first(where: { $0.id == current })?.defaultTask else { return }
+                task = suggested
+            }
             .onAppear {
                 guard !initialized else { return }
                 initialized = true
-                task = initialTask ?? "Prepare the requested follow-up from my selected instructions and reference material. Identify any essential missing information."
+                task = initialTask ?? TranscriptHandoffSkill.followUp.defaultTask ?? ""
                 if let preferredSkillID, skills.contains(where: { $0.id == preferredSkillID }) { skillID = preferredSkillID }
                 evidenceURL = initialEvidenceURL
                 refreshSources()
                 Task { await jobs.refresh() }
             }
             .sheet(isPresented: $showingConnections) {
-                VStack(alignment: .leading, spacing: 16) {
-                    SubscriptionSettingsView(jobs: jobs)
-                    HStack { Spacer(); Button("Back to handoff") { showingConnections = false }.keyboardShortcut(.defaultAction) }
-                }.padding(24).frame(width: 530)
+                HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to handoff") { showingConnections = false }
             }
             .sheet(isPresented: $showingPreviousReview) {
                 VStack(alignment: .leading, spacing: 16) {

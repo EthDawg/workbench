@@ -6,11 +6,12 @@ const releases = 'https://github.com/EthDawg/workbench/releases';
 const feeds = 'https://workbench-mac.vercel.app/updates';
 
 export function validateRelease(value, expectedChannel) {
-  const match = /^v([0-9]+\.[0-9]+\.[0-9]+)(?:-preview\.([0-9]+))?$/.exec(value?.tag);
+  const match = /^v([0-9]+\.[0-9]+\.[0-9]+)(?:-preview\.([0-9]+)|\+([0-9]+(?:\.[0-9]+)*))?$/.exec(value?.tag);
   const channel = match?.[2] === undefined ? 'production' : 'preview';
   const archive = channel === 'production' ? 'Workbench.zip' : 'Workbench.Preview.zip';
   if (!match || value.version !== match[1] || (expectedChannel && channel !== expectedChannel) ||
       (value.channel && value.channel !== channel) ||
+      (match?.[3] !== undefined && match[3] !== value.build) ||
       !/^[0-9]+(?:\.[0-9]+)*$/.test(value.build) ||
       !/^[0-9a-f]{40}$/.test(value.source) || !/^[0-9a-f]{64}$/.test(value.sha256) ||
       value.download_url !== `${releases}/download/${value.tag}/${archive}` ||

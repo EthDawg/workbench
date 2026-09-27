@@ -69,7 +69,7 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
     let promptInsertion = PromptInsertion()
-    @Published var controlTool: WorkbenchControlTool = .snap
+    @Published var controlTool: WorkbenchControlTool = .snapAndTalk
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
@@ -263,6 +263,11 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
             transcript = state.draft; speechText = state.speechText; history = state.history
             rawTranscript = state.rawDraft ?? state.draft
             replacements = state.replacements; voice = state.voice; rate = state.rate
+            let removalIssues = MeetingTranscriptRemoval.reconcile(
+                root: Workbench.supportDirectory(component: "Meetings"), history: store)
+            if !removalIssues.isEmpty {
+                self.error = "A recording removal needs attention. " + removalIssues.joined(separator: " ")
+            }
         } catch {
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
             do {
@@ -966,15 +971,30 @@ final class AppModel: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudio
         status = restoreDraft ? "Correction undone." : "Dictionary change undone. Your newer draft edits are kept."
     }
     func dismissRememberedCorrection() { rememberedCorrection = nil }
-    func removeTranscript(_ item: Transcript) {
+    func removeTranscript(_ item: Transcript, includingRecording: Bool = false) {
+        guard loaded, history.contains(where: { $0.id == item.id }) else { return }
+        guard includingRecording || !meetings.hasRecording(for: item.id) else {
+            error = "This transcript has a saved recording. Choose Remove again to review removing both."
+            return
+        }
         let next = history.filter { $0.id != item.id }
+        let commit = {
+            try self.store.save(SavedState(draft: self.transcript, speechText: self.speechText, history: next,
+                replacements: self.replacements, voice: self.voice, rate: self.rate, rawDraft: self.rawTranscript))
+            self.persistWork?.cancel()
+            self.history = next
+        }
         do {
-            try store.save(SavedState(draft: transcript, speechText: speechText, history: next,
-                replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
-            history = next
+            if includingRecording {
+                error = try meetings.removeCompletedRecording(for: item.id, commit: commit)
+                if error == nil { status = "Transcript and recording removed." }
+            } else {
+                try commit()
+                status = "Transcript removed."
+            }
             // Named selections retain the missing reference until the person
             // deliberately removes it, so an old selection cannot silently shrink.
-        } catch { self.error = "Could not remove the transcript. " + error.localizedDescription }
+        } catch { self.error = "Could not finish removing the transcript. " + error.localizedDescription }
     }
     func retainMeetingTranscript(_ capture: Transcript, purpose: String) throws {
         guard loaded else { throw VoiceError.message("The transcript library is not ready.") }

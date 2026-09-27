@@ -89,7 +89,7 @@ struct WorkbenchHome: View {
                     HandoffJobsView(jobs: model.handoffJobs, applySuggestedMetadata: { job, result in
                         do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                         catch { model.handoffJobs.error = error.localizedDescription }
-                    }, onConnections: { model.page = "settings" }).padding(32)
+                    }).padding(32)
                 }
                 case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.page = "history" })
                 case "annotate": stage.controlsView
@@ -124,7 +124,7 @@ struct WorkbenchHome: View {
             }
             .sheet(item: $handoffReview) { request in
                 HandoffReviewView(history: model.historyLibrary, jobs: model.handoffJobs,
-                    skills: request.transcriptID == nil ? [.followUp] + packs.transcriptSkills : [.followUp],
+                    skills: request.transcriptID == nil ? TranscriptHandoffSkill.builtIns + packs.transcriptSkills : [.followUp],
                     initialTask: request.task,
                     preferredSkillID: request.transcriptID == nil ? packs.preferredTranscriptSkillID : nil,
                     selectedSnapTalkSession: request.transcriptID == nil ? readback.sessionURL : nil,
@@ -171,7 +171,7 @@ struct WorkbenchHome: View {
                     card("Snap & Talk", "Capture a screen. Narrate the why.", "rectangle.and.pencil.and.ellipsis", model.preferences.shortcut(5).label) { model.page = "readback" }
                     card("Annotate", "Point, draw and return to your demo.", "pencil.tip.crop.circle", "Live screen tools") { model.page = "annotate" }
                     card("Present a device", "Your phone, ready for an audience.", "iphone", "Saved scenes and branding") { model.page = "present" }
-                    card("Persona", "Choose a voice and a presence.", "person.crop.circle", "Independent of a scene") { model.page = "personas" }
+                    card("Persona", "Show saved artwork over your apps.", "person.crop.circle", "Independent of a scene") { model.page = "personas" }
                 }
                 PhotoHandoffArrivalCue(handoff: model.photoHandoff) {
                     model.showingPhonePhotos = true

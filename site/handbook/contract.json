@@ -3,8 +3,8 @@
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
   "reviewedOn": "2026-09-27",
-  "implementationRevision": "a2b6513771da067844f9677ba6a75935f013e713",
-  "scope": "Presentation preparation, independent Persona overlays, deliberate Snap capture and history, break-timer placement, desktop appearance and coordination with annotation and Mac audio workflows. New issue #112 capabilities have source and focused evidence; combined signed Preview and public release acceptance remain separate. App-wide history, assistant and meeting contracts are in docs/workbench.md and docs/product-spec.md.",
+  "implementationRevision": "6f0f7a045f0a1900668c77f01556b0d7d6080387",
+  "scope": "Presentation preparation, independent Persona overlays, deliberate Snap capture and history, break-timer placement, desktop appearance and coordination with annotation and Mac audio workflows. Issue #112 capabilities are published in Workbench 2.2.0 build 20260927101737 from source f2b8dfa. The notarized archive, bounded native acceptance and remaining hardware and fresh-Mac limits are recorded in docs/releases/2026-09-27-capability-preview.md. Earlier evidence entries retain their original source and test boundaries. App-wide history, assistant and meeting contracts are in docs/workbench.md and docs/product-spec.md.",
   "statusMeaning": {
     "implemented": "Verified in source and the stated local checks; this is not a claim that the newest binary is publicly released.",
     "proposed": "A product contract for review and implementation. No corresponding feature is promised in the current download."
@@ -23,9 +23,9 @@
       "status": "implemented",
       "entry": "Snap → Region / Window / Screen; Add image → Paste or Import",
       "effect": "Crop and annotate an unsaved image, then Save or Save & Copy into canonical local Snap History. Search titles, notes and tags, use the common selection, review exact duplicates and archive reversibly. Named selections retain one current review document through membership changes and synthesis, with immutable task replies and optional prior context. New Snap & Talk captures enter this history and portable sessions retain frozen copies.",
-      "limit": "Cancel creates no empty item or Desktop file. Originals, earlier edits and portable session packs remain intact. Provider review shares the rendered crop by default. Suggested exclusions need review, and a late result cannot overwrite newer document edits. Native capture permissions, clipboard and shared-selection interactions still require signed candidate acceptance.",
+      "limit": "Cancel creates no empty item or Desktop file. Originals, earlier edits and portable session packs remain intact. Provider review shares the rendered crop by default. Suggested exclusions need review, and a late result cannot overwrite newer document edits. Live narration and full keyboard/small-display acceptance remain open. Manual Region, Window and Escape acceptance was reported passed; audio/receiver paths remain separate.",
       "source": "docs/snap.md",
-      "evidence": "Snap a0e9cca plus 8041117 passed 66 synthetic checks for rendering, metadata revisions/size limits, immutable snapshots, reversible review, named result identity and optional narrated-session composition. Offscreen normal/620px history and 560px editor/error layouts reviewed; no installed capture or public release claim."
+      "evidence": "The 66 synthetic Snap checks cover rendering, metadata revisions/size limits, immutable snapshots, reversible review, named result identity and portable composition. Signed Preview 9d4aff1 passed import/crop/annotation/copy, selection/search, named review and archive/restore. Signed 6f0f7a0 passed corrected saved-selection lifecycle, fractional-duration handoff and duplicate-safe saved-Snap composition; independent artifacts confirm preservation. Ethan reported manual Region, Window and Escape checks passed. Remaining limits are recorded in docs/releases/2026-09-27-capability-preview.md. No public release claim."
     },
     {
       "id": "persona-workspace",
@@ -35,7 +35,7 @@
       "effect": "Show saved artwork immediately from its own workspace. Hide/resume retains a prepared arrangement and per-copy visibility; End releases live overlays. A scene keeps its own frozen persona binding.",
       "limit": "Mac screen-positioned artwork, not browser-tab attachment or voice-reactive framing. No new microphone owner, saved-library schema or app identity. Live browser/window persistence, click-through, physical display recovery and receiver behavior remain native checks.",
       "source": "Sources/StageKit/PersonaLibraryView.swift",
-      "evidence": "At a2b6513, 16 focused workspace/quick/control tests with 418 assertions passed, including parent rerun. Offscreen 620px and 834px workspace layouts reviewed with synthetic artwork. Signed Preview acceptance of the combined navigation remains pending."
+      "evidence": "At a2b6513, 16 focused workspace/quick/control tests with 418 assertions passed, including parent rerun. Offscreen 620px and 834px workspace layouts were reviewed with synthetic artwork. Signed Preview 9d4aff1 passed combined navigation and Persona display/hide. Focus, click-through, physical display recovery and receiver checks remain open; see docs/releases/2026-09-27-capability-preview.md."
     },
     {
       "id": "compact-present-preparation",
@@ -45,7 +45,7 @@
       "effect": "Use a compact Persona popover near the scene heading, expand secondary Scene details on demand, and keep Full screen/Window actions fixed. Connection & audio opens the existing guide and Apple alternatives.",
       "limit": "The layout does not change device capture, phone audio routing or safe native-app handoff. Opening QuickTime is not proof of a connection or receiving-participant audio. Native keyboard, popover-to-sheet and device-route acceptance remain required.",
       "source": "Sources/StageKit/DemoScenesView.swift",
-      "evidence": "At a2b6513, compact preview geometry checks passed within the focused Persona suite. Synthetic offscreen 620×650, 834×730 and 1085×780 layouts, including long scene/device names, were reviewed. No clipped primary footer controls in these fixtures; no shared app installation."
+      "evidence": "At a2b6513, compact geometry checks passed within the focused Persona suite. Synthetic offscreen 620×650, 834×730 and 1085×780 layouts, including long scene/device names, showed no clipped primary footer controls. Signed Preview 9d4aff1 exercised compact Present controls. Full native keyboard, device-route and receiver acceptance remain open; see docs/releases/2026-09-27-capability-preview.md."
     },
     {
       "id": "scene-backdrop",
@@ -261,20 +261,20 @@
   "acceptance": [
     {
       "id": "snap-source-and-layout",
-      "test": "Run the 66 synthetic Snap checks against actual store/model/render/organisation/portable importer sources, including stale edits, oversize records, crop pixels, input snapshots, pack/order preservation, idempotent narrated capture and named overview updates. Inspect normal/compact offscreen workspace and editor with a save error. These passed at a0e9cca plus 8041117; app shell/native acquisition were stubbed, and shared installed surfaces remain pending.",
-      "status": "passed-source-and-offscreen-native-pending",
+      "test": "Run the 66 synthetic Snap checks against actual store/model/render/organisation/portable importer sources, including stale edits, oversize records, crop pixels, input snapshots, pack/order preservation, idempotent narrated capture and named overview updates. Inspect normal/compact offscreen workspace and editor with a save error. These passed at a0e9cca plus 8041117; app shell/native acquisition were stubbed. Subsequent partial installed evidence and the remaining native gates are recorded in docs/releases/2026-09-27-capability-preview.md.",
+      "status": "passed-source-and-offscreen",
       "capabilities": ["snap-history"]
     },
     {
       "id": "snap-native-journey",
       "test": "On the signed Preview identified by Copy build details, capture region/window/screen, Escape, crop, annotate, copy/paste, save and restart. Verify no Desktop clutter, restore archive, named/mixed selection and targeted exclusion. Connection setup must retain the draft; Ready tasks must start later. Verify rendered-only provider review, prior-context review, source links and one current named result after membership changes, failures and intervening document edits. A new Snap & Talk shortcut capture must appear once in Snap History; add it back without a duplicate and cancel narration without losing the image.",
-      "status": "not-run-combined-candidate",
+      "status": "partially-passed-native",
       "capabilities": ["snap-history"]
     },
     {
       "id": "persona-present-workspaces",
       "test": "Focused a2b6513 tests and synthetic compact renders passed. On the signed combined candidate, verify independent Persona show/hide/resume/end over a browser, move/lock/click-through/display recovery, scene Persona selection and popover-to-sheet keyboard flow. Exercise fixed Present actions, expanded details, long device names, QuickTime fallback and actual audio/receiver routes separately.",
-      "status": "passed-source-and-offscreen-native-pending",
+      "status": "passed-source-and-offscreen-native-partial",
       "capabilities": ["persona-workspace", "compact-present-preparation", "persona-session"]
     },
     {
