@@ -48,7 +48,7 @@ struct SnapWorkspaceView: View {
                 } label: {
                     Label(model.keepsScreenshotsOffDesktop ? "Screenshots go to Snap" : "Desktop screenshots", systemImage: "menubar.dock.rectangle")
                 }.fixedSize().disabled(model.isBusy || model.tidyingScreenshots)
-                    .help("Snap never saves to the Desktop. These choices also gather screenshots taken with macOS shortcuts.")
+                    .help("Snap never saves to the Desktop. These choices also gather screenshots taken with macOS shortcuts; changing where macOS saves them refreshes the menu bar once.")
                 #endif
             }
             if model.screenshotRedirectPaused {

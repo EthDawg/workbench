@@ -281,11 +281,14 @@ try check(fm.fileExists(atPath: plainImage.path) && fm.fileExists(atPath: notes.
 try MainActor.assumeIsolated {
     let location = FakeScreenshotLocation(), suite = "SnapScreenshots-" + UUID().uuidString, preferences = UserDefaults(suiteName: suite)!
     defer { preferences.removePersistentDomain(forName: suite) }
+    var applied = 0
     let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("inbox-history")), screenshotLocation: location,
                           preferences: preferences, desktop: desktopFolder, screenshotInbox: inboxFolder,
-                          trash: { url in try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png")) })
+                          trash: { url in try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png")) },
+                          applyScreenshotLocation: { applied += 1 })
     model.setKeepsScreenshotsOffDesktop(true)
-    try check(location.location == inboxFolder.path && model.keepsScreenshotsOffDesktop, "new screenshots are pointed at the Workbench folder")
+    try check(location.location == inboxFolder.path && model.keepsScreenshotsOffDesktop && applied == 1,
+              "new screenshots are pointed at the Workbench folder and macOS is asked to apply it")
     let incoming = inboxFolder.appendingPathComponent("Screenshot 2026-09-03 at 11.00.00 am.png")
     try png.write(to: incoming); try markScreenCapture(incoming)
     model.importInbox()
@@ -299,9 +302,11 @@ try MainActor.assumeIsolated {
     model.importInbox()
     try check(model.screenshotRedirectPaused, "a later manual location change pauses collecting instead of fighting it")
     model.setKeepsScreenshotsOffDesktop(false)
+    let appliedBeforeManual = applied
     try check(location.location == "/Users/example/Elsewhere", "turning it off never overrides the person's later choice")
     model.setKeepsScreenshotsOffDesktop(true); model.setKeepsScreenshotsOffDesktop(false)
     try check(location.location == "/Users/example/Elsewhere", "a previous custom location is restored")
+    try check(appliedBeforeManual == 3 && applied == 5, "macOS is asked to apply only real location changes, never a kept manual choice")
     let tidyFile = desktopFolder.appendingPathComponent("Screenshot 2026-09-04 at 8.00.00 am.png")
     try ink.write(to: tidyFile); try markScreenCapture(tidyFile)
     var tidied: [UUID]? = nil
