@@ -31,7 +31,15 @@ A release manifest names every payload file and its exact size and SHA-256. Path
 
 The example omits the logo file record for brevity; an actual manifest must list it. Stable versions use `major.minor.patch`, with no prerelease or build suffix. New content requires a new version. Changing the bytes of an installed version or downgrading the installed version is refused.
 
-Supported entry kinds are `skill`, `scene`, `personas` and `resources`. A skill's complete directory subtree is copied; it must contain `SKILL.md`. Skills declare `inputKinds`: `snap-and-talk` for `session.json`, `transcripts` for `handoff.json`, or both only when they actually handle both formats. Undeclared skills cannot be selected for an incompatible handoff. A scene is a `.workbenchscene` package; a persona is one importable image with the entry name as its initial label. A resource saves an explicit personal file copy.
+Supported entry kinds are `skill`, `scene`, `personas` and `resources`. A skill's complete directory subtree is copied; it must contain `SKILL.md`. Skills declare `inputKinds`: `snap-and-talk` for `session.json`, `transcripts` for `handoff.json`, or both only when they actually handle both formats. Undeclared skills cannot be selected for an incompatible handoff. A transcript skill that answers with one document, rather than creating files, can say so in its `SKILL.md` frontmatter, inside the Agent Skills `metadata` map so the file stays valid for Claude Code and Codex:
+
+```yaml
+metadata:
+  workbench-reply: inline
+  workbench-task: "Turn this meeting into notes and a follow-up."
+```
+
+`workbench-reply: inline` lets the skill run as a connected task that returns its reply; `workbench-task` is the task Workbench suggests until the person edits it. Without these keys a skill keeps the manual, file-producing handoff and suggests no task. Workbench ignores metadata keys it does not know. A scene is a `.workbenchscene` package; a persona is one importable image with the entry name as its initial label. A resource saves an explicit personal file copy.
 
 Limits: 512 files, 100 MiB per file, 256 MiB total, 64 entries, 200 releases, 1 MiB catalogue/manifest and 4 MiB skill entry point. Paths use conservative ASCII filenames, reject traversal, hidden components, symlinks, duplicate/case-colliding names and file/directory conflicts. Branding is inert content.
 

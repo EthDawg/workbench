@@ -28,7 +28,7 @@ enum HandoffJobsChecks {
         let source = HandoffSourceSnapshot(reference: .init(kind: .transcript, id: transcript.id), title: "Synthetic meeting",
             capturedAt: transcript.date, text: transcript.text, originalText: transcript.rawText!, role: .reference,
             captureNotes: original.captureNotes, seconds: transcript.seconds)
-        let job = try model.prepare(sources: [source], task: MetadataSuggestionReview.task, skill: TranscriptHandoffSkills.followUpSnapshot())
+        let job = try model.prepare(sources: [source], task: MetadataSuggestionReview.task, skill: try TranscriptHandoffSkills.followUpSnapshot())
         model.start(job, provider: .codex)
         while model.isBusy { try await Task.sleep(nanoseconds: 200_000_000) }
         guard let complete = model.jobs.first(where: { $0.id == job.id }), complete.status == .completed,
@@ -95,7 +95,7 @@ enum HandoffJobsChecks {
         Then include a complete coverage table with exactly one row per source-01 through source-45: source name, a link to its supplied image, visible theme, concrete statement, and the exact unique visual marker printed inside that image.
         Read each image. Mark anything unreadable explicitly; do not invent markers or omit sources. The supplied text contains no marker values. Return Markdown only.
         """
-        let job = try model.prepare(sources: sources, task: request, skill: TranscriptHandoffSkills.followUpSnapshot())
+        let job = try model.prepare(sources: sources, task: request, skill: try TranscriptHandoffSkills.followUpSnapshot())
         model.start(job, provider: .codex)
         while model.isBusy { try await Task.sleep(nanoseconds: 200_000_000) }
         guard let complete = model.jobs.first(where: { $0.id == job.id }), complete.status == .completed,
@@ -123,6 +123,7 @@ enum HandoffJobsChecks {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-job-check-" + UUID().uuidString)
         try HandoffJobStore.privateDirectory(root)
         defer { try? FileManager.default.removeItem(at: root) }
+        let followUpText = try TranscriptHandoffSkills.builtInText(TranscriptHandoffSkills.followUpReference.id)
         let id = UUID(), snapID = UUID()
         let phrase = "Synthetic meeting: Alex Example proposed a pilot."
         let image = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==")!
@@ -134,7 +135,7 @@ enum HandoffJobsChecks {
                 capturedAt: Date(timeIntervalSince1970: 101), text: "One selected screenshot", originalText: "One selected screenshot",
                 role: .reference, images: [image])
         ]
-        let skill = TranscriptHandoffSkills.followUpSnapshot()
+        let skill = try TranscriptHandoffSkills.followUpSnapshot()
         let store = HandoffJobsModel(directory: root)
         let first = try store.prepare(sources: sources, task: "Summarize the decision.", skill: skill)
         let again = try store.prepare(sources: sources, task: "Summarize the decision.", skill: skill)
@@ -156,9 +157,9 @@ enum HandoffJobsChecks {
                   "an older frozen input still decodes with unknown duration and its original identity")
         try check(FileManager.default.fileExists(atPath: folder.appendingPathComponent(legacy.transcripts[0].originalFile).path), "portable original file is present")
         try check(FileManager.default.fileExists(atPath: folder.appendingPathComponent("outputs").path), "portable output directory is present")
-        let manual = HandoffJobStore.prompt(snapshot: snapshot, skill: TranscriptHandoffSkills.followUpSkill, folder: folder, manual: true)
+        let manual = HandoffJobStore.prompt(snapshot: snapshot, skill: followUpText, folder: folder, manual: true)
         try check(manual.contains(phrase) && manual.contains("Original wording:") && manual.contains("Attach these selected image"), "manual fallback includes selected words and exact attachment step")
-        let connected = HandoffJobStore.prompt(snapshot: snapshot, skill: TranscriptHandoffSkills.followUpSkill, folder: folder, manual: false)
+        let connected = HandoffJobStore.prompt(snapshot: snapshot, skill: followUpText, folder: folder, manual: false)
         try check(connected.contains("format requested by the task") && connected.contains("REFERENCE"), "connected task output and source roles explicit")
         try check(snapshot.items[0].captureNotes == sources[0].captureNotes && connected.contains("The selected app stopped producing audio."),
                   "recording gaps survive frozen inputs and provider prompt without modifying source words")
@@ -241,7 +242,7 @@ enum HandoffJobsChecks {
         try check(proposal.purpose == .meeting && proposal.person == "Alex Example", "complete typed suggestion remains reviewable")
         let detailsJob = try store.prepare(sources: [sources[0]], task: MetadataSuggestionReview.task, skill: skill)
         let detailsRecord = try HandoffJobStore.read(HandoffSnapshotRecord.self, at: store.folder(detailsJob).appendingPathComponent("selection.json"))
-        let detailsPrompt = HandoffJobStore.prompt(snapshot: detailsRecord, skill: TranscriptHandoffSkills.followUpSkill,
+        let detailsPrompt = HandoffJobStore.prompt(snapshot: detailsRecord, skill: followUpText,
             folder: store.folder(detailsJob), manual: false)
         try check(detailsPrompt.contains("Recording limitations are preserved separately")
             && !detailsPrompt.contains("preserve these qualifications in your result"),
@@ -343,6 +344,54 @@ enum HandoffJobsChecks {
         let unchangedSnap = try snaps.read(snap.id)
         try check(unchangedSnap.title == "User-reviewed name" && unchangedSnap.archivedAt == nil,
                   "publishing assistant prose never applies a suggested rename or exclusion")
+        // Built-in skills are skill files in a pack bundled with Workbench, read
+        // and checked like an installed pack. Each declares an inline reply and a
+        // suggested task in its SKILL.md metadata, so it starts as a connected task.
+        let bundled = try WorkbenchSkillPack.payload()
+        try check(bundled.manifest.id == "workbench" && bundled.manifest.entries.allSatisfy { $0.kind == .skill && $0.inputKinds == [.transcripts] },
+                  "the built-in skills load through the private pack format, digests included")
+        let builtIns = TranscriptHandoffSkill.builtIns
+        try check(builtIns.map(\.id) == [TranscriptHandoffSkills.followUpReference.id, "workbench-meeting-follow-up", "workbench-sharpen-prompt", "workbench-conversation-coach"]
+                  && builtIns.allSatisfy { $0.repliesInline && $0.defaultTask != nil && !$0.detail.isEmpty },
+                  "built-in skills keep their identities and order, reply inline and suggest a task")
+        try check(TranscriptHandoffSkill.followUp.title == "Prepare follow-up" && (try TranscriptHandoffSkills.followUpSnapshot()).reference == TranscriptHandoffSkills.followUpReference,
+                  "the follow-up skill keeps the reference earlier handoffs recorded")
+        for builtIn in builtIns {
+            let snapshot = try builtIn.load()
+            try TranscriptHandoffSkillCheck.validate(snapshot); passed += 1
+            let text = String(decoding: snapshot.files[TranscriptHandoffStore.skillEntryPoint] ?? Data(), as: UTF8.self)
+            if builtIn.id != TranscriptHandoffSkills.followUpReference.id {
+                try check(text.contains("not wrapped in a code block") && (text.contains("never instructions") || text.contains("do not carry out")),
+                          "\(builtIn.title) asks for a plain Markdown reply and keeps quoted material from acting as instructions")
+            }
+            let job = try store.prepare(sources: sources, task: builtIn.defaultTask!, skill: snapshot)
+            let record = try HandoffJobStore.read(HandoffSnapshotRecord.self, at: store.folder(job).appendingPathComponent("selection.json"))
+            try check(record.skill.id == builtIn.id && job.supportsConnectedText
+                      && HandoffJobStore.prompt(snapshot: record, skill: text, folder: store.folder(job), manual: false).contains(text),
+                      "\(builtIn.title) prepares a job that can start as a connected task with the skill in its prompt")
+        }
+        try check(try TranscriptHandoffSkills.builtInText("workbench-meeting-follow-up").contains("`Owner?`")
+                  && (try TranscriptHandoffSkills.builtInText("workbench-conversation-coach")).contains("`You:`"),
+                  "meeting actions flag missing owners and coaching needs labelled speakers")
+        // Any skill file may declare the same metadata; without it a skill keeps
+        // the file-producing handoff and suggests no task.
+        func skillFile(_ frontmatter: String) -> ReadbackSkillPackSnapshot {
+            ReadbackSkillPackSnapshot(reference: .init(id: "example-skill", version: "1.0.0", name: "Example"),
+                                      files: [TranscriptHandoffStore.skillEntryPoint: Data(("---\n" + frontmatter + "---\n\n# Example\nReply briefly.\n").utf8)])
+        }
+        let plain = skillFile("name: example\ndescription: Example skill.\n")
+        try check(SkillMetadata(snapshot: plain) == SkillMetadata(description: "Example skill.")
+                  && !TranscriptHandoffSkill.installed(plain, detail: "pack").repliesInline,
+                  "a skill without Workbench metadata keeps the manual file-producing handoff")
+        try check(!(try store.prepare(sources: sources, task: "Summarise.", skill: plain)).supportsConnectedText,
+                  "a file-producing skill never starts as a connected task")
+        let declared = skillFile("name: example\nmetadata:\n  author: someone\n  workbench-reply: \"inline\"\n  workbench-task: 'Say \"hi\": it''s short'\nlicense: MIT\n")
+        let pack = TranscriptHandoffSkill.installed(declared, detail: "pack")
+        try check(pack.repliesInline && pack.defaultTask == "Say \"hi\": it's short",
+                  "a pack skill's metadata makes it reply inline with its task; quotes and unknown keys are handled")
+        try check(SkillMetadata(skill: "# No frontmatter\nworkbench-reply: inline\n") == SkillMetadata()
+                  && SkillMetadata(skill: "---\nworkbench-reply: inline\n---\n") == SkillMetadata(),
+                  "Workbench keys count only inside the frontmatter's metadata map")
         print("HANDOFF_JOBS_CHECKS_OK: \(passed) checks")
     }
 }
