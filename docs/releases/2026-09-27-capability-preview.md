@@ -1,6 +1,12 @@
 # Capability Preview integration, 27 September 2026
 
-This candidate addresses [issue #112](https://github.com/EthDawg/workbench/issues/112). It combines explicit meeting transcription, durable capture history and selections, standalone Snap and Persona surfaces, and optional subscription handoffs. Public Workbench 2.2.0 and its update feed are unchanged.
+These capabilities are published as [Workbench 2.2.0, September 27 update](https://github.com/EthDawg/workbench/releases/tag/v2.2.0+20260927101737), build `20260927101737`, from main source `f2b8dfa8c832c312c60ad480b84e1edf277f166b`. The Developer ID signed and notarized archive was installed in place, verified through Copy build details, and downloaded back from the public release with SHA-256 `6da3acf4173d7d1006d4b80599c70877ecc74f27019d85aff7bd6d3621ca2a08`. The signed production feed and matching website record promote those same immutable bytes together.
+
+The final bounded native pass covered the eight quick-panel rows, standalone Snap, both Connections return paths, saved selection updates and restoration, completed-transcript removal confirmation and Cancel, Persona hide/show/end, imported-persona navigation and Snap & Talk capture/narration. Existing Stable history and dictation settings were preserved. No live user recording was deleted for testing.
+
+Routed-call and headphone/two-sided audio, broad keyboard/click-through behavior, external-display/USB combinations, an old-to-new updater installation and browser-downloaded first installation on another Mac remain unverified. PR #116 and #118 remain separate follow-ups. The chronology below records earlier acceptance checkpoints; their pending statements describe those earlier candidates, not the current publication status.
+
+This work addresses [issue #112](https://github.com/EthDawg/workbench/issues/112): explicit meeting transcription, durable capture history and selections, standalone Snap and Persona surfaces, and optional subscription handoffs.
 
 ## Behavior and ownership
 
