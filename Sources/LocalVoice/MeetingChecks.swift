@@ -56,6 +56,22 @@ enum MeetingChecks {
         try expect(detector.availableApps().isEmpty && detector.lastError != nil, "metadata errors are visible rather than an absent-call claim")
         source.failure = false
 
+        // Identifiers compare without case, and an app can own audio processes
+        // not named `.helper`. Mac call services are never merged into an app.
+        for (process, owner) in [("com.apple.MobilePhone", "com.apple.mobilephone"), ("com.microsoft.teams2.modulehost", "com.microsoft.teams2"),
+                                 ("com.hnc.Discord.helper.Renderer", "com.hnc.Discord"), ("net.whatsapp.WhatsApp", "net.whatsapp.WhatsApp")] {
+            try expect(MeetingAppCatalogue.known(process)?.bundleID == owner, "\(process) belongs to \(owner)")
+        }
+        try expect(MeetingAppCatalogue.known("com.apple.FaceTimeExtra") == nil && MeetingAppCatalogue.known("com.apple.avconferenced") == nil,
+                   "only exact identifiers and an app's own processes match; call services are never merged into an app")
+        let teams = MeetingDetector(source: source)
+        teams.isEnabled = true
+        source.values = [.init(pid: 900, bundleID: "com.microsoft.teams2", isRunningInput: false, isRunningOutput: false),
+                         .init(pid: 901, bundleID: "com.microsoft.teams2.modulehost", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false)]
+        _ = teams.evaluate(now: now); _ = teams.evaluate(now: now)
+        try expect(teams.evaluate(now: now)?.bundleID == "com.microsoft.teams2" && teams.availableApps().map(\.id) == [900],
+                   "a new Teams call in its module host is offered as one Teams choice")
+
         source.values = [
             .init(pid: 800, bundleID: "com.apple.assistantd", isRunningInput: false, isRunningOutput: false,
                   isUserFacingApp: false),

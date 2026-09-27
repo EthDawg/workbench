@@ -95,8 +95,8 @@ final class MeetingDetector {
         // Show one choice for that same scope, preferring its stable main process.
         let ordered = processes.sorted { left, right in
             if left.isUserFacingApp != right.isUserFacingApp { return left.isUserFacingApp }
-            let leftMain = MeetingAppCatalogue.known(left.bundleID)?.bundleID == left.bundleID
-            let rightMain = MeetingAppCatalogue.known(right.bundleID)?.bundleID == right.bundleID
+            let leftMain = MeetingAppCatalogue.known(left.bundleID)?.bundleID.caseInsensitiveCompare(left.bundleID) == .orderedSame
+            let rightMain = MeetingAppCatalogue.known(right.bundleID)?.bundleID.caseInsensitiveCompare(right.bundleID) == .orderedSame
             if leftMain != rightMain { return leftMain }
             return left.pid < right.pid
         }
