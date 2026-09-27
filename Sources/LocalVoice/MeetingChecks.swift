@@ -56,6 +56,41 @@ enum MeetingChecks {
         try expect(detector.availableApps().isEmpty && detector.lastError != nil, "metadata errors are visible rather than an absent-call claim")
         source.failure = false
 
+        source.values = [
+            .init(pid: 800, bundleID: "com.apple.assistantd", isRunningInput: false, isRunningOutput: false,
+                  isUserFacingApp: false),
+            .init(pid: 811, bundleID: "com.google.Chrome.helper.audio", isRunningInput: true, isRunningOutput: true,
+                  isUserFacingApp: false),
+            .init(pid: 810, bundleID: "com.google.Chrome", isRunningInput: false, isRunningOutput: false),
+            .init(pid: 812, bundleID: "com.google.Chrome.helper.renderer", isRunningInput: false, isRunningOutput: true,
+                  isUserFacingApp: false),
+            .init(pid: 820, bundleID: "example.player", isRunningInput: false, isRunningOutput: true, name: "Example Player"),
+            .init(pid: 830, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false),
+            .init(pid: 831, bundleID: "com.apple.TelephonyUtilities", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false),
+            .init(pid: 832, bundleID: "com.apple.WebKit.GPU", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false),
+            .init(pid: 840, bundleID: "example.menubar", isRunningInput: false, isRunningOutput: true, name: "Menu-bar Player")
+        ]
+        let choices = detector.availableApps()
+        try expect(Set(choices.map(\.id)) == [810, 820, 830, 831, 832, 840],
+                   "picker hides system clutter, groups browser helpers and retains manual call services and accessory apps")
+        try expect(choices.first(where: { $0.id == 830 })?.bundleID == "com.apple.avconferenced"
+            && choices.first(where: { $0.id == 831 })?.name == "Mac telephony service"
+            && choices.first(where: { $0.id == 832 })?.name == "WebKit audio service (shared)",
+            "manual audio-service labels preserve their actual process and bundle capture scope")
+        source.values.reverse()
+        try expect(detector.availableApps() == choices, "process enumeration order cannot change the selected app representative")
+        detector.forgetObservations()
+        _ = detector.evaluate(now: now); _ = detector.evaluate(now: now)
+        try expect(detector.evaluate(now: now)?.id == 810,
+                   "helper microphone activity offers the same app identifier as the manual picker")
+        source.values.removeAll { $0.pid == 810 }
+        try expect(detector.availableApps().first(where: { $0.bundleID == "com.google.Chrome" })?.id == 811,
+                   "known audio helpers remain available when the main process has no CoreAudio object")
+        source.values.removeAll { $0.bundleID.hasPrefix("com.google.Chrome") }
+        detector.forgetObservations()
+        for _ in 0..<4 { _ = detector.evaluate(now: now) }
+        try expect(detector.evaluate(now: now) == nil, "manual service visibility does not enable new passive call detection")
+
         for duration in [301.0, 1_801, 2_700, 3_600, 7_200, 600.1] {
             let windows = MeetingSegmentPlan.plan(totalSeconds: duration)
             try expect(abs(windows.reduce(0) { $0 + $1.seconds } - duration) < 0.001, "\(duration)-second plan retains complete duration")
@@ -231,13 +266,19 @@ enum MeetingChecks {
         let startGate = Gate<Bool>(), delayedCapture = CaptureFixture()
         delayedCapture.startGate = startGate
         let delayedModel = MeetingModel(directory: root.appendingPathComponent("late-capture"), defaults: defaults,
-                                        processSource: ProcessFixture(), transcribe: { _ in "unused" },
-                                        microphonePermission: { true }, captureFactory: { delayedCapture })
+                                        processSource: source, transcribe: { _ in "unused" },
+                                        microphonePermission: { true }, captureFactory: { delayedCapture },
+                                        startupNoticeDelayNanoseconds: 1_000_000)
+        delayedModel.selectedAppID = 789; delayedModel.includeMicrophone = false
         let delayedStart = Task { await delayedModel.start() }
         await waitUntil { startGate.isWaiting }
+        await waitUntil { delayedModel.notice.contains("has not finished") }
+        try expect(delayedModel.isStarting && !delayedModel.isRecording && delayedModel.notice.contains("Audio Recording permission"),
+                   "slow app startup explains the permission wait without claiming recording or releasing ownership")
         let delayedCancel = Task { await delayedModel.cancel() }
         await waitUntil { delayedCapture.stopping }
         try expect(delayedModel.isBusy, "late system-access cancellation reserves ownership until capture teardown")
+        try expect(delayedModel.notice.hasPrefix("Cancelling start."), "cancel explains the pending macOS return without claiming teardown finished")
         startGate.resume(true); await delayedStart.value; await delayedCancel.value
         try expect(!delayedModel.isBusy && delayedCapture.finished == 1 && !delayedCapture.recorded,
                    "late system access never begins samples after cancellation")

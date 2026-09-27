@@ -55,6 +55,15 @@ enum MeetingAppCatalogue {
         "com.ethdawg.localvoice", "com.ethdawg.stagemark"
     ]
 
+    /// Existing Mac audio-service sources stay manually selectable by their own
+    /// PID and bundle. These labels neither enable detection nor merge their
+    /// capture scope into FaceTime/Phone/Safari. Receiver support needs testing.
+    static let manualServiceNames = [
+        "com.apple.avconferenced": "Mac calling service",
+        "com.apple.TelephonyUtilities": "Mac telephony service",
+        "com.apple.WebKit.GPU": "WebKit audio service (shared)"
+    ]
+
     static func known(_ bundleID: String) -> MeetingKnownApp? {
         supported.first { bundleID == $0.bundleID || bundleID.hasPrefix($0.bundleID + ".helper") }
     }

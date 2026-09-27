@@ -10,6 +10,8 @@ struct MeetingProcessSnapshot: Equatable {
     var isRunningInput: Bool
     var isRunningOutput: Bool
     var name: String? = nil
+    /// AppKit metadata only; no windows or their contents are inspected.
+    var isUserFacingApp: Bool = true
 }
 
 protocol MeetingProcessSource: AnyObject {
@@ -33,10 +35,13 @@ final class MeetingSystemProcessSource: MeetingProcessSource {
             guard let pid = MeetingCoreAudio.processID(of: object), pid != own,
                   let bundleID = MeetingCoreAudio.bundleID(of: object),
                   !MeetingAppCatalogue.isExcluded(bundleID) else { continue }
+            let application = NSRunningApplication(processIdentifier: pid)
             result.append(MeetingProcessSnapshot(pid: Int32(pid), bundleID: bundleID,
                                                  isRunningInput: try MeetingCoreAudio.activity(object, input: true),
                                                  isRunningOutput: try MeetingCoreAudio.activity(object, input: false),
-                                                 name: NSRunningApplication(processIdentifier: pid)?.localizedName))
+                                                 name: application?.localizedName,
+                                                 isUserFacingApp: application?.bundleURL?.pathExtension.lowercased() == "app"
+                                                    && application?.activationPolicy != .prohibited))
         }
         return result
     }
@@ -80,14 +85,31 @@ final class MeetingDetector {
     /// This is an explicit person-facing action, not detection.
     func availableApps() -> [MeetingAudioApp] {
         guard source.isAvailable else { return [] }
-        var seen = Set<Int32>()
+        return availableApps(in: read())
+    }
+
+    private func availableApps(in processes: [MeetingProcessSnapshot]) -> [MeetingAudioApp] {
+        var seen = Set<String>()
         var apps: [MeetingAudioApp] = []
-        for process in read() {
-            guard process.pid != ProcessInfo.processInfo.processIdentifier,
-                  !MeetingAppCatalogue.isExcluded(process.bundleID), seen.insert(process.pid).inserted else { continue }
+        // A selected app's tap already includes its recognised helper processes.
+        // Show one choice for that same scope, preferring its stable main process.
+        let ordered = processes.sorted { left, right in
+            if left.isUserFacingApp != right.isUserFacingApp { return left.isUserFacingApp }
+            let leftMain = MeetingAppCatalogue.known(left.bundleID)?.bundleID == left.bundleID
+            let rightMain = MeetingAppCatalogue.known(right.bundleID)?.bundleID == right.bundleID
+            if leftMain != rightMain { return leftMain }
+            return left.pid < right.pid
+        }
+        for process in ordered {
             let known = MeetingAppCatalogue.known(process.bundleID)
-            apps.append(MeetingAudioApp(id: process.pid, name: known?.name ?? process.name ?? process.bundleID,
-                                        bundleID: known?.bundleID ?? process.bundleID))
+            let serviceName = MeetingAppCatalogue.manualServiceNames[process.bundleID]
+            let bundleID = known?.bundleID ?? process.bundleID
+            guard process.pid != ProcessInfo.processInfo.processIdentifier,
+                  !MeetingAppCatalogue.isExcluded(process.bundleID),
+                  process.isUserFacingApp || known != nil || serviceName != nil,
+                  seen.insert(bundleID).inserted else { continue }
+            apps.append(MeetingAudioApp(id: process.pid, name: known?.name ?? serviceName ?? process.name ?? process.bundleID,
+                                        bundleID: bundleID))
         }
         return apps.sorted { left, right in
             let leftKind = MeetingAppCatalogue.known(left.bundleID)?.kind ?? .browser
@@ -104,7 +126,9 @@ final class MeetingDetector {
         guard isEnabled, !isSuppressed, source.isAvailable else { return nil }
         if let snoozedUntil, snoozedUntil > now { streaks.removeAll(); return nil }
         var candidates: [String: MeetingAudioApp] = [:]
-        for process in read() {
+        let processes = read()
+        let choices = Dictionary(uniqueKeysWithValues: availableApps(in: processes).map { ($0.bundleID, $0) })
+        for process in processes {
             guard process.pid != ProcessInfo.processInfo.processIdentifier,
                   !MeetingAppCatalogue.isExcluded(process.bundleID),
                   let known = MeetingAppCatalogue.known(process.bundleID),
@@ -112,7 +136,7 @@ final class MeetingDetector {
                   // Playing sound alone is not a call. Something must be using
                   // the microphone through that app.
                   process.isRunningInput else { continue }
-            candidates[known.bundleID] = MeetingAudioApp(id: process.pid, name: known.name, bundleID: known.bundleID)
+            candidates[known.bundleID] = choices[known.bundleID]
         }
         for bundleID in Array(streaks.keys) where candidates[bundleID] == nil { streaks[bundleID] = 0 }
         for bundleID in candidates.keys { streaks[bundleID, default: 0] += 1 }
