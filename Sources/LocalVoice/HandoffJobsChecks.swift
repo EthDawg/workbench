@@ -27,7 +27,7 @@ enum HandoffJobsChecks {
         }
         let source = HandoffSourceSnapshot(reference: .init(kind: .transcript, id: transcript.id), title: "Synthetic meeting",
             capturedAt: transcript.date, text: transcript.text, originalText: transcript.rawText!, role: .reference,
-            captureNotes: original.captureNotes)
+            captureNotes: original.captureNotes, seconds: transcript.seconds)
         let job = try model.prepare(sources: [source], task: MetadataSuggestionReview.task, skill: TranscriptHandoffSkills.followUpSnapshot())
         model.start(job, provider: .codex)
         while model.isBusy { try await Task.sleep(nanoseconds: 200_000_000) }
@@ -129,7 +129,7 @@ enum HandoffJobsChecks {
         let sources = [
             HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .transcript, id: id), title: "Synthetic meeting",
                 capturedAt: Date(timeIntervalSince1970: 100), text: phrase, originalText: "um " + phrase, role: .reference,
-                captureNotes: ["The selected app stopped producing audio."]),
+                captureNotes: ["The selected app stopped producing audio."], seconds: 53.86666666666667),
             HandoffSourceSnapshot(reference: WorkbenchItemReference(kind: .snap, id: snapID), title: "Synthetic Snap",
                 capturedAt: Date(timeIntervalSince1970: 101), text: "One selected screenshot", originalText: "One selected screenshot",
                 role: .reference, images: [image])
@@ -147,6 +147,13 @@ enum HandoffJobsChecks {
         try check(snapshot.items[1].images.count == 1, "selected image stays paired with its own text")
         let legacy = try HandoffJobStore.read(TranscriptHandoffManifest.self, at: folder.appendingPathComponent("handoff.json"))
         try check(legacy.transcripts.count == 1 && legacy.transcriptRole == .reference, "portable transcript skill manifest remains readable")
+        try check(snapshot.items[0].seconds == 53.86666666666667 && legacy.transcripts[0].seconds == 53.86666666666667,
+                  "the recorded duration survives the frozen selection and portable transcript export")
+        var oldInput = try JSONSerialization.jsonObject(with: HandoffJobStore.encode(snapshot.items[0])) as! [String: Any]
+        oldInput.removeValue(forKey: "seconds")
+        let oldRecord = try JSONDecoder().decode(HandoffInputRecord.self, from: JSONSerialization.data(withJSONObject: oldInput))
+        try check(oldRecord.seconds == nil && oldRecord.reference == snapshot.items[0].reference,
+                  "an older frozen input still decodes with unknown duration and its original identity")
         try check(FileManager.default.fileExists(atPath: folder.appendingPathComponent(legacy.transcripts[0].originalFile).path), "portable original file is present")
         try check(FileManager.default.fileExists(atPath: folder.appendingPathComponent("outputs").path), "portable output directory is present")
         let manual = HandoffJobStore.prompt(snapshot: snapshot, skill: TranscriptHandoffSkills.followUpSkill, folder: folder, manual: true)
@@ -253,6 +260,7 @@ enum HandoffJobsChecks {
                   "logical named review survives the immutable task boundary")
         let link = namedRecord.items[0].images[0]
         let reply = """
+        ```markdown
         # Proposed synthesis
         [Plain](\(link))
         [Angle](<\(link)>)
@@ -266,6 +274,7 @@ enum HandoffJobsChecks {
         [three]:
           ./\(link) 'Source image'
         Suggested rename and exclusion remain proposals.
+        ```
         """
         try HandoffJobStore.write(Data(reply.utf8), to: namedRoot.appendingPathComponent("result.md"))
         let published = try HandoffReviewPublication.publish(job: namedJob, snapshot: namedRecord, result: reply,
@@ -273,6 +282,23 @@ enum HandoffJobsChecks {
         let current = try snaps.readOrganization(key: context.key)!
         try check(current.digest == published && Data(contentsOf: namedRoot.appendingPathComponent("result.md")) == Data(reply.utf8),
                   "current review publishes without changing the immutable provider reply")
+        try check(current.text.hasPrefix("# Proposed synthesis\n") && !current.text.contains("```"),
+                  "whole-document Markdown wrapper is removed only from the published review")
+        func publishedText(_ value: String) -> String {
+            SnapOrganization.rebasedResult(value, inputs: [], jobRoot: namedRoot, destination: current.url)
+        }
+        let innerCode = "# Review\n\n```swift\nlet answer = 42\n```\n"
+        try check(publishedText("````markdown\n" + innerCode + "````\n") == innerCode,
+                  "long outer Markdown fence preserves internal code byte-for-byte")
+        try check(publishedText("\r\n  ~~~MD\r\n# Review 🌿\r\n  ~~~~\r\n") == "# Review 🌿\r\n",
+                  "Markdown-labelled tilde wrapper supports CRLF, Unicode and longer closing fences")
+        for unchanged in ["# Plain review\n", "```swift\nlet answer = 42\n```", "```\n# Code example\n```",
+                          "Intro\n```markdown\n# Example\n```", "```md\n# Example\n```\nAfterword",
+                          "```md\n# One\n```\n```md\n# Two\n```", "```markdown\n# Unclosed",
+                          "```markdown\n" + innerCode + "```", "```markdown\n\n```"] {
+            try check(publishedText(unchanged) == unchanged,
+                      "plain, non-Markdown, partial and ambiguous fenced replies retain their exact text")
+        }
         let expression = try NSRegularExpression(pattern: #"\]\(<?([^> )]+)"#)
         let links = expression.matches(in: current.text, range: NSRange(current.text.startIndex..., in: current.text))
         try check(links.count == 5, "all supported Markdown link forms remain present")

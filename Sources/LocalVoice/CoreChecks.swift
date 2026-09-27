@@ -88,6 +88,19 @@ enum CoreChecks {
         try check(restored.replacements == original.replacements && restored.voice == "Daniel" && restored.rate == 210, "dictionary and voice preferences restored")
         let permissions = try FileManager.default.attributesOfItem(atPath: store.url.path)[.posixPermissions] as? NSNumber
         try check(permissions?.intValue == 0o600, "state file private to current user")
+        let priorStateBytes = try Data(contentsOf: store.url)
+        try rejects("failed state encoding leaves the committed file intact") {
+            try store.save(SavedState(history: [Transcript(text: "Invalid duration", seconds: .nan)]))
+        }
+        try check(Data(contentsOf: store.url) == priorStateBytes, "state encoding failure preserves every previous byte")
+        let occupied = directory.appendingPathComponent("occupied", isDirectory: true)
+        try FileManager.default.createDirectory(at: occupied, withIntermediateDirectories: false)
+        let marker = occupied.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: marker)
+        try rejects("failed atomic replacement cannot remove an existing directory") {
+            try AtomicPrivateFile.write(Data("replacement".utf8), to: occupied)
+        }
+        try check(Data(contentsOf: marker) == Data("keep".utf8), "failed replacement preserves the existing contents")
         try Data("not json".utf8).write(to: store.url)
         try rejects("damaged state reports an error") { _ = try store.load() }
         try check(String(contentsOf: store.url, encoding: .utf8) == "not json", "damaged state is not silently erased")

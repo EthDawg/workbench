@@ -164,6 +164,8 @@ python3 scripts/release/prepare_update.py --release .build/releases/VERSION-BUIL
   --tag vVERSION-preview.N --notes /path/to/release-notes.html --output .build/publish/VERSION-BUILD
 ```
 
+Production normally uses `vVERSION`. When publishing a newer bundle build with the same marketing version, use `vVERSION+BUILD` with the exact build from the immutable release receipt. Keep the older tag and its assets unchanged. Both the release helpers and website reject a build-qualified tag that differs from the packaged build. Preview continues to use `vVERSION-preview.N`.
+
 Use an HTML fragment for concise user-facing release notes. Sparkle generates the appcast, signs the final archive and signs the feed. The helper verifies provenance, keys, edition, signature, notarization, increasing build number and enclosure URL/size. Never manually edit a signed XML file.
 
 After integrating the verified source into `main`, package that exact clean commit and publish:

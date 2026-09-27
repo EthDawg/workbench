@@ -44,8 +44,9 @@ struct MeetingCaptureReport {
 /// for checks; nothing here is started before an explicit Start.
 protocol MeetingCapture: AnyObject {
     func start(_ request: MeetingCaptureRequest) async throws
-    /// Stops deterministically, flushes both originals and closes every owned
-    /// resource. Safe to call more than once.
+    /// Flushes both originals and closes every owned resource on the lifecycle
+    /// queue. A pending synchronous macOS access/start call must return first.
+    /// Safe to call more than once.
     func finish() async -> MeetingCaptureReport
     /// Immediately invalidates a pending permission/start; finish awaits teardown.
     func requestStop()
@@ -425,6 +426,8 @@ final class MeetingProcessTap: @unchecked Sendable {
             throw MeetingError.message("Workbench could not attach to the app's audio (CoreAudio error \(created)).")
         }
         ioProcID = procID
+        // This synchronous HAL call may wait for macOS's audio-consent UI.
+        // Cancellation prevents later samples; teardown waits for its return.
         let started = AudioDeviceStart(aggregateID, procID)
         guard started == noErr else {
             AudioDeviceDestroyIOProcID(aggregateID, procID)

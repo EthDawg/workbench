@@ -2,15 +2,15 @@
 
 Workbench is a free, MIT-licensed native Mac app. Developer ID signing and Apple's notarization service support distribution outside the Mac App Store. A notarization ticket verifies Apple's automated checks; it does not establish that every feature or supported device has been tested. [Apple's distribution guidance](https://developer.apple.com/developer-id/).
 
-## Unified Preview and earlier releases
+## Production, Preview and earlier releases
 
-The Workbench 2 consolidation is a locally installed, Developer ID-signed Preview. Its notarized public download is still pending. The authoritative workflow evidence and remaining tests are in [Preview 2.0](preview-2.0.md).
+The [production release record](../site/updates/production.json) identifies the public package, its source revision, ZIP digest and signed update feed. At this review, [Workbench 2.2.0](https://github.com/EthDawg/workbench/releases/tag/v2.2.0) is published as build `20260925215646` from `c98a74a193e423f59448a79dd0002039f26f38dc`. The separate [capability Preview](releases/2026-09-27-capability-preview.md) is undergoing acceptance in draft PR #113; its installed test results do not describe the public package.
 
-As checked on 12 September 2026, the public `local-voice` releases still contain the earlier Voice app, most recently [Voice 1.3.0](https://github.com/EthDawg/workbench/releases/tag/v1.3.0). Earlier Voice and StageMark notarization records describe those specific packages. They are not signing, notarization or hardware evidence for the new single-app package.
+Earlier Voice, StageMark and Workbench Preview releases retain their own package-specific evidence. The historical [Preview 2.0 record](preview-2.0.md) is not the current production or candidate acceptance record.
 
-The unified identities are `com.ethdawg.workbench` and `com.ethdawg.workbench.preview`. The Preview installer uses `~/Applications/Workbench Preview.app`; manual installs and later replacements should use that same location. Quit the existing copy before replacing it. Do not leave another Preview in Downloads or the system Applications folder and alternate between them.
+The persistent identities are `com.ethdawg.workbench` and `com.ethdawg.workbench.preview`. Preserve an existing installation in its current Applications folder; a first install uses `~/Applications`. Quit the edition before replacing it and keep one installed copy of each identity. Follow [Installing, testing and updating Workbench](updating.md) for the shared workflow.
 
-Saved data lives outside the app bundle. The first unified launch copies supported earlier Voice/StageMark files into missing unified component locations and preserves the originals. Subsequent launches keep the unified working copy. See the [product contract](workbench.md#identity-migration-and-release) for the identity and migration boundaries. There is no automatic updater yet.
+Saved data lives outside the app bundle. The first unified launch copies supported earlier Voice/StageMark files into missing unified component locations and preserves the originals. Subsequent launches keep the unified working copy. See the [product contract](workbench.md#identity-migration-and-release) for the identity and migration boundaries. Published builds use their edition's signed update feed; local development builds have no public feed and require the signed Preview installer for replacement. A binary rollback is not a data rollback; the [update contract](updating.md) records retention and migration limits.
 
 ## The path for testers and contributors
 
@@ -26,7 +26,7 @@ The website cannot establish native microphone, Accessibility paste, shortcuts o
 
 Quit Workbench, Workbench Preview and legacy Voice/StageMark apps before running `bash scripts/test.sh`. The suite includes exclusive global-shortcut registration, so a running copy can cause an expected conflict even in StageKit's CI test mode.
 
-Follow [the release guide](../scripts/release/README.md) for the exact signed Preview build/install and notarization commands. The ordinary `bash scripts/build.sh` produces the ad-hoc `dist/Workbench.zip`. `python3 scripts/release/preview.py build` produces a Developer ID-signed `dist/Workbench Preview.zip`; this local build step does not notarize or publish it.
+Follow [the release guide](../scripts/release/README.md) for the exact signed Preview build/install and notarization commands. The ordinary `bash scripts/build.sh` produces the disposable ad-hoc `dist/Workbench Preview.zip` without installing it. `python3 scripts/release/preview.py build` produces a Developer ID-signed `dist/Workbench Preview.zip`; this local build step does not notarize or publish it.
 
 The notarization workflow must verify one clean source commit, channel identity, signature, Apple's Accepted response, stapling and Gatekeeper. Re-extract and verify the final archive. Publish its exact ZIP plus `SHA256SUMS.txt`; never replace a version's binary with a different build. Download the public asset again and compare the digest before changing the matching website link.
 

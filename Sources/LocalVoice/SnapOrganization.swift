@@ -34,7 +34,7 @@ struct SnapReviewContext: Codable, Equatable {
 
 enum SnapOrganization {
     static let assistantInstruction = """
-    Organise the selected Workbench captures and explicitly selected transcripts into one concise document worth rereading. Return the complete Markdown document as your response; Workbench owns saving it to the job's result, including on retry.
+    Organise the selected Workbench captures and explicitly selected transcripts into one concise document worth rereading. Return the complete Markdown document as your response, without an enclosing code fence; Workbench owns saving it to the job's result, including on retry.
 
     Use a plain title and capture date range, then explain the useful thread across the evidence. Group it into a few lesson-style themes supported by the material. Under each theme, synthesize what the images actually show and link material claims to supplied source UUIDs and staged source images or transcripts. A screenshot of a report is a captured claim, not proof of the current state. Distinguish original wording, observed evidence and your inference. Give captures short semantic names in capture order; preserve existing names and numbers when prior review context is supplied.
 
@@ -78,7 +78,7 @@ enum SnapOrganization {
     /// byte-for-byte intact; the current review can live in Snaps/Reviews.
     static func rebasedResult(_ text: String, inputs: [String], jobRoot: URL, destination: URL) -> String {
         let base = destination.deletingLastPathComponent().standardizedFileURL.pathComponents
-        var result = text
+        var result = unwrappedReviewDocument(text)
         for path in inputs where path.hasPrefix("inputs/") {
             let source = jobRoot.appendingPathComponent(path).standardizedFileURL
             let target = source.pathComponents
@@ -108,6 +108,28 @@ enum SnapOrganization {
             }
         }
         return result
+    }
+
+    /// Some assistants wrap their complete Markdown reply in a code block.
+    /// Unwrap only an explicitly Markdown-labelled, whole-document block. The
+    /// first matching closing fence must end the reply; ambiguous blocks and
+    /// ordinary code remain intact. Longer outer fences preserve inner code.
+    private static func unwrappedReviewDocument(_ text: String) -> String {
+        guard let opening = try? NSRegularExpression(
+            pattern: #"\A(?:[ \t]*\r?\n)* {0,3}(`{3,}|~{3,})[ \t]*(?:markdown|md)[ \t]*\r?\n"#,
+            options: .caseInsensitive),
+              let match = opening.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let fenceRange = Range(match.range(at: 1), in: text),
+              let openingRange = Range(match.range, in: text) else { return text }
+        let fence = text[fenceRange]
+        let marker = NSRegularExpression.escapedPattern(for: String(fence.first!))
+        guard let closing = try? NSRegularExpression(
+            pattern: "^ {0,3}" + marker + "{\(fence.count),}[ \\t]*\\r?$", options: .anchorsMatchLines),
+              let end = closing.firstMatch(in: text, range: NSRange(openingRange.upperBound..., in: text)),
+              let endRange = Range(end.range, in: text),
+              text[endRange.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return text }
+        let document = String(text[openingRange.upperBound..<endRange.lowerBound])
+        return document.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : document
     }
 
     static func archiveReviewed(_ ids: Set<UUID>, plan: SnapOrganizationPlan, store: SnapStore) throws {

@@ -40,14 +40,17 @@ final class MeetingModel: ObservableObject {
     private let transcribe: (URL) async throws -> String
     private let microphonePermission: () async -> Bool
     private let captureFactory: () -> MeetingCapture
+    private let startupNoticeDelayNanoseconds: UInt64
     private var generation = UUID()
     private var operation: Task<Void, Never>?
     private var watcher: Task<Void, Never>?
     private var detectionTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
+    private var startupNoticeTask: Task<Void, Never>?
     private var activeCapture: MeetingCapture?
     private var activeSession: URL?
     private var activeManifest: MeetingManifest?
+    private var processingSessionID: UUID?
     private var shuttingDown = false
 
     convenience init(engine: RecognitionEngine, directory: URL, defaults: UserDefaults = .standard) {
@@ -61,11 +64,13 @@ final class MeetingModel: ObservableObject {
     init(directory: URL, defaults: UserDefaults, processSource: MeetingProcessSource,
          transcribe: @escaping (URL) async throws -> String,
          microphonePermission: @escaping () async -> Bool,
-         captureFactory: @escaping () -> MeetingCapture) {
+         captureFactory: @escaping () -> MeetingCapture,
+         startupNoticeDelayNanoseconds: UInt64 = 10_000_000_000) {
         self.directory = directory; self.defaults = defaults
         self.detector = MeetingDetector(source: processSource)
         self.transcribe = transcribe; self.microphonePermission = microphonePermission
         self.captureFactory = captureFactory
+        self.startupNoticeDelayNanoseconds = startupNoticeDelayNanoseconds
         detectionEnabled = defaults.bool(forKey: Self.detectionKey)
         detector.disabledBundleIDs = Set(defaults.stringArray(forKey: Self.disabledAppsKey) ?? [])
         configureDetection()
@@ -78,6 +83,19 @@ final class MeetingModel: ObservableObject {
         case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
         default: return false
         }
+    }
+
+    func hasRecording(for transcriptID: UUID) -> Bool {
+        MeetingTranscriptRemoval.hasRecording(root: directory, id: transcriptID)
+    }
+
+    /// No suspension between admission and staging: capture/recovery cannot
+    /// start using this same UUID during a confirmed removal.
+    func removeCompletedRecording(for transcriptID: UUID, commit: () throws -> Void) throws -> String? {
+        guard !shuttingDown, !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
+            throw MeetingError.message("This recording is still in use. Finish or cancel it before removing its transcript and audio.")
+        }
+        return try MeetingTranscriptRemoval.remove(root: directory, id: transcriptID, commit: commit)
     }
 
     func refreshApps() {
@@ -102,8 +120,15 @@ final class MeetingModel: ObservableObject {
         let token = UUID(); generation = token
         let microphone = includeMicrophone, kind = purpose == "call" ? "call" : "meeting"
         error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []
-        notice = "Waiting for recording access…"
+        notice = microphone ? "Waiting for microphone access…" : "Starting app audio… macOS may ask for Audio Recording access."
         phase(starting: true)
+        let delay = startupNoticeDelayNanoseconds
+        startupNoticeTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: delay) } catch { return }
+            guard let self, self.generation == token, self.isStarting else { return }
+            let permission = microphone ? (app != nil ? "Microphone or Audio Recording" : "Microphone") : "Audio Recording"
+            self.notice = "macOS has not finished starting audio. Check for a \(permission) permission prompt. You can cancel this start while macOS responds."
+        }
         let task = Task { [weak self] in
             guard let self else { return }
             await self.begin(token: token, app: app, microphone: microphone, purpose: kind)
@@ -123,6 +148,7 @@ final class MeetingModel: ObservableObject {
                 guard allowed else { throw MeetingError.message("Allow Microphone access in Privacy & Security to include your voice, or choose app audio only.") }
             }
             try check(token)
+            notice = app != nil ? "Starting app audio… macOS may ask for Audio Recording access." : "Starting microphone…"
             let manifest = MeetingManifest(id: UUID(), createdAt: Date(), updatedAt: Date(), purpose: purpose,
                                            appName: app?.name, appBundleID: app?.bundleID,
                                            includesMicrophone: microphone, includesRemote: app != nil,
@@ -215,6 +241,7 @@ final class MeetingModel: ObservableObject {
         if isRecording { await finishCapture(process: false, reason: "Recording was cancelled. Original audio was kept."); return }
         guard isStarting || isProcessing else { return }
         generation = UUID()
+        startupNoticeTask?.cancel(); startupNoticeTask = nil
         activeCapture?.requestStop()
         let current = operation
         current?.cancel()
@@ -226,6 +253,9 @@ final class MeetingModel: ObservableObject {
             return
         }
         // Keep the shared engine/microphone gate closed until it unwinds.
+        if isStarting {
+            notice = "Cancelling start. Waiting for macOS to finish its audio request; a late permission response cannot begin recording."
+        }
         await current?.value
         if isBusy { phase() }
     }
@@ -257,6 +287,8 @@ final class MeetingModel: ObservableObject {
 
     private func process(session: URL, token: UUID) async throws {
         try check(token)
+        processingSessionID = UUID(uuidString: session.lastPathComponent)
+        defer { processingSessionID = nil }
         notice = "Transcribing saved audio…"
         let processor = MeetingProcessor(session: session, transcribe: transcribe, commit: { [weak self] transcript, purpose, notes in
             guard let self else { throw CancellationError() }
@@ -295,6 +327,7 @@ final class MeetingModel: ObservableObject {
 
     private func phase(starting: Bool = false, recording: Bool = false, processing: Bool = false) {
         isStarting = starting; isRecording = recording; isProcessing = processing
+        if !starting { startupNoticeTask?.cancel(); startupNoticeTask = nil }
         detector.isSuppressed = isBusy
         if isBusy { offer = nil }
         onStateChange?()
@@ -323,13 +356,25 @@ final class MeetingModel: ObservableObject {
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
                 guard let self, self.detectionEnabled, !self.shuttingDown else { return }
-                self.detector.isSuppressed = self.isBusy || self.mayStart?() != nil
-                self.offer = self.detector.evaluate()
-                if let issue = self.detector.lastError, !self.isBusy { self.error = issue }
+                self.refreshDetection()
             }
         }
     }
 
+    /// One metadata poll, shared by the timer and deterministic lifecycle checks.
+    /// It cannot request permission or open a capture.
+    func refreshDetection() {
+        guard detectionEnabled, !shuttingDown else { offer = nil; return }
+        detector.isSuppressed = isBusy || mayStart?() != nil
+        offer = detector.evaluate()
+        if let issue = detector.lastError, !isBusy { error = issue }
+    }
+
+    /// Chooses the offered source for review. A call on this Mac is saved as a Call.
+    func useOffer(_ app: MeetingAudioApp) {
+        selectedAppID = app.id
+        if MeetingDetector.isCallService(app) { purpose = "call" }
+    }
     func dismissOffer() { if let offer { detector.dismiss(offer) }; offer = nil }
     func snoozeOffers() { detector.snooze(); offer = nil }
     func disableOffers(for app: MeetingAudioApp) {

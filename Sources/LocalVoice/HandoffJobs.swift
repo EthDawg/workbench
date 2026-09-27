@@ -17,6 +17,7 @@ struct HandoffSourceSnapshot: Equatable {
     var role: HandoffInputRole
     var images: [Data] = []
     var captureNotes: [String] = []
+    var seconds: Double? = nil
 }
 
 extension SnapHandoffSnapshot {
@@ -40,6 +41,9 @@ struct HandoffInputRecord: Codable {
     var role: HandoffInputRole
     var images: [String]
     var captureNotes: [String]? = nil
+    // Older frozen inputs omitted duration. Keep that unknown rather than
+    // rewriting their bytes or borrowing values from the changing live library.
+    var seconds: Double? = nil
 }
 
 struct HandoffSnapshotRecord: Codable {
@@ -185,7 +189,7 @@ enum HandoffJobStore {
             }
             records.append(HandoffInputRecord(reference: source.reference, title: source.title, capturedAt: source.capturedAt,
                 text: source.text, originalText: source.originalText, role: source.role, images: paths,
-                captureNotes: source.captureNotes.isEmpty ? nil : source.captureNotes))
+                captureNotes: source.captureNotes.isEmpty ? nil : source.captureNotes, seconds: source.seconds))
         }
         // Stable payload hash excludes run ID and clock. Copy and repeated clicks
         // return to the same immutable snapshot instead of creating more folders.
@@ -212,7 +216,7 @@ enum HandoffJobStore {
         // extended selection record owns per-item roles and standalone Snaps.
         let transcriptSources = sources.filter { $0.reference.kind == .transcript }
         let captures = transcriptSources.map {
-            Transcript(id: $0.reference.id, date: $0.capturedAt, text: $0.text, seconds: 0, rawText: $0.originalText)
+            Transcript(id: $0.reference.id, date: $0.capturedAt, text: $0.text, seconds: $0.seconds ?? 0, rawText: $0.originalText)
         }
         let transcripts = captures.isEmpty ? [] : try TranscriptHandoffStore.records(for: captures)
         for transcript in transcripts {
