@@ -197,8 +197,7 @@ final class PackLibraryModel: ObservableObject {
                 guard (try? selected.validate()) != nil else { return nil }
                 let title = entry.name.localizedCaseInsensitiveContains(pack.manifest.name)
                     ? entry.name : "\(entry.name) (\(pack.manifest.name))"
-                return TranscriptHandoffSkill(id: reference.id, title: title,
-                    detail: "\(pack.manifest.name) · \(pack.manifest.version)", load: { selected })
+                return TranscriptHandoffSkill(selected, title: title, detail: "\(pack.manifest.name) · \(pack.manifest.version)")
             }
         }
     }
