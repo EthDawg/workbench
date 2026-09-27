@@ -23,22 +23,37 @@ struct MeetingKnownApp {
     /// False until remote-stream capture from this app has been checked on real
     /// hardware. Nothing in this module may claim a verified two-sided recording.
     let remoteAudioVerified: Bool
+    /// The app's own audio processes that are not named `<bundle>.helper`, such
+    /// as new Teams' module host.
+    var audioProcesses: [String] = []
+
+    /// Bundle identifiers compare without case: macOS reports each app's
+    /// declared spelling, and the Phone app declares `com.apple.mobilephone`.
+    func owns(_ processBundleID: String) -> Bool {
+        let process = processBundleID.lowercased()
+        return ([bundleID] + audioProcesses).contains { owner in
+            let owner = owner.lowercased()
+            return process == owner || process.hasPrefix(owner + ".helper")
+        }
+    }
 }
 
 enum MeetingAppCatalogue {
     static let supported: [MeetingKnownApp] = [
         MeetingKnownApp(bundleID: "us.zoom.xos", name: "Zoom", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.microsoft.teams", name: "Microsoft Teams", kind: .communication, remoteAudioVerified: false),
-        MeetingKnownApp(bundleID: "com.microsoft.teams2", name: "Microsoft Teams", kind: .communication, remoteAudioVerified: false),
+        MeetingKnownApp(bundleID: "com.microsoft.teams2", name: "Microsoft Teams", kind: .communication, remoteAudioVerified: false,
+                        audioProcesses: ["com.microsoft.teams2.modulehost"]),
         MeetingKnownApp(bundleID: "com.cisco.webexmeetingsapp", name: "Webex", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.webex.meetingmanager", name: "Webex Meetings", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.tinyspeck.slackmacgap", name: "Slack", kind: .communication, remoteAudioVerified: false),
+        MeetingKnownApp(bundleID: "net.whatsapp.WhatsApp", name: "WhatsApp", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.hnc.Discord", name: "Discord", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.skype.skype", name: "Skype", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.ringcentral.glip", name: "RingCentral", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.gotomeeting.GoToMeeting", name: "GoTo Meeting", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.apple.FaceTime", name: "FaceTime", kind: .communication, remoteAudioVerified: false),
-        MeetingKnownApp(bundleID: "com.apple.MobilePhone", name: "Phone", kind: .communication, remoteAudioVerified: false),
+        MeetingKnownApp(bundleID: "com.apple.mobilephone", name: "Phone", kind: .communication, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.google.Chrome", name: "Google Chrome", kind: .browser, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.apple.Safari", name: "Safari", kind: .browser, remoteAudioVerified: false),
         MeetingKnownApp(bundleID: "com.microsoft.edgemac", name: "Microsoft Edge", kind: .browser, remoteAudioVerified: false),
@@ -64,8 +79,13 @@ enum MeetingAppCatalogue {
         "com.apple.WebKit.GPU": "WebKit audio service (shared)"
     ]
 
+    /// Observed call activity on this Mac ran through this exact service.
+    /// Two-way activity can offer a possible call, not prove its type or that
+    /// both sides are recordable. Its capture scope stays separate from apps.
+    static let callServiceBundleIDs: Set<String> = ["com.apple.avconferenced"]
+
     static func known(_ bundleID: String) -> MeetingKnownApp? {
-        supported.first { bundleID == $0.bundleID || bundleID.hasPrefix($0.bundleID + ".helper") }
+        supported.first { $0.owns(bundleID) }
     }
 
     static func isExcluded(_ bundleID: String) -> Bool {
@@ -254,8 +274,8 @@ enum MeetingDiskBudget {
 
 /// One app-managed Meetings root. Each session owns a UUID directory holding a
 /// versioned manifest, its original tracks and its bounded segments. Nothing
-/// here deletes a session: only an explicit person-facing action may do that,
-/// and this module never offers one.
+/// here deletes a session. Confirmed transcript removal uses
+/// MeetingTranscriptRemoval to coordinate its recording with saved history.
 enum MeetingStore {
     static let manifestName = "meeting.json"
     static let tracksDirectory = "tracks"
@@ -442,17 +462,7 @@ enum MeetingStore {
     /// atomically rename. A chmod or staging failure never replaces old bytes.
     static func writePrivate(_ data: Data, to url: URL) throws {
         try rejectSymbolicLinks(in: url)
-        let temporary = url.deletingLastPathComponent().appendingPathComponent(".meeting-" + UUID().uuidString)
-        let descriptor = open(temporary.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, 0o600)
-        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        defer { try? handle.close(); try? FileManager.default.removeItem(at: temporary) }
-        try handle.write(contentsOf: data)
-        try handle.synchronize()
-        try handle.close()
-        guard rename(temporary.path, url.path) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
+        try AtomicPrivateFile.write(data, to: url)
     }
 }
 
