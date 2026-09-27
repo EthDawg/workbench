@@ -258,5 +258,13 @@ try MainActor.assumeIsolated {
     try check(location.location == "/Users/example/Elsewhere", "turning it off never overrides the person's later choice")
     model.setKeepsScreenshotsOffDesktop(true); model.setKeepsScreenshotsOffDesktop(false)
     try check(location.location == "/Users/example/Elsewhere", "a previous custom location is restored")
+    let tidyFile = desktopFolder.appendingPathComponent("Screenshot 2026-09-04 at 8.00.00 am.png")
+    try ink.write(to: tidyFile); try markScreenCapture(tidyFile)
+    var tidied: [UUID]? = nil
+    Task { @MainActor in tidied = await model.tidyDesktopScreenshots(model.desktopScreenshots()) }
+    let until = Date().addingTimeInterval(10)
+    while tidied == nil && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    try check(tidied?.count == 1 && !fm.fileExists(atPath: tidyFile.path) && fm.fileExists(atPath: plainImage.path),
+              "tidying moves only screenshots and returns them for selection")
 }
 print("SNAP_CHECKS_OK: \(checks) checks for rendering, screenshots off the Desktop, revision conflicts, private storage, immutable snapshots, reversible review and portable optional narration")

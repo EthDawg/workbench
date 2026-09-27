@@ -94,7 +94,10 @@ struct SnapWorkspaceView: View {
                             isPresented: Binding(get: { !tidyCandidates.isEmpty }, set: { if !$0 { tidyCandidates = [] } })) {
             Button("Move \(tidyCandidates.count) screenshot\(tidyCandidates.count == 1 ? "" : "s")") {
                 let files = tidyCandidates; tidyCandidates = []
-                Task { await model.tidyDesktopScreenshots(files) }
+                Task {
+                    let added = await model.tidyDesktopScreenshots(files)
+                    if !added.isEmpty { selectedIDs = Set(added) }
+                }
             }
             Button("Cancel", role: .cancel) { tidyCandidates = [] }
         } message: {
