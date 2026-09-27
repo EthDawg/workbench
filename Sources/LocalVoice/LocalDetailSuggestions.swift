@@ -13,7 +13,6 @@ import NaturalLanguage
 /// saved until the person saves.
 enum LocalDetailSuggestions {
     struct Suggestion: Equatable {
-        var purpose: TranscriptPurpose?
         var people: [String] = []
         var companies: [String] = []
         var tags: [String] = []
@@ -22,7 +21,7 @@ enum LocalDetailSuggestions {
     }
 
     /// The on-device model's context is small; the opening of a transcript is
-    /// enough to suggest its purpose, subject and the people it names.
+    /// enough to suggest its subject and the people it names.
     static let maximumCharacters = 3_000
     static let maximumTags = 5
 
@@ -70,11 +69,10 @@ enum LocalDetailSuggestions {
         })
     }
 
-    /// Fills only what the person has not already said. Purpose changes only
-    /// from the Prompt default, and tags are added, never replaced.
+    /// Fills only what the person has not already said. Purpose is kept, and
+    /// tags are added, never replaced.
     static func merged(_ current: TranscriptMetadata, with suggestion: Suggestion) -> TranscriptMetadata {
         var result = current
-        if current.purpose == .prompt, let purpose = suggestion.purpose { result.purpose = purpose }
         if current.person.trimmingCharacters(in: .whitespaces).isEmpty {
             result.person = joined(suggestion.people.prefix(3))
         }

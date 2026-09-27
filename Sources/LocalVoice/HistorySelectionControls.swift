@@ -115,16 +115,20 @@ struct TranscriptMetadataEditor: View {
             if let receipt = library.metadata(for: transcript.id).reviewedSuggestion {
                 Text("Last reviewed suggestion: " + receipt).font(.caption2).foregroundStyle(.secondary)
             }
-            HStack(spacing: 16) {
-                Button(suggesting ? "Suggesting…" : "Suggest on this Mac") { suggestOnThisMac() }
-                    .buttonStyle(.link).disabled(suggesting)
-                    .help(LocalDetailSuggestions.usesAppleIntelligence
-                          ? "Uses Apple Intelligence on this Mac. Nothing is sent anywhere."
-                          : "Finds names on this Mac. Turn on Apple Intelligence to also suggest purpose and tags.")
+            // One Suggest action: this Mac first, an assistant as a choice.
+            Group {
                 if let suggest {
-                    Button("Suggest details with an assistant…") { dismiss(); suggest() }.buttonStyle(.link)
+                    Menu(suggesting ? "Suggesting…" : "Suggest details") {
+                        Button("Ask an assistant…") { dismiss(); suggest() }
+                    } primaryAction: { suggestOnThisMac() }
+                } else {
+                    Button(suggesting ? "Suggesting…" : "Suggest details") { suggestOnThisMac() }
                 }
-            }
+            }.fixedSize().disabled(suggesting)
+                .help((LocalDetailSuggestions.usesAppleIntelligence
+                       ? "Fills empty names and adds tags using Apple Intelligence on this Mac. Nothing is sent anywhere."
+                       : "Fills empty names on this Mac. Nothing is sent anywhere. Turn on Apple Intelligence to also suggest tags.")
+                      + (suggest == nil ? "" : " For a fuller suggestion you review, choose Ask an assistant… from its menu."))
             if let localSuggestion {
                 Text("Suggested on this Mac (\(localSuggestion)). Check names before saving.").font(.caption).foregroundStyle(.secondary)
             }

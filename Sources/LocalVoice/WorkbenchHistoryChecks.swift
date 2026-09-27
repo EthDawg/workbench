@@ -330,11 +330,11 @@ enum WorkbenchHistoryChecks {
         let spoken = "Thanks for joining, Priya. The Acme Health pilot starts on the fourteenth and Tom sends the agreement by Friday."
         try check(LocalDetailSuggestions.grounded(["Priya", "Tom", "Acme Health", "Jordan", "pilot", "Pilot", "agreement"], in: spoken)
                   == ["Priya", "Tom", "Acme Health"], "suggested names must appear capitalised in the transcript")
-        let suggestion = LocalDetailSuggestions.Suggestion(purpose: .meeting, people: ["Priya", "Tom"], companies: ["Acme Health"],
+        let suggestion = LocalDetailSuggestions.Suggestion(people: ["Priya", "Tom"], companies: ["Acme Health"],
                                                            tags: ["pilot schedule", "data sharing"], source: "synthetic")
         let filled = LocalDetailSuggestions.merged(TranscriptMetadata(), with: suggestion)
-        try check(filled.purpose == .meeting && filled.person == "Priya, Tom" && filled.company == "Acme Health"
-                  && filled.tags == ["pilot schedule", "data sharing"], "suggestions fill empty details")
+        try check(filled.purpose == TranscriptMetadata().purpose && filled.person == "Priya, Tom" && filled.company == "Acme Health"
+                  && filled.tags == ["pilot schedule", "data sharing"], "suggestions fill empty names and tags, never purpose")
         let typed = TranscriptMetadata(purpose: .note, person: "Sam", company: "", tags: ["Data sharing", "mine"])
         let kept = LocalDetailSuggestions.merged(typed, with: suggestion)
         try check(kept.purpose == .note && kept.person == "Sam" && kept.company == "Acme Health"
