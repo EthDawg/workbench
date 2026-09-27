@@ -3,9 +3,7 @@ import SwiftUI
 struct HistorySelectionControls: View {
     @ObservedObject var history: WorkbenchHistoryModel
     var onHandOff: () -> Void
-    @State private var naming = false
-    @State private var name = ""
-    @State private var editingID: UUID?
+    @State private var editor: HistorySelectionEditorRequest?
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -24,11 +22,11 @@ struct HistorySelectionControls: View {
                         }
                     }
                 }.fixedSize()
-                Button("Save selection…") { editingID = nil; name = ""; naming = true }.disabled(history.selected.isEmpty)
+                Button("Save selection…") { editor = HistorySelectionEditorRequest() }.disabled(history.selected.isEmpty)
                 if !history.savedSelections.isEmpty {
                     Menu("Update…") {
                         ForEach(history.savedSelections) { selection in
-                            Button(selection.name) { editingID = selection.id; name = selection.name; naming = true }
+                            Button(selection.name) { editor = HistorySelectionEditorRequest(selection: selection) }
                         }
                     }.fixedSize().disabled(history.selected.isEmpty)
                 }
@@ -38,25 +36,55 @@ struct HistorySelectionControls: View {
             }
             if let error = history.error { Text(error).foregroundStyle(.red).font(.caption) }
         }
-        .sheet(isPresented: $naming) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(editingID == nil ? "Save this selection" : "Update saved selection").font(.title2)
-                Text(editingID == nil
-                     ? "Return to these same items later. New recordings and search filters won’t change it."
-                     : "Update the name and replace its saved items with your current selection. Existing handoff tasks keep their own inputs.")
-                    .foregroundStyle(.secondary)
-                TextField("Name", text: $name)
-                HStack {
-                    Button("Cancel") { naming = false }.keyboardShortcut(.cancelAction)
-                    Spacer()
-                    Button("Save") {
-                        history.saveSelection(name: name, id: editingID)
-                        if history.error == nil { naming = false }
-                    }.keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                if let error = history.error { Text(error).foregroundStyle(.red).font(.caption) }
-            }.padding(24).frame(width: 420)
+        .sheet(item: $editor) { request in
+            HistorySelectionEditor(history: history, request: request)
         }
+    }
+}
+
+/// The sheet receives its mode and initial values together. A fresh presentation
+/// identity keeps a cancelled draft out of the next create or update operation.
+private struct HistorySelectionEditorRequest: Identifiable {
+    let id = UUID()
+    let selectionID: UUID?
+    let name: String
+
+    init(selection: SavedWorkbenchSelection? = nil) {
+        selectionID = selection?.id
+        name = selection?.name ?? ""
+    }
+}
+
+private struct HistorySelectionEditor: View {
+    @ObservedObject var history: WorkbenchHistoryModel
+    let selectionID: UUID?
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+
+    init(history: WorkbenchHistoryModel, request: HistorySelectionEditorRequest) {
+        self.history = history
+        selectionID = request.selectionID
+        _name = State(initialValue: request.name)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(selectionID == nil ? "Save this selection" : "Update saved selection").font(.title2)
+            Text(selectionID == nil
+                 ? "Return to these same items later. New recordings and search filters won’t change it."
+                 : "Update the name and replace its saved items with your current selection. Existing handoff tasks keep their own inputs.")
+                .foregroundStyle(.secondary)
+            TextField("Name", text: $name)
+            HStack {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Save") {
+                    history.saveSelection(name: name, id: selectionID)
+                    if history.error == nil { dismiss() }
+                }.keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if let error = history.error { Text(error).foregroundStyle(.red).font(.caption) }
+        }.padding(24).frame(width: 420)
     }
 }
 
