@@ -11,10 +11,10 @@ capability rows, each row's shortcut key and options, status rows, footer and
 views embedded in it); the Draw, Present, Persona and Timer menus that the
 rows, the floating toolbar and the app menu bar open, with any native views
 embedded in them, and the Saved Prompts picker the toolbar opens; the
-floating toolbar's modes, next action and hover labels, accessory and glyph
-menu, and the live dictation, narration and reading controls shown in the
-same window; the app menu bar and any status item menu
-built in AppDelegate; the window sidebar; every control on Home and on the
+floating toolbar's modes (its launcher's chooser), next action and hover
+labels, accessory and More menu, and the live dictation, narration and
+reading controls shown in the same window; the app menu bar and any status
+item menu built in AppDelegate; the window sidebar; every control on Home and on the
 Settings page, including views embedded in them; the global shortcut
 catalogue; proactive offers, found as types named *Offer* or *Cue plus
 OFFER_TYPES; a capability page's own options (mode 'options' below), since a
@@ -102,7 +102,8 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
 #             calls a closure the host injected into the view; nothing is followed
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
-    ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar glyph menu', 'controls'),
+    # More: the tool's options, the work running elsewhere and the toolbar's own items (#134).
+    ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar More menu', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
     ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
     # The same window's live dictation, narration and reading controls.
@@ -894,7 +895,7 @@ class Inventory:
                 for case, tokens in case_returns(swift, start, end).items():
                     if tokens and tokens[0].value != 'switch':  # Nested state switches are recorded below it.
                         self.add(swift, start + 1, 'hover-title', tokens, surface, identity=case)
-        # Floating toolbar modes (the resting glyph and the strip) and its accessory.
+        # Floating toolbar modes (the launcher and its chooser's seven rows) and its accessory.
         swift, ranges = self.owner(*CATALOGUES[1], kinds=('enum',))
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():

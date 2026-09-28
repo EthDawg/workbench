@@ -157,49 +157,49 @@
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "End presentation",
     "kind": "action",
     "belongsTo": "present"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.hide-toolbar",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Hide toolbar",
     "kind": "action",
     "belongsTo": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.keep-open",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Keep open",
     "kind": "action",
     "belongsTo": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Open Dictate…",
     "kind": "action",
     "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Open Read…",
     "kind": "action",
     "belongsTo": "read"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Open Snap…",
     "kind": "action",
     "belongsTo": "snap"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Position…",
     "kind": "option",
     "belongsTo": "app",
@@ -207,7 +207,7 @@
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": null,
     "expression": "personaFinish",
     "note": "Runtime label from personaFinish; no rendered text assumed.",
@@ -216,7 +216,7 @@
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-894c4cc35124",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": null,
     "expression": "\"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"",
     "kind": "action",
@@ -224,46 +224,37 @@
     "note": "Runtime label from \"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-90b2ee8a5505",
-    "surface": "floating toolbar glyph menu",
-    "label": null,
-    "expression": "action . title",
-    "note": "Runtime label from action . title; no rendered text assumed.",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.saved-prompts",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Saved Prompts…",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Quality: the glyph menu's Saved Prompts, in the same place, now opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
+    "note": "Quality: Saved Prompts in More (the glyph menu before #134) opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.settings",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Settings…",
     "kind": "action",
     "belongsTo": "settings"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-drawing",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Stop drawing",
     "kind": "action",
     "belongsTo": "draw"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-transcribing",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Stop transcribing",
     "kind": "action",
     "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.switch-to-browser-tab",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Switch to Browser Tab…",
     "kind": "action",
     "belongsTo": "present"
