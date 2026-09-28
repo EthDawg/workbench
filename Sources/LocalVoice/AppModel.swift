@@ -50,6 +50,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func copyWaitingDelivery() { drawingDelivery.resolve(.copy) }
     @Published var isMicrophoneQuiet = false
     @Published var captureUsesHoldShortcut = false
+    /// This attempt's press of the global Dictate shortcut in Hold, timed by
+    /// the native key events (#134 T5).
+    private var holdGesture: HoldGesture?
+    /// The one-time coaching card; the floating control's host shows it.
+    let coach = FeedbackCoachModel()
+    /// A delivery that did not finish, kept by this owner rather than by the
+    /// receipt and saved with the session, so hiding or clearing the receipt,
+    /// or quitting, cannot resolve it (T5).
+    @Published private(set) var undelivered = UnresolvedDeliverySlot() { didSet { if undelivered != oldValue { persist() } } }
     @Published private(set) var captureOutputModeLabel = "Light cleanup"
     @Published private(set) var captureShortcutInstruction = "Use Stop to finish"
     @Published var captureFailure: String?
@@ -292,9 +301,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled() }
         refreshPhotoHandoffIfEnabled()
+        var savedUndelivered: UnresolvedDelivery?
+        var loadedDraftRevision = draftRevision
         do {
             let state = try store.load()
             transcript = state.draft; speechText = state.speechText; history = state.history
+            savedUndelivered = state.undelivered; loadedDraftRevision = draftRevision
             // Observers do not run inside init, so a loaded History records it here.
             recordFirstDictation()
             rawTranscript = state.rawDraft ?? state.draft
@@ -325,6 +337,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         ]
         loaded = true
         restoreCaptureRecovery()
+        // With the draft settled: a delivery that did not finish comes back
+        // only while its record still holds its words (#134 T5).
+        undelivered.restore(savedUndelivered, loadedDraftRevision: loadedDraftRevision, in: deliveryRecords)
         Task { await prepare() }
     }
 
@@ -447,6 +462,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return note
     }
 
+
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {
         if phase == .requesting { cancelRecording(); return }
         if phase == .recording { stopRecording(); return }
@@ -458,6 +474,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
         captureFailure = nil; dismissCaptureCue()
+        coach.remove(); holdGesture = nil
         previewingPanel = false
         stopPlayback()
         captureUsesHoldShortcut = fromShortcut && preferences.capture == .hold
@@ -468,12 +485,30 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         phase = .requesting
         Task { await startRecording(attempt) }
     }
-    func shortcutChanged(down: Bool) {
+    /// Record again, from a failure's own controls or More: only ever a start. They were drawn, or
+    /// More was built, while nothing ran, so a recording begun since, by the shortcut say, is left
+    /// alone rather than cancelled or stopped by the toggle, as Home's Quick start does (#211).
+    func recordAgain() {
+        guard phase == .idle else { return }
+        toggleRecording()
+    }
+    /// `time` is the key event's own timestamp (NSEvent or Carbon), in
+    /// seconds since the Mac started. A hold is timed from the press that
+    /// began the attempt to its release, never from later callbacks.
+    func shortcutChanged(down: Bool, at time: TimeInterval? = nil) {
         let usesHold = phase == .idle ? preferences.capture == .hold : captureUsesHoldShortcut
         if !usesHold { if down { toggleRecording(fromShortcut: true) }; return }
-        if down { if phase == .idle { toggleRecording(fromShortcut: true) } }
-        else if phase == .recording { stopRecording() }
-        else if phase == .requesting { cancelRecording() }
+        if down {
+            guard phase == .idle else { return }
+            toggleRecording(fromShortcut: true)
+            if phase == .requesting, captureUsesHoldShortcut, let attempt = recordingAttempt, let time {
+                holdGesture = HoldGesture(attempt: attempt, pressedAt: time)
+            }
+        } else {
+            if let time, let attempt = recordingAttempt, holdGesture?.attempt == attempt { holdGesture?.release(at: time) }
+            if phase == .recording { stopRecording() }
+            else if phase == .requesting { cancelRecording() }
+        }
     }
 
     private func startRecording(_ attempt: UUID) async {
@@ -530,11 +565,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard phase == .recording, let url = recordURL else { return }
         let duration = recorder?.currentTime ?? elapsed
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
-        guard duration >= 0.35, peakPower > -55 else {
+        // The recorder ran, so a shortcut press that began this attempt can be judged.
+        let gesture = recordingAttempt.flatMap { attempt in holdGesture?.attempt == attempt ? holdGesture : nil }
+        holdGesture = nil
+        guard duration >= CaptureCue.shortestSpeech, peakPower > -55 else {
             discardRecordingRecovery()
-            endWithoutSpeech(duration < 0.35 ? .tooShort : .tooQuiet); return
+            let reason: CaptureCue.Reason = duration < CaptureCue.shortestSpeech ? .tooShort : .tooQuiet
+            endWithoutSpeech(reason, teachesHold: HoldLesson.teaches(gesture, outcome: reason)); return
         }
-        transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
+        transcribe(url, duration: duration, temporary: true, settings: recordingSettings, heldShortcut: gesture != nil)
         recordingSettings = nil
     }
 
@@ -544,7 +583,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         guard phase == .recording else { return }
         shortcutRequest.cancel()
-        recordingAttempt = nil
+        recordingAttempt = nil; holdGesture = nil
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
         let discarded = discardRecordingRecovery()
         phase = .idle; level = 0
@@ -610,7 +649,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return settings
     }
 
-    private func transcribe(_ url: URL, duration: Double, temporary: Bool, settings: CaptureSettings? = nil) {
+    private func transcribe(_ url: URL, duration: Double, temporary: Bool, settings: CaptureSettings? = nil, heldShortcut: Bool = false) {
         let settings = settings ?? captureSettings()
         let shortcutID = shortcutRequest.id
         let invocation = UUID(); transcriptionID = invocation
@@ -645,8 +684,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                     canRetry = temporary && shortcutID == nil
                     endWithoutSpeech(.nothingRecognised(keptAudio: temporary)); return
                 }
-                guard try commitRecognizedCapture(raw: raw, text: result, seconds: duration,
+                guard let captureID = try commitRecognizedCapture(raw: raw, text: result, seconds: duration,
                     method: cleaned.method, ownedAudio: temporary ? url : nil, invocation: invocation) else { return }
+                // A hold that produced words shows the gesture is known: never teach it.
+                if heldShortcut { coach.tips.retire(HoldLesson.tip) }
                 accessibilityGranted = AXIsProcessTrusted()
                 if let shortcutID {
                     status = "Transcript returned to Shortcuts."
@@ -669,6 +710,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                     guard transcriptionID == invocation else { return }
                     status = outcome.message
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
+                    undelivered.note(outcome, text: result, from: .transcript(captureID), in: deliveryRecords)
                 }
                 phase = .idle; onPhaseChange?()
             } catch {
@@ -704,8 +746,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
 
     /// No asynchronous boundary occurs between the generation check and commit.
     /// The ID survives retries, so writing again cannot create a second capture.
+    /// Returns the saved capture's ID, the record its delivery names, or nil.
     private func commitRecognizedCapture(raw: String, text: String, seconds: Double, method: String,
-                                         ownedAudio: URL?, invocation: UUID) throws -> Bool {
+                                         ownedAudio: URL?, invocation: UUID) throws -> UUID? {
         try Task.checkCancellation()
         guard transcriptionID == invocation else { throw CancellationError() }
         let id = ownedAudio != nil ? (captureRecovery.pending?.id ?? UUID()) : UUID()
@@ -724,7 +767,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             guard captureRecovery.pending?.capture?.id == capture.id else { throw error }
             // The result is in memory; report any journal failure alongside the state write below.
         }
-        return savePendingCapture()
+        return savePendingCapture() ? capture.id : nil
     }
 
     @discardableResult private func savePendingCapture() -> Bool {
@@ -732,8 +775,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         var journalError: Error?
         do { try captureRecovery.retain(record) } catch { journalError = error }
         let nextHistory = TranscriptHistory.adding(capture, to: history)
-        let state = SavedState(draft: transcript, speechText: speechText, history: nextHistory,
-                               replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript)
+        let state = session(draft: transcript, history: nextHistory, replacements: replacements)
         do {
             if let captureStateWriter { try captureStateWriter(state) } else { try store.save(state) }
         } catch {
@@ -810,16 +852,32 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
 
     func copyTranscript() {
-        copyTextWithReceipt(transcript)
+        copyTextWithReceipt(transcript, of: .draft(revision: draftRevision))
     }
-    private func copyTextWithReceipt(_ text: String) {
+    /// History and the draft as they are now: the records an undelivered result names.
+    private var deliveryRecords: DeliveryRecords {
+        DeliveryRecords(history: history, draft: (text: transcript, revision: draftRevision))
+    }
+    /// What the shelf shows of the undelivered result, judged against those records now.
+    var unresolvedDelivery: UnresolvedDelivery? { undelivered.shown(in: deliveryRecords) }
+    private func copyTextWithReceipt(_ text: String, of reference: UnresolvedDelivery.Reference) {
         guard !text.isEmpty else { return }
         captureFailure = nil; dismissCaptureCue()
         let count = TextDelivery.copy(text)
         let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
         status = outcome.message
         clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
+        // Copying the same words from anywhere resolves an undelivered result.
+        undelivered.note(outcome, text: text, from: reference, in: deliveryRecords)
     }
+    /// Copy again, for a result whose copy failed or was never pasted: the
+    /// words its record holds now, never whatever the draft became.
+    func copyUnresolvedDelivery() {
+        guard let entry = undelivered.entry, let words = undelivered.wordsToCopy(in: deliveryRecords) else { return }
+        copyTextWithReceipt(words, of: entry.reference)
+    }
+    /// The person's own choice to set it aside. Hiding a notice never does this.
+    func dismissUnresolvedDelivery() { undelivered.dismiss() }
     func showLibrary() { page = "library"; onShowEditor?("library"); libraryFocusToken = UUID() }
     /// Every door opens History on All, even when History is already showing.
     /// Dictate's own option asks for Transcripts, and Hand off for its task.
@@ -833,7 +891,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
     func savePrompt(_ text: String) { guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }; showLibrary(); library.newPrompt(text) }
-    func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text) }
+    func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text, of: .transcript(item.id)) }
     func showPanelPreview() {
         guard phase == .idle else { return }
         captureUsesHoldShortcut = false
@@ -1302,8 +1360,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         let proposal = try CorrectionRule.propose(heard: heard, written: written, draft: transcript, replacements: replacements)
         guard !proposal.isAlreadyRemembered || proposal.changesDraft else { return }
         let beforeRules = replacements
-        try store.save(SavedState(draft: proposal.previewText, speechText: speechText, history: history,
-                                  replacements: proposal.updatedRules, voice: voice, rate: rate, rawDraft: rawTranscript))
+        try store.save(session(draft: proposal.previewText, history: history, replacements: proposal.updatedRules))
         persistWork?.cancel()
         replacements = proposal.updatedRules
         if proposal.changesDraft { transcript = proposal.previewText }
@@ -1319,8 +1376,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // A revision check also protects edits that return to the same string.
         let restoreDraft = draftRevision == receipt.appliedRevision && transcript == receipt.afterDraft
         let draft = restoreDraft ? receipt.beforeDraft : transcript
-        try store.save(SavedState(draft: draft, speechText: speechText, history: history,
-                                  replacements: receipt.beforeRules, voice: voice, rate: rate, rawDraft: rawTranscript))
+        try store.save(session(draft: draft, history: history, replacements: receipt.beforeRules))
         persistWork?.cancel()
         replacements = receipt.beforeRules
         if transcript != draft { transcript = draft }
@@ -1336,10 +1392,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         let next = history.filter { $0.id != item.id }
         let commit = {
-            try self.store.save(SavedState(draft: self.transcript, speechText: self.speechText, history: next,
-                replacements: self.replacements, voice: self.voice, rate: self.rate, rawDraft: self.rawTranscript))
+            try self.store.save(self.session(draft: self.transcript, history: next, replacements: self.replacements))
             self.persistWork?.cancel()
             self.history = next
+            // Removing the transcript is the person's choice: nothing is left to deliver.
+            self.undelivered.transcriptRemoved(item.id)
         }
         do {
             if includingRecording {
@@ -1363,8 +1420,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         metadata.captureNotes = meetings.pendingTranscriptNotes
         historyLibrary.setMetadata(metadata, for: capture.id)
         if let error = historyLibrary.error { throw VoiceError.message(error) }
-        try store.save(SavedState(draft: transcript, speechText: speechText, history: next,
-            replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
+        try store.save(session(draft: transcript, history: next, replacements: replacements))
         history = next
         status = "Meeting saved in History."
         onPhaseChange?()
@@ -1420,7 +1476,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// microphone, or a closed lid, than a pause, so it gets the explicit panel
     /// that says where to look instead of another brief cue.
     private var quietCapturesInARow = 0
-    func endWithoutSpeech(_ reason: CaptureCue.Reason) {
+    func endWithoutSpeech(_ reason: CaptureCue.Reason, teachesHold: Bool = false) {
         if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
         if quietCapturesInARow >= 2 {
             quietCapturesInARow = 0
@@ -1435,6 +1491,25 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         captureFailure = nil
         phase = .idle
+        // A press of the Dictate shortcut in Hold let go too soon learns the
+        // gesture once, in place of this attempt's cue (#134 T5). A lesson
+        // already taught, or one no host can show, leaves the cue; so does a
+        // card the host drops, so the attempt never ends with neither.
+        if teachesHold, coach.request(HoldLesson.card(shortcut: preferences.dictationShortcut.label),
+                                      otherwise: { [weak self] in self?.showDroppedLessonCue(reason) }) {
+            status = "No speech heard. " + HoldLesson.title(shortcut: preferences.dictationShortcut.label)
+            onPhaseChange?()
+            return
+        }
+        showCaptureCue(reason)
+    }
+    /// The host could not show the lesson it was offered: the attempt gets
+    /// #156's cue after all, unless something newer has begun.
+    private func showDroppedLessonCue(_ reason: CaptureCue.Reason) {
+        guard phase == .idle, captureFailure == nil, captureCue == nil else { return }
+        showCaptureCue(reason)
+    }
+    private func showCaptureCue(_ reason: CaptureCue.Reason) {
         let cue = CaptureCue(reason: reason)
         captureCue = cue
         captureCueClock = CaptureCueClock(routine: true, shownAt: Date())
@@ -1473,20 +1548,28 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func saveBeforeUpdate() -> Bool {
         guard loaded else { return false }
         do {
-            try store.save(SavedState(draft: transcript, speechText: speechText, history: history, replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
+            try store.save(session(draft: transcript, history: history, replacements: replacements))
             return true
         } catch { report("Could not save before updating. \(error.localizedDescription)", on: .dictate); return false }
     }
     func saveNow() {
         guard loaded else { return }
-        do { try store.save(SavedState(draft: transcript, speechText: speechText, history: history, replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript)) }
+        do { try store.save(session(draft: transcript, history: history, replacements: replacements)) }
         catch { report("Could not save this session. \(error.localizedDescription)", on: .dictate) }
+    }
+    /// The session a write commits: the draft, History and rules it writes,
+    /// and the rest as they are. The one undelivered result goes with it only
+    /// while what is written still holds its words (#134 T5).
+    private func session(draft: String, history: [Transcript], replacements: [Replacement]) -> SavedState {
+        let records = DeliveryRecords(history: history, draft: draft == transcript ? (text: draft, revision: draftRevision) : nil)
+        return SavedState(draft: draft, speechText: speechText, history: history, replacements: replacements,
+                          voice: voice, rate: rate, rawDraft: rawTranscript, undelivered: undelivered.saved(in: records))
     }
     func shutdown() {
         meetings.shutdown(); handoffJobs.shutdown()
         photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
-        clipboardReceipt.clear(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
+        clipboardReceipt.clear(); coach.remove(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
         stopPlayback(); saveNow(); AudioRenderer.remove(audioURL)
         // Quit stops work. Only a durable capture commit or explicit Cancel may
         // delete the owned audio/journal; the next launch discovers unfinished work.

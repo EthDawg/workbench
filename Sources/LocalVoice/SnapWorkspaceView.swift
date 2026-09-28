@@ -16,6 +16,8 @@ struct SnapWorkspaceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             WorkbenchPageHeader("snap", summary: "Capture, mark up and keep what matters.") {
+                // ✓ Saved or exported for four seconds, in space kept for it (#134 T5).
+                ConfirmationLabel(text: model.confirmation?.kind.rawValue, reserving: SnapConfirmation.texts)
                 if model.isCapturing { Button("Cancel capture") { model.cancelCapture() } }
                 Menu {
                     Button("Paste image") { model.pasteImage() }

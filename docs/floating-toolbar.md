@@ -9,13 +9,10 @@ permission to preserve a bug.
 ## Role and content
 
 The floating toolbar is the shared live control surface for Snap & Talk, Draw,
-Present and Persona Overlay. Desktop pages own preparation and saved libraries.
-The compact menu-bar panel owns quick utilities, adjustments and shortcut editing.
-Dictate and Read expose only their compact active controls here. A dictation
-that heard no speech shows a brief "No speech heard" cue in place of its
-recording controls, then the toolbar returns by itself; a reading whose audio
-could not be read keeps its compact controls with the reason, Retry and
-dismiss. Like the live controls, both appear even when Hide toolbar is on.
+Present and Persona Overlay, and it carries dictation, narration and reading
+too (#134 T4). Desktop pages own preparation and saved libraries. The compact
+menu-bar panel owns quick utilities, adjustments and shortcut editing. Dictate
+and Read start, stop, pause and resume here; their options stay in Workbench.
 
 **The mode follows you.** A mode, which the launcher calls the tool, is one
 capability or named workflow: Dictate, Read, Snap, Snap & Talk, Draw, Present or
@@ -25,17 +22,17 @@ Before anything has ever been started the seed is Dictate, because it works in
 every app with only the microphone. The choice persists across relaunch under
 `workbench.toolbarMode.v1`. Timer is a panel row and a Present option, not a mode.
 
-**At rest the toolbar is a compact mark** (#134), whatever is running: idle, or
-drawing, presenting, a persona, a timer, a meeting recording or a Snap & Talk
-session. It is a 48 × 20 capsule in a fixed 48 × 28 target. At idle it remembers
-the selected tool with that tool's neutral SF Symbol; live work, processing and
-attention take priority (see Status at rest). Colour identifies actual activity:
-a selected Present icon stays neutral until a presentation runs. The
-resting window is exactly that target, and everything outside it passes clicks
-through. Work never holds the row open. Keep open is the one explicit way to keep
-it up. Dictation, narration and reading still replace the tools with their own
-controls while they run; bringing them into this host, so that they rest the same
-way, is the next part of #134.
+**At rest the toolbar is a compact mark** (#134), whatever is running: idle,
+recording, playing, paused, processing, drawing, presenting, a persona, a timer,
+a Snap & Talk session, or a result waiting for the person. It is a 48 × 20
+capsule in a fixed 48 × 28 target. At idle it remembers the selected tool with
+that tool's neutral SF Symbol; live work, processing and attention take priority
+(see Status at rest). Colour identifies actual activity: a selected Present icon
+stays neutral until a presentation runs. The resting window is
+exactly that target, and everything outside it passes clicks through. Work never
+holds the row open, and a new failure or result never opens it either. Keep open
+is the one explicit way to keep it up. Dictation, narration, reading and their
+results keep the toolbar up even while Hide toolbar is on, at rest as the mark.
 
 Hover, after the 120 ms dwell, or a click reveals the row. A click on the mark
 only reveals it and takes the keyboard; it never starts or stops anything, and
@@ -43,6 +40,75 @@ the whole click is the mark's, so the row that appears under the pointer never
 receives its mouse-up. A double-click that begins on the mark cannot start or
 stop work either. A right-click opens the current tool's options, and a drag
 moves the toolbar (see Placement).
+
+**Recording, reading and their results in the same host** (#134 T4). The same
+window, anchor and tiers carry dictation, narration and reading from start to
+result; nothing swaps the floating window to a panel of its own. Live work is
+the row: its next action is Stop, Stop narration, Pause or Resume reading, Cancel
+request or Processing…, the launcher carries the capture signal, and More opens
+with what the work can do besides, under its capability's name: Cancel and Copy
+now for a dictation, Cancel for a narration, Stop reading. Dictated words that
+wait for drawing to end lead with Stop drawing, which delivers them, with Copy now
+in More (#211). While drawing or a prompt insertion holds the next action, More's
+Read section also has reading's own next action: Cancel while it prepares, Pause
+reading or Resume reading. A recording's elapsed
+time is the Stop's tooltip and VoiceOver help, never its label, whose width would
+tick; in the last ten seconds before the 5-minute limit a timer badge joins the
+capture signal and VoiceOver hears it once. The Dictate page keeps the recording's
+details.
+
+A result keeps its own view: the dictation that needs attention with its reason,
+Retry, Record again or Open Workbench and dismiss; the reading that stopped with its
+reason, Retry and dismiss; and the clipboard receipt with Review, its pin and the ×
+whose ring counts its own eight seconds (four after a confirmed paste), held by the
+pointer or the pin. At rest a result is only the mark's warning or clipboard status.
+The pointer's reveal, a dwell or a click on the mark, shows the result's view in
+place of the row, grown inward from the same centre; a result that arrives while the
+row is open waits for the next reveal rather than replacing the row under the
+pointer. Keyboard entry, Window › Focus floating toolbar, reveals the launcher row
+instead, with the launcher focused and keeping the result's status, the mark's glyph
+as a badge on the tool's symbol and its words in VoiceOver's value, and More opens
+with the result's own section: its title, a failure's reason, and Copy again, Retry,
+Record again, Open Workbench, Review and Dismiss as its view offers them (#211).
+Record again, there and in its view, only ever starts a recording: one begun since,
+by the shortcut say, is left alone. A result's view takes the keyboard on its first
+command when the keyboard comes to it, and Escape leaves from it as from the row. At
+a right-hand dock a result grows leftward from the mark, so each result is mirrored
+there: its words, and a dictation result's drag handle, sit over the mark the
+pointer came from, and its commands and Position at the far end, while VoiceOver
+reads it in the same order. Revealing, collapsing or choosing a tool never
+acknowledges, dismisses or retries it. This is the chosen reading of the contract,
+which prefers recovery commands in More and warns against squeezing an editor into
+the row: a failure's reason and a receipt's text are content, not only commands, and
+the receipt's ring needs its view.
+
+One exception, also chosen: a row held open by Keep open alone shows a new result in
+its place, as the dictation panel did, because Keep open is the person's choice of
+persistent controls and there is no rest to show the status on. It does so only
+while no pointer is on the toolbar and nothing holds it, no menu, chooser, keyboard
+or Position… included; until then the result waits as a status. A kept-open row that
+comes back after a capture or Hide toolbar makes the same checks once the pointer
+has been found again, and Position… closing hands the keyboard back before anything
+is swapped (#211). It never activates Workbench, takes the keyboard or moves the
+anchor, and it grows from the same centre. A delivery that did not finish stays
+after its receipt has gone (#134 T5): the mark keeps its warning, and More opens
+with the result's own title, Copy again where it cannot lead to a second insertion,
+and Dismiss.
+
+The routine no-speech cue keeps its own view at the toolbar's place for under two
+seconds, held by hover or VoiceOver, then the mark again (#156).
+
+**The coaching card** (#134 T5) shows above what the toolbar shows with a 12-point
+gap, or below it when the display has no room above, centred on the launcher and
+never expanding the row or moving the mark. It fades in over 160 ms, at once with
+Reduce Motion. It is its own panel, sized to the
+card, so the gap passes clicks through. The host allows it
+(`FeedbackCoachModel.canPresent`) only while the toolbar is on screen and the card
+would cover no permission prompt, no Workbench window in front, none of the
+toolbar's popovers and no result's controls open in its place; reports
+`didPresent` once it has been on screen for a display pass; drops a card it cannot
+show, so its lesson is not spent and the attempt gets its ordinary no-speech cue; removes it on a screen capture and when a
+narration starts; and fades it out in 160 ms, or at once with Reduce Motion.
 
 Revealed, the toolbar is a 40-point capsule: `[tool ▾] [next action]
 [accessory] [⋯]`, reversed on a right-hand anchor. At standard text its minimum
@@ -164,18 +230,20 @@ there is no second animation clock or asynchronous size observer. The tool symbo
 keeps its centre while the capsule opens around it. Controls fade in only after
 their entire labels fit, and fade away before closing can cut through them. The
 launcher remains anchored even while the host is smaller than its content.
-Reduce Motion changes the frame and content at once and stills the level waveform.
+Reduce Motion changes the frame and content at once and holds the voice trace still.
 
-Hide toolbar hides the tools in every mode, including while drawing, presenting
-or showing personas. It is the same persistent choice as the Floating toolbar
-switch in the menu-bar panel's header and in Settings › General › Appearance, and
-the Window menu's Show or Hide floating toolbar, so it survives relaunch. The work carries on: hiding never clears marks,
-ends a scene, hides persona artwork or stops a timer, and each keeps its key and
-its menu-bar panel row. Window → Show floating toolbar, Window → Focus floating
-toolbar and Settings bring the tools back with the current mode and live state.
-A prompt insertion keeps the tools until it ends, because its Stop is there.
-Recording, processing, narration and reading keep their own controls whatever the
-choice (`FloatingToolbarSurface.resolve`, checked by `--check-floating-toolbar`).
+Hide toolbar hides the tools in every mode, including while drawing, presenting or
+showing personas. It is the same persistent choice as the Floating toolbar switch in
+the menu-bar panel's header and in Settings › General › Appearance, and the Window
+menu's Show or Hide floating toolbar, so it survives relaunch; the surface gallery
+changes it from each of these four doors and checks that the others agree. The work
+carries on: hiding never clears marks, ends a scene, hides persona artwork or stops
+a timer, and each keeps its key and its menu-bar panel row. Window → Show floating
+toolbar, Window → Focus floating toolbar and Settings bring the tools back with the
+current mode and live state. A prompt insertion keeps the tools until it ends,
+because its Stop is there. Recording, processing, narration and reading keep their
+own controls whatever the choice (`FloatingToolbarSurface.resolve`, checked by
+`--check-floating-toolbar`).
 
 Saved Prompts reads the existing Library. Favourite, Product and
 Persona groupings do not create another store. The Prompts accessory and More's
@@ -210,13 +278,12 @@ It decides the indicator and its accessible description and nothing else: never
 the tier, the keyboard or the collapse deadline. A library selection, an old
 transcript, a restored Snap & Talk session or editable text alone is idle. The
 highest priority wins: capture or playback, then processing, a failure, a pending
-result or unsaved capture, paused work, other live work, and idle. The projection
-already covers dictation, narration and reading and their results, although for
-now those show their own controls while they run (see Role and content).
+result or unsaved capture, paused work, other live work, and idle. A delivery that
+did not finish is a failure until the person copies it again or sets it aside.
 
 | Status | The mark shows |
 | --- | --- |
-| Capture | A red dot and a small level waveform from the recording owner's own level sample; a still outline when there is no sample (a meeting), in silence or with Reduce Motion |
+| Capture | The shared voice trace (#209): a red recording dot and a short trace of three shallow lobes in the voice colour, from the recording owner's own level through the shared envelope; a thin still line in silence or with no level (a meeting), and a still shape with Reduce Motion. Its badges, each 7 points and both when both apply (#211): a timer beside the trace in the last ten seconds before the 5-minute limit, and a warning on the capsule's corner, like a badge on an icon, for another job that needs attention. Revealed, the launcher carries the same signal in place of its symbol |
 | Playback | A speaker |
 | Processing | An ellipsis |
 | Failure | A warning triangle |
@@ -228,8 +295,11 @@ now those show their own controls while they run (see Role and content).
 
 A recording that goes on while another job needs attention keeps the recording
 signal and adds a small warning badge inside the same target, and its
-description names both ("Recording dictation, Needs attention"). Shape and words
-carry each state; colour never does alone. VoiceOver announces each meaningful
+description names both ("Recording dictation, Needs attention"), the time limit
+too when it comes. Shape and words carry each state; colour never does alone.
+VoiceOver's value for the mark and the launcher adds the level in words, Quiet,
+Receiving sound or Low microphone level once the dictation owner judges the
+microphone too quiet, and never announces it. VoiceOver announces each meaningful
 change once: a new indicator, a badge, or new words for the state, so a failure
 or waiting result that arrives under processing or playback is heard though the
 indicator keeps its priority. Never a level, and never any transcript or result
@@ -254,9 +324,9 @@ released on, so near an edge it expands inward. That side is decided once, on
 release, and kept with the position. So revealing, collapsing, choosing another
 tool or a live label that widens the row never moves the launcher, and nothing
 but a new placement turns the row round. The toolbar sizes to its content and
-has no resize handles. Dragging the dictation panel docks it where it is dropped;
-docked tools follow it, as before, and free tools keep their own place and come
-back to it.
+has no resize handles. A recording, a result or the cue is the same toolbar at the
+same position, so dragging it moves that one position (#134 T4). Position
+floating toolbar… on the Dictate page opens Position… at the toolbar.
 
 Position… in More opens one compact control with the eight docks and
 Reset position, which docks at bottom centre. It is the keyboard and precise way
@@ -431,8 +501,9 @@ the launcher's target stays 48 points wide at every size so that centre holds. A
 rest the status glyph says what is running; revealed, the launcher's one dot says
 work is live somewhere and the chooser's labelled dots say where. Changing status
 must not substitute a different menu-bar brand icon. Reduce Transparency uses
-opaque fills. Reduce Motion removes the frame animation and stills the level
-waveform.
+opaque fills. Reduce Motion removes the frame animation and holds the voice trace
+still; the trace follows Increase Contrast itself, and its recording dot stays
+red, distinct from the voice colour.
 
 `ToolbarGallery.states` supplies both tiers at every anchor, every mode with its
 key, active work in its own mode and in another (Dictate selected, Draw busy),
@@ -502,6 +573,26 @@ panel invisibly from the bottom-right and top-left docks at larger text and from
 bottom centre, and fails if it leaves the display, loses its width, scrolls with
 room to spare or covers the launcher. A toolbar that does not rest where it was
 put fails the run. It renders Position… and the chooser in both themes.
+
+The same host then carries dictation, its processing and its results, docked at
+bottom centre (#134 T4). Dictating and transcribing must rest as the 48 × 28 mark
+on the launcher's centre with their statuses; a new failure or receipt must change
+only the mark's status, reveal its own controls grown from the same centre, and
+survive a collapse, and one that arrives while the row is open must wait, a kept-open
+row too while a hold is on it, until it lets go; the
+no-speech cue must show at the toolbar's place and give way to the mark; a Stop
+pressed through the recording's completion must start nothing; and the coaching
+card must sit 12 points above the mark, or below it at a top dock, centred on the
+launcher, with nothing of the toolbar's in the gap and the mark unmoved. Each
+fails the run. Then, with the toolbar's keyboard hold standing in for the
+keyboard, which the gallery never takes: keyboard entry onto a waiting receipt
+must keep the launcher row, whose launcher takes the focus, and Escape must leave
+without dismissing the receipt, from the receipt's own controls too; Position…
+closing onto a receipt waiting on a kept-open row must leave the launcher row with
+the keyboard back; and at the right-hand dock no action of a dictation failure,
+the receipt or a stopped reading may sit over the mark the pointer came from, by the
+frames each view reports for its actions (#211). The floating shots render the no-speech cue, the reading that
+stopped, the receipt with its ring and the coaching card.
 `ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
 inward growth, a width change that must not move the launcher or turn the row
 round, earlier saves, clamping and recovery. `--check-floating-toolbar` checks the

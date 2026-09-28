@@ -37,7 +37,106 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    /// A short verb needs no space reserved for another mode. Accessories keep their own target.
+    /// The compact mark's drawn capsule: 20 points high in every state, inside the
+    /// fixed 48 × 28 target, with the shared voice trace and the timer badge fitting inside it
+    /// (#134, #209). The warning badge sits on the capsule's corner (below).
+    @MainActor func testTheCompactMarkKeepsItsTwentyPointCapsuleInEveryState() throws {
+        _ = NSApplication.shared
+        func drawn(_ status: ToolbarStatus) throws -> (width: Int, height: Int, size: NSSize) {
+            let view = NSHostingView(rootView: ToolbarCompactMark(status: status).environment(\.colorScheme, .light))
+            view.frame = NSRect(origin: .zero, size: view.fittingSize)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let perPoint = CGFloat(bitmap.pixelsHigh) / view.bounds.height
+            var rows = Set<Int>(), columns = Set<Int>()
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.2 {
+                    rows.insert(y); columns.insert(x)
+                }
+            }
+            func points(_ pixels: Set<Int>) -> Int { pixels.isEmpty ? 0 : Int((CGFloat(pixels.max()! - pixels.min()! + 1) / perPoint).rounded()) }
+            return (points(columns), points(rows), view.fittingSize)
+        }
+        let idle = try drawn(.idle)
+        XCTAssertEqual(idle.size, ToolbarLayout.mark)
+        XCTAssertEqual(idle.height, 20, "the idle capsule")
+        XCTAssertEqual(idle.width, 48)
+        for activity in [ToolbarActivity(capture: .dictation, level: 0.6), ToolbarActivity(capture: .narration, level: 0.3, stopsSoon: true),
+                         ToolbarActivity(processing: true), ToolbarActivity(live: [.timer])] {
+            let working = try drawn(.resolve(activity))
+            XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
+            XCTAssertEqual(working.height, 20, "the active capsule: \(activity)")
+            XCTAssertEqual(working.width, 48, "nothing is drawn beyond the capsule: \(activity)")
+        }
+    }
+
+    /// Each badge's frame in `root`'s hosting view, as the badge reports its own layout (#211 F4):
+    /// read from the layout rather than from pixels, so no backing scale, colour space or accent
+    /// colour can move it.
+    @MainActor private func badgeFrames<V: View>(_ root: V) -> (view: NSView, frames: [String: CGRect]) {
+        var frames: [String: CGRect] = [:]
+        let view = NSHostingView(rootView: root.environment(\.toolbarBadgeFrames) { frames[$0] = $1 })
+        view.frame = NSRect(origin: .zero, size: view.fittingSize)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        window.contentView = nil
+        return (view, frames)
+    }
+
+    /// A background failure in a recording's last seconds shows both badges inside the 48 × 28
+    /// target (#211 F4): the timer beside the trace and the warning on the capsule's corner, like
+    /// a badge on an icon, each a fixed 7-point square, neither covering the other, and each where
+    /// it is when it shows alone.
+    @MainActor func testBothBadgesShowInsideTheMark() throws {
+        _ = NSApplication.shared
+        func badges(_ activity: ToolbarActivity) -> [String: CGRect] { badgeFrames(ToolbarCompactMark(status: .resolve(activity))).frames }
+        let timer = badges(ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true))
+        let warning = badges(ToolbarActivity(capture: .dictation, level: 0.4, failure: true))
+        let both = badges(ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true))
+        XCTAssertEqual(Set(timer.keys), ["stopsSoon"])
+        XCTAssertEqual(Set(warning.keys), ["attention"])
+        XCTAssertEqual(Set(both.keys), ["stopsSoon", "attention"], "both show together")
+        let target = CGRect(origin: .zero, size: ToolbarLayout.mark)
+        for (badge, frame) in both {
+            XCTAssertEqual(frame.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "\(badge) is a 7-point square")
+            XCTAssertTrue(target.contains(frame), "\(badge) stays inside the 48 × 28 target: \(frame)")
+        }
+        let stopsSoon = try XCTUnwrap(both["stopsSoon"]), attention = try XCTUnwrap(both["attention"])
+        XCTAssertFalse(stopsSoon.intersects(attention), "neither badge covers the other: \(stopsSoon), \(attention)")
+        XCTAssertEqual(stopsSoon, timer["stopsSoon"], "the timer keeps its place when the warning joins it")
+        XCTAssertEqual(attention, warning["attention"], "and the warning keeps its place when the timer joins it")
+        XCTAssertLessThanOrEqual(attention.maxY, (ToolbarLayout.mark.height - ToolbarLayout.statusHeight) / 2, "the warning sits on the capsule's corner")
+    }
+
+    /// A result waiting for the person keeps its status on the launcher while the row is open
+    /// (#211 F1): the mark's glyph as a badge on the tool's symbol, and its words in VoiceOver's
+    /// value and the tooltip. With nothing waiting, nothing is added.
+    @MainActor func testTheLauncherKeepsAWaitingResultsStatus() throws {
+        _ = NSApplication.shared
+        func launcher(_ activity: ToolbarActivity) throws -> (button: NSButton, badge: CGRect?, target: CGRect) {
+            let state = ToolbarViewState(name: "waiting", tier: .revealed, mode: .dictate, status: .resolve(activity))
+            let (view, frames) = badgeFrames(ToolbarRow(state: state))
+            let button = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+            return (button, frames["result"], button.convert(button.bounds, to: view))
+        }
+        let failure = try launcher(ToolbarActivity(failure: true))
+        let badge = try XCTUnwrap(failure.badge, "the warning is laid out on the launcher")
+        XCTAssertTrue(failure.target.contains(badge), "on the launcher's own target: \(badge) in \(failure.target)")
+        XCTAssertEqual(badge.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "a 7-point square at standard text")
+        XCTAssertEqual(failure.button.accessibilityValue() as? String, "Dictate. Needs attention")
+        XCTAssertEqual(failure.button.toolTip, "Dictate. Needs attention. Click to choose a tool; drag to move.")
+        let receipt = try launcher(ToolbarActivity(pendingDelivery: true))
+        XCTAssertNotNil(receipt.badge, "a result waiting to be delivered is badged too")
+        XCTAssertEqual(receipt.button.accessibilityValue() as? String, "Dictate. Result waiting to be delivered")
+        let idle = try launcher(.idle)
+        XCTAssertNil(idle.badge, "with nothing waiting, no badge")
+        XCTAssertEqual(idle.button.accessibilityValue() as? String, "Dictate")
+    }
+
+    /// Short actions keep their target without reserving space for other tools.
     @MainActor func testTheStandardRowWidths() {
         _ = NSApplication.shared
         let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .draw))).fittingSize
@@ -132,7 +231,8 @@ final class ToolbarNativeTests: XCTestCase {
         func all(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(all) }
         let target = try XCTUnwrap(all(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
         XCTAssertTrue(target.isAccessibilityElement())
-        XCTAssertEqual(target.accessibilityValue() as? String, status.description)
+        XCTAssertEqual(target.accessibilityValue() as? String, status.spokenValue)
+        XCTAssertEqual(status.spokenValue, "Recording dictation. Receiving sound", "every state, then the level in words (#211 F7)")
         XCTAssertTrue(target.accessibilityPerformPress())
         XCTAssertEqual(reveals, 1); XCTAssertEqual(work, 0)
         XCTAssertTrue(buttons(view).isEmpty, "no control is reachable at rest but the target")

@@ -2,7 +2,9 @@
 /// the operation owners; nothing here observes anything. Every field is a
 /// finite value so a test can walk the whole product.
 public struct ToolbarLiveState: Hashable, Sendable {
-    public enum Dictation: CaseIterable, Sendable { case idle, requesting, recording, processing, cancelling }
+    /// `waitingForDrawing`: the words are ready and wait for drawing to end before they are
+    /// delivered, or for Copy now (#211 F5).
+    public enum Dictation: CaseIterable, Sendable { case idle, requesting, recording, processing, cancelling, waitingForDrawing }
     public enum Reading: CaseIterable, Sendable { case idle, preparing, playing, paused }
     public enum Persona: CaseIterable, Sendable { case none, shown, session, sessionHidden }
     public enum Timer: CaseIterable, Sendable { case none, running, paused, finished }
@@ -157,7 +159,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
         switch live.dictation {
         case .requesting: return .cancelDictationRequest
         case .recording: return .stopDictation
-        case .processing, .cancelling: return .wait
+        // Words waiting for drawing to end: stopping drawing is what delivers them, and More has
+        // Copy now (#211 F5). Drawing that has already ended is a moment's processing.
+        case .waitingForDrawing where live.drawing: return .finishDrawing
+        case .processing, .cancelling, .waitingForDrawing: return .wait
         case .idle: break
         }
         if live.capturingScreen { return .wait }
@@ -207,7 +212,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .captureNext: return "Capture next · \(live.captureCount ?? 0)"
         case .stopMeetingTranscription: return "Stop transcribing"
         case .endPresentation: return "End presentation"
-        case .wait: return live.dictation == .cancelling ? "Cancelling…" : live.dictation == .processing ? "Processing…" : "Capturing…"
+        case .wait: return live.dictation == .cancelling ? "Cancelling…" : live.dictation == .processing || live.dictation == .waitingForDrawing ? "Processing…" : "Capturing…"
         case .start(let mode):
             switch mode {
             case .dictate: return live.canRecordAgain ? "Record again" : "Dictate"

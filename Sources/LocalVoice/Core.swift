@@ -17,6 +17,26 @@ struct SavedState: Codable {
     var voice = ""
     var rate = 180.0
     var rawDraft: String? = nil
+    /// The one delivery that did not finish (#134 T5), so a quit cannot make
+    /// it look delivered. It names its words' record, never the words.
+    var undelivered: UnresolvedDelivery? = nil
+}
+
+extension SavedState {
+    /// As synthesized, with one difference: an undelivered result that this
+    /// build cannot read, such as a kind a later build added, is left out
+    /// rather than making the whole session unreadable. Older state has none.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(draft: try container.decode(String.self, forKey: .draft),
+                  speechText: try container.decode(String.self, forKey: .speechText),
+                  history: try container.decode([Transcript].self, forKey: .history),
+                  replacements: try container.decode([Replacement].self, forKey: .replacements),
+                  voice: try container.decode(String.self, forKey: .voice),
+                  rate: try container.decode(Double.self, forKey: .rate),
+                  rawDraft: try container.decodeIfPresent(String.self, forKey: .rawDraft),
+                  undelivered: (try? container.decodeIfPresent(UnresolvedDelivery.self, forKey: .undelivered)) ?? nil)
+    }
 }
 
 struct StateStore {

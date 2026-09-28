@@ -2,6 +2,7 @@ import AppKit
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
+import VoiceAppearance
 
 /// React to my voice owns a live microphone, so these checks pin when it may
 /// run: only while it is on and the persona it frames is showing, and never
@@ -363,7 +364,7 @@ final class PersonaVoiceTests {
     private func bitmap(_ image: NSImage) -> CGImage { image.cgImage(forProposedRect: nil, context: nil, hints: nil)! }
 
     func testOutlineFollowsARoundBadgeACardAndAPhoto() throws {
-        guard case .circle(let center, let radius) = PersonaArtworkOutline.analyze(bitmap(Self.badge())).outline else {
+        guard case .circle(let center, let radius) = PersonaArtworkOutline.analyze(bitmap(Self.badge())) else {
             XCTAssertTrue(false, "A round badge gets a circle"); return
         }
         XCTAssertEqual(Double(center.x), 0.5, accuracy: 0.02)
@@ -371,7 +372,7 @@ final class PersonaVoiceTests {
         XCTAssertEqual(Double(radius), 100.0 / 280, accuracy: 0.02)
 
         let card = try PersonaCardRenderer.image(portrait: Self.badge(), style: PersonaCardStyle(label: "Care lead"))
-        guard case .roundedRect(let box, let corner) = PersonaArtworkOutline.analyze(bitmap(card)).outline else {
+        guard case .roundedRect(let box, let corner) = PersonaArtworkOutline.analyze(bitmap(card)) else {
             XCTAssertTrue(false, "A card gets its rounded rectangle"); return
         }
         XCTAssertEqual(Double(box.width), 1, accuracy: 0.02)
@@ -381,7 +382,7 @@ final class PersonaVoiceTests {
         let photo = NSImage(size: CGSize(width: 400, height: 300), flipped: false) { rect in
             NSGradient(starting: .systemTeal, ending: .systemIndigo)!.draw(in: rect, angle: 30); return true
         }
-        XCTAssertEqual(PersonaArtworkOutline.analyze(bitmap(photo)).outline, .roundedRect(CGRect(x: 0, y: 0, width: 1, height: 0.75), radius: 0))
+        XCTAssertEqual(PersonaArtworkOutline.analyze(bitmap(photo)), .roundedRect(CGRect(x: 0, y: 0, width: 1, height: 0.75), radius: 0))
 
         // A cut-out head and shoulders is not a badge: its small head must not win.
         let cutout = NSImage(size: CGSize(width: 300, height: 360), flipped: false) { _ in
@@ -390,27 +391,38 @@ final class PersonaVoiceTests {
             NSBezierPath(roundedRect: CGRect(x: 20, y: 0, width: 260, height: 190), xRadius: 90, yRadius: 90).fill()
             return true
         }
-        guard case .roundedRect = PersonaArtworkOutline.analyze(bitmap(cutout)).outline else {
+        guard case .roundedRect = PersonaArtworkOutline.analyze(bitmap(cutout)) else {
             XCTAssertTrue(false, "A cut-out gets the rounded box of its visible pixels"); return
         }
     }
 
-    func testRingColourComesFromTheArtwork() {
-        func hue(_ color: NSColor) -> Double {
-            var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-            color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-            return Double(hue) * 360
+    /// One voice colour: Workbench's accent as the appearance shows it, whatever
+    /// the artwork's colours, with a rim of the accent as the opposite appearance
+    /// shows it, so the line reads on light and dark content.
+    func testOutlineUsesWorkbenchsAccentWhateverTheArtwork() throws {
+        func rgb(_ color: CGColor) -> [Double] {
+            (color.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)?.components ?? []).prefix(3).map { (Double($0) * 1000).rounded() / 1000 }
         }
-        let yellow = PersonaArtworkOutline.analyze(bitmap(Self.badge())).tint
-        XCTAssertEqual(hue(yellow), 43, accuracy: 8)
-        let grey = NSImage(size: CGSize(width: 120, height: 120), flipped: false) { rect in NSColor(white: 0.45, alpha: 1).setFill(); rect.fill(); return true }
-        XCTAssertEqual(PersonaArtworkOutline.analyze(bitmap(grey)).tint, PersonaArtworkOutline.fallbackTint, "Colourless artwork gets Workbench mint")
-        var brightness: CGFloat = 0, hueValue: CGFloat = 0, saturation: CGFloat = 0, alpha: CGFloat = 0
-        let dark = NSImage(size: CGSize(width: 120, height: 120), flipped: false) { rect in
-            NSColor(srgbRed: 0.08, green: 0.38, blue: 0.31, alpha: 1).setFill(); rect.fill(); return true
+        let light = NSAppearance(named: .aqua)!, dark = NSAppearance(named: .darkAqua)!
+        let lightColors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: light)
+        let darkColors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: dark)
+        XCTAssertEqual(rgb(lightColors.line), [0.04, 0.43, 0.32], "Light appearance: the deep accent")
+        XCTAssertEqual(rgb(darkColors.line), [0.43, 0.89, 0.73], "Dark appearance: the bright accent")
+        XCTAssertEqual(rgb(lightColors.rim), rgb(darkColors.line), "Its rim is the accent of the other appearance")
+        XCTAssertEqual(rgb(darkColors.rim), rgb(lightColors.line))
+        // The artwork's own colours no longer choose the outline's.
+        let controller = PersonaOverlayController(pointer: PersonaTestPointer())
+        defer { controller.shutdown() }
+        controller.window?.appearance = dark
+        controller.setVoiceRing(true)
+        for artwork in [Self.badge(), NSImage(size: CGSize(width: 120, height: 120), flipped: false) { rect in NSColor.systemPurple.setFill(); rect.fill(); return true }] {
+            _ = controller.show(image: artwork, name: "Synthetic persona", state: PersonaOverlayState(x: 0.5, y: 0.5, width: 0.1))
+            controller.window?.contentView?.layoutSubtreeIfNeeded()
+            guard let ring = controller.window?.contentView?.layer?.sublayers?.compactMap({ $0 as? PersonaVoiceRingLayer }).first else {
+                XCTAssertTrue(false, "The outline layer is there"); return
+            }
+            XCTAssertEqual(rgb(ring.colors.line), rgb(darkColors.line), "Every persona's outline is the accent")
         }
-        PersonaArtworkOutline.analyze(bitmap(dark)).tint.getHue(&hueValue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        XCTAssertGreaterThan(brightness, 0.8, "A dark card colour is brightened to read on screen")
     }
 
     func testOutlineGeometryHugsTheArtworkAndScalesWithIt() {
@@ -426,7 +438,7 @@ final class PersonaVoiceTests {
         XCTAssertEqual(Double(small.outsets.left), Double(small.outsets.right), accuracy: 1)
         XCTAssertEqual(Double(small.outsets.top), Double(small.outsets.bottom), accuracy: 1)
         XCTAssertTrue([small, large].allSatisfy { $0.outsets.left <= 20 }, "The window grows by a few points, not by long bars (\(large.outsets.left))")
-        let extent = small.gap + small.maximumWidth + PersonaVoiceRingGeometry.edgeWidth(increaseContrast: true) + small.glowRadius
+        let extent = small.gap + small.maximumWidth + PersonaVoiceRingGeometry.rimWidth(increaseContrast: true) + small.glowRadius
         XCTAssertGreaterThan(Double(small.outsets.left), Double(extent), "Nothing is clipped at the loudest")
         // A badge circle inside its picture needs less room than a full-bleed card.
         let badge = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.536), radius: 0.357), artwork: CGRect(x: 0, y: 0, width: 240, height: 240))
@@ -444,16 +456,17 @@ final class PersonaVoiceTests {
 
     func testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable() {
         let ring = PersonaVoiceRingLayer()
-        ring.increaseContrast = false
+        // Both default to the Mac's own accessibility settings; CI's runner may have Reduce Motion on.
+        ring.increaseContrast = false; ring.reduceMotion = false
         ring.frame = CGRect(x: 0, y: 0, width: 300, height: 300)
         ring.geometry = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 50, y: 50, width: 200, height: 200))
         let paths = { ring.sublayers?.compactMap { $0 as? CAShapeLayer } ?? [] }
         let line = { paths().last! }
         let resting = (width: line().lineWidth, opacity: line().opacity)
-        XCTAssertEqual(paths().filter { $0.path != nil }.count, 2, "At rest a still line and its dark edge show it is listening")
+        XCTAssertEqual(paths().filter { $0.path != nil }.count, 2, "At rest a still line and its rim show it is listening")
         XCTAssertEqual(line().shadowOpacity, 0, "No glow at rest")
         let quiet = PersonaVoiceFrame.quiet.lasting(0.021)
-        var changes: [PersonaVoiceRingState.Visible] = []
+        var changes: [VoiceEnvelope.Visible] = []
         ring.onVisibleChange = { state, _ in changes.append(state) }
         var clock = 100.0
         for _ in 0..<40 { ring.receive([quiet, quiet, quiet, quiet, quiet], at: clock); clock += 0.1; ring.advance(to: clock) }
@@ -483,14 +496,19 @@ final class PersonaVoiceTests {
         XCTAssertFalse(ring.isMoving, "Without a voice it settles and sleeps")
         XCTAssertEqual(line().lineWidth, resting.width); XCTAssertEqual(line().opacity, resting.opacity)
         XCTAssertEqual(changes, [.normal, .loud, .normal, .quiet], "A raised voice fades back through the usual look to rest")
-        // Reduce Motion: the same still outline, which never travels.
+        // Reduce Motion: the width holds still and only brightness says a voice is heard.
         ring.reduceMotion = true
-        ring.receive([voice], at: clock + 3); ring.advance(to: clock + 3 + 1.0 / 60)
-        XCTAssertEqual(ring.visible, .normal)
+        for step in 0...30 {
+            if step % 6 == 0 { ring.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021)], at: clock + 3 + Double(step) / 60) }
+            ring.advance(to: clock + 3 + Double(step + 1) / 60)
+        }
+        XCTAssertEqual(ring.visible, .loud)
+        XCTAssertEqual(line().lineWidth, resting.width, "Reduce Motion keeps the width still")
+        XCTAssertTrue(line().opacity > resting.opacity + 0.4 && line().shadowOpacity == 0, "A voice brightens it, with no glow")
         XCTAssertEqual(paths().filter { $0.path != nil }.count, 2)
         ring.reset()
         XCTAssertEqual(ring.visible, .quiet); XCTAssertFalse(ring.isMoving)
-        // Increase Contrast strengthens the resting line and its dark edge.
+        // Increase Contrast strengthens the resting line and its rim.
         let plainEdge = paths()[0].lineWidth
         ring.increaseContrast = true
         XCTAssertTrue(line().opacity > resting.opacity && paths()[0].lineWidth > plainEdge)
@@ -566,15 +584,15 @@ final class PersonaVoiceTests {
         init(_ artwork: NSImage, width: CGFloat = 240, increaseContrast: Bool = false) throws {
             guard let image = artwork.cgImage(forProposedRect: nil, context: nil, hints: nil) else { throw PersonaError.unreadableImage }
             self.image = image
-            let analysis = PersonaArtworkOutline.analyze(image)
+            let outline = PersonaArtworkOutline.analyze(image)
             let size = CGSize(width: width, height: width * artwork.size.height / artwork.size.width)
-            let insets = PersonaVoiceRingGeometry(outline: analysis.outline, artwork: CGRect(origin: .zero, size: size)).outsets
+            let insets = PersonaVoiceRingGeometry(outline: outline, artwork: CGRect(origin: .zero, size: size)).outsets
             canvas = CGSize(width: size.width + insets.left + insets.right + 40, height: size.height + insets.top + insets.bottom + 40)
             artworkRect = CGRect(x: insets.left + 20, y: insets.bottom + 20, width: size.width, height: size.height)
-            ring.increaseContrast = increaseContrast
+            ring.increaseContrast = increaseContrast; ring.reduceMotion = false
             ring.frame = CGRect(origin: .zero, size: canvas); ring.contentsScale = 2
-            ring.tint = analysis.tint
-            ring.geometry = PersonaVoiceRingGeometry(outline: analysis.outline, artwork: artworkRect)
+            ring.colors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: NSAppearance(named: .darkAqua)!)
+            ring.geometry = PersonaVoiceRingGeometry(outline: outline, artwork: artworkRect)
             ring.layoutIfNeeded()
         }
         /// Settles the outline on a voice at `level`, or rest for nil.

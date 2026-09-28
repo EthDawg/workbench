@@ -17,15 +17,6 @@ extension FloatingControlAnchor {
     }
 }
 
-/// The dictation panel always docks at one of the named destinations, even from
-/// mid-screen. The toolbar's tools rest wherever they are released instead, and
-/// dock only near a destination (`FloatingControlPlacement`, #163).
-enum FloatingToolbarDocking {
-    static func anchor(for frame: NSRect, in screen: NSRect) -> FloatingControlAnchor {
-        FloatingControlGeometry.nearestAnchor(to: frame, in: screen, threshold: .greatestFiniteMagnitude) ?? .bottom
-    }
-}
-
 /// What More's Active work section offers (#134): for each thing the compact mark can show
 /// that the chosen tool gives no way back to, its finish, resume or door, worded as its own
 /// tool words it. Nothing here is a new command; each item runs an existing one.
@@ -67,6 +58,25 @@ enum ToolbarActiveWork: Equatable {
         // Timer is not a tool, so its transport is offered whichever tool is chosen.
         if facts.timer != .idle { items.append(.timer(facts.timer)) }
         return items
+    }
+}
+
+/// Reading's commands in More (#211 F6): its own next action, Cancel while preparing, Pause
+/// reading or Resume reading, whenever another job holds the row's primary, such as drawing or
+/// a prompt insertion; and Stop reading while it plays or is paused.
+enum ToolbarReadingCommands {
+    static func operations(primary: ToolbarOperation, reading: ToolbarLiveState.Reading) -> [ToolbarOperation] {
+        var operations: [ToolbarOperation] = []
+        let own: ToolbarOperation?
+        switch reading {
+        case .preparing: own = .cancelReading
+        case .playing: own = .pauseReading
+        case .paused: own = .resumeReading
+        case .idle: own = nil
+        }
+        if let own, own != primary { operations.append(own) }
+        if reading == .playing || reading == .paused { operations.append(.stopReading) }
+        return operations
     }
 }
 
