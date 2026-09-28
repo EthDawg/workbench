@@ -67,16 +67,18 @@ pointer. Keyboard entry, Window › Focus floating toolbar, reveals the launcher
 instead, with the launcher focused and keeping the result's status, the mark's glyph
 as a badge on the tool's symbol and its words in VoiceOver's value, and More opens
 with the result's own section: its title, a failure's reason, and Copy again, Retry,
-Record again, Open Workbench, Review and Dismiss as its view offers them (#211). A
-result's view takes the keyboard on its first command when the keyboard comes to it,
-and Escape leaves from it as from the row. At a right-hand dock a result grows
-leftward from the mark, so each result is mirrored there: its words, and a dictation
-result's drag handle, sit over the mark the pointer came from, and its commands and
-Position at the far end, while VoiceOver reads it in the same order. Revealing,
-collapsing or choosing a tool never acknowledges, dismisses or retries it. This is
-the chosen reading of the contract, which prefers recovery commands in More and
-warns against squeezing an editor into the row: a failure's reason and a receipt's
-text are content, not only commands, and the receipt's ring needs its view.
+Record again, Open Workbench, Review and Dismiss as its view offers them (#211).
+Record again, there and in its view, only ever starts a recording: one begun since,
+by the shortcut say, is left alone. A result's view takes the keyboard on its first
+command when the keyboard comes to it, and Escape leaves from it as from the row. At
+a right-hand dock a result grows leftward from the mark, so each result is mirrored
+there: its words, and a dictation result's drag handle, sit over the mark the
+pointer came from, and its commands and Position at the far end, while VoiceOver
+reads it in the same order. Revealing, collapsing or choosing a tool never
+acknowledges, dismisses or retries it. This is the chosen reading of the contract,
+which prefers recovery commands in More and warns against squeezing an editor into
+the row: a failure's reason and a receipt's text are content, not only commands, and
+the receipt's ring needs its view.
 
 One exception, also chosen: a row held open by Keep open alone shows a new result in
 its place, as the dictation panel did, because Keep open is the person's choice of

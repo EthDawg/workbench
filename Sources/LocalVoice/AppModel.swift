@@ -462,6 +462,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return note
     }
 
+    /// Record again, from a failure's own controls or More: only ever a start. They were drawn, or
+    /// More was built, while nothing ran, so a recording begun since, by the shortcut say, is left
+    /// alone rather than cancelled or stopped by the toggle, as Home's Quick start does (#211).
+    func recordAgain() {
+        guard phase == .idle else { return }
+        toggleRecording()
+    }
+
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {
         if phase == .requesting { cancelRecording(); return }
         if phase == .recording { stopRecording(); return }

@@ -1829,6 +1829,18 @@ enum SurfaceGallery {
         expect("Stop pressed through the recording's completion", [click == nil ? "the press on Stop latched nothing" : nil,
             starts > 0 ? "the click started a new dictation" : nil, model.phase != .idle ? "the click acted after the recording ended" : nil])
         settle(.resting)
+        // Record again only ever starts (#211): chosen from More or a failure's controls drawn before
+        // a recording began, by the shortcut say, it leaves that recording alone. A recording begins
+        // with its microphone request, which the plain toggle would cancel, then records, which it
+        // would stop; the gallery's recording has no recorder, so the request is the telling case.
+        for phase in [AppModel.Phase.requesting, .recording] {
+            model.phase = phase
+            model.recordAgain()
+            expect("Record again chosen once a recording has begun, \(phase.rawValue)", [
+                model.phase == phase ? nil : "Record again turned the \(phase.rawValue) into \(model.phase.rawValue)"])
+            model.phase = .idle
+        }
+        settle(.resting)
         // The coaching card beside the compact mark (#134 T5).
         let coach = model.coach
         coach.announce = { _ in }; coach.voiceOverEnabled = { false }

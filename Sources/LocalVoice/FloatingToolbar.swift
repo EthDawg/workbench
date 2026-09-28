@@ -326,7 +326,7 @@ struct FloatingToolbar: View {
             header = "Dictation needs attention"; dismiss = { model.dismissCaptureFailure() }
             items.append(ToolbarMenuAction(failure, enabled: false) {})
             if model.canRetry { items.append(ToolbarMenuAction(model.retryCaptureLabel) { model.retryTranscription() }) }
-            if model.canRecordAgain { items.append(ToolbarMenuAction("Record again") { model.toggleRecording() }) }
+            if model.canRecordAgain { items.append(ToolbarMenuAction("Record again") { model.recordAgain() }) }
             else if !model.canRetry || model.hasCaptureRecovery {
                 items.append(ToolbarMenuAction("Open Workbench") { model.dismissCaptureFailure(); model.onShowEditor?("dictate") })
             }

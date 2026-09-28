@@ -936,7 +936,7 @@ struct DictationResultView: View {
                     .focused($focused, equals: .retry).resultAction("Retry", controls)
             }
             if model.canRecordAgain {
-                Button("Record again") { model.toggleRecording() }
+                Button("Record again") { model.recordAgain() }
                     .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
                     .focused($focused, equals: .recordAgain).resultAction("Record again", controls)
             } else if !model.canRetry || model.hasCaptureRecovery {
