@@ -192,7 +192,7 @@ enum SnapOrganization {
             let relation = proposal.distance == nil ? "Its rendered image is byte-for-byte identical to" : "It looks like a repeat of"
             lines.append("- \(archivedIDs.contains(proposal.id) ? "Archived, recoverable" : "Proposed, not applied"): **\(escaped(proposal.duplicate.title))** (`\(proposal.id.uuidString.lowercased())`). \(relation) **\(escaped(proposal.retained.title))** (`\(proposal.retained.id.uuidString.lowercased())`).")
         }
-        lines += ["", "Originals remain in Snap History. Archiving never removes images from an existing Snap & Talk session or a running handoff. Repeating this saved selection, or the same ad-hoc selected IDs, updates this document. Image links are relative to this document inside the Snap library; use Hand off to share a portable copy of selected evidence.", ""]
+        lines += ["", "Originals remain in History. Archiving never removes images from an existing Snap & Talk session or a running handoff. Repeating this saved selection, or the same ad-hoc selected IDs, updates this document. Image links are relative to this document inside the Snap library; use Hand off to share a portable copy of selected evidence.", ""]
         return lines.joined(separator: "\n")
     }
     private static func escaped(_ text: String) -> String {

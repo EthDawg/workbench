@@ -712,7 +712,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             refreshSessionAvailability()
             isCapturing = false
             notice = retainedInSnapHistory
-                ? "The capture is saved in Snap History, but could not be added to this session. Reopen the session and add it from Snap History. \(error.localizedDescription)"
+                ? "The capture is saved in History, but could not be added to this session. Reopen the session and add it from Snap History. \(error.localizedDescription)"
                 : "The screen was not captured. \(error.localizedDescription)"
             stateChanged()
         }

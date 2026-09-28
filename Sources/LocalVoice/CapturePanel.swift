@@ -442,7 +442,7 @@ struct RecordingOverlay: View {
             if model.phase == .idle && !model.previewingPanel, let failure = model.captureFailure {
                 failureState(failure)
             } else if model.phase == .idle && !model.previewingPanel {
-                CaptureReceiptView(receipts: model.clipboardReceipt, review: { model.onShowEditor?("history") }, controls: controls)
+                CaptureReceiptView(receipts: model.clipboardReceipt, review: { model.openHistory(); model.onShowEditor?("history") }, controls: controls)
             } else if isRecordingSurface && !controls.isExpanded {
                 compactRecording
             } else {
@@ -663,7 +663,7 @@ private struct CaptureReceiptView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 VStack(spacing: 3) {
                     Button { receipts.dismissHUD(); review() } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).help("Open recent transcripts")
+                        .buttonStyle(.bordered).controlSize(.small).help("Open History")
                     HStack(spacing: 2) {
                         if receipt.isClipboardCurrent {
                             Button { receipts.keepVisible.toggle() } label: {

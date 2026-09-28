@@ -48,12 +48,14 @@ final class SnapModel: ObservableObject {
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
     var isBusy: Bool { isCapturing || draft != nil }
-    var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0) } }
+    var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0, query: search) } }
 
-    private func matches(_ item: SnapItem) -> Bool {
-        guard let text = recognizedText[item.id], !text.isEmpty else { return item.matches(search) }
+    /// Snap search: title, notes, source type, tags and the text Vision read in
+    /// the image. Every term must match. History searches Snaps through this too.
+    func matches(_ item: SnapItem, query: String) -> Bool {
+        guard let text = recognizedText[item.id], !text.isEmpty else { return item.matches(query) }
         let searchable = item.searchableText + "\n" + text
-        return search.split(whereSeparator: \.isWhitespace).allSatisfy { searchable.localizedStandardContains(String($0)) }
+        return query.split(whereSeparator: \.isWhitespace).allSatisfy { searchable.localizedStandardContains(String($0)) }
     }
     var activeCount: Int { items.filter { $0.archivedAt == nil }.count }
 
@@ -166,7 +168,7 @@ final class SnapModel: ObservableObject {
             await Task.yield()
         }
         refresh()
-        notice = "Imported \(moved) Desktop screenshot\(moved == 1 ? "" : "s") into Snap History. The originals are in the Trash."
+        notice = "Imported \(moved) Desktop screenshot\(moved == 1 ? "" : "s") into History. The originals are in the Trash."
             + (added.isEmpty ? "" : " They are selected, so Use selected, then Organise…, can find repeats and themes.")
             + (kept.isEmpty ? "" : " \(kept.count) could not be imported and stayed on the Desktop.")
         return added
@@ -279,8 +281,8 @@ final class SnapModel: ObservableObject {
                                         height: dimensions.height, title: title, source: draft.source, edit: draft.edit, notes: draft.notes, tags: draft.tags)
             }
             self.draft = nil; refresh()
-            if copyAfterSaving { notice = copyBytes(rendered) ? "Saved to Snap History and copied. Paste it where you need it." : "Saved to Snap History. Copy failed; use Copy from history to try again." }
-            else { notice = "Saved to Snap History. Your original image is preserved." }
+            if copyAfterSaving { notice = copyBytes(rendered) ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
+            else { notice = "Saved to History. Your original image is preserved." }
             return true
         } catch { notice = "Snap was not saved. \(error.localizedDescription)"; return false }
     }
@@ -296,13 +298,13 @@ final class SnapModel: ObservableObject {
             let snapshot = try store.snapshot(id), panel = NSSavePanel()
             panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = snapshot.item.title + ".png"
             guard panel.runModal() == .OK, let url = panel.url else { return }
-            try snapshot.imagePNG.write(to: url, options: .atomic); notice = "Image exported. The original remains in Snap History."
+            try snapshot.imagePNG.write(to: url, options: .atomic); notice = "Image exported. The original remains in History."
         } catch { notice = error.localizedDescription }
     }
 
     func archive(_ ids: Set<UUID>, archived: Bool) {
         guard !isBusy else { notice = "Finish the current edit before changing history."; return }
-        do { try store.setArchived(archived, ids: Array(ids)); notice = archived ? "Archived. Restore these Snaps from Archived at any time." : "Restored to Snap History." }
+        do { try store.setArchived(archived, ids: Array(ids)); notice = archived ? "Archived. Restore these Snaps from Archived at any time." : "Restored to History." }
         catch { notice = "Some Snaps could not be updated. \(error.localizedDescription)" }
         refresh()
     }

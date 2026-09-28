@@ -59,7 +59,7 @@ struct WorkbenchQuickPanel: View {
                 else {
                     VStack(alignment: .leading, spacing: 5) {
                         WorkbenchClipboardShelf(receipts: receipts,
-                            review: { receipts.dismissHUD(); open("history") },
+                            review: { receipts.dismissHUD(); model.openHistory(); open("history") },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() })
                         if receipts.receipt?.isClipboardCurrent != true {
                             if !context.activitySummary.isEmpty {
@@ -147,7 +147,8 @@ struct WorkbenchQuickPanel: View {
                     }.disabled(model.phase != .idle)
                 }
                 Divider()
-                Button("Recent Transcripts…") { open("history") }
+                // Capture history belongs to Dictate, so its option opens History on Transcripts.
+                Button("History…") { model.openHistory(HistoryDoor(filter: .transcripts)); open("history") }
                 Button("Transcribe meeting or call…") { open("meeting") }
                 Button("Open Dictate…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()

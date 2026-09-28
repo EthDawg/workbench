@@ -236,6 +236,8 @@ try MainActor.assumeIsolated {
     while model.recognizedText.count < repeatItems.count && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     model.search = "shortcut conflicts"
     try check(model.visibleItems.map(\.id) == [repeatItems[2].id], "search finds a Snap by the text inside its image")
+    try check(model.matches(repeatItems[2], query: "shortcut conflicts") && !model.matches(repeatItems[0], query: "shortcut conflicts"),
+              "the query search History uses also reads the text inside each image")
 }
 // Desktop screenshots: only files macOS marked as screen captures are imported,
 // and each reaches Snap History before its file goes to the Trash.
