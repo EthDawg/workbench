@@ -198,6 +198,14 @@
     "belongsTo": "snap"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap.2",
+    "surface": "floating toolbar More menu",
+    "label": "Open Snap…",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Quality (#205 review): under Active work while another tool is chosen, the same Open Snap… door, so an unsaved Snap capture the compact mark shows reaches its editor. Snap's own options already offer it."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
     "surface": "floating toolbar More menu",
     "label": "Position…",
@@ -206,11 +214,20 @@
     "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-2a736db79384",
     "surface": "floating toolbar More menu",
     "label": null,
-    "expression": "personaFinish",
-    "note": "Runtime label from personaFinish; no rendered text assumed.",
+    "expression": "transport . title + \" timer\"",
+    "kind": "action",
+    "belongsTo": "timer",
+    "note": "Quality (#205 review): under Active work, the break timer's next transport as TimerTransport names it (Pause timer, Resume timer or Restart timer), the same command as the Timer menu's, whichever tool is chosen, since Timer is not a tool. Runtime label from transport . title + \" timer\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",
+    "surface": "floating toolbar More menu",
+    "label": null,
+    "expression": "title",
+    "note": "Runtime label from title: Hide persona, Hide personas or Show personas, as Persona's own label reads, under Active work while another tool is chosen (#134). No rendered text assumed.",
     "kind": "action",
     "belongsTo": "persona"
   },
@@ -258,6 +275,14 @@
     "label": "Switch to Browser Tab…",
     "kind": "action",
     "belongsTo": "present"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.transcribe-meeting-or-call",
+    "surface": "floating toolbar More menu",
+    "label": "Transcribe meeting or call…",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Quality (#205 review): under Active work, the existing door to the meeting page, named as the panel and app menu name it, so a meeting recording saved for retry, which the compact mark shows as needing attention, reaches its recovery from any tool."
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.retry",

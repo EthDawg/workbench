@@ -181,21 +181,19 @@ struct FloatingToolbar: View {
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)
         }
-        // Work running in another tool is never a dead end: its finish or resume item
-        // sits under Active work, worded exactly as that tool's own label would be.
-        var active: [NSMenuItem] = []
-        if live.drawing && mode != .draw && action.operation != .finishDrawing {
-            active.append(ToolbarMenuAction("Stop drawing") { stage.finishDrawing() })
-        }
-        if live.presenting && mode != .present {
-            active.append(ToolbarMenuAction("End presentation") { stage.endDeviceScene() })
-        }
-        if live.persona != .none && mode != .persona {
-            let personaFinish = live.persona == .session ? "Hide personas" : live.persona == .sessionHidden ? "Show personas" : "Hide persona"
-            active.append(ToolbarMenuAction(personaFinish) { stage.togglePersona() })
-        }
-        if live.meetingRecording && mode != .dictate {
-            active.append(ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } })
+        // Work running in another tool is never a dead end: whatever the compact mark shows has
+        // its finish, resume or door under Active work, worded as that tool's own label would be.
+        let active: [NSMenuItem] = ToolbarActiveWork.items(activeWorkFacts(action: action)).map { item in
+            switch item {
+            case .stopDrawing: return ToolbarMenuAction("Stop drawing") { stage.finishDrawing() }
+            case .endPresentation: return ToolbarMenuAction("End presentation") { stage.endDeviceScene() }
+            case .persona(let title): return ToolbarMenuAction(title) { stage.togglePersona() }
+            case .stopTranscribing: return ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } }
+            case .meetingRecovery:
+                return ToolbarMenuAction("Transcribe meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
+            case .snapDraft: return ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") }
+            case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport() }
+            }
         }
         if !active.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -212,6 +210,14 @@ struct FloatingToolbar: View {
         menu.addItem(ToolbarMenuAction("Hide toolbar") { model.floatingToolbarVisible = false })
         menu.addItem(ToolbarMenuAction("Settings…") { model.onShowEditor?("settings") })
         return menu
+    }
+
+    /// What the owners say for More's Active work section, read when More opens.
+    func activeWorkFacts(action: ToolbarNextAction) -> ToolbarActiveWork.Facts {
+        let live = self.live
+        return ToolbarActiveWork.Facts(mode: live.mode, nextAction: action.operation, drawing: live.drawing, presenting: live.presenting,
+            persona: live.persona, meetingRecording: live.meetingRecording,
+            meetingRecovery: meetings.hasRecovery && !meetings.isBusy, snapDraft: snapModel.draft != nil, timer: stage.timerTransport)
     }
 
     /// Move a builder's items into this menu, so the mode's options sit at the

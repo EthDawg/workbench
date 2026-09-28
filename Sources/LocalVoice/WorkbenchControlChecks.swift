@@ -109,6 +109,28 @@ enum WorkbenchControlChecks {
                   "a running timer is live work and a paused one is paused")
         try check(WorkbenchControlContext.timerActivity(.finished) == (false, false) && WorkbenchControlContext.timerActivity(.idle) == (false, false),
                   "a finished timer never reads as paused on the mark, and an idle one shows nothing")
+        // More's Active work reaches everything the mark can show from any other tool (#205 review).
+        do {
+            func items(_ mode: ToolbarMode, _ edit: (inout ToolbarActiveWork.Facts) -> Void) -> [ToolbarActiveWork] {
+                var facts = ToolbarActiveWork.Facts(mode: mode, nextAction: .start(mode))
+                edit(&facts)
+                return ToolbarActiveWork.items(facts)
+            }
+            let others = ToolbarMode.allCases
+            try check(others.allSatisfy { items($0) { $0.meetingRecovery = true } == [.meetingRecovery] },
+                      "a meeting recording saved for retry is offered from every tool, since Dictate's options hold only its page")
+            try check(others.filter { $0 != .snap }.allSatisfy { items($0) { $0.snapDraft = true } == [.snapDraft] }
+                      && items(.snap) { $0.snapDraft = true }.isEmpty,
+                      "an unsaved Snap capture opens the Snap editor from every other tool; Snap's own options already do")
+            try check(others.allSatisfy { mode in
+                          [TimerTransport.running, .paused, .finished].allSatisfy { transport in items(mode) { $0.timer = transport } == [.timer(transport)] }
+                              && items(mode) { $0.timer = .idle }.isEmpty },
+                      "the timer offers the next transport TimerTransport names, Pause, Resume or Restart, whichever tool is chosen")
+            try check(items(.present) { $0.drawing = true; $0.meetingRecording = true; $0.persona = .sessionHidden }
+                          == [.stopDrawing, .persona("Show personas"), .stopTranscribing]
+                      && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
+                      "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
+        }
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.
         try check([ToolbarChooserClose.chose, .escape, .dismissed].map(\.returnsKeyboardToLauncher) == [true, true, false],
