@@ -128,7 +128,7 @@ final class PersonaHandleTests {
     func testLockedArtworkMovesAndResizesFromItsHandlesAndStaysLocked() throws {
         guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
         let pointer = PersonaTestPointer()
-        let controller = PersonaOverlayController(pointer: pointer)
+        let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0)
         defer { controller.shutdown() }
         guard let window = controller.window else { return }
         var placements: [PersonaOverlayState] = []
@@ -216,12 +216,34 @@ final class PersonaHandleTests {
         XCTAssertTrue(window.ignoresMouseEvents)
     }
 
+    /// A pointer passing by does not flash the handles; one that pauses near
+    /// the artwork shows them, and leaving hides them at once.
+    func testHandlesAppearAfterABriefPauseNearTheArtwork() throws {
+        guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
+        let pointer = PersonaTestPointer()
+        let controller = PersonaOverlayController(pointer: pointer)
+        defer { controller.shutdown() }
+        _ = controller.show(image: Self.card(), name: "Synthetic persona", state: PersonaOverlayState(x: 0.5, y: 0.5, width: 0.14, screenID: displayID(screen), locked: true))
+        guard let visible = controller.visibleFrame else { return }
+        let near = CGPoint(x: visible.maxX + 10, y: visible.midY), away = CGPoint(x: visible.maxX + 200, y: visible.midY)
+        pointer.move(to: near)
+        XCTAssertTrue(controller.handleWindows.isEmpty, "Not at once")
+        pointer.move(to: away)
+        RunLoop.current.run(until: Date().addingTimeInterval(PersonaManipulation.revealDelay + 0.1))
+        XCTAssertTrue(controller.handleWindows.isEmpty, "A pointer that passed by leaves no handles")
+        pointer.move(to: near)
+        RunLoop.current.run(until: Date().addingTimeInterval(PersonaManipulation.revealDelay + 0.1))
+        XCTAssertEqual(controller.handleWindows.count, PersonaHandle.allCases.count, "A pause near the artwork shows its handles")
+        pointer.move(to: away)
+        XCTAssertTrue(controller.handleWindows.isEmpty, "Leaving hides them at once")
+    }
+
     /// Unlocked artwork drags by its body without treating a click as a drag,
     /// and the outline's room and a badge's transparent corners never block.
     func testUnlockedArtworkTakesClicksOnlyOnItsBody() throws {
         guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
         let pointer = PersonaTestPointer()
-        let controller = PersonaOverlayController(pointer: pointer)
+        let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0)
         defer { controller.shutdown() }
         guard let window = controller.window, let artwork = window.contentView else { return }
         var placements: [PersonaOverlayState] = []
@@ -267,7 +289,7 @@ final class PersonaHandleTests {
         for (name, image) in [("badge", Self.badge()), ("card", Self.card())] {
             for (size, width) in [("small", 0.07), ("large", 0.2)] {
                 let pointer = PersonaTestPointer()
-                let controller = PersonaOverlayController(pointer: pointer)
+                let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0)
                 defer { controller.shutdown() }
                 controller.setVoiceRing(true)
                 _ = controller.show(image: image, name: "Synthetic persona", state: PersonaOverlayState(x: 0.5, y: 0.5, width: width, screenID: displayID(screen), locked: true))
@@ -308,7 +330,7 @@ final class PersonaHandleTests {
         let group = PersonaGroup(name: "Private group", personaIDs: [candidate.id], overlays: [first, second])
         let session = try PersonaSessionController(groups: [PersonaPreparedSessionGroup(source: group, label: "Set 1", candidates: [candidate], overlays: [first, second])],
                                                    initialGroupID: group.id, canSave: true,
-                                                   makePanel: { let controller = PersonaOverlayController(pointer: pointer); made.append(controller); return controller })
+                                                   makePanel: { let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0); made.append(controller); return controller })
         defer { session.end() }
         session.start()
         XCTAssertEqual(made.count, 2)

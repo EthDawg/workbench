@@ -20,8 +20,10 @@ enum PersonaManipulation {
     /// A press becomes a drag only after the pointer travels this far: the
     /// same four points the floating toolbar uses.
     static let dragThreshold: CGFloat = 4
-    /// The handles appear when the pointer comes this close to the artwork.
+    /// The handles appear when the pointer comes this close to the artwork and
+    /// stays there this long, so a pointer passing by does not flash them.
     static let revealDistance: CGFloat = 24
+    static let revealDelay: TimeInterval = 0.15
     /// Hit areas: the grab handle, a corner, and an edge (length × thickness).
     static let grab = CGSize(width: 44, height: 18)
     static let corner: CGFloat = 18
@@ -109,21 +111,18 @@ final class PersonaHandleSet {
     /// The handles' windows, for checks.
     var windows: [PersonaHandle: NSWindow] { panels }
 
-    /// Shows handles at `frames`, just above `window`.
+    /// Shows handles at `frames`, just above `window`. Already shown handles
+    /// only move, so following the pointer never reorders windows.
     func show(_ frames: [PersonaHandle: CGRect], above window: NSWindow) {
         for handle in PersonaHandle.allCases {
-            guard let frame = frames[handle] else { panels.removeValue(forKey: handle)?.orderOut(nil); continue }
+            guard let frame = frames[handle] else { panels.removeValue(forKey: handle)?.close(); continue }
             let panel = panels[handle] ?? makePanel(handle)
             panels[handle] = panel
-            panel.setFrame(frame, display: false)
-            (panel.contentView as? PersonaHandleView)?.layout()
-            if !isShown || !panel.isVisible {
-                panel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
-                panel.order(.above, relativeTo: window.windowNumber)
-                if panel.alphaValue < 1 { NSAnimationContext.runAnimationGroup { $0.duration = 0.12; panel.animator().alphaValue = 1 } }
-            } else {
-                panel.order(.above, relativeTo: window.windowNumber)
-            }
+            if panel.frame != frame { panel.setFrame(frame, display: panel.isVisible) }
+            guard !panel.isVisible else { continue }
+            panel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
+            panel.order(.above, relativeTo: window.windowNumber)
+            if panel.alphaValue < 1 { NSAnimationContext.runAnimationGroup { $0.duration = 0.12; panel.animator().alphaValue = 1 } }
         }
         isShown = true
     }

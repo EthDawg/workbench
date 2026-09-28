@@ -14,7 +14,9 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     private let artwork = PersonaArtworkView()
     private var screenChanges: AnyCancellable?
     private let pointer: PersonaPointerTracking
+    private let revealDelay: TimeInterval
     private var pointerLocation: CGPoint?
+    private var reveal: Timer?
     private lazy var handles = PersonaHandleSet(owner: self)
     /// A handle being dragged: where the artwork, its visible edge and its
     /// window started, and the widths it may take.
@@ -22,8 +24,9 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
 
     /// `pointer` follows the pointer for the handles and click-through; checks
     /// pass their own so the real pointer never decides a result.
-    init(pointer: PersonaPointerTracking = PersonaPointerTracker.shared) {
+    init(pointer: PersonaPointerTracking = PersonaPointerTracker.shared, revealDelay: TimeInterval = PersonaManipulation.revealDelay) {
         self.pointer = pointer
+        self.revealDelay = revealDelay
         let panel = PersonaPanel(contentRect: CGRect(x: 0, y: 0, width: 160, height: 160),
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: panel)
@@ -73,6 +76,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     }
     func hide() {
         artwork.cancelDragging(); manipulation = nil; artwork.pauseRing()
+        reveal?.invalidate(); reveal = nil
         handles.hide(); pointer.remove(self); pointerLocation = nil
         window?.orderOut(nil); window?.alphaValue = 1
     }
@@ -130,13 +134,26 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         return PersonaManipulation.frames(around: visible, within: screen.visibleFrame)
     }
     private func updateHandles() {
-        guard let window, window.isVisible, let visible = visibleFrame else { handles.hide(); return }
-        if manipulation != nil || artwork.isPressed || pointerLocation.map({ PersonaManipulation.reveals($0, around: visible) }) == true {
+        guard let window, window.isVisible, let visible = visibleFrame else { cancelReveal(); handles.hide(); return }
+        let near = pointerLocation.map { PersonaManipulation.reveals($0, around: visible) } == true
+        if manipulation != nil || artwork.isPressed || (near && handles.isShown) {
             handles.show(handleFrames(), above: window)
+        } else if near {
+            guard revealDelay > 0 else { handles.show(handleFrames(), above: window); return }
+            guard reveal == nil else { return }
+            reveal = Timer.scheduledTimer(withTimeInterval: revealDelay, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.reveal = nil
+                // Still near once the pause has passed.
+                guard let window = self.window, window.isVisible, let visible = self.visibleFrame,
+                      let point = self.pointerLocation, PersonaManipulation.reveals(point, around: visible) else { return }
+                self.handles.show(self.handleFrames(), above: window)
+            }
         } else {
-            handles.hide()
+            cancelReveal(); handles.hide()
         }
     }
+    private func cancelReveal() { reveal?.invalidate(); reveal = nil }
     /// Handles follow artwork that is being dragged by its body.
     private func followArtwork() { handles.move(handleFrames()) }
 

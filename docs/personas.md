@@ -46,7 +46,7 @@ A session supports up to eight groups, eight placed overlays per group and 32 di
 
 ## Move and resize directly
 
-Bring the pointer near a card and its handles appear: a small grab handle above its top edge, and resize handles at its corners and edges. Drag the grab handle to move the card, or a corner or edge to resize it; the artwork keeps its shape, the opposite corner or edge stays put, and the size stays within the Size slider's range. Released partly off the display, the card comes back fully on screen.
+Pause the pointer near a card and its handles appear: a small grab handle above its top edge, and resize handles at its corners and edges. A pointer just passing by does not show them, and they go as soon as it moves away. Drag the grab handle to move the card, or a corner or edge to resize it; the artwork keeps its shape, the opposite corner or edge stays put, and the size stays within the Size slider's range. Released partly off the display, the card comes back fully on screen.
 
 The handles work while a card is locked and leave the lock as it was: the locked artwork keeps passing clicks through to the app beneath, and only the handles themselves take the pointer. They are small windows of their own, so the voice outline's room and the transparent corners of a round badge never block the app beneath. An unlocked card also drags by its artwork; a press that moves less than four points is a click, which selects the card without moving it. Using a handle changes only that copy and never changes which copy is selected. Handles never take keyboard focus from the app in front; **Position Artwork** and **Size** in the Persona Overlay menu remain the keyboard and precise route. As with every live change, saving a prepared layout stays explicit.
 
