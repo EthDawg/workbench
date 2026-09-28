@@ -139,6 +139,15 @@ public struct ToolbarNextAction: Equatable, Sendable {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Whether this addresses live work rather than starting the chosen tool: input-consuming
+    /// work, such as a reading preparing, playing or paused, a narration, a recording or its
+    /// processing, an insertion or drawing, or the chosen tool's own session or ending. A result
+    /// waiting with its own controls never takes the pointer's reveal from such a row (#220).
+    public var addressesLiveWork: Bool {
+        if case .start = operation { return false }
+        return true
+    }
+
     /// The seven tools for the chooser (#134): the chosen one checked, each lit when its
     /// capability is live, with its key.
     public static func choices(for live: ToolbarLiveState, key: (ToolbarMode) -> String? = { _ in nil }) -> [ToolbarToolChoice] {

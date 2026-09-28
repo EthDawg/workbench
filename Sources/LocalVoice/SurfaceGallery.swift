@@ -1789,6 +1789,7 @@ enum SurfaceGallery {
         settle(.resting)
         try checkRecordingInTheHost(host: host, controls: controls, bottom: bottom, expect: expect, settle: settle, at: at, compact: compact)
         checkResultsInTheHost(host: host, controls: controls, expect: expect, settle: settle)
+        checkResultsYieldToLiveWork(host: host, controls: controls, expect: expect, settle: settle)
         checkAccessoriesInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
         for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
@@ -2043,6 +2044,118 @@ enum SurfaceGallery {
             collapse(); clear(); settle(.resting)
         }
         controls.choosePosition?(.bottom); settle(.resting)
+    }
+
+    /// A result waiting with its own controls never takes the pointer's reveal from live work
+    /// (#220), docked at bottom centre. With an older dictation failure, a receipt or an
+    /// undelivered one waiting, a reading preparing, playing or paused keeps its own row under the
+    /// pointer, the reading goes on, the mark keeps the result's warning and More keeps its
+    /// commands; once the reading ends, the next reveal shows the result again. At the
+    /// result-selection seam a narration, a newer recording and its processing hold an older
+    /// result back as well, and nothing live but a timer never does.
+    func checkResultsYieldToLiveWork(host: CapturePanelController, controls: CaptureHUDControls,
+                                     expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
+        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.title }
+        /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere.
+        func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)) }
+        func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
+        func receipt(_ outcome: TextDelivery.Outcome) -> () -> Void {
+            { self.model.clipboardReceipt.record(outcome: outcome, wordCount: 12); self.model.clipboardReceipt.keepVisible = true }
+        }
+        func endReading() { model.rendering = false; model.playing = false; model.paused = false }
+        let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
+                                      meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
+                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+        let copied = TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
+                                          wasPasted: false, destinationName: nil)
+        let notCopied = TextDelivery.Outcome(message: "Could not copy the transcript.", clipboardChangeCount: nil, wasPasted: false,
+                                             destinationName: nil, failure: .copyFailed)
+        // More's section for a result carries its title: a receipt's depends on whether the clipboard
+        // still holds its words, which another process may change, so it is read as recorded.
+        let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
+            ("An older dictation failure", .dictationFailure,
+             { self.model.captureFailure = "A recording was recovered. Use Retry transcription." }, { self.model.dismissCaptureFailure() }),
+            ("A receipt", .receipt, receipt(copied), { self.model.clipboardReceipt.clear() }),
+            ("An undelivered result", .receipt, receipt(notCopied), { self.model.clipboardReceipt.clear() })]
+        func header(_ kind: FloatingResult) -> String {
+            kind == .dictationFailure ? "Dictation needs attention" : model.clipboardReceipt.receipt?.title ?? "a receipt"
+        }
+        let readings: [(state: String, start: () -> Void, action: String)] = [
+            ("preparing", { self.model.rendering = true }, "Cancel"),
+            ("playing", { self.model.playing = true }, "Pause reading"),
+            ("paused", { self.model.paused = true }, "Resume reading")]
+        model.toolbarMode = .dictate
+        for result in results {
+            for reading in readings {
+                result.show(); reading.start(); settle(.resting)
+                let waiting = FloatingResult.pending(model), chosen = FloatingResult.revealed(model, live: toolbar.live)
+                let warning = controls.status.description
+                reveal(); settle(.revealed)
+                let row = !controls.revealsResult, reads = primary(), more = toolbar.moreMenu().items.map(\.title)
+                let section = header(result.kind)
+                let goesOn = model.rendering || model.playing || model.paused
+                collapse(); settle(.resting)
+                endReading(); settle(.resting)
+                let after = FloatingResult.revealed(model, live: toolbar.live)
+                reveal(); settle(.revealed)
+                let back = controls.revealsResult
+                collapse(); settle(.resting)
+                expect("\(result.name) with a reading \(reading.state)", [
+                    waiting == result.kind ? nil : "the result was not waiting (\(waiting.map { "\($0)" } ?? "nothing"))",
+                    chosen == nil ? nil : "the result selection chose \(chosen.map { "\($0)" } ?? "") over the reading",
+                    row ? nil : "the pointer's reveal showed the result over the reading",
+                    reads == reading.action ? nil : "the revealed row reads \(reads.map { "\"\($0)\"" } ?? "nothing"), not \"\(reading.action)\"",
+                    goesOn ? nil : "revealing ended the reading",
+                    result.kind != .dictationFailure || warning.contains("Needs attention") ? nil : "the mark lost the result's warning: \"\(warning)\"",
+                    more.contains(section) ? nil : "More lost the result's commands (\(section))",
+                    reading.state == "preparing" || more.contains("Stop reading") ? nil : "More has no Stop reading",
+                    after == result.kind ? nil : "once the reading ended the selection chose \(after.map { "\($0)" } ?? "nothing")",
+                    back ? nil : "once the reading ended the pointer's reveal did not show the result"])
+                result.clear(); endReading(); settle(.resting)
+            }
+            // The regression scope, at the seam: a narration, a newer recording or its processing
+            // holds the older result back too, and nothing live but a timer never does.
+            result.show(); settle(.resting)
+            var narrating = toolbar.live; narrating.narrating = true
+            var timed = toolbar.live; timed.timer = .running
+            let narrationHolds = FloatingResult.revealed(FloatingResult.pending(model), live: narrating) == nil
+            let timerYields = FloatingResult.revealed(FloatingResult.pending(model), live: timed) == result.kind
+            var newer: [String] = []
+            for phase in [AppModel.Phase.recording, .transcribing] {
+                model.phase = phase; settle(.resting)
+                reveal(); settle(.revealed)
+                if FloatingResult.revealed(model, live: toolbar.live) != nil || controls.revealsResult { newer.append("\(phase)") }
+                collapse(); settle(.resting)
+            }
+            model.phase = .idle; settle(.resting)
+            expect("\(result.name) under a narration, a newer recording or its processing", [
+                narrationHolds ? nil : "a narration did not hold the result back",
+                timerYields ? nil : "a running timer held the result back",
+                newer.isEmpty ? nil : "the result took the reveal while \(newer.joined(separator: " and "))",
+                FloatingResult.pending(model) == result.kind ? nil : "the result went while the other work ran"])
+            result.clear(); settle(.resting)
+        }
+        // A result the person has revealed gives the row to a reading that starts under the pointer,
+        // and never takes it back as the reading ends; the next reveal shows it again.
+        results[0].show(); settle(.resting)
+        reveal(); settle(.revealed)
+        let shown = controls.revealsResult
+        model.playing = true; settle(.revealed)
+        let yielded = !controls.revealsResult, reads = primary()
+        endReading(); settle(.revealed)
+        let stayed = !controls.revealsResult
+        collapse(); settle(.resting)
+        reveal(); settle(.revealed)
+        let again = controls.revealsResult
+        collapse(); settle(.resting)
+        expect("A revealed result when a reading starts under the pointer", [
+            shown ? nil : "the pointer's reveal did not show the result",
+            yielded ? nil : "the result kept the row from the reading that started",
+            reads == "Pause reading" ? nil : "the row reads \(reads.map { "\"\($0)\"" } ?? "nothing"), not \"Pause reading\"",
+            stayed ? nil : "the result took the open row back as the reading ended",
+            again ? nil : "the next reveal did not show the result"])
+        results[0].clear(); settle(.resting)
     }
 
     /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
