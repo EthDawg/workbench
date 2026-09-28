@@ -82,6 +82,11 @@ enum WorkbenchControlChecks {
         try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
         try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading, "active reading has compact controls even with idle toolbar disabled")
         try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
+        // Position… opened from the toolbar's keyboard focus hands the keyboard back (#197 review).
+        let closes: [ToolbarPositionClose] = [.chose, .reset, .escape, .dismissed]
+        try check(closes.map { $0.returnsKeyboard(openedFromKeyboard: true) } == [true, true, true, false]
+                  && !closes.contains { $0.returnsKeyboard(openedFromKeyboard: false) },
+                  "Position… gives the keyboard back to the toolbar after a choice, Reset or Escape, only when opened from the keyboard")
         var state = WorkbenchControlState()
         state.presenting = true; state.drawing = true; state.phase = .recording
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present),

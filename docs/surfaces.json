@@ -16,11 +16,13 @@
     "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137)."
   },
   {
-    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
+    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-position",
     "surface": "floating toolbar live controls",
-    "label": "Reset to bottom centre",
+    "label": "Reset position",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Quality (#197 review): renamed from Reset to bottom centre. The dictation panel's options repeat Position…'s Reset position, the same reset of the one shared position.",
+    "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.settings-for-next-capture",
@@ -620,7 +622,7 @@
     "label": "Reset position",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options already offer the same reset as Reset to bottom centre."
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options offer the same reset under the same name."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",

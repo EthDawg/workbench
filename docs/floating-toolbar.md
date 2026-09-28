@@ -90,20 +90,31 @@ guides. The one within 16 points of the resting element is highlighted, and
 releasing there docks the toolbar. Releasing anywhere else leaves it right there,
 kept whole inside the visible display it covers most.
 
-The position is the resting element's. A docked row grows inward from its dock,
-and a free row grows toward the middle of its display, so near an edge it expands
-inward. Revealing or collapsing never moves the resting element, and nothing but a
-new placement turns the row round. The toolbar sizes to its content and has no
-resize handles.
+The position is the resting element's. A docked row grows inward from its dock.
+A free row grows toward the middle of the display it was released on, so near an
+edge it expands inward. That side is decided once, on release, and kept with the
+position, and the glyph's edge of the resting element is what stays put: its left
+edge for a row that grows rightward, its right edge for one that grows leftward.
+So revealing, collapsing or a live label that changes the resting element's width
+never moves the glyph, and nothing but a new placement turns the row round. The
+toolbar sizes to its content and has no resize handles. Dragging the dictation
+panel docks it where it is dropped; docked tools follow it, as before, and free
+tools keep their own place and come back to it.
 
 Position… in the glyph menu opens one compact control with the eight docks and
 Reset position, which docks at bottom centre. It is the keyboard and precise way
 in, beside dragging: arrow keys move between docks, Return or Space moves the
 toolbar there, and Escape closes. The control takes the keyboard without making
-Workbench the active app.
+Workbench the active app. Opened from the toolbar's keyboard focus, a choice,
+Reset or Escape gives the keyboard back to the toolbar, so a second Escape returns
+to the field it came from; opened by pointer, it takes the keyboard nowhere. A
+drag or a menu on the toolbar closes it.
 
 The choice persists through `CapturePanelController`: a dock by name, or a free
-position as the resting element's origin. It survives collapse and reveal, every
+position (`ToolbarFreePosition`) as its glyph edge, vertical centre and side. The
+resting element's origin and size are saved beside it, for an earlier build; an
+earlier save that has only those gets its side decided once, where it was left.
+It survives collapse and reveal, every
 update and relaunch. If its display is removed, the toolbar comes back whole on
 the display in use; the saved position is kept, so it returns when that display
 does. The drag threshold, snap distance and recovery are StageKit's
@@ -223,8 +234,8 @@ The core cannot be right if the host feeds it fiction.
   its place on screen and a right-hand dock does not run off it.
   `ToolbarAnchor.growsLeftward` is the whole of that geometry for a dock;
   `ToolbarGeometry` centres the top and bottom docks on the measured resting width.
-  A free position (`ToolbarPosition.free`) grows toward the middle of its display
-  and draws its row for that side (`CaptureHUDControls.rowAnchor`). An update
+  A free position (`ToolbarPosition.free`) grows toward the side decided when it
+  was released and draws its row for that side (`CaptureHUDControls.rowAnchor`). An update
   compares the window with the frame of the position the toolbar actually has, so
   it never pulls a free toolbar back to a dock.
 - **The window is the row's size.** `FloatingToolbar` reports the row with
@@ -303,10 +314,13 @@ renders no host states and has nothing to fail.
 
 The gallery also releases the same host at free positions on each half of the
 display and near a dock, then checks it after an update, a reveal and a collapse,
-in a new host as after a relaunch, and after Reset position. A toolbar that does
-not rest where it was put fails the run. It renders Position… in both themes.
+while a synthetic meeting widens the resting element's live label (released just
+left of the middle and on the right half), in a new host as after a relaunch, in
+a new host reading an earlier free save, and after Reset position. A toolbar that
+does not rest where it was put fails the run. It renders Position… in both themes.
 `ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
-inward growth, clamping and recovery.
+inward growth, a width change that must not move the glyph or turn the row round,
+clamping and recovery.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted
