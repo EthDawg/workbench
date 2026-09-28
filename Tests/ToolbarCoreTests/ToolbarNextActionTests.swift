@@ -63,6 +63,7 @@ final class ToolbarNextActionTests: XCTestCase {
             case .cancelReading: ok = live.reading == .preparing
             case .pauseReading: ok = live.reading == .playing
             case .resumeReading: ok = live.reading == .paused
+            case .stopReading: ok = false
             case .pauseOverlays: ok = live.persona == .session && live.mode == .persona
             case .resumeOverlays: ok = live.persona == .sessionHidden && live.mode == .persona
             case .hidePersona: ok = live.persona == .shown && live.mode == .persona
@@ -214,6 +215,9 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertNil(ToolbarOperation.pauseOverlays.keyMode, "the persona key refuses to pause a prepared set")
         XCTAssertNil(ToolbarOperation.resumeOverlays.keyMode)
         XCTAssertNil(ToolbarOperation.wait.keyMode)
+        XCTAssertNil(ToolbarOperation.stopReading.keyMode, "the Read key pauses; it does not stop")
+        XCTAssertEqual(ToolbarOperation.stopReading.mode, .read)
+        XCTAssertEqual(ToolbarNextAction.title(.stopReading, live: ToolbarLiveState(mode: .read)), "Stop reading")
         XCTAssertEqual(ToolbarOperation.stopDictation.keyMode, .dictate)
         XCTAssertEqual(ToolbarOperation.hidePersona.keyMode, .persona)
         XCTAssertEqual(ToolbarOperation.captureNext.keyMode, .snapAndTalk)
