@@ -50,7 +50,6 @@ struct ReadingSelectionImport { enum Origin: Equatable { case selection, transcr
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
-    @Published var showingPhonePhotos = false
     let photoHandoff = FixturePhotoHandoff()
     let presenter = FixturePresenter()
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?

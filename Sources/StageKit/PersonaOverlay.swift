@@ -46,6 +46,11 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
             }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    /// Released while shown, it still lets go of the shared pointer monitors.
+    deinit {
+        reveal?.invalidate()
+        pointer.remove(self)
+    }
 
     func show(image: NSImage, name: String, state: PersonaOverlayState, animated: Bool = false) -> PersonaOverlayState {
         let wasVisible = window?.isVisible == true
@@ -95,6 +100,44 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         guard artwork.outline != outline else { return }
         artwork.outline = outline
         if window?.isVisible == true { position() }
+    }
+    /// Another look for this copy, such as Circle instead of Card: the artwork
+    /// keeps its width and its centre on screen, moving only as far as it must to
+    /// stay on the display. The voice outline and handles follow the new edge, and
+    /// the lock is unchanged. Returns the placement that does this.
+    /// A copy hidden or paused keeps its last place, so its centre is kept too
+    /// and it comes back there in the new look.
+    func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
+        guard let window, artwork.image != nil, window.frame.width > 0, window.frame.height > 0, let screen = screenForArtwork() else {
+            setOutline(outline); configure(image: image, name: name, state: state); return self.state
+        }
+        let before = CGRect(x: window.frame.minX + artwork.artworkInsets.left, y: window.frame.minY + artwork.artworkInsets.bottom,
+                            width: window.frame.width - artwork.artworkInsets.left - artwork.artworkInsets.right,
+                            height: window.frame.height - artwork.artworkInsets.top - artwork.artworkInsets.bottom)
+        artwork.cancelDragging(); manipulation = nil
+        artwork.outline = outline
+        artwork.image = image
+        artwork.setAccessibilityLabel(name)
+        var next = state
+        next.screenID = Self.screenID(screen)
+        let available = screen.visibleFrame
+        // The same displayed width, not the same Size: tall artwork limited by the
+        // display's height shows narrower than its Size, and its new look must not
+        // grow to that Size. Only a look that cannot fit that width is smaller.
+        let sized = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: next.width), imageSize: image.size, in: available.size)
+        if abs(sized.width - before.width) > 2, available.width > 0 {
+            next.width = min(0.40, max(0.06, Double(before.width / available.width)))
+        }
+        let placed = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: next.width), imageSize: image.size, in: available.size)
+        let insets = artwork.ringInsets(for: placed.size)
+        let size = CGSize(width: placed.width + insets.left + insets.right, height: placed.height + insets.top + insets.bottom)
+        let origin = CGPoint(x: before.midX - placed.width / 2 - insets.left, y: before.midY - placed.height / 2 - insets.bottom)
+        let travelX = max(0, available.width - size.width), travelY = max(0, available.height - size.height)
+        next.x = travelX > 0 ? min(1, max(0, (origin.x - available.minX) / travelX)) : 0
+        next.y = travelY > 0 ? min(1, max(0, (origin.y - available.minY) / travelY)) : 0
+        self.state = next
+        position()
+        return self.state
     }
     func shutdown() { hide(); handles.shutdown(); artwork.ringOn = false; screenChanges = nil; onPlacementChange = nil; onSelection = nil }
 
@@ -187,9 +230,15 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     func handleEnded(_ handle: PersonaHandle) {
         guard manipulation != nil else { return }
         manipulation = nil
-        if handle.resizes, let window, let screen = screenForArtwork() {
+        if handle.resizes, let window, let image = artwork.image, let screen = screenForArtwork() {
             let width = window.frame.width - artwork.artworkInsets.left - artwork.artworkInsets.right
-            state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width)))
+            // Tall artwork is limited by the display's height, so a wider Size
+            // shows at the same width. Keep the Size it had when it still shows
+            // at this width, so a resize that could not grow it leaves it alone.
+            let kept = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: state.width),
+                                            imageSize: image.size, in: screen.visibleFrame.size).width
+            // Window frames are whole points, so a couple of points of rounding is the same width.
+            if abs(kept - width) > 2 { state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width))) }
         }
         finishDragging()
         updateHandles()
@@ -214,6 +263,9 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         // Remember the chosen monitor for this session even before the first
         // drag, so moving the pointer to another screen cannot move the card.
         state.screenID = Self.screenID(screen)
+        // A card moved under a still pointer, as a layout restore does, takes
+        // clicks by where the pointer is now, not where it last moved.
+        if window.isVisible { pointerLocation = pointer.location }
         updateMouseAcceptance()
         if window.isVisible { updateHandles() }
     }

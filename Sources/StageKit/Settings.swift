@@ -218,7 +218,7 @@ public enum StageShortcutSettings {
         var failures: [String: String] = [:]
         for entry in entries where entry.enabled {
             let other = entries.first { $0.id != entry.id && $0.enabled && $0.keyCode == entry.keyCode && $0.modifiers == entry.modifiers }
-            failures[entry.id] = other.map { "Also assigned to \($0.label). Both shortcuts are paused; change or turn off one in Keyboard shortcuts." }
+            failures[entry.id] = other.map { "Also assigned to \($0.label). Both shortcuts are paused; change or turn off one in Settings › Keyboard." }
                 ?? validateExternal?(entry.keyCode, entry.modifiers)
         }
         return failures

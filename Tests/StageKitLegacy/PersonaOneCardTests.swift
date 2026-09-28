@@ -182,10 +182,36 @@ final class PersonaOneCardTests {
         try f.library.showOverlay().get()
         XCTAssertTrue(f.library.notice == nil && f.library.cardFailure == nil, "A later Show clears the earlier failure")
         XCTAssertEqual(shows, 2)
-        // Another notice is never taken away by the card flow.
+        // Hide and Show start fresh: an earlier informational notice leaves the panel too.
         f.library.notice = "An unrelated notice"
         f.library.hideOverlay()
-        XCTAssertEqual(f.library.notice, "An unrelated notice")
+        XCTAssertTrue(f.library.notice == nil, "Hide clears an earlier informational notice")
+        f.library.notice = "Another earlier notice"
+        try f.library.showOverlay().get()
+        XCTAssertTrue(f.library.notice == nil, "Show clears it as well")
+        f.library.hideOverlay()
+    }
+
+    /// When every other card has failed while the shown card is up, Next and
+    /// Previous say so instead of doing nothing, and the shown card stays.
+    func testNextWithNoOtherCardSaysSo() throws {
+        let f = try fixture([Card(label: "Site manager"), Card(missing: true), Card(missing: true)], group: [0, 1, 2])
+        defer { cleanup(f) }
+        try f.library.showOverlay().get()
+        f.library.stepLivePersona(1); f.library.stepLivePersona(1)
+        XCTAssertEqual(f.library.shownCard?.source.id, f.items[0].id)
+        f.library.stepLivePersona(1)
+        XCTAssertEqual(f.library.cardFeedback, "No other card can show right now.")
+        XCTAssertEqual(failure(f.library.makeControlsMenu()), "No other card can show right now.", "The live menu leads with it")
+        f.library.stepLivePersona(-1)
+        XCTAssertEqual(f.library.cardFeedback, "No other card can show right now.", "Previous says the same")
+        XCTAssertEqual(f.library.shownCard?.source.id, f.items[0].id)
+        // A read-only library keeps saying so through Hide and Show.
+        let blocked = PersonaLibrary(root: f.root, readOnlyReason: "Synthetic read-only library", sessionHUDEnabled: false)
+        defer { blocked.shutdown() }
+        blocked.usesSharedControls = true
+        try blocked.showOverlay().get(); blocked.hideOverlay()
+        XCTAssertEqual(blocked.notice, "Synthetic read-only library")
     }
 
     func testReplacingTheShownCardWithABadOneKeepsIt() throws {

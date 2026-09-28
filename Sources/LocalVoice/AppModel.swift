@@ -85,7 +85,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// clears it; without one, History opens on All.
     @Published var historyDoor: HistoryDoor?
     @Published var libraryFocusToken = UUID()
-    @Published var showingPhonePhotos = false
     @Published var phase: Phase = .idle
     @Published var ready = false
     @Published var preparing = false
@@ -340,7 +339,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
 
     /// The one owner of text arriving in Read: the macOS Service, History and
-    /// Saved resources all come here. An empty draft or the same text needs no
+    /// Library all come here. An empty draft or the same text needs no
     /// choice; a different draft waits behind Replace reading / Keep current,
     /// with the current reading untouched. Nothing here starts audio or sends
     /// text online.
@@ -359,7 +358,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         onShowEditor?("speak")
     }
 
-    /// Read aloud in History and Saved resources.
+    /// Read aloud in History and Library.
     func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
         do { receiveReadingSelection(try ReadingSelectionImport(text: text, origin: origin)) }
         catch {

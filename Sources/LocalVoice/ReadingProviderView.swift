@@ -9,7 +9,7 @@ struct ReadingProviderView: View {
                 ForEach(ReadingProvider.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
             if model.readingProvider == .speko {
-                Text("Speko sends this reading to its cloud service and selected voice provider. Your Speko account may be charged. Your dictation engine is selected separately in Models.")
+                Text("Speko sends this reading to its cloud service and selected voice provider. Your Speko account may be charged. Your dictation engine is selected separately in Settings › Models.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     SecureField("Personal Speko API key", text: $key).textFieldStyle(.roundedBorder)
@@ -50,7 +50,7 @@ struct ReadingProviderView: View {
                     if !model.spekoVoiceNotice.isEmpty {
                         Text(model.spekoVoiceNotice).font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("Up to 5,000 characters per reading. Speko speech-to-text is not selected here; dictation remains configured separately in Models.")
+                    Text("Up to 5,000 characters per reading. Speko speech-to-text is not selected here; dictation remains configured separately in Settings › Models.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

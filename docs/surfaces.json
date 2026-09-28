@@ -148,6 +148,120 @@
     "note": "Runtime label from Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" ); no rendered text assumed."
   },
   {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.cancel",
+    "surface": "settings page",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Cancel stops the current Ollama request or closes the download question; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.cancel.2",
+    "surface": "settings page",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Cancel stops the current Ollama request or closes the download question; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.check-installed",
+    "surface": "settings page",
+    "label": "Check installed",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.download-model",
+    "surface": "settings page",
+    "label": "Download model…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.download-model.3ba377ba",
+    "surface": "settings page",
+    "label": "Download model",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.load-model",
+    "surface": "settings page",
+    "label": "Load model",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.save-refinement-choice",
+    "surface": "settings page",
+    "label": "Save refinement choice",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.browse-models",
+    "surface": "settings page",
+    "label": "Browse models",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.disable-ollama-cloud",
+    "surface": "settings page",
+    "label": "Disable Ollama Cloud",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.get-ollama",
+    "surface": "settings page",
+    "label": "Get Ollama",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Menu.installed-models",
+    "surface": "settings page",
+    "label": "Installed models",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Picker.natural-cleanup-model",
+    "surface": "settings page",
+    "label": "Natural cleanup model",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.TextField.model-name",
+    "surface": "settings page",
+    "label": "Model name",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.TextField.ollama-address",
+    "surface": "settings page",
+    "label": "Ollama address",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.read-aloud",
     "surface": "library page",
     "label": "Read aloud",
@@ -500,6 +614,39 @@
     "note": "Quality: the meeting page's existing door to History takes the place's name (was Recent transcripts; #137)."
   },
   {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-aeb8a4573b22",
+    "surface": "settings page",
+    "label": null,
+    "expression": "applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Runtime label from applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Picker.transcribe-with",
+    "surface": "settings page",
+    "label": "Transcribe with",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.TextField.http-127-0-0-1-8080-v1-audio-transcriptions",
+    "surface": "settings page",
+    "label": "http://127.0.0.1:8080/v1/audio/transcriptions",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.TextField.whisper-1",
+    "surface": "settings page",
+    "label": "whisper-1",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
     "surface": "proactive offer PhotoHandoffArrivalCue",
     "label": "From iPhone",
@@ -523,12 +670,12 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-saved-resources",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
     "surface": "Saved Prompts picker",
-    "label": "Open Saved resources…",
+    "label": "Open Library…",
     "kind": "action",
     "belongsTo": "library",
-    "note": "Option of Saved resources: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159)."
+    "note": "Option of Library: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159). Quality: Open Saved resources… takes the place's Grammar name, Library (#134)."
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-14443435e8dd",
@@ -803,20 +950,6 @@
     "note": "Option (a door): Dictate's options live on the Dictate page; this keeps Settings free of dead ends (#134 W3)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.keyboard-and-practice",
-    "surface": "settings page",
-    "label": "Keyboard and practice",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.models-and-local-server",
-    "surface": "settings page",
-    "label": "Models and local server",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
     "surface": "window sidebar",
     "label": null,
@@ -824,6 +957,14 @@
     "kind": "action",
     "belongsTo": "settings",
     "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.show-me-a-first-dictation",
+    "surface": "settings page",
+    "label": "Show me a first dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: Settings › General's door back to Home's first-dictation guide, beside Dictate options… and shown only until the first dictation, as Home's own link is. It offers the guide again and opens Home (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
@@ -840,14 +981,76 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.connections",
+    "surface": "page sections",
+    "label": "Connections",
+    "page": "connections",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: Settings' assistant connections and photo handoff move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.library",
+    "surface": "page sections",
+    "label": "Resources",
+    "page": "library",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Quality: Library opens on Resources, the saved prompts, links and files it showed before its fold, now named by its switcher (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.models",
+    "surface": "page sections",
+    "label": "Models",
+    "page": "models",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: the Models sidebar item becomes the Models section of Settings, on the same route, models (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.packs",
+    "surface": "page sections",
+    "label": "Packs",
+    "page": "packs",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Quality: the Packs sidebar item becomes the Packs section of Library, on the same route, packs, so pack links and Snap & Talk's Manage packs… land there (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.photos",
+    "surface": "page sections",
+    "label": "From iPhone",
+    "page": "photos",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's arrival cue still opens it."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",
+    "surface": "page sections",
+    "label": "General",
+    "page": "settings",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: Settings opens on General, what the page showed before its fold, now named by its switcher (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.shortcuts",
+    "surface": "page sections",
+    "label": "Keyboard",
+    "page": "shortcuts",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: the Keyboard sidebar item becomes the Keyboard section of Settings, on the same route, shortcuts. Practice still pauses global actions only while it runs (#134)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.annotate",
     "surface": "window sidebar",
-    "label": "Annotate",
+    "label": "Draw",
     "page": "annotate",
     "kind": "capability",
     "belongsTo": "draw",
-    "aliasOf": "draw",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Annotate takes its Grammar name, Draw, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.dictate",
@@ -877,28 +1080,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.library",
     "surface": "window sidebar",
-    "label": "Saved resources",
+    "label": "Library",
     "page": "library",
     "kind": "place",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.models",
-    "surface": "window sidebar",
-    "label": "Models",
-    "page": "models",
-    "kind": "option",
-    "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.packs",
-    "surface": "window sidebar",
-    "label": "Packs",
-    "page": "packs",
-    "kind": "option",
-    "belongsTo": "library"
+    "note": "Quality: Saved resources takes its Grammar place name, Library, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.personas",
@@ -911,12 +1097,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.present",
     "surface": "window sidebar",
-    "label": "Present a device",
+    "label": "Present",
     "page": "present",
     "kind": "capability",
     "belongsTo": "present",
-    "aliasOf": "present",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Present a device takes its Grammar name, Present, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.readback",
@@ -935,16 +1120,6 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.shortcuts",
-    "surface": "window sidebar",
-    "label": "Keyboard",
-    "page": "shortcuts",
-    "kind": "option",
-    "belongsTo": "settings",
-    "aliasOf": "settings",
-    "note": "unify under Grammar Names"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.snap",
     "surface": "window sidebar",
     "label": "Snap",
@@ -955,12 +1130,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.speak",
     "surface": "window sidebar",
-    "label": "Read aloud",
+    "label": "Read",
     "page": "speak",
     "kind": "capability",
     "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Read aloud takes its Grammar name, Read, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.all-history",
@@ -1124,7 +1298,7 @@
     "label": "Show me a first dictation",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option: a door on Home back to the existing first-dictation guide, the only resume route, shown only while nothing has been dictated and the guide was skipped (#15)."
+    "note": "Option: a door on Home back to the existing first-dictation guide, shown only while nothing has been dictated and the guide was skipped. Settings › General offers the same until the first dictation (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.skip-for-now",
@@ -1346,7 +1520,7 @@
     "kind": "action",
     "belongsTo": "settings",
     "aliasOf": "settings",
-    "note": "unify under Grammar Names"
+    "note": "The panel footer's word for this door stays Shortcuts, as the Grammar lists the footer (Open Workbench, Settings, Shortcuts) and #134 decision 3 keeps it. It opens Settings › Keyboard on the same route, shortcuts, so it names the Keyboard section's job rather than a separate place (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-persona-options.NativeControlMenu.options",
@@ -1513,13 +1687,12 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.NSMenuItem.annotate",
+    "id": "LocalVoice.main.AppDelegate.NSMenuItem.draw",
     "surface": "app menu bar",
-    "label": "Annotate",
+    "label": "Draw",
     "kind": "action",
     "belongsTo": "draw",
-    "aliasOf": "draw",
-    "note": "unify under Grammar Names"
+    "note": "Quality: the top-level Annotate menu takes its Grammar name, Draw, in the same place, holding the same Draw menu (#134)."
   },
   {
     "id": "LocalVoice.main.AppDelegate.NSMenuItem.services",
@@ -1587,21 +1760,6 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.history",
-    "surface": "app menu bar",
-    "label": "History",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Option of History: the menu and keyboard route to captured work, replacing Snap History one for one (#137)."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.keyboard-shortcuts",
-    "surface": "app menu bar",
-    "label": "Keyboard shortcuts…",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.open-workbench",
     "surface": "app menu bar",
     "label": "Open Workbench",
@@ -1618,20 +1776,6 @@
     "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.persona",
-    "surface": "app menu bar",
-    "label": "Persona",
-    "kind": "action",
-    "belongsTo": "persona"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.quick-controls",
-    "surface": "app menu bar",
-    "label": "Quick controls",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.quit-workbench",
     "surface": "app menu bar",
     "label": "Quit Workbench",
@@ -1646,34 +1790,11 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.save-clipboard-as-prompt",
-    "surface": "app menu bar",
-    "label": "Save clipboard as prompt…",
-    "kind": "action",
-    "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.saved-resources",
-    "surface": "app menu bar",
-    "label": "Saved resources",
-    "kind": "action",
-    "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "unify under Grammar Names"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.select-all",
     "surface": "app menu bar",
     "label": "Select All",
     "kind": "action",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.settings",
-    "surface": "app menu bar",
-    "label": "Settings…",
-    "kind": "action",
-    "belongsTo": "settings"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.show-floating-toolbar",
@@ -1683,25 +1804,11 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.snap-talk-sessions",
-    "surface": "app menu bar",
-    "label": "Snap & Talk sessions",
-    "kind": "action",
-    "belongsTo": "snapAndTalk"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.switch-to",
     "surface": "app menu bar",
     "label": "Switch to…",
     "kind": "action",
     "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.transcribe-meeting-or-call",
-    "surface": "app menu bar",
-    "label": "Transcribe meeting or call…",
-    "kind": "workflow",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.undo",
@@ -1741,6 +1848,69 @@
     "label": "Window",
     "kind": "action",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.history",
+    "surface": "app menu bar",
+    "label": "History",
+    "page": "history",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Quality: Window › History takes its name and route from the page record and still opens History on All (#134, #137)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.library",
+    "surface": "app menu bar",
+    "label": "Library",
+    "page": "library",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Quality: Window › Library takes its name and route from the page record, keeps ⌘L and focuses Library's search as the Library shortcut does (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.meeting",
+    "surface": "app menu bar",
+    "label": "Transcribe meeting or call…",
+    "page": "meeting",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Quality: Window › Transcribe meeting or call… takes its name and route from the page record, with the native … because the page asks for a source before anything records (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.personas",
+    "surface": "app menu bar",
+    "label": "Persona",
+    "page": "personas",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality: Window › Persona takes its name and route from the page record (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.readback",
+    "surface": "app menu bar",
+    "label": "Snap & Talk",
+    "page": "readback",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: Window › Snap & Talk sessions becomes Snap & Talk, the page's own name, read from the page record; same page (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.settings",
+    "surface": "app menu bar",
+    "label": "Settings…",
+    "page": "settings",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: Workbench › Settings… takes its name and route from the page record and keeps ⌘, (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.shortcuts",
+    "surface": "app menu bar",
+    "label": "Keyboard…",
+    "page": "shortcuts",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: Workbench › Keyboard shortcuts… becomes Keyboard…, the name of the Settings section it opens, read from the page record (#134)."
   },
   {
     "id": "StageKit.ActivityMenus.PersonaSizeMenuView.native-control.persona-size",
@@ -1970,11 +2140,37 @@
     "note": "Voice framing, the Persona option named in the Grammar. Off by default; listens only while the framed persona shows."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.runtime-2aa73098749c",
+    "surface": "Persona menu",
+    "label": null,
+    "expression": "\"Replace Shown with \" + name",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality within Persona (#170): replaces the shown floating card, shown or hidden, with the preparation selection, keeping its size, place and lock. Named by the selection's public label only."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-again",
+    "surface": "Persona menu",
+    "label": "Show Again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality within Persona (#170): Hide keeps the one floating card, and Show Again brings back that card, the same words as a paused set's Show Again."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-selected-persona",
     "surface": "Persona menu",
     "label": "Show Selected Persona",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.update-shown-card",
+    "surface": "Persona menu",
+    "label": "Update Shown Card",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality within Persona (#170): offered only when the shown card's persona was saved with another look; updates that copy alone, keeping its place."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.action.bring-forward",
@@ -2037,11 +2233,36 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.action.update-selected",
+    "surface": "Persona menu",
+    "label": "Update Selected",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality within Persona (#170): the prepared set's selected copy takes its persona's newer saved look; other copies keep theirs, and the layout is saved only when asked."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.addSubmenu.add-overlay",
     "surface": "Persona menu",
     "label": "Add Overlay",
     "kind": "option",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance",
+    "surface": "Persona menu",
+    "label": "Appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona (#169): Circle, Card or Original for the selected live copy only, drawn from its frozen ingredients. One choice with the current look checked, like Position Artwork; no new capability or style system."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance.2",
+    "surface": "Persona menu",
+    "label": "Appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The same Appearance choice for the one floating card; its Options offer it as they offer the selected copy's (#169)."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.addSubmenu.choose-overlay",
@@ -2611,6 +2832,70 @@
     "case": "topRight",
     "kind": "option",
     "belongsTo": "app"
+  },
+  {
+    "id": "choices.NaturalCleanupProvider.apple",
+    "surface": "choices NaturalCleanupProvider",
+    "label": "Apple Intelligence",
+    "case": "apple",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "choices.NaturalCleanupProvider.ollama",
+    "surface": "choices NaturalCleanupProvider",
+    "label": "Ollama on this Mac",
+    "case": "ollama",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "choices.PersonaAppearance.Shape.card",
+    "surface": "choices PersonaAppearance.Shape",
+    "label": "Card",
+    "case": "card",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. The existing labelled portrait card."
+  },
+  {
+    "id": "choices.PersonaAppearance.Shape.circle",
+    "surface": "choices PersonaAppearance.Shape",
+    "label": "Circle",
+    "case": "circle",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. The default for a new profile portrait."
+  },
+  {
+    "id": "choices.PersonaAppearance.Shape.original",
+    "surface": "choices PersonaAppearance.Shape",
+    "label": "Original",
+    "case": "original",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. Shows the image unchanged, the same sense of the word as Dictate's Original text style: the source kept as it is."
+  },
+  {
+    "id": "choices.RecognitionProvider.localServer",
+    "surface": "choices RecognitionProvider",
+    "label": "Local model server",
+    "case": "localServer",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "choices.RecognitionProvider.parakeet",
+    "surface": "choices RecognitionProvider",
+    "label": "Parakeet on this Mac",
+    "case": "parakeet",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
     "id": "choices.SnapCapture.Mode.region",
