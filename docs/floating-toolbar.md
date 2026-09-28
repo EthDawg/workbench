@@ -447,6 +447,11 @@ The core cannot be right if the host feeds it fiction.
   cancelled deadline must never be delivered into a later deadline.
 - **One animation.** `NSAnimationContext` on the window frame. The content does
   not animate its own size at the same time.
+- **Hover intent belongs to its geometry.** Suspending tracking for a resize,
+  drag or surface change cancels the pending reveal dwell. Only the host's final
+  pointer reconciliation may reveal at the new geometry; an old dwell cannot
+  shorten a later entry. If AppKit misses an exit, the next real entry starts a
+  fresh dwell rather than leaving the pill unresponsive.
 - **The row grows inward from the launcher's centre**, which the compact mark
   shares, so nothing under a pointer on it moves as the row opens, widens or
   closes, and a right-hand dock does not run off the display.
