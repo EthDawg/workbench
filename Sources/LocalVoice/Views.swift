@@ -398,13 +398,14 @@ struct DictionaryView: View {
         }
     }
 
-    /// Rules saved by earlier versions can share a phrase. Only the first applies,
-    /// so show every value and let one explicit choice settle it.
+    /// Rules saved by earlier versions can share a phrase. The card names what
+    /// dictation writes for it today, from every rule in order, shows every
+    /// value and lets one explicit choice settle it.
     private func conflict(_ rules: [Replacement]) -> some View {
         let spellings = rules.map(\.written).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         return VStack(alignment: .leading, spacing: 10) {
             Label(spellings.count > 1
-                  ? "“\(rules[0].heard)” has \(rules.count) rules. Only the first is used, so it writes “\(rules[0].written)”."
+                  ? "“\(rules[0].heard)” has \(rules.count) rules. Dictation writes “\(CorrectionRule.currentOutput(for: rules[0].heard, in: model.replacements))”."
                   : "“\(rules[0].heard)” is saved \(rules.count) times.", systemImage: "exclamationmark.triangle")
                 .font(.system(size: 13, weight: .medium))
             Text("Keep one spelling. Only this phrase’s other rules are removed.")

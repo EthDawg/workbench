@@ -311,7 +311,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let legacy = AppModelCorrectionHarness(draft: "Please ask qa velcor 928 tomorrow.", rules: [unrelatedRules[0], one, unrelatedRules[1], two])
         let legacyBefore = try Snapshot(legacy)
         try check(TextRules.apply(legacy.transcript, replacements: legacy.replacements) == "Please ask VelcorOne928 tomorrow.",
-                  "The earlier conflicting rule is the one that applies")
+                  "In the ticket's case the earlier conflicting rule's spelling is what dictation writes")
         try rejectsRule(.duplicateRules(heard: "qa velcor 928", count: 2), "Add refuses to guess between conflicting rules") {
             try legacy.addReplacement(heard: "qa velcor 928", written: "VelcorTwo928")
         }

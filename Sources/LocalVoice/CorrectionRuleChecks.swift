@@ -105,7 +105,15 @@ enum CorrectionRuleChecks {
         let one = Replacement(heard: "qa velcor 928", written: "VelcorOne928"), two = Replacement(heard: "QA VELCOR 928", written: "VelcorTwo928")
         let legacy = [before, one, after, two]
         try check(TextRules.apply("Please ask qa velcor 928 tomorrow.", replacements: legacy) == "Please ask VelcorOne928 tomorrow.",
-                  "the first conflicting rule is the one that applies")
+                  "in the ticket's case the first conflicting rule's spelling is what dictation writes")
+        try check(CorrectionRule.currentOutput(for: "qa velcor 928", in: legacy) == "VelcorOne928",
+                  "a conflict names the spelling dictation writes today")
+        // A casing fix is matched again by a later rule for the same phrase, so the
+        // later spelling wins: the card must not claim the first rule is used.
+        let casingConflict = [Replacement(heard: "github", written: "GitHub"), Replacement(heard: "GITHUB", written: "Github")]
+        try check(CorrectionRule.currentOutput(for: "github", in: casingConflict) == "Github"
+                  && CorrectionRule.currentOutput(for: "github", in: casingConflict) == TextRules.apply("github", replacements: casingConflict),
+                  "with casing-only conflicts a later rule can win, and the card names that spelling")
         try check(CorrectionRule.conflicts(in: legacy) == [[one, two]] && CorrectionRule.conflicts(in: [before, saved, after]).isEmpty,
                   "conflicts list every rule for a shared phrase, in dictionary order")
         try rejects(.duplicateRules(heard: "qa velcor 928", count: 2), heard: "qa velcor 928", written: "VelcorTwo928", rules: legacy)

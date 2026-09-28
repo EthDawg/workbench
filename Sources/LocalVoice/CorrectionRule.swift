@@ -105,7 +105,8 @@ enum CorrectionRule {
     }
 
     /// Saved phrases with more than one rule, each in dictionary order. TextRules
-    /// applies only the first of them, so each needs one explicit choice.
+    /// runs every rule in turn over the evolving text, so which spelling wins
+    /// depends on their order and outputs; each needs one explicit choice.
     static func conflicts(in replacements: [Replacement]) -> [[Replacement]] {
         var groups: [[Unicode.Scalar]: [Replacement]] = [:]
         var order: [[Unicode.Scalar]] = []
@@ -116,6 +117,13 @@ enum CorrectionRule {
             groups[key, default: []].append(rule)
         }
         return order.compactMap { key in groups[key].flatMap { $0.count > 1 ? $0 : nil } }
+    }
+
+    /// What dictation writes for a phrase today, from every saved rule in order.
+    /// A conflict names this rather than assuming the first rule wins: a later
+    /// rule matches again when an earlier output only changed the phrase's casing.
+    static func currentOutput(for heard: String, in replacements: [Replacement]) -> String {
+        TextRules.apply(heard, replacements: replacements)
     }
 
     /// Keeps one output for a phrase with several rules. The first of them keeps
