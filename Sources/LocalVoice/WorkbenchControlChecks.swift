@@ -139,6 +139,40 @@ enum WorkbenchControlChecks {
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
         }
+        // Persona's Shape (#134 part B): Circle, Card and Original for the copy taken as the menu
+        // opens, its current look checked; a choice changes that copy and no other.
+        do {
+            var looks: [Int: StageKitController.PersonaShape] = [1: .card, 2: .circle]
+            let menu = ToolbarAccessoryMenus.shape(copy: 1, current: { looks[$0] }, choose: { looks[$1] = $0 })
+            try check(menu.items.map(\.title) == ["Circle", "Card", "Original"] && menu.items.map(\.state) == [.off, .on, .off],
+                      "Shape lists Circle, Card and Original with the copy's current look checked")
+            let original = menu.items[2]
+            _ = (original.target as AnyObject?)?.perform(original.action, with: original)
+            try check(looks == [1: .original, 2: .circle], "a Shape choice changes the copy its menu opened for, and no other")
+            try check(ToolbarAccessoryMenus.shape(copy: Int?.none, current: { _ in nil }, choose: { _, _ in }).items.isEmpty,
+                      "with no copy, Shape has nothing to change")
+            // When the row has no room for Shape it waits in More, unless Persona's own menu there
+            // already holds the choice, as a shown card's and a set's Appearance do.
+            func personaMenu(_ titles: [String], appearance: Bool) -> NSMenu {
+                let menu = NSMenu()
+                titles.forEach { menu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                if appearance {
+                    let item = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: ""), choices = NSMenu()
+                    ["Circle", "Card", "Original"].forEach { choices.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                    item.submenu = choices; menu.addItem(item)
+                }
+                return menu
+            }
+            let hiddenCard = personaMenu(["Show Again", "End Overlay"], appearance: false)
+            let shownCard = personaMenu(["Choose Persona", "End Overlay"], appearance: true)
+            try check(ToolbarAccessoryMenus.moreNeedsShape(hiddenCard, accessoryFits: false, hasCopy: true),
+                      "a hidden card's Shape waits in More when the row has no room for it")
+            try check(!ToolbarAccessoryMenus.moreNeedsShape(hiddenCard, accessoryFits: true, hasCopy: true),
+                      "while it fits, Shape stays on the row and More does not repeat it")
+            try check(!ToolbarAccessoryMenus.moreNeedsShape(shownCard, accessoryFits: false, hasCopy: true),
+                      "a shown copy's Appearance in More already holds Circle, Card and Original")
+            try check(!ToolbarAccessoryMenus.moreNeedsShape(hiddenCard, accessoryFits: false, hasCopy: false), "with no copy, More has no Shape")
+        }
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.
         try check([ToolbarChooserClose.chose, .escape, .dismissed].map(\.returnsKeyboardToLauncher) == [true, true, false],

@@ -1399,6 +1399,7 @@ enum SurfaceGallery {
         model.meetings = previousMeetings; model.objectWillChange.send()
         settle(.resting)
         try checkRecordingInTheHost(host: host, controls: controls, bottom: bottom, expect: expect, settle: settle, at: at, compact: compact)
+        checkAccessoriesInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
         for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
@@ -1544,6 +1545,59 @@ enum SurfaceGallery {
             if host.coachPanel.shownFrame != nil { expect("The coaching card goes", ["the card stayed after it was removed"]) }
         }
         controls.choosePosition?(.bottom); settle(.resting)
+    }
+
+    /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
+    /// with nothing live, Draw shows Tools and Present Prompts, each with its chevron, and no other
+    /// tool shows one: Dictate, Read and Snap never do, Snap & Talk only with a session open, and
+    /// Persona only with a live copy, which the gallery never shows over the Mac. Tools holds Draw's
+    /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
+    /// Snap & Talk's Review opens that session's review.
+    func checkAccessoriesInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
+                                   expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
+        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        controls.toolbar.send(.holdBegan(.keyboard))
+        for mode in ToolbarMode.allCases {
+            model.toolbarMode = mode; settle(.revealed)
+            let expected = ToolbarAccessory.offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false)
+            let found = host.window?.contentView.map(buttons)?.filter { $0.accessibilityIdentifier() == "toolbar.accessory" } ?? []
+            let title = expected.map { $0.opensList ? $0.title + " ⌄" : $0.title }
+            expect("\(mode.title)'s accessory, revealed with nothing live", [
+                found.count > 1 ? "the row shows \(found.count) accessories" : nil,
+                found.first?.title == title ? nil
+                    : "the row shows \(found.first.map { "\"\($0.title)\"" } ?? "no accessory"), not \(title.map { "\"\($0)\"" } ?? "none")",
+                found.first.map { $0.accessibilityLabel() == expected?.title ? nil : "VoiceOver hears \"\($0.accessibilityLabel() ?? "")\"" } ?? nil])
+        }
+        controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
+        var routes: [String] = []
+        let previousEditor = model.onShowEditor
+        model.onShowEditor = { routes.append($0) }
+        defer { model.onShowEditor = previousEditor; model.toolbarMode = .dictate }
+        func toolbar(_ readback: ReadbackModel) -> FloatingToolbar {
+            FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
+                            meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
+                            dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+        }
+        let plain = toolbar(readback)
+        model.toolbarMode = .draw
+        let tools = plain.accessoryMenu(.tools).items.map(\.title), drawing = stage.makeAnnotationMenu(includeSettings: false).items.map(\.title)
+        expect("Draw's Tools", [!tools.isEmpty && tools == drawing ? nil : "Tools lists \(tools), not Draw's drawing choices \(drawing)"])
+        model.toolbarMode = .persona
+        let more = plain.moreMenu(), before = opened.count
+        let door = more.items.firstIndex { $0.title == "Open Persona…" }
+        if let door, let action = more.items[door].action { NSApp.sendAction(action, to: more.items[door].target, from: more.items[door]) }
+        expect("Persona with no live copy", [
+            plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to shape",
+            door == nil ? "More has no Open Persona…" : nil,
+            door == nil || Array(opened.dropFirst(before)) == ["personas"] ? nil : "Open Persona… opened \(Array(opened.dropFirst(before)))",
+            more.items.contains { $0.title == ToolbarAccessory.shape.title } ? "More offers Shape with no copy to shape" : nil])
+        model.toolbarMode = .snapAndTalk
+        let session = toolbar(sessionReadback), review = session.accessory(session.live)
+        session.accessoryPanel(review)?(NSView())
+        expect("Snap & Talk with a session open", [
+            plain.accessory(plain.live) == nil ? nil : "Snap & Talk offers an accessory with no session open",
+            review == .review ? nil : "the open session offers \(review.map(\.title) ?? "nothing"), not Review",
+            routes == ["readback"] ? nil : "Review opened \(routes), not the session's review"])
     }
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
