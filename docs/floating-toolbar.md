@@ -192,6 +192,17 @@ The core cannot be right if the host feeds it fiction.
   its place on screen and a right-hand dock does not run off it.
   `ToolbarAnchor.growsLeftward` is the whole of that geometry; `ToolbarGeometry`
   centres the top and bottom docks on the measured resting width.
+- **The window is the row's size.** `FloatingToolbar` reports the row with
+  `onGeometryChange`. Before sizing the tools, the host lays the row out
+  (`layoutSubtreeIfNeeded`), so the report for the tier, mode and labels about to
+  show arrives first. A reveal, a count crossing 9→10 or a mode switch goes
+  straight to the right frame, and a drag keeps its window until release. A row
+  that opens revealed (Keep open at launch) measures its resting element once,
+  off screen, so a top or bottom dock centres on it. After that, only the resting
+  element's own report changes the width, so an open row is never re-centred under
+  the pointer. Do not measure with a preference written from a background
+  `GeometryReader`: once the row held conditional content, that report never
+  arrived, and every window kept a seed size (#152).
 - **Effects are instructions, not suggestions.** The host never reads the state
   to decide what to do.
 
