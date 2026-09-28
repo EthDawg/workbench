@@ -135,6 +135,8 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(state("reading-paused-in-dictate")?.actionTitle, "Resume reading")
         XCTAssertEqual(state("recording-dictation-stops-soon")?.status.stopsSoonBadge, true)
         XCTAssertEqual(state("recording-dictation-stops-soon-attention")?.status.badges, [.stopsSoon, .attention], "both badges, in the launcher too")
+        XCTAssertEqual(state("recording-waiting-for-drawing")?.actionTitle, "Stop drawing", "words waiting for drawing (#211 F5)")
+        XCTAssertEqual(state("recording-waiting-for-drawing")?.status.indicator, .pendingDelivery)
         for resting in ToolbarGallery.recording.filter({ $0.tier == .resting }) {
             XCTAssertNotEqual(resting.status.indicator, .idle, "\(resting.name) rests with its status")
         }

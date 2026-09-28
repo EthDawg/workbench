@@ -72,10 +72,29 @@ final class ToolbarNextActionTests: XCTestCase {
             case .endPresentation: ok = live.presenting && live.mode == .present
             case .start(let mode): ok = mode == live.mode
             case .wait: ok = live.capturingScreen || live.dictation == .processing || live.dictation == .cancelling
+                || live.dictation == .waitingForDrawing
             }
             if !ok, failures.count < 5 { failures.append("\(action.operation) for \(live)") }
         }
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
+    }
+
+    /// Dictated words waiting for drawing to end (#211 F5): Stop drawing leads in every tool,
+    /// because it is what delivers them, never a disabled Processing…; once drawing has ended
+    /// they are a moment's processing; and an insertion still comes first.
+    func testWordsWaitingForDrawingLeadWithStopDrawing() {
+        for mode in ToolbarMode.allCases {
+            let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, dictation: .waitingForDrawing, drawing: true))
+            XCTAssertEqual(waiting.operation, .finishDrawing, "\(mode)")
+            XCTAssertEqual(waiting.title, "Stop drawing")
+            XCTAssertTrue(waiting.isEnabled)
+        }
+        let ended = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, dictation: .waitingForDrawing))
+        XCTAssertEqual(ended.operation, .wait)
+        XCTAssertEqual(ended.title, "Processing…")
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, dictation: .waitingForDrawing, drawing: true,
+                                                                  insertingPrompt: true)).operation, .stopInserting)
+        XCTAssertTrue(ToolbarLiveState(mode: .draw, dictation: .waitingForDrawing).isLive(.dictate), "the dictation is still live")
     }
 
     /// A mode's ending never claims another mode's label: presenting in Draw

@@ -139,6 +139,15 @@ enum WorkbenchControlChecks {
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
         }
+        // Words waiting for drawing to end lead with Stop drawing, which delivers them; Copy now
+        // is in More (#211 F5).
+        do {
+            var waiting = WorkbenchControlState(); waiting.phase = .delivering; waiting.waitingForDrawing = true; waiting.drawing = true
+            try check(waiting.live(.dictate).dictation == .waitingForDrawing && waiting.actionTitle(.dictate) == "Stop drawing"
+                      && waiting.rowAction(.dictate) == .operation(.finishDrawing), "words waiting for drawing lead with Stop drawing, not a disabled Processing…")
+            waiting.drawing = false
+            try check(waiting.actionTitle(.dictate) == "Processing…", "once drawing has ended they are a moment's processing")
+        }
         // Keyboard entry keeps the launcher row: only the pointer's own reveal shows a waiting
         // result's controls, and a row that Keep open brings back waits for the pointer and holds
         // as the kept-open swap does (#211 F1, F8).

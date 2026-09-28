@@ -2627,8 +2627,8 @@
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.wait",
     "surface": "floating toolbar next action",
     "label": null,
-    "expression": "live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing ? \"Processing…\" : \"Capturing…\"",
-    "note": "Runtime label from live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing ? \"Processing…\" : \"Capturing…\"; no rendered text assumed.",
+    "expression": "live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing | | live . dictation == . waitingForDrawing ? \"Processing…\" : \"Capturing…\"",
+    "note": "Runtime label from live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing | | live . dictation == . waitingForDrawing ? \"Processing…\" : \"Capturing…\". Quality (#211 F5): words waiting for drawing that has already ended read Processing…, as other processing does; while drawing continues, Stop drawing leads instead.",
     "kind": "status",
     "belongsTo": "app"
   },

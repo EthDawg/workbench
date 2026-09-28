@@ -50,6 +50,7 @@ public enum ToolbarGallery {
         return ToolbarActivity(capture: captures, playback: live.reading == .playing,
             processing: live.dictation == .processing || live.dictation == .cancelling || live.dictation == .requesting
                 || live.pendingNarration || live.reading == .preparing,
+            pendingDelivery: live.dictation == .waitingForDrawing,
             paused: live.reading == .paused || live.timer == .paused || live.persona == .sessionHidden, live: running)
     }
 
@@ -118,6 +119,9 @@ public enum ToolbarGallery {
         // Dictating while Present is the tool: the recording claims the button, as everywhere.
         live(ToolbarLiveState(mode: .present, dictation: .recording, presenting: true), name: "recording-dictation-in-present",
              activity: ToolbarActivity(capture: .dictation, level: 0.3, live: [.presenting])),
+        // Dictated words waiting for drawing to end: Stop drawing delivers them, Copy now is in
+        // More, and the mark says a result is waiting (#211 F5).
+        live(ToolbarLiveState(mode: .dictate, dictation: .waitingForDrawing, drawing: true), name: "recording-waiting-for-drawing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing-resting", tier: .resting),
         live(ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 2), name: "recording-narration",
