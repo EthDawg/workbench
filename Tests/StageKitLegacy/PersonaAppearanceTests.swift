@@ -88,6 +88,13 @@ final class PersonaAppearanceTests {
         return NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
     }
     private func screen() -> NSScreen? { NSScreen.main ?? NSScreen.screens.first }
+    /// Window frames are whole points, so a kept width or centre can differ by up
+    /// to a couple of points, as the reshape rule itself allows. The growth this
+    /// guards against is hundreds of points.
+    private let rounding = 2.0
+    /// An Original's edge is measured from a 128-pixel copy of its artwork, so it
+    /// can also differ by a pixel of that copy.
+    private func measured(_ frame: CGRect) -> Double { max(rounding, Double(frame.width) / 64) }
     private func displayID(_ screen: NSScreen) -> UInt32? { (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value }
 
     // MARK: 1. New portraits start as a Circle; switching keeps everything
@@ -228,10 +235,10 @@ final class PersonaAppearanceTests {
 
         var state = controller.reshape(image: circle, outline: PersonaAppearance.Shape.circle.outline, name: "Synthetic lead", state: start)
         guard let round = controller.visibleFrame else { return }
-        XCTAssertEqual(Double(round.width), Double(before.width), accuracy: 1, file: #filePath, line: #line)
+        XCTAssertEqual(Double(round.width), Double(before.width), accuracy: rounding, file: #filePath, line: #line)
         XCTAssertEqual(Double(round.width / round.height), 1, accuracy: 0.01)
-        XCTAssertEqual(Double(round.midX), Double(before.midX), accuracy: 1)
-        XCTAssertEqual(Double(round.midY), Double(before.midY), accuracy: 1)
+        XCTAssertEqual(Double(round.midX), Double(before.midX), accuracy: rounding)
+        XCTAssertEqual(Double(round.midY), Double(before.midY), accuracy: rounding)
         XCTAssertEqual(state.width, start.width); XCTAssertTrue(state.locked, "The lock is unchanged")
         XCTAssertTrue(window.ignoresMouseEvents, "Body clicks still pass through")
         XCTAssertTrue(window.frame.width > round.width + 4, "The voice outline keeps its room around the circle")
@@ -244,8 +251,8 @@ final class PersonaAppearanceTests {
 
         state = controller.reshape(image: portrait, outline: nil, name: "Synthetic lead", state: state)
         guard let plain = controller.visibleFrame else { return }
-        XCTAssertEqual(Double(plain.midX), Double(before.midX), accuracy: 1)
-        XCTAssertEqual(Double(plain.midY), Double(before.midY), accuracy: 1)
+        XCTAssertEqual(Double(plain.midX), Double(before.midX), accuracy: measured(plain))
+        XCTAssertEqual(Double(plain.midY), Double(before.midY), accuracy: measured(plain))
         XCTAssertEqual(Double(plain.width / plain.height), 0.75, accuracy: 0.02, file: #filePath, line: #line)
         XCTAssertTrue(window.ignoresMouseEvents)
 
@@ -259,9 +266,9 @@ final class PersonaAppearanceTests {
             _ = controller.show(image: tallImage, name: "Synthetic lead", state: wide)
             if let limited = controller.visibleFrame, limited.width < screen.visibleFrame.width * 0.3 - 2 {
                 let round = controller.reshape(image: tallCircle, outline: PersonaAppearance.Shape.circle.outline, name: "Synthetic lead", state: wide)
-                XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(limited.width), accuracy: 1, file: #filePath, line: #line)
+                XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(limited.width), accuracy: measured(limited), file: #filePath, line: #line)
                 XCTAssertTrue(round.width < 0.3, "The Size follows the displayed width")
-                XCTAssertEqual(Double(controller.visibleFrame?.midX ?? 0), Double(limited.midX), accuracy: 1)
+                XCTAssertEqual(Double(controller.visibleFrame?.midX ?? 0), Double(limited.midX), accuracy: measured(limited))
             }
         }
 
@@ -525,9 +532,9 @@ final class PersonaAppearanceTests {
         try library.resumeOverlaySession()
         guard let after = panel.visibleFrame else { return }
         XCTAssertEqual(Double(after.width / after.height), 1, accuracy: 0.01)
-        XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: 1)
-        XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: 1, file: #filePath, line: #line)
-        XCTAssertEqual(Double(after.width), Double(before.width), accuracy: 1)
+        XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: rounding)
+        XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: rounding, file: #filePath, line: #line)
+        XCTAssertEqual(Double(after.width), Double(before.width), accuracy: rounding)
         XCTAssertTrue(panel.window?.ignoresMouseEvents == true, "Still locked")
         // VoiceOver's named moves take the arrow keys' step.
         let size = CGSize(width: 300, height: 400), closer = PersonaFraming(x: 0.5, y: 0.5, zoom: 2)
