@@ -301,6 +301,10 @@ panel can cause in a local run, is reported and its sizes are not compared; the
 gallery's other flags are reported without failing it too. A Mac with no display
 renders no host states and has nothing to fail.
 
+The gallery also releases the same host at free positions on each half of the
+display and near a dock, then checks it after an update, a reveal and a collapse,
+in a new host as after a relaunch, and after Reset position. A toolbar that does
+not rest where it was put fails the run. It renders Position… in both themes.
 `ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
 inward growth, clamping and recovery.
 
