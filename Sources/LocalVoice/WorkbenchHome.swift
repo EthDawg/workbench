@@ -231,28 +231,43 @@ struct WorkbenchHomePage: View {
     @ObservedObject var snap: SnapModel
     @ObservedObject var introduction: FounderIntroductionModel
     @Binding var handoffReview: HandoffReviewRequest?
+    /// Keeps the guide up after the first transcript lands, so the copy step is
+    /// seen once; Done or leaving Home ends it.
+    @State private var stayInGuide = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(neverUsed ? "Say something." : "Make room for the work.").font(.system(size: 34, weight: .semibold)).tracking(-0.7)
-                        Text(neverUsed ? "One click, and your words are ready to paste anywhere." : "Speak a thought. Explain a screen. Give your demo a stage.")
+                        Text(journey.showsGuide ? "Say something." : "Make room for the work.").font(.system(size: 34, weight: .semibold)).tracking(-0.7)
+                        Text(journey.showsGuide ? "One click, and your words are ready to paste anywhere." : "Speak a thought. Explain a screen. Give your demo a stage.")
                             .font(.system(size: 15)).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Image(systemName: "square.stack.3d.up.fill").font(.system(size: 42)).foregroundStyle(Workbench.accent)
                 }.padding(.top, 16)
-                if neverUsed { firstDictation } else { liveStrip; recentWork }
-                moments
+                ForEach(journey.sections, id: \.self) { section in
+                    switch section {
+                    case .liveStrip: liveStrip
+                    case .guide: firstDictation
+                    case .recentWork: recentWork
+                    case .moments: moments
+                    }
+                }
                 if !introduction.isDismissed { FounderIntroductionCard(model: introduction) }
-                if !neverUsed && !model.ready { engineBanner }
+                if !journey.showsGuide && !model.ready { engineBanner }
             }.padding(32)
-        }
+        }.onAppear { if journey.isFirstRun { stayInGuide = true } }
     }
-    private var neverUsed: Bool {
-        model.history.isEmpty && snap.items.isEmpty && readback.sessionURL == nil && readback.recentSessionURLs.isEmpty
+    /// What Home can count. The stage exposes no saved-scene or persona count, so
+    /// someone who has only prepared scenes still sees the guide; presenting,
+    /// drawing and personas still surface through the live strip.
+    private var journey: HomeJourney {
+        HomeJourney(transcripts: model.history.count, snaps: snap.items.count,
+                    sessions: (readback.sessionURL == nil ? 0 : 1) + readback.recentSessionURLs.count,
+                    handoffJobs: model.handoffJobs.jobs.count, photos: model.photoHandoff.photos.count,
+                    isLive: isLive, stayInGuide: stayInGuide)
     }
 
     // One guided first dictation: the engine banner until speech is ready, then
@@ -288,6 +303,8 @@ struct WorkbenchHomePage: View {
                         if model.preferences.delivery == .paste && !model.accessibilityGranted {
                             Button("Enable automatic paste…") { model.requestAccessibility() }
                         }
+                        Spacer()
+                        Button("Done") { stayInGuide = false }.buttonStyle(.link)
                     }.controlSize(.large)
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
                         review: { model.clipboardReceipt.dismissHUD(); model.page = "history" },
@@ -311,8 +328,7 @@ struct WorkbenchHomePage: View {
         model.phase != .idle || model.playing || model.paused || readback.isRecording || readback.hasPendingTranscriptions
             || stage.isDrawing || stage.isPresenting || stage.hasActivePersona || stage.hasActiveTimer || model.meetings.isBusy
     }
-    @ViewBuilder private var liveStrip: some View {
-        if isLive {
+    private var liveStrip: some View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("LIVE").font(.system(size: 10, weight: .semibold)).tracking(1.6).foregroundStyle(.secondary)
                 if model.phase == .recording {
@@ -331,7 +347,7 @@ struct WorkbenchHomePage: View {
                     liveRow("Transcribing narration", "rectangle.dashed.badge.record") { ProgressView().controlSize(.small) }
                 }
                 if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
-                if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endPresentation() } } }
+                if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
                 if stage.hasActivePersona {
                     liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") { Button("Hide persona") { stage.togglePersona() } }
                 }
@@ -341,7 +357,6 @@ struct WorkbenchHomePage: View {
                 }
                 MeetingQuickStatus(model: model.meetings) { model.page = "meeting" }
             }.padding(16).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-        }
     }
     private func liveRow<Action: View>(_ title: String, _ symbol: String, @ViewBuilder action: () -> Action) -> some View {
         HStack(spacing: 10) {
@@ -440,23 +455,31 @@ struct WorkbenchHomePage: View {
             moment("Working", "A utility for seconds, then back to work.") {
                 card("Dictate", model.phase == .recording ? "Stop" : "Start dictating", "mic", model.preferences.dictationShortcut.label, prepare: "dictate",
                      disabled: !model.ready || ![.idle, .recording].contains(model.phase) || readback.blocksDictation) { model.toggleRecording() }
-                card("Read", "Read the clipboard aloud", "speaker.wave.2", "Mac voices included", prepare: "speak",
-                     disabled: model.rendering || model.phase != .idle) { readClipboard() }
+                card("Read", model.rendering ? "Cancel" : model.playing || model.paused ? "Stop reading" : "Read the clipboard aloud",
+                     "speaker.wave.2", "Mac voices included", prepare: "speak",
+                     disabled: !(model.rendering || model.playing || model.paused) && model.phase != .idle) {
+                    if model.rendering { model.cancelReading() }
+                    else if model.playing || model.paused { model.stopPlayback() }
+                    else { readClipboard() }
+                }
                 card("Snap", "Capture a region", "viewfinder", "Window or screen on the Snap page", prepare: "snap",
                      disabled: snap.isBusy) { Task { await snap.capture(.region) } }
             }
             moment("Capturing", "Explain screens aloud and get a deck in seconds.") {
                 card("Snap & Talk", readback.sessionURL == nil ? "New session…" : readback.isCapturing ? "Capturing…" : "Capture & narrate",
                      "rectangle.dashed.badge.record", model.preferences.shortcut(5).label, prepare: "readback",
-                     disabled: readback.isCapturing || readback.isRecording) { snapAndTalk() }
+                     disabled: readback.isCapturing || readback.isRecording, note: readback.notice) { snapAndTalk() }
             }
             moment("Presenting", "Demonstrate with a device, your persona and live marks.") {
-                card("Present", stage.isPresenting ? "Show live controls" : "Present the selected scene", "iphone", "Saved scenes and branding", prepare: "present") { stage.presentSelectedScene() }
+                card("Present", stage.isPresenting ? "End presentation" : "Present the selected scene", "iphone", "Saved scenes and branding", prepare: "present") {
+                    if stage.isPresenting { stage.endDeviceScene() } else { stage.presentSelectedScene() }
+                }
                 card("Persona", stage.hasActivePersona ? "Hide persona" : "Show a card over your apps", "person.crop.rectangle", "Independent of a scene", prepare: "personas") { stage.togglePersona() }
                 card("Draw", stage.isDrawing ? "Stop drawing" : "Draw on screen", "pencil.tip", stage.drawingActivationTitle + " to draw", prepare: "annotate") {
                     if stage.isDrawing { stage.finishDrawing() } else { stage.draw() }
                 }
-                card("Timer", stage.hasTimerSession ? "Show timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") { stage.showTimer() }
+                // showTimer toggles the timer window; the stage does not expose whether it is visible.
+                card("Timer", stage.hasTimerSession ? "Show or hide timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") { stage.showTimer() }
             }
         }
     }
@@ -467,7 +490,7 @@ struct WorkbenchHomePage: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) { tiles() }
         }
     }
-    private func card(_ title: String, _ verb: String, _ symbol: String, _ footnote: String, prepare page: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+    private func card(_ title: String, _ verb: String, _ symbol: String, _ footnote: String, prepare page: String, disabled: Bool = false, note: String? = nil, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button(action: action) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -478,6 +501,7 @@ struct WorkbenchHomePage: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(disabled).accessibilityLabel(title + ". " + verb)
             Button("Prepare…") { keyboard.stopInteraction(); model.page = page }.buttonStyle(.link).font(.caption)
+            if let note { Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
         }.padding(18).frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
             .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Workbench.border))
@@ -491,6 +515,19 @@ struct WorkbenchHomePage: View {
         if readback.sessionURL == nil { readback.createSession() }
         else { Task { await readback.captureNewSection(fromEditor: true) } }
     }
+}
+
+/// What Home knows about the journey and the sections it shows, in order.
+/// Counting is what LocalVoice can reach; live state comes from every module.
+struct HomeJourney: Equatable {
+    var transcripts = 0, snaps = 0, sessions = 0, handoffJobs = 0, photos = 0
+    var isLive = false
+    var stayInGuide = false
+    enum Section: Hashable { case liveStrip, guide, recentWork, moments }
+    var isFirstRun: Bool { transcripts == 0 && snaps == 0 && sessions == 0 && handoffJobs == 0 && photos == 0 }
+    var showsGuide: Bool { isFirstRun || stayInGuide }
+    /// The live strip comes first in both states, so what is running can be ended from Home.
+    var sections: [Section] { (isLive ? [.liveStrip] : []) + (showsGuide ? [.guide] : [.recentWork]) + [.moments] }
 }
 
 /// A small thumbnail for Home's Recent work row; the Snap page keeps its own.
