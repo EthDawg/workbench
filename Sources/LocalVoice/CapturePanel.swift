@@ -87,7 +87,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private let motion = ToolbarWindowMotion()
     var isAnimatingToolbar: Bool { motion.target != nil }
 
-    init(model: AppModel, readback: ReadbackModel, stage: StageKitController,
+    init(model: AppModel, readback: ReadbackModel, stage: StageKitController, snapModel: SnapModel,
          dictate: @escaping () -> Void, snap: @escaping () -> Void,
          snapCapture: @escaping () -> Void = {},
          draw: @escaping () -> Void, present: @escaping () -> Void,
@@ -134,7 +134,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
-            stage: stage, controls: controls, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present))
+            stage: stage, controls: controls, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present))
         hosting.sizingOptions = []
         hosting.autoresizingMask = [.width, .height]
         let tracking = ToolbarTrackingView(content: hosting)

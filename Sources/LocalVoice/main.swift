@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var presenterPanel: PresenterPanelController!
     var readback: ReadbackModel!
     var snap: SnapModel!
+    var toolbarModeFollower: ToolbarModeFollower?
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
@@ -175,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.isReleasedWhenClosed = false; window.center()
         // The normal launch below opens the window after its controls exist.
         if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
-        capturePanel = CapturePanelController(model: model, readback: readback, stage: stage,
+        capturePanel = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
             dictate: { [weak self] in self?.toolbarDictation() },
             snap: { [weak self] in self?.toolbarSnap() },
             snapCapture: { [weak self] in self?.toolbarSnapCapture() },
@@ -189,6 +190,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 else { self.model.toolbarMode = .present; self.stage.presentSelectedScene() }
             })
         capturePanel.independentScreenCapture = { [weak snap] in snap?.isCapturing == true }
+        // The toolbar's mode follows every door, not only the closures above.
+        toolbarModeFollower = ToolbarModeFollower(model: model, readback: readback, stage: stage, meetings: model.meetings, snap: snap) { [weak self] mode in
+            guard let self, self.model.toolbarMode != mode else { return }
+            self.model.toolbarMode = mode
+        }
         stage.onFocusActivityControls = { [weak self] tool in
             guard let self else { return }
             self.model.toolbarMode = tool == "persona" ? .persona : .present

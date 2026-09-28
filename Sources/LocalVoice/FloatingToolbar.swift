@@ -44,6 +44,7 @@ struct FloatingToolbar: View {
     @ObservedObject var controls: CaptureHUDControls
     @ObservedObject var promptInsertion: PromptInsertion
     @ObservedObject var meetings: MeetingModel
+    @ObservedObject var snapModel: SnapModel
     let dictate: () -> Void
     let snap: () -> Void
     let snapCapture: () -> Void
@@ -64,12 +65,14 @@ struct FloatingToolbar: View {
             : stage.hasActivePersonaSession ? .session : stage.hasActivePersona ? .shown : .none
         let mode = model.toolbarMode
         let state = context.state
+        // Snap has no panel row: it may start when nothing else owns the screen
+        // or the microphone and Snap itself is not busy (SnapModel refuses then).
         let mayStart = mode.controlTool.map(state.enabled)
-            ?? (model.phase == .idle && !readback.isCapturing && !readback.isRecording && !stage.isTakingScreenshot)
+            ?? (model.phase == .idle && !readback.isCapturing && !readback.isRecording && !stage.isTakingScreenshot && !snapModel.isBusy)
         return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: model.canRecordAgain,
             reading: model.rendering ? .preparing : model.playing ? .playing : model.paused ? .paused : .idle,
             narrating: readback.isRecording,
-            capturingScreen: readback.isCapturing || stage.isTakingScreenshot,
+            capturingScreen: readback.isCapturing || stage.isTakingScreenshot || snapModel.isCapturing,
             pendingNarration: readback.hasPendingTranscriptions,
             captureCount: readback.sessionURL == nil ? nil : readback.activeSections.count,
             drawing: stage.isDrawing, presenting: stage.isPresenting, persona: persona,
@@ -93,8 +96,9 @@ struct FloatingToolbar: View {
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: (controls.anchor ?? .bottom).toolbarAnchor,
             mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
-            actionHint: action.hint(key: key(action.operation.mode ?? live.mode)),
+            actionHint: action.hint(key: action.operation.keyMode.flatMap(key)),
             switcher: ToolbarNextAction.switcher(for: live, key: key),
+            minimumTitles: ToolbarNextAction.titles(across: live),
             isBusy: live.isLive(live.mode))
     }
 
@@ -167,7 +171,7 @@ struct FloatingToolbar: View {
         let action = ToolbarNextAction.resolve(live)
         let mode = live.mode
         let next = ToolbarMenuAction(action.title, enabled: action.isEnabled) { perform(action.operation) }
-        Self.showKey(key(action.operation.mode ?? mode), on: next)
+        Self.showKey(action.operation.keyMode.flatMap(key), on: next)
         menu.addItem(next)
         switch mode {
         case .dictate:
@@ -189,11 +193,20 @@ struct FloatingToolbar: View {
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)
         }
-        if stage.isDrawing && mode != .draw && action.operation != .finishDrawing {
+        // Work running in another mode is never a dead end: its finish item
+        // sits here, worded exactly as that mode's own label would be.
+        if live.drawing && mode != .draw && action.operation != .finishDrawing {
             menu.addItem(ToolbarMenuAction("Stop drawing") { stage.finishDrawing() })
         }
-        if stage.isPresenting && mode != .present && action.operation != .endPresentation {
+        if live.presenting && mode != .present {
             menu.addItem(ToolbarMenuAction("End presentation") { stage.endDeviceScene() })
+        }
+        if live.persona != .none && mode != .persona {
+            let personaFinish = live.persona == .session ? "Hide personas" : live.persona == .sessionHidden ? "Show personas" : "Hide persona"
+            menu.addItem(ToolbarMenuAction(personaFinish) { stage.togglePersona() })
+        }
+        if live.meetingRecording && mode != .dictate {
+            menu.addItem(ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } })
         }
         menu.addItem(.separator())
         let position = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
@@ -255,6 +268,7 @@ struct WorkbenchFloatingContent: View {
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var controls: CaptureHUDControls
+    let snapModel: SnapModel
     let dictate: () -> Void
     let snap: () -> Void
     let snapCapture: () -> Void
@@ -271,7 +285,7 @@ struct WorkbenchFloatingContent: View {
             ReadingControls(model: model)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
-                            meetings: model.meetings, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present)
+                            meetings: model.meetings, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present)
         }
     }
 }

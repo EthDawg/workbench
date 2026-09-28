@@ -1,4 +1,5 @@
 import Foundation
+import ToolbarCore
 
 @MainActor
 enum WorkbenchControlChecks {
@@ -20,6 +21,18 @@ enum WorkbenchControlChecks {
         saved.setShortcut(VoiceShortcut(keyCode: 20), for: 6); saved.setShortcut(VoiceShortcut(keyCode: 21), for: 7)
         let restored = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(saved))
         try check(restored.shortcut(6) == saved.shortcut(6) && restored.shortcut(7) == saved.shortcut(7), "opt-in utility shortcut assignments survive reload")
+        try check(ToolbarModeFollower.modeToSelect(previous: [], current: [.draw]) == .draw, "a capability going live becomes the toolbar mode")
+        try check(ToolbarModeFollower.modeToSelect(previous: [.draw], current: [.draw]) == nil, "already-live work does not move the mode")
+        try check(ToolbarModeFollower.modeToSelect(previous: [.draw, .present], current: [.draw]) == nil, "ending leaves the mode where it was")
+        try check(ToolbarModeFollower.modeToSelect(previous: [.draw], current: [.draw, .present]) == .present, "a Present door pressed in Draw mode starts a presentation and moves the mode to Present")
+        try check(ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, drawing: true, presenting: true)).title == "Stop drawing"
+                  && ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, presenting: true)).title == "End presentation", "after that start the resting label reads End presentation once drawing has stopped")
+        try check(ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, presenting: true)).title == "Draw"
+                  && ToolbarNextAction.switcher(for: ToolbarLiveState(mode: .draw, presenting: true)).contains { $0.mode == .present && $0.isBusy },
+                  "switching to Draw by chip during a live scene keeps Draw as the label and lights the Present chip")
+        try check(ToolbarModeFollower.modeToSelect(previous: [], current: [.draw, .persona, .present]) == .present, "several starts in one tick: Present before Persona before the rest")
+        try check(ToolbarModeFollower.modeToSelect(previous: [.present], current: [.present, .persona, .dictate]) == .persona, "Persona outranks the rest once Present is already live")
+        try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
         try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading, "active reading has compact controls even with idle toolbar disabled")
         try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
         var state = WorkbenchControlState()
