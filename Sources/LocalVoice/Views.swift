@@ -213,6 +213,7 @@ struct ContentView: View {
             if let selection = model.pendingReadingSelection {
                 ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
                                            replacingDisabled: !model.canReplaceReading,
+                                           waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
                                            keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
             }
             ReadingProviderView(model: model)
@@ -384,6 +385,8 @@ struct ReadingSelectionReviewCard: View {
     let selection: ReadingSelectionImport
     let limitMessage: String?
     var replacingDisabled = false
+    /// Why Replace reading is unavailable for now, shown under the choice.
+    var waitReason: String? = nil
     let keep: () -> Void
     let replace: () -> Void
 
@@ -407,6 +410,9 @@ struct ReadingSelectionReviewCard: View {
                 Button("Replace reading", action: replace)
                     .buttonStyle(PrimaryButton()).disabled(replacingDisabled)
                     .accessibilityHint("Replaces the reading draft and stops any reading in progress. It does not start audio or send text online.")
+            }
+            if let waitReason {
+                Label(waitReason, systemImage: "hourglass").font(.caption).foregroundStyle(.secondary)
             }
         }.padding(16).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain)

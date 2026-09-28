@@ -381,7 +381,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if text != speechText {
             let note = endReadingForNewText()
             speechText = text
-            status = [setAside ? "Reading the copied text instead of the text waiting for review." : nil, note].compactMap { $0 }.joined(separator: " ")
+            let notes = [setAside ? "Reading the copied text instead of the text waiting for review." : nil, note].compactMap { $0 }
+            if !notes.isEmpty { status = notes.joined(separator: " ") }
         }
         guard !playing else { return }
         listen()
@@ -1124,8 +1125,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if let previous = audio, previous !== playingTrack { previous.discard() }
         audio = track
     }
+    var canSaveAudio: Bool { !rendering && !renderingAhead && !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     func saveAudio() {
-        guard !rendering, !renderingAhead, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard canSaveAudio else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         saveAudio(to: destination)
@@ -1133,7 +1135,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// The save the person chose. Replace and Home's Read tile wait for it
     /// rather than cancel it; only Cancel generation ends it early.
     func saveAudio(to destination: URL) {
-        guard !rendering else { return }
+        guard canSaveAudio else { return }
         let generationID = UUID()
         readingGenerationID = generationID
         savingAudioID = generationID
@@ -1150,7 +1152,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 let url = try await generateAudio(generationID: generationID, complete: true).url
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
-                try await Task.detached { try AudioRenderer.export(url, to: destination) }.value
+                try await AudioRenderer.exportBounded(url, to: destination)
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 status = "Audio saved to \(destination.lastPathComponent)."

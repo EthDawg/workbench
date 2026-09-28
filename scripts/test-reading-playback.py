@@ -94,7 +94,7 @@ enum AudioRenderer {
     }
     /// Save audio's M4A export, recorded instead of running afconvert.
     static var exports: [(source: URL, destination: URL)] = []
-    static func export(_ source: URL, to destination: URL) throws { exports.append((source, destination)) }
+    static func exportBounded(_ source: URL, to destination: URL) async throws { exports.append((source, destination)) }
 }
 enum SpekoKeychain { static func read() throws -> String { "synthetic-key" } }
 enum SpekoRenderer {
@@ -750,6 +750,16 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         saving.replaceReadingWithSelection()
         try check(saving.speechText == promptB && saving.pendingReadingSelection == nil, "Replace goes ahead once the save is done")
 
+        // Save audio's preconditions are the same whether the panel or a check starts it.
+        let unsaved = ReadingHarness()
+        unsaved.speechText = "  \n "
+        unsaved.saveAudio(to: savePath)
+        let aheadSave = ReadingHarness()
+        aheadSave.renderingAhead = true
+        aheadSave.saveAudio(to: savePath)
+        try check(!unsaved.savingAudio && !unsaved.rendering && !aheadSave.savingAudio && !aheadSave.rendering,
+                  "Save audio does not start for an empty draft or while a reading is still being prepared")
+
         let cancelSave = ReadingHarness()
         cancelSave.speechText = passageA
         renders = MacSpeechRenderer.created.count
@@ -804,7 +814,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
                   "The same copied text already playing carries on")
 
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, pausing, saving, cancelSave, preListen] {
+        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")

@@ -139,16 +139,21 @@ __METHODS__
         try check(home.speechText == "Copied text" && home.pendingReadingSelection == nil && home.invalidations == 1 && home.listens == 1
                   && home.status.contains("instead of the text waiting for review"),
                   "Home's tile replaces the draft through the owner, says it set the review aside, and starts Listen at once")
+        home.status = "An earlier status"
+        home.listen(to: "Newer copied text")
+        try check(home.speechText == "Newer copied text" && home.status == "An earlier status" && home.listens == 2,
+                  "with nothing set aside and nothing cancelled, the tile leaves the status for Listen instead of blanking it")
+        home.speechText = "Copied text"
         home.playing = true
         home.listen(to: "Copied text")
-        try check(home.listens == 1 && home.invalidations == 1 && home.speechText == "Copied text", "the same text already playing carries on")
+        try check(home.listens == 2 && home.speechText == "Copied text", "the same text already playing carries on")
         home.playing = false; home.savingAudio = true
         home.listen(to: "Other copied text")
-        try check(home.speechText == "Copied text" && home.listens == 1 && home.status.contains("Save audio"),
+        try check(home.speechText == "Copied text" && home.listens == 2 && home.status.contains("Save audio"),
                   "the tile waits for Save audio")
         home.savingAudio = false; home.meetings.isBusy = true
         home.listen(to: "Other copied text")
-        try check(home.speechText == "Copied text" && home.listens == 1 && home.error?.contains("meeting") == true,
+        try check(home.speechText == "Copied text" && home.listens == 2 && home.error?.contains("meeting") == true,
                   "a meeting in progress leaves the draft alone and says why")
         print("READ_SELECTION_MODEL_OK: \(count) checks; actual handoff methods, isolated draft and provider state")
     }
@@ -196,18 +201,59 @@ assert "self?.model.receiveReadingSelection(selection)" in (ROOT / "Sources/Loca
 # Read editor's binding is the person typing. Any other write or binding fails.
 WRITE = re.compile(r"(?<!var )(?<!let )\bspeechText\s*(\+=|=(?!=))|\bspeechText\.(append|insert|remove|replace)")
 BINDING = re.compile(r"\$\w*\.?speechText\b")
-MEMBER = re.compile(r"^    (?:@\w+ )*(?:(?:private|fileprivate|public|nonisolated|override|static) )*(?:func \w+\(.*|init\(.*)$")
+# A member is the declaration a line belongs to: any non-blank line at four
+# spaces or less that is not a comment or a closing brace starts a new one, so
+# a write in a property or type after an allowed method is not the method's.
+DECLARATION = re.compile(r"^ {0,4}(?! )(?!//)(?!\})\S")
 ALLOWED_WRITERS = ("    init(preferences:", "    func listen(to text: String)", "    private func applyReadingSelection(")
-writes = []
-for path in sorted((ROOT / "Sources").rglob("*.swift")):
-    member = ""
-    for number, line in enumerate(path.read_text().splitlines(), 1):
-        if MEMBER.match(line):
-            member = line
-        if WRITE.search(line) and not (path.name == "AppModel.swift" and member.startswith(ALLOWED_WRITERS)):
-            writes.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()}")
-        for match in BINDING.finditer(line):
-            if not (path.name == "Views.swift" and "editor(text: $model.speechText," in line):
-                writes.append(f"{path.relative_to(ROOT)}:{number}: binds the draft outside Read's editor: {line.strip()}")
+
+
+def draft_writes(root: Path) -> list:
+    found = []
+    for path in sorted((root / "Sources").rglob("*.swift")):
+        member = ""
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            if DECLARATION.match(line):
+                member = line
+            if WRITE.search(line) and not (path.name == "AppModel.swift" and member.startswith(ALLOWED_WRITERS)):
+                found.append(f"{path.relative_to(root)}:{number}: {line.strip()}")
+            for _ in BINDING.finditer(line):
+                if not (path.name == "Views.swift" and "editor(text: $model.speechText," in line):
+                    found.append(f"{path.relative_to(root)}:{number}: binds the draft outside Read's editor: {line.strip()}")
+    return found
+
+
+writes = draft_writes(ROOT)
 assert not writes, "only Read's import owner, restore and editor change the reading draft:\n" + "\n".join(writes)
-print("READ_IMPORT_DOORS_OK: 5 checks; History, Saved resources, Home and the Service use the one import owner, and nothing else writes the draft")
+
+# The check itself: writes are found by member, not by position in the file.
+with tempfile.TemporaryDirectory(prefix="workbench-draft-writers-", dir="/private/tmp") as temporary:
+    fixture = Path(temporary)
+    (fixture / "Sources/LocalVoice").mkdir(parents=True)
+    (fixture / "Sources/LocalVoice/AppModel.swift").write_text("""final class AppModel {
+    @Published var speechText = ""
+    private func applyReadingSelection(_ selection: ReadingSelectionImport) {
+        speechText = selection.text
+    }
+    var shortcut: String {
+        speechText = "a computed property after an allowed method"
+        return speechText
+    }
+    // A comment at member depth does not end the method above it.
+    subscript(index: Int) -> String { speechText += "a subscript"; return "" }
+    private func applyReadingSelection2() {
+        speechText.append("similar name, other member")
+    }
+}
+""")
+    (fixture / "Sources/LocalVoice/Views.swift").write_text("""struct Probe: View {
+    var body: some View {
+        editor(text: $model.speechText, placeholder: "", label: "Text to read")
+        TextField("x", text: $model.speechText)
+    }
+}
+""")
+    found = [entry.split(": ", 1)[0] for entry in draft_writes(fixture)]
+    assert found == ["Sources/LocalVoice/AppModel.swift:7", "Sources/LocalVoice/AppModel.swift:11",
+                     "Sources/LocalVoice/AppModel.swift:13", "Sources/LocalVoice/Views.swift:4"], found
+print("READ_IMPORT_DOORS_OK: 6 checks; History, Saved resources, Home and the Service use the one import owner, nothing else writes the draft, and the writer check finds writes by member")
