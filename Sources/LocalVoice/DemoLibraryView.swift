@@ -114,6 +114,10 @@ struct DemoLibraryView: View {
             Group {
                 Button("Find resource") { searching = true }.keyboardShortcut("f")
                 Button("New prompt") { library.newPrompt() }.keyboardShortcut("n").disabled(library.savingDisabled)
+                // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S
+                // while they show; it left the Window menu (#134).
+                Button("Save clipboard as prompt") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
+                    .disabled(library.savingDisabled || library.importReview != nil)
             }.hidden()
         }
     }

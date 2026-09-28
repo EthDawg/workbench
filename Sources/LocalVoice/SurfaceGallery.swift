@@ -694,15 +694,8 @@ enum SurfaceGallery {
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
                  action("History page", "Stop task", "Stops the running task, whatever the filter shows")]
-        list += [action(menu, "Workbench › About Workbench", "Shows the About panel"), page(menu, "Workbench › Check for Updates…", "settings"),
-                 action(menu, "Workbench › Copy build details", "Copies build details"), page(menu, "Workbench › Settings…", "settings"),
-                 page(menu, "Workbench › Keyboard shortcuts…", "shortcuts"), action(menu, "Window › Open Workbench", "Opens Home on its current page"),
-                 action(menu, "Window › Quick controls", "Opens this panel"), action(menu, "Window › Show floating toolbar", "Shows the toolbar"),
-                 action(menu, "Window › Focus floating toolbar", "Moves keyboard focus to the toolbar"), action(menu, "Window › Restore menu-bar icon", "Shows the icon and the toolbar"),
-                 page(menu, "Window › Library", "library"), action(menu, "Window › Switch to…", "Opens the Switch to panel"),
-                 page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › History", "history"), page(menu, "Window › Persona", "personas"),
-                 page(menu, "Window › Transcribe meeting or call…", "meeting"), page(menu, "Window › Save clipboard as prompt…", "library"),
-                 action(menu, "Help › Workbench Guide", "Opens the web guide")]
+        list += appMenuEntries(surface: menu)
+        list += [action("Library page", "Resources · Add · Save clipboard as prompt, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
         list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
                  action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),
@@ -711,6 +704,30 @@ enum SurfaceGallery {
                  page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
         return list
+    }
+}
+
+extension SurfacePass {
+    /// The Workbench, Window and Help menus as AppDelegate builds them, so the index lists the
+    /// names and destinations the menus really have. A page item carries its route; Check for
+    /// Updates… opens Settings as it checks. Edit, Services and the Draw menu are listed elsewhere
+    /// or belong to macOS.
+    func appMenuEntries(surface: String) -> [SurfaceGallery.Entry] {
+        let actions = ["About Workbench": "Shows the About panel", "Check for Updates…": "Page: settings, and checks for updates",
+                       "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
+                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page", "Quick controls": "Opens this panel",
+                       "Show floating toolbar": "Shows the toolbar", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
+                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
+        return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
+            menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
+                let label = "\(menu.title) › \(item.title)"
+                if let route = item.representedObject as? String {
+                    return SurfaceGallery.Entry(surface: surface, label: label, leads: "Page: \(route)", route: route, ran: true)
+                }
+                let opensSettings = item.action == #selector(AppDelegate.showUpdates)
+                return SurfaceGallery.Entry(surface: surface, label: label, leads: actions[item.title] ?? "An action", route: opensSettings ? "settings" : nil, ran: true)
+            }
+        }
     }
 }
 
@@ -783,7 +800,7 @@ private struct SurfaceIndex {
             "StageKit is never started, so Draw reports Ready on 0 displays.",
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
-            "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",
+            "Buttons and keys come from a catalogue in SurfaceGallery.swift; add a row there when adding an entry. The app menus are read from the menu bar AppDelegate builds, so their names and pages are the app's own.",
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Screen Recording and Microphone access.",
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",

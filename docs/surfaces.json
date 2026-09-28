@@ -1627,29 +1627,6 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.history",
-    "surface": "app menu bar",
-    "label": "History",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Option of History: the menu and keyboard route to captured work, replacing Snap History one for one (#137)."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.keyboard-shortcuts",
-    "surface": "app menu bar",
-    "label": "Keyboard shortcuts…",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.library",
-    "surface": "app menu bar",
-    "label": "Library",
-    "kind": "action",
-    "belongsTo": "library",
-    "note": "Quality: Window › Saved resources takes the page's name, Library, in the same slot and keeps ⌘L (#134)."
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.open-workbench",
     "surface": "app menu bar",
     "label": "Open Workbench",
@@ -1664,13 +1641,6 @@
     "belongsTo": "app",
     "aliasOf": "app",
     "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.persona",
-    "surface": "app menu bar",
-    "label": "Persona",
-    "kind": "action",
-    "belongsTo": "persona"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.quick-controls",
@@ -1694,25 +1664,11 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.save-clipboard-as-prompt",
-    "surface": "app menu bar",
-    "label": "Save clipboard as prompt…",
-    "kind": "action",
-    "belongsTo": "library"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.select-all",
     "surface": "app menu bar",
     "label": "Select All",
     "kind": "action",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.settings",
-    "surface": "app menu bar",
-    "label": "Settings…",
-    "kind": "action",
-    "belongsTo": "settings"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.show-floating-toolbar",
@@ -1722,25 +1678,11 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.snap-talk-sessions",
-    "surface": "app menu bar",
-    "label": "Snap & Talk sessions",
-    "kind": "action",
-    "belongsTo": "snapAndTalk"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.switch-to",
     "surface": "app menu bar",
     "label": "Switch to…",
     "kind": "action",
     "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.transcribe-meeting-or-call",
-    "surface": "app menu bar",
-    "label": "Transcribe meeting or call…",
-    "kind": "workflow",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.undo",
@@ -1780,6 +1722,69 @@
     "label": "Window",
     "kind": "action",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.history",
+    "surface": "app menu bar",
+    "label": "History",
+    "page": "history",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Quality: Window › History takes its name and route from the page record and still opens History on All (#134, #137)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.library",
+    "surface": "app menu bar",
+    "label": "Library",
+    "page": "library",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Quality: Window › Library takes its name and route from the page record, keeps ⌘L and focuses Library's search as the Library shortcut does (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.meeting",
+    "surface": "app menu bar",
+    "label": "Transcribe meeting or call…",
+    "page": "meeting",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Quality: Window › Transcribe meeting or call… takes its name and route from the page record, with the native … because the page asks for a source before anything records (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.personas",
+    "surface": "app menu bar",
+    "label": "Persona",
+    "page": "personas",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality: Window › Persona takes its name and route from the page record (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.readback",
+    "surface": "app menu bar",
+    "label": "Snap & Talk",
+    "page": "readback",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: Window › Snap & Talk sessions becomes Snap & Talk, the page's own name, read from the page record; same page (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.settings",
+    "surface": "app menu bar",
+    "label": "Settings…",
+    "page": "settings",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: Workbench › Settings… takes its name and route from the page record and keeps ⌘, (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.shortcuts",
+    "surface": "app menu bar",
+    "label": "Keyboard…",
+    "page": "shortcuts",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: Workbench › Keyboard shortcuts… becomes Keyboard…, the name of the Settings section it opens, read from the page record (#134)."
   },
   {
     "id": "StageKit.ActivityMenus.PersonaSizeMenuView.native-control.persona-size",

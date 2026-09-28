@@ -496,6 +496,28 @@ class SurfaceTests(unittest.TestCase):
         home.write_text(home.read_text().replace('("shortcuts", "settings", "Keyboard")]', '("shortcuts", "settings", "Keyboard"), ("models", "settings", "Models")]'))
         self.assertIn('Unregistered entry on page sections: "Models".', '\n'.join(self.errors(before)))
 
+    def test_menu_page_items_take_their_names_from_the_page_record(self):
+        home = self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("readback", "Snap & Talk", "x"), ("settings", "Settings", "y")]
+          static let sections: [(id: String, page: String, title: String)] = [("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard")]
+          static let subpages: [(id: String, page: String, title: String)] = [("meeting", "dictate", "Transcribe meeting or call")]
+        }''')
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() {
+            appMenu.addItem(pageItem("settings", more: true, key: ",")); appMenu.addItem(pageItem("shortcuts", more: true))
+            menu.addItem(pageItem("readback")); menu.addItem(pageItem("meeting", more: true))
+          }
+          private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+            NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+          }
+        }''')
+        items = {e['page']: e['label'] for e in self.entries() if e['surface'] == 'app menu bar'}
+        self.assertEqual({'settings': 'Settings…', 'shortcuts': 'Keyboard…', 'readback': 'Snap & Talk',
+                          'meeting': 'Transcribe meeting or call…'}, items)
+        before = self.registry()
+        home.write_text(home.read_text().replace('"Snap & Talk", "x"', '"Snap & Talk sessions", "x"'))
+        self.assertIn('Changed entry on app menu bar: "Snap & Talk sessions".', '\n'.join(self.errors(before)))
+
     def test_the_keyboard_section_is_the_catalogue_editor(self):
         self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
           private var settings: some View { KeyboardCoachView(model: keyboard); Toggle("Open Workbench at login", isOn: $x) }

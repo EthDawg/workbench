@@ -539,6 +539,22 @@ class Tree:
         paths = {p for k in ('struct', 'class', 'enum') if re.fullmatch(kind, k) for p in self._declared.get((k, name), [])}
         return sorted(paths, key=lambda p: (p.parent.name != near, str(p)))
 
+    def page_names(self):
+        """Route -> name from the page record in WorkbenchHome. A page's own name wins over a
+        section's, so "settings" is Settings rather than General; subpages come last."""
+        if not hasattr(self, '_page_names'):
+            names = {}
+            swift = self.file(CATALOGUES[5][0])
+            for start, end, kind, name, _ in (swift.scopes if swift else []):
+                if kind == 'struct' and name == CATALOGUES[5][1]:
+                    for list_name, title in (('subpages', 2), ('sections', 2), ('navItems', 1)):
+                        for _, parts in record_items(swift, start, end, list_name):
+                            if len(parts) > title:
+                                names[literal(parts[0])] = literal(parts[title])
+                    break
+            self._page_names = names
+        return self._page_names
+
     def views(self, native):
         """Names of SwiftUI views, or of AppKit views, declared in the modules."""
         key = '_native' if native else '_swiftui'
@@ -858,10 +874,28 @@ class Inventory:
             elif mode == 'panel' and literal(args[0]) is None and not in_closure(i):
                 record(i, 'status', args[0])  # Runtime Text in the panel is a status row.
 
+        if mode == 'controls' and swift.stem == 'main':
+            self.page_items(swift, inside, surface)
         if mode not in ('page', 'options', 'doors'):
             self.live_labels(swift, inside)
         if follow or mode not in ('page', 'options', 'doors'):
             self.follow(swift, inside, mode, surface, swiftui=follow)
+
+    def page_items(self, swift, inside, surface):
+        """Menu items built from the page record, pageItem("route", more:, key:): the record
+        names each one, with the native … when `more` is true, and each opens its route."""
+        names = self.tree.page_names()
+        for i, _, args, _ in swift.calls({'pageItem'}):
+            if not inside(i) or not args:
+                continue
+            route = literal(args[0])
+            if route not in names:
+                if self.strict:
+                    raise ValueError(f'{swift.path}: pageItem({expression(args[0])}) names no route in the page record '
+                                     '(WorkbenchHome navItems, sections or subpages).')
+                continue
+            label = names[route] + ('…' if expression(named_arg(args, 'more') or []) == 'true' else '')
+            self.add(swift, i, 'page-item', [Token(json.dumps(label), 0, 0)], surface(swift, i, 'page-item'), identity=route, page=route)
 
     def live_labels(self, swift, inside):
         """Titles assigned in code rather than passed to a control."""
