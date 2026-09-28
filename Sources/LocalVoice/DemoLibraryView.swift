@@ -91,7 +91,8 @@ struct DemoLibraryView: View {
                 Menu {
                     Button("Import library…") { library.importLibrary() }.disabled(library.savingDisabled || library.draft != nil || library.importReview != nil)
                     Button("Export library…") { library.exportLibrary() }.disabled(library.resources.isEmpty)
-                } label: { Label("Library", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
+                } label: { Label("More", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
+                    .accessibilityLabel("More library actions")
             }
         }
         .onAppear { focusSearchWhenReady() }
