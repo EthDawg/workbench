@@ -12,6 +12,8 @@ struct WorkbenchQuickPanel: View {
     @ObservedObject var stage: StageKitController
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var keyboard: KeyboardCoachModel
+    /// The inline shortcut editor. The host ends it on every open and close.
+    @ObservedObject var editor: PanelShortcutEditor
     @ObservedObject var receipts: ClipboardReceiptModel
     @ObservedObject var snapModel: SnapModel
     @ObservedObject private var updates = WorkbenchUpdates.shared
@@ -22,10 +24,9 @@ struct WorkbenchQuickPanel: View {
     var present: () -> Void
     var timer: () -> Void
     var personas: () -> Void
-    @State private var editingShortcut = false
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
     private var hasFeedback: Bool {
-        editingShortcut || receipts.receipt?.isClipboardCurrent == true ||
+        editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true ||
             !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
             readback.notice != nil || (model.phase == .idle && !model.ready)
     }
@@ -55,7 +56,7 @@ struct WorkbenchQuickPanel: View {
             MeetingQuickStatus(model: model.meetings) { open("meeting") }
             // Feedback grows below the tools; an idle panel has no empty well.
             if hasFeedback {
-                if editingShortcut { shortcutEditor }
+                if editor.shortcutID != nil { shortcutEditor }
                 else {
                     VStack(alignment: .leading, spacing: 5) {
                         WorkbenchClipboardShelf(receipts: receipts,
@@ -91,14 +92,13 @@ struct WorkbenchQuickPanel: View {
             }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
         }.padding(12).frame(width: 328).fixedSize(horizontal: false, vertical: true)
             .tint(Workbench.accent).workbenchTheme()
-            .onDisappear { keyboard.stopInteraction(); editingShortcut = false }
     }
 
     private func shortcut(_ tool: WorkbenchControlTool) -> some View {
         let id = context.shortcutID(tool)
         let entry = keyboard.entries.first { $0.id == id }
         return Button {
-            keyboard.selectedID = id; editingShortcut = true; keyboard.beginRecording()
+            editor.change(id)
         } label: {
             Text(entry?.shortcut.enabled == true ? (entry?.shortcut.label ?? "Set") : "Set")
                 .font(.system(size: 10, design: .monospaced))
@@ -114,7 +114,7 @@ struct WorkbenchQuickPanel: View {
             HStack {
                 Text(keyboard.selected?.title ?? "Shortcut").font(.callout.weight(.semibold))
                 Spacer()
-                Button("Done") { keyboard.stopInteraction(); editingShortcut = false }
+                Button("Done") { editor.end() }
                     .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }
             Text(keyboard.message ?? "Press your combination.")
