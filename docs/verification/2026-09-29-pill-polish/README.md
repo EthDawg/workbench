@@ -53,11 +53,12 @@ Initial implementation evidence (before the resting-identity revision): source `
 
 ### Quiet resting handle: current evidence
 
-The GIFs and galleries above now show the quieter revision, source `68ec3615c24d1b603df31a30bc20582f4947face`.
+The GIFs and galleries above show the quieter revision integrated with main's contextual accessories and timer fixes (#219), source `3afca46f4d79b43c659b8aea34d4d19fa24c3476`.
 
-- 151 isolated ToolbarCore/ToolbarKit tests passed, including quiet live work's complete accessible status and reveal action.
-- 300 production-view fixtures rendered. Idle and every ordinary live-work state retain a 48 × 28 target with an 8-point visible handle; recording, transport and results retain their 20-point capsule.
-- Both native motion sequences captured 66 frames and nine distinct window widths. Every sampled launcher stayed 24 points from its anchored edge, including the thinner handle's opening and closing.
-- The capture warning and voice trace remain visible. The owning toolbar contract, product specification and guide now describe the same policy.
+- 156 isolated ToolbarCore/ToolbarKit tests passed, including quiet live work's complete accessible status and reveal action, plus accessory fit, labels and keyboard access.
+- 320 production-view fixtures rendered. Idle and every ordinary live-work state retain a 48 × 28 target with an 8-point visible handle; recording, transport and results retain their 20-point capsule.
+- Both native motion sequences captured 66 frames and ten distinct window widths. Every sampled launcher stayed 24 points from its anchored edge. Draw's sequence includes Tools, and Present's includes Prompts.
+- Complete LocalVoice source build and 177 control checks passed, plus 76 supporting checks. Surface registry passed with 419 entries.
+- The capture warning and voice trace remain visible. The owning toolbar contract, product specification and guide describe the same policy.
 
 Final CI and surface-gallery results are recorded in the PR. This is source and synthetic native evidence. It does not claim installed Preview acceptance, physical hover, VoiceOver traversal or multi-display hardware acceptance. The installed QA owner retains the shared Preview and desktop input.
