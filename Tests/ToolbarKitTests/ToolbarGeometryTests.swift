@@ -8,8 +8,8 @@ final class ToolbarGeometryTests: XCTestCase {
         for screen in [NSRect(x: 0, y: 0, width: 1440, height: 900),
                        NSRect(x: -1920, y: -300, width: 1920, height: 1080)] {
             for anchor in ToolbarAnchor.allCases {
-                let rest = ToolbarGeometry.frame(size: NSSize(width: 36, height: 36), glyphWidth: 36, anchor: anchor, screen: screen)
-                let row = ToolbarGeometry.frame(size: NSSize(width: 330, height: 36), glyphWidth: 36, anchor: anchor, screen: screen)
+                let rest = ToolbarGeometry.frame(size: NSSize(width: 36, height: 36), restingWidth: 36, anchor: anchor, screen: screen)
+                let row = ToolbarGeometry.frame(size: NSSize(width: 330, height: 36), restingWidth: 36, anchor: anchor, screen: screen)
                 XCTAssertTrue(screen.contains(rest)); XCTAssertTrue(screen.contains(row))
                 XCTAssertEqual(rest.midY, row.midY)
                 XCTAssertEqual(rest.midX, anchor.growsLeftward ? row.maxX - 18 : row.minX + 18, "\(anchor)")
@@ -20,7 +20,7 @@ final class ToolbarGeometryTests: XCTestCase {
         let screen = NSRect(x: -200, y: 40, width: 220, height: 150)
         for anchor in ToolbarAnchor.allCases {
             XCTAssertTrue(screen.contains(ToolbarGeometry.frame(size: NSSize(width: 340, height: 48),
-                glyphWidth: 48, anchor: anchor, screen: screen)))
+                restingWidth: 48, anchor: anchor, screen: screen)))
         }
     }
     func testGeometryCrossingsAtStationaryPointerDoNotReveal() {

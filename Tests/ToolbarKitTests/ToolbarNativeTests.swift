@@ -15,7 +15,6 @@ final class ToolbarNativeTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(size.height, 36 * scale - 1, state.name)
                 XCTAssertLessThan(size.width, 580, state.name)
                 XCTAssertGreaterThan(size.width, 30, state.name)
-                if state.tier == .resting { XCTAssertEqual(size.width, size.height, accuracy: 1, state.name) }
                 let larger = NSHostingView(rootView: ToolbarRow(state: state, textScale: scale * 1.2)).fittingSize
                 XCTAssertGreaterThan(larger.width, size.width, state.name)
             }
@@ -183,7 +182,7 @@ final class ToolbarNativeTests: XCTestCase {
         }
         for tier in ToolbarTier.allCases {
             for anchor in ToolbarAnchor.allCases {
-                let state = ToolbarViewState(name: "jump", tier: tier, anchor: anchor, tool: .annotate)
+                let state = ToolbarViewState(name: "jump", tier: tier, anchor: anchor, mode: .draw)
                 let exact = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize.width
                 let settled = try inset(state, width: exact, pinned: true)
                 for stale in [exact + 60, max(280, exact + 1)] {
@@ -196,16 +195,53 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    /// A running timer or a changing count redrew the row every second. With
-    /// proportional digits each redraw changed its width and re-placed the window
-    /// under the pointer.
-    @MainActor func testATickingStatusKeepsTheRowTheSameWidth() {
+    /// A changing count redrew the row. With proportional digits each redraw
+    /// changed its width and re-placed the window under the pointer. The count
+    /// now lives in the label, so the label keeps one width per digit.
+    @MainActor func testAChangingCountKeepsTheRowTheSameWidth() {
         _ = NSApplication.shared
-        func width(_ status: String) -> CGFloat {
-            NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "tick", tier: .revealed, tool: .timer,
-                actionTitle: "Pause", trailing: .status(status), isBusy: true))).fittingSize.width
+        func width(_ title: String) -> CGFloat {
+            NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "count", tier: .revealed, mode: .snapAndTalk,
+                actionTitle: title))).fittingSize.width
         }
-        XCTAssertEqual(width("11:11"), width("08:08"), accuracy: 0.5, "digits of different shapes resized the window")
-        XCTAssertEqual(width("1 Captures"), width("8 Captures"), accuracy: 0.5)
+        XCTAssertEqual(width("Capture next · 1"), width("Capture next · 8"), accuracy: 0.5, "digits of different shapes resized the window")
+    }
+
+    /// Switching modes at rest changes only the verb. The primary keeps the
+    /// width of the widest idle verb, so the strip never moves under the pointer
+    /// that is about to click the next chip.
+    @MainActor func testAnIdleModeSwitchNeverMovesTheStrip() {
+        _ = NSApplication.shared
+        let widths = ToolbarGallery.modes.filter { $0.tier == .revealed && $0.accessoryTitle == nil }
+            .map { NSHostingView(rootView: ToolbarRow(state: $0)).fittingSize.width }
+        XCTAssertGreaterThan(widths.count, 1)
+        for width in widths { XCTAssertEqual(width, widths[0], accuracy: 0.5, "\(widths)") }
+    }
+
+    /// The strip is one native button per other mode. A click switches; nothing
+    /// on it activates the app, so the other app's field keeps focus.
+    @MainActor func testTheStripOffersEveryOtherModeAndAClickSwitches() throws {
+        _ = NSApplication.shared
+        var selected: [ToolbarMode] = []
+        let state = ToolbarViewState(name: "strip", tier: .revealed, mode: .dictate)
+        let view = NSHostingView(rootView: ToolbarRow(state: state, selectMode: { selected.append($0) }))
+        view.frame = NSRect(origin: .zero, size: view.fittingSize)
+        view.layoutSubtreeIfNeeded()
+        func buttons(_ view: NSView) -> [NSButton] {
+            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+        }
+        let chips = buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.mode.") }
+        XCTAssertEqual(chips.map { $0.accessibilityIdentifier() }, state.switcher.map { "toolbar.mode." + $0.mode.slug })
+        XCTAssertTrue(chips.allSatisfy { $0.acceptsFirstMouse(for: nil) && $0.acceptsFirstResponder })
+        XCTAssertEqual(chips.first?.toolTip, "Switch to Read")
+        try XCTUnwrap(chips.last).performClick(nil)
+        XCTAssertEqual(selected, [.persona])
+        let resting = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "rest", tier: .resting)))
+        resting.frame = NSRect(origin: .zero, size: resting.fittingSize)
+        resting.layoutSubtreeIfNeeded()
+        XCTAssertTrue(buttons(resting).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.mode.") }.isEmpty,
+                      "the strip only exists once the row is revealed")
+        XCTAssertNotNil(buttons(resting).first { $0.accessibilityIdentifier() == "toolbar.primary" },
+                        "the next action is part of the resting element")
     }
 }

@@ -2,9 +2,10 @@ import AppKit
 import ToolbarCore
 
 public enum ToolbarGeometry {
-    /// Dock the glyph, not the row's centre. The same glyph stays under the
-    /// pointer at all eight anchors as the measured content grows inward.
-    public static func frame(size: NSSize, glyphWidth: CGFloat, anchor: ToolbarAnchor,
+    /// Dock the resting element, not the row's centre. The same element stays
+    /// under the pointer at all eight anchors as the measured content grows
+    /// inward; `restingWidth` is the measured width of `[glyph][next action]`.
+    public static func frame(size: NSSize, restingWidth: CGFloat, anchor: ToolbarAnchor,
                              screen: NSRect, inset: CGFloat = 16) -> NSRect {
         let width = min(max(1, size.width), screen.width)
         let height = min(max(1, size.height), screen.height)
@@ -14,7 +15,7 @@ public enum ToolbarGeometry {
         switch anchor {
         case .topLeft, .left, .bottomLeft: x = screen.minX + mx
         case .topRight, .right, .bottomRight: x = screen.maxX - mx - width
-        case .top, .bottom: x = screen.midX - glyphWidth / 2
+        case .top, .bottom: x = screen.midX - restingWidth / 2
         }
         let y: CGFloat
         switch anchor {

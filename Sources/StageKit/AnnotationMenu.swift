@@ -23,11 +23,6 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         removeAllItems()
         guard let app = coordinator else { return }
 
-        addItem(command("Finish Drawing", id: "finish", enabled: app.isDrawing,
-            help: "Return input to the presentation while keeping the current ink and board.") { [weak app] in
-                app?.stopDrawing()
-            })
-        addItem(.separator())
         for tool in DrawingTool.allCases {
             guard let action = Action(rawValue: tool.rawValue) else { continue }
             let item = actionItem(action, checked: app.tool == tool)
@@ -50,19 +45,16 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         black.state = app.settings.value.color == .black ? .on : .off
         black.image = colourSwatch(.black)
         colours.addItem(black)
-        if !InkColor.presets.contains(app.settings.value.color), app.settings.value.color != .black {
-            let custom = NSMenuItem(title: "Custom \(app.settings.value.color.hex)", action: nil, keyEquivalent: "")
-            custom.state = .on
-            custom.image = colourSwatch(app.settings.value.color)
-            custom.isEnabled = false
-            colours.addItem(custom)
+        colours.addItem(.separator())
+        let custom = command("Choose Colour…", id: "customColour", enabled: app.canUseAnnotationMenuAction(.color1)) { [weak app] in
+            app?.inkColourPicker.show()
         }
+        // A colour outside the presets reads as the chosen one here.
+        custom.state = !InkColor.presets.contains(app.settings.value.color) && app.settings.value.color != .black ? .on : .off
+        colours.addItem(custom)
         let colourItem = NSMenuItem(title: "Ink Colour", action: nil, keyEquivalent: "")
         colourItem.submenu = colours
         addItem(colourItem)
-        addItem(command("Choose Colour…", id: "customColour", enabled: app.canUseAnnotationMenuAction(.color1)) { [weak app] in
-            app?.inkColourPicker.show()
-        })
         addItem(actionItem(.pointer, checked: app.pointerEnabled))
         addItem(actionItem(.fade, checked: app.settings.value.autoFade))
 
@@ -83,11 +75,6 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
             app.stopDrawing()
             app.showControls(tab: "Drawing", preservingCanvas: true)
         })
-        addItem(command("Keyboard Shortcuts…", id: "shortcuts", enabled: app.canUseAnnotationMenuAction(.controls)) { [weak app] in
-            guard let app, app.canUseAnnotationMenuAction(.controls) else { return }
-            app.stopDrawing()
-            app.showControls(tab: "Shortcuts", preservingCanvas: true)
-        })
     }
 
     private func actionItem(_ action: Action, title: String? = nil, checked: Bool = false, available: Bool = true) -> NSMenuItem {
@@ -98,11 +85,12 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
                 app.perform(action)
             }
         item.state = checked ? .on : .off
+        // Keys live in the row's shortcut slot and the Keyboard page; the label
+        // stays the action's name. A working key still shows in the key column.
         let shortcut = app.settings.value.shortcut(for: action)
         if !shortcut.enabled {
             item.toolTip = "Shortcut off. Assign a key in Keyboard Shortcuts."
         } else if let failure = app.shortcutFailures[action] {
-            item.title += " — Shortcut unavailable"
             item.toolTip = "\(shortcut.label): \(failure)"
         } else {
             item.keyEquivalent = Self.keyEquivalent(shortcut.keyCode)
@@ -111,7 +99,6 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
             if action.tool != nil {
                 item.toolTip = "Click to keep drawing; the shortcut uses \(app.settings.value.activation.rawValue.lowercased())."
             }
-            if item.keyEquivalent.isEmpty { item.title += " · \(shortcut.label)" }
         }
         return item
     }

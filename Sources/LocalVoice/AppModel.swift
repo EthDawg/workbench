@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import UniformTypeIdentifiers
 import PhotoHandoffKit
+import ToolbarCore
 
 @MainActor
 final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioRecorderDelegate {
@@ -60,7 +61,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var preferences: VoicePreferences {
         didSet {
             preferences.save()
-            if (UInt32(1)...7).contains(where: { oldValue.shortcut($0) != preferences.shortcut($0) }) { onShortcutsChanged?() }
+            if VoicePreferences.shortcutIDs.contains(where: { oldValue.shortcut($0) != preferences.shortcut($0) }) { onShortcutsChanged?() }
         }
     }
     @Published var rawTranscript = ""
@@ -69,12 +70,16 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var shortcutRecordingMessage: String?
     @Published var previewingPanel = false
     let promptInsertion = PromptInsertion()
-    @Published var controlTool: WorkbenchControlTool = .snapAndTalk
+    /// The floating toolbar's mode follows the journey: starting anything from
+    /// any door makes it the mode, ending leaves it. Dictate seeds it because it
+    /// works in every app with only the microphone.
+    @Published var toolbarMode: ToolbarMode = ToolbarMode(rawValue: UserDefaults.standard.string(forKey: "workbench.toolbarMode.v1") ?? "") ?? .dictate {
+        didSet { UserDefaults.standard.set(toolbarMode.rawValue, forKey: "workbench.toolbarMode.v1") }
+    }
     @Published var floatingToolbarVisible = UserDefaults.standard.object(forKey: "workbench.floatingToolbar.v1") as? Bool ?? true {
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
     @Published var shortcutFailures: [UInt32: String] = [:]
-    @Published var quickTab = "Dictate"
     @Published var page = "home"
     @Published var libraryFocusToken = UUID()
     @Published var showingPhonePhotos = false

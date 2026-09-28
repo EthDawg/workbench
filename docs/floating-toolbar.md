@@ -13,22 +13,64 @@ Present and Persona Overlay. Desktop pages own preparation and saved libraries.
 The compact menu-bar panel owns quick utilities, adjustments and shortcut editing.
 Dictate and Read expose only their compact active controls here.
 
-At rest, one glyph identifies the selected tool. Hover reveals the contextual
-row; click opens a native menu. Keep open is an explicit persistent preference.
-The primary button names its next action. A trailing slot shows an assigned key
-or useful live state. Snap & Talk keeps its session capture count visible between
-captures and while saving. Present has a Prompts picker beside its action.
-Disabled or unassigned shortcut combinations are omitted; the toolbar has no
-shortcut editor. These roles supersede the earlier strict three-element rule,
-which excluded useful capture counts and presentation controls.
+**The mode follows you.** A mode is one capability or named workflow: Dictate,
+Read, Snap, Snap & Talk, Draw, Present or Persona. Starting anything from any
+door (a key, a panel row, Home, an app menu, the toolbar itself) makes it the
+mode; ending leaves the mode where it was. Before anything has ever been started
+the seed is Dictate, because it works in every app with only the microphone. The
+choice persists across relaunch under `workbench.toolbarMode.v1`. Timer is a
+panel row and a Present option, not a mode.
 
-The same menu provides Present, Persona Overlay and Draw controls in a stable
-order without resetting another activity. Presentation source, reconnect,
-proportions, motion, window placement, native-app handoff and End remain reachable.
-Persona selection uses the frozen session's public labels and retains size,
-position, lock, add/remove, visibility, explicit layout saving and End. Mac colour
-selection updates the same drawing settings from either entry point. Native menus
-snapshot their content before tracking rather than rebuilding under the pointer.
+At rest the toolbar is one element, `[mode glyph][next action]`. The label is
+the next action for where you are in the journey, from one pure function of what
+is live (`ToolbarNextAction`) with a fixed priority: what is consuming your input
+now (inserting, dictating, capturing, narrating, drawing, reading) whatever the
+mode, then the selected mode's own step or ending (`Capture next · 3`,
+`Stop transcribing`, `End presentation`, `Hide personas`), then its start verb.
+Another mode's ending never claims the label: presenting while Draw is the mode
+reads `Draw`, the Present chip's dot says the scene is live, and the glyph menu
+offers `End presentation`. Two identical screens never read differently, and the
+label never ends anything but what it names. Click the label to do it, click or
+right-click the glyph for the menu, drag anywhere to move. Work running in the
+selected mode is a dot on the glyph. The hover hint shows a key only for an
+operation that key performs: Present's key does not stop an insertion, Dictate's
+key does not stop a meeting, and the persona key does not pause a prepared set.
+A hint names the key that starts the capability; that same key also stops it
+only in toggle activation (the pen key ends drawing only when the pen is the
+active tool and Draw is set to toggle).
+
+`ToolbarModeFollower` in the host watches every owner and makes a capability
+the mode the moment it goes from not live to live, whichever door started it;
+if several start in one tick, Present wins, then Persona. The launch snapshot is
+not a start, so a restored Snap & Talk session does not move the mode.
+
+Hover reveals the row: the same element in the same place, then a divider, the
+other modes as chips, and the mode's accessory. A chip's hover text says its
+name and key; a click switches; hover never opens anything. A chip's dot says
+that mode's work is live while another mode is selected. The primary keeps the
+width of the widest label any mode would show for the current live state, so a
+mode switch never moves the chips under the pointer, idle or mid-session. The row holds no information-only text: the assigned key and
+any count are the action's hover hint. Snap & Talk keeps its session capture
+count in the label between captures and while saving. Present has a Prompts
+picker beside its action. Disabled or unassigned shortcut combinations are
+omitted; the toolbar has no shortcut editor. Keep open is an explicit persistent
+preference.
+
+The glyph menu is the mode's own options plus four constant items: the next
+action with its key, then only the current mode's items, then cross-mode finish
+items (`Stop drawing`, `End presentation`, `Hide persona`/`Hide personas`/
+`Show personas`, `Stop transcribing`) when that work runs in another mode,
+then Position, Keep open, Hide toolbar and Settings. There is no Change tool.
+Dictate, Read and Snap are start and stop on this surface, so each carries one
+door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and
+`Open Snap…`. Snap & Talk offers its review. Draw holds the
+drawing menu inline. Present holds the presentation items inline, Saved Prompts
+and Switch to Browser Tab; source, reconnect, proportions, motion, window
+placement, native-app handoff and End remain reachable there. Persona holds the
+persona menu inline: the frozen session's public labels, size, position, lock,
+add/remove, visibility, explicit layout saving and End. Mac colour selection
+updates the same drawing settings from either entry point. Native menus snapshot
+their content before tracking rather than rebuilding under the pointer.
 
 Saved Prompts reads the existing Saved Resources library. Favourite, Product and
 Persona groupings do not create another store. The original field, value and
@@ -41,12 +83,13 @@ insertion. No partial write is replayed and no submit key is sent.
 
 | Layer | Owns | Depends on | Tested by |
 | --- | --- | --- | --- |
-| **Core** `Sources/ToolbarCore` | When to show which tier, and the remembered choice | Nothing. No AppKit, no clock, no window | `swift test`, instantly, with no sleeps |
-| **Look** `ToolbarKit/ToolbarRow` | How each tier is drawn | One `ToolbarViewState` value | Native layout tests and snapshots of `ToolbarGallery.states`, light/dark and larger text |
-| **Host** `ToolbarKit` + `CapturePanelController` | Tracking, one cancellable deadline, one native animation; app surface and saved position | Core effects, existing operation owners | `ToolbarKitTests` and isolated app acceptance |
+| **Core** `Sources/ToolbarCore` | When to show which tier, the remembered choice, and the next action for what is live (`ToolbarNextAction`) | Nothing. No AppKit, no clock, no window | `swift test`, instantly, with no sleeps; `ToolbarNextActionTests` walks the whole live-state product |
+| **Look** `ToolbarKit/ToolbarRow` | How each tier is drawn: the resting element, the strip, the accessory | One `ToolbarViewState` value | Native layout tests and snapshots of `ToolbarGallery.states`, light/dark and larger text |
+| **Host** `ToolbarKit` + `CapturePanelController` + `FloatingToolbar` | Tracking with its reveal debounce, one cancellable deadline, one native animation; the mode, the frozen live state, app surface and saved position | Core effects, existing operation owners | `ToolbarKitTests` and isolated app acceptance |
 
 A change belongs to exactly one layer. If a change needs all three, it is three
-changes.
+changes. The mode is not a reducer field: it lives in the view state and the
+host, and `tier` is still assigned only by `reduce`.
 
 ## The behaviour
 
@@ -115,8 +158,15 @@ The core cannot be right if the host feeds it fiction.
 
 - **A crossing is a crossing.** `pointerEntered` and `pointerLeft` come from one
   `NSTrackingArea`, and the host filters the synthetic ones: the row is much
-  wider than the glyph, so its frame moves out from under a stationary pointer
-  every time it opens and closes, and that is geometry, not a gesture.
+  wider than the resting element, so its frame moves out from under a stationary
+  pointer every time it opens and closes, and that is geometry, not a gesture.
+- **Entry into a resting toolbar is debounced 120 ms; exits and settles are
+  immediate.** A pointer passing across the resting element on its way somewhere
+  else must not spring the row. `ToolbarTrackingView` holds the entry for
+  `revealDelay` and delivers it only if the pointer is still inside; an exit
+  before then cancels it and delivers nothing, because the core never learned of
+  the entry. Entries into an already revealed row are immediate. The reducer and
+  its state budget are untouched: it still sees one crossing.
 - **Suspend crossings while the frame animates, then reconcile once** by sending
   the event that matches where the pointer actually is. Do the same when menu
   tracking ends and dragging finishes, because they can swallow the owning window's exit, and when the tools
@@ -138,24 +188,27 @@ The core cannot be right if the host feeds it fiction.
   cancelled deadline must never be delivered into a later deadline.
 - **One animation.** `NSAnimationContext` on the window frame. The content does
   not animate its own size at the same time.
-- **The row grows inward from the docked edge**, so the glyph keeps its place on
-  screen and a right-hand dock does not run off it. `ToolbarAnchor.growsLeftward`
-  is the whole of that geometry.
+- **The row grows inward from the docked edge**, so the resting element keeps
+  its place on screen and a right-hand dock does not run off it.
+  `ToolbarAnchor.growsLeftward` is the whole of that geometry; `ToolbarGeometry`
+  centres the top and bottom docks on the measured resting width.
 - **Effects are instructions, not suggestions.** The host never reads the state
   to decide what to do.
 
 ## The look and acceptance
 
-The glyph keeps its screen position while the row grows inward from its dock.
-A scaled hit area, content-sized text and native controls support larger type.
-Resting activity is a small dot; changing status must not substitute a different
+The resting element keeps its screen position while the row grows inward from
+its dock. A scaled hit area, content-sized text and native controls support
+larger type. Resting activity is a small dot on the glyph, and a chip's dot says
+that mode's work is live; changing status must not substitute a different
 menu-bar brand icon. Reduce Transparency uses an opaque background. Reduce Motion
 removes the frame animation.
 
-`ToolbarGallery.states` supplies both tiers at every anchor, the contextual tools,
-assigned/unassigned keys, capture counts, active presentation/personas and prompt
-insertion. The renderer uses the production `ToolbarRow`, including its Prompts
-button, in both themes and standard/larger type.
+`ToolbarGallery.states` supplies both tiers at every anchor, every mode with its
+key, active work in its own mode and in another (Dictate selected, Draw busy),
+capture counts, active presentation/personas and prompt insertion. The renderer
+uses the production `ToolbarRow`, including its strip and Prompts button, in both
+themes and standard/larger type.
 
 Core transition tests, native layout tests and rendered fixtures establish only
 the behavior they exercise. They do not prove native pointer behavior. Before
@@ -179,7 +232,7 @@ swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
 ```
 
 The gallery generates individual fixtures and four overview sheets. It covers
-both tiers at every anchor, each tool, active work, disabled/failed shortcuts,
+both tiers at every anchor, each mode, active work in and out of its mode,
 light/dark appearance and standard/larger type. `ToolbarKitTests` checks intrinsic
 sizes and longer labels; the committed overview sheets in
 [assets/floating-toolbar](assets/floating-toolbar) provide PR image diffs. CI
@@ -188,7 +241,10 @@ approximations. Visual acceptance still requires inspecting the images.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted
-Keep open choice. `ToolbarTrackingView` owns the one tracking area.
+Keep open choice. `ToolbarTrackingView` owns the one tracking area and the
+120 ms reveal debounce (`ToolbarTrackingView.revealDelay`). `FloatingToolbar`
+freezes the live state once per render and maps each `ToolbarOperation` to the
+owner that already does it.
 `ToolbarWindowMotion` owns the frame animation; ending it before a drag is synchronous.
 Menu activation requires admission from the active tools session; a stale glyph cannot open a menu over a recording HUD. Menu dismissal reconciles both the pointer gate and reducer. The drag event loop
 exits on cancellation or app deactivation and always releases its hold.
@@ -200,8 +256,8 @@ check both appearances. The old boolean interaction
 model, global/local mouse monitors, spring loop, three fixed toolbar sizes and
 426-line in-product polling harness have been removed.
 
-A bug report needs only: selected tool, action taken, expected result, actual
-result, anchor and whether Keep open was enabled. Add the smallest reproducing
+A bug report needs only: selected mode, what was live, action taken, expected
+result, actual result, anchor and whether Keep open was enabled. Add the smallest reproducing
 sequence to the existing tests. Do not create another toolbar backlog.
 
 The current candidate and native limits are recorded in

@@ -4,6 +4,7 @@ import Carbon
 import AVFoundation
 import Combine
 import StageKit
+import ToolbarCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
@@ -20,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var presenterPanel: PresenterPanelController!
     var readback: ReadbackModel!
     var snap: SnapModel!
+    var toolbarModeFollower: ToolbarModeFollower?
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
     var receiptObservations = Set<AnyCancellable>()
@@ -174,20 +176,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.isReleasedWhenClosed = false; window.center()
         // The normal launch below opens the window after its controls exist.
         if PackLibraryModel.shared.pendingSource != nil { model.page = "packs" }
-        capturePanel = CapturePanelController(model: model, readback: readback, stage: stage,
+        capturePanel = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
             dictate: { [weak self] in self?.toolbarDictation() },
             snap: { [weak self] in self?.toolbarSnap() },
+            snapCapture: { [weak self] in self?.toolbarSnapCapture() },
             draw: { [weak self] in
                 guard let self else { return }
-                if self.stage.isDrawing { self.stage.finishDrawing() } else { self.stage.draw() }
+                if self.stage.isDrawing { self.stage.finishDrawing() }
+                else { self.model.toolbarMode = .draw; self.stage.draw() }
             }, present: { [weak self] in
                 guard let self else { return }
-                if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
+                if self.stage.isPresenting { self.stage.endDeviceScene() }
+                else { self.model.toolbarMode = .present; self.stage.presentSelectedScene() }
             })
         capturePanel.independentScreenCapture = { [weak snap] in snap?.isCapturing == true }
+        // The toolbar's mode follows every door, not only the closures above.
+        toolbarModeFollower = ToolbarModeFollower(model: model, readback: readback, stage: stage, meetings: model.meetings, snap: snap) { [weak self] mode in
+            guard let self, self.model.toolbarMode != mode else { return }
+            self.model.toolbarMode = mode
+        }
         stage.onFocusActivityControls = { [weak self] tool in
             guard let self else { return }
-            self.model.controlTool = tool == "persona" ? .persona : .present
+            self.model.toolbarMode = tool == "persona" ? .persona : .present
             self.capturePanel.focusToolbar()
         }
         model.promptInsertion.mayInsert = { [weak self] in
@@ -209,18 +219,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
-            guard let self else { return }
-            if self.stage.isDrawing { self.stage.finishDrawing() }
-            else { self.resumeTarget { [weak self] _ in self?.stage.draw() } }
-        }, snap: { [weak self] in self?.toolbarSnap() }, present: { [weak self] in
-            guard let self else { return }
-            if self.stage.isPresenting { self.closeControls(); self.capturePanel.focusToolbar() }
-            else { self.closeControls(); self.stage.presentSelectedScene() }
-        }, timer: { [weak self] in self?.closeControls(); self?.stage.showTimer() }, personas: { [weak self] in
+        // These are the panel's doors: each starts its capability. Ending,
+        // stopping and hiding go through the shared operation switch, so a row
+        // does exactly what its label says. Timer keeps both directions here
+        // because it is not a toolbar mode.
+        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+            self?.resumeTarget { [weak self] _ in self?.stage.draw() }
+        }, snap: { [weak self] in self?.toolbarSnap() }, snapCapture: { [weak self] mode in self?.toolbarSnapCapture(mode) }, present: { [weak self] in
+            self?.closeControls(); self?.stage.presentSelectedScene()
+        }, timer: { [weak self] in
             guard let self else { return }
             self.closeControls()
-            if self.stage.hasActivePersona { self.capturePanel.focusToolbar() } else { self.stage.togglePersona() }
+            if self.stage.hasTimerSession { self.stage.stopTimer() } else { self.stage.startTimer() }
+        }, personas: { [weak self] in
+            self?.closeControls(); self?.stage.togglePersona()
         }))
         quickController.sizingOptions = [.preferredContentSize]
         popover.contentViewController = quickController
@@ -248,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             self.finishEditing()
             var preferences = self.model.preferences
-            for id in UInt32(1)...7 { preferences.setShortcut(VoicePreferences().shortcut(id), for: id) }
+            for id in VoicePreferences.shortcutIDs { preferences.setShortcut(VoicePreferences().shortcut(id), for: id) }
             self.model.preferences = preferences
             self.stage.resetShortcuts()
         }
@@ -267,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 if self.stage.isPresenting { self.stage.endDeviceScene() }
                 else { self.stage.presentSelectedScene() }
             }
+            else if down, id == 8 { self.toolbarSnapCapture() }
             else if down, id == 5 {
                 self.readback.refreshPermissionState()
                 if self.readback.sessionURL == nil {
@@ -337,7 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         hotkeys.register(ShortcutConflict.voiceRegistrationPreferences(model.preferences, failures: conflicts))
         registeredVoiceShortcutConflicts = conflicts
         model.shortcutFailures = hotkeys.failures
-        for id in UInt32(1)...7 { if let message = conflicts["voice.\(id)"] { model.shortcutFailures[id] = message } }
+        for id in VoicePreferences.shortcutIDs { if let message = conflicts["voice.\(id)"] { model.shortcutFailures[id] = message } }
         stage.refreshShortcutRegistration()
         readback?.setShortcutFailure(model.shortcutFailures[5])
     }
@@ -356,7 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             else if shortcut.modifiers & UInt32(controlKey | optionKey) == 0 {
                 self.model.shortcutRecordingMessage = "Include Control or Option."; return nil
             }
-            if shortcut.enabled && [UInt32(1), 2, 3, 4, 5, 6, 7].contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Workbench."; return nil }
+            if shortcut.enabled && VoicePreferences.shortcutIDs.contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Workbench."; return nil }
             var candidate = self.model.preferences
             candidate.setShortcut(shortcut, for: id)
             self.hotkeys.register(candidate)
@@ -472,16 +485,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func menuRecording() {
         if model.phase == .requesting { closeControls(); model.cancelRecording(); return }
         if model.phase == .recording { closeControls(); model.stopRecording(); return }
+        model.toolbarMode = .dictate
         resumeTarget { [weak self] target in self?.model.toggleRecording(target: target) }
     }
     func toolbarDictation() {
         // The toolbar is nonactivating. Capture the current field at the click,
         // never reuse an old popover target for a later toolbar operation.
         let target = capturePanel.targetForDictation()
+        model.toolbarMode = .dictate
         model.toggleRecording(target: target)
+    }
+    /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
+    /// used mode, so the toolbar captures a region.
+    func toolbarSnapCapture(_ mode: SnapCapture.Mode = .region) {
+        model.toolbarMode = .snap
+        closeControls()
+        Task { await snap.capture(mode) }
     }
     func toolbarSnap() {
         if readback.isRecording { readback.stopNarration(); return }
+        model.toolbarMode = .snapAndTalk
         readback.refreshPermissionState()
         guard readback.sessionURL != nil, readback.permissionsReady else {
             navigate("readback"); return
@@ -609,8 +632,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func navigate(_ page: String) {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
+    /// The voice catalogue's titles, one per id in `VoicePreferences.shortcutIDs`.
+    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Saved resources"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
     func voiceShortcutEntries() -> [ShortcutEntry] {
-        [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk"), (UInt32(6), "Read"), (UInt32(7), "Present")].map { id, title in
+        Self.voiceShortcutCatalogue.map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
         }
     }
@@ -655,6 +680,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await WorkbenchUpdateChecks.run()
             try await WorkbenchControlChecks.run()
             try CorrectionRuleChecks.run()
+            try HomeJourneyChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }
@@ -706,6 +732,9 @@ func runCLI(_ args: [String]) async -> Int32 {
                 _ = NSApplication.shared
                 try ReadSelectionChecks.renderReviewCard(to: URL(fileURLWithPath: args[1]))
             }
+        case "--render-surfaces":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-surfaces OUTPUT_DIRECTORY") }
+            try SurfaceGallery.run(output: URL(fileURLWithPath: args[1], isDirectory: true))
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
         case "--check-subscription-cli":
@@ -779,7 +808,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine.transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --render-surfaces OUTPUT_DIRECTORY | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
@@ -791,6 +820,10 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fi
         let delegate = PresenterFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
         app.delegate = delegate; app.run()
     }
+} else if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SurfaceGallery.passFlag {
+    // An isolated pass started by --render-surfaces. It waits on the main run loop for SwiftUI,
+    // so it runs here rather than inside a main-queue job.
+    MainActor.assumeIsolated { exit(SurfaceGallery.runPass(Array(CommandLine.arguments.dropFirst(2)))) }
 } else if CommandLine.arguments.count > 1, CommandLine.arguments[1].hasPrefix("--") {
     Task { let code = await runCLI(Array(CommandLine.arguments.dropFirst())); exit(code) }
     RunLoop.main.run()

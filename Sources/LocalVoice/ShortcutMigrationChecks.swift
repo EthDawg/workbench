@@ -15,11 +15,11 @@ enum ShortcutMigrationChecks {
         }
         func legacyVoice() -> VoicePreferences {
             var value = VoicePreferences()
-            for id in UInt32(1)...7 { value.setShortcut(VoicePreferences.legacyDefaults[id]!, for: id) }
+            for id in VoicePreferences.shortcutIDs { value.setShortcut(VoicePreferences.legacyDefaults[id] ?? VoicePreferences().shortcut(id), for: id) }
             return value
         }
         func entries(_ voice: VoicePreferences, _ stage: [StageShortcutDescriptor]) -> [ShortcutEntry] {
-            (UInt32(1)...7).map { ShortcutEntry(id: "voice.\($0)", title: $0 == 6 ? "Read" : "Voice \($0)", shortcut: voice.shortcut($0)) }
+            VoicePreferences.shortcutIDs.map { ShortcutEntry(id: "voice.\($0)", title: $0 == 6 ? "Read" : $0 == 8 ? "Snap" : "Voice \($0)", shortcut: voice.shortcut($0)) }
                 + stage.map { ShortcutEntry(id: "stage.\($0.id)", title: $0.label,
                     shortcut: VoiceShortcut(keyCode: $0.keyCode, modifiers: $0.modifiers, enabled: $0.enabled)) }
         }
@@ -65,6 +65,22 @@ enum ShortcutMigrationChecks {
             try check(load(voice, stage).0.shortcut(3).enabled, "a later choice of an old Voice key is not migrated again")
             try saveStage(["timer": VoiceShortcut(keyCode: UInt32(kVK_ANSI_K))], to: stage, revision: 4)
             try check(stageKey("timer", in: load(voice, stage).1).enabled, "a later choice of an old Stage key is not migrated again")
+        }
+        try fixture { voice, stage in
+            // Snap (voice.8) has no 2.0.0 default: off when fresh, kept when chosen,
+            // and part of the same duplicate detection as every other key.
+            try check(!VoicePreferences().shortcut(8).enabled && VoicePreferences.shortcutIDs.contains(8), "Snap starts off and is in the catalogue")
+            var previous = legacyVoice(); previous.setShortcut(option(kVK_ANSI_Y), for: 8); previous.save(to: voice)
+            try saveStage([:], to: stage)
+            let (v, s) = load(voice, stage)
+            try check(v.shortcut(8) == option(kVK_ANSI_Y), "a chosen Snap key survives migration and relaunch")
+            try check(v.enabledCombinations.contains(option(kVK_ANSI_Y).combination), "a chosen Snap key registers with the others")
+            var clash = v; clash.setShortcut(option(kVK_ANSI_Y), for: 6); clash.save(to: voice)
+            let failures = ShortcutConflict.duplicateFailures(in: entries(load(voice, stage).0, s))
+            try check(failures["voice.8"]?.contains("Read") == true && failures["voice.6"]?.contains("Snap") == true, "a duplicate of the Snap key is reported on both rows")
+            var reset = clash
+            for id in VoicePreferences.shortcutIDs { reset.setShortcut(VoicePreferences().shortcut(id), for: id) }
+            try check(!reset.shortcut(8).enabled, "Reset shortcuts turns Snap off with the rest")
         }
         try fixture { voice, stage in
             var previous = legacyVoice(); previous.readingShortcut = option(kVK_ANSI_D); previous.save(to: voice)

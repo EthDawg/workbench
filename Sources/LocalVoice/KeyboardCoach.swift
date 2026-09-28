@@ -31,7 +31,7 @@ enum ShortcutConflict {
 
     static func voiceRegistrationPreferences(_ preferences: VoicePreferences, failures: [String: String]) -> VoicePreferences {
         var result = preferences
-        for id in UInt32(1)...7 where failures["voice.\(id)"] != nil {
+        for id in VoicePreferences.shortcutIDs where failures["voice.\(id)"] != nil {
             var shortcut = result.shortcut(id); shortcut.enabled = false
             result.setShortcut(shortcut, for: id)
         }
