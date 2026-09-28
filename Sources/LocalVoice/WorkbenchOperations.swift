@@ -4,7 +4,7 @@ import ToolbarCore
 
 /// What a panel row does when clicked. Every row with a toolbar mode carries a
 /// `ToolbarOperation`; Timer, which is not a mode, has its own two.
-enum WorkbenchRowAction: Equatable {
+enum WorkbenchRowAction: Hashable {
     case operation(ToolbarOperation)
     case startTimer, stopTimer
 }

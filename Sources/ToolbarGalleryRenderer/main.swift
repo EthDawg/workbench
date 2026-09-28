@@ -41,7 +41,7 @@ import StageKit
                 }
                 // Compact overview is committed for ordinary PR image diffs.
                 let samples = ToolbarGallery.modes + ToolbarGallery.activity + ToolbarGallery.idle + ToolbarGallery.recording
-                    + ToolbarGallery.statuses
+                    + ToolbarGallery.accessories + ToolbarGallery.statuses
                 let overview = VStack(alignment: .leading, spacing: 14) {
                     Text("Workbench toolbar · \(theme) · \(scaleName)").font(.title2.weight(.semibold))
                     ForEach(samples, id: \.name) { state in

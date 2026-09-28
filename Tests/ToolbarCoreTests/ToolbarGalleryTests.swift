@@ -149,6 +149,60 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(ToolbarGallery.waiting.map(\.status.indicator), [.failure, .pendingDelivery])
     }
 
+    /// Each tool's one accessory, when it applies (#134 part B): Snap & Talk's Review once a
+    /// session is open, Draw's Tools, Present's Prompts, and Persona's Appearance for a selected
+    /// live copy, shown or hidden. Dictate, Read and Snap have none, whatever else is live.
+    func testEachToolOffersOnlyItsOwnAccessory() {
+        func offered(_ live: ToolbarLiveState, copy: Bool = false) -> ToolbarAccessory? {
+            ToolbarAccessory.offered(for: live, selectedPersonaCopy: copy)
+        }
+        XCTAssertNil(offered(ToolbarLiveState(mode: .snapAndTalk)), "no session, nothing to review")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .snapAndTalk, captureCount: 0)), .review, "an open session, before its first capture")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 3)), .review, "while narrating")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .draw)), .tools)
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .draw, drawing: true)), .tools)
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .present, presenting: true)), .prompts)
+        XCTAssertNil(offered(ToolbarLiveState(mode: .persona)), "no live copy: More opens Persona instead")
+        XCTAssertNil(offered(ToolbarLiveState(mode: .persona, persona: .session)), "a live set with no copy selected")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .persona, persona: .shown), copy: true), .appearance)
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .persona, persona: .sessionHidden), copy: true), .appearance, "a hidden set's selected copy")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .persona), copy: true), .appearance, "the one card, hidden")
+        // Whatever is live elsewhere, a tool offers only its own accessory, and these three none.
+        for mode in ToolbarMode.allCases {
+            let states = [ToolbarLiveState(mode: mode), ToolbarLiveState(mode: mode, dictation: .recording),
+                          ToolbarLiveState(mode: mode, reading: .playing, narrating: true, captureCount: 2),
+                          ToolbarLiveState(mode: mode, drawing: true, presenting: true, persona: .shown, timer: .running)]
+            for live in states {
+                for copy in [false, true] {
+                    let accessory = offered(live, copy: copy)
+                    XCTAssertTrue(accessory == nil || accessory?.mode == mode, "\(mode): \(String(describing: accessory))")
+                    if [.dictate, .read, .snap].contains(mode) { XCTAssertNil(accessory, "\(mode) has no accessory") }
+                }
+            }
+        }
+        XCTAssertEqual(ToolbarAccessory.allCases.map(\.title), ["Review", "Tools", "Prompts", "Appearance"])
+        // Appearance carries the Persona menus' word, and VoiceOver hears whose it is (#169).
+        XCTAssertEqual(ToolbarAccessory.appearanceDescription(copyHidden: false), "Appearance of the selected persona")
+        XCTAssertEqual(ToolbarAccessory.appearanceDescription(copyHidden: true), "Appearance of the selected persona, hidden")
+        XCTAssertEqual(Set(ToolbarAccessory.allCases.map(\.mode)).count, ToolbarAccessory.allCases.count, "at most one accessory per tool")
+        XCTAssertEqual(ToolbarAccessory.allCases.filter { !$0.opensList }, [.review], "Review goes to the review; the rest open a list")
+    }
+
+    /// Every accessory is reviewed in the gallery, each only with its own tool, Appearance also
+    /// hidden and at a right-hand dock.
+    func testEveryAccessoryHasAFixture() {
+        XCTAssertEqual(Set(ToolbarGallery.states.compactMap(\.accessory)), Set(ToolbarAccessory.allCases))
+        for state in ToolbarGallery.states {
+            if let accessory = state.accessory { XCTAssertEqual(accessory.mode, state.mode, state.name) }
+        }
+        let modes = Dictionary(uniqueKeysWithValues: ToolbarGallery.modes.filter { $0.tier == .revealed }.map { ($0.mode, $0.accessory) })
+        XCTAssertEqual(modes, [.dictate: nil, .read: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: .prompts, .persona: nil],
+                       "idle, Draw and Present show theirs, and nothing else has one to show")
+        let hidden = ToolbarGallery.states.first { $0.name == "accessory-persona-appearance-hidden" }
+        XCTAssertEqual(hidden?.accessoryDescription, "Appearance of the selected persona, hidden")
+        XCTAssertTrue(ToolbarGallery.accessories.contains { $0.accessory == .appearance && $0.anchor.growsLeftward })
+    }
+
     /// The row is a glance, not a sentence. The label budget is the next action's.
     func testEveryLabelStaysAGlance() {
         for state in ToolbarGallery.states {

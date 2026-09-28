@@ -102,7 +102,20 @@ struct FloatingToolbar: View {
             choices: ToolbarNextAction.choices(for: live, key: key),
             minimumTitles: ToolbarNextAction.titles(across: live),
             isBusy: live.isLive(live.mode),
-            status: .resolve(activity), showsAccessory: controls.accessoryFits)
+            status: .resolve(activity), showsAccessory: controls.accessoryFits,
+            accessory: accessory(live), accessoryDescription: accessoryDescription(live))
+    }
+
+    /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
+    /// Draw's Tools, Present's Prompts, and Persona's Appearance while a live copy is selected.
+    func accessory(_ live: ToolbarLiveState) -> ToolbarAccessory? {
+        ToolbarAccessory.offered(for: live, selectedPersonaCopy: live.mode == .persona && stage.selectedPersonaCopy != nil)
+    }
+    /// Appearance says whose appearance it changes, and that the copy is hidden when it is: the one
+    /// floating card kept for Show again, or a set's copy while the set or the copy is hidden.
+    func accessoryDescription(_ live: ToolbarLiveState) -> String? {
+        guard accessory(live) == .appearance, let copy = stage.selectedPersonaCopy else { return nil }
+        return ToolbarAccessory.appearanceDescription(copyHidden: stage.isPersonaCopyHidden(copy))
     }
 
     /// A recording's elapsed time against its 5-minute limit, for the Stop that ends it (#134 T4).
@@ -149,7 +162,7 @@ struct FloatingToolbar: View {
             FloatingResultView(result: result, model: model, controls: controls)
         } else {
             ToolbarRow(state: state, accent: Workbench.accent,
-                openAccessory: { button in openPrompts(anchor: button, destination: controls.promptDestination?()) },
+                makeAccessoryMenu: { accessoryMenu(state.accessory) }, openAccessory: accessoryPanel(state.accessory),
                 press: pressPrimary, openChooser: { launcher in controls.openChooser?(launcher, state.choices) },
                 makeMenu: moreMenu, menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
                 focusButton: { button in
@@ -168,6 +181,25 @@ struct FloatingToolbar: View {
     /// checks can press it through a completion.
     func pressPrimary() -> (() -> Void)? {
         controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: perform)
+    }
+
+    /// The accessory that opens a place or a panel: Review opens the session's review, and Prompts
+    /// the one Saved Prompts picker. Tools and Appearance open their menus instead.
+    func accessoryPanel(_ accessory: ToolbarAccessory?) -> ((NSView) -> Void)? {
+        switch accessory {
+        case .review?: return { _ in model.onShowEditor?("readback") }
+        case .prompts?: return { button in openPrompts(anchor: button, destination: controls.promptDestination?()) }
+        case .tools?, .appearance?, nil: return nil
+        }
+    }
+    /// Tools is the drawing choices, as Draw's own menu holds them; Appearance is Circle, Card and
+    /// Original for the copy selected when the menu opens, and only that copy.
+    func accessoryMenu(_ accessory: ToolbarAccessory?) -> NSMenu {
+        switch accessory {
+        case .tools?: return stage.makeAnnotationMenu(includeSettings: false)
+        case .appearance?: return ToolbarAccessoryMenus.appearance(stage)
+        case .review?, .prompts?, nil: return NSMenu()
+        }
     }
 
     /// One Saved Prompts picker for the accessory and More (#159). It
@@ -239,10 +271,21 @@ struct FloatingToolbar: View {
             menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)
+            // With no live copy to change, the tool's door to its preparation; with one, Appearance
+            // waits here when the row has no room for it and Persona's menu has none (#134 part B).
+            if stage.selectedPersonaCopy == nil {
+                menu.addItem(ToolbarMenuAction("Open Persona…") { stage.showPersonas() })
+            } else if ToolbarAccessoryMenus.moreNeedsAppearance(menu, accessoryFits: controls.accessoryFits, hasCopy: true) {
+                let appearance = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+                appearance.submenu = ToolbarAccessoryMenus.appearance(stage)
+                menu.addItem(appearance)
+            }
         }
         // Work running in another tool is never a dead end: whatever the compact mark shows has
         // its finish, resume or door under Active work, worded as that tool's own label would be.
-        let active: [NSMenuItem] = ToolbarActiveWork.items(activeWorkFacts(action: action)).map { item in
+        // The timer's step as More shows it: its item performs that step and only that (#174).
+        let timerStep = stage.timerStep
+        let active: [NSMenuItem] = ToolbarActiveWork.items(activeWorkFacts(action: action, timer: timerStep.transport)).map { item in
             switch item {
             case .stopDrawing: return ToolbarMenuAction("Stop drawing") { stage.finishDrawing() }
             case .endPresentation: return ToolbarMenuAction("End presentation") { stage.endDeviceScene() }
@@ -251,7 +294,7 @@ struct FloatingToolbar: View {
             case .meetingRecovery:
                 return ToolbarMenuAction("Transcribe meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
             case .snapDraft: return ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") }
-            case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport() }
+            case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport(expected: timerStep) }
             }
         }
         if !active.isEmpty {
@@ -272,11 +315,11 @@ struct FloatingToolbar: View {
     }
 
     /// What the owners say for More's Active work section, read when More opens.
-    func activeWorkFacts(action: ToolbarNextAction) -> ToolbarActiveWork.Facts {
+    func activeWorkFacts(action: ToolbarNextAction, timer: TimerTransport? = nil) -> ToolbarActiveWork.Facts {
         let live = self.live
         return ToolbarActiveWork.Facts(mode: live.mode, nextAction: action.operation, drawing: live.drawing, presenting: live.presenting,
             persona: live.persona, meetingRecording: live.meetingRecording,
-            meetingRecovery: meetings.hasRecovery && !meetings.isBusy, snapDraft: snapModel.draft != nil, timer: stage.timerTransport)
+            meetingRecovery: meetings.hasRecovery && !meetings.isBusy, snapDraft: snapModel.draft != nil, timer: timer ?? stage.timerTransport)
     }
 
     /// The commands a live recording, narration or reading keeps besides its next action, each
