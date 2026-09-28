@@ -24,20 +24,29 @@ panel row and a Present option, not a mode.
 At rest the toolbar is one element, `[mode glyph][next action]`. The label is
 the next action for where you are in the journey, from one pure function of what
 is live (`ToolbarNextAction`) with a fixed priority: what is consuming your input
-now (inserting, dictating), then the cheapest to undo (narrating, drawing, reading,
-personas), then session steps (`Capture next · 3`), then the one ending
-(`Stop transcribing`, `End presentation`), then the mode's start verb. Two
-identical screens never read differently, and the label never ends anything
-but what it names. Click the label to do it, click or right-click the glyph for
-the menu, drag anywhere to move. Work running in the selected mode is a dot on
-the glyph.
+now (inserting, dictating, capturing, narrating, drawing, reading) whatever the
+mode, then the selected mode's own step or ending (`Capture next · 3`,
+`Stop transcribing`, `End presentation`, `Hide personas`), then its start verb.
+Another mode's ending never claims the label: presenting while Draw is the mode
+reads `Draw`, the Present chip's dot says the scene is live, and the glyph menu
+offers `End presentation`. Two identical screens never read differently, and the
+label never ends anything but what it names. Click the label to do it, click or
+right-click the glyph for the menu, drag anywhere to move. Work running in the
+selected mode is a dot on the glyph. The hover hint shows a key only for an
+operation that key performs: Present's key does not stop an insertion, Dictate's
+key does not stop a meeting, and the persona key does not pause a prepared set.
+
+`ToolbarModeFollower` in the host watches every owner and makes a capability
+the mode the moment it goes from not live to live, whichever door started it;
+if several start in one tick, Present wins, then Persona. The launch snapshot is
+not a start, so a restored Snap & Talk session does not move the mode.
 
 Hover reveals the row: the same element in the same place, then a divider, the
 other modes as chips, and the mode's accessory. A chip's hover text says its
 name and key; a click switches; hover never opens anything. A chip's dot says
 that mode's work is live while another mode is selected. The primary keeps the
-width of the widest idle verb, so an idle mode switch never moves the chips
-under the pointer. The row holds no information-only text: the assigned key and
+width of the widest label any mode would show for the current live state, so a
+mode switch never moves the chips under the pointer, idle or mid-session. The row holds no information-only text: the assigned key and
 any count are the action's hover hint. Snap & Talk keeps its session capture
 count in the label between captures and while saving. Present has a Prompts
 picker beside its action. Disabled or unassigned shortcut combinations are
@@ -46,7 +55,8 @@ preference.
 
 The glyph menu is the mode's own options plus four constant items: the next
 action with its key, then only the current mode's items, then cross-mode finish
-items (`Stop drawing`, `End presentation`) when that work runs in another mode,
+items (`Stop drawing`, `End presentation`, `Hide persona`/`Hide personas`/
+`Show personas`, `Stop transcribing`) when that work runs in another mode,
 then Position, Keep open, Hide toolbar and Settings. There is no Change tool.
 Dictate, Read and Snap are start and stop on this surface, so each carries one
 door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and

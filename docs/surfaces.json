@@ -144,13 +144,6 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
-    "surface": "floating toolbar glyph menu",
-    "label": "Open Dictate…",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
     "surface": "floating toolbar glyph menu",
     "label": "End presentation",
@@ -172,6 +165,13 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
+    "surface": "floating toolbar glyph menu",
+    "label": "Open Dictate…",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
     "surface": "floating toolbar glyph menu",
     "label": "Open Read…",
@@ -184,6 +184,15 @@
     "label": "Open Snap…",
     "kind": "action",
     "belongsTo": "snap"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
+    "surface": "floating toolbar glyph menu",
+    "label": null,
+    "expression": "personaFinish",
+    "note": "Runtime label from personaFinish; no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "persona"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-894c4cc35124",
@@ -216,6 +225,13 @@
     "label": "Stop drawing",
     "kind": "action",
     "belongsTo": "draw"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-transcribing",
+    "surface": "floating toolbar glyph menu",
+    "label": "Stop transcribing",
+    "kind": "action",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.switch-to-browser-tab",
