@@ -226,17 +226,20 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(ToolbarOperation.stopMeetingTranscription.mode, .dictate, "the symbol still belongs to Dictate")
     }
 
-    func testTheStripLightsTheModeWhoseWorkIsLive() {
-        let chips = ToolbarNextAction.switcher(for: ToolbarLiveState(mode: .dictate, drawing: true))
-        XCTAssertEqual(chips.map(\.mode), ToolbarMode.allCases.filter { $0 != .dictate })
-        XCTAssertEqual(chips.filter(\.isBusy).map(\.mode), [.draw])
+    /// The chooser lists all seven tools, checks the chosen one and lights each whose work is live (#134).
+    func testTheChooserLightsTheToolWhoseWorkIsLive() {
+        let rows = ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate, drawing: true), key: { $0 == .draw ? "⌥D" : nil })
+        XCTAssertEqual(rows.map(\.mode), ToolbarMode.allCases)
+        XCTAssertEqual(rows.filter(\.isSelected).map(\.mode), [.dictate])
+        XCTAssertEqual(rows.filter(\.isLive).map(\.mode), [.draw])
+        XCTAssertEqual(rows.first { $0.mode == .draw }?.key, "⌥D")
         XCTAssertFalse(ToolbarLiveState(mode: .dictate, drawing: true).isLive(.dictate))
-        let presenting = ToolbarNextAction.switcher(for: ToolbarLiveState(mode: .draw, presenting: true))
-        XCTAssertEqual(presenting.filter(\.isBusy).map(\.mode), [.present])
+        let presenting = ToolbarNextAction.choices(for: ToolbarLiveState(mode: .draw, presenting: true))
+        XCTAssertEqual(presenting.filter(\.isLive).map(\.mode), [.present])
     }
 
-    /// The width floor follows the live state, so a mode switch mid-session
-    /// never moves the strip either.
+    /// The width floor follows the live state, so choosing another tool mid-session
+    /// never moves More either.
     func testTitlesAcrossModesNameEveryModesLabelForThisLiveState() {
         let live = ToolbarLiveState(mode: .dictate, captureCount: 3, presenting: true)
         let titles = ToolbarNextAction.titles(across: live)

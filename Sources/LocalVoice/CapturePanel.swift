@@ -20,10 +20,10 @@ final class CaptureHostingView<Content: View>: NSHostingView<Content> {
 @MainActor
 final class CaptureHUDControls: ObservableObject {
     let toolbar: ToolbarSession
-    @Published var toolbarSize = NSSize(width: 132, height: 36)
-    private var measuredRowSize = NSSize(width: 400, height: 36)
-    /// The resting element, `[glyph][next action]`, seeded until measured.
-    private(set) var restingSize = NSSize(width: 132, height: 36)
+    @Published var toolbarSize = ToolbarLayout.mark
+    private var measuredRowSize = NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight)
+    /// The compact rest, the same 48 × 28 in every state (#134); measured once it has drawn.
+    private(set) var restingSize = ToolbarLayout.mark
     private var restingMeasured = false
     private var rowMeasured = false
     private var observation: AnyCancellable?
@@ -49,21 +49,12 @@ final class CaptureHUDControls: ObservableObject {
         guard tier == toolbar.state.tier, size.width > 0, size.height > 0 else { return }
         let size = NSSize(width: ceil(size.width), height: ceil(size.height))
         let previous = preferredToolbarSize
-        // Estimate the resting height from the row only until the resting
-        // element itself has been measured; afterwards the two sizes must not
-        // trade places on every reveal.
         if tier == .resting { restingSize = size; restingMeasured = true }
-        else { measuredRowSize = size; rowMeasured = true; if !restingMeasured { restingSize.height = size.height } }
+        else { measuredRowSize = size; rowMeasured = true }
         if previous != preferredToolbarSize { resize?() }
     }
-    /// The resting element of a row that opened revealed, measured once off screen
-    /// so a top or bottom dock centres on it (#152). The row's own report follows and
-    /// places the window. Afterwards only the resting element's own report changes
-    /// it, so an open row is never re-centred under the pointer.
-    func reportRestingSize(_ size: NSSize) {
-        guard !restingMeasured, toolbar.state.tier == .revealed, size.width > 0, size.height > 0 else { return }
-        restingSize = NSSize(width: ceil(size.width), height: ceil(size.height)); restingMeasured = true
-    }
+    /// The revealed row's last measured size, for deciding whether its accessory fits.
+    var rowSize: NSSize { measuredRowSize }
     func focusToolbar() { toolbar.send(.holdBegan(.keyboard)) }
     func unfocusToolbar() { toolbar.send(.holdEnded(.keyboard)) }
     func endKeyboardInteraction() { unfocusToolbar(); releaseKeyboardFocus?() }
@@ -83,6 +74,33 @@ final class CaptureHUDControls: ObservableObject {
     var choosePosition: ((FloatingControlAnchor) -> Void)?
     /// Opens Position…, the toolbar's compact placement control.
     var showPosition: (() -> Void)?
+
+    // MARK: Compact controls (#134)
+
+    /// The next action's presses: each latched on what the button showed, acting only if it holds.
+    let pressGate = ToolbarPressGate()
+    /// Opens the tool chooser from the launcher.
+    var openChooser: ((NSView, [ToolbarToolChoice]) -> Void)?
+    /// The chooser's rows changed while it may be open.
+    var chooserChoicesChanged: (([ToolbarToolChoice]) -> Void)?
+    /// A click on the compact rest: reveal and take the keyboard, never work.
+    var revealFromRest: (() -> Void)?
+    /// The Snap & Talk session whose sequence was started in this launch. A session restored
+    /// at launch is idle until it is used; closing or switching sessions ends the sequence.
+    @Published var snapAndTalkSequence: URL?
+    /// The accessory fits the row on this display; when it does not, it waits in More.
+    @Published var accessoryFits = true
+
+    /// What the compact rest shows now, as the row last rendered it.
+    private(set) var status = ToolbarStatus.idle
+    /// VoiceOver hears each meaningful change of the compact status once: a new indicator
+    /// or badge, never a level, and never any transcript or result content.
+    func statusChanged(from previous: ToolbarStatus, to status: ToolbarStatus) {
+        self.status = status
+        guard status.announces(after: previous) else { return }
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: status.description, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
 }
 
 @MainActor
@@ -91,9 +109,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private let positionKey = "capturePanelOrigin.v1"
     private let anchorKey = "capturePanelAnchor.v2"
     private let sizeKey = "capturePanelSize.v1"
-    /// A free position with its side, decided when it was released (#163). The origin and
-    /// size above still record its resting element, which is what an earlier build reads.
+    /// A free position with its side, decided when it was released (#163), as a glyph edge.
+    /// Still written for the build before #134, which reads it; read here only to migrate.
     private let freeKey = "capturePanelFreePosition.v1"
+    /// A free position as the launcher's centre and side (#134): the compact mark's centre,
+    /// and the revealed launcher's. It records the glyph-edge copy written beside it, so a
+    /// later move by an earlier build is noticed and migrated rather than overwritten.
+    private let launcherKey = "capturePanelLauncher.v1"
     private let controls: CaptureHUDControls
     private weak var model: AppModel?
     private weak var readback: ReadbackModel?
@@ -112,7 +134,14 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// another display, or a dictation panel dragged to a dock, is shown but never saved over it.
     private var freePosition: ToolbarFreePosition?
     private let positionControl = ToolbarPositionPanel()
+    private let chooser = ToolbarChooserPanel()
     var isAnimatingToolbar: Bool { motion.target != nil }
+    /// The gallery reads where the chooser opened and opens it invisibly (#134).
+    var chooserFrame: NSRect? { chooser.shownFrame }
+    var chooserOffscreenForChecks: Bool {
+        get { chooser.offscreenForChecks }
+        set { chooser.offscreenForChecks = newValue }
+    }
     /// Where the tools rest: a named dock, or a free position with its side.
     var toolsPosition: ToolbarPosition {
         if controls.anchor == nil, let freePosition { return .free(freePosition) }
@@ -131,27 +160,26 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         super.init(window: panel)
         self.model = model
         self.readback = readback; self.stage = stage
-        let savedAnchor = UserDefaults.standard.string(forKey: anchorKey).flatMap(FloatingControlAnchor.init(rawValue:))
-        if let savedAnchor { controls.anchor = savedAnchor }
-        else if let free = Self.freePosition(UserDefaults.standard.dictionary(forKey: freeKey)) {
-            // A free position, where the person left it, with the side it was given then (#163).
-            controls.anchor = nil; freePosition = free
-        } else if let origin = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString), origin.x.isFinite, origin.y.isFinite {
-            // An earlier save kept only the resting element's origin: decide its side once, where
-            // it was left, and keep that from now on.
-            let size = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString)
-                .flatMap { $0.width.isFinite && $0.height.isFinite && $0.width > 0 && $0.height > 0 ? $0 : nil } ?? controls.restingSize
-            let resting = NSRect(origin: origin, size: size), screens = NSScreen.screens.map(\.visibleFrame)
-            let screen = FloatingControlPlacement.screen(for: resting, screens: screens, preferred: NSScreen.main?.visibleFrame ?? resting)
-            controls.anchor = nil; freePosition = ToolbarFreePosition(released: resting, on: screen)
-            UserDefaults.standard.set(Self.record(freePosition!), forKey: freeKey)
-        } else { controls.anchor = .bottom }
+        let saved = Self.savedPosition(UserDefaults.standard, screens: NSScreen.screens.map(\.visibleFrame),
+                                       preferred: NSScreen.main?.visibleFrame)
+        switch saved.position {
+        case .docked(let anchor): controls.anchor = FloatingControlAnchor(rawValue: anchor.rawValue) ?? .bottom
+        case .free(let free): controls.anchor = nil; freePosition = free
+        }
+        // A position read from an earlier build's keys is saved in this build's terms at once.
+        if saved.migrated, case .free(let free) = saved.position {
+            UserDefaults.standard.set(Self.launcherRecord(free), forKey: launcherKey)
+            UserDefaults.standard.set(Self.record(free), forKey: freeKey)
+        }
         controls.rowAnchor = ToolbarGeometry.rowAnchor(toolsPosition)
         controls.toolbarSize = controls.preferredToolbarSize
         controls.resize = { [weak self, weak model] in if let model { self?.update(model: model) } }
         controls.choosePosition = { [weak self] in self?.choosePosition($0) }
         controls.showPosition = { [weak self] in self?.showPositionControl() }
-        controls.menuWillBegin = { [weak self] in self?.positionControl.close() }
+        controls.menuWillBegin = { [weak self] in self?.positionControl.close(); self?.chooser.close() }
+        controls.openChooser = { [weak self] launcher, choices in self?.openChooser(from: launcher, choices: choices) }
+        controls.chooserChoicesChanged = { [weak self] choices in self?.chooser.refresh(choices) }
+        controls.revealFromRest = { [weak self] in self?.revealFromRest() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         controls.promptDestination = { [weak self] in
             guard let self else { return nil }
@@ -182,7 +210,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         tracking.autoresizingMask = [.width, .height]
         tracking.event = { [weak controls] in controls?.toolbar.send($0) }
         // A pass-through never springs the row: entry is debounced while the
-        // window shows only the resting element.
+        // window shows only the compact rest.
         tracking.isRestingSized = { [weak self, weak controls] in
             guard let self, let controls, let window = self.window else { return false }
             return window.frame.width <= controls.restingWidth + 0.5
@@ -224,11 +252,21 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             .store(in: &observations)
         NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.cancelDragging(); self?.controls.unfocusToolbar() }
+            .sink { [weak self] _ in self?.cancelDragging(); self?.chooser.close(); self?.controls.unfocusToolbar() }
             .store(in: &observations)
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.cancelDragging(); self?.position() }
+            .sink { [weak self] _ in self?.cancelDragging(); self?.chooser.close(); self?.position() }
+            .store(in: &observations)
+        // A Snap & Talk sequence is attention only once it is used in this launch: a capture or
+        // narration marks its session, and closing or switching sessions ends it (#134).
+        readback.$isCapturing.combineLatest(readback.$isRecording, readback.$sessionURL)
+            .receive(on: RunLoop.main)
+            .sink { [weak controls] capturing, recording, session in
+                guard let controls else { return }
+                if capturing || recording { controls.snapAndTalkSequence = session }
+                else if controls.snapAndTalkSequence?.standardizedFileURL != session?.standardizedFileURL { controls.snapAndTalkSequence = nil }
+            }
             .store(in: &observations)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -248,7 +286,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             tracking?.acceptsCrossings = false
             motion.finish(window)
             if surface == .tools { controls.toolbar.activate() }
-            else { controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
+            else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging()
@@ -259,9 +297,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let size = surface == .tools ? controls.preferredToolbarSize : surface == .reading ? CaptureHUDLayout.compact : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
             preview: model.previewingPanel, expanded: controls.isExpanded, cue: Self.showsCue(model))
-        // The tools' frame follows the row's size and, at a top or bottom dock, its
-        // resting width; a free position stays where it is. A drag keeps its window
-        // until release, which places it.
+        // The tools' frame follows the content's size around the launcher's fixed centre, at a
+        // dock or a free position alike. A drag keeps its window until release, which places it.
         let moved = surface == .tools
             ? !dragging && toolbarFrame(size: size).map({ Self.differs($0, motion.target ?? window.frame) }) == true
             : (motion.target?.size ?? window.frame.size) != size
@@ -299,18 +336,51 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
     }
 
+    /// A click on the compact rest (#134): it reveals the row and gives the launcher the
+    /// keyboard, and nothing else. The field in front is kept first, as the target a later
+    /// action from the toolbar will use, and Workbench is not made the active app.
+    func revealFromRest() {
+        guard surface == .tools, let panel = window as? CapturePanel else { return }
+        let target = panel.allowsKeyboardFocus && panel.isKeyWindow ? keyboardTarget : TextDelivery.capture()
+        guard takeKeyboard(panel, target: target) else {
+            // The panel could not take the keyboard: reveal for the pointer that clicked, as a
+            // dwell would, so no keyboard hold is left that nothing can release.
+            controls.toolbar.send(.pointerEntered)
+            return
+        }
+    }
+
+    /// Gives the toolbar the keyboard, with `target` as the field it came from, and focuses the
+    /// launcher. False, with nothing held, if the panel could not become key.
+    @discardableResult
+    private func takeKeyboard(_ panel: CapturePanel, target: TextDelivery.Target?) -> Bool {
+        keyboardTarget = target
+        panel.allowsKeyboardFocus = true
+        panel.makeKeyAndOrderFront(nil)
+        guard panel.isKeyWindow else { panel.allowsKeyboardFocus = false; keyboardTarget = nil; return false }
+        controls.focusToolbar()
+        DispatchQueue.main.async { [weak self, weak panel] in
+            guard let self, panel?.allowsKeyboardFocus == true, self.surface == .tools else { return }
+            self.controls.focusFirstControl?()
+        }
+        return true
+    }
+
     func targetForDictation() -> TextDelivery.Target? {
         let target = window?.isKeyWindow == true ? keyboardTarget : TextDelivery.capture()
         releaseKeyboardFocus()
         return target
     }
 
+    /// Leaves keyboard interaction. The field the toolbar was focused from gets the keyboard
+    /// back only while the toolbar still owns it and that app is still running; otherwise the
+    /// keyboard stays wherever the person has since put it (#134).
     private func releaseKeyboardFocus() {
         guard let panel = window as? CapturePanel, panel.allowsKeyboardFocus else { return }
-        let target = keyboardTarget
+        let target = keyboardTarget, ownedKey = panel.isKeyWindow
         panel.allowsKeyboardFocus = false
         panel.resignKey()
-        target?.app.activate(options: [])
+        if ownedKey, let app = target?.app, !app.isTerminated { app.activate(options: []) }
         keyboardTarget = nil
     }
 
@@ -340,12 +410,24 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     }
 
     /// Puts the tools where they rest: the row is drawn for the side it grows from and
-    /// measured, then the window goes around it (#152, #163).
+    /// measured, then the window goes around it, its launcher on the launcher's centre
+    /// (#152, #163, #134). The accessory waits in More when the row with it would not fit.
     private func placeTools(previous: NSRect?, preferred: NSRect, animated: Bool) {
         let screen = toolsScreen(previous: previous, preferred: preferred)
         let rowAnchor = ToolbarGeometry.rowAnchor(toolsPosition)
-        if controls.rowAnchor != rowAnchor { controls.rowAnchor = rowAnchor; measureToolbar() }
+        var remeasure = false
+        if controls.rowAnchor != rowAnchor { controls.rowAnchor = rowAnchor; remeasure = true }
+        let fits = accessoryFits(on: screen)
+        if controls.accessoryFits != fits { controls.accessoryFits = fits; remeasure = true }
+        if remeasure { measureToolbar() }
         setFrame(toolbarFrame(size: controls.preferredToolbarSize, screen: screen), animated: animated)
+    }
+
+    /// The row with its accessory, measured when it showed one and otherwise its measured width
+    /// plus the accessory's, fits the display less its margin.
+    private func accessoryFits(on screen: NSRect) -> Bool {
+        let row = controls.rowSize.width + (controls.accessoryFits ? 0 : ToolbarLayout.accessoryWidth + ToolbarLayout.gap)
+        return row <= screen.width - ToolbarLayout.accessoryScreenMargin
     }
 
     /// The display the tools belong on: a free position's own display, which is the preferred
@@ -353,14 +435,14 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private func toolsScreen(previous: NSRect?, preferred: NSRect) -> NSRect {
         let screens = NSScreen.screens.map(\.visibleFrame)
         if case .free(let free) = toolsPosition {
-            return FloatingControlPlacement.screen(for: free.restingFrame(size: controls.restingSize), screens: screens, preferred: preferred)
+            return FloatingControlPlacement.screen(for: ToolbarGeometry.slot(around: free.centre), screens: screens, preferred: preferred)
         }
         return CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: controls.restingSize),
             screens: screens, preferred: preferred)
     }
 
     private func toolbarFrame(size: NSSize, screen: NSRect) -> NSRect {
-        ToolbarGeometry.frame(size: size, restingSize: controls.restingSize, position: toolsPosition, screen: screen)
+        ToolbarGeometry.frame(size: size, position: toolsPosition, screen: screen)
     }
 
     /// Where `place` puts the tools at `size`: at their dock or their free position, never
@@ -401,26 +483,72 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     private func savePosition(_ destination: NSRect? = nil) {
         guard var frame = destination ?? window?.frame else { return }
-        // A free position saves the resting element where the person put it, whatever the
-        // window shows: a row, a dictation panel, or a frame recovered onto another display.
+        // A free position saves the launcher's centre where the person put it, whatever the
+        // window shows: a row, a dictation panel, or a frame recovered onto another display. An
+        // earlier build's copy is written beside it, as its glyph edge and resting element.
         if controls.anchor == nil, let freePosition {
-            frame = freePosition.restingFrame(size: controls.restingSize)
+            frame = NSRect(x: freePosition.centre.x - ToolbarLayout.launcherInset, y: freePosition.centre.y - ToolbarLayout.mark.height / 2,
+                           width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
+            UserDefaults.standard.set(Self.launcherRecord(freePosition), forKey: launcherKey)
             UserDefaults.standard.set(Self.record(freePosition), forKey: freeKey)
-        } else { UserDefaults.standard.removeObject(forKey: freeKey) }
+        } else {
+            UserDefaults.standard.removeObject(forKey: launcherKey)
+            UserDefaults.standard.removeObject(forKey: freeKey)
+        }
         UserDefaults.standard.set(NSStringFromPoint(frame.origin), forKey: positionKey)
         UserDefaults.standard.set(NSStringFromSize(frame.size), forKey: sizeKey)
         if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
         else { UserDefaults.standard.removeObject(forKey: anchorKey) }
     }
 
-    /// A free position as saved, and read back; nil for anything not a whole, finite record.
+    /// The saved position, in the order the builds wrote it: a dock by name; this build's
+    /// launcher centre, unless an earlier build has since moved the toolbar; the #163 glyph
+    /// edge; the resting element's origin alone, whose side is decided once, where it was left;
+    /// otherwise bottom centre. `migrated` says it came from an earlier build's keys (#134).
+    static func savedPosition(_ defaults: UserDefaults, screens: [NSRect], preferred: NSRect?) -> (position: ToolbarPosition, migrated: Bool) {
+        if let anchor = defaults.string(forKey: "capturePanelAnchor.v2").flatMap(ToolbarAnchor.init(rawValue:)) { return (.docked(anchor), false) }
+        let glyph = freePosition(defaults.dictionary(forKey: "capturePanelFreePosition.v1"))
+        let launcher = defaults.dictionary(forKey: "capturePanelLauncher.v1")
+        if let current = launcherPosition(launcher) {
+            // The glyph edge written beside it is unchanged, so no earlier build moved it since.
+            guard let glyph, !samePlace(glyph, current) else { return (.free(current), false) }
+            return (.free(glyph), true)
+        }
+        if let glyph { return (.free(glyph), true) }
+        if let origin = defaults.string(forKey: "capturePanelOrigin.v1").map(NSPointFromString), origin.x.isFinite, origin.y.isFinite {
+            let size = defaults.string(forKey: "capturePanelSize.v1").map(NSSizeFromString)
+                .flatMap { $0.width.isFinite && $0.height.isFinite && $0.width > 0 && $0.height > 0 ? $0 : nil } ?? NSSize(width: 132, height: 36)
+            let resting = NSRect(origin: origin, size: size)
+            let screen = FloatingControlPlacement.screen(for: resting, screens: screens, preferred: preferred ?? screens.first ?? resting)
+            return (.free(ToolbarFreePosition(earlierResting: resting, on: screen)), true)
+        }
+        return (.docked(.bottom), false)
+    }
+
+    /// The same place and side, to within half a point: a glyph edge converted back to a centre
+    /// is not always bit-exact, and an earlier build's move is always a real distance.
+    static func samePlace(_ a: ToolbarFreePosition, _ b: ToolbarFreePosition) -> Bool {
+        a.growsLeftward == b.growsLeftward && abs(a.centre.x - b.centre.x) < 0.5 && abs(a.centre.y - b.centre.y) < 0.5
+    }
+
+    /// The #163 record: the glyph edge of a 36-point glyph, its centre and side.
     static func record(_ position: ToolbarFreePosition) -> [String: Any] {
-        ["glyphEdge": Double(position.glyphEdge), "centreY": Double(position.centreY), "growsLeftward": position.growsLeftward]
+        ["glyphEdge": Double(position.glyphEdge), "centreY": Double(position.centre.y), "growsLeftward": position.growsLeftward]
     }
     static func freePosition(_ record: [String: Any]?) -> ToolbarFreePosition? {
         guard let record, let edge = (record["glyphEdge"] as? NSNumber)?.doubleValue, let centre = (record["centreY"] as? NSNumber)?.doubleValue,
               let leftward = record["growsLeftward"] as? Bool else { return nil }
         let position = ToolbarFreePosition(glyphEdge: edge, centreY: centre, growsLeftward: leftward)
+        return position.isFinite ? position : nil
+    }
+    /// The #134 record: the launcher's centre and side.
+    static func launcherRecord(_ position: ToolbarFreePosition) -> [String: Any] {
+        ["x": Double(position.centre.x), "y": Double(position.centre.y), "growsLeftward": position.growsLeftward]
+    }
+    static func launcherPosition(_ record: [String: Any]?) -> ToolbarFreePosition? {
+        guard let record, let x = (record["x"] as? NSNumber)?.doubleValue, let y = (record["y"] as? NSNumber)?.doubleValue,
+              let leftward = record["growsLeftward"] as? Bool else { return nil }
+        let position = ToolbarFreePosition(centre: CGPoint(x: x, y: y), growsLeftward: leftward)
         return position.isFinite ? position : nil
     }
 
@@ -432,7 +560,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     func beginDragging() {
         dragging = true; tracking?.acceptsCrossings = false
         // A pointer drag never takes the keyboard, so Position… would otherwise stay open.
-        positionControl.close()
+        positionControl.close(); chooser.close()
         if let window { motion.finish(window) }
         controls.setDragging(true); previewDragging()
     }
@@ -452,7 +580,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     override func close() {
         observations.removeAll()
         controls.resize = nil; controls.choosePosition = nil; controls.showPosition = nil
-        positionControl.close()
+        controls.openChooser = nil; controls.chooserChoicesChanged = nil; controls.revealFromRest = nil
+        positionControl.close(); chooser.close()
         controls.suspendToolbar(); cancelDragging(); releaseKeyboardFocus()
         motion.settled = nil
         if let window { motion.finish(window) }
@@ -463,11 +592,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
         if surface == .tools {
-            // The resting element is what docks. A dock's guide is active only within the snap distance.
-            let resting = restingFrame(in: window.frame)
-            let screen = FloatingControlPlacement.screen(for: resting, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-            snapGuide.show(controlFrame: resting, visibleFrame: screen,
-                           activeAnchor: FloatingControlPlacement.snapAnchor(for: resting, in: screen), below: window)
+            // The launcher's end is what docks: its slot is outlined, and a dock's guide is active
+            // only within the snap distance.
+            let slot = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
+            let screen = FloatingControlPlacement.screen(for: slot, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+            snapGuide.show(controlFrame: slot, visibleFrame: screen,
+                           activeAnchor: FloatingControlPlacement.snapAnchor(for: slot, in: screen), below: window)
             return
         }
         let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
@@ -478,7 +608,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     func finishDragging() {
         defer { cancelDragging() }
         guard dragging, let window, let preferred = preferredScreen else { return }
-        if surface == .tools { releaseTools(at: restingFrame(in: window.frame)); return }
+        if surface == .tools {
+            releaseTools(atLauncher: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
+            return
+        }
         let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
         let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
         // The dictation panel docks where it is dropped. Docked tools follow it, as before; free
@@ -487,33 +620,30 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen))
     }
 
-    /// The tools released with their resting element at `resting` (#163): within the snap
+    /// The tools released with their launcher at `centre` (#163, #134): within the snap
     /// distance of a named dock they dock there; anywhere else they rest right there, kept
-    /// whole on the display they cover most. The drag's release and the gallery's check use it.
-    func releaseTools(at resting: NSRect) {
+    /// whole on the display they cover most, growing toward its middle from then on. The
+    /// drag's release and the gallery's check use it.
+    func releaseTools(atLauncher centre: CGPoint) {
         guard let preferred = preferredScreen else { return }
-        let screen = FloatingControlPlacement.screen(for: resting, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        if let anchor = FloatingControlPlacement.snapAnchor(for: resting, in: screen) {
+        let slot = ToolbarGeometry.slot(around: centre)
+        let screen = FloatingControlPlacement.screen(for: slot, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+        if let anchor = FloatingControlPlacement.snapAnchor(for: slot, in: screen) {
             controls.anchor = anchor; freePosition = nil
         } else {
             // The side is decided here, once, and kept: a later change of width never turns it round.
+            let kept = FloatingControlGeometry.clamp(slot, to: screen, inset: 0)
             controls.anchor = nil
-            freePosition = ToolbarFreePosition(released: FloatingControlGeometry.clamp(resting, to: screen, inset: 0), on: screen)
+            freePosition = ToolbarFreePosition(releasedAt: CGPoint(x: kept.midX, y: kept.midY), on: screen)
         }
-        if surface == .tools { placeTools(previous: resting, preferred: preferred, animated: true) } else { savePosition() }
-    }
-
-    /// The resting element within a tools window: the end its row grows from.
-    private func restingFrame(in frame: NSRect) -> NSRect {
-        let size = controls.restingSize
-        return NSRect(x: controls.rowAnchor.growsLeftward ? frame.maxX - size.width : frame.minX, y: frame.midY - size.height / 2,
-                      width: size.width, height: size.height)
+        if surface == .tools { placeTools(previous: slot, preferred: preferred, animated: true) } else { savePosition() }
     }
 
     /// Position…: the named docks and a reset, beside the toolbar, from the keyboard or pointer.
     /// Opened from the toolbar's keyboard focus, it hands the keyboard back when it closes.
     private func showPositionControl() {
         guard let window, window.isVisible else { return }
+        chooser.close()
         // Position… takes the keyboard, and the toolbar forgets its target when it resigns: keep both now.
         let fromKeyboard = (window as? CapturePanel)?.allowsKeyboardFocus == true, target = keyboardTarget
         positionControl.show(beside: window.frame, level: window.level, current: controls.anchor,
@@ -525,19 +655,34 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             })
     }
 
-    /// After Position… closes from a choice, Reset or Escape, the toolbar takes the keyboard back
-    /// with the field it was focused from. A second Escape then leaves through
-    /// `releaseKeyboardFocus`, returning to that field, as the former Position submenu did.
+    /// The tool chooser (#134), from a click, Space or Return on the launcher. It holds the row
+    /// open, as a menu does. Before it takes the keyboard, the field in front is kept: the one
+    /// the toolbar was focused from, or the one in front now. A choice or Escape returns the
+    /// keyboard to the launcher with that field; anything else leaves the keyboard where the
+    /// person put it. Choosing changes only the remembered tool.
+    private func openChooser(from launcher: NSView, choices: [ToolbarToolChoice]) {
+        if chooser.isShown { chooser.close(); return }
+        guard surface == .tools, controls.toolbar.isActive, let window, let launcherWindow = launcher.window else { return }
+        positionControl.close()
+        let panel = window as? CapturePanel
+        let target = panel?.allowsKeyboardFocus == true && panel?.isKeyWindow == true ? keyboardTarget : TextDelivery.capture()
+        controls.toolbar.send(.holdBegan(.menu))
+        let frame = launcherWindow.convertToScreen(launcher.convert(launcher.bounds, to: nil))
+        chooser.show(from: frame, view: launcher, level: window.level, growsLeftward: controls.rowAnchor.growsLeftward, choices: choices,
+            choose: { [weak self] mode in self?.model?.toolbarMode = mode },
+            closed: { [weak self] reason in
+                guard let self else { return }
+                self.controls.menuDidClose?()
+                if reason.returnsKeyboardToLauncher { self.returnKeyboardToToolbar(target: target) }
+            })
+    }
+
+    /// After Position… or the chooser closes from a choice or Escape, the toolbar takes the
+    /// keyboard back with the field it kept. A second Escape then leaves through
+    /// `releaseKeyboardFocus`, returning to that field while it is still valid.
     private func returnKeyboardToToolbar(target: TextDelivery.Target?) {
         guard surface == .tools, let panel = window as? CapturePanel else { return }
-        keyboardTarget = target
-        panel.allowsKeyboardFocus = true
-        controls.focusToolbar()
-        panel.makeKeyAndOrderFront(nil)
-        DispatchQueue.main.async { [weak self, weak panel] in
-            guard let self, panel?.allowsKeyboardFocus == true, self.surface == .tools else { return }
-            self.controls.focusFirstControl?()
-        }
+        takeKeyboard(panel, target: target)
     }
 }
 
@@ -622,7 +767,7 @@ struct RecordingOverlay: View {
             } else if model.phase == .idle && !model.previewingPanel, let cue = model.captureCue {
                 NoSpeechCueView(cue: cue, hold: model.holdCaptureCue)
             } else if model.phase == .idle && !model.previewingPanel {
-                // A copied prompt is kept in Saved resources; a transcript in History.
+                // A copied prompt is kept in Library; a transcript in History.
                 CaptureReceiptView(receipts: model.clipboardReceipt, review: {
                     if model.clipboardReceipt.receipt?.source == .prompt { model.showLibrary() }
                     else { model.openHistory(); model.onShowEditor?("history") }
@@ -876,7 +1021,7 @@ private struct CaptureReceiptView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 VStack(spacing: 3) {
                     Button { receipts.dismissHUD(); review() } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Saved resources" : "Open History")
+                        .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
                     HStack(spacing: 2) {
                         if receipt.isClipboardCurrent {
                             Button { receipts.keepVisible.toggle() } label: {

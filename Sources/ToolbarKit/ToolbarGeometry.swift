@@ -1,43 +1,74 @@
 import AppKit
 import ToolbarCore
 
-public enum ToolbarGeometry {
-    /// Dock the resting element, not the row's centre. The same element stays
-    /// under the pointer at all eight anchors as the measured content grows
-    /// inward; `restingWidth` is the measured width of `[glyph][next action]`.
-    public static func frame(size: NSSize, restingWidth: CGFloat, anchor: ToolbarAnchor,
-                             screen: NSRect, inset: CGFloat = 16) -> NSRect {
-        let width = min(max(1, size.width), screen.width)
-        let height = min(max(1, size.height), screen.height)
-        let mx = min(inset, max(0, (screen.width - width) / 2))
-        let my = min(inset, max(0, (screen.height - height) / 2))
-        let x: CGFloat
-        switch anchor {
-        case .topLeft, .left, .bottomLeft: x = screen.minX + mx
-        case .topRight, .right, .bottomRight: x = screen.maxX - mx - width
-        case .top, .bottom: x = screen.midX - restingWidth / 2
-        }
-        let y: CGFloat
-        switch anchor {
-        case .topLeft, .top, .topRight: y = screen.maxY - my - height
-        case .left, .right: y = screen.midY - height / 2
-        case .bottomLeft, .bottom, .bottomRight: y = screen.minY + my
-        }
-        return NSRect(x: min(max(screen.minX + mx, x), screen.maxX - mx - width),
-                      y: y, width: width, height: height)
-    }
+/// The compact controls' measures (#134), in points at standard text. The compact mark and
+/// the revealed row's launcher share one centre on screen, and both meet their growth edge
+/// 24 points from it: the mark is the resting window, and the launcher's 48-point target is
+/// the row's end, so its margin lies inside it. Nothing moves under a pointer that stays on
+/// that centre while the row opens or closes.
+public enum ToolbarLayout {
+    /// The compact rest: its pointer target, and the whole resting window.
+    public static let mark = NSSize(width: 48, height: 28)
+    /// The idle mark, a capsule inside the target.
+    public static let markCapsule = NSSize(width: 48, height: 8)
+    /// A status glyph raises the mark's visible height to this, inside the same target.
+    public static let statusHeight: CGFloat = 12
+    public static let rowHeight: CGFloat = 40
+    public static let controlHeight: CGFloat = 32
+    public static let launcherWidth: CGFloat = 48
+    /// 144 points, plus the 8 the launcher's end does not need as padding.
+    public static let primaryMinimum: CGFloat = 152
+    public static let accessoryWidth: CGFloat = 88
+    public static let moreWidth: CGFloat = 32
+    public static let gap: CGFloat = 4
+    /// At the far end of the row.
+    public static let padding: CGFloat = 8
+    public static let cornerRadius: CGFloat = 20
+    /// The launcher's centre from the content's growth edge, at rest and revealed.
+    public static let launcherInset: CGFloat = 24
+    /// The launcher's end of the row: what a dock places and what snapping compares.
+    public static let dockSlot = NSSize(width: 48, height: 40)
+    /// A dock keeps the row this far inside the visible display.
+    public static let dockInset: CGFloat = 16
+    /// 248 points without an accessory, 340 with one, at standard text.
+    public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + gap + moreWidth + padding
+    public static let accessoryStandardWidth: CGFloat = standardWidth + accessoryWidth + gap
+    /// The accessory waits in More unless the row with it fits the display less this.
+    public static let accessoryScreenMargin: CGFloat = 24
+}
 
-    /// The resting element's frame: at its dock, or at its free position kept whole on `screen`.
-    public static func restingFrame(size: NSSize, position: ToolbarPosition, screen: NSRect) -> NSRect {
+public enum ToolbarGeometry {
+    /// The launcher's centre: the middle of the dock slot at a dock, or the free centre kept
+    /// far enough inside the display for the slot to stay whole.
+    public static func launcherCentre(_ position: ToolbarPosition, screen: NSRect) -> CGPoint {
+        let slot = ToolbarLayout.dockSlot
         switch position {
-        case .docked(let anchor): return frame(size: size, restingWidth: size.width, anchor: anchor, screen: screen)
-        case .free(let free): return clamp(free.restingFrame(size: size), to: screen)
+        case .docked(let anchor):
+            let mx = min(ToolbarLayout.dockInset, max(0, (screen.width - slot.width) / 2))
+            let my = min(ToolbarLayout.dockInset, max(0, (screen.height - slot.height) / 2))
+            let x: CGFloat
+            switch anchor {
+            case .topLeft, .left, .bottomLeft: x = screen.minX + mx + slot.width / 2
+            case .topRight, .right, .bottomRight: x = screen.maxX - mx - slot.width / 2
+            case .top, .bottom: x = screen.midX
+            }
+            let y: CGFloat
+            switch anchor {
+            case .topLeft, .top, .topRight: y = screen.maxY - my - slot.height / 2
+            case .left, .right: y = screen.midY
+            case .bottomLeft, .bottom, .bottomRight: y = screen.minY + my + slot.height / 2
+            }
+            return CGPoint(x: x, y: y)
+        case .free(let free):
+            let x = free.centre.x.isFinite ? free.centre.x : screen.midX, y = free.centre.y.isFinite ? free.centre.y : screen.midY
+            let hx = min(slot.width / 2, screen.width / 2), hy = min(slot.height / 2, screen.height / 2)
+            return CGPoint(x: min(max(screen.minX + hx, x), screen.maxX - hx), y: min(max(screen.minY + hy, y), screen.maxY - hy))
         }
     }
 
     /// A row grows inward: a dock by its anchor, a free position by the side decided when
-    /// it was released. Neither depends on the resting element's width, so no reveal, mode
-    /// or live label ever turns the row round under the pointer.
+    /// it was released. Neither depends on the content's width, so no reveal, tool or live
+    /// label ever turns the row round under the pointer.
     public static func growsLeftward(_ position: ToolbarPosition) -> Bool {
         switch position {
         case .docked(let anchor): return anchor.growsLeftward
@@ -51,25 +82,26 @@ public enum ToolbarGeometry {
         return growsLeftward(position) ? .right : .left
     }
 
-    /// The window for a row of `size`. The resting element keeps its place and the row
-    /// grows inward from it, so revealing or collapsing never moves what is under the pointer.
-    public static func frame(size: NSSize, restingSize: NSSize, position: ToolbarPosition, screen: NSRect) -> NSRect {
-        if case .docked(let anchor) = position {
-            return frame(size: size, restingWidth: restingSize.width, anchor: anchor, screen: screen)
-        }
-        let resting = restingFrame(size: restingSize, position: position, screen: screen)
+    /// The window for content of `size`, the compact mark or the row: its launcher on the
+    /// launcher centre, growing inward, kept whole on `screen`.
+    public static func frame(size: NSSize, position: ToolbarPosition, screen: NSRect) -> NSRect {
+        let centre = launcherCentre(position, screen: screen)
         let width = min(max(1, size.width), screen.width), height = min(max(1, size.height), screen.height)
-        let x = growsLeftward(position) ? resting.maxX - width : resting.minX
+        let x = growsLeftward(position) ? centre.x + ToolbarLayout.launcherInset - width : centre.x - ToolbarLayout.launcherInset
         return NSRect(x: min(max(screen.minX, x), screen.maxX - width),
-                      y: min(max(screen.minY, resting.midY - height / 2), screen.maxY - height), width: width, height: height)
+                      y: min(max(screen.minY, centre.y - height / 2), screen.maxY - height), width: width, height: height)
     }
 
-    /// A frame kept whole inside `screen`, shrunk only if it is larger than the screen.
-    static func clamp(_ frame: NSRect, to screen: NSRect) -> NSRect {
-        let width = min(max(1, frame.width), screen.width), height = min(max(1, frame.height), screen.height)
-        let x = frame.minX.isFinite ? frame.minX : screen.minX, y = frame.minY.isFinite ? frame.minY : screen.minY
-        return NSRect(x: min(max(screen.minX, x), screen.maxX - width),
-                      y: min(max(screen.minY, y), screen.maxY - height), width: width, height: height)
+    /// Where the launcher's centre is in a window of the tools, as a drag carries it.
+    public static func launcherCentre(inWindow frame: NSRect, growsLeftward: Bool) -> CGPoint {
+        CGPoint(x: growsLeftward ? frame.maxX - ToolbarLayout.launcherInset : frame.minX + ToolbarLayout.launcherInset, y: frame.midY)
+    }
+
+    /// The dock slot around a launcher centre: what the drag's guides outline and what
+    /// snapping compares with each dock's own slot.
+    public static func slot(around centre: CGPoint) -> NSRect {
+        let size = ToolbarLayout.dockSlot
+        return NSRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2, width: size.width, height: size.height)
     }
 }
 
@@ -79,42 +111,47 @@ public enum ToolbarPosition: Equatable, Sendable {
     case free(ToolbarFreePosition)
 }
 
-/// A free position. The side the row grows toward is decided once, when the toolbar is
-/// released (or when an older save is first read), and kept with the position. The glyph's
-/// side of the resting element is what is pinned: its left edge for a row that grows
-/// rightward, its right edge for one that grows leftward. So a resting element that changes
-/// width, as live labels do, never moves its glyph, and only a new placement turns it round.
+/// A free position (#163, #134): the launcher's centre, which is also the compact mark's,
+/// and the side the row grows toward. The side is decided once, when the toolbar is released
+/// (or when an earlier save is first read), and kept with the position, so a change of
+/// content width never moves the launcher or turns the row round.
 public struct ToolbarFreePosition: Equatable, Sendable {
-    /// The glyph's edge of the resting element, in screen coordinates.
-    public var glyphEdge: CGFloat
-    /// The resting element's vertical centre.
-    public var centreY: CGFloat
-    /// The row grows leftward from its glyph, toward the middle of its display.
+    public var centre: CGPoint
+    /// The row grows leftward from its launcher, toward the middle of its display.
     public var growsLeftward: Bool
 
+    public init(centre: CGPoint, growsLeftward: Bool) {
+        self.centre = centre; self.growsLeftward = growsLeftward
+    }
+
+    /// Decided where the launcher was let go: the row grows toward the middle of the display.
+    public init(releasedAt centre: CGPoint, on screen: NSRect) {
+        self.centre = centre
+        growsLeftward = centre.x > screen.midX
+    }
+
+    /// An earlier save, which pinned the glyph edge of a 36-point glyph at the resting
+    /// element's end: the launcher takes the glyph's centre.
     public init(glyphEdge: CGFloat, centreY: CGFloat, growsLeftward: Bool) {
-        self.glyphEdge = glyphEdge; self.centreY = centreY; self.growsLeftward = growsLeftward
+        self.init(centre: CGPoint(x: growsLeftward ? glyphEdge - 18 : glyphEdge + 18, y: centreY), growsLeftward: growsLeftward)
     }
 
-    /// Decided where the resting element was released: its row grows toward the middle of
-    /// the display it rests on, and its glyph's edge stays where it was let go.
-    public init(released resting: NSRect, on screen: NSRect) {
-        growsLeftward = resting.midX > screen.midX
-        glyphEdge = growsLeftward ? resting.maxX : resting.minX
-        centreY = resting.midY
+    /// An earlier save that kept only the resting element's frame: its side is decided once,
+    /// where it was left, and the launcher takes the glyph's centre at that end.
+    public init(earlierResting frame: NSRect, on screen: NSRect) {
+        let leftward = frame.midX > screen.midX
+        self.init(glyphEdge: leftward ? frame.maxX : frame.minX, centreY: frame.midY, growsLeftward: leftward)
     }
 
-    /// The resting element of `size` at this position, before it is kept on a display.
-    public func restingFrame(size: NSSize) -> NSRect {
-        NSRect(x: growsLeftward ? glyphEdge - size.width : glyphEdge, y: centreY - size.height / 2,
-               width: size.width, height: size.height)
-    }
+    /// The same position in an earlier build's terms, for a downgrade: the edge of a
+    /// 36-point glyph centred on the launcher.
+    public var glyphEdge: CGFloat { growsLeftward ? centre.x + 18 : centre.x - 18 }
 
-    public var isFinite: Bool { glyphEdge.isFinite && centreY.isFinite }
+    public var isFinite: Bool { centre.x.isFinite && centre.y.isFinite }
 }
 
-/// A press on the glyph, the next action or the row's empty chrome moves the toolbar only
-/// after this much travel; less is a click and its action runs (#163). StageKit's
+/// A press on the compact mark, the launcher, the next action or the row's empty chrome
+/// moves the toolbar only after this much travel; less is a click and its action runs (#163). StageKit's
 /// `FloatingControlPlacement.dragThreshold` is the same value for other floating controls.
 public enum ToolbarDrag {
     public static let threshold: CGFloat = 4
