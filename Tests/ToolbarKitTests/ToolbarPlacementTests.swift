@@ -4,17 +4,16 @@ import StageKit
 import ToolbarCore
 @testable import ToolbarKit
 
-/// Free placement (#163): the drag threshold, the snap zone, clamping and recovery, and a
-/// free position that keeps its glyph and its side whichever way the row opens or its
-/// resting element changes width.
+/// Free placement (#163, #134): the drag threshold, the snap zone, clamping and recovery, and a
+/// free position that keeps its launcher and its side whichever way the row opens or however
+/// wide its content becomes.
 final class ToolbarPlacementTests: XCTestCase {
     let screen = NSRect(x: 0, y: 25, width: 1440, height: 875)
-    let resting = NSSize(width: 162, height: 36)
-    let row = NSSize(width: 408, height: 36)
+    let row = NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight)
 
-    /// A free position released with its resting element at `origin`, at the fixture's width.
-    func released(at origin: CGPoint) -> ToolbarPosition {
-        .free(ToolbarFreePosition(released: NSRect(origin: origin, size: resting), on: screen))
+    /// A free position released with its launcher at `centre`.
+    func released(at centre: CGPoint) -> ToolbarPosition {
+        .free(ToolbarFreePosition(releasedAt: centre, on: screen))
     }
 
     func testAMoveStartsAtFourPointsAndLessIsAClick() {
@@ -31,13 +30,11 @@ final class ToolbarPlacementTests: XCTestCase {
 
     func testAReleaseWithinSixteenPointsOfADockSnapsAndBeyondStaysFree() throws {
         XCTAssertEqual(FloatingControlPlacement.snapDistance, 16)
-        for anchor in FloatingControlAnchor.allCases {
-            let dock = FloatingControlGeometry.frame(anchor: anchor, size: resting, visibleFrame: screen)
-            // The toolbar docks its resting element exactly where the drag guide outlines the dock.
-            let toolbarAnchor = try XCTUnwrap(ToolbarAnchor(rawValue: anchor.rawValue))
-            XCTAssertEqual(ToolbarGeometry.restingFrame(size: resting, position: .docked(toolbarAnchor), screen: screen), dock, anchor.rawValue)
+        for anchor in ToolbarAnchor.allCases {
+            let shared = try XCTUnwrap(FloatingControlAnchor(rawValue: anchor.rawValue))
+            let dock = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen))
             for (dx, dy) in [(16.0, 0.0), (-16.0, 0.0), (0.0, 16.0), (0.0, -16.0), (11.3, -11.3)] {
-                XCTAssertEqual(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), anchor, "\(anchor.rawValue) \(dx), \(dy)")
+                XCTAssertEqual(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), shared, "\(anchor.rawValue) \(dx), \(dy)")
             }
             for (dx, dy) in [(16.5, 0.0), (-16.5, 0.0), (0.0, 16.5), (12, 12)] {
                 XCTAssertNil(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), "\(anchor.rawValue) \(dx), \(dy)")
@@ -45,86 +42,81 @@ final class ToolbarPlacementTests: XCTestCase {
         }
     }
 
-    func testAFreePositionKeepsItsRestingElementAsTheRowOpensAndCloses() {
-        // The side is decided on release, by the half of the display the resting element sits
-        // in: 620 + 81 is left of the middle at 720, and 640 + 81 is right of it.
-        for (origin, leftward) in [(CGPoint(x: 200, y: 300), false), (CGPoint(x: 1100, y: 500), true),
-                                   (CGPoint(x: 620, y: 60), false), (CGPoint(x: 640, y: 60), true)] {
-            let position = released(at: origin)
-            let rest = ToolbarGeometry.frame(size: resting, restingSize: resting, position: position, screen: screen)
-            let open = ToolbarGeometry.frame(size: row, restingSize: resting, position: position, screen: screen)
-            XCTAssertEqual(rest.origin, origin)
-            XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward, "\(origin)")
+    func testAFreePositionKeepsItsLauncherAsTheRowOpensAndCloses() {
+        // The side is decided on release, by the half of the display the launcher sits in.
+        for (centre, leftward) in [(CGPoint(x: 200, y: 300), false), (CGPoint(x: 1100, y: 500), true),
+                                   (CGPoint(x: 719, y: 60), false), (CGPoint(x: 721, y: 60), true)] {
+            let position = released(at: centre)
+            XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward, "\(centre)")
             XCTAssertEqual(ToolbarGeometry.rowAnchor(position), leftward ? .right : .left)
-            XCTAssertEqual(leftward ? open.maxX : open.minX, leftward ? rest.maxX : rest.minX, "the resting element keeps its place at \(origin)")
-            XCTAssertEqual(open.midY, rest.midY)
-            XCTAssertEqual(open.size, row)
-            XCTAssertTrue(screen.contains(open))
-        }
-    }
-
-    /// A live label changes the resting element's width. The side stays the one decided on
-    /// release, and the glyph's edge stays where it was let go (#197 review).
-    func testAWidthChangeNeverTurnsAFreeRowRoundOrMovesItsGlyph() {
-        for origin in [CGPoint(x: 720 - 81 - 5, y: 300), CGPoint(x: 720 - 81 + 5, y: 300), CGPoint(x: 1000, y: 500), CGPoint(x: 300, y: 500)] {
-            let position = released(at: origin)
-            let before = ToolbarGeometry.restingFrame(size: resting, position: position, screen: screen)
-            let leftward = ToolbarGeometry.growsLeftward(position)
-            for width in [resting.width - 40, resting.width + 30, resting.width + 120] {
-                let after = ToolbarGeometry.restingFrame(size: NSSize(width: width, height: resting.height), position: position, screen: screen)
-                XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward, "\(origin) at \(width)")
-                XCTAssertEqual(leftward ? after.maxX : after.minX, leftward ? before.maxX : before.minX, "the glyph moved at \(origin), width \(width)")
-                XCTAssertEqual(after.midY, before.midY)
+            for size in [ToolbarLayout.mark, row] {
+                let frame = ToolbarGeometry.frame(size: size, position: position, screen: screen)
+                XCTAssertEqual(ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: leftward), centre, "\(centre) \(size)")
+                XCTAssertTrue(screen.contains(frame))
             }
         }
     }
 
-    /// An earlier save kept only the resting element's frame: its side is decided once, where
-    /// it was left, and kept from then on.
-    func testAnEarlierSaveDecidesItsSideOnce() {
+    /// Content of any width keeps the launcher and the side decided on release (#197 review).
+    func testAWidthChangeNeverTurnsAFreeRowRoundOrMovesItsLauncher() {
+        for centre in [CGPoint(x: 715, y: 300), CGPoint(x: 725, y: 300), CGPoint(x: 1000, y: 500), CGPoint(x: 300, y: 500)] {
+            let position = released(at: centre)
+            let leftward = ToolbarGeometry.growsLeftward(position)
+            for width in [ToolbarLayout.mark.width, 248, 340, 500] {
+                let frame = ToolbarGeometry.frame(size: NSSize(width: width, height: ToolbarLayout.rowHeight), position: position, screen: screen)
+                XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward)
+                XCTAssertEqual(ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: leftward), centre, "\(centre) at \(width)")
+            }
+        }
+    }
+
+    /// Earlier saves: #163's glyph edge, and before it the resting element alone. The launcher
+    /// takes the old glyph's centre, and an earlier save's side is decided once, where it was left.
+    func testEarlierSavesKeepTheirPlace() {
+        let edge = ToolbarFreePosition(glyphEdge: 1100, centreY: 400, growsLeftward: true)
+        XCTAssertEqual(edge.centre, CGPoint(x: 1082, y: 400))
+        XCTAssertEqual(edge.glyphEdge, 1100, "and back again, for an earlier build")
+        XCTAssertEqual(ToolbarFreePosition(glyphEdge: 200, centreY: 400, growsLeftward: false).centre, CGPoint(x: 218, y: 400))
         let saved = NSRect(x: 1000, y: 400, width: 132, height: 36)
-        let position = ToolbarFreePosition(released: saved, on: screen)
-        XCTAssertTrue(position.growsLeftward)
-        XCTAssertEqual(position.glyphEdge, saved.maxX)
-        XCTAssertEqual(position.centreY, saved.midY)
-        XCTAssertEqual(position.restingFrame(size: saved.size), saved)
-        XCTAssertEqual(position.restingFrame(size: NSSize(width: 300, height: 36)).maxX, saved.maxX,
-                       "a wider label later grows toward the middle, from the same glyph edge")
+        let earlier = ToolbarFreePosition(earlierResting: saved, on: screen)
+        XCTAssertTrue(earlier.growsLeftward)
+        XCTAssertEqual(earlier.centre, CGPoint(x: saved.maxX - 18, y: saved.midY))
+        let left = ToolbarFreePosition(earlierResting: NSRect(x: 100, y: 200, width: 132, height: 36), on: screen)
+        XCTAssertFalse(left.growsLeftward)
+        XCTAssertEqual(left.centre, CGPoint(x: 118, y: 218))
     }
 
     func testAFreeRowNearAnEdgeGrowsInward() {
-        let nearRight = released(at: CGPoint(x: screen.maxX - resting.width - 4, y: 400))
-        let right = ToolbarGeometry.frame(size: row, restingSize: resting, position: nearRight, screen: screen)
+        let nearRight = released(at: CGPoint(x: screen.maxX - 28, y: 400))
+        let right = ToolbarGeometry.frame(size: row, position: nearRight, screen: screen)
         XCTAssertEqual(right.maxX, screen.maxX - 4)
         XCTAssertTrue(screen.contains(right))
-        let nearLeft = released(at: CGPoint(x: screen.minX + 4, y: 400))
-        let left = ToolbarGeometry.frame(size: row, restingSize: resting, position: nearLeft, screen: screen)
+        let nearLeft = released(at: CGPoint(x: screen.minX + 28, y: 400))
+        let left = ToolbarGeometry.frame(size: row, position: nearLeft, screen: screen)
         XCTAssertEqual(left.minX, screen.minX + 4)
         XCTAssertTrue(screen.contains(left))
     }
 
     func testAFreePositionIsKeptWholeOnAVisibleDisplay() {
-        let partlyOff = ToolbarPosition.free(ToolbarFreePosition(glyphEdge: screen.maxX + 30, centreY: screen.maxY - 4, growsLeftward: true))
-        let clamped = ToolbarGeometry.restingFrame(size: resting, position: partlyOff, screen: screen)
-        XCTAssertTrue(screen.contains(clamped))
-        XCTAssertEqual(clamped.maxX, screen.maxX); XCTAssertEqual(clamped.maxY, screen.maxY)
-        let broken = ToolbarFreePosition(glyphEdge: .nan, centreY: .infinity, growsLeftward: false)
+        let partlyOff = ToolbarPosition.free(ToolbarFreePosition(centre: CGPoint(x: screen.maxX + 30, y: screen.maxY + 4), growsLeftward: true))
+        let centre = ToolbarGeometry.launcherCentre(partlyOff, screen: screen)
+        XCTAssertTrue(screen.contains(ToolbarGeometry.slot(around: centre)))
+        XCTAssertEqual(centre, CGPoint(x: screen.maxX - 24, y: screen.maxY - 20))
+        let broken = ToolbarFreePosition(centre: CGPoint(x: CGFloat.nan, y: CGFloat.infinity), growsLeftward: false)
         XCTAssertFalse(broken.isFinite)
-        XCTAssertTrue(screen.contains(ToolbarGeometry.restingFrame(size: resting, position: .free(broken), screen: screen)))
+        XCTAssertTrue(screen.contains(ToolbarGeometry.frame(size: row, position: .free(broken), screen: screen)))
         // A position on a display that has gone recovers whole onto the preferred display; one
         // on a display that is still attached stays there.
         let left = NSRect(x: -1920, y: 0, width: 1920, height: 1080)
-        let gone = NSRect(origin: CGPoint(x: -1800, y: 200), size: resting)
+        let gone = ToolbarGeometry.slot(around: CGPoint(x: -1800, y: 200))
         XCTAssertEqual(FloatingControlPlacement.screen(for: gone, screens: [screen], preferred: screen), screen)
         XCTAssertTrue(screen.contains(FloatingControlPlacement.recover(gone, screens: [screen], preferred: screen)))
         XCTAssertEqual(FloatingControlPlacement.screen(for: gone, screens: [screen, left], preferred: screen), left)
         XCTAssertEqual(FloatingControlPlacement.recover(gone, screens: [screen, left], preferred: screen), gone)
     }
 
-    func testADockedPositionIsTheAnchorsOwnGeometry() {
+    func testADockedPositionGrowsInwardFromItsAnchor() {
         for anchor in ToolbarAnchor.allCases {
-            XCTAssertEqual(ToolbarGeometry.frame(size: row, restingSize: resting, position: .docked(anchor), screen: screen),
-                           ToolbarGeometry.frame(size: row, restingWidth: resting.width, anchor: anchor, screen: screen))
             XCTAssertEqual(ToolbarGeometry.rowAnchor(.docked(anchor)), anchor)
             XCTAssertEqual(ToolbarGeometry.growsLeftward(.docked(anchor)), anchor.growsLeftward)
         }

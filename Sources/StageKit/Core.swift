@@ -228,9 +228,10 @@ struct Countdown {
 }
 
 /// The break timer's one transport state. The Draw page, the quick controls,
-/// the Timer menu and the floating timer all show its next action, so none can
-/// offer Resume for a countdown that has not started or has already finished.
-enum TimerTransport: Equatable {
+/// the Timer menu, the floating timer and the toolbar's More all show its next
+/// action, so none can offer Resume for a countdown that has not started or has
+/// already finished.
+public enum TimerTransport: Equatable, Sendable {
     /// Not started, or reset: Start.
     case idle
     case running
@@ -238,7 +239,7 @@ enum TimerTransport: Equatable {
     /// The countdown reached zero: Restart, with the configured duration.
     case finished
 
-    var title: String {
+    public var title: String {
         switch self {
         case .idle: return "Start"
         case .running: return "Pause"

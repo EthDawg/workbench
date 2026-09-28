@@ -4,6 +4,7 @@ import PhotoHandoffKit
 import SwiftUI
 import StageKit
 import ToolbarCore
+import ToolbarKit
 
 /// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states, the production
 /// floating toolbar host in every mode at rest and revealed, and the top of every Home page at the
@@ -276,7 +277,7 @@ enum SurfaceGallery {
         }
         panels += try renderFloatingStates(to: output)
         let (hostShots, host) = try renderToolbarHost(to: output)
-        let toolbar = hostShots + [try renderPositionControl(to: output)]
+        let toolbar = hostShots + [try renderChooser(to: output), try renderPositionControl(to: output)]
         let placement = try checkToolbarPlacement()
         let pickers = try renderPickerStates(to: output)
         let (pickerShots, pickerHost) = try checkPickerHost(to: output)
@@ -1275,7 +1276,55 @@ enum SurfaceGallery {
                                 preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(.revealed), twinMeasured: twinControls.hasMeasured(.revealed),
                                 problems: problems, file: file, settled: controls.toolbar.state.tier == .revealed))
         }
+        /// One more state, read after the host and the twin have settled into `tier`.
+        func record(_ id: String, _ title: String, tier: ToolbarTier) throws {
+            waitForToolbar(host, controls, tier: tier, content: content, stillFor: 0.5)
+            settle(twin, seconds: 0.2)
+            let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+            var problems: [String] = []
+            if controls.toolbar.state.tier != tier { problems.append("the toolbar did not settle \(tier == .resting ? "at rest" : "revealed")") }
+            if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+            }
+            if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+            }
+            let file = "toolbar-\(id)-\(theme).png"
+            shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the content wants \(Self.points(wants)).", file: file, to: output))
+            checks.append(.init(id: id, title: title, mode: model.toolbarMode.title, tier: tier.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
+                                problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
+        }
+        // A right-hand dock reverses the row around the same launcher centre (#134).
+        model.toolbarMode = .present
+        controls.choosePosition?(.right); twinControls.rowAnchor = .right
+        try record("present-right-dock-revealed", "Present, revealed at the right-hand dock", tier: .revealed)
+        controls.toolbar.send(.holdEnded(.keyboard)); twinControls.toolbar.send(.holdEnded(.keyboard))
+        try record("present-right-dock-resting", "Present, at rest at the right-hand dock", tier: .resting)
+        controls.choosePosition?(.bottom); twinControls.rowAnchor = .bottom
+        // The compact rest while a synthetic meeting records: the same 48 × 28, now with the
+        // capture signal. The meeting owner has no level sample, so its outline stays still.
+        let previousMeetings = model.meetings
+        model.meetings = recordingMeetings; model.objectWillChange.send()
+        try drive(recordingMeetings, start: true)
+        model.toolbarMode = .dictate
+        try record("meeting-recording-resting", "At rest while a meeting records", tier: .resting)
+        try drive(recordingMeetings, start: false)
+        model.meetings = previousMeetings; model.objectWillChange.send()
         return (shots, checks)
+    }
+
+    /// The tool chooser as the launcher opens it, at standard text: Dictate chosen, nothing running.
+    func renderChooser(to output: URL) throws -> SurfaceGallery.Shot {
+        let model = ToolbarChooserModel(choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)))
+        let view = NSHostingView(rootView: ToolbarChooserView(model: model, accent: Workbench.accent))
+        let window = offscreenWindow(size: view.fittingSize, styleMask: [.borderless])
+        window.isOpaque = false; window.backgroundColor = .clear
+        window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        settle(view)
+        return try save(try snapshot(view), id: "chooser", title: "The tool chooser",
+                        detail: "The seven tools, Dictate chosen and highlighted, 280 pt wide with 36 pt rows.", file: "toolbar-chooser-\(theme).png", to: output)
     }
 
     /// Spins the main run loop until the toolbar reports `tier`, its frame animation has finished
@@ -1313,12 +1362,14 @@ enum SurfaceGallery {
                         detail: "The eight docks with bottom centre current and selected, and Reset position.", file: "toolbar-position-control-\(theme).png", to: output)
     }
 
-    /// Free placement through the production host (#163), with its panel invisible. A release
-    /// away from every dock rests right there through an update, a reveal and a collapse, on
-    /// either half of the display; a release within the snap distance of a dock docks and one
-    /// just beyond stays free; a new host, as after a relaunch, restores the free position;
-    /// and Reset position docks at bottom centre. Positions are compared at the resting
-    /// element, which is where they are kept whichever tier a real pointer holds.
+    /// Free placement through the production host (#163, #134), with its panel invisible. Every
+    /// position is compared at the launcher's centre, which the compact rest and the revealed row
+    /// share. A release away from every dock rests right there through an update, a reveal and a
+    /// collapse, on either half of the display; a row that widens moves neither its launcher nor
+    /// its side; a release within the snap distance of a dock docks and one just beyond stays
+    /// free; a new host, as after a relaunch, restores the free position, and earlier builds'
+    /// saves come back where they were left; Reset position docks at bottom centre. The chooser
+    /// opens inside the display at larger text from a bottom-right and a top-left dock.
     func checkToolbarPlacement() throws -> [SurfaceGallery.PlacementCheck] {
         guard let screen = NSScreen.main?.visibleFrame else { return [] }
         let defaults = try SurfaceGallery.isolatedDefaults("ToolbarPlacement", home: home)
@@ -1329,11 +1380,9 @@ enum SurfaceGallery {
             host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
             return (host, controls)
         }
-        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible, previousMeetings = model.meetings
-        // The synthetic meeting widens the resting element's live title below; the hosts observe it from the start.
-        model.meetings = recordingMeetings
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible
         var (host, controls) = makeHost()
-        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode; model.meetings = previousMeetings }
+        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode }
         model.toolbarMode = .dictate; model.floatingToolbarVisible = true
         host.update(model: model)
         waitForToolbar(host, controls, tier: .resting, content: host.window?.contentView ?? NSView())
@@ -1341,91 +1390,142 @@ enum SurfaceGallery {
         func settle(_ tier: ToolbarTier) {
             waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
         }
-        func resting() -> NSRect {
-            guard let frame = host.window?.frame else { return .zero }
-            let size = controls.restingSize
-            return NSRect(x: controls.rowAnchor.growsLeftward ? frame.maxX - size.width : frame.minX, y: frame.minY, width: size.width, height: size.height)
+        func launcher() -> CGPoint {
+            ToolbarGeometry.launcherCentre(inWindow: host.window?.frame ?? .zero, growsLeftward: controls.rowAnchor.growsLeftward)
         }
         func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
-        func at(_ origin: NSPoint, _ what: String) -> String? {
-            let found = resting().origin
-            return abs(found.x - origin.x) > 0.5 || abs(found.y - origin.y) > 0.5
-                ? "\(what): the resting element is at \(Int(found.x)), \(Int(found.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+        func at(_ centre: CGPoint, _ what: String) -> String? {
+            let found = launcher()
+            return abs(found.x - centre.x) > 0.5 || abs(found.y - centre.y) > 0.5
+                ? "\(what): the launcher is at \(Int(found.x)), \(Int(found.y)), not \(Int(centre.x)), \(Int(centre.y))" : nil
         }
-        func free(_ origin: NSPoint) -> String? {
+        func free(_ centre: CGPoint) -> String? {
             guard case .free(let free) = host.toolsPosition, controls.anchor == nil else { return "the toolbar is docked, not free" }
-            let resting = free.restingFrame(size: controls.restingSize).origin
-            return abs(resting.x - origin.x) > 0.5 || abs(resting.y - origin.y) > 0.5
-                ? "the toolbar is free at \(Int(resting.x)), \(Int(resting.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+            return abs(free.centre.x - centre.x) > 0.5 || abs(free.centre.y - centre.y) > 0.5
+                ? "the toolbar is free at \(Int(free.centre.x)), \(Int(free.centre.y)), not \(Int(centre.x)), \(Int(centre.y))" : nil
         }
-        let size = controls.restingSize
-        for (side, origin) in [("left", NSPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
-                               ("right", NSPoint(x: screen.maxX - screen.width * 0.3 - size.width, y: screen.minY + screen.height * 0.6))] {
-            let origin = NSPoint(x: origin.x.rounded(), y: origin.y.rounded())
-            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
+        func compact(_ what: String) -> String? {
+            guard controls.toolbar.state.tier == .resting, let size = host.window?.frame.size else { return nil }
+            return abs(size.width - ToolbarLayout.mark.width) > 0.5 || abs(size.height - ToolbarLayout.mark.height) > 0.5
+                ? "\(what): the resting window is \(Self.points(size)), not the compact rest's 48 × 28 pt" : nil
+        }
+        for (side, centre) in [("left", CGPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
+                               ("right", CGPoint(x: screen.minX + screen.width * 0.7, y: screen.minY + screen.height * 0.6))] {
+            let centre = CGPoint(x: centre.x.rounded(), y: centre.y.rounded())
+            host.releaseTools(atLauncher: centre); settle(.resting)
             let leftward = side == "right"
-            expect("Released free on the \(side), at rest", [free(origin), at(origin, "at rest"),
+            expect("Released free on the \(side), at rest", [free(centre), at(centre, "at rest"), compact("at rest"),
                 controls.rowAnchor.growsLeftward == leftward ? nil : "the row would grow \(leftward ? "rightward, off" : "leftward, away from") the near edge"])
             // An update while free must not pull the toolbar back to a dock.
             model.floatingToolbarVisible = true; host.update(model: model); settle(.resting)
-            expect("Free on the \(side), after an update", [free(origin), at(origin, "after an update")])
+            expect("Free on the \(side), after an update", [free(centre), at(centre, "after an update")])
             controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
             let window = host.window?.frame ?? .zero
-            expect("Free on the \(side), revealed", [at(origin, "revealed"), screen.contains(window) ? nil : "the revealed row leaves the display",
+            expect("Free on the \(side), revealed", [at(centre, "revealed"), screen.contains(window) ? nil : "the revealed row leaves the display",
                 abs(window.width - controls.preferredToolbarSize.width) > 0.5 ? "the window is \(Self.points(window.size)), not the row's \(Self.points(controls.preferredToolbarSize))" : nil])
             controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
-            expect("Free on the \(side), collapsed again", [at(origin, "collapsed again")])
+            expect("Free on the \(side), collapsed again", [at(centre, "collapsed again"), compact("collapsed again")])
         }
-        // A live title that changes the resting width must neither turn a free row round nor move its
-        // glyph: released just left of the middle, and on the right half, then a meeting widens the title.
-        func glyphEdge() -> (leftward: Bool, x: CGFloat) {
-            let frame = host.window?.frame ?? .zero, leftward = controls.rowAnchor.growsLeftward
-            return (leftward, leftward ? frame.maxX : frame.minX)
-        }
-        for (place, midX) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
-            let origin = NSPoint(x: (midX - size.width / 2).rounded(), y: (screen.minY + screen.height * 0.45).rounded())
-            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
-            let before = glyphEdge(), width = controls.restingSize.width
-            for (change, start) in [("a meeting widens the title", true), ("the meeting ends", false)] {
-                try drive(recordingMeetings, start: start); settle(.resting)
-                let after = glyphEdge(), grown = controls.restingSize.width - width
-                expect("Released \(place), then \(change)", [
-                    start && abs(grown) < 0.5 ? "the resting width stayed \(Int(width)) pt, so this step shows nothing" : nil,
-                    after.leftward != before.leftward ? "the row turned round, from growing \(before.leftward ? "leftward" : "rightward")" : nil,
-                    after.leftward == before.leftward && abs(after.x - before.x) > 0.5 ? "the glyph moved \(Int((after.x - before.x).rounded())) pt" : nil])
+        // A row that widens, here by Present's accessory, must neither move its launcher nor turn
+        // round: released just left of the middle, and on the right half, then Present is chosen.
+        for (place, x) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
+            let centre = CGPoint(x: x.rounded(), y: (screen.minY + screen.height * 0.45).rounded())
+            model.toolbarMode = .dictate
+            host.releaseTools(atLauncher: centre); controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
+            let leftward = controls.rowAnchor.growsLeftward, width = host.window?.frame.width ?? 0
+            for mode in [ToolbarMode.present, .dictate] {
+                model.toolbarMode = mode; settle(.revealed)
+                let grown = (host.window?.frame.width ?? 0) - width
+                expect("Released \(place), revealed, then \(mode.title) is chosen", [
+                    mode == .present && abs(grown) < 0.5 ? "the row stayed \(Int(width)) pt wide, so this step shows nothing" : nil,
+                    controls.rowAnchor.growsLeftward != leftward ? "the row turned round, from growing \(leftward ? "leftward" : "rightward")" : nil,
+                    at(centre, "after the width changed")])
             }
+            controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
         }
-        let dock = FloatingControlGeometry.frame(anchor: .bottomRight, size: size, visibleFrame: screen)
-        host.releaseTools(at: dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance - 2), dy: 0)); settle(.resting)
-        expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock", [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock.origin, "docked")])
-        let beyond = dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance + 4), dy: 0).origin
-        host.releaseTools(at: NSRect(origin: beyond, size: size)); settle(.resting)
+        let dock = ToolbarGeometry.launcherCentre(.docked(.bottomRight), screen: screen)
+        host.releaseTools(atLauncher: CGPoint(x: dock.x - (FloatingControlPlacement.snapDistance - 2), y: dock.y)); settle(.resting)
+        expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock",
+               [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock, "docked")])
+        let beyond = CGPoint(x: dock.x - (FloatingControlPlacement.snapDistance + 4), y: dock.y)
+        host.releaseTools(atLauncher: beyond); settle(.resting)
         expect("Released \(Int(FloatingControlPlacement.snapDistance + 4)) pt from the bottom-right dock", [free(beyond), at(beyond, "beyond the snap distance")])
         // A new host reads the saved position, as Workbench does after a relaunch.
-        let kept = NSPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
-        host.releaseTools(at: NSRect(origin: kept, size: size)); settle(.resting)
-        host.close()
-        (host, controls) = makeHost()
-        host.update(model: model); settle(.resting)
+        let kept = CGPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
+        host.releaseTools(atLauncher: kept); settle(.resting)
+        func relaunch(_ prepare: (UserDefaults) -> Void) {
+            host.close()
+            prepare(UserDefaults.standard)
+            (host, controls) = makeHost()
+            host.update(model: model); settle(.resting)
+        }
+        relaunch { _ in }
         expect("A new host, as after a relaunch", [free(kept), at(kept, "after a relaunch")])
-        // An earlier build saved only the resting element's origin and size: a new host decides its
-        // side once, where it was left, and saves that with it.
+        // Earlier builds' saves: #163's glyph edge, and before that the resting element alone. Each
+        // comes back with its launcher where its glyph was, and is saved in this build's terms.
+        let edge = (screen.minX + screen.width * 0.66).rounded(), edgeY = (screen.minY + screen.height * 0.35).rounded()
+        relaunch { defaults in
+            for key in ["capturePanelLauncher.v1", "capturePanelAnchor.v2"] { defaults.removeObject(forKey: key) }
+            defaults.set(["glyphEdge": Double(edge), "centreY": Double(edgeY), "growsLeftward": true], forKey: "capturePanelFreePosition.v1")
+        }
+        expect("A new host reading #163's glyph-edge save", [free(CGPoint(x: edge - 18, y: edgeY)), at(CGPoint(x: edge - 18, y: edgeY), "migrated"),
+            controls.rowAnchor.growsLeftward ? nil : "the save's side, leftward, was lost",
+            UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the migrated position was not saved in this build's terms" : nil])
         let earlier = NSRect(x: (screen.minX + screen.width * 0.65).rounded(), y: (screen.minY + screen.height * 0.3).rounded(), width: 132, height: 36)
-        host.close()
-        UserDefaults.standard.removeObject(forKey: "capturePanelFreePosition.v1"); UserDefaults.standard.removeObject(forKey: "capturePanelAnchor.v2")
-        UserDefaults.standard.set(NSStringFromPoint(earlier.origin), forKey: "capturePanelOrigin.v1")
-        UserDefaults.standard.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
-        (host, controls) = makeHost()
-        host.update(model: model); settle(.resting)
-        let migrated = UserDefaults.standard.dictionary(forKey: "capturePanelFreePosition.v1")
-        expect("A new host reading an earlier free save", [
-            controls.anchor == nil ? nil : "the earlier free save came back docked",
+        relaunch { defaults in
+            for key in ["capturePanelLauncher.v1", "capturePanelFreePosition.v1", "capturePanelAnchor.v2"] { defaults.removeObject(forKey: key) }
+            defaults.set(NSStringFromPoint(earlier.origin), forKey: "capturePanelOrigin.v1")
+            defaults.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
+        }
+        expect("A new host reading an earlier resting-element save", [free(CGPoint(x: earlier.maxX - 18, y: earlier.midY)),
             controls.rowAnchor.growsLeftward ? nil : "the earlier save on the right half grows rightward",
-            abs((host.window?.frame.maxX ?? 0) - earlier.maxX) > 0.5 ? "the glyph is at \(Int(host.window?.frame.maxX ?? 0)), not the saved edge \(Int(earlier.maxX))" : nil,
-            (migrated?["growsLeftward"] as? Bool) == true ? nil : "the side decided for the earlier save was not saved with it"])
+            UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the side decided for the earlier save was not saved with it" : nil])
+        // An earlier build moved the toolbar after this one saved it: that later move wins.
+        let moved = CGPoint(x: (screen.minX + screen.width * 0.25).rounded(), y: (screen.minY + screen.height * 0.55).rounded())
+        relaunch { defaults in
+            defaults.set(["glyphEdge": Double(moved.x - 18), "centreY": Double(moved.y), "growsLeftward": false], forKey: "capturePanelFreePosition.v1")
+        }
+        expect("A new host after an earlier build moved the toolbar", [free(moved), at(moved, "after the earlier build's move")])
+        // A right-hand dock: the launcher stays on the dock's centre at rest and revealed, and the
+        // row grows leftward from it, its slots reversed.
+        controls.choosePosition?(.right); settle(.resting)
+        let right = ToolbarGeometry.launcherCentre(.docked(.right), screen: screen)
+        expect("Docked right, at rest", [at(right, "at rest"), compact("at rest")])
+        controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
+        expect("Docked right, revealed", [at(right, "revealed"),
+            controls.rowAnchor == .right ? nil : "the row does not grow leftward from a right-hand dock"])
+        controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
         controls.choosePosition?(.bottom); settle(.resting)
-        let bottom = FloatingControlGeometry.frame(anchor: .bottom, size: controls.restingSize, visibleFrame: screen)
-        expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom.origin, "reset")])
+        let bottom = ToolbarGeometry.launcherCentre(.docked(.bottom), screen: screen)
+        expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom, "reset")])
+        // Work never holds the row open (#134): at rest while a meeting records, the toolbar is the
+        // same 48 × 28 compact rest on the same launcher centre, now showing the capture signal.
+        let previousMeetings = model.meetings
+        model.meetings = recordingMeetings; model.objectWillChange.send()
+        try drive(recordingMeetings, start: true)
+        settle(.resting)
+        expect("At rest while a meeting records", [
+            controls.toolbar.state.tier == .resting ? nil : "the row stayed open while a meeting records",
+            compact("while a meeting records"), at(bottom, "while a meeting records"),
+            controls.status.indicator == .capture ? nil : "the compact rest shows \"\(controls.status.description)\", not the recording"])
+        try drive(recordingMeetings, start: false)
+        model.meetings = previousMeetings; model.objectWillChange.send()
+        settle(.resting)
+        // The chooser opens beside the launcher and inside the display, at larger text too.
+        for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
+            let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
+            let chooser = ToolbarChooserPanel(); chooser.offscreenForChecks = true
+            chooser.show(from: ToolbarGeometry.slot(around: centre), view: nil, level: .statusBar, growsLeftward: anchor.growsLeftward,
+                         choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)), textScale: scale, choose: { _ in }, closed: { _ in })
+            let frame = chooser.shownFrame ?? .zero
+            let natural = ToolbarChooserLayout.height(rows: ToolbarMode.allCases.count, scale: scale)
+            expect("Chooser from the \(anchor.title.lowercased()) dock\(scale > 1 ? ", larger text" : "")", [
+                screen.contains(frame) ? nil : "the chooser at \(Int(frame.minX)), \(Int(frame.minY)), \(Self.points(frame.size)) leaves the display",
+                abs(frame.width - ToolbarChooserLayout.width * scale) > 1 && frame.width < screen.width - 16 ? "the chooser is \(Int(frame.width)) pt wide, not \(Int(ToolbarChooserLayout.width * scale))" : nil,
+                frame.height + 1 < natural && screen.height > natural + 200 ? "the chooser scrolls although all seven tools fit" : nil,
+                ToolbarGeometry.slot(around: centre).intersects(frame) ? "the chooser covers the launcher" : nil])
+            chooser.close()
+        }
         return checks
     }
 
@@ -1793,7 +1893,7 @@ private struct SurfaceIndex {
                 + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
         }
         html += "</table>"
-        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163).</p>"
+        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at the launcher's centre, which the compact rest shares, and the chooser opens from three docks (#134).</p>"
         if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>Step</th><th>Check</th></tr>" + light.placement.map { check in
             "<tr><td>\(esc(check.title))</td>" + (check.problems.isEmpty ? "<td class=\"ok\">Rests where it was put</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"

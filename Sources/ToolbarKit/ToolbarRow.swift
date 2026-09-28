@@ -16,18 +16,12 @@ public struct ToolbarDragActions {
 }
 
 public extension ToolbarAnchor {
-    /// Where the row sits inside its window: against the docked edge, never
-    /// centred. The window is sometimes briefly the wrong size, placed before a
-    /// new row has been measured or while a collapse animates. A centred row then
-    /// moves the resting element out from under the pointer by half the
-    /// difference, which can carry the pointer outside and start a collapse.
+    /// Where content sits inside its window: against the growth edge, where the launcher is,
+    /// and centred on the launcher vertically. The window is sometimes briefly the wrong
+    /// size, placed before new content has been measured or while it animates. Content
+    /// centred in the window would then move the launcher out from under the pointer.
     var contentAlignment: Alignment {
-        let horizontal: HorizontalAlignment = growsLeftward ? .trailing : .leading
-        switch self {
-        case .topLeft, .top, .topRight: return Alignment(horizontal: horizontal, vertical: .top)
-        case .left, .right: return Alignment(horizontal: horizontal, vertical: .center)
-        case .bottomLeft, .bottom, .bottomRight: return Alignment(horizontal: horizontal, vertical: .bottom)
-        }
+        Alignment(horizontal: growsLeftward ? .trailing : .leading, vertical: .center)
     }
 }
 
@@ -41,19 +35,23 @@ public extension View {
 
 /// The production look and the gallery are the same view, fed one frozen value.
 ///
-/// At rest the toolbar is one element, `[mode glyph][next action]`: click the
-/// label to do it, click the glyph for the menu, drag anywhere to move. Revealed,
-/// the same element stays where it is and the row grows inward from the dock
-/// with a divider, the other modes as chips, and the mode's accessory.
+/// At rest the toolbar is the compact mark in every state (#134): a small capsule whose
+/// indicator says what is running. A click on it only reveals and takes the keyboard; a
+/// drag moves the toolbar. Revealed, the row is `[tool ▾] [next action] [accessory] [⋯]`,
+/// growing inward from the launcher, which sits exactly where the mark was; on a right-hand
+/// dock the order is reversed. The launcher opens the tool chooser, More holds the tool's
+/// options and the work running elsewhere, and a right-click anywhere on the tool opens
+/// those options.
 public struct ToolbarRow: View {
     public let state: ToolbarViewState
-    private let action: () -> Void
-    private let selectMode: (ToolbarMode) -> Void
+    private let press: () -> (() -> Void)?
+    private let openChooser: (NSView) -> Void
     private let makeMenu: () -> NSMenu
     private let menuBegan: (NSMenu) -> Bool
     private let menuEnded: () -> Void
     private let focusButton: (NSButton) -> Void
     private let escape: () -> Void
+    private let revealFromRest: () -> Void
     private let drag: ToolbarDragActions
     private let textScale: CGFloat
     private let accent: Color
@@ -64,114 +62,253 @@ public struct ToolbarRow: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
 
+    /// `press` latches the next action when the button goes down and returns what to do if
+    /// the press ends as a click; nil when there is nothing to do. `action` is the plain form.
     public init(state: ToolbarViewState, textScale: CGFloat = 1, accent: Color = .accentColor,
                 makeAccessoryMenu: @escaping () -> NSMenu = { NSMenu() },
                 openAccessory: ((NSView) -> Void)? = nil,
-                action: @escaping () -> Void = {}, selectMode: @escaping (ToolbarMode) -> Void = { _ in },
+                action: @escaping () -> Void = {},
+                press: (() -> (() -> Void)?)? = nil,
+                openChooser: @escaping (NSView) -> Void = { _ in },
                 makeMenu: @escaping () -> NSMenu = { NSMenu() },
                 menuBegan: @escaping (NSMenu) -> Bool = { _ in true }, menuEnded: @escaping () -> Void = {},
                 focusButton: @escaping (NSButton) -> Void = { _ in }, escape: @escaping () -> Void = {},
+                revealFromRest: @escaping () -> Void = {},
                 drag: ToolbarDragActions = ToolbarDragActions()) {
-        self.state = state; self.textScale = textScale; self.accent = accent; self.action = action
-        self.selectMode = selectMode; self.makeMenu = makeMenu
+        self.state = state; self.textScale = textScale; self.accent = accent
+        self.press = press ?? { action }
+        self.openChooser = openChooser; self.makeMenu = makeMenu
         self.menuBegan = menuBegan; self.menuEnded = menuEnded; self.focusButton = focusButton
-        self.escape = escape; self.drag = drag
+        self.escape = escape; self.revealFromRest = revealFromRest; self.drag = drag
         self.makeAccessoryMenu = makeAccessoryMenu
         self.openAccessory = openAccessory
     }
     private var scale: CGFloat { textScale * systemScale }
-    private var side: CGFloat { 36 * scale }
 
     public var body: some View {
-        HStack(spacing: 6 * scale) {
-            if state.anchor.growsLeftward {
-                if state.tier == .revealed { accessory; strip; divider }
-                primary; glyph
-            } else {
-                glyph; primary
-                if state.tier == .revealed { divider; strip; accessory }
-            }
-        }
-        .padding(state.anchor.growsLeftward ? .leading : .trailing, 8 * scale)
-        .padding(state.anchor.growsLeftward ? .trailing : .leading, 0)
-        .frame(minHeight: side).fixedSize()
-        // Empty chrome is a handle too: a drag that starts beside or between the controls
-        // moves the row. The controls sit above it and keep their own clicks.
-        .background { ToolbarDragRegion(drag: drag, showsHandCursor: false) }
-        .background {
-            if reduceTransparency { RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor)) }
-            else { RoundedRectangle(cornerRadius: 12).fill(.regularMaterial) }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.12))
+        Group {
+            if state.tier == .resting { compact } else { row }
         }
         .tint(accent)
         .environment(\.controlActiveState, .active)
         .onExitCommand(perform: escape)
         .transaction { $0.animation = nil }
+    }
+
+    /// The compact rest: the same 48 × 28 target in every state, whatever it shows.
+    private var compact: some View {
+        ToolbarCompactMark(status: state.status, accent: accent)
+            .overlay {
+                ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.description,
+                                  reveal: revealFromRest, options: menuOpener, drag: drag)
+            }
+            .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
+            .help(state.mode.title + " · " + state.status.description + ". Click to show the toolbar; drag to move.")
+    }
+
+    private var row: some View {
+        HStack(spacing: ToolbarLayout.gap * scale) {
+            if state.anchor.growsLeftward { more; accessory; primary; launcher }
+            else { launcher; primary; accessory; more }
+        }
+        .padding(state.anchor.growsLeftward ? .leading : .trailing, ToolbarLayout.padding * scale)
+        .frame(minHeight: ToolbarLayout.rowHeight * scale).fixedSize()
+        // Empty chrome is a handle too: a drag that starts beside or between the controls
+        // moves the row. The controls sit above it and keep their own clicks.
+        .background { ToolbarDragRegion(drag: drag, showsHandCursor: false) }
+        // A capsule with circular ends for both the fill and its edge: a continuous-corner fill
+        // clamps its radius and would show a sliver of material beyond the stroke at each end.
+        .background {
+            if reduceTransparency { Capsule(style: .circular).fill(Color(nsColor: .windowBackgroundColor)) }
+            else { Capsule(style: .circular).fill(.regularMaterial) }
+        }
+        .overlay { Capsule(style: .circular).strokeBorder(.primary.opacity(0.14), lineWidth: 1) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench floating toolbar")
     }
 
-    @ViewBuilder private var accessory: some View {
-        if let accessoryTitle = state.accessoryTitle {
-            ToolbarAccessory(title: accessoryTitle, makeMenu: makeAccessoryMenu, openPanel: openAccessory, began: menuBegan, ended: menuEnded)
-                .frame(width: 64 * scale, height: 30 * scale)
+    /// Opens the tool's options, from More, a right-click on the launcher or the compact rest.
+    private var menuOpener: (NSView) -> Void {
+        { [makeMenu, menuBegan, menuEnded] view in
+            let menu = makeMenu()
+            guard menuBegan(menu) else { return }
+            defer { menuEnded() }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
         }
     }
 
-    /// The seam between the resting element and the rest of the row. Empty
-    /// space here is a handle: the row can be dragged by it.
-    private var divider: some View {
-        Divider().frame(height: 18 * scale)
-            .padding(.horizontal, 2 * scale)
-            .overlay { ToolbarDragRegion(drag: drag) }
-    }
-
-    private var strip: some View {
-        ToolbarModeStrip(chips: state.switcher, size: 24 * scale, symbolSize: 15 * scale, accent: accent, select: selectMode)
-            .frame(width: 24 * scale * CGFloat(state.switcher.count) + 3 * scale * CGFloat(max(0, state.switcher.count - 1)),
-                   height: 24 * scale)
+    @ViewBuilder private var accessory: some View {
+        if let accessoryTitle = state.shownAccessory {
+            ToolbarAccessory(title: accessoryTitle, fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
+                             began: menuBegan, ended: menuEnded)
+                .frame(width: ToolbarLayout.accessoryWidth * scale, height: ToolbarLayout.controlHeight * scale)
+        }
     }
 
     private var primary: some View {
         ToolbarPrimary(title: state.actionTitle, hint: state.actionHint, isEnabled: state.isActionEnabled,
-                       fontSize: 13 * scale, minimumTitles: state.minimumTitles, accent: accent,
-                       action: action, drag: drag)
+                       fontSize: 13 * scale, minimumWidth: ToolbarLayout.primaryMinimum, minimumTitles: state.minimumTitles,
+                       accent: accent, press: press, drag: drag)
+            .frame(height: ToolbarLayout.controlHeight * scale)
             .fixedSize()
     }
 
-    private var glyph: some View {
-        ToolbarGlyph(state: state, size: 15 * scale, accent: accent, makeMenu: makeMenu, began: menuBegan,
-                     ended: menuEnded, focus: focusButton, escape: escape, drag: drag)
-            .frame(width: side, height: side)
-            .overlay(alignment: .trailing) {
-                if state.tier == .revealed {
-                    Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold))
-                        .foregroundStyle(.secondary).padding(.trailing, 2 * scale).allowsHitTesting(false)
+    private var more: some View {
+        ToolbarMore(size: 15 * scale, open: menuOpener, escape: escape)
+            .frame(width: ToolbarLayout.moreWidth * scale, height: ToolbarLayout.controlHeight * scale)
+    }
+
+    /// The launcher's target is fixed at 48 points, the compact mark's width, so the two share
+    /// one centre on screen at every text size; its symbol and chevron grow inside it, centred
+    /// together on that centre. The button itself draws nothing: it is the target, the keyboard
+    /// focus and the accessibility element.
+    private var launcher: some View {
+        ToolbarLauncher(state: state, accent: accent, open: openChooser, options: menuOpener,
+                        focus: focusButton, escape: escape, drag: drag)
+            .frame(width: ToolbarLayout.launcherWidth, height: ToolbarLayout.rowHeight * scale)
+            .overlay {
+                HStack(spacing: 2 * scale) {
+                    Image(systemName: state.mode.symbol).font(.system(size: 15 * scale, weight: .medium))
+                        .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
+                    Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(.secondary)
                 }
+                .allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay(alignment: .bottom) {
-                if state.isBusy { Circle().fill(.tint).frame(width: 4, height: 4).padding(.bottom, 3).allowsHitTesting(false) }
+                if state.hasLiveWork {
+                    Circle().fill(.tint).frame(width: 4, height: 4).padding(.bottom, 6 * scale).allowsHitTesting(false)
+                }
             }
     }
 }
 
+/// The compact rest's look (#134): a 48 × 8 capsule at idle; with work, a 48 × 12 capsule
+/// carrying one 12-point indicator. The whole 48 × 28 target is faintly filled so it takes
+/// the pointer, while everything outside the panel stays click-through.
+public struct ToolbarCompactMark: View {
+    let status: ToolbarStatus
+    let accent: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    public init(status: ToolbarStatus, accent: Color = .accentColor) { self.status = status; self.accent = accent }
+
+    public var body: some View {
+        ZStack {
+            // A fill the eye cannot see, so the whole target, not only the capsule, is the window's.
+            Rectangle().fill(Color.black.opacity(0.012))
+            let height = status.indicator == .idle ? ToolbarLayout.markCapsule.height : ToolbarLayout.statusHeight
+            Capsule().fill(capsuleFill)
+                .overlay(Capsule().strokeBorder(.primary.opacity(0.3), lineWidth: 1))
+                .frame(width: ToolbarLayout.markCapsule.width, height: height)
+                .overlay { indicator }
+        }
+        .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
+        .accessibilityHidden(true)
+    }
+
+    private var capsuleFill: AnyShapeStyle {
+        reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.regularMaterial)
+    }
+
+    @ViewBuilder private var indicator: some View {
+        switch status.indicator {
+        case .idle: EmptyView()
+        case .capture:
+            HStack(spacing: 3) {
+                Circle().fill(Color.red).frame(width: 6, height: 6)
+                ToolbarLevelBars(level: reduceMotion ? nil : status.level, accent: accent)
+                if status.attentionBadge {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
+                }
+            }
+        case .playback: symbol("speaker.wave.2.fill", accent)
+        case .processing: symbol("ellipsis", Color.secondary)
+        case .failure: symbol("exclamationmark.triangle.fill", Color.orange)
+        case .pendingDelivery: symbol("doc.on.clipboard", Color.primary)
+        case .unsavedCapture: symbol("pencil", Color.primary)
+        case .paused: symbol("pause.fill", Color.secondary)
+        case .live(let work): symbol(work.symbol, accent)
+        }
+    }
+
+    private func symbol(_ name: String, _ style: Color) -> some View {
+        Image(systemName: name).font(.system(size: 9, weight: .semibold)).foregroundStyle(style)
+            .frame(width: ToolbarLayout.statusHeight, height: ToolbarLayout.statusHeight)
+    }
+}
+
+/// A small live level: five bars from the recording owner's own level sample. Without a
+/// sample, in silence or with Reduce Motion, a still outline still reads as capture.
+struct ToolbarLevelBars: View {
+    let level: Double?
+    let accent: Color
+    private static let shape: [CGFloat] = [0.45, 0.75, 1, 0.75, 0.45]
+    var body: some View {
+        HStack(alignment: .center, spacing: 1.5) {
+            ForEach(Self.shape.indices, id: \.self) { index in
+                if let level, level > 0.02 {
+                    Capsule().fill(accent).frame(width: 2, height: max(2, 8 * Self.shape[index] * CGFloat(level)))
+                } else {
+                    Capsule().strokeBorder(Color.secondary, lineWidth: 0.75).frame(width: 2, height: max(3, 6 * Self.shape[index]))
+                }
+            }
+        }
+        .frame(height: 8)
+    }
+}
+
+/// The compact rest's pointer target. A click only reveals, and the whole click is its:
+/// the mouse-up is taken here even if the row has already appeared under the pointer.
+/// A drag moves the toolbar, and a right-click opens the tool's options.
+private struct ToolbarRestTarget: NSViewRepresentable {
+    let label: String
+    let status: String
+    let reveal: () -> Void
+    let options: (NSView) -> Void
+    let drag: ToolbarDragActions
+    func makeNSView(context: Context) -> RestTargetView { RestTargetView() }
+    func updateNSView(_ view: RestTargetView, context: Context) {
+        view.reveal = reveal; view.options = options; view.drag = drag
+        view.setAccessibilityLabel(label); view.setAccessibilityValue(status)
+        view.setAccessibilityIdentifier("toolbar.rest")
+    }
+}
+
+final class RestTargetView: NSView {
+    var reveal: (() -> Void)?
+    var options: ((NSView) -> Void)?
+    var drag = ToolbarDragActions()
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setAccessibilityElement(true); setAccessibilityRole(.button)
+        setAccessibilityHelp("Shows the toolbar")
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        trackToolbarDrag(view: self, event: event, actions: drag, clickAnywhere: true, click: { [weak self] in self?.reveal?() })
+    }
+    override func rightMouseDown(with event: NSEvent) { options?(self) }
+    override func accessibilityPerformPress() -> Bool { reveal?(); return true }
+}
+
 /// The next action. A native button so a drag that starts on it moves the
-/// window, exactly as it does from the glyph, and a click does the action.
+/// window, exactly as it does from the launcher, and a click does the action.
 private struct ToolbarPrimary: NSViewRepresentable {
     let title: String
     let hint: String?
     let isEnabled: Bool
     let fontSize: CGFloat
+    let minimumWidth: CGFloat
     let minimumTitles: [String]
     let accent: Color
-    let action: () -> Void
+    let press: () -> (() -> Void)?
     let drag: ToolbarDragActions
     func makeNSView(context: Context) -> PrimaryButton {
         let view = PrimaryButton()
         view.bezelStyle = .rounded
-        view.controlSize = .small
+        view.controlSize = .large
         view.setContentHuggingPriority(.required, for: .horizontal)
         view.setContentCompressionResistancePriority(.required, for: .horizontal)
         return view
@@ -182,23 +319,23 @@ private struct ToolbarPrimary: NSViewRepresentable {
         view.bezelColor = NSColor(accent)
         view.isEnabled = isEnabled
         view.toolTip = hint
-        view.minimumWidth = minimumTitles.map { PrimaryButton.width(of: $0, like: view) }.max() ?? 0
+        view.minimumWidth = max(minimumWidth, minimumTitles.map { PrimaryButton.width(of: $0, like: view) }.max() ?? 0)
         view.setAccessibilityLabel(title)
         view.setAccessibilityIdentifier("toolbar.primary")
-        view.run = action; view.drag = drag
+        view.press = press; view.drag = drag
         view.invalidateIntrinsicContentSize()
     }
     final class PrimaryButton: NSButton {
-        var run: (() -> Void)?
+        var press: (() -> (() -> Void)?)?
         var drag = ToolbarDragActions()
-        /// The widest idle verb sets the floor, so switching modes at rest never
-        /// moves the strip under the pointer.
+        /// The widest label any tool would show sets the floor, so choosing another tool
+        /// never moves More or the accessory beside it.
         var minimumWidth: CGFloat = 0
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(runAction) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        @objc private func runAction() { run?() }
+        @objc private func runAction() { press?()?() }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        /// Tab from the glyph reaches the action.
+        /// Tab from the launcher reaches the action.
         override var acceptsFirstResponder: Bool { true }
         override var intrinsicContentSize: NSSize {
             var size = super.intrinsicContentSize
@@ -209,7 +346,7 @@ private struct ToolbarPrimary: NSViewRepresentable {
         /// per font size because the style never changes.
         nonisolated(unsafe) private static var widths: [String: CGFloat] = [:]
         static func width(of title: String, like button: NSButton) -> CGFloat {
-            let key = "\(button.font?.pointSize ?? 0)|\(title)"
+            let key = "\(button.font?.pointSize ?? 0)|\(button.controlSize.rawValue)|\(title)"
             if let cached = widths[key] { return cached }
             let probe = NSButton()
             probe.bezelStyle = button.bezelStyle; probe.controlSize = button.controlSize
@@ -218,93 +355,130 @@ private struct ToolbarPrimary: NSViewRepresentable {
             widths[key] = width
             return width
         }
+        /// The operation is latched as the button goes down; the click acts on it only if it
+        /// still holds when the button comes up. The second click of a double-click does
+        /// nothing, so a double-click on Stop never also starts, and one that began on the
+        /// compact rest never reaches work.
         override func mouseDown(with event: NSEvent) {
-            guard isEnabled else { return }
-            trackToolbarDrag(view: self, event: event, actions: drag, click: { [weak self] in self?.run?() })
+            guard isEnabled, event.clickCount < 2 else { return }
+            let commit = press?()
+            trackToolbarDrag(view: self, event: event, actions: drag, click: { commit?() })
         }
-        override func performClick(_ sender: Any?) { if isEnabled { run?() } }
+        override func performClick(_ sender: Any?) { if isEnabled { press?()?() } }
     }
 }
 
-/// The other modes, one native button each. Click switches; hover only tells.
-/// These never activate the app: a click must leave the other app's field
-/// focused so the next Dictate lands in it.
-struct ToolbarModeStrip: NSViewRepresentable {
-    let chips: [ToolbarModeChip]
-    let size: CGFloat
-    let symbolSize: CGFloat
+/// The tool launcher: the current tool's symbol with a chevron. A click, Space, Return or
+/// Down opens the chooser; a drag moves the toolbar; a right-click opens the tool's options.
+private struct ToolbarLauncher: NSViewRepresentable {
+    let state: ToolbarViewState
     let accent: Color
-    let select: (ToolbarMode) -> Void
-    func makeNSView(context: Context) -> NSStackView {
-        let stack = NSStackView()
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.distribution = .fill
-        return stack
+    let open: (NSView) -> Void
+    let options: (NSView) -> Void
+    let focus: (NSButton) -> Void
+    let escape: () -> Void
+    let drag: ToolbarDragActions
+    func makeNSView(context: Context) -> LauncherButton {
+        let view = LauncherButton()
+        view.isBordered = false
+        view.title = ""
+        view.imagePosition = .imageOnly
+        return view
     }
-    func updateNSView(_ stack: NSStackView, context: Context) {
-        stack.spacing = 3 * size / 24
-        let existing = stack.arrangedSubviews.compactMap { $0 as? ModeChipButton }
-        if existing.map(\.mode) != chips.map(\.mode) {
-            existing.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
-            for chip in chips {
-                let button = ModeChipButton(mode: chip.mode)
-                button.widthAnchor.constraint(equalToConstant: size).isActive = true
-                button.heightAnchor.constraint(equalToConstant: size).isActive = true
-                stack.addArrangedSubview(button)
-            }
-        }
-        for (button, chip) in zip(stack.arrangedSubviews.compactMap { $0 as? ModeChipButton }, chips) {
-            button.image = NSImage(systemSymbolName: chip.mode.symbol, accessibilityDescription: chip.mode.title)?
-                .withSymbolConfiguration(.init(pointSize: symbolSize, weight: .medium))
-            button.contentTintColor = chip.isBusy ? NSColor(accent) : .secondaryLabelColor
-            button.accent = NSColor(accent)
-            button.isBusy = chip.isBusy
-            button.isEnabled = chip.isEnabled
-            button.toolTip = "Switch to " + chip.mode.title + (chip.key.map { " · " + $0 } ?? "")
-            button.setAccessibilityLabel("Switch to " + chip.mode.title)
-            button.setAccessibilityIdentifier("toolbar.mode." + chip.mode.slug)
-            button.select = select
-            button.needsDisplay = true
-        }
+    func updateNSView(_ view: LauncherButton, context: Context) {
+        view.setAccessibilityLabel("Tool: " + state.mode.title)
+        view.setAccessibilityValue(state.launcherDescription)
+        view.setAccessibilityHelp("Choose a tool")
+        view.setAccessibilityIdentifier("toolbar.launcher")
+        view.toolTip = state.launcherDescription + ". Click to choose a tool; drag to move."
+        view.escape = escape; view.drag = drag
+        view.open = { [weak view] in if let view { open(view) } }
+        view.options = { [weak view] in if let view { options(view) } }
+        focus(view)
     }
-    final class ModeChipButton: NSButton {
-        let mode: ToolbarMode
-        var select: ((ToolbarMode) -> Void)?
-        var accent: NSColor = .controlAccentColor
-        var isBusy = false
-        init(mode: ToolbarMode) {
-            self.mode = mode
-            super.init(frame: .zero)
-            isBordered = false; imagePosition = .imageOnly; imageScaling = .scaleProportionallyDown
-            translatesAutoresizingMaskIntoConstraints = false
-            setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            setContentHuggingPriority(.defaultLow, for: .horizontal)
-            target = self; action = #selector(switchMode)
-        }
-        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        @objc private func switchMode() { select?(mode) }
-        override var acceptsFirstResponder: Bool { true }
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        override func draw(_ dirtyRect: NSRect) {
-            super.draw(dirtyRect)
-            guard isBusy else { return }
-            accent.setFill()
-            // The dot sits at the bottom, where the glyph's dot is; the button is flipped.
-            NSBezierPath(ovalIn: NSRect(x: bounds.midX - 2, y: isFlipped ? bounds.maxY - 5 : bounds.minY + 1, width: 4, height: 4)).fill()
-        }
+}
+
+final class LauncherButton: NSButton {
+    var open: (() -> Void)?
+    var options: (() -> Void)?
+    var escape: (() -> Void)?
+    var drag = ToolbarDragActions()
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        target = self; action = #selector(openChooser)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    @objc private func openChooser() { open?() }
+    override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    /// The second click of a double-click, including one that began on the compact rest, does nothing.
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount < 2 else { return }
+        trackToolbarDrag(view: self, event: event, actions: drag, click: { [weak self] in self?.open?() })
+    }
+    override func rightMouseDown(with event: NSEvent) { options?() }
+    override func performClick(_ sender: Any?) { open?() }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { escape?() }
+        else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
+        else { super.keyDown(with: event) }
+    }
+}
+
+/// More: the tool's options, the work running elsewhere, and the toolbar's own items.
+private struct ToolbarMore: NSViewRepresentable {
+    let size: CGFloat
+    let open: (NSView) -> Void
+    let escape: () -> Void
+    func makeNSView(context: Context) -> MoreButton {
+        let view = MoreButton()
+        view.isBordered = false
+        view.imagePosition = .imageOnly
+        return view
+    }
+    func updateNSView(_ view: MoreButton, context: Context) {
+        view.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: size, weight: .semibold))
+        view.contentTintColor = .labelColor
+        view.setAccessibilityLabel("More")
+        view.setAccessibilityHelp("Options for this tool, other work and the toolbar")
+        view.setAccessibilityIdentifier("toolbar.more")
+        view.toolTip = "More"
+        view.escape = escape
+        view.open = { [weak view] in if let view { open(view) } }
+    }
+}
+
+final class MoreButton: NSButton {
+    var open: (() -> Void)?
+    var escape: (() -> Void)?
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        target = self; action = #selector(openMenu)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    @objc private func openMenu() { open?() }
+    override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func rightMouseDown(with event: NSEvent) { open?() }
+    override func performClick(_ sender: Any?) { open?() }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { escape?() }
+        else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
+        else { super.keyDown(with: event) }
     }
 }
 
 private struct ToolbarAccessory: NSViewRepresentable {
     let title: String
+    let fontSize: CGFloat
     let makeMenu: () -> NSMenu
     let openPanel: ((NSView) -> Void)?
     let began: (NSMenu) -> Bool
     let ended: () -> Void
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
     func updateNSView(_ view: AccessoryButton, context: Context) {
-        view.title = title + " ⌄"; view.isBordered = false; view.font = .systemFont(ofSize: 12)
+        view.title = title + " ⌄"; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
         view.setAccessibilityLabel(title); view.setAccessibilityIdentifier("toolbar.accessory")
         view.open = { [weak view] in
             guard let view else { return }
@@ -320,65 +494,6 @@ private struct ToolbarAccessory: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         @objc private func openMenu() { open?() }
-    }
-}
-
-private struct ToolbarGlyph: NSViewRepresentable {
-    let state: ToolbarViewState
-    let size: CGFloat
-    let accent: Color
-    let makeMenu: () -> NSMenu
-    let began: (NSMenu) -> Bool
-    let ended: () -> Void
-    let focus: (NSButton) -> Void
-    let escape: () -> Void
-    let drag: ToolbarDragActions
-    func makeNSView(context: Context) -> GlyphButton {
-        let view = GlyphButton()
-        view.isBordered = false
-        view.imagePosition = .imageOnly
-        return view
-    }
-    func updateNSView(_ view: GlyphButton, context: Context) {
-        view.image = NSImage(systemSymbolName: state.mode.symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: size, weight: .medium))
-        view.contentTintColor = state.isBusy ? NSColor(accent) : .labelColor
-        view.setAccessibilityLabel(state.mode.title + " menu" + (state.isBusy ? ", active" : ""))
-        view.setAccessibilityIdentifier("toolbar.menu")
-        view.toolTip = state.mode.title + ". Click for options; drag to move."
-        view.escape = escape; view.drag = drag
-        view.open = { [weak view] in
-            guard let view else { return }
-            let menu = makeMenu()
-            guard began(menu) else { return }
-            defer { ended() }
-            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
-        }
-        focus(view)
-    }
-}
-
-private final class GlyphButton: NSButton {
-    var open: (() -> Void)?
-    var escape: (() -> Void)?
-    var drag = ToolbarDragActions()
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        target = self; action = #selector(openMenu)
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    @objc private func openMenu() { open?() }
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) {
-        trackToolbarDrag(view: self, event: event, actions: drag, click: { [weak self] in self?.open?() })
-    }
-    override func rightMouseDown(with event: NSEvent) { open?() }
-    override func performClick(_ sender: Any?) { open?() }
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { escape?() }
-        else if event.keyCode == 36 || event.keyCode == 49 || event.keyCode == 125 { open?() }
-        else { super.keyDown(with: event) }
     }
 }
 
@@ -399,8 +514,12 @@ private final class DragRegion: NSView {
     override func resetCursorRects() { if showsHandCursor { addCursorRect(bounds, cursor: .openHand) } }
 }
 
+/// Follows one press until the button comes up: past the drag threshold it moves the
+/// window, otherwise it is a click, delivered only if the press ends over `view` (or
+/// anywhere, for the compact rest, which may have been replaced by the row meanwhile).
+/// Either way the whole press is taken here, so no other control ever sees its mouse-up.
 @MainActor private func trackToolbarDrag(view: NSView, event: NSEvent, actions: ToolbarDragActions,
-                                       click: (() -> Void)? = nil) {
+                                       clickAnywhere: Bool = false, click: (() -> Void)? = nil) {
     guard let window = view.window else { return }
     let start = window.convertPoint(toScreen: event.locationInWindow)
     var origin = window.frame.origin
@@ -423,7 +542,9 @@ private final class DragRegion: NSView {
         }
         if next.type == .leftMouseUp {
             endedNormally = true
-            if !dragging && view.bounds.contains(view.convert(next.locationInWindow, from: nil)) { click?() }
+            if !dragging && (clickAnywhere || (view.window === window && view.bounds.contains(view.convert(next.locationInWindow, from: nil)))) {
+                click?()
+            }
             break
         }
         if dragging {

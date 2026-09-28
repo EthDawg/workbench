@@ -30,8 +30,17 @@ import StageKit
                     let size = try render(row, to: directory.appendingPathComponent(name))
                     manifest.append(["file": name, "width": size.width, "height": size.height])
                 }
+                // The tool chooser, as the launcher opens it (#134).
+                for (name, choices) in ToolbarGallery.choosers {
+                    let chooser = ToolbarChooserView(model: ToolbarChooserModel(choices: choices), textScale: scale, accent: WorkbenchPalette.accent)
+                        .padding(12).background(Color(nsColor: .windowBackgroundColor))
+                        .environment(\.colorScheme, dark ? .dark : .light)
+                    let file = "\(name)-\(theme)-\(scaleName).png"
+                    let size = try render(chooser, to: directory.appendingPathComponent(file))
+                    manifest.append(["file": file, "width": size.width, "height": size.height])
+                }
                 // Compact overview is committed for ordinary PR image diffs.
-                let samples = ToolbarGallery.modes + ToolbarGallery.activity + ToolbarGallery.idle
+                let samples = ToolbarGallery.modes + ToolbarGallery.activity + ToolbarGallery.idle + ToolbarGallery.statuses
                 let overview = VStack(alignment: .leading, spacing: 14) {
                     Text("Workbench toolbar · \(theme) · \(scaleName)").font(.title2.weight(.semibold))
                     ForEach(samples, id: \.name) { state in
@@ -39,6 +48,14 @@ import StageKit
                             Text(state.name).font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(.secondary).frame(width: 220, alignment: .leading)
                             ToolbarRow(state: state, textScale: scale, accent: WorkbenchPalette.accent)
+                        }
+                    }
+                    // The chooser with work live in other tools: its checkmark, dots and keys.
+                    if let live = ToolbarGallery.choosers.last {
+                        HStack(alignment: .top, spacing: 18) {
+                            Text(live.name).font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary).frame(width: 220, alignment: .leading)
+                            ToolbarChooserView(model: ToolbarChooserModel(choices: live.choices), textScale: scale, accent: WorkbenchPalette.accent)
                         }
                     }
                 }.padding(24).fixedSize()
