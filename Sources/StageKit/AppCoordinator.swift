@@ -638,17 +638,20 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     /// Pause and Resume act only on a started countdown that has time left. A new
     /// or finished countdown starts through startTimer, never as a hidden Resume.
     func pauseResumeTimer() {
-        // A countdown that has just reached zero finishes here rather than pausing at 00:00.
-        updateCountdown()
+        // One reading of the clock throughout, so a countdown crossing zero during
+        // this call finishes rather than pausing at 00:00.
+        let now = timerClock()
+        updateCountdown(now: now)
         switch timerTransport {
         case .running:
-            countdown.pause(now: timerClock()); countdownTimer?.invalidate(); countdownTimer = nil
+            countdown.pause(now: now); countdownTimer?.invalidate(); countdownTimer = nil
         case .paused:
-            countdown.resume(now: timerClock()); ensureCountdownTimer()
+            countdown.resume(now: now)
+            if countdown.isRunning { ensureCountdownTimer() }
         case .idle, .finished:
             return
         }
-        updateCountdown()
+        updateCountdown(now: now)
     }
     func resetTimer() {
         timerSessionStarted = false
@@ -668,8 +671,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.updateCountdown() }
         timer.tolerance = 0.05; RunLoop.main.add(timer, forMode: .common); countdownTimer = timer
     }
-    private func updateCountdown() {
-        let now = timerClock()
+    private func updateCountdown(now: Date? = nil) {
+        let now = now ?? timerClock()
         let remaining = countdown.remaining(at: now)
         let text = Countdown.formatted(remaining)
         if text != timerText { timerText = text }
