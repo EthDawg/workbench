@@ -580,8 +580,9 @@ enum SurfaceGallery {
             content.layoutSubtreeIfNeeded()
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
             let size = host.window?.frame.size ?? .zero
-            still = controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && size == last ? still + 1 : 0
-            if still == 0 { since = Date() }
+            // Any change restarts the stillness clock before the loop condition reads it again.
+            if controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && size == last { still += 1 }
+            else { still = 0; since = Date() }
             last = size
         }
     }
