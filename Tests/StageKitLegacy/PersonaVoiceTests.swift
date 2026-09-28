@@ -456,7 +456,8 @@ final class PersonaVoiceTests {
 
     func testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable() {
         let ring = PersonaVoiceRingLayer()
-        ring.increaseContrast = false
+        // Both default to the Mac's own accessibility settings; CI's runner may have Reduce Motion on.
+        ring.increaseContrast = false; ring.reduceMotion = false
         ring.frame = CGRect(x: 0, y: 0, width: 300, height: 300)
         ring.geometry = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 50, y: 50, width: 200, height: 200))
         let paths = { ring.sublayers?.compactMap { $0 as? CAShapeLayer } ?? [] }
@@ -588,7 +589,7 @@ final class PersonaVoiceTests {
             let insets = PersonaVoiceRingGeometry(outline: outline, artwork: CGRect(origin: .zero, size: size)).outsets
             canvas = CGSize(width: size.width + insets.left + insets.right + 40, height: size.height + insets.top + insets.bottom + 40)
             artworkRect = CGRect(x: insets.left + 20, y: insets.bottom + 20, width: size.width, height: size.height)
-            ring.increaseContrast = increaseContrast
+            ring.increaseContrast = increaseContrast; ring.reduceMotion = false
             ring.frame = CGRect(origin: .zero, size: canvas); ring.contentsScale = 2
             ring.colors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: NSAppearance(named: .darkAqua)!)
             ring.geometry = PersonaVoiceRingGeometry(outline: outline, artwork: artworkRect)
