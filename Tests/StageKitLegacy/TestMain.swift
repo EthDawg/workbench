@@ -35,6 +35,9 @@ struct TestRunner {
                 ("persona handles appear after a brief pause", suite.testHandlesAppearAfterABriefPauseNearTheArtwork),
                 ("persona unlocked artwork takes clicks only on its body", suite.testUnlockedArtworkTakesClicksOnlyOnItsBody),
                 ("persona handles change only their own copy", suite.testHandlesChangeOnlyTheirOwnCopy),
+                ("persona released controller stops following the pointer", suite.testReleasedControllerStopsFollowingThePointer),
+                ("persona card moved under a still pointer", suite.testCardMovedUnderAStillPointerTakesClicksByWhereItIs),
+                ("persona tall artwork keeps its size through a resize", suite.testTallArtworkKeepsItsSizeThroughAResize),
                 ("persona native window focus lock drag and visibility", PersonaTests().testNativeOverlayWindowAndDragLifecycle),
                 ("optional offscreen persona handle renders", suite.testOffscreenHandleRenders)
             ]
@@ -60,6 +63,7 @@ struct TestRunner {
                 ("one card decoding drops neighbours before refusing", oneCard.testDecodingDropsNeighboursOnceMoreBeforeRefusing),
                 ("one card frozen sources and bounded decoding", oneCard.testFrozenSourcesKeepAppearanceAndDecodingStaysBounded),
                 ("one card failed Next in live menu and panel notice", oneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+                ("one card Next with no other card says so", oneCard.testNextWithNoOtherCardSaysSo),
                 ("prepared sessions keep their limits and preflight", oneCard.testPreparedSessionsKeepTheirLimitsAndPreflight),
                 ("persona sessions: bounded replacement preflight", sessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
                 ("persona: visible single-card launch failure", sessions.testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput),
@@ -112,6 +116,111 @@ struct TestRunner {
                 if assertionFailures == before { print("PASS \(name)") }
             }
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--persona-shown-only"] {
+            // Disposable libraries and synthetic artwork only; a fake microphone; no shortcut or preference.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let shown = PersonaShownTests(), oneCard = PersonaOneCardTests(), personas = PersonaTests(), workspace = PersonaWorkspaceTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("shown: browsing never replaces or hides the shown card", shown.testBrowsingNeverReplacesOrHidesTheShownCard),
+                ("shown: Replace shown keeps size, place and lock", shown.testReplaceShownWithSelectedKeepsSizePlaceAndLock),
+                ("shown: Update shown card changes only that copy", shown.testUpdateShownCardChangesOnlyThatCopy),
+                ("shown: a hidden card is kept with the microphone stopped", shown.testHiddenCardIsKeptUntilShowAgainWithTheMicrophoneStopped),
+                ("shown: a prepared copy is identified and changed alone", shown.testPreparedCopyIsIdentifiedAndChangedAlone),
+                ("shown: the End shortcut releases the card", shown.testEndShortcutReleasesTheCard),
+                ("one card failed Next in live menu and panel notice", oneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+                ("one card bad replacement keeps the shown card", oneCard.testReplacingTheShownCardWithABadOneKeepsIt),
+                ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona workspace single card immediate show and stop", workspace.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
+                ("optional offscreen selected and shown renders", shown.testOffscreenShownRenders)
+            ]
+            var skipped = 0
+            for (name, test) in tests {
+                // An optional render runs only when asked for; otherwise it is reported as skipped.
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--persona-appearance-only"] {
+            // Disposable libraries and synthetic artwork only; a fake microphone; no shortcut or preference.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let appearance = PersonaAppearanceTests(), creation = PersonaCreationTests(), personas = PersonaTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("appearance: new portrait is a Circle and switching keeps everything", appearance.testNewPortraitStartsAsCircleAndSwitchingShapesKeepsEverything),
+                ("appearance: existing personas keep their look", appearance.testExistingPersonasKeepTheirLookAfterUpgrade),
+                ("appearance: shown copy reshapes keeping width, centre, lock and outline", appearance.testShownCopyReshapesKeepingWidthCentreLockAndOutline),
+                ("appearance: live shape uses frozen ingredients for that copy only", appearance.testLiveShapeUsesFrozenIngredientsAndChangesOnlyThatCopy),
+                ("appearance: prepared copy changes alone and saves only when asked", appearance.testPreparedCopyChangesShapeAloneAndSavesOnlyWhenAsked),
+                ("appearance: one keyboard-reachable choice", appearance.testAppearanceChoiceIsOneKeyboardReachableSelection),
+                ("appearance: the toolbar changes exactly the captured copy", appearance.testToolbarChangesExactlyTheCapturedCopy),
+                ("appearance: the toolbar targets one prepared copy exactly", appearance.testToolbarTargetsOnePreparedCopyExactly),
+                ("appearance: a paused copy reshapes around its centre", appearance.testPausedCopyReshapesAroundItsCentre),
+                ("appearance: tall, wide, small and transparent artwork", appearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
+                ("appearance: deck keeps the shown look until the new one is ready", appearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
+                ("appearance: scene placement uses the chosen look", appearance.testScenePlacementUsesTheChosenLook),
+                ("new portrait Add saves once", creation.testAddSavesOneItemWithOneMembershipOnce),
+                ("personas: EditableCardRenderingAndSaveFailurePreserveSources", personas.testEditableCardRenderingAndSaveFailurePreserveSources),
+                ("persona scene attachment transparency and missing-file recovery", personas.testSceneAttachmentTransparencyAndMissingFile),
+                ("optional offscreen appearance renders", appearance.testOffscreenAppearanceRenders)
+            ]
+            var skipped = 0
+            for (name, test) in tests {
+                // An optional render runs only when asked for; otherwise it is reported as skipped.
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--persona-creation-only"] {
+            // Disposable libraries and synthetic portraits only; no shortcut, preference or microphone.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let creation = PersonaCreationTests(), starters = PersonaStarterTests(), personas = PersonaTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("new portrait cancel at any step leaves the library", creation.testCancellingANewPortraitAtAnyStepLeavesTheLibraryUnchanged),
+                ("new portrait second draft never replaces an open one", creation.testASecondDraftNeverReplacesAnOpenOne),
+                ("new portrait draft clears an earlier notice", creation.testANewDraftClearsAnEarlierNotice),
+                ("new portrait repeated cancels leave nothing", creation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
+                ("new portrait Add saves once", creation.testAddSavesOneItemWithOneMembershipOnce),
+                ("new portrait failed Add keeps the draft", creation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+                ("saved card edit cancel and shown card", creation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
+                ("read-only library makes no draft", creation.testReadOnlyLibraryMakesNoDraft),
+                ("optional offscreen persona editor renders", creation.testOffscreenEditorRenders),
+                ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", starters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
+                ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", starters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
+                ("personas: EditableCardRenderingAndSaveFailurePreserveSources", personas.testEditableCardRenderingAndSaveFailurePreserveSources),
+                ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched)
+            ]
+            var skipped = 0
+            for (name, test) in tests {
+                // An optional render runs only when asked for; otherwise it is reported as skipped.
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
         if args == ["--shortcut-settings-only"] {
@@ -334,6 +443,9 @@ struct TestRunner {
         let personaVoice = PersonaVoiceTests()
         let personaVoiceLatency = PersonaVoiceLatencyTests()
         let personaStarters = PersonaStarterTests()
+        let personaCreation = PersonaCreationTests()
+        let personaAppearance = PersonaAppearanceTests()
+        let personaShown = PersonaShownTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let timerTransport = TimerTransportTests()
@@ -392,6 +504,7 @@ struct TestRunner {
             ("one card decoding drops neighbours before refusing", personaOneCard.testDecodingDropsNeighboursOnceMoreBeforeRefusing),
             ("one card frozen sources and bounded decoding", personaOneCard.testFrozenSourcesKeepAppearanceAndDecodingStaysBounded),
             ("one card failed Next in live menu and panel notice", personaOneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+            ("one card Next with no other card says so", personaOneCard.testNextWithNoOtherCardSaysSo),
             ("prepared sessions keep their limits and preflight", personaOneCard.testPreparedSessionsKeepTheirLimitsAndPreflight),
             ("floating: AllTargetsAreDistinctFiniteAndBounded", floating.testAllTargetsAreDistinctFiniteAndBounded),
             ("floating: GuideLayoutPreservesTargetsAndFlipsDisplayCoordinates", floating.testGuideLayoutPreservesTargetsAndFlipsDisplayCoordinates),
@@ -431,6 +544,32 @@ struct TestRunner {
             ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", personaStarters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
             ("persona starter: BundledPortraitsHaveReadableArtworkAndRealTransparency", personaStarters.testBundledPortraitsHaveReadableArtworkAndRealTransparency),
+            ("new portrait cancel at any step leaves the library", personaCreation.testCancellingANewPortraitAtAnyStepLeavesTheLibraryUnchanged),
+            ("new portrait second draft never replaces an open one", personaCreation.testASecondDraftNeverReplacesAnOpenOne),
+            ("new portrait draft clears an earlier notice", personaCreation.testANewDraftClearsAnEarlierNotice),
+            ("new portrait repeated cancels leave nothing", personaCreation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
+            ("new portrait Add saves once", personaCreation.testAddSavesOneItemWithOneMembershipOnce),
+            ("new portrait failed Add keeps the draft", personaCreation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+            ("saved card edit cancel and shown card", personaCreation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
+            ("read-only library makes no draft", personaCreation.testReadOnlyLibraryMakesNoDraft),
+            ("appearance: new portrait is a Circle and switching keeps everything", personaAppearance.testNewPortraitStartsAsCircleAndSwitchingShapesKeepsEverything),
+            ("appearance: existing personas keep their look", personaAppearance.testExistingPersonasKeepTheirLookAfterUpgrade),
+            ("appearance: shown copy reshapes keeping width, centre, lock and outline", personaAppearance.testShownCopyReshapesKeepingWidthCentreLockAndOutline),
+            ("appearance: live shape uses frozen ingredients for that copy only", personaAppearance.testLiveShapeUsesFrozenIngredientsAndChangesOnlyThatCopy),
+            ("appearance: prepared copy changes alone and saves only when asked", personaAppearance.testPreparedCopyChangesShapeAloneAndSavesOnlyWhenAsked),
+            ("appearance: one keyboard-reachable choice", personaAppearance.testAppearanceChoiceIsOneKeyboardReachableSelection),
+            ("appearance: the toolbar changes exactly the captured copy", personaAppearance.testToolbarChangesExactlyTheCapturedCopy),
+            ("appearance: the toolbar targets one prepared copy exactly", personaAppearance.testToolbarTargetsOnePreparedCopyExactly),
+            ("appearance: a paused copy reshapes around its centre", personaAppearance.testPausedCopyReshapesAroundItsCentre),
+            ("appearance: tall, wide, small and transparent artwork", personaAppearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
+            ("appearance: deck keeps the shown look until the new one is ready", personaAppearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
+            ("appearance: scene placement uses the chosen look", personaAppearance.testScenePlacementUsesTheChosenLook),
+            ("shown: browsing never replaces or hides the shown card", personaShown.testBrowsingNeverReplacesOrHidesTheShownCard),
+            ("shown: Replace shown keeps size, place and lock", personaShown.testReplaceShownWithSelectedKeepsSizePlaceAndLock),
+            ("shown: Update shown card changes only that copy", personaShown.testUpdateShownCardChangesOnlyThatCopy),
+            ("shown: a hidden card is kept with the microphone stopped", personaShown.testHiddenCardIsKeptUntilShowAgainWithTheMicrophoneStopped),
+            ("shown: a prepared copy is identified and changed alone", personaShown.testPreparedCopyIsIdentifiedAndChangedAlone),
+            ("shown: the End shortcut releases the card", personaShown.testEndShortcutReleasesTheCard),
             ("persona geometry and strict validation", personas.testGeometryBoundsAndValidation),
             ("persona durable image and separate desktop placement", personas.testDurableImportSeparatePlacementAndRemoval),
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
@@ -442,6 +581,9 @@ struct TestRunner {
             ("persona handles appear after a brief pause", personaHandles.testHandlesAppearAfterABriefPauseNearTheArtwork),
             ("persona unlocked artwork takes clicks only on its body", personaHandles.testUnlockedArtworkTakesClicksOnlyOnItsBody),
             ("persona handles change only their own copy", personaHandles.testHandlesChangeOnlyTheirOwnCopy),
+            ("persona released controller stops following the pointer", personaHandles.testReleasedControllerStopsFollowingThePointer),
+            ("persona card moved under a still pointer", personaHandles.testCardMovedUnderAStillPointerTakesClicksByWhereItIs),
+            ("persona tall artwork keeps its size through a resize", personaHandles.testTallArtworkKeepsItsSizeThroughAResize),
             ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
             ("persona read-only HUD browsing and placement", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement),
             ("desktop verification waits for macOS and times out safely", scenes.testDesktopVerificationWaitsForMacOSAndStopsAtTimeout),

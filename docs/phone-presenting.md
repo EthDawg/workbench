@@ -17,7 +17,7 @@ The three priorities were **route clarity and safe handoff**, an evidence-based 
 
 ## Before, during, after
 
-**Before:** Present a device → Connection & audio… opens without starting capture or prompting for permissions. Choose Show a phone, Voice conversation or Control from Mac. Select a route to see steps, limitations and official instructions. Preparation should happen before screen sharing; this guide is an ordinary visible window.
+**Before:** Present → Connection & audio… opens without starting capture or prompting for permissions. Choose Show a phone, Voice conversation or Control from Mac. Select a route to see steps, limitations and official instructions. Preparation should happen before screen sharing; this guide is an ordinary visible window.
 
 **During:** Workbench's phone tile stays small and click-operated. Source includes the same guide. A first capture needs an explicit source choice, even when only one muxed external source is available. Muxed media metadata is not verified phone identity. Subsequent reconnects use only the exact saved ID; losing that device never selects a different camera or customer's phone.
 

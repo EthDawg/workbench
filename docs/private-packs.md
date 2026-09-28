@@ -4,7 +4,7 @@ Workbench remains usable offline without an account. Packs add reusable company 
 
 ## Colleague experience
 
-1. Open the pack link shared by the team, or paste its GitHub repository address in **Packs**.
+1. Open the pack link shared by the team, or paste its GitHub repository address in **Library → Packs**.
 2. Connect GitHub using a device code. The account must already have repository access, and the Workbench GitHub App must be installed for that repository. Accepting an invitation is a GitHub action; an email domain alone does not grant access.
 3. Add the pack. Choose a compatible skill or add a personal scene/persona copy. Optional workspace appearance changes the in-app label and logo.
 

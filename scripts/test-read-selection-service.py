@@ -105,7 +105,7 @@ __METHODS__
         model.readingProvider = .mac
         try check(model.readingLimitMessage(for: long) == nil, "limit follows the existing selected provider")
 
-        // History and Saved resources take the same decision, named for where the text came from.
+        // History and Library take the same decision, named for where the text came from.
         let doors = SelectionHarness()
         doors.speechText = "Current draft"; doors.saves = 0
         doors.importReading("A transcript to hear", from: .transcript)
@@ -189,7 +189,7 @@ def button_action(path: str, label: str) -> str:
 assert button_action("Sources/LocalVoice/CaptureHistoryView.swift", "Read aloud") == "model.importReading(item.text, from: .transcript)", \
     "History's Read aloud must go through importReading"
 assert button_action("Sources/LocalVoice/DemoLibraryView.swift", "Read aloud") == "model.importReading(item.content, from: .savedText)", \
-    "Saved resources' Read aloud must go through importReading"
+    "Library's Read aloud must go through importReading"
 home = (ROOT / "Sources/LocalVoice/WorkbenchHome.swift").read_text()
 tile = home[home.index("    private func readClipboard()"):]
 tile = tile[:tile.index("\n    }\n")]
@@ -256,4 +256,4 @@ with tempfile.TemporaryDirectory(prefix="workbench-draft-writers-", dir="/privat
     found = [entry.split(": ", 1)[0] for entry in draft_writes(fixture)]
     assert found == ["Sources/LocalVoice/AppModel.swift:7", "Sources/LocalVoice/AppModel.swift:11",
                      "Sources/LocalVoice/AppModel.swift:13", "Sources/LocalVoice/Views.swift:4"], found
-print("READ_IMPORT_DOORS_OK: 6 checks; History, Saved resources, Home and the Service use the one import owner, nothing else writes the draft, and the writer check finds writes by member")
+print("READ_IMPORT_DOORS_OK: 6 checks; History, Library, Home and the Service use the one import owner, nothing else writes the draft, and the writer check finds writes by member")

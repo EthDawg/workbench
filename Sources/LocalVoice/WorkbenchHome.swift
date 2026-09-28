@@ -19,14 +19,44 @@ struct WorkbenchHome: View {
     @State private var photoBackdrop: PhotoBackdropRequest?
     @State private var handoffReview: HandoffReviewRequest?
     @State private var suggestionReview: MetadataSuggestionReview?
-    /// Every sidebar destination. The surface gallery renders each one.
-    static let navItems: [(String, String, String)] = [
+    /// The page record: every surface that names or opens a window page reads it here, so a
+    /// page has one name wherever it appears (#134). The sidebar lists `navItems`, Library and
+    /// Settings switch between their `sections`, and `subpages` have no sidebar item of their
+    /// own. The surface gallery renders each route.
+    static let navItems: [(id: String, title: String, symbol: String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
-        ("speak", "Read aloud", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
-        ("present", "Present a device", "iphone"), ("personas", "Persona", "person.crop.circle"),
-        ("history", "History", "clock"),
-        ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
-        ("packs", "Packs", "shippingbox"), ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
+        ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Draw", "pencil.tip"),
+        ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.circle"),
+        ("history", "History", "clock"), ("library", "Library", "square.stack"), ("settings", "Settings", "slider.horizontal.3")]
+    /// A page's sections, in switcher order. Each opens from its own route, and the page's own
+    /// route opens the first; Keyboard, Models and Packs keep the routes their sidebar items had.
+    static let sections: [(id: String, page: String, title: String)] = [
+        ("library", "library", "Resources"), ("packs", "library", "Packs"), ("photos", "library", "From iPhone"),
+        ("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard"),
+        ("models", "settings", "Models"), ("connections", "settings", "Connections")]
+    /// Pages reached from another page. A door to one keeps that page highlighted, so the
+    /// sidebar is always the way back.
+    static let subpages: [(id: String, page: String, title: String)] = [
+        ("dictionary", "dictate", "Your dictionary"), ("meeting", "dictate", "Transcribe meeting or call")]
+    /// Home's photo arrival cue opens Library on From iPhone by this route. Nothing else holds
+    /// the section, so a later Library door returns to Resources.
+    static let photoArrivals = "photos"
+
+    /// Where a route lands: the sidebar page it highlights and, on a page with sections, the
+    /// section it shows. Every door resolves here, so a route that was once a page of its own
+    /// still works and nothing lands without a highlighted item. A route nothing knows shows
+    /// Dictate, as the page switch always has.
+    static func destination(_ route: String) -> (page: String, section: String?) {
+        if let section = sections.first(where: { $0.id == route }) { return (section.page, section.id) }
+        if navItems.contains(where: { $0.id == route }) { return (route, nil) }
+        return (subpages.first { $0.id == route }?.page ?? "dictate", nil)
+    }
+    /// A route's one name: its page's, else its section's or subpage's. "settings" is Settings,
+    /// not General.
+    static func name(of route: String) -> String {
+        navItems.first { $0.id == route }?.title ?? sections.first { $0.id == route }?.title
+            ?? subpages.first { $0.id == route }?.title ?? route
+    }
     init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel) {
         self.model = model; self.stage = stage; self.keyboard = keyboard; self.readback = readback
         self.snap = snap; self.history = model.historyLibrary
@@ -42,17 +72,19 @@ struct WorkbenchHome: View {
                 WorkbenchHeader(title: packs.brandLabel ?? "Workbench", subtitle: packs.brandLabel == nil ? "Everyday tools. A little less friction." : "Your workspace in Workbench", symbol: "square.stack.3d.up.fill")
                     .padding(.vertical, 20)
                 ScrollView {
-                VStack(spacing: 4) { ForEach(Self.navItems, id: \.0) { page, title, symbol in
+                // A section or subpage keeps its page's item highlighted.
+                let current = Self.destination(model.page).page
+                VStack(spacing: 4) { ForEach(Self.navItems, id: \.id) { page, title, symbol in
                     Button {
                         keyboard.stopInteraction()
                         // Every door opens History on All, even from History itself.
                         if page == "history" { model.openHistory() } else { model.page = page }
                     } label: {
-                        Label(title, systemImage: symbol).font(.system(size: 13, weight: model.page == page ? .semibold : .regular))
+                        Label(title, systemImage: symbol).font(.system(size: 13, weight: current == page ? .semibold : .regular))
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 9)
-                            .foregroundStyle(model.page == page ? Workbench.accent : .primary)
-                            .background(model.page == page ? Workbench.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                    }.buttonStyle(.plain)
+                            .foregroundStyle(current == page ? Workbench.accent : .primary)
+                            .background(current == page ? Workbench.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                    }.buttonStyle(.plain).accessibilityAddTraits(current == page ? .isSelected : [])
                 } }
                 }
                 if updates.availableVersion != nil || updates.restartWaiting {
@@ -84,7 +116,6 @@ struct WorkbenchHome: View {
                     }, onOrganiseHandOff: { task in
                         handoffReview = HandoffReviewRequest(task: task, snapReview: true, savedSelectionID: history.activeSelectionID)
                     })
-                case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
                 case "history": HistoryView(model: model, snap: snap, applySuggestedMetadata: { job, result in
                     do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                     catch { model.handoffJobs.error = error.localizedDescription }
@@ -93,15 +124,8 @@ struct WorkbenchHome: View {
                 case "annotate": stage.controlsView
                 case "present": stage.scenesView
                 case "personas": stage.personasView
-                case "shortcuts": KeyboardCoachView(model: keyboard)
-                case "models": ScrollView { VStack(alignment: .leading, spacing: 28) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
-                        model.ready = ready; model.modelMessage = message
-                    }
-                    Divider()
-                    CleanupModelSettingsView(isBusy: model.phase != .idle || model.preparing || model.rendering)
-                }.padding(32) }
-                case "settings": settings
+                case _ where Self.destination(model.page).page == "library": library
+                case _ where Self.destination(model.page).page == "settings": settings
                 default: ContentView(model: model, embedded: true)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -154,39 +178,93 @@ struct WorkbenchHome: View {
         WorkbenchHomePage(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap,
                           introduction: introduction, handoffReview: $handoffReview)
     }
-    private var settings: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 22) {
-            Text("Make yourself at home.").font(.largeTitle.weight(.semibold))
-            Text("Only turn on the access you need. Closing this window leaves the menu-bar tools available; Quit stops Workbench.").foregroundStyle(.secondary)
-            WorkbenchAppearancePicker()
-            Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
-            Text("Start another action from the same place. Recording controls appear here while you speak.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
-                do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
-                catch { loginError = error.localizedDescription }
-            }))
-            if let loginError { Text(loginError).foregroundStyle(.orange) }
-            Divider()
-            WorkbenchUpdateSettings()
-            Divider()
-            MeetingDetectionSettings(model: model.meetings)
-            Divider()
-            SubscriptionSettingsView(jobs: model.handoffJobs)
-            if model.photoHandoff.isConfigured {
-                Divider()
-                PhotoHandoffSettings(handoff: model.photoHandoff)
+    /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
+    /// at the top (#134). The route alone chooses the section, so every Library door opens
+    /// Resources and Home's arrival cue opens From iPhone by its own route.
+    private var library: some View {
+        let section = Self.destination(model.page).section ?? "library"
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionSwitcher("library", selection: section) { model.page = $0 }
+            switch section {
+            case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
+            case "photos":
+                PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
+                    .padding(32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            default: ContentView(model: model, embedded: true)
             }
-            Divider()
-            Button("Dictate options…") { model.page = "dictate" }
-            Text("Activation, cleanup, delivery, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
-            Divider()
-            Button("Models and local server") { model.page = "models" }
-            Button("Keyboard and practice") { model.page = "shortcuts" }
-            Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
-            Divider()
-            FounderIntroductionCard(model: introduction, canDismiss: false)
-        }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
+        }
+    }
+
+    /// Settings holds General, Keyboard, Models and Connections as sections of one page, with
+    /// its switcher at the top (#134). Each section shows what its old page or place showed.
+    private var settings: some View {
+        let section = Self.destination(model.page).section ?? "settings"
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionSwitcher("settings", selection: section) { model.page = $0 }
+            switch section {
+            case "shortcuts":
+                // Recording and practice pause global actions only while they run. Leaving this
+                // section ends them and restores the actions, as leaving the Keyboard page did.
+                ScrollView { KeyboardCoachView(model: keyboard).padding(.horizontal, 8) }
+            case "models":
+                ScrollView { VStack(alignment: .leading, spacing: 28) {
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
+                        model.ready = ready; model.modelMessage = message
+                    }
+                    Divider()
+                    CleanupModelSettingsView(isBusy: model.phase != .idle || model.preparing || model.rendering)
+                }.padding(32) }
+            case "connections":
+                ScrollView { VStack(alignment: .leading, spacing: 22) {
+                    SubscriptionSettingsView(jobs: model.handoffJobs)
+                    if model.photoHandoff.isConfigured {
+                        Divider()
+                        PhotoHandoffSettings(handoff: model.photoHandoff)
+                    }
+                }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
+            default:
+                ScrollView { VStack(alignment: .leading, spacing: 22) {
+                    Text("Make yourself at home.").font(.largeTitle.weight(.semibold))
+                    Text("Only turn on the access you need. Closing this window leaves the menu-bar tools available; Quit stops Workbench.").foregroundStyle(.secondary)
+                    WorkbenchAppearancePicker()
+                    Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
+                    Text("Start another action from the same place. Recording controls appear here while you speak.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
+                        do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
+                        catch { loginError = error.localizedDescription }
+                    }))
+                    if let loginError { Text(loginError).foregroundStyle(.orange) }
+                    Divider()
+                    WorkbenchUpdateSettings()
+                    Divider()
+                    MeetingDetectionSettings(model: model.meetings)
+                    Divider()
+                    HStack(spacing: 12) {
+                        Button("Dictate options…") { model.page = "dictate" }
+                        // Until the first dictation, Home's guide can be asked for here too (#15).
+                        if !HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide).hasDictated {
+                            Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
+                        }
+                    }
+                    Text("Activation, cleanup, delivery, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
+                    Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    FounderIntroductionCard(model: introduction, canDismiss: false)
+                }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
+            }
+        }
+    }
+
+    /// A page's section switcher, named for its page, with one segment per section in the page
+    /// record. Choosing a segment opens that section's route, so the switcher, the sidebar and
+    /// every door agree on where you are.
+    private func sectionSwitcher(_ page: String, selection: String, choose: @escaping (String) -> Void) -> some View {
+        Picker(Self.name(of: page), selection: Binding(get: { selection }, set: { section in
+            keyboard.stopInteraction(); choose(section)
+        })) {
+            ForEach(Self.sections.filter { $0.page == page }, id: \.id) { section in Text(section.title).tag(section.id) }
+        }.pickerStyle(.segmented).fixedSize().padding(.horizontal, 32).padding(.top, 32)
     }
 }
 
@@ -503,8 +581,7 @@ struct WorkbenchHomePage: View {
                 }
                 case .photos:
                     PhotoHandoffArrivalCue(handoff: model.photoHandoff) {
-                        model.showingPhonePhotos = true
-                        model.page = "library"
+                        model.page = WorkbenchHome.photoArrivals
                     }
                 }
             }

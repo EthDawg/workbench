@@ -28,16 +28,16 @@ These surfaces share the same underlying jobs and saved resources. Starting or a
 ## Get started
 
 1. Install **Workbench** from the [website](https://workbench-mac.vercel.app/). Open it from Applications.
-2. Open **Models** to prepare the default local Parakeet recognizer, then try Dictate with a disposable sentence. The first model download can take several minutes.
+2. Open **Settings → Models** to prepare the default local Parakeet recognizer, then try Dictate with a disposable sentence. The first model download can take several minutes.
 3. Use the menu bar for quick actions and the floating toolbar while working. Open the desktop app for preparation and review.
-4. Open **Keyboard** to see, change or practise shortcuts. Recording a shortcut temporarily suspends Workbench's global shortcuts.
+4. Open **Settings → Keyboard** to see, change or practise shortcuts. Recording a shortcut temporarily suspends Workbench's global shortcuts.
 5. Use **Settings → Workbench updates** for updates and **Copy build details** when reporting a problem.
 
 Closing the desktop window leaves Workbench available. Quit Workbench stops the app. Open at login is optional. Older releases without the updater need one manual upgrade; see [installation and updates](docs/updating.md).
 
 The [product guide](https://workbench-mac.vercel.app/guide/) explains dictation, reading, Snap & Talk, drawing, device presentation, personas and saved resources. Device presentation is video-only; Apple's QuickTime and iPhone Mirroring remain separate apps. A connected iPhone used as a Mac presentation source does not imply an active Workbench iOS release.
 
-**Team packs (2.2+):** open **Packs**, connect GitHub and add the private repository link your team shares. Choose a compatible skill or import your own scene/persona copy. New sessions carry the complete versioned skill and resources for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and pack link with colleagues. Ordinary Workbench tools remain account-free; existing sessions keep their own files.
+**Team packs (2.2+):** open **Library → Packs**, connect GitHub and add the private repository link your team shares. Choose a compatible skill or import your own scene/persona copy. New sessions carry the complete versioned skill and resources for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and pack link with colleagues. Ordinary Workbench tools remain account-free; existing sessions keep their own files.
 
 ## Build and install Preview
 
@@ -64,7 +64,7 @@ The core Mac app needs no account or subscription. Parakeet recognition and inst
 
 Automatic text delivery checks the original destination, excludes secure fields and never submits it. Review any unconfirmed insertion. Screen captures and narrated sessions can contain sensitive information: inspect a session before sharing it. Workbench's handoff opens your chosen tool and copies a prompt; you still grant access and submit it.
 
-Saved resources contain prompts, links and local file references, not a password vault. Original media and recoverable session deletions remain in their user-chosen folders. Keep saved-data directories when replacing the app. Stable uses `~/Library/Application Support/Workbench`; Preview uses `~/Library/Application Support/Workbench Preview`. See [storage and migration boundaries](docs/design.md).
+Library holds prompts, links and local file references, not a password vault. Original media and recoverable session deletions remain in their user-chosen folders. Keep saved-data directories when replacing the app. Stable uses `~/Library/Application Support/Workbench`; Preview uses `~/Library/Application Support/Workbench Preview`. See [storage and migration boundaries](docs/design.md).
 
 ## Contribute and verify
 

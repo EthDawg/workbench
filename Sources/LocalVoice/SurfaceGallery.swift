@@ -20,8 +20,14 @@ enum SurfaceGallery {
     static let workPrefix = ".surface-pass-"
     /// AppDelegate opens Home at 1180 × 800. Its 1050 × 730 minimum grows by the title bar.
     static let sizes: [(name: String, size: NSSize)] = [("default", NSSize(width: 1180, height: 800)), ("narrow", NSSize(width: 1050, height: 730))]
-    /// Pages with no sidebar item: Settings opens Your dictionary; Dictate opens the meeting page.
-    static let extraPages = [("dictionary", "Your dictionary"), ("meeting", "Meeting or call")]
+    /// Routes with no sidebar item, all from the page record: every section but a page's first,
+    /// which is the page itself, then the pages Dictate opens (Your dictionary, Transcribe meeting
+    /// or call).
+    static var extraPages: [(String, String)] {
+        WorkbenchHome.sections.filter { section in !WorkbenchHome.navItems.contains { $0.id == section.id } }
+            .map { ($0.id, WorkbenchHome.name(of: $0.page) + " › " + $0.title) }
+            + WorkbenchHome.subpages.map { ($0.id, $0.title) }
+    }
     static let unknownRoute = "surface-gallery-unknown-route"
 
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
@@ -284,6 +290,9 @@ enum SurfaceGallery {
                                                    detail: "", file: "page-\(pages[index].route)-\(name)-\(theme).png", to: output))
             }
         }
+        for (route, shots) in try renderFoldedStates(to: output) {
+            if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
+        }
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) }
@@ -330,7 +339,7 @@ enum SurfaceGallery {
             var query = ""; var filter = PromptPickerList.Filter.all; var running = false; var attempt: PromptAttempt?; var details = false
         }
         let states = [
-            State(id: "empty", title: "No saved prompts", detail: "An empty library leads to Saved resources.", resources: [], mode: notes),
+            State(id: "empty", title: "No saved prompts", detail: "An empty picker leads to Library.", resources: [], mode: notes),
             State(id: "one", title: "One prompt", detail: "Inserting into Notes, the field in front when the picker opened.", resources: [library[0]], mode: notes),
             State(id: "grouped", title: "Favourites, then the rest", detail: "Product and Persona tags filter the one list. The last delivery went to Mail and says so.",
                   resources: library, mode: notes, attempt: stopped),
@@ -587,6 +596,50 @@ enum SurfaceGallery {
             shots.append(try save(try snapshot(host), id: id, title: title, detail: detail, file: "panel-\(id)-\(theme).png", to: output))
         }
         return shots
+    }
+
+    // MARK: Folded page states
+
+    /// Library's Resources with long names and one selected, and Settings' Models while a
+    /// dictation records, at the minimum window size: the folded pages with long labels and an
+    /// active job (#134). Between the two, every page and section opens in turn; the draft, the
+    /// selections and the recording must come through unchanged, or the pass fails.
+    func renderFoldedStates(to output: URL) throws -> [(String, [SurfaceGallery.Shot])] {
+        let size = SurfaceGallery.sizes[1].size, library = model.library
+        let window = homeWindow(size: size)
+        defer { window.contentViewController = nil; window.close(); model.phase = .idle; model.elapsed = 0 }
+        var added: [DemoResource] = []
+        defer { for item in added { library.remove(item) }; library.notice = nil }
+        for title in ["Quarterly pricing walkthrough for the regional partner review, with the revised numbers",
+                      "Onboarding checklist for presenters joining the Thursday demo rotation",
+                      "Follow-up prompt: summarise the objections from the procurement call and propose next steps"] {
+            let item = DemoResource(title: title, product: "Synthetic product with a longer name", persona: "Operations lead", content: "Synthetic text for \(title).")
+            guard library.save(item) else { throw VoiceError.message("The gallery could not save a synthetic resource: \(library.error ?? "unknown").") }
+            added.append(item)
+        }
+        library.selection = added[0].id; library.notice = nil
+        let (resources, resourcesSize) = try renderPage("library", in: window)
+        let libraryShot = try save(resources, id: "state-long-names", title: "Resources with long names, one selected, minimum window, \(Int(resourcesSize.width)) × \(Int(resourcesSize.height)) pt",
+                                   detail: "Three synthetic resources with long titles; the first is selected and its detail shows.", file: "page-library-state-long-names-\(theme).png", to: output)
+        model.phase = .recording; model.elapsed = 14
+        let kept = (draft: model.transcript, selection: model.historyLibrary.selected, resource: library.selection)
+        for route in SurfacePass.pages.map(\.0) + ["library"] { model.page = route; settle(window.contentView?.superview ?? window.contentView!, seconds: 0.05) }
+        guard model.transcript == kept.draft, model.historyLibrary.selected == kept.selection, library.selection == kept.resource, model.phase == .recording else {
+            throw VoiceError.message("Opening every page and section changed the Dictate draft, a selection or the recording.")
+        }
+        let (models, modelsSize) = try renderPage("models", in: window)
+        let modelsShot = try save(models, id: "state-dictating", title: "Models while a dictation records, minimum window, \(Int(modelsSize.width)) × \(Int(modelsSize.height)) pt",
+                                  detail: "A recording holds the speech model: the controls wait until it finishes.", file: "page-models-state-dictating-\(theme).png", to: output)
+        model.phase = .idle; model.elapsed = 0
+        // General before any dictation: Show me a first dictation sits beside Dictate options… (#15).
+        let before = (history: model.history, guide: model.preferences.firstDictationGuide)
+        model.history = []; model.preferences.firstDictationGuide = nil
+        defer { model.history = before.history; model.preferences.firstDictationGuide = before.guide }
+        let (general, generalSize) = try renderPage("settings", in: window)
+        let generalShot = try save(general, id: "state-before-first-dictation", title: "General before the first dictation, minimum window, \(Int(generalSize.width)) × \(Int(generalSize.height)) pt",
+                                   detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate options… and opens Home on the guide.",
+                                   file: "page-settings-state-before-first-dictation-\(theme).png", to: output)
+        return [("library", [libraryShot]), ("models", [modelsShot]), ("settings", [generalShot])]
     }
 
     // MARK: Read states
@@ -1316,7 +1369,7 @@ enum SurfaceGallery {
 
     // MARK: Entries
 
-    static let pages: [(String, String)] = WorkbenchHome.navItems.map { ($0.0, $0.1) } + SurfaceGallery.extraPages
+    static let pages: [(String, String)] = WorkbenchHome.navItems.map { ($0.id, $0.title) } + SurfaceGallery.extraPages
 
     /// StageKit items that only open a page. They are run with StageKit's page callbacks recording.
     static let stageLinks: Set<String> = ["Drawing Controls…", "Keyboard Shortcuts…", "Prepare Personas…"]
@@ -1405,20 +1458,24 @@ enum SurfaceGallery {
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
                  page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
                  page(panel, "Meeting status row, while a meeting is busy", "meeting"), action(panel, "Meeting status row · Stop or Cancel", "Stops or cancels the meeting")]
-        list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.1, leads: "Page: \($0.0)", route: $0.0, ran: true) }
+        list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true) }
+        // Each page's switcher, from the same page record: a section opens its own route.
+        list += WorkbenchHome.sections.map {
+            E(surface: "Section switcher", label: WorkbenchHome.name(of: $0.page) + " › " + $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true)
+        }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings"), action("Home sidebar", "Suite appearance", "Changes the appearance")]
-        list += [page(home, "Dictate card", "dictate"), page(home, "Read aloud card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
-                 page(home, "Annotate card", "annotate"), page(home, "Present a device card", "present"), page(home, "Persona card", "personas"), page(home, "Try the keyboard", "shortcuts"),
-                 page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "library"),
-                 page("Settings page", "Your dictionary", "dictionary"), page("Settings page", "Models and local server", "models"),
-                 page("Settings page", "Keyboard and practice", "shortcuts"), action("Settings page", "Position dictation panel…", "Shows the dictation panel preview"),
+        list += [page(home, "Dictate card", "dictate"), page(home, "Read card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
+                 page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"),
+                 page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "photos"),
+                 page("Settings page", "Dictate options…", "dictate"), page("Settings page", "Show me a first dictation, until the first dictation", "home"),
+                 page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"),
                  action("Snap page", "Use selected · Organise… · Hand off for synthesis…", "Opens the handoff review for a Snap review"),
                  action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
                  action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
                  action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
-                 action("Read aloud page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
+                 action("Read page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
                  page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "History", "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
@@ -1428,23 +1485,40 @@ enum SurfaceGallery {
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
                  action("History page", "Stop task", "Stops the running task, whatever the filter shows")]
-        list += [action(menu, "Workbench › About Workbench", "Shows the About panel"), page(menu, "Workbench › Check for Updates…", "settings"),
-                 action(menu, "Workbench › Copy build details", "Copies build details"), page(menu, "Workbench › Settings…", "settings"),
-                 page(menu, "Workbench › Keyboard shortcuts…", "shortcuts"), action(menu, "Window › Open Workbench", "Opens Home on its current page"),
-                 action(menu, "Window › Quick controls", "Opens this panel"), action(menu, "Window › Show floating toolbar", "Shows the toolbar"),
-                 action(menu, "Window › Focus floating toolbar", "Moves keyboard focus to the toolbar"), action(menu, "Window › Restore menu-bar icon", "Shows the icon and the toolbar"),
-                 page(menu, "Window › Saved resources", "library"), action(menu, "Window › Switch to…", "Opens the Switch to panel"),
-                 page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › History", "history"), page(menu, "Window › Persona", "personas"),
-                 page(menu, "Window › Transcribe meeting or call…", "meeting"), page(menu, "Window › Save clipboard as prompt…", "library"),
-                 action(menu, "Help › Workbench Guide", "Opens the web guide")]
-        list += [page(other, "Saved resources shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
+        list += appMenuEntries(surface: menu)
+        list += [action("Library page", "Resources · Add · Save clipboard as prompt…, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
+        list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
                  action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),
-                 page(other, "Read aloud Service (selected text)", "speak"), page(other, "Private pack link", "packs"),
+                 page(other, "Read Selection service (selected text)", "speak"), page(other, "Private pack link", "packs"),
                  page(other, "Meeting offer panel", "meeting"), page(other, "Pack persona import", "personas"),
                  page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
         return list
+    }
+}
+
+extension SurfacePass {
+    /// The Workbench, Window and Help menus as AppDelegate builds them, so the index lists the
+    /// names and destinations the menus really have. A page item carries its route; Check for
+    /// Updates… opens Settings as it checks. Edit, Services and the Draw menu are listed elsewhere
+    /// or belong to macOS.
+    func appMenuEntries(surface: String) -> [SurfaceGallery.Entry] {
+        let actions = ["About Workbench": "Shows the About panel", "Check for Updates…": "Page: settings, and checks for updates",
+                       "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
+                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
+                       "Show floating toolbar": "Shows the toolbar", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
+                       "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
+        return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
+            menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
+                let label = "\(menu.title) › \(item.title)"
+                if let route = item.representedObject as? String {
+                    return SurfaceGallery.Entry(surface: surface, label: label, leads: "Page: \(route)", route: route, ran: true)
+                }
+                let opensSettings = item.action == #selector(AppDelegate.showUpdates)
+                return SurfaceGallery.Entry(surface: surface, label: label, leads: actions[item.title] ?? "An action", route: opensSettings ? "settings" : nil, ran: true)
+            }
+        }
     }
 }
 
@@ -1557,10 +1631,10 @@ private struct SurfaceIndex {
             "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
             "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
             "The Saved Prompts panel is opened the same way, with no keyboard focus and no click monitors; its placement, focus return and dismissal need a pointer on the installed app.",
-            "StageKit is never started, so Annotate reports Ready on 0 displays.",
+            "StageKit is never started, so Draw reports Ready on 0 displays.",
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
-            "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",
+            "Buttons and keys come from a catalogue in SurfaceGallery.swift; add a row there when adding an entry. The app menus are read from the menu bar AppDelegate builds, so their names and pages are the app's own.",
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Microphone access. Screen Recording reads as allowed, except in the Screen Recording off states.",
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",

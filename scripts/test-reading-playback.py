@@ -610,7 +610,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         _ = try playUntilStopped(waiting)
         try check(waiting.status == "Finished reading." && waiting.error == nil, "A reading that waited for rendering finishes normally")
 
-        // Text from History or Saved resources goes through the one import
+        // Text from History or Library goes through the one import
         // decision (#173). Keep current leaves the reading exactly as it was;
         // Replace ends it, shows the new text and waits for Listen; nothing late
         // from the old reading lands over the new text.
