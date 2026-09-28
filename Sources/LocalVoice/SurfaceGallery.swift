@@ -558,7 +558,16 @@ enum SurfaceGallery {
         let (models, modelsSize) = try renderPage("models", in: window)
         let modelsShot = try save(models, id: "state-dictating", title: "Models while a dictation records, minimum window, \(Int(modelsSize.width)) × \(Int(modelsSize.height)) pt",
                                   detail: "A recording holds the speech model: the controls wait until it finishes.", file: "page-models-state-dictating-\(theme).png", to: output)
-        return [("library", [libraryShot]), ("models", [modelsShot])]
+        model.phase = .idle; model.elapsed = 0
+        // General before any dictation: Show me a first dictation sits beside Dictate options… (#15).
+        let before = (history: model.history, guide: model.preferences.firstDictationGuide)
+        model.history = []; model.preferences.firstDictationGuide = nil
+        defer { model.history = before.history; model.preferences.firstDictationGuide = before.guide }
+        let (general, generalSize) = try renderPage("settings", in: window)
+        let generalShot = try save(general, id: "state-before-first-dictation", title: "General before the first dictation, minimum window, \(Int(generalSize.width)) × \(Int(generalSize.height)) pt",
+                                   detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate options… and opens Home on the guide.",
+                                   file: "page-settings-state-before-first-dictation-\(theme).png", to: output)
+        return [("library", [libraryShot]), ("models", [modelsShot]), ("settings", [generalShot])]
     }
 
     // MARK: Read states
