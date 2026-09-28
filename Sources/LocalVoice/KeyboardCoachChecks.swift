@@ -106,7 +106,96 @@ enum KeyboardCoachChecks {
         let escape = VoiceShortcut(keyCode: UInt32(kVK_Escape), modifiers: 0)
         try check(model.handle(event(.keyDown, shortcut: escape)) == nil && !model.isInteracting, "Escape must consume and cancel recording")
         try check(model.handle(event(.keyDown, shortcut: candidate)) != nil, "inactive coach must leave ordinary app controls alone")
-        print("KEYBOARD_COACH_CHECKS_OK: cross-module conflicts, native controls, transactional failure, complete press/release practice, event consumption and balanced suspension")
+        try checkPanelLifecycle()
+        print("KEYBOARD_COACH_CHECKS_OK: cross-module conflicts, native controls, transactional failure, complete press/release practice, event consumption, balanced suspension and the panel editor's exits")
+    }
+
+    /// #153: the menu-bar panel's inline editor and its recorder end on every way
+    /// out, global actions resume, and later typing is never captured. The panel's
+    /// host calls end() when the popover opens and whenever it closes (a click in
+    /// another app, Workbench giving up focus, Escape, a row that closes it).
+    static func checkPanelLifecycle() throws {
+        func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+            guard condition() else { throw VoiceError.message("Panel shortcut editor: \(message)") }
+        }
+        func key(_ code: Int, option: Bool = true) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: option ? [.option] : [], timestamp: 0, windowNumber: 0,
+                             context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: UInt16(code))!
+        }
+        let snap = VoiceShortcut(keyCode: UInt32(kVK_ANSI_1), modifiers: UInt32(optionKey))
+        let dictate = VoiceShortcut(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(optionKey))
+        var updates: [(String, VoiceShortcut)] = []
+        var suspensions: [Bool] = []
+        let center = NotificationCenter()
+        let keyboard = KeyboardCoachModel(entries: [ShortcutEntry(id: "voice.8", title: "Snap", shortcut: snap),
+                                                    ShortcutEntry(id: "voice.1", title: "Dictate", shortcut: dictate)],
+                                          update: { id, candidate in updates.append((id, candidate)); return nil },
+                                          suspend: { suspensions.append($0) }, probe: { _ in nil }, notifications: center)
+        let editor = PanelShortcutEditor(keyboard: keyboard)
+        func paused() -> Int { suspensions.filter { $0 }.count - suspensions.filter { !$0 }.count }
+        func typingLeftAlone() -> Bool { keyboard.handle(key(kVK_ANSI_X, option: false)) != nil }
+
+        // The audit's case: save the same key, then leave. Every close reaches end().
+        editor.change("voice.8")
+        try check(editor.shortcutID == "voice.8" && keyboard.interaction == .recording && paused() == 1, "Change opens the editor and pauses global actions")
+        try check(keyboard.handle(key(kVK_ANSI_1)) == nil, "the recorder takes the new key")
+        try check(updates.count == 1 && updates[0].1 == snap && keyboard.selected?.shortcut == snap && !keyboard.isInteracting && paused() == 0,
+                  "saving the same key keeps the binding and resumes global actions")
+        editor.end()
+        try check(editor.shortcutID == nil && keyboard.message == nil && typingLeftAlone(), "closing after a save leaves no editor, no Saved well and no recorder")
+        let settled = suspensions.count
+        editor.end()
+        try check(editor.shortcutID == nil && suspensions.count == settled, "reopening starts in the normal state and resumes nothing twice")
+
+        // Abandoning recording before any key, then closing the panel.
+        editor.change("voice.8"); editor.end()
+        try check(updates.count == 1 && keyboard.selected?.shortcut == snap && paused() == 0 && keyboard.message == nil && typingLeftAlone(),
+                  "abandoning recording keeps the old key and resumes global actions")
+
+        // Escape ends recording; the editor stays with its message until Done or the panel closes.
+        editor.change("voice.8")
+        try check(keyboard.handle(key(kVK_Escape, option: false)) == nil && !keyboard.isInteracting && paused() == 0 && updates.count == 1
+                  && editor.shortcutID == "voice.8", "Escape ends recording and keeps the old key")
+        editor.end()
+
+        // Switching to another app or another Workbench window.
+        editor.change("voice.8")
+        center.post(name: NSApplication.willResignActiveNotification, object: nil)
+        try check(!keyboard.isInteracting && paused() == 0 && typingLeftAlone(), "leaving Workbench ends recording")
+        editor.end()
+
+        // An Options menu opening while the recorder waits.
+        editor.change("voice.8")
+        center.post(name: NSMenu.didBeginTrackingNotification, object: nil)
+        try check(!keyboard.isInteracting && paused() == 0 && updates.count == 1, "a menu taking the keyboard ends recording, so its keys stay the menu's")
+        editor.end()
+
+        // A second shortcut replaces the first editor; Cancel keeps its old key.
+        editor.change("voice.8"); editor.change("voice.1")
+        try check(editor.shortcutID == "voice.1" && keyboard.selectedID == "voice.1" && keyboard.interaction == .recording && paused() == 1,
+                  "a second shortcut replaces the first editor and its recorder")
+        keyboard.stopInteraction()
+        try check(updates.count == 1 && keyboard.selected?.shortcut == dictate && paused() == 0, "Cancel keeps the old key")
+        editor.end()
+        let quiet = suspensions.count
+        center.post(name: NSApplication.willResignActiveNotification, object: nil)
+        center.post(name: NSMenu.didBeginTrackingNotification, object: nil)
+        try check(suspensions.count == quiet && !keyboard.isInteracting, "an ended recorder stops listening")
+
+        // The panel's own leave watch: a click in another app and deactivation both close it.
+        var leaves = 0, added = 0, removed = 0
+        var click: (() -> Void)?
+        let watch = PanelLeaveWatch(notifications: center, addMonitor: { handler in click = handler; added += 1; return NSObject() },
+                                    removeMonitor: { _ in removed += 1 })
+        watch.watch { leaves += 1 }
+        click?()
+        center.post(name: NSApplication.didResignActiveNotification, object: nil)
+        try check(leaves == 2, "a click in another app and Workbench giving up focus both close the panel")
+        watch.watch { leaves += 1 }
+        try check(added == 2 && removed == 1, "opening again replaces the watch without leaking a monitor")
+        watch.stop()
+        center.post(name: NSApplication.didResignActiveNotification, object: nil)
+        try check(leaves == 2 && removed == 2 && !watch.isWatching, "a closed panel stops watching")
     }
     /// Dictate, Quick controls, Snap & Talk and Present start on Option keys; an update moves untouched ones once.
     static func checkPresenterFirstVoiceDefaults() throws {

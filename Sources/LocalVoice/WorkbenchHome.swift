@@ -196,14 +196,18 @@ struct WorkbenchClipboardShelf: View {
     let showCue: () -> Void
     var body: some View {
         if let receipt = receipts.receipt, receipt.isClipboardCurrent {
+            // The same words as the floating receipt, so the panel, Home and Dictate agree.
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Label(receipt.canSuggestPaste ? "Ready to paste" : receipt.title, systemImage: receipt.symbolName)
+                    Label(receipt.title, systemImage: receipt.symbolName)
                         .font(.callout.weight(.semibold)).lineLimit(1)
+                    if receipt.wordCount > 0 {
+                        Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    }
                     Spacer(minLength: 4)
                     if receipt.canSuggestPaste { Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary) }
                 }
-                Text(receipt.canSuggestPaste ? "\(receipt.wordCount) words from Workbench. Paste where you need them." : receipt.detail)
+                Text(receipt.detail)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 HStack {
                     Button("Review text", action: review)
@@ -298,11 +302,15 @@ struct WorkbenchHomePage: View {
                     HStack(spacing: 12) {
                         Button { model.copyTranscript() } label: { Label("Copy text", systemImage: "doc.on.doc") }
                         if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                            Button("Enable automatic paste…") { model.requestAccessibility() }
+                            Button("Set up automatic paste…") { model.requestAccessibility() }.buttonStyle(.link)
                         }
                         Spacer()
                         Button("Done") { stayInGuide = false }.buttonStyle(.link)
                     }.controlSize(.large)
+                    if model.preferences.delivery == .paste && !model.accessibilityGranted {
+                        Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
                         review: { model.clipboardReceipt.dismissHUD(); model.page = "history" },
                         showCue: { model.clipboardReceipt.revealHUD() })
