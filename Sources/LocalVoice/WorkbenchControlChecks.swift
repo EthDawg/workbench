@@ -142,6 +142,7 @@ enum WorkbenchControlChecks {
         try await PromptInsertionChecks.run()
         // Prompts and dictation share TextDelivery's copy and paste.
         try await TextDeliveryChecks.run()
+        try AccessibilitySetupChecks.run()
         print("WORKBENCH_CONTROL_CHECKS_OK: \(count) checks passed")
     }
 }
