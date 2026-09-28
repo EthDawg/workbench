@@ -38,7 +38,8 @@ struct DemoScenesView: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("Scenes", systemImage: "iphone.and.landscape").font(.title2.weight(.semibold))
+                    // Workbench's page title above names Present; this column is its scenes (#134).
+                    Label("Scenes", systemImage: "iphone.and.landscape").font(.body.weight(.semibold)).accessibilityAddTraits(.isHeader)
                     Text("Saved backdrops and device layouts.").font(.callout).foregroundStyle(.secondary)
                 }
                 TextField("Find a customer or scene", text: $model.query).textFieldStyle(.roundedBorder)
@@ -54,7 +55,7 @@ struct DemoScenesView: View {
                 } label: { Label("Add scene", systemImage: "plus") }
                     .disabled(model.storageBlocked)
                 if let adapter = model.sceneSync { MacSceneSyncControls(adapter: adapter) }
-            }.padding(18).frame(width: DemoScenesLayout.sidebarWidth(in: workspace.size.width))
+            }.padding(24).frame(width: DemoScenesLayout.sidebarWidth(in: workspace.size.width))
             Divider()
             GeometryReader { editor in
             VStack(spacing: 0) {

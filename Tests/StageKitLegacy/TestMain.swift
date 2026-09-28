@@ -24,6 +24,24 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--notice-owners-only"] {
+            // Disposable folders only; nothing is started, registered or shown.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let suite = NoticeOwnerTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("shortcut recording notices belong to Keyboard", suite.testShortcutRecordingNoticesBelongToKeyboard),
+                ("login notices belong to General", suite.testLoginNoticesBelongToGeneral),
+                ("saved settings notices belong to General", suite.testSavedSettingsNoticesBelongToGeneral)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-handles-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -407,7 +425,7 @@ struct TestRunner {
         let screenshotStateOnly = args == ["--screenshot-state-only"]
         let sceneListOnly = args == ["--scene-list-only"]
         guard args.isEmpty || args == ["--ci"] || args == ["--scenes-only"] || boardPresentationOnly || backdropOnly || personaQuickOnly || personaControlsOnly || screenshotStateOnly || sceneListOnly else {
-            print("Usage: StageMarkTests [--ci | --scenes-only | --scene-list-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
+            print("Usage: StageMarkTests [--ci | --scenes-only | --scene-list-only | --notice-owners-only | --persona-quick-only | --board-presentation-only | --board-presentation-fixture | --backdrop-only | --backdrop-fixture | --persona-session-fixture | --phone-guide-fixture]")
 
             exit(2)
         }
@@ -636,6 +654,9 @@ struct TestRunner {
             ("persona shortcut migration", suite.testPersonaShortcutMigrationPreservesExistingOverlayKeys),
             ("settings persistence and bounds", suite.testPreferencesPersistAndClamp),
             ("settings recovery", suite.testCorruptPreferencesArePreservedForRecovery),
+            ("shortcut recording notices belong to Keyboard", NoticeOwnerTests().testShortcutRecordingNoticesBelongToKeyboard),
+            ("login notices belong to General", NoticeOwnerTests().testLoginNoticesBelongToGeneral),
+            ("saved settings notices belong to General", NoticeOwnerTests().testSavedSettingsNoticesBelongToGeneral),
             ("duplicate shortcut registration plan", suite.testDuplicateShortcutRegistrationPlanPausesBothWithoutChangingSettings),
             ("ink colour accessibility descriptions", suite.testInkColourAccessibilityDescriptions),
             ("actual rendering for every tool", suite.testAllToolsRenderToRealPixels),

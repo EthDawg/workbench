@@ -22,8 +22,8 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
         case .persona: return "Persona"
         }
     }
-    /// One symbol per job, shared by the resting glyph, the mode strip and the
-    /// menu-bar panel, so the same job always looks the same wherever it appears.
+    /// One symbol per job, shared by the launcher, the chooser and the menu-bar
+    /// panel, so the same job always looks the same wherever it appears.
     public var symbol: String {
         switch self {
         case .dictate: return "mic"
@@ -114,20 +114,6 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
     }
 }
 
-/// One chip in the revealed row's mode strip: a mode that is not selected.
-public struct ToolbarModeChip: Equatable, Sendable {
-    public var mode: ToolbarMode
-    /// That mode's capability is live right now, whichever mode is selected.
-    public var isBusy: Bool
-    public var isEnabled: Bool
-    /// The assigned key, shown in the chip's hover text beside its name.
-    public var key: String?
-
-    public init(mode: ToolbarMode, isBusy: Bool = false, isEnabled: Bool = true, key: String? = nil) {
-        self.mode = mode; self.isBusy = isBusy; self.isEnabled = isEnabled; self.key = key
-    }
-}
-
 public struct ToolbarViewState: Equatable, Sendable {
     /// Stable across runs: the gallery label, and the snapshot filename.
     public var name: String
@@ -142,20 +128,25 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// The assigned key and any count, shown on hover over the action. The row
     /// holds no information-only text.
     public var actionHint: String?
-    /// The other modes, in the strip beside the action once the row is revealed.
-    public var switcher: [ToolbarModeChip]
-    /// Every label another mode would show right now. The action keeps the
-    /// widest of them, so switching modes never moves the strip.
+    /// All seven tools, for the launcher's chooser: which one is chosen, which have live
+    /// work, and their keys (#134).
+    public var choices: [ToolbarToolChoice]
+    /// Every label another tool would show right now. The action keeps the widest of them,
+    /// so choosing another tool never moves More or the accessory.
     public var minimumTitles: [String]
     public var accessoryTitle: String?
-    /// The selected mode's work is running. The resting glyph says so; that is
-    /// the only thing it says beyond being findable.
+    /// The accessory fits on this display. When it does not, it waits in More instead.
+    public var showsAccessory: Bool
+    /// The selected tool's work is running.
     public var isBusy: Bool
+    /// What the compact rest shows: its indicator and the words for it.
+    public var status: ToolbarStatus
 
     public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
                 mode: ToolbarMode = .dictate, actionTitle: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
-                switcher: [ToolbarModeChip]? = nil, minimumTitles: [String]? = nil, isBusy: Bool = false) {
+                choices: [ToolbarToolChoice]? = nil, minimumTitles: [String]? = nil, isBusy: Bool = false,
+                status: ToolbarStatus = .idle, showsAccessory: Bool = true) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
@@ -163,9 +154,22 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.actionTitle = actionTitle ?? mode.title
         self.isActionEnabled = isActionEnabled
         self.actionHint = actionHint
-        self.switcher = switcher ?? ToolbarMode.allCases.filter { $0 != mode }.map { ToolbarModeChip(mode: $0) }
+        self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }
         self.minimumTitles = minimumTitles ?? ToolbarNextAction.idleVerbs
         self.accessoryTitle = mode == .present ? "Prompts" : nil
+        self.showsAccessory = showsAccessory
         self.isBusy = isBusy
+        self.status = status
+    }
+
+    /// The accessory as the revealed row shows it: nil when there is none or it waits in More.
+    public var shownAccessory: String? { showsAccessory ? accessoryTitle : nil }
+    /// Work is live in any tool: the launcher's one aggregate indicator.
+    public var hasLiveWork: Bool { choices.contains(where: \.isLive) }
+    /// The launcher's words: the chosen tool, then any other tool with live work.
+    public var launcherDescription: String {
+        let others = choices.filter { $0.isLive && $0.mode != mode }.map(\.mode.title)
+        let own = isBusy ? "\(mode.title), running" : mode.title
+        return others.isEmpty ? own : own + ". Also running: " + others.joined(separator: ", ")
     }
 }

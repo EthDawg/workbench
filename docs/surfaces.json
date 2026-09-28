@@ -271,66 +271,83 @@
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "End presentation",
     "kind": "action",
     "belongsTo": "present"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.hide-toolbar",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Hide toolbar",
     "kind": "action",
     "belongsTo": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.keep-open",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Keep open",
     "kind": "action",
     "belongsTo": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Open Dictate…",
     "kind": "action",
     "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Open Read…",
     "kind": "action",
     "belongsTo": "read"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Open Snap…",
     "kind": "action",
     "belongsTo": "snap"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap.2",
+    "surface": "floating toolbar More menu",
+    "label": "Open Snap…",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Quality (#205 review): under Active work while another tool is chosen, the same Open Snap… door, so an unsaved Snap capture the compact mark shows reaches its editor. Snap's own options already offer it."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Position…",
     "kind": "option",
     "belongsTo": "app",
     "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
-    "surface": "floating toolbar glyph menu",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-2a736db79384",
+    "surface": "floating toolbar More menu",
     "label": null,
-    "expression": "personaFinish",
-    "note": "Runtime label from personaFinish; no rendered text assumed.",
+    "expression": "transport . title + \" timer\"",
+    "kind": "action",
+    "belongsTo": "timer",
+    "note": "Quality (#205 review): under Active work, the break timer's next transport as TimerTransport names it (Pause timer, Resume timer or Restart timer), the same command as the Timer menu's, whichever tool is chosen, since Timer is not a tool. Runtime label from transport . title + \" timer\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",
+    "surface": "floating toolbar More menu",
+    "label": null,
+    "expression": "title",
+    "note": "Runtime label from title: Hide persona, Hide personas or Show personas, as Persona's own label reads, under Active work while another tool is chosen (#134). No rendered text assumed.",
     "kind": "action",
     "belongsTo": "persona"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-894c4cc35124",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": null,
     "expression": "\"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"",
     "kind": "action",
@@ -338,49 +355,48 @@
     "note": "Runtime label from \"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-90b2ee8a5505",
-    "surface": "floating toolbar glyph menu",
-    "label": null,
-    "expression": "action . title",
-    "note": "Runtime label from action . title; no rendered text assumed.",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.saved-prompts",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Saved Prompts…",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Quality: the glyph menu's Saved Prompts, in the same place, now opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
+    "note": "Quality: Saved Prompts in More (the glyph menu before #134) opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.settings",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Settings…",
     "kind": "action",
     "belongsTo": "settings"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-drawing",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Stop drawing",
     "kind": "action",
     "belongsTo": "draw"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-transcribing",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Stop transcribing",
     "kind": "action",
     "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.switch-to-browser-tab",
-    "surface": "floating toolbar glyph menu",
+    "surface": "floating toolbar More menu",
     "label": "Switch to Browser Tab…",
     "kind": "action",
     "belongsTo": "present"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.transcribe-meeting-or-call",
+    "surface": "floating toolbar More menu",
+    "label": "Transcribe meeting or call…",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Quality (#205 review): under Active work, the existing door to the meeting page, named as the panel and app menu name it, so a meeting recording saved for retry, which the compact mark shows as needing attention, reaches its recovery from any tool."
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.retry",
@@ -721,33 +737,33 @@
     "note": "Quality: the category filter's default, every saved prompt (#159)."
   },
   {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Button.set-up-automatic-paste",
+    "id": "LocalVoice.QuickControls.DictateTaskOptions.Button.set-up-automatic-paste",
     "surface": "dictate page options",
     "label": "Set up automatic paste…",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality: Enable automatic paste… renamed in the same place (#134 W3). Shown only while Paste automatically waits for Accessibility approval, beside the note that an organisation may need to approve it; transcripts are copied until then (#165)."
+    "note": "Quality: beside Delivery in Dictate's task region, the same action (#134). Shown only while Paste automatically waits for Accessibility approval; transcripts are copied for ⌘V until then, which is a finished result (#165)."
+  },
+  {
+    "id": "LocalVoice.QuickControls.DictateTaskOptions.Picker.delivery",
+    "surface": "dictate page options",
+    "label": "Delivery",
+    "kind": "setting",
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the options below the page into its task region, beside the microphone and the result, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.QuickControls.DictateTaskOptions.Picker.text-style",
+    "surface": "dictate page options",
+    "label": "Text style",
+    "kind": "setting",
+    "belongsTo": "dictate",
+    "note": "Quality: Cleanup takes the Grammar's name, Text style, which the menu-bar panel's options already use, and moves into Dictate's task region with its description and one example per style, each checked against the real cleanup (#134)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
     "surface": "dictate page options",
     "label": "Activation",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.cleanup",
-    "surface": "dictate page options",
-    "label": "Cleanup",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.delivery",
-    "surface": "dictate page options",
-    "label": "Delivery",
     "kind": "setting",
     "belongsTo": "dictate",
     "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
@@ -1422,6 +1438,24 @@
     "note": "Option: Timer tile on Home starts a break; Timer was only a panel row and a Draw tab (#134 W9)."
   },
   {
+    "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "\"Open \\(name)…\"",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Runtime label: Open and the page record's name for the page that shows the message and its recovery in full: Dictate, Read, Models, Snap & Talk, Draw, Present or Persona (#134). Detailed help opens the owning page."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.status.runtime-533012ee421b",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "Self . headline ( message )",
+    "kind": "status",
+    "belongsTo": "app",
+    "note": "Runtime label: the first sentence of what needs attention, a Dictate or Read error, a drawing, scene or persona notice, a Snap & Talk notice or speech that is not ready, in place of the whole message (#134). The whole message is its help text, and its page shows it in full."
+  },
+  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.NativeControlMenu.options",
     "surface": "quick panel annotate options",
     "label": "Options",
@@ -1429,6 +1463,14 @@
     "belongsTo": "draw",
     "aliasOf": "draw",
     "note": "Shared \"Options\" wording for the Draw row; the row owns it."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.ToolbarMenuAction.open-draw",
+    "surface": "quick panel annotate options",
+    "label": "Open Draw…",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Quality: Draw's options end with the one door to its page, as Snap, Present and Persona's do (#134). Its tools and boards stay above it."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
@@ -1589,24 +1631,6 @@
     "belongsTo": "snapAndTalk"
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-30266705ca1c",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "model . modelMessage",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from model . modelMessage; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-9368a7d21e01",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "notice",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from notice; no rendered text assumed."
-  },
-  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-b9f66b1c9f83",
     "surface": "quick panel status rows",
     "label": null,
@@ -1614,15 +1638,6 @@
     "kind": "status",
     "belongsTo": "app",
     "note": "Runtime label from context . activitySummary; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-ca00fccfb408",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "error",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from error; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-timer-options.NativeControlMenu.options",

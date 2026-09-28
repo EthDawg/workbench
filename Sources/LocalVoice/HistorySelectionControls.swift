@@ -173,7 +173,7 @@ struct SubscriptionSettingsView: View {
     @ObservedObject var jobs: HandoffJobsModel
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Assistant handoffs").font(.headline)
+            WorkbenchSectionTitle("Assistant handoffs")
             Text("Use an installed Codex or Claude Code CLI with its own sign-in. Only the items you review for a task are shared. Copy instructions works without a connection.")
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(SubscriptionProvider.allCases) { provider in

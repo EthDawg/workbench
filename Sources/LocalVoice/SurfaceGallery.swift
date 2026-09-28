@@ -3,6 +3,7 @@ import ObjectiveC
 import SwiftUI
 import StageKit
 import ToolbarCore
+import ToolbarKit
 
 /// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states, the production
 /// floating toolbar host in every mode at rest and revealed, and the top of every Home page at the
@@ -273,7 +274,7 @@ enum SurfaceGallery {
         }
         panels += try renderFloatingStates(to: output)
         let (hostShots, host) = try renderToolbarHost(to: output)
-        let toolbar = hostShots + [try renderPositionControl(to: output)]
+        let toolbar = hostShots + [try renderChooser(to: output), try renderPositionControl(to: output)]
         let placement = try checkToolbarPlacement()
         let pickers = try renderPickerStates(to: output)
         let (pickerShots, pickerHost) = try checkPickerHost(to: output)
@@ -294,6 +295,7 @@ enum SurfaceGallery {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
+        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += try renderDictateStates(to: output) }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) }
         // History's states render last, so the pages above show no Hand off task.
@@ -599,6 +601,32 @@ enum SurfaceGallery {
         return shots
     }
 
+    // MARK: Dictate states
+
+    /// The newcomer's manual copy (#134 C10, #165): Paste automatically waits for an Accessibility
+    /// approval an organisation may have to give, so the finished transcript was copied. The task
+    /// region shows the words with the copy as the result, and Set up automatic paste… beside
+    /// Delivery as an option; nothing waits on the approval. Only the model's status is set, as a
+    /// dictation leaves it; the clipboard is not touched. The pass's draft, status, delivery and
+    /// approval are restored afterwards.
+    func renderDictateStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let kept = (draft: model.transcript, raw: model.rawTranscript, status: model.status,
+                    delivery: model.preferences.delivery, granted: model.accessibilityGranted)
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer {
+            window.contentViewController = nil; window.close()
+            model.transcript = kept.draft; model.rawTranscript = kept.raw; model.status = kept.status
+            model.preferences.delivery = kept.delivery; model.accessibilityGranted = kept.granted
+        }
+        let words = SurfacePass.history[1].text
+        model.preferences.delivery = .paste; model.accessibilityGranted = false
+        model.rawTranscript = words; model.transcript = words; model.status = TextDelivery.copiedMessage
+        let (rep, drawn) = try renderPage("dictate", in: window)
+        return [try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                         detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
+                         file: "page-dictate-state-manual-copy-\(theme).png", to: output)]
+    }
+
     // MARK: Home states
 
     /// The first-dictation journey (#15): the guide beside earlier Snaps, the
@@ -893,8 +921,8 @@ enum SurfaceGallery {
                                                                              wasPasted: false, destinationName: nil), wordCount: 42) },
                        reset: { model.clipboardReceipt.clear() }),
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
-                       apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
-                       reset: { model.error = nil }),
+                       apply: { model.report("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.", on: .dictate) },
+                       reset: { model.dismissError() }),
             PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
                        apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
@@ -1019,7 +1047,55 @@ enum SurfaceGallery {
                                 preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(.revealed), twinMeasured: twinControls.hasMeasured(.revealed),
                                 problems: problems, file: file, settled: controls.toolbar.state.tier == .revealed))
         }
+        /// One more state, read after the host and the twin have settled into `tier`.
+        func record(_ id: String, _ title: String, tier: ToolbarTier) throws {
+            waitForToolbar(host, controls, tier: tier, content: content, stillFor: 0.5)
+            settle(twin, seconds: 0.2)
+            let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+            var problems: [String] = []
+            if controls.toolbar.state.tier != tier { problems.append("the toolbar did not settle \(tier == .resting ? "at rest" : "revealed")") }
+            if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+            }
+            if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+            }
+            let file = "toolbar-\(id)-\(theme).png"
+            shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the content wants \(Self.points(wants)).", file: file, to: output))
+            checks.append(.init(id: id, title: title, mode: model.toolbarMode.title, tier: tier.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
+                                problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
+        }
+        // A right-hand dock reverses the row around the same launcher centre (#134).
+        model.toolbarMode = .present
+        controls.choosePosition?(.right); twinControls.rowAnchor = .right
+        try record("present-right-dock-revealed", "Present, revealed at the right-hand dock", tier: .revealed)
+        controls.toolbar.send(.holdEnded(.keyboard)); twinControls.toolbar.send(.holdEnded(.keyboard))
+        try record("present-right-dock-resting", "Present, at rest at the right-hand dock", tier: .resting)
+        controls.choosePosition?(.bottom); twinControls.rowAnchor = .bottom
+        // The compact rest while a synthetic meeting records: the same 48 × 28, now with the
+        // capture signal. The meeting owner has no level sample, so its outline stays still.
+        let previousMeetings = model.meetings
+        model.meetings = recordingMeetings; model.objectWillChange.send()
+        try drive(recordingMeetings, start: true)
+        model.toolbarMode = .dictate
+        try record("meeting-recording-resting", "At rest while a meeting records", tier: .resting)
+        try drive(recordingMeetings, start: false)
+        model.meetings = previousMeetings; model.objectWillChange.send()
         return (shots, checks)
+    }
+
+    /// The tool chooser as the launcher opens it, at standard text: Dictate chosen, nothing running.
+    func renderChooser(to output: URL) throws -> SurfaceGallery.Shot {
+        let model = ToolbarChooserModel(choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)))
+        let view = NSHostingView(rootView: ToolbarChooserView(model: model, accent: Workbench.accent))
+        let window = offscreenWindow(size: view.fittingSize, styleMask: [.borderless])
+        window.isOpaque = false; window.backgroundColor = .clear
+        window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        settle(view)
+        return try save(try snapshot(view), id: "chooser", title: "The tool chooser",
+                        detail: "The seven tools, Dictate chosen and highlighted, 280 pt wide with 36 pt rows.", file: "toolbar-chooser-\(theme).png", to: output)
     }
 
     /// Spins the main run loop until the toolbar reports `tier`, its frame animation has finished
@@ -1057,12 +1133,14 @@ enum SurfaceGallery {
                         detail: "The eight docks with bottom centre current and selected, and Reset position.", file: "toolbar-position-control-\(theme).png", to: output)
     }
 
-    /// Free placement through the production host (#163), with its panel invisible. A release
-    /// away from every dock rests right there through an update, a reveal and a collapse, on
-    /// either half of the display; a release within the snap distance of a dock docks and one
-    /// just beyond stays free; a new host, as after a relaunch, restores the free position;
-    /// and Reset position docks at bottom centre. Positions are compared at the resting
-    /// element, which is where they are kept whichever tier a real pointer holds.
+    /// Free placement through the production host (#163, #134), with its panel invisible. Every
+    /// position is compared at the launcher's centre, which the compact rest and the revealed row
+    /// share. A release away from every dock rests right there through an update, a reveal and a
+    /// collapse, on either half of the display; a row that widens moves neither its launcher nor
+    /// its side; a release within the snap distance of a dock docks and one just beyond stays
+    /// free; a new host, as after a relaunch, restores the free position, and earlier builds'
+    /// saves come back where they were left; Reset position docks at bottom centre. The chooser
+    /// opens inside the display at larger text from a bottom-right and a top-left dock.
     func checkToolbarPlacement() throws -> [SurfaceGallery.PlacementCheck] {
         guard let screen = NSScreen.main?.visibleFrame else { return [] }
         let defaults = try SurfaceGallery.isolatedDefaults("ToolbarPlacement", home: home)
@@ -1073,11 +1151,9 @@ enum SurfaceGallery {
             host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
             return (host, controls)
         }
-        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible, previousMeetings = model.meetings
-        // The synthetic meeting widens the resting element's live title below; the hosts observe it from the start.
-        model.meetings = recordingMeetings
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible
         var (host, controls) = makeHost()
-        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode; model.meetings = previousMeetings }
+        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode }
         model.toolbarMode = .dictate; model.floatingToolbarVisible = true
         host.update(model: model)
         waitForToolbar(host, controls, tier: .resting, content: host.window?.contentView ?? NSView())
@@ -1085,91 +1161,142 @@ enum SurfaceGallery {
         func settle(_ tier: ToolbarTier) {
             waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
         }
-        func resting() -> NSRect {
-            guard let frame = host.window?.frame else { return .zero }
-            let size = controls.restingSize
-            return NSRect(x: controls.rowAnchor.growsLeftward ? frame.maxX - size.width : frame.minX, y: frame.minY, width: size.width, height: size.height)
+        func launcher() -> CGPoint {
+            ToolbarGeometry.launcherCentre(inWindow: host.window?.frame ?? .zero, growsLeftward: controls.rowAnchor.growsLeftward)
         }
         func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
-        func at(_ origin: NSPoint, _ what: String) -> String? {
-            let found = resting().origin
-            return abs(found.x - origin.x) > 0.5 || abs(found.y - origin.y) > 0.5
-                ? "\(what): the resting element is at \(Int(found.x)), \(Int(found.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+        func at(_ centre: CGPoint, _ what: String) -> String? {
+            let found = launcher()
+            return abs(found.x - centre.x) > 0.5 || abs(found.y - centre.y) > 0.5
+                ? "\(what): the launcher is at \(Int(found.x)), \(Int(found.y)), not \(Int(centre.x)), \(Int(centre.y))" : nil
         }
-        func free(_ origin: NSPoint) -> String? {
+        func free(_ centre: CGPoint) -> String? {
             guard case .free(let free) = host.toolsPosition, controls.anchor == nil else { return "the toolbar is docked, not free" }
-            let resting = free.restingFrame(size: controls.restingSize).origin
-            return abs(resting.x - origin.x) > 0.5 || abs(resting.y - origin.y) > 0.5
-                ? "the toolbar is free at \(Int(resting.x)), \(Int(resting.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+            return abs(free.centre.x - centre.x) > 0.5 || abs(free.centre.y - centre.y) > 0.5
+                ? "the toolbar is free at \(Int(free.centre.x)), \(Int(free.centre.y)), not \(Int(centre.x)), \(Int(centre.y))" : nil
         }
-        let size = controls.restingSize
-        for (side, origin) in [("left", NSPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
-                               ("right", NSPoint(x: screen.maxX - screen.width * 0.3 - size.width, y: screen.minY + screen.height * 0.6))] {
-            let origin = NSPoint(x: origin.x.rounded(), y: origin.y.rounded())
-            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
+        func compact(_ what: String) -> String? {
+            guard controls.toolbar.state.tier == .resting, let size = host.window?.frame.size else { return nil }
+            return abs(size.width - ToolbarLayout.mark.width) > 0.5 || abs(size.height - ToolbarLayout.mark.height) > 0.5
+                ? "\(what): the resting window is \(Self.points(size)), not the compact rest's 48 × 28 pt" : nil
+        }
+        for (side, centre) in [("left", CGPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
+                               ("right", CGPoint(x: screen.minX + screen.width * 0.7, y: screen.minY + screen.height * 0.6))] {
+            let centre = CGPoint(x: centre.x.rounded(), y: centre.y.rounded())
+            host.releaseTools(atLauncher: centre); settle(.resting)
             let leftward = side == "right"
-            expect("Released free on the \(side), at rest", [free(origin), at(origin, "at rest"),
+            expect("Released free on the \(side), at rest", [free(centre), at(centre, "at rest"), compact("at rest"),
                 controls.rowAnchor.growsLeftward == leftward ? nil : "the row would grow \(leftward ? "rightward, off" : "leftward, away from") the near edge"])
             // An update while free must not pull the toolbar back to a dock.
             model.floatingToolbarVisible = true; host.update(model: model); settle(.resting)
-            expect("Free on the \(side), after an update", [free(origin), at(origin, "after an update")])
+            expect("Free on the \(side), after an update", [free(centre), at(centre, "after an update")])
             controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
             let window = host.window?.frame ?? .zero
-            expect("Free on the \(side), revealed", [at(origin, "revealed"), screen.contains(window) ? nil : "the revealed row leaves the display",
+            expect("Free on the \(side), revealed", [at(centre, "revealed"), screen.contains(window) ? nil : "the revealed row leaves the display",
                 abs(window.width - controls.preferredToolbarSize.width) > 0.5 ? "the window is \(Self.points(window.size)), not the row's \(Self.points(controls.preferredToolbarSize))" : nil])
             controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
-            expect("Free on the \(side), collapsed again", [at(origin, "collapsed again")])
+            expect("Free on the \(side), collapsed again", [at(centre, "collapsed again"), compact("collapsed again")])
         }
-        // A live title that changes the resting width must neither turn a free row round nor move its
-        // glyph: released just left of the middle, and on the right half, then a meeting widens the title.
-        func glyphEdge() -> (leftward: Bool, x: CGFloat) {
-            let frame = host.window?.frame ?? .zero, leftward = controls.rowAnchor.growsLeftward
-            return (leftward, leftward ? frame.maxX : frame.minX)
-        }
-        for (place, midX) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
-            let origin = NSPoint(x: (midX - size.width / 2).rounded(), y: (screen.minY + screen.height * 0.45).rounded())
-            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
-            let before = glyphEdge(), width = controls.restingSize.width
-            for (change, start) in [("a meeting widens the title", true), ("the meeting ends", false)] {
-                try drive(recordingMeetings, start: start); settle(.resting)
-                let after = glyphEdge(), grown = controls.restingSize.width - width
-                expect("Released \(place), then \(change)", [
-                    start && abs(grown) < 0.5 ? "the resting width stayed \(Int(width)) pt, so this step shows nothing" : nil,
-                    after.leftward != before.leftward ? "the row turned round, from growing \(before.leftward ? "leftward" : "rightward")" : nil,
-                    after.leftward == before.leftward && abs(after.x - before.x) > 0.5 ? "the glyph moved \(Int((after.x - before.x).rounded())) pt" : nil])
+        // A row that widens, here by Present's accessory, must neither move its launcher nor turn
+        // round: released just left of the middle, and on the right half, then Present is chosen.
+        for (place, x) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
+            let centre = CGPoint(x: x.rounded(), y: (screen.minY + screen.height * 0.45).rounded())
+            model.toolbarMode = .dictate
+            host.releaseTools(atLauncher: centre); controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
+            let leftward = controls.rowAnchor.growsLeftward, width = host.window?.frame.width ?? 0
+            for mode in [ToolbarMode.present, .dictate] {
+                model.toolbarMode = mode; settle(.revealed)
+                let grown = (host.window?.frame.width ?? 0) - width
+                expect("Released \(place), revealed, then \(mode.title) is chosen", [
+                    mode == .present && abs(grown) < 0.5 ? "the row stayed \(Int(width)) pt wide, so this step shows nothing" : nil,
+                    controls.rowAnchor.growsLeftward != leftward ? "the row turned round, from growing \(leftward ? "leftward" : "rightward")" : nil,
+                    at(centre, "after the width changed")])
             }
+            controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
         }
-        let dock = FloatingControlGeometry.frame(anchor: .bottomRight, size: size, visibleFrame: screen)
-        host.releaseTools(at: dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance - 2), dy: 0)); settle(.resting)
-        expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock", [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock.origin, "docked")])
-        let beyond = dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance + 4), dy: 0).origin
-        host.releaseTools(at: NSRect(origin: beyond, size: size)); settle(.resting)
+        let dock = ToolbarGeometry.launcherCentre(.docked(.bottomRight), screen: screen)
+        host.releaseTools(atLauncher: CGPoint(x: dock.x - (FloatingControlPlacement.snapDistance - 2), y: dock.y)); settle(.resting)
+        expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock",
+               [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock, "docked")])
+        let beyond = CGPoint(x: dock.x - (FloatingControlPlacement.snapDistance + 4), y: dock.y)
+        host.releaseTools(atLauncher: beyond); settle(.resting)
         expect("Released \(Int(FloatingControlPlacement.snapDistance + 4)) pt from the bottom-right dock", [free(beyond), at(beyond, "beyond the snap distance")])
         // A new host reads the saved position, as Workbench does after a relaunch.
-        let kept = NSPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
-        host.releaseTools(at: NSRect(origin: kept, size: size)); settle(.resting)
-        host.close()
-        (host, controls) = makeHost()
-        host.update(model: model); settle(.resting)
+        let kept = CGPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
+        host.releaseTools(atLauncher: kept); settle(.resting)
+        func relaunch(_ prepare: (UserDefaults) -> Void) {
+            host.close()
+            prepare(UserDefaults.standard)
+            (host, controls) = makeHost()
+            host.update(model: model); settle(.resting)
+        }
+        relaunch { _ in }
         expect("A new host, as after a relaunch", [free(kept), at(kept, "after a relaunch")])
-        // An earlier build saved only the resting element's origin and size: a new host decides its
-        // side once, where it was left, and saves that with it.
+        // Earlier builds' saves: #163's glyph edge, and before that the resting element alone. Each
+        // comes back with its launcher where its glyph was, and is saved in this build's terms.
+        let edge = (screen.minX + screen.width * 0.66).rounded(), edgeY = (screen.minY + screen.height * 0.35).rounded()
+        relaunch { defaults in
+            for key in ["capturePanelLauncher.v1", "capturePanelAnchor.v2"] { defaults.removeObject(forKey: key) }
+            defaults.set(["glyphEdge": Double(edge), "centreY": Double(edgeY), "growsLeftward": true], forKey: "capturePanelFreePosition.v1")
+        }
+        expect("A new host reading #163's glyph-edge save", [free(CGPoint(x: edge - 18, y: edgeY)), at(CGPoint(x: edge - 18, y: edgeY), "migrated"),
+            controls.rowAnchor.growsLeftward ? nil : "the save's side, leftward, was lost",
+            UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the migrated position was not saved in this build's terms" : nil])
         let earlier = NSRect(x: (screen.minX + screen.width * 0.65).rounded(), y: (screen.minY + screen.height * 0.3).rounded(), width: 132, height: 36)
-        host.close()
-        UserDefaults.standard.removeObject(forKey: "capturePanelFreePosition.v1"); UserDefaults.standard.removeObject(forKey: "capturePanelAnchor.v2")
-        UserDefaults.standard.set(NSStringFromPoint(earlier.origin), forKey: "capturePanelOrigin.v1")
-        UserDefaults.standard.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
-        (host, controls) = makeHost()
-        host.update(model: model); settle(.resting)
-        let migrated = UserDefaults.standard.dictionary(forKey: "capturePanelFreePosition.v1")
-        expect("A new host reading an earlier free save", [
-            controls.anchor == nil ? nil : "the earlier free save came back docked",
+        relaunch { defaults in
+            for key in ["capturePanelLauncher.v1", "capturePanelFreePosition.v1", "capturePanelAnchor.v2"] { defaults.removeObject(forKey: key) }
+            defaults.set(NSStringFromPoint(earlier.origin), forKey: "capturePanelOrigin.v1")
+            defaults.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
+        }
+        expect("A new host reading an earlier resting-element save", [free(CGPoint(x: earlier.maxX - 18, y: earlier.midY)),
             controls.rowAnchor.growsLeftward ? nil : "the earlier save on the right half grows rightward",
-            abs((host.window?.frame.maxX ?? 0) - earlier.maxX) > 0.5 ? "the glyph is at \(Int(host.window?.frame.maxX ?? 0)), not the saved edge \(Int(earlier.maxX))" : nil,
-            (migrated?["growsLeftward"] as? Bool) == true ? nil : "the side decided for the earlier save was not saved with it"])
+            UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the side decided for the earlier save was not saved with it" : nil])
+        // An earlier build moved the toolbar after this one saved it: that later move wins.
+        let moved = CGPoint(x: (screen.minX + screen.width * 0.25).rounded(), y: (screen.minY + screen.height * 0.55).rounded())
+        relaunch { defaults in
+            defaults.set(["glyphEdge": Double(moved.x - 18), "centreY": Double(moved.y), "growsLeftward": false], forKey: "capturePanelFreePosition.v1")
+        }
+        expect("A new host after an earlier build moved the toolbar", [free(moved), at(moved, "after the earlier build's move")])
+        // A right-hand dock: the launcher stays on the dock's centre at rest and revealed, and the
+        // row grows leftward from it, its slots reversed.
+        controls.choosePosition?(.right); settle(.resting)
+        let right = ToolbarGeometry.launcherCentre(.docked(.right), screen: screen)
+        expect("Docked right, at rest", [at(right, "at rest"), compact("at rest")])
+        controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
+        expect("Docked right, revealed", [at(right, "revealed"),
+            controls.rowAnchor == .right ? nil : "the row does not grow leftward from a right-hand dock"])
+        controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
         controls.choosePosition?(.bottom); settle(.resting)
-        let bottom = FloatingControlGeometry.frame(anchor: .bottom, size: controls.restingSize, visibleFrame: screen)
-        expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom.origin, "reset")])
+        let bottom = ToolbarGeometry.launcherCentre(.docked(.bottom), screen: screen)
+        expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom, "reset")])
+        // Work never holds the row open (#134): at rest while a meeting records, the toolbar is the
+        // same 48 × 28 compact rest on the same launcher centre, now showing the capture signal.
+        let previousMeetings = model.meetings
+        model.meetings = recordingMeetings; model.objectWillChange.send()
+        try drive(recordingMeetings, start: true)
+        settle(.resting)
+        expect("At rest while a meeting records", [
+            controls.toolbar.state.tier == .resting ? nil : "the row stayed open while a meeting records",
+            compact("while a meeting records"), at(bottom, "while a meeting records"),
+            controls.status.indicator == .capture ? nil : "the compact rest shows \"\(controls.status.description)\", not the recording"])
+        try drive(recordingMeetings, start: false)
+        model.meetings = previousMeetings; model.objectWillChange.send()
+        settle(.resting)
+        // The chooser opens beside the launcher and inside the display, at larger text too.
+        for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
+            let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
+            let chooser = ToolbarChooserPanel(); chooser.offscreenForChecks = true
+            chooser.show(from: ToolbarGeometry.slot(around: centre), view: nil, level: .statusBar, growsLeftward: anchor.growsLeftward,
+                         choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)), textScale: scale, choose: { _ in }, closed: { _ in })
+            let frame = chooser.shownFrame ?? .zero
+            let natural = ToolbarChooserLayout.height(rows: ToolbarMode.allCases.count, scale: scale)
+            expect("Chooser from the \(anchor.title.lowercased()) dock\(scale > 1 ? ", larger text" : "")", [
+                screen.contains(frame) ? nil : "the chooser at \(Int(frame.minX)), \(Int(frame.minY)), \(Self.points(frame.size)) leaves the display",
+                abs(frame.width - ToolbarChooserLayout.width * scale) > 1 && frame.width < screen.width - 16 ? "the chooser is \(Int(frame.width)) pt wide, not \(Int(ToolbarChooserLayout.width * scale))" : nil,
+                frame.height + 1 < natural && screen.height > natural + 200 ? "the chooser scrolls although all seven tools fit" : nil,
+                ToolbarGeometry.slot(around: centre).intersects(frame) ? "the chooser covers the launcher" : nil])
+            chooser.close()
+        }
         return checks
     }
 
@@ -1307,13 +1434,13 @@ enum SurfaceGallery {
     func menus() -> [SurfaceGallery.Listing] {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
-            ["Destination"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
+            ["Delivery"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
             + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
-            + ["Text Style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
+            + ["Text style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
             + ["---", "History… → history, on Transcripts", "Transcribe meeting or call… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
             guard let menu = panel.nativeOptions(tool) else { continue }
-            let title = "\(tool.title) · \(tool == .annotate ? "Tools" : "Options")"
+            let title = "\(tool.title) · Options"
             listings.append(.init(title: title, lines: lines(menu, depth: 0, path: title)))
         }
         return listings
@@ -1351,14 +1478,16 @@ enum SurfaceGallery {
         func page(_ surface: String, _ label: String, _ route: String) -> E { E(surface: surface, label: label, leads: "Page: \(route)", route: route) }
         func action(_ surface: String, _ label: String, _ text: String) -> E { E(surface: surface, label: label, leads: text, route: nil) }
         let panel = "Menu-bar panel", home = "Home page", menu = "App menus", other = "Keys and handoffs"
-        var list: [E] = [action(panel, "Floating Toolbar switch", "Shows or hides the floating toolbar")]
+        // Rows and their Options are named by the panel's own tools, as the toolbar and sidebar are (#134).
+        var list: [E] = []
         for tool in WorkbenchControlTool.allCases {
+            let options = "\(tool.title) · Options"
             switch tool {
             case .dictate:
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
                          E(surface: panel, label: "Dictate · Options · History…", leads: "Page: history, on Transcripts", route: "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
-                         action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings"),
+                         action(panel, "Dictate · Options · Delivery and Text style", "Changes the saved dictation settings"),
                          action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
             case .read:
                 list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
@@ -1370,21 +1499,29 @@ enum SurfaceGallery {
                 list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
                          page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Options · Review Snap & Talk…", "readback")]
             case .annotate:
-                list += [action(panel, "Draw", "Starts drawing on screen"), action(panel, "Draw · Tools", "Native menu, listed below")]
+                list += [action(panel, tool.title, "Starts drawing on screen"), action(panel, options, "Native menu, listed below")]
             case .present:
                 list += [action(panel, "Present, with a scene selected", "Starts the scene, or shows its live controls"),
-                         page(panel, "Present, without a scene", "present"), action(panel, "Present · Options", "Native menu, listed below")]
+                         page(panel, "Present, without a scene", "present"), action(panel, options, "Native menu, listed below")]
             case .persona:
-                list += [action(panel, "Persona Overlay", "Shows the prepared persona, or its live controls"),
-                         page(panel, "Persona Overlay, with nothing prepared", "personas"), action(panel, "Persona Overlay · Options", "Native menu, listed below")]
+                list += [action(panel, tool.title, "Shows the prepared persona, or its live controls"),
+                         page(panel, "\(tool.title), with nothing prepared", "personas"), action(panel, options, "Native menu, listed below")]
             case .timer:
-                list += [action(panel, "Timer", "Starts the saved timer, or shows the running one"), action(panel, "Timer · Options", "Native menu, listed below")]
+                list += [action(panel, tool.title, "Starts the saved timer, or shows the running one"), action(panel, options, "Native menu, listed below")]
             }
         }
         list += [action(panel, "Shortcut label on each row", "Edits that shortcut inside the panel"),
                  page(panel, "Open Workbench", "home"), page(panel, "Settings", "settings"), page(panel, "Shortcuts", "shortcuts"),
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
                  page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
+                 page(panel, "Recovery · Open Dictate…, for a dictation error", "dictate"), page(panel, "Recovery · Open Read…, for a reading error", "speak"),
+                 page(panel, "Recovery · Open History…, for a transcript removal or export", "history"),
+                 page(panel, "Recovery · Open Home…, when the speech model could not be prepared", "home"),
+                 page(panel, "Recovery · Open Models…, while speech is still preparing", "models"), page(panel, "Recovery · Open Snap & Talk…, for its notice", "readback"),
+                 page(panel, "Recovery · Open Draw…, for a drawing notice", "annotate"), page(panel, "Recovery · Open Present…, for a scene notice", "present"),
+                 page(panel, "Recovery · Open Persona…, for a persona notice", "personas"),
+                 page(panel, "Recovery · Open Keyboard…, for recording a shortcut", "shortcuts"),
+                 page(panel, "Recovery · Open Settings…, for login or saved drawing settings", "settings"),
                  page(panel, "Meeting status row, while a meeting is busy", "meeting"), action(panel, "Meeting status row · Stop or Cancel", "Stops or cancels the meeting")]
         list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true) }
         // Each page's switcher, from the same page record: a section opens its own route.
@@ -1505,7 +1642,7 @@ private struct SurfaceIndex {
         for (index, shot) in light.panels.enumerated() {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row panel\">" + figure(shot, "Light") + figure(dark.panels[index], "Dark") + "</div>"
         }
-        html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona Overlay showing", "Timer running"].map {
+        html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona showing", "Timer running"].map {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
         html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
         if light.host.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
@@ -1515,7 +1652,7 @@ private struct SurfaceIndex {
                 + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
         }
         html += "</table>"
-        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163).</p>"
+        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at the launcher's centre, which the compact rest shares, and the chooser opens from three docks (#134).</p>"
         if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>Step</th><th>Check</th></tr>" + light.placement.map { check in
             "<tr><td>\(esc(check.title))</td>" + (check.problems.isEmpty ? "<td class=\"ok\">Rests where it was put</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
@@ -1560,7 +1697,7 @@ private struct SurfaceIndex {
             "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
             "The Saved Prompts panel is opened the same way, with no keyboard focus and no click monitors; its placement, focus return and dismissal need a pointer on the installed app.",
             "StageKit is never started, so Draw reports Ready on 0 displays.",
-            "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
+            "Workbench is never the active app, so controls draw in their inactive style.",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
             "Buttons and keys come from a catalogue in SurfaceGallery.swift; add a row there when adding an entry. The app menus are read from the menu bar AppDelegate builds, so their names and pages are the app's own.",
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Microphone access. Screen Recording reads as allowed, except in the Screen Recording off states.",

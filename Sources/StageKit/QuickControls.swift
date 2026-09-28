@@ -37,7 +37,7 @@ struct QuickControlsView: View {
                             Image(systemName: "info.circle")
                             Text(message).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
-                            Button { app.notice = nil; settings.notice = nil } label: { Image(systemName: "xmark") }
+                            Button { app.clearNotice(); settings.clearNotice() } label: { Image(systemName: "xmark") }
                                 .buttonStyle(.borderless).help("Dismiss notice")
                         }.foregroundStyle(.secondary)
                     }

@@ -13,17 +13,19 @@
 
 /// What the user can see. There is no state between these two.
 public enum ToolbarTier: String, CaseIterable, Sendable {
-    /// One glyph. Its whole job is to be findable and to say whether work is running.
+    /// The compact rest, in every state (#134): one small mark whose indicator says what is
+    /// running. Its whole job is to be findable and truthful; a click on it only reveals.
     case resting
-    /// One row: what this tool does next, and the key that does it.
+    /// One row: the tool launcher, what that tool does next, an optional accessory and More.
     case revealed
 }
 
 /// A reason the toolbar must stay revealed although the pointer has gone.
 ///
 /// A hold can only prevent a collapse; it never causes a reveal. Keyboard focus
-/// is the single exception, written out in `reduce`, because focusing an
-/// invisible glyph is useless. Keeping the rule this narrow is what stops a drag
+/// is the single exception, written out in `reduce`, because focusing controls
+/// that are not shown is useless. Work running, paused or waiting is not a hold:
+/// it changes the compact mark's indicator and never keeps the row open. Keeping the rule this narrow is what stops a drag
 /// from resizing the very window being dragged.
 public enum ToolbarHold: String, CaseIterable, Sendable {
     case menu, drag, keyboard

@@ -1,5 +1,8 @@
 import Foundation
+import AppKit
 import ToolbarCore
+import ToolbarKit
+import StageKit
 
 @MainActor
 enum WorkbenchControlChecks {
@@ -75,8 +78,8 @@ enum WorkbenchControlChecks {
         try check(ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, drawing: true, presenting: true)).title == "Stop drawing"
                   && ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, presenting: true)).title == "End presentation", "after that start the resting label reads End presentation once drawing has stopped")
         try check(ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, presenting: true)).title == "Draw"
-                  && ToolbarNextAction.switcher(for: ToolbarLiveState(mode: .draw, presenting: true)).contains { $0.mode == .present && $0.isBusy },
-                  "switching to Draw by chip during a live scene keeps Draw as the label and lights the Present chip")
+                  && ToolbarNextAction.choices(for: ToolbarLiveState(mode: .draw, presenting: true)).contains { $0.mode == .present && $0.isLive },
+                  "choosing Draw during a live scene keeps Draw as the label and lights the chooser's Present row")
         try check(ToolbarModeFollower.modeToSelect(previous: [], current: [.draw, .persona, .present]) == .present, "several starts in one tick: Present before Persona before the rest")
         try check(ToolbarModeFollower.modeToSelect(previous: [.present], current: [.present, .persona, .dictate]) == .persona, "Persona outranks the rest once Present is already live")
         try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
@@ -100,6 +103,85 @@ enum WorkbenchControlChecks {
         try check(closes.map { $0.returnsKeyboard(openedFromKeyboard: true) } == [true, true, true, false]
                   && !closes.contains { $0.returnsKeyboard(openedFromKeyboard: false) },
                   "Position… gives the keyboard back to the toolbar after a choice, Reset or Escape, only when opened from the keyboard")
+        // The break timer on the compact mark (#205 review): running is live work, paused is paused
+        // work, and a finished timer ("Time is up") is neither, though its session stays started.
+        try check(WorkbenchControlContext.timerActivity(.running) == (true, false) && WorkbenchControlContext.timerActivity(.paused) == (false, true),
+                  "a running timer is live work and a paused one is paused")
+        try check(WorkbenchControlContext.timerActivity(.finished) == (false, false) && WorkbenchControlContext.timerActivity(.idle) == (false, false),
+                  "a finished timer never reads as paused on the mark, and an idle one shows nothing")
+        // More's Active work reaches everything the mark can show from any other tool (#205 review).
+        do {
+            func items(_ mode: ToolbarMode, _ edit: (inout ToolbarActiveWork.Facts) -> Void) -> [ToolbarActiveWork] {
+                var facts = ToolbarActiveWork.Facts(mode: mode, nextAction: .start(mode))
+                edit(&facts)
+                return ToolbarActiveWork.items(facts)
+            }
+            let others = ToolbarMode.allCases
+            try check(others.allSatisfy { items($0) { $0.meetingRecovery = true } == [.meetingRecovery] },
+                      "a meeting recording saved for retry is offered from every tool, since Dictate's options hold only its page")
+            try check(others.filter { $0 != .snap }.allSatisfy { items($0) { $0.snapDraft = true } == [.snapDraft] }
+                      && items(.snap) { $0.snapDraft = true }.isEmpty,
+                      "an unsaved Snap capture opens the Snap editor from every other tool; Snap's own options already do")
+            try check(others.allSatisfy { mode in
+                          [TimerTransport.running, .paused, .finished].allSatisfy { transport in items(mode) { $0.timer = transport } == [.timer(transport)] }
+                              && items(mode) { $0.timer = .idle }.isEmpty },
+                      "the timer offers the next transport TimerTransport names, Pause, Resume or Restart, whichever tool is chosen")
+            try check(items(.present) { $0.drawing = true; $0.meetingRecording = true; $0.persona = .sessionHidden }
+                          == [.stopDrawing, .persona("Show personas"), .stopTranscribing]
+                      && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
+                      "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
+        }
+        // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
+        // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.
+        try check([ToolbarChooserClose.chose, .escape, .dismissed].map(\.returnsKeyboardToLauncher) == [true, true, false],
+                  "the chooser returns the keyboard to the launcher after a choice or Escape, never after a click elsewhere")
+        do {
+            // It opens on the side with room, from the launcher's outer edge, inside the display.
+            let visible = NSRect(x: 0, y: 25, width: 1440, height: 875), content = NSSize(width: 280, height: 264)
+            let bottom = NSRect(x: 700, y: 41, width: 48, height: 40), topRight = NSRect(x: 1376, y: 844, width: 48, height: 40)
+            let above = ToolbarChooserPlacement.frame(content: content, launcher: bottom, visible: visible, growsLeftward: false)
+            let below = ToolbarChooserPlacement.frame(content: content, launcher: topRight, visible: visible, growsLeftward: true)
+            try check(above.minY == bottom.maxY + ToolbarChooserPlacement.gap && above.minX == bottom.minX && above.size == content && visible.contains(above),
+                      "from a bottom dock the chooser opens above the launcher, from its outer edge, at its full size")
+            try check(below.maxY == topRight.minY - ToolbarChooserPlacement.gap && below.maxX == topRight.maxX && below.size == content && visible.contains(below),
+                      "from a top-right dock it opens below, aligned to the launcher's right edge")
+            let short = NSRect(x: 0, y: 0, width: 400, height: 200), launcher = NSRect(x: 10, y: 80, width: 48, height: 40)
+            let squeezed = ToolbarChooserPlacement.frame(content: content, launcher: launcher, visible: short, growsLeftward: false)
+            try check(short.insetBy(dx: ToolbarChooserPlacement.edgeMargin, dy: ToolbarChooserPlacement.edgeMargin).contains(squeezed)
+                      && squeezed.height < content.height && !squeezed.intersects(launcher),
+                      "on a short display it takes the roomier side, stays inside the margins and never covers the launcher")
+        }
+        // Every earlier save keeps its place (#134): a dock by name, this build's launcher centre,
+        // #163's glyph edge, a move an earlier build made since, and the resting element alone.
+        do {
+            let suite = "Workbench.ToolbarPositionChecks." + UUID().uuidString
+            guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let screen = NSRect(x: 0, y: 25, width: 1440, height: 875)
+            func saved() -> (position: ToolbarPosition, migrated: Bool) {
+                CapturePanelController.savedPosition(defaults, screens: [screen], preferred: screen)
+            }
+            try check(saved() == (.docked(.bottom), false), "with nothing saved the toolbar rests at bottom centre")
+            defaults.set(NSStringFromPoint(NSPoint(x: 1000, y: 400)), forKey: "capturePanelOrigin.v1")
+            defaults.set(NSStringFromSize(NSSize(width: 132, height: 36)), forKey: "capturePanelSize.v1")
+            try check(saved() == (.free(ToolbarFreePosition(centre: CGPoint(x: 1114, y: 418), growsLeftward: true)), true),
+                      "the oldest save, a resting element alone, keeps its glyph where it was and the side it was left on")
+            defaults.set(CapturePanelController.record(ToolbarFreePosition(glyphEdge: 1100, centreY: 400, growsLeftward: true)), forKey: "capturePanelFreePosition.v1")
+            let current = ToolbarFreePosition(centre: CGPoint(x: 1082, y: 400), growsLeftward: true)
+            try check(saved() == (.free(current), true), "#163's glyph edge becomes the launcher centre 18 points inside it")
+            defaults.set(CapturePanelController.launcherRecord(current), forKey: "capturePanelLauncher.v1")
+            try check(saved() == (.free(current), false), "this build's launcher record stands while the glyph copy beside it is unchanged")
+            // 1010.123456789 + 18 crosses 1024, so the glyph edge converts back one bit off.
+            let exact = ToolbarFreePosition(centre: CGPoint(x: 1010.123456789, y: 400.987654321), growsLeftward: true)
+            defaults.set(CapturePanelController.launcherRecord(exact), forKey: "capturePanelLauncher.v1")
+            defaults.set(CapturePanelController.record(exact), forKey: "capturePanelFreePosition.v1")
+            try check(saved() == (.free(exact), false), "a glyph copy that converts back a hair off is not a move")
+            let moved = ToolbarFreePosition(glyphEdge: 300, centreY: 200, growsLeftward: false)
+            defaults.set(CapturePanelController.record(moved), forKey: "capturePanelFreePosition.v1")
+            try check(saved() == (.free(moved), true), "a move an earlier build made since wins over this build's older record")
+            defaults.set("topRight", forKey: "capturePanelAnchor.v2")
+            try check(saved() == (.docked(.topRight), false), "a dock by name wins over any free record")
+        }
         var state = WorkbenchControlState()
         state.presenting = true; state.drawing = true; state.phase = .recording
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present),
