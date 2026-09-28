@@ -14,13 +14,8 @@ struct SnapWorkspaceView: View {
     @State private var importCandidates: [URL] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Snap").font(.largeTitle.weight(.semibold))
-                    Text("Capture, mark up and keep what matters.").foregroundStyle(.secondary)
-                }
-                Spacer()
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+            WorkbenchPageHeader("snap", summary: "Capture, mark up and keep what matters.") {
                 // ✓ Saved or exported for four seconds, in space kept for it (#134 T5).
                 ConfirmationLabel(text: model.confirmation?.kind.rawValue, reserving: SnapConfirmation.texts)
                 if model.isCapturing { Button("Cancel capture") { model.cancelCapture() } }
@@ -38,10 +33,13 @@ struct SnapWorkspaceView: View {
                 } label: { Label("Add image", systemImage: "plus") }.disabled(model.isBusy || model.importingScreenshots)
             }
             HStack(spacing: 10) {
+                // Region is the page's one accent action, what Snap's row and toolbar do (#134);
+                // Window and Screen stay beside it as neutral options.
                 ForEach(SnapCapture.Mode.allCases) { mode in
-                    Button { Task { await model.capture(mode) } } label: {
+                    let capture = Button { Task { await model.capture(mode) } } label: {
                         Label(mode.title, systemImage: mode == .region ? "viewfinder" : mode == .window ? "macwindow" : "display")
                     }.disabled(model.isBusy)
+                    if mode == .region { capture.buttonStyle(.borderedProminent) } else { capture }
                 }
                 Spacer()
                 #if APP_STORE

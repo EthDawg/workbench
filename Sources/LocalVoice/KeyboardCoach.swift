@@ -297,11 +297,9 @@ struct KeyboardCoachView: View {
     private var selected: ShortcutEntry? { model.selected }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Make it second nature").font(.system(size: 24, weight: .semibold))
-                Text("One set of shortcuts for speaking, drawing and presenting.").foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+            // Settings' title and switcher name this section, so it opens on its summary (#134).
+            Text("One set of shortcuts for speaking, drawing and presenting.").foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 20) {
                 actionList.frame(width: 230, height: 230)
                 Divider().frame(height: 230)

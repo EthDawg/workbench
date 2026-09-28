@@ -5,10 +5,14 @@ import Carbon
 final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
     private weak var coordinator: AppCoordinator?
     private let includeSettings: Bool
+    /// A caller's own last items, such as a door to its page. Built on each refresh, because a
+    /// refresh removes every item.
+    private let trailing: (() -> [NSMenuItem])?
 
-    init(coordinator: AppCoordinator, includeSettings: Bool = true) {
+    init(coordinator: AppCoordinator, includeSettings: Bool = true, trailing: (() -> [NSMenuItem])? = nil) {
         self.coordinator = coordinator
         self.includeSettings = includeSettings
+        self.trailing = trailing
         // The menu bar shows this title for the app's Draw menu.
         super.init(title: "Draw")
         autoenablesItems = false
@@ -70,7 +74,7 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         addItem(actionItem(.whiteboard, checked: board == .white))
         addItem(actionItem(.blackboard, checked: board == .black))
         addItem(.separator())
-        guard includeSettings else { return }
+        guard includeSettings else { trailing?().forEach(addItem); return }
         addItem(command("Drawing Controls…", id: "controls", enabled: app.canUseAnnotationMenuAction(.controls)) { [weak app] in
             guard let app, app.canUseAnnotationMenuAction(.controls) else { return }
             app.stopDrawing()

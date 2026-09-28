@@ -99,7 +99,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
     @Published var status = "Ready when you are."
-    @Published var error: String?
+    /// What needs attention, with the page that shows it in full. It is raised only with
+    /// `report(_:on:)`, so its page is chosen where the problem happens (#134).
+    @Published private(set) var attention: Attention?
+    /// The problem's words, for the banner, the menu-bar panel and VoiceOver.
+    var error: String? { attention?.message }
     @Published var transcript = "" { didSet { draftRevision &+= 1; persist() } }
     @Published var speechText = "" { didSet { persist() } }
     @Published var history: [Transcript] = [] { didSet { recordFirstDictation() } }
@@ -150,7 +154,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             keyNotice = "Key saved in Keychain."
             Task { await refreshSpekoVoices(force: true) }
         }
-        catch { self.error = error.localizedDescription }
+        catch { report(error.localizedDescription, on: .read) }
     }
     func removeSpekoKey() {
         do {
@@ -164,7 +168,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             invalidateAudio()
             keyNotice = "Key removed. Using Mac voices."
         }
-        catch { self.error = error.localizedDescription }
+        catch { report(error.localizedDescription, on: .read) }
     }
     func selectSpekoVoice(id: String?) {
         selectedSpekoVoice = id.flatMap { id in displayedSpekoVoices.first(where: { $0.id == id }) }
@@ -307,15 +311,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let removalIssues = MeetingTranscriptRemoval.reconcile(
                 root: Workbench.supportDirectory(component: "Meetings"), history: store)
             if !removalIssues.isEmpty {
-                self.error = "A recording removal needs attention. " + removalIssues.joined(separator: " ")
+                report("A recording removal needs attention. " + removalIssues.joined(separator: " "), on: .history)
             }
         } catch {
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
             do {
                 try FileManager.default.copyItem(at: store.url, to: backup)
-                self.error = "Your saved session could not be opened. A recovery copy was preserved as \(backup.lastPathComponent) in Application Support/LocalVoice."
+                report("Your saved session could not be opened. A recovery copy was preserved as \(backup.lastPathComponent) in Application Support/LocalVoice.", on: .dictate)
             } catch {
-                self.error = "Your saved session could not be opened or backed up. Automatic saving is disabled to protect the original file."
+                report("Your saved session could not be opened or backed up. Automatic saving is disabled to protect the original file.", on: .dictate)
                 return
             }
         }
@@ -349,17 +353,18 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard !preparing, !ready else { return }
         preparing = true; modelMessage = "Preparing speech · first setup may take a few minutes"
         do { try await engine.prepare(); ready = true; modelMessage = await engine.statusDescription() }
-        catch { modelMessage = "Speech model needs attention"; self.error = "Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)" }
+        // Retry model is on Home's engine banner, so Home owns the failure (#134 review).
+        catch { modelMessage = "Speech model needs attention"; report("Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)", on: .home) }
         preparing = false
     }
 
     /// The one owner of text arriving in Read: the macOS Service, History and
-    /// Library all come here. An empty draft or the same text needs no
+    /// Library items all come here. An empty draft or the same text needs no
     /// choice; a different draft waits behind Replace reading / Keep current,
     /// with the current reading untouched. Nothing here starts audio or sends
     /// text online.
     func receiveReadingSelection(_ selection: ReadingSelectionImport) {
-        error = nil
+        attention = nil
         clipboardReceipt.dismissHUD()
         if ReadingSelectionImport.needsReview(current: speechText, incoming: selection.text) {
             pendingReadingSelection = selection
@@ -378,7 +383,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         do { receiveReadingSelection(try ReadingSelectionImport(text: text, origin: origin)) }
         catch {
             page = "speak"; onShowEditor?("speak")
-            self.error = error.localizedDescription
+            report(error.localizedDescription, on: .read)
         }
     }
 
@@ -387,7 +392,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// The same text is not restarted: paused resumes, playing carries on.
     func listen(to text: String) {
         // Only replace the draft when the reading can start, so it never waits unheard.
-        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
+        guard !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
         guard phase == .idle else { return }
         guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
         let setAside = pendingReadingSelection != nil
@@ -497,7 +502,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
 
     private func startRecording(_ attempt: UUID) async {
         guard recordingAttempt == attempt else { return }
-        phase = .requesting; error = nil; onPhaseChange?()
+        phase = .requesting; attention = nil; onPhaseChange?()
         let granted: Bool
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: granted = true
@@ -539,7 +544,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             if let url = startedAudio, let pending = captureRecovery.pending, pending.capture == nil,
                url.lastPathComponent == pending.audioFilename {
                 do { try captureRecovery.clear(pending.id); recordURL = nil }
-                catch { self.error = error.localizedDescription }
+                catch { report(error.localizedDescription, on: .dictate) }
             }
             fail(error.localizedDescription)
         }
@@ -586,7 +591,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
 
     func importAudio() {
-        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription first."; return }
+        guard !meetings.isBusy else { report("Finish the meeting recording or transcription first.", on: .dictate); return }
         guard phase == .idle, ready else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.audio]; panel.canChooseDirectories = false
         panel.message = "Choose an audio file up to 30 minutes. Your selected speech engine will transcribe it."
@@ -594,7 +599,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         importAudio(url)
     }
     func importAudio(_ url: URL) {
-        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription first."; return }
+        guard !meetings.isBusy else { report("Finish the meeting recording or transcription first.", on: .dictate); return }
         guard phase == .idle, ready else { return }
         do {
             let file = try AVAudioFile(forReading: url)
@@ -641,7 +646,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         captureFailure = nil; dismissCaptureCue()
         previewingPanel = false
         captureProcessingLabel = "Preparing transcription…"
-        phase = .transcribing; status = "Turning speech into text…"; error = nil; canRetry = false; onPhaseChange?()
+        phase = .transcribing; status = "Turning speech into text…"; attention = nil; canRetry = false; onPhaseChange?()
         transcriptionTask = Task {
             defer {
                 if transcriptionID == invocation { transcriptionTask = nil; transcriptionID = nil }
@@ -716,16 +721,16 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if captureRecovery.canKeepAudioForLater {
             do {
                 try captureRecovery.keepAudioForLater()
-                recordURL = nil; canRetry = false; captureFailure = nil; error = nil
+                recordURL = nil; canRetry = false; captureFailure = nil; attention = nil
                 status = "Previous audio kept in Saved recordings."
                 onPhaseChange?(); return true
             } catch {
                 let message = "Could not keep the previous recording safely. Its recovery files are unchanged. \(error.localizedDescription)"
-                captureFailure = message; self.error = message; status = message; onPhaseChange?(); return false
+                captureFailure = message; report(message, on: .dictate); status = message; onPhaseChange?(); return false
             }
         }
         let message = captureRecovery.problem?.localizedDescription ?? "A previous capture is kept. Use \(retryCaptureLabel) before starting another capture."
-        captureFailure = message; error = message; status = message; onPhaseChange?(); return false
+        captureFailure = message; report(message, on: .dictate); status = message; onPhaseChange?(); return false
     }
 
     /// No asynchronous boundary occurs between the generation check and commit.
@@ -775,7 +780,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             fail("Text saved, but capture recovery could not be cleared. Use Retry saving; the saved capture will not be duplicated. No text was sent. \(error.localizedDescription)")
             captureFailure = self.error; onPhaseChange?(); return false
         }
-        recordURL = nil; canRetry = false; captureFailure = nil; error = nil
+        recordURL = nil; canRetry = false; captureFailure = nil; attention = nil
         onPhaseChange?(); return true
     }
 
@@ -809,13 +814,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 : (preservedSavedDraft ? "An unsaved capture was recovered. Your saved draft is unchanged. Retry saving adds the capture to History without pasting."
                    : "An unsaved capture was recovered. Use Retry saving; text will not be pasted automatically.")
             captureFailure = message; status = message
-        } catch { self.error = error.localizedDescription; captureFailure = self.error; status = "Capture recovery needs attention." }
+        } catch { report(error.localizedDescription, on: .dictate); captureFailure = self.error; status = "Capture recovery needs attention." }
     }
 
     @discardableResult private func discardRecordingRecovery() -> Bool {
         guard let record = captureRecovery.pending, record.capture == nil else { return !captureRecovery.hasRecovery }
         do { try captureRecovery.clear(record.id); recordURL = nil; canRetry = false; return true }
-        catch { self.error = error.localizedDescription; captureFailure = self.error; return false }
+        catch { report(error.localizedDescription, on: .dictate); captureFailure = self.error; return false }
     }
 
     /// Called only after the normal Dictate view's explicit confirmation. The
@@ -824,15 +829,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard canDiscardCaptureRecovery, let record = captureRecovery.pending else { return }
         do {
             try captureRecovery.clear(record.id)
-            recordURL = nil; canRetry = false; captureFailure = nil; error = nil
+            recordURL = nil; canRetry = false; captureFailure = nil; attention = nil
             status = "Recovery discarded. Your current draft is kept."; onPhaseChange?()
-        } catch { self.error = error.localizedDescription; captureFailure = self.error; onPhaseChange?() }
+        } catch { report(error.localizedDescription, on: .dictate); captureFailure = self.error; onPhaseChange?() }
     }
     func showCaptureRecoveryFiles() {
-        if !NSWorkspace.shared.open(captureRecovery.directory) { error = "The CaptureRecovery folder could not be opened." }
+        if !NSWorkspace.shared.open(captureRecovery.directory) { report("The CaptureRecovery folder could not be opened.", on: .dictate) }
     }
     func showSavedRecordings() {
-        if !NSWorkspace.shared.open(captureRecovery.savedRecordingsDirectory) { error = "Saved recordings could not be opened." }
+        if !NSWorkspace.shared.open(captureRecovery.savedRecordingsDirectory) { report("Saved recordings could not be opened.", on: .dictate) }
     }
 
     func copyTranscript() {
@@ -892,7 +897,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         clipboardReceipt.dismissHUD(); captureFailure = nil; dismissCaptureCue()
         previewingPanel = false; destination = nil
         captureProcessingLabel = "Text cleanup · on this Mac"
-        phase = .cleaning; status = "Tidying your words…"; error = nil
+        phase = .cleaning; status = "Tidying your words…"; attention = nil
         transcriptionTask = Task {
             defer {
                 if transcriptionID == invocation {
@@ -923,7 +928,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func requestAccessibility() {
         var asked = preferences.accessibilityRequested
         let step = AccessibilitySetup.live.run(asked: &asked) { [weak self] in
-            self?.error = "System Settings could not be opened. Open Privacy & Security › Accessibility and allow Workbench there."
+            self?.report("System Settings could not be opened. Open Privacy & Security › Accessibility and allow Workbench there.", on: .dictate)
         }
         if asked != preferences.accessibilityRequested { preferences.accessibilityRequested = asked }
         accessibilityGranted = step == .approved || AXIsProcessTrusted()
@@ -947,10 +952,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try TranscriptExport.write(item, version: version, to: url)
-            self.error = nil
+            attention = nil
             status = "\(version.rawValue) saved to \(url.lastPathComponent)."
         } catch {
-            self.error = "Could not save this transcript. \(error.localizedDescription)"
+            report("Could not save this transcript. \(error.localizedDescription)", on: .history)
         }
     }
 
@@ -1047,7 +1052,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         seekReading(to: player.currentTime + seconds)
     }
     func listen() {
-        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
+        guard !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
         guard !rendering, phase == .idle else { return }
         stopVoicePreview()
         clearReadingFailure()
@@ -1057,7 +1062,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         if paused, signature == audioSignature, let player, player.source === audio?.source {
             guard player.play() else {
-                stopPlayback(); error = "Audio could not resume. Check your Mac's audio output."; return
+                stopPlayback(); report("Audio could not resume. Check your Mac's audio output.", on: .read); return
             }
             playing = true; paused = false; status = "Reading aloud."; return
         }
@@ -1097,7 +1102,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 RunLoop.main.add(timer, forMode: .common)
                 playTimer = timer
             } catch {
-                if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
+                if !(error is CancellationError), readingGenerationID == generationID { report(error.localizedDescription, on: .read) }
             }
         }
     }
@@ -1119,7 +1124,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private func generateAudio(generationID: UUID, complete: Bool = false) async throws -> ReadingTrack {
         if let audio, signature == audioSignature, audio.isComplete || (!complete && audio.isRendering) { return audio }
         guard readingGenerationID == generationID else { throw CancellationError() }
-        rendering = true; readingGenerationActive = true; error = nil
+        rendering = true; readingGenerationActive = true; attention = nil
         let text = speechText, prepared = ListeningText(text), selectedChoice = voiceChoice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = rate, selectedProvider = readingProvider, originalSignature = signature
         let limit = selectedProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000
         // Speko receives the prepared text, which can be a little longer than what is shown.
@@ -1170,7 +1175,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 // Audio that stopped partway cannot be replayed or saved.
                 if self.playingTrack === track { self.stopPlayback() }
                 track.discard(); if self.audio === track { self.audio = nil }
-                self.error = failure.localizedDescription
+                self.report(failure.localizedDescription, on: .read)
             } else {
                 track.finishedRendering()
                 if self.playingTrack === track { self.renderingAhead = false; self.player?.tick() }
@@ -1227,7 +1232,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 status = "Audio saved to \(destination.lastPathComponent)."
             } catch {
-                if !(error is CancellationError), readingGenerationID == generationID { self.error = error.localizedDescription }
+                if !(error is CancellationError), readingGenerationID == generationID { report(error.localizedDescription, on: .read) }
             }
         }
     }
@@ -1262,19 +1267,22 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     func reportReadingFailure(_ failure: ReadingFailure) {
         readingFailure = failure
-        error = failure.message
+        report(failure.message, on: .read)
         announceForAccessibility(failure.message)
     }
     /// Dismiss beside Retry: the reading stays stopped, with its text and voice.
     func dismissReadingFailure() { clearReadingFailure() }
+    /// Raises a problem with the page that shows it in full (#134): the menu-bar panel's door
+    /// opens that page, so it is chosen here, where the problem is known, never from the words.
+    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     /// The error banner's dismiss, which also dismisses a reading failure it shows.
     func dismissError() {
         if let failure = readingFailure, error == failure.message { readingFailure = nil }
-        error = nil
+        attention = nil
     }
     private func clearReadingFailure() {
         guard let failure = readingFailure else { return }
-        if error == failure.message { error = nil }
+        if error == failure.message { attention = nil }
         readingFailure = nil
     }
     func readingPlayerDidFinish(_ finished: ReadingPlayer, successfully flag: Bool) {
@@ -1368,7 +1376,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func removeTranscript(_ item: Transcript, includingRecording: Bool = false) {
         guard loaded, history.contains(where: { $0.id == item.id }) else { return }
         guard includingRecording || !meetings.hasRecording(for: item.id) else {
-            error = "This transcript has a saved recording. Choose Remove again to review removing both."
+            report("This transcript has a saved recording. Choose Remove again to review removing both.", on: .history)
             return
         }
         let next = history.filter { $0.id != item.id }
@@ -1381,15 +1389,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         do {
             if includingRecording {
-                error = try meetings.removeCompletedRecording(for: item.id, commit: commit)
-                if error == nil { status = "Transcript and recording removed." }
+                if let issue = try meetings.removeCompletedRecording(for: item.id, commit: commit) { report(issue, on: .history) }
+                else { attention = nil; status = "Transcript and recording removed." }
             } else {
                 try commit()
                 status = "Transcript removed."
             }
             // Named selections retain the missing reference until the person
             // deliberately removes it, so an old selection cannot silently shrink.
-        } catch { self.error = "Could not finish removing the transcript. " + error.localizedDescription }
+        } catch { report("Could not finish removing the transcript. " + error.localizedDescription, on: .history) }
     }
     func retainMeetingTranscript(_ capture: Transcript, purpose: String) throws {
         guard loaded else { throw VoiceError.message("The transcript library is not ready.") }
@@ -1441,7 +1449,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         dismissCaptureCue()
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
-        error = text; phase = .idle; status = "Needs attention"; onPhaseChange?()
+        report(text, on: .dictate); phase = .idle; status = "Needs attention"; onPhaseChange?()
     }
     /// A dictation that ended without words (#156). Routine outcomes are not
     /// failures: no recovery panel and no error, just a cue in place of the
@@ -1531,12 +1539,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         do {
             try store.save(session(draft: transcript, history: history, replacements: replacements))
             return true
-        } catch { self.error = "Could not save before updating. \(error.localizedDescription)"; return false }
+        } catch { report("Could not save before updating. \(error.localizedDescription)", on: .dictate); return false }
     }
     func saveNow() {
         guard loaded else { return }
         do { try store.save(session(draft: transcript, history: history, replacements: replacements)) }
-        catch { self.error = "Could not save this session. \(error.localizedDescription)" }
+        catch { report("Could not save this session. \(error.localizedDescription)", on: .dictate) }
     }
     /// The session a write commits: the draft, History and rules it writes,
     /// and the rest as they are. The one undelivered result goes with it only

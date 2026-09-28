@@ -59,6 +59,7 @@ struct VoiceShortcutSettings: View {
     }
 }
 
+/// Dictate's other options, below its task region: how the shortcut records.
 struct VoiceOptions: View {
     @ObservedObject var model: AppModel
     var showShortcut = true
@@ -67,32 +68,52 @@ struct VoiceOptions: View {
             if showShortcut { ShortcutControl(model: model, id: 1, title: "Dictation") }
             Picker("Activation", selection: $model.preferences.capture) {
                 ForEach(CaptureMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
+            }.fixedSize()
             // The same words the one-time hold lesson uses, with the shortcut as it is saved (#134 T5).
             Text(model.preferences.capture == .hold
                  ? HoldLesson.title(shortcut: model.preferences.dictationShortcut.label) + " " + HoldLesson.body
                  : "Press \(model.preferences.dictationShortcut.label) to start dictating, and again to finish.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Picker("Cleanup", selection: $model.preferences.cleanup) {
-                ForEach(CleanupStyle.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            Text(model.preferences.cleanup.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Picker("Delivery", selection: $model.preferences.delivery) {
-                ForEach(DeliveryMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            if model.preferences.delivery == .paste {
-                if model.accessibilityGranted {
-                    Label("Automatic paste ready", systemImage: "checkmark.circle").foregroundStyle(Workbench.accent).font(.caption)
-                } else {
-                    // The preference is kept for later approval; copying works now.
-                    Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
+        }.disabled(model.phase != .idle)
+    }
+}
+
+/// Where Dictate's words go and how they are tidied, inside the page's task region beside the
+/// microphone and the result (#134). A copy for ⌘V is a finished result (#165), so its caption
+/// says so; Set up automatic paste… sits beside Delivery as an option, never a step to wait on.
+/// Each text style shows its description and one example checked against the real cleanup.
+struct DictateTaskOptions: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Picker("Delivery", selection: $model.preferences.delivery) {
+                    ForEach(DeliveryMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.fixedSize()
+                if model.preferences.delivery == .paste {
+                    if model.accessibilityGranted {
+                        Label("Automatic paste ready", systemImage: "checkmark.circle").foregroundStyle(Workbench.accent).font(.caption)
+                    } else {
+                        // The choice is kept for a later approval; copying works now.
                         Button("Set up automatic paste…") { model.requestAccessibility() }
-                        Text("Your organisation may need to approve this.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
+            Text(deliveryCaption).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Picker("Text style", selection: $model.preferences.cleanup) {
+                ForEach(CleanupStyle.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.fixedSize().padding(.top, 6)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.preferences.cleanup.detail)
+                Text(model.preferences.cleanup.exampleText).foregroundStyle(.tertiary)
+            }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.disabled(model.phase != .idle)
+    }
+    private var deliveryCaption: String {
+        switch model.preferences.delivery {
+        case .clipboard: return "Transcripts are copied. Paste with ⌘V."
+        case .paste where model.accessibilityGranted: return "Automatic paste returns to your starting text field."
+        case .paste: return "Transcripts are copied; paste with ⌘V. Automatic paste needs Accessibility approval, which your organisation may need to give."
+        }
     }
 }

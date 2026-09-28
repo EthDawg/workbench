@@ -24,12 +24,9 @@ struct DemoLibraryView: View {
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {
             ChromeConnectionView(presenter: model.presenter)
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("Ready when they ask.").font(.system(size: 30, weight: .semibold)).tracking(-0.8)
-                    Text("Find a prompt, video, deck, or demo link by product or persona.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
+            HStack(alignment: .firstTextBaseline) {
+                // Library's title and switcher name this section, so it opens on its summary (#134).
+                Text("Find a prompt, video, deck, or demo link by product or persona.").foregroundStyle(.secondary)
                 Spacer()
                 Menu {
                     Button("New prompt") { library.newPrompt() }

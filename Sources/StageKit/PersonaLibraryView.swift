@@ -84,7 +84,10 @@ struct PersonaLibraryView: View {
                 if preparingPresentation {
                     Button { leavePreparation(dismissLibrary: false) } label: { Label("Personas", systemImage: "chevron.left") }
                 }
-                Text(preparingPresentation ? "Arrange overlays" : (onChoose == nil ? "Personas" : "Choose persona")).font(.title2.bold())
+                // As a Workbench page it carries the page's name and title type (#134); as a sheet it is
+                // the library of personas.
+                Text(preparingPresentation ? "Arrange overlays" : onChoose != nil ? "Choose persona" : mode == .workspace ? "Persona" : "Personas")
+                    .font(mode == .workspace && !preparingPresentation ? .title.weight(.semibold) : .title2.bold()).accessibilityAddTraits(.isHeader)
                 Spacer()
                 if !preparingPresentation {
                     Menu {

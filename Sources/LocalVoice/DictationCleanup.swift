@@ -10,6 +10,25 @@ enum CleanupStyle: String, Codable, CaseIterable, Sendable {
         case .natural: return "Light cleanup plus careful punctuation and formatting with your selected local text model."
         }
     }
+    /// One short example beside the description (#134). CleanupChecks runs each one through the
+    /// real cleanup: Original leaves the words as heard, Light gives exactly this result, and
+    /// Natural's is one its meaning check accepts, which the text model may produce.
+    var example: (heard: String, result: String) {
+        switch self {
+        case .original: return ("Um, meet at 3pm, no actually 4pm.", "Um, meet at 3pm, no actually 4pm.")
+        case .light: return ("Um, meet at 3pm, no actually 4pm.", "Meet at 4pm.")
+        case .natural: return ("book the room then send the notes", "Book the room, then send the notes.")
+        }
+    }
+    /// The example in words, for the Dictate page.
+    var exampleText: String {
+        let (heard, result) = example
+        switch self {
+        case .original: return "For example, “\(heard)” stays as it was heard."
+        case .light: return "For example, “\(heard)” becomes “\(result)”"
+        case .natural: return "For example, “\(heard)” can become “\(result)”"
+        }
+    }
 }
 struct CleanupResult: Sendable {
     var text: String

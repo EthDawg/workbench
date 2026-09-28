@@ -553,11 +553,8 @@ extension ReadingChecks {
         let voices = MacVoiceCatalog.ordered(compactCatalogue.filter { !$0.sayOnly }, preferredLanguage: "en-AU")
         let karen = voices.first { $0.name == "Karen" }!
         for (name, scheme) in [("reading-mid-dark", ColorScheme.dark), ("reading-mid-light", ColorScheme.light)] {
-            let page = VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("Give your words a voice.").font(.system(size: 34, weight: .semibold)).tracking(-1)
-                    Text("Paste something to hear it aloud, or save a reading to take with you.").font(.system(size: 13)).foregroundStyle(.secondary)
-                }
+            let page = VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                WorkbenchPageHeader("speak", summary: "Paste something to hear it aloud, or save a reading to take with you.")
                 Picker("Read with", selection: .constant(ReadingProvider.mac)) {
                     ForEach(ReadingProvider.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented).labelsHidden()
@@ -574,7 +571,7 @@ extension ReadingChecks {
                     Button {} label: { Label("Save audio…", systemImage: "square.and.arrow.down") }.disabled(true)
                 }.controlSize(.large)
             }
-            .padding(32).frame(width: 860, height: 900, alignment: .topLeading)
+            .padding(Workbench.pagePadding).frame(width: 860, height: 900, alignment: .topLeading)
             .background(Workbench.background).tint(Workbench.accent).environment(\.colorScheme, scheme)
             try snapshot(page, size: NSSize(width: 860, height: 900), scheme: scheme, to: folder.appendingPathComponent(name + ".png"))
         }

@@ -83,7 +83,9 @@ enum TextRules {
     var destination: String? = "Previous target"
     var captureProcessingLabel = ""
     var status = ""
-    var error: String?
+    var attention: Attention?
+    var error: String? { attention?.message }
+    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     var persistenceCalls = 0
     var transitions: [Phase] = []
     var onPhaseChange: (() -> Void)?
@@ -198,7 +200,7 @@ with tempfile.TemporaryDirectory(prefix="workbench-clean-draft-", dir="/private/
     binary = directory / "checks"
     subprocess.run([
         "swiftc", "-parse-as-library", "-swift-version", "5", "-module-cache-path", str(directory / "ModuleCache"),
-        str(harness), "-o", str(binary),
+        str(harness), str(PROJECT / "Sources/LocalVoice/Attention.swift"), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True, timeout=15)
 print(f"Exact application methods SHA-256: {hashlib.sha256(methods.encode()).hexdigest()}")

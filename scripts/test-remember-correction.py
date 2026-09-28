@@ -28,7 +28,7 @@ methods = "\n".join([
     extract("    func addReplacement(", "\n    func removeTranscript("),
     extract("    func persist()", "\n    func shutdown()"),
 ])
-names = ["rawTranscript", "cleanupMethod", "phase", "status", "error", "transcript",
+names = ["rawTranscript", "cleanupMethod", "phase", "status", "attention", "transcript",
          "speechText", "history", "replacements", "rememberedCorrection", "voice", "rate"]
 properties = "\n".join(next(line for line in source.splitlines()
                              if "@Published" in line and f" var {name}" in line
@@ -69,6 +69,8 @@ enum TextDelivery {
     /// History's observer records the first dictation for Home (#15); corrections never depend on it.
     func recordFirstDictation() {}
     __EXACT_PROPERTIES__
+    var error: String? { attention?.message }
+    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     init(draft: String = " \ngit hub and cat.\t ", rules: [Replacement] = []) {
         transcript = draft
         rawTranscript = "Untouched recognition original"
@@ -355,7 +357,7 @@ with tempfile.TemporaryDirectory(prefix="workbench-remember-correction-", dir="/
     binary = directory / "checks"
     subprocess.run([
         "swiftc", "-parse-as-library", "-swift-version", "5", "-module-cache-path", str(directory / "ModuleCache"),
-        str(directory / "CoreValues.swift"), str(PROJECT / "Sources/LocalVoice/TextPrimitives.swift"), str(PROJECT / "Sources/LocalVoice/CorrectionRule.swift"),
+        str(directory / "CoreValues.swift"), str(PROJECT / "Sources/LocalVoice/TextPrimitives.swift"), str(PROJECT / "Sources/LocalVoice/Attention.swift"), str(PROJECT / "Sources/LocalVoice/CorrectionRule.swift"),
         str(PROJECT / "Sources/LocalVoice/DeliveryOutcome.swift"),
         str(directory / "Checks.swift"), "-o", str(binary),
     ], check=True)

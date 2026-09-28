@@ -20,7 +20,7 @@ struct ModelSettingsView: View {
             HStack(alignment: .top) {
                 Image(systemName: "waveform.badge.magnifyingglass").font(.title2).foregroundStyle(Workbench.accent)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Speech model").font(.headline)
+                    Text("Speech model").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
                     Text("Choose what turns your recordings into text.").foregroundStyle(.secondary)
                 }
             }

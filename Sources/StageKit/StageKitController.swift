@@ -88,7 +88,8 @@ public final class StageKitController: ObservableObject {
         coordinator.onOpenScenes = onOpenScenes
         coordinator.demoScenes.onOpen = onOpenScenes
         coordinator.validateExternalShortcut = Self.reservedVoiceShortcut
-        if let migrationNotice { coordinator.notice = migrationNotice }
+        // Boards and scenes that could not be copied: Draw shows it with its other board notices.
+        if let migrationNotice { coordinator.post(migrationNotice, on: .draw) }
         observe(coordinator)
     }
     /// Checks wrap a coordinator on disposable storage; the app uses the initializer above.
@@ -229,7 +230,10 @@ public final class StageKitController: ObservableObject {
     /// One native menu for the application menu bar or the shell's status menu.
     /// It refreshes tool state and shortcut labels whenever it opens; StageKit
     /// continues to own all drawing actions and their existing global keys.
-    public func makeAnnotationMenu(includeSettings: Bool = true) -> NSMenu { AnnotationMenu(coordinator: coordinator, includeSettings: includeSettings) }
+    /// Without its settings item, a caller may end the menu with its own items, built each time it opens.
+    public func makeAnnotationMenu(includeSettings: Bool = true, trailing: (() -> [NSMenuItem])? = nil) -> NSMenu {
+        AnnotationMenu(coordinator: coordinator, includeSettings: includeSettings, trailing: trailing)
+    }
     /// Opens an existing-scene choice followed by the ordinary backdrop preview.
     /// The caller presents this as a sheet; no scene changes until Use backdrop.
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {
@@ -263,11 +267,23 @@ public final class StageKitController: ObservableObject {
     /// Performs that transport: Start and Restart take the normal start path; Pause and
     /// Resume keep the timer's window as it is.
     public func performTimerTransport() { coordinator.performTimerTransport() }
-    /// A card that could not show is live, so it comes before an older scene notice.
-    public var notice: String? {
+    /// Every current notice with its page, most urgent first. The drawing and settings stores
+    /// record their notice's page where it is raised; a persona or scene notice belongs to its own
+    /// page. A card that could not show is live, so it comes before an older scene notice.
+    private var notices: [StageNotice] {
         let personas = coordinator.demoScenes.personas
-        return coordinator.notice ?? coordinator.settings.notice ?? personas.cardFeedback ?? coordinator.demoScenes.notice ?? personas.notice
+        return [coordinator.postedNotice, coordinator.settings.postedNotice,
+                personas.cardFeedback.map { StageNotice(text: $0, page: .persona) },
+                coordinator.demoScenes.notice.map { StageNotice(text: $0, page: .present) },
+                personas.notice.map { StageNotice(text: $0, page: .persona) }].compactMap { $0 }
     }
+    /// The notice to show now.
+    public var notice: String? { notices.first?.text }
+    /// The page that shows `notice` in full, from the same record: a surface with room for one
+    /// sentence opens it for the rest (#134).
+    public var noticePage: StageNoticePage? { notices.first?.page }
+    /// The first notice a page owns, for that page to show in full.
+    public func notice(on page: StageNoticePage) -> String? { notices.first { $0.page == page }?.text }
 
     public func start() {
         guard !started else { return }
@@ -400,4 +416,15 @@ private struct PhotoBackdropChooser: View {
             catch { notice = "The photo could not be opened. " + error.localizedDescription }
         }.onDisappear { draft?.cancel() }
     }
+}
+
+/// Where a StageKit notice is shown in full, or acted on: drawing and boards on Draw, a scene on
+/// Present, a card or persona on Persona, recording a shortcut on Settings › Keyboard, and login
+/// and saved settings on Settings › General (#134).
+public enum StageNoticePage: Sendable, CaseIterable { case draw, present, persona, keyboard, general }
+
+/// A notice and its page, recorded together where the notice is raised (#134).
+struct StageNotice: Equatable {
+    let text: String
+    let page: StageNoticePage
 }

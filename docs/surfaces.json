@@ -721,33 +721,33 @@
     "note": "Quality: the category filter's default, every saved prompt (#159)."
   },
   {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Button.set-up-automatic-paste",
+    "id": "LocalVoice.QuickControls.DictateTaskOptions.Button.set-up-automatic-paste",
     "surface": "dictate page options",
     "label": "Set up automatic paste…",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality: Enable automatic paste… renamed in the same place (#134 W3). Shown only while Paste automatically waits for Accessibility approval, beside the note that an organisation may need to approve it; transcripts are copied until then (#165)."
+    "note": "Quality: beside Delivery in Dictate's task region, the same action (#134). Shown only while Paste automatically waits for Accessibility approval; transcripts are copied for ⌘V until then, which is a finished result (#165)."
+  },
+  {
+    "id": "LocalVoice.QuickControls.DictateTaskOptions.Picker.delivery",
+    "surface": "dictate page options",
+    "label": "Delivery",
+    "kind": "setting",
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the options below the page into its task region, beside the microphone and the result, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.QuickControls.DictateTaskOptions.Picker.text-style",
+    "surface": "dictate page options",
+    "label": "Text style",
+    "kind": "setting",
+    "belongsTo": "dictate",
+    "note": "Quality: Cleanup takes the Grammar's name, Text style, which the menu-bar panel's options already use, and moves into Dictate's task region with its description and one example per style, each checked against the real cleanup (#134)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
     "surface": "dictate page options",
     "label": "Activation",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.cleanup",
-    "surface": "dictate page options",
-    "label": "Cleanup",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
-  },
-  {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Picker.delivery",
-    "surface": "dictate page options",
-    "label": "Delivery",
     "kind": "setting",
     "belongsTo": "dictate",
     "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
@@ -907,15 +907,6 @@
     "note": "Quality: the word count beside the title, as the floating receipt shows it (#165). Runtime label; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-226f79815f30",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "receipt . detail",
-    "kind": "status",
-    "belongsTo": "dictate",
-    "note": "Quality: the receipt's own detail, such as Paste with ⌘V., replacing the shelf's separate wording (#165). Runtime label from receipt . detail; no rendered text assumed."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-09d99a85b0f2",
     "surface": "quick panel status rows",
     "label": null,
@@ -923,6 +914,15 @@
     "kind": "status",
     "belongsTo": "dictate",
     "note": "Quality (#134 T5): an undelivered result's title, such as Copy failed or Paste unconfirmed, kept by the delivery owner rather than the receipt. Runtime label from unresolved . title; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-226f79815f30",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "receipt . detail",
+    "kind": "status",
+    "belongsTo": "dictate",
+    "note": "Quality: the receipt's own detail, such as Paste with ⌘V., replacing the shelf's separate wording (#165). Runtime label from receipt . detail; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-81dfc2765d94",
@@ -1430,6 +1430,24 @@
     "note": "Option: Timer tile on Home starts a break; Timer was only a panel row and a Draw tab (#134 W9)."
   },
   {
+    "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "\"Open \\(name)…\"",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Runtime label: Open and the page record's name for the page that shows the message and its recovery in full: Dictate, Read, Models, Snap & Talk, Draw, Present or Persona (#134). Detailed help opens the owning page."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.status.runtime-533012ee421b",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "Self . headline ( message )",
+    "kind": "status",
+    "belongsTo": "app",
+    "note": "Runtime label: the first sentence of what needs attention, a Dictate or Read error, a drawing, scene or persona notice, a Snap & Talk notice or speech that is not ready, in place of the whole message (#134). The whole message is its help text, and its page shows it in full."
+  },
+  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.NativeControlMenu.options",
     "surface": "quick panel annotate options",
     "label": "Options",
@@ -1437,6 +1455,14 @@
     "belongsTo": "draw",
     "aliasOf": "draw",
     "note": "Shared \"Options\" wording for the Draw row; the row owns it."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.ToolbarMenuAction.open-draw",
+    "surface": "quick panel annotate options",
+    "label": "Open Draw…",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Quality: Draw's options end with the one door to its page, as Snap, Present and Persona's do (#134). Its tools and boards stay above it."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
@@ -1597,24 +1623,6 @@
     "belongsTo": "snapAndTalk"
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-30266705ca1c",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "model . modelMessage",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from model . modelMessage; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-9368a7d21e01",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "notice",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from notice; no rendered text assumed."
-  },
-  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-b9f66b1c9f83",
     "surface": "quick panel status rows",
     "label": null,
@@ -1622,15 +1630,6 @@
     "kind": "status",
     "belongsTo": "app",
     "note": "Runtime label from context . activitySummary; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-ca00fccfb408",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "error",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from error; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-timer-options.NativeControlMenu.options",
