@@ -51,6 +51,8 @@ final class PersonaVoiceLatencyTests {
         var gap = 0.06
         /// dB against the phrase's level.
         var emphasis: Float = 0
+        /// A held vowel ("uhhh"): one steady pitch instead of a spoken glide.
+        var held = false
     }
     static let vowels: [(Double, Double, Double)] = [(730, 1_090, 2_440), (270, 2_290, 3_010), (300, 870, 2_240), (530, 1_840, 2_480), (570, 840, 2_410)]
 
@@ -124,6 +126,51 @@ final class PersonaVoiceLatencyTests {
             let floor = roomNoise(count, room)
             samples += zip(tone, floor).map { $0 + $1 }
         }
+        /// A periodic sound that is not speech, over a quiet room: partials at
+        /// `frequencies` with `weights`, shaped by `envelope`. Its loudest 50 ms
+        /// sits at `decibels` dBFS. Returns where it starts and ends.
+        @discardableResult mutating func periodic(_ seconds: Double, _ decibels: Float, room: Float, frequencies: [Double], weights: [Double],
+                                                  envelope: (Double) -> Double) -> Range<Int> {
+            let start = samples.count, count = Int(seconds * rate)
+            var tone = (0..<count).map { index -> Float in
+                let time = Double(index) / rate
+                var value = 0.0
+                for (frequency, weight) in zip(frequencies, weights) { value += weight * sin(2 * .pi * frequency * time) }
+                return Float(value * envelope(time))
+            }
+            let window = Int(0.05 * rate)
+            let loudest = stride(from: 0, to: max(1, count - window), by: window / 2).map { offset in
+                tone[offset..<min(count, offset + window)].reduce(0) { $0 + $1 * $1 } / Float(window)
+            }.max() ?? 1
+            let gain = Self.amplitude(decibels) / max(1e-9, loudest.squareRoot())
+            tone = tone.map { $0 * gain }
+            let floor = roomNoise(count, room)
+            samples += zip(tone, floor).map { $0 + $1 }
+            return start..<start + count
+        }
+        /// A struck chime: inharmonic partials of 880 Hz dying away.
+        @discardableResult mutating func chime(_ decibels: Float, room: Float) -> Range<Int> {
+            periodic(2, decibels, room: room, frequencies: [880, 880 * 2.76, 880 * 5.4], weights: [1, 0.6, 0.35]) { min(1, $0 / 0.002) * exp(-$0 / 0.45) }
+        }
+        /// A notification beep: 1 kHz for a fifth of a second.
+        @discardableResult mutating func beep(_ decibels: Float, room: Float) -> Range<Int> {
+            periodic(0.2, decibels, room: room, frequencies: [1_000], weights: [1]) { min(1, $0 / 0.005, (0.2 - $0) / 0.005) }
+        }
+        /// A held C major chord of rich tones.
+        @discardableResult mutating func chord(_ seconds: Double, _ decibels: Float, room: Float) -> Range<Int> {
+            let roots = [261.63, 329.63, 392.0]
+            let partials = roots.flatMap { root in (1...6).map { root * Double($0) } }
+            let weights = roots.flatMap { _ in (1...6).map { 1 / Double($0) } }
+            return periodic(seconds, decibels, room: room, frequencies: partials, weights: weights) { min(1, $0 / 0.02, (seconds - $0) / 0.05) }
+        }
+        /// A short tune: eight notes of a rich tone, 0.3 s each.
+        @discardableResult mutating func melody(_ decibels: Float, room: Float) -> Range<Int> {
+            let start = samples.count
+            for note in [392.0, 440, 493.88, 523.25, 493.88, 440, 392, 329.63] {
+                periodic(0.3, decibels, room: room, frequencies: (1...6).map { note * Double($0) }, weights: (1...6).map { 1 / Double($0) }) { min(1, $0 / 0.01, (0.3 - $0) / 0.02) }
+            }
+            return start..<samples.count
+        }
         /// Keyboard clicks over a quiet room.
         mutating func typing(_ seconds: Double, quiet: Float, click: Float) {
             let start = samples.count
@@ -169,7 +216,7 @@ final class PersonaVoiceLatencyTests {
                 // The voiced vowel: a buzzing source shaped by three formants.
                 var formants = [Biquad.bandpass(syllable.vowel.0, q: 6, rate: rate), .bandpass(syllable.vowel.1, q: 8, rate: rate), .bandpass(syllable.vowel.2, q: 10, rate: rate)]
                 let count = Int(syllable.seconds * rate)
-                let start = pitch * (1 + 0.08 * sin(Double(index) * 1.7)), end = start * (0.92 + 0.05 * cos(Double(index)))
+                let start = pitch * (1 + 0.08 * sin(Double(index) * 1.7)), end = syllable.held ? start : start * (0.92 + 0.05 * cos(Double(index)))
                 if voicedAt == nil { voicedAt = sound.count }
                 for sample in 0..<count {
                     let progress = Double(sample) / Double(count)
@@ -437,6 +484,98 @@ final class PersonaVoiceLatencyTests {
             XCTAssertTrue(run.loudShareElsewhere <= 0.15, "A usual voice rarely reads as loud (\(run.loudShareElsewhere))")
         }
         print("Voice outline: loud for \(Int((shares.map(\.0).min() ?? 0) * 100))% or more of a raised phrase, at most \(Int((shares.map(\.1).max() ?? 0) * 100))% of usual speech")
+    }
+
+    /// A drawn-out vowel or filler mid-sentence ("sooo", "uhhh") is speech,
+    /// not the room: the outline stays lit through it and the room stays
+    /// well below the voice. Without the ceiling on steady voiced sound, a
+    /// vowel held a second lifted the room to the voice and dimmed it.
+    func testHeldVowelKeepsTheOutlineLit() {
+        for seconds in [0.6, 1.0, 1.5] {
+            var floors: [Float] = []
+            let runs = Self.measured { lead in
+                var fixture = Fixture("held vowel")
+                fixture.room(1 + lead, -62)
+                var held = Syllable(); held.vowel = Self.vowels[0]; held.seconds = seconds; held.held = true; held.gap = 0.06
+                let syllables = Self.sentence(2, seed: 51, gaps: 0.03...0.1) + [held] + Self.sentence(1.5, seed: 52, gaps: 0.03...0.1)
+                fixture.speak(syllables, -28, room: -62)
+                let analyzer = PersonaVoiceAnalyzer(sampleRate: fixture.rate)
+                _ = fixture.samples.withUnsafeBufferPointer { analyzer.process($0) }
+                floors.append(analyzer.noiseFloor)
+                fixture.room(1.5, -62)
+                return fixture
+            }
+            Self.expectTargets("a vowel held \(seconds) s mid-sentence", runs)
+            for run in runs {
+                XCTAssertTrue((run.utterances.first?.litShare ?? 0) >= 0.97, "Lit through a vowel held \(seconds) s (\(run.utterances.first?.litShare ?? 0))")
+            }
+            // The phrase is at -28 dBFS: the room stays well below the voice.
+            XCTAssertTrue(floors.allSatisfy { $0 <= -38 }, "A held vowel does not become the room (\(floors))")
+        }
+    }
+
+    /// Periodic sound that is not speech (a chime, a beep, a held chord, a
+    /// tune) is voiced to the analyser, so it lights the outline as a voice
+    /// would; steady tones are learned as the room, and everything settles.
+    func testChimesBeepsAndMusicLightItOnlyWhileTheySound() {
+        func lit(_ run: Measurement, from: Double, to: Double) -> Double {
+            var total = 0.0, previous: (time: Double, lit: Bool)?
+            let changes = run.transitions.map { ($0.time, $0.state != .quiet) }
+            var state = false
+            for change in changes where change.0 <= to {
+                if let previous, previous.lit { total += max(0, min(change.0, to) - max(previous.time, from)) }
+                previous = (change.0, change.1); state = change.1
+            }
+            if let previous, previous.lit || state { total += max(0, to - max(previous.time, from)) }
+            return total
+        }
+        func settled(_ run: Measurement, after end: Double) -> Double? {
+            guard let last = run.transitions.last else { return 0 }
+            return last.state == .quiet ? max(0, last.time - end) : nil
+        }
+        var report: [String] = []
+        // A chime, alone and after speech.
+        for afterSpeech in [false, true] {
+            var fixture = Fixture("chime")
+            fixture.room(1, -62)
+            if afterSpeech { fixture.speak(Self.sentence(2, seed: 61), -28, room: -62); fixture.room(1, -62) }
+            let chime = fixture.chime(-30, room: -62)
+            fixture.room(1.5, -62)
+            let run = Self.measure(fixture)
+            let start = Double(chime.lowerBound) / fixture.rate, end = start + 2
+            let shown = lit(run, from: start, to: end + 1.5)
+            report.append(String(format: "chime%@ %.2f s", afterSpeech ? " after speech" : "", shown))
+            XCTAssertTrue(shown <= 1.2, "A chime lights it at most briefly (\(shown) s)")
+            XCTAssertTrue(settled(run, after: start) != nil, "After a chime the outline is at rest")
+        }
+        // A beep.
+        var beeps = Fixture("beep"); beeps.room(1, -62); let beep = beeps.beep(-30, room: -62); beeps.room(1.5, -62)
+        let beepRun = Self.measure(beeps)
+        let beepShown = lit(beepRun, from: Double(beep.lowerBound) / 48_000, to: Double(beep.upperBound) / 48_000 + 1.5)
+        report.append(String(format: "beep %.2f s", beepShown))
+        XCTAssertTrue(beepShown <= 0.6, "A beep lights it for a moment (\(beepShown) s)")
+        // A held chord: learned as the room while it sounds, alone or after speech.
+        for afterSpeech in [false, true] {
+            var fixture = Fixture("chord")
+            fixture.room(1, -62)
+            if afterSpeech { fixture.speak(Self.sentence(2, seed: 62), -28, room: -62); fixture.room(1, -62) }
+            let chord = fixture.chord(4, -30, room: -62)
+            fixture.room(1.5, -62)
+            let run = Self.measure(fixture)
+            let start = Double(chord.lowerBound) / fixture.rate
+            let shown = lit(run, from: start, to: start + 4 + 1.5)
+            report.append(String(format: "4 s chord%@ %.2f s", afterSpeech ? " after speech" : "", shown))
+            XCTAssertTrue(lit(run, from: start + 2, to: start + 4) == 0, "A held chord settles to rest while it sounds (\(shown) s lit)")
+            XCTAssertTrue(settled(run, after: start) != nil)
+        }
+        // A tune lights it while it plays, like a voice, and settles after.
+        var tune = Fixture("melody"); tune.room(1, -62); let melody = tune.melody(-30, room: -62); tune.room(1.5, -62)
+        let tuneRun = Self.measure(tune)
+        let tuneEnd = Double(melody.upperBound) / 48_000
+        let tuneShown = lit(tuneRun, from: Double(melody.lowerBound) / 48_000, to: tuneEnd)
+        report.append(String(format: "2.4 s tune %.2f s", tuneShown))
+        XCTAssertTrue(settled(tuneRun, after: tuneEnd).map { $0 <= 0.5 } ?? false, "After a tune it settles within half a second")
+        print("Voice outline, periodic sound that is not speech, lit for: " + report.joined(separator: "; "))
     }
 
     /// The outline's state never waits on the display: a delivery lights it
