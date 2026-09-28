@@ -82,6 +82,9 @@ final class PersonaShownTests {
         return Fixture(root: root, library: library, voice: voice, a: a, b: b, c: c, first: first, second: second)
     }
     private func cleanup(_ f: Fixture) { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
+    /// Window frames are whole points, so a kept centre can differ by up to a
+    /// couple of points on some displays; a moved copy is off by far more.
+    private let rounding = 2.0
     /// The one floating card's own window, found by title; only this process's windows are read.
     private func cardWindow() -> NSWindow? { NSApp.windows.first { $0.title == "Workbench persona" && $0.isVisible } }
     private func titles(_ menu: NSMenu) -> [String] { menu.items.flatMap { [$0.title] + ($0.submenu.map(titles) ?? []) } }
@@ -148,8 +151,8 @@ final class PersonaShownTests {
         XCTAssertTrue(f.library.overlayLocked)
         XCTAssertTrue(f.library.overlayVisible)
         if let after = cardWindow()?.frame {
-            XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: 1)
-            XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: 1, file: #filePath, line: #line)
+            XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: rounding)
+            XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: rounding, file: #filePath, line: #line)
         } else { XCTAssertTrue(false, "B shows in A's place") }
         XCTAssertTrue(f.library.replacementForShown == nil)
         f.library.stepLivePersona(1)
@@ -277,8 +280,8 @@ final class PersonaShownTests {
         XCTAssertEqual(f.library.sessionState.instances.map(\.personaID), [f.a.id, f.b.id])
         if let after = panels[1].visibleFrame {
             XCTAssertEqual(Double(after.width / after.height), 1, accuracy: 0.01)
-            XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: 1)
-            XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: 1, file: #filePath, line: #line)
+            XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: rounding)
+            XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: rounding, file: #filePath, line: #line)
             XCTAssertTrue(panels[1].window?.ignoresMouseEvents == true, "The replacement keeps the copy's lock")
         } else { XCTAssertTrue(false, "The replacement shows in the copy's place") }
         XCTAssertTrue(updatedImage(f.library, 0) === updated[0].image, "The updated copy is unchanged by the replacement")
