@@ -79,9 +79,11 @@ final class CaptureHUDControls: ObservableObject {
     }
     /// The result was resolved, dismissed or expired: the open row goes back to the launcher row.
     func resultEnded() { if revealsResult { revealsResult = false } }
-    /// A row kept open by Keep open alone, with no pointer or hold on it, shows a new result in
-    /// its place, as it did before the compact rest: nobody is using the row, and a kept-open
-    /// toolbar has no rest to show the status on. The host sizes the window afterwards.
+    /// A row kept open by Keep open alone shows a new result in its place, as the dictation
+    /// panel did: Keep open is the person's choice of persistent controls, and there is no rest to
+    /// show the status on. Only while no pointer is on it and nothing holds it, a menu or the
+    /// chooser included; the host also waits for Position… to close. It never activates Workbench,
+    /// takes the keyboard or moves the anchor: the host sizes the window from the same centre.
     func showResultIfKeptOpen() {
         let state = toolbar.state
         guard !revealsResult, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside, state.holds.isEmpty,
@@ -286,6 +288,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.cancelDragging(); self?.chooser.close(); self?.position() }
             .store(in: &observations)
+        // A result waiting on a kept-open row shows once its pointer, holds and popovers let go.
+        controls.toolbar.$state.receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in
+                guard let self, let model, !self.controls.revealsResult, FloatingResult.pending(model) != nil else { return }
+                self.update(model: model)
+            }
+            .store(in: &observations)
         // The coaching card (#134 T5): this host says when one may show, shows a pending one above
         // its place and reports it presented, and takes it down when it goes. A narration
         // starting takes it down too; a new dictation already does, through its owner.
@@ -331,8 +340,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             if surface == .tools { controls.toolbar.activate() }
             else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
-        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
-        if FloatingResult.pending(model) == nil { controls.resultEnded() } else { controls.showResultIfKeptOpen() }
+        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4),
+        // or, in a row kept open by Keep open alone, takes its place once nothing is using it.
+        if FloatingResult.pending(model) == nil { controls.resultEnded() }
+        else if !chooser.isShown && !positionControl.isShown { controls.showResultIfKeptOpen() }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging(); updateCoach()
             return
@@ -722,6 +733,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             reset: { [weak self] in self?.choosePosition(.bottom) },
             closed: { [weak self] reason in
                 onClose?()
+                if let self, let model = self.model { self.update(model: model) }
                 guard reason.returnsKeyboard(openedFromKeyboard: fromKeyboard) else { return }
                 self?.returnKeyboardToToolbar(target: target)
             })

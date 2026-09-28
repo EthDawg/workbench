@@ -1405,6 +1405,20 @@ enum SurfaceGallery {
             host.window?.frame.size == row ? nil : "the open row changed size for the failure"])
         collapse()
         model.dismissCaptureFailure(); settle(.resting)
+        // A row kept open by Keep open alone shows a new result in its place, but never while a
+        // hold is on it: the result waits until the hold lets go, then grows from the same centre.
+        controls.toolbar.send(.keepOpenChanged(true)); settle(.revealed)
+        reveal()
+        let keptRow = host.window?.frame.size ?? .zero
+        model.captureFailure = failure
+        settle(.revealed)
+        expect("A failure arriving while a kept-open row is held", [controls.revealsResult ? "the kept-open row swapped while a hold was on it" : nil,
+            host.window?.frame.size == keptRow ? nil : "the held row changed size for the failure"])
+        collapse(); settle(.revealed)
+        expect("The kept-open row once the hold lets go", [controls.revealsResult ? nil : "the kept-open row never showed the waiting failure",
+            grewFromTheCentre("the kept-open failure")])
+        model.dismissCaptureFailure()
+        controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
         model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                      wasPasted: false, destinationName: nil), wordCount: 12)
         expect("A new receipt, at rest", rests("with a new receipt", .pendingDelivery))

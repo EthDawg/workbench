@@ -58,13 +58,20 @@ the × whose ring counts its own eight seconds (four after a confirmed paste),
 held by the pointer or the pin. At rest a result is only the mark's warning or
 clipboard status. Revealing the toolbar shows the result's view in place of the
 row, grown inward from the same centre; a result that arrives while the row is
-open waits for the next reveal rather than replacing the row under the pointer,
-except in a row kept open by Keep open alone, which has no rest to show it on.
+open waits for the next reveal rather than replacing the row under the pointer.
 Revealing, collapsing or choosing a tool never acknowledges, dismisses or retries
 it. This is the chosen reading of the contract, which prefers recovery commands
 in More and warns against squeezing an editor into the row: a failure's reason
 and a receipt's text are content, not only commands, and the receipt's ring
-needs its view. A delivery that did not finish stays after its receipt has gone
+needs its view.
+
+One exception, also chosen: a row held open by Keep open alone shows a new result
+in its place, as the dictation panel did, because Keep open is the person's choice
+of persistent controls and there is no rest to show the status on. It does so only
+while no pointer is on the toolbar and nothing holds it, no menu, chooser or
+Position… included; until then the result waits as a status. It never activates
+Workbench, takes the keyboard or moves the anchor, and it grows from the same
+centre. A delivery that did not finish stays after its receipt has gone
 (#134 T5): the mark keeps its warning, and More opens with the result's own title,
 Copy again where it cannot lead to a second insertion, and Dismiss.
 
@@ -522,7 +529,8 @@ The same host then carries dictation, its processing and its results, docked at
 bottom centre (#134 T4). Dictating and transcribing must rest as the 48 × 28 mark
 on the launcher's centre with their statuses; a new failure or receipt must change
 only the mark's status, reveal its own controls grown from the same centre, and
-survive a collapse, and one that arrives while the row is open must wait; the
+survive a collapse, and one that arrives while the row is open must wait, a kept-open
+row too while a hold is on it, until it lets go; the
 no-speech cue must show at the toolbar's place and give way to the mark; a Stop
 pressed through the recording's completion must start nothing; and the coaching
 card must sit 12 points above the mark, or below it at a top dock, centred on the
