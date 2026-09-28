@@ -219,18 +219,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+        // Each row acts on its own next action: Present ends, Persona hides,
+        // Timer stops. None of them hands you to the toolbar.
+        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
             guard let self else { return }
             if self.stage.isDrawing { self.stage.finishDrawing() }
             else { self.resumeTarget { [weak self] _ in self?.stage.draw() } }
-        }, snap: { [weak self] in self?.toolbarSnap() }, present: { [weak self] in
-            guard let self else { return }
-            if self.stage.isPresenting { self.closeControls(); self.capturePanel.focusToolbar() }
-            else { self.closeControls(); self.stage.presentSelectedScene() }
-        }, timer: { [weak self] in self?.closeControls(); self?.stage.showTimer() }, personas: { [weak self] in
+        }, snap: { [weak self] in self?.toolbarSnap() }, snapCapture: { [weak self] mode in self?.toolbarSnapCapture(mode) }, present: { [weak self] in
             guard let self else { return }
             self.closeControls()
-            if self.stage.hasActivePersona { self.capturePanel.focusToolbar() } else { self.stage.togglePersona() }
+            if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
+        }, timer: { [weak self] in
+            guard let self else { return }
+            self.closeControls()
+            if self.stage.hasTimerSession { self.stage.stopTimer() } else { self.stage.startTimer() }
+        }, personas: { [weak self] in
+            guard let self else { return }
+            self.closeControls(); self.stage.togglePersona()
         }))
         quickController.sizingOptions = [.preferredContentSize]
         popover.contentViewController = quickController
@@ -277,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 if self.stage.isPresenting { self.stage.endDeviceScene() }
                 else { self.stage.presentSelectedScene() }
             }
+            else if down, id == 8 { self.toolbarSnapCapture() }
             else if down, id == 5 {
                 self.readback.refreshPermissionState()
                 if self.readback.sessionURL == nil {
@@ -494,10 +500,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
     /// used mode, so the toolbar captures a region.
-    func toolbarSnapCapture() {
+    func toolbarSnapCapture(_ mode: SnapCapture.Mode = .region) {
         model.toolbarMode = .snap
         closeControls()
-        Task { await snap.capture(.region) }
+        Task { await snap.capture(mode) }
     }
     func toolbarSnap() {
         if readback.isRecording { readback.stopNarration(); return }
@@ -630,7 +636,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
     func voiceShortcutEntries() -> [ShortcutEntry] {
-        [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk"), (UInt32(6), "Read"), (UInt32(7), "Present")].map { id, title in
+        [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk"), (UInt32(6), "Read"), (UInt32(7), "Present"), (UInt32(8), "Snap")].map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
         }
     }
