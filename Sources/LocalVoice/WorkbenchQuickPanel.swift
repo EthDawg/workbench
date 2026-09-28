@@ -33,17 +33,27 @@ struct WorkbenchQuickPanel: View {
             readback.notice != nil || (model.phase == .idle && !model.ready)
     }
 
+    /// The panel's width and inset (#134).
+    static let width: CGFloat = 320, inset: CGFloat = 12
+
+    /// One header: the name, and the floating toolbar's one switch at top right (#134). The
+    /// switch is the same preference as Settings, the Window menu and the toolbar's Hide toolbar.
+    /// The header's text takes one scale, the panel's text size: its labels are fixed point sizes
+    /// today, so it is 1, and at a larger scale the switch row grows with its words while staying
+    /// at least 32 points high.
+    static func header(toolbarVisible: Binding<Bool>, textScale: CGFloat = 1) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text("Workbench").font(.system(size: 13 * textScale, weight: .semibold))
+            Spacer(minLength: 8)
+            PanelSwitch(title: "Floating toolbar", isOn: toolbarVisible, help: WorkbenchHome.floatingToolbarHelp, textScale: textScale)
+                .fixedSize()
+        }
+    }
+
     var body: some View {
         let state = context.state
         VStack(alignment: .leading, spacing: 10) {
-            // One header: the name, and the floating toolbar's one switch at top right (#134). It is
-            // the same preference as Settings, the Window menu and the toolbar's Hide toolbar.
-            HStack(alignment: .center, spacing: 8) {
-                Text("Workbench").font(.system(size: 13, weight: .semibold))
-                Spacer(minLength: 8)
-                PanelSwitch(title: "Floating toolbar", isOn: $model.floatingToolbarVisible, help: WorkbenchHome.floatingToolbarHelp)
-                    .fixedSize()
-            }
+            Self.header(toolbarVisible: $model.floatingToolbarVisible)
             Divider()
             VStack(spacing: 2) {
                 ForEach(WorkbenchControlTool.allCases) { tool in
@@ -103,7 +113,7 @@ struct WorkbenchQuickPanel: View {
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
-        }.padding(12).frame(width: 320).fixedSize(horizontal: false, vertical: true)
+        }.padding(Self.inset).frame(width: Self.width).fixedSize(horizontal: false, vertical: true)
             .tint(Workbench.accent).workbenchTheme()
     }
 
@@ -323,6 +333,8 @@ struct PanelSwitch: NSViewRepresentable {
     var title: String
     @Binding var isOn: Bool
     var help: String
+    /// The words' scale: the panel's text size, 1 at 11 points.
+    var textScale: CGFloat = 1
     func makeNSView(context: Context) -> Row {
         let row = Row(title: title, help: help)
         row.control.target = context.coordinator
@@ -331,7 +343,7 @@ struct PanelSwitch: NSViewRepresentable {
     }
     func updateNSView(_ row: Row, context: Context) {
         context.coordinator.isOn = $isOn
-        row.update(title: title, help: help)
+        row.update(title: title, help: help, textScale: textScale)
         row.control.state = isOn ? .on : .off
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView row: Row, context: Context) -> CGSize? { row.fittingSize }
@@ -367,8 +379,9 @@ struct PanelSwitch: NSViewRepresentable {
             update(title: title, help: help)
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        func update(title: String, help: String) {
+        func update(title: String, help: String, textScale: CGFloat = 1) {
             label.text = title
+            label.scale = textScale
             control.setAccessibilityLabel(title)
             control.setAccessibilityHelp(help)
             toolTip = help
@@ -386,12 +399,15 @@ struct PanelSwitch: NSViewRepresentable {
         }
     }
 
-    /// The row's words in 11 point secondary text, drawn by the view so a layer render shows
-    /// them as the screen does (it draws an NSTextField's text twice). Not an accessibility
-    /// element: the switch carries the name.
+    /// The row's words in 11 point secondary text at the panel's text scale, drawn by the view so
+    /// a layer render shows them as the screen does (it draws an NSTextField's text twice). Not an
+    /// accessibility element: the switch carries the name.
     final class Words: NSView {
-        var text = "" { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
-        private var attributes: [NSAttributedString.Key: Any] { [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor] }
+        var text = "" { didSet { if text != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true } } }
+        var scale: CGFloat = 1 { didSet { if scale != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true } } }
+        private var attributes: [NSAttributedString.Key: Any] {
+            [.font: NSFont.systemFont(ofSize: 11 * scale), .foregroundColor: NSColor.secondaryLabelColor]
+        }
         override var intrinsicContentSize: NSSize {
             let size = (text as NSString).size(withAttributes: attributes)
             return NSSize(width: ceil(size.width), height: ceil(size.height))

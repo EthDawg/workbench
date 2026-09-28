@@ -275,6 +275,8 @@ enum SurfaceGallery {
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
+        let header = try renderPanelHeaderLargerText(to: output)
+        panels.append(header.shot)
         panels += try renderFloatingStates(to: output)
         let (hostShots, host) = try renderToolbarHost(to: output)
         let toolbar = hostShots + [try renderChooser(to: output), try renderPositionControl(to: output)]
@@ -303,7 +305,7 @@ enum SurfaceGallery {
         if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)] }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
-        let checks = try review.checks + checkToolbarVisibility()
+        let checks = try review.checks + checkToolbarVisibility() + header.checks
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
@@ -748,8 +750,7 @@ enum SurfaceGallery {
         // The header's whole switch row is one control (#134 review): a click on the words, beside
         // them, above or below them or on the switch toggles once, and a click just outside the
         // 32 point row lands elsewhere. Each click goes to the view AppKit's hit test picks.
-        func rows(in view: NSView) -> [PanelSwitch.Row] { (view as? PanelSwitch.Row).map { [$0] } ?? view.subviews.flatMap(rows) }
-        guard let row = rows(in: panelHost).first, row.bounds.height >= PanelSwitch.Row.minimumHeight else {
+        guard let row = Self.panelSwitchRows(in: panelHost).first, row.bounds.height >= PanelSwitch.Row.minimumHeight else {
             throw VoiceError.message("The panel header's Floating toolbar row is missing or shorter than \(Int(PanelSwitch.Row.minimumHeight)) points.")
         }
         let root = panelHost.superview ?? panelHost, control = row.control
@@ -794,6 +795,53 @@ enum SurfaceGallery {
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
                 "The toolbar's More › Hide toolbar sets the same saved preference; which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+    }
+
+    /// The panel header's switch rows under `view`.
+    static func panelSwitchRows(in view: NSView) -> [PanelSwitch.Row] {
+        (view as? PanelSwitch.Row).map { [$0] } ?? view.subviews.flatMap(panelSwitchRows)
+    }
+
+    /// The panel header at 1.35 times the text size (#134 H3): the name and the Floating toolbar
+    /// row take one scale, and the row grows with its words while staying at least 32 points high
+    /// and inside the panel's width. The row's height is also checked at 1 and 3 times, where
+    /// its words are taller than 32 points.
+    func renderPanelHeaderLargerText(to output: URL) throws -> (shot: SurfaceGallery.Shot, checks: [String]) {
+        func hosted<Content: View>(_ content: Content) -> (NSHostingView<AnyView>, NSWindow) {
+            let host = NSHostingView(rootView: AnyView(content.background(Color(nsColor: .windowBackgroundColor))))
+            let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
+            window.contentView = host
+            window.setContentSize(host.fittingSize)
+            settle(host, seconds: 0.1)
+            return (host, window)
+        }
+        var widths: [CGFloat] = []
+        for scale: CGFloat in [1, 1.35, 3] {
+            let (host, window) = hosted(PanelSwitch(title: "Floating toolbar", isOn: .constant(true), help: WorkbenchHome.floatingToolbarHelp,
+                                                    textScale: scale).fixedSize())
+            defer { window.contentView = nil; window.close() }
+            guard let row = Self.panelSwitchRows(in: host).first else { throw VoiceError.message("The Floating toolbar row did not draw.") }
+            let words = row.label.intrinsicContentSize.height, tallest = max(PanelSwitch.Row.minimumHeight, words, row.control.fittingSize.height)
+            guard abs(row.bounds.height - tallest) < 0.5, row.label.frame.minY >= -0.5, row.label.frame.maxY <= row.bounds.height + 0.5 else {
+                throw VoiceError.message("At \(scale) times the text size the Floating toolbar row is \(row.bounds.height) points high for words \(words) high.")
+            }
+            widths.append(row.bounds.width)
+        }
+        guard widths[0] < widths[1], widths[1] < widths[2] else { throw VoiceError.message("The Floating toolbar row did not widen with its words: \(widths).") }
+        let scale: CGFloat = 1.35
+        let (host, window) = hosted(WorkbenchQuickPanel.header(toolbarVisible: .constant(true), textScale: scale)
+            .padding(WorkbenchQuickPanel.inset).frame(width: WorkbenchQuickPanel.width))
+        defer { window.contentView = nil; window.close() }
+        guard let row = Self.panelSwitchRows(in: host).first else { throw VoiceError.message("The panel header did not draw its switch row.") }
+        let frame = row.convert(row.bounds, to: host)
+        guard frame.height >= PanelSwitch.Row.minimumHeight, frame.minX >= WorkbenchQuickPanel.inset - 0.5,
+              frame.maxX <= WorkbenchQuickPanel.width - WorkbenchQuickPanel.inset + 0.5 else {
+            throw VoiceError.message("At \(scale) times the text size the Floating toolbar row leaves the panel's width: \(frame).")
+        }
+        let shot = try save(try snapshot(host), id: "header-larger-text", title: "Panel header, 1.35 times the text size",
+                            detail: "The name and the Floating toolbar row take the panel's one text scale: the row widens with its words, stays 32 points high and fits the panel's 320 points.",
+                            file: "panel-header-larger-text-\(theme).png", to: output)
+        return (shot, ["The panel header's Floating toolbar row is exactly as tall as the taller of 32 points and its words at 1, 1.35 and 3 times the text size (\(widths.map { String(Int($0.rounded())) }.joined(separator: ", ")) points wide), and at 1.35 times it fits inside the panel's 320 points."])
     }
 
     /// A click delivered straight to the view AppKit's hit test picked: the gallery's windows are
