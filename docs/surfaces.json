@@ -1412,6 +1412,24 @@
     "note": "Option: Timer tile on Home starts a break; Timer was only a panel row and a Draw tab (#134 W9)."
   },
   {
+    "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "\"Open \\(name)…\"",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Runtime label: Open and the page record's name for the page that shows the message and its recovery in full: Dictate, Read, Models, Snap & Talk, Draw, Present or Persona (#134). Detailed help opens the owning page."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.status.runtime-533012ee421b",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "Self . headline ( message )",
+    "kind": "status",
+    "belongsTo": "app",
+    "note": "Runtime label: the first sentence of what needs attention, a Dictate or Read error, a drawing, scene or persona notice, a Snap & Talk notice or speech that is not ready, in place of the whole message (#134). The whole message is its help text, and its page shows it in full."
+  },
+  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.NativeControlMenu.options",
     "surface": "quick panel annotate options",
     "label": "Options",
@@ -1419,6 +1437,14 @@
     "belongsTo": "draw",
     "aliasOf": "draw",
     "note": "Shared \"Options\" wording for the Draw row; the row owns it."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.ToolbarMenuAction.open-draw",
+    "surface": "quick panel annotate options",
+    "label": "Open Draw…",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Quality: Draw's options end with the one door to its page, as Snap, Present and Persona's do (#134). Its tools and boards stay above it."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
@@ -1579,24 +1605,6 @@
     "belongsTo": "snapAndTalk"
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-30266705ca1c",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "model . modelMessage",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from model . modelMessage; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-9368a7d21e01",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "notice",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from notice; no rendered text assumed."
-  },
-  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-b9f66b1c9f83",
     "surface": "quick panel status rows",
     "label": null,
@@ -1604,15 +1612,6 @@
     "kind": "status",
     "belongsTo": "app",
     "note": "Runtime label from context . activitySummary; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-ca00fccfb408",
-    "surface": "quick panel status rows",
-    "label": null,
-    "expression": "error",
-    "kind": "status",
-    "belongsTo": "app",
-    "note": "Runtime label from error; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-timer-options.NativeControlMenu.options",

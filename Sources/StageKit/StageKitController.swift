@@ -205,7 +205,10 @@ public final class StageKitController: ObservableObject {
     /// One native menu for the application menu bar or the shell's status menu.
     /// It refreshes tool state and shortcut labels whenever it opens; StageKit
     /// continues to own all drawing actions and their existing global keys.
-    public func makeAnnotationMenu(includeSettings: Bool = true) -> NSMenu { AnnotationMenu(coordinator: coordinator, includeSettings: includeSettings) }
+    /// Without its settings item, a caller may end the menu with its own items, built each time it opens.
+    public func makeAnnotationMenu(includeSettings: Bool = true, trailing: (() -> [NSMenuItem])? = nil) -> NSMenu {
+        AnnotationMenu(coordinator: coordinator, includeSettings: includeSettings, trailing: trailing)
+    }
     /// Opens an existing-scene choice followed by the ordinary backdrop preview.
     /// The caller presents this as a sheet; no scene changes until Use backdrop.
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {
@@ -237,6 +240,16 @@ public final class StageKitController: ObservableObject {
     public var notice: String? {
         let personas = coordinator.demoScenes.personas
         return coordinator.notice ?? coordinator.settings.notice ?? personas.cardFeedback ?? coordinator.demoScenes.notice ?? personas.notice
+    }
+    /// The page that shows `notice` in full, in the same order: drawing and its settings on Draw,
+    /// a card or persona on Persona, a scene on Present. A surface with room for one sentence
+    /// opens it for the rest (#134).
+    public var noticePage: StageNoticePage? {
+        let personas = coordinator.demoScenes.personas
+        if coordinator.notice != nil || coordinator.settings.notice != nil { return .draw }
+        if personas.cardFeedback != nil { return .persona }
+        if coordinator.demoScenes.notice != nil { return .present }
+        return personas.notice != nil ? .persona : nil
     }
 
     public func start() {
@@ -373,3 +386,6 @@ private struct PhotoBackdropChooser: View {
         }.onDisappear { draft?.cancel() }
     }
 }
+
+/// Where a StageKit notice is shown in full.
+public enum StageNoticePage: Sendable { case draw, present, persona }

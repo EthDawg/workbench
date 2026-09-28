@@ -63,6 +63,11 @@ enum WorkbenchPageChecks {
         try check(WorkbenchHome.name(of: "shortcuts") == "Keyboard" && WorkbenchHome.name(of: "models") == "Models" && WorkbenchHome.name(of: "packs") == "Packs",
                   "sections are named by the record")
         try check(WorkbenchHome.name(of: "meeting") == "Transcribe meeting or call", "the meeting page keeps its Grammar workflow name")
+        // The menu-bar panel's recovery says one sentence and opens the page that says the rest.
+        try check(PanelRecoveryRow.headline("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.") == "Microphone access is off.",
+                  "a recovery row keeps only the first sentence")
+        try check(PanelRecoveryRow.headline("Preparing speech · first setup may take a few minutes") == "Preparing speech · first setup may take a few minutes",
+                  "a one-sentence message is shown whole")
         print("WORKBENCH_PAGE_CHECKS_OK: \(passed) checks; \(pages.count) sidebar pages, \(WorkbenchHome.sections.count) sections and every older route")
     }
 }
