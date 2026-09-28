@@ -142,6 +142,13 @@ final class ToolbarGalleryTests: XCTestCase {
         }
     }
 
+    /// A result waiting for the person is reviewed as keyboard entry shows it: the launcher row,
+    /// revealed, carrying the result's status (#211 F1).
+    func testAWaitingResultIsReviewedOnTheLauncherRow() {
+        XCTAssertEqual(ToolbarGallery.waiting.map(\.tier), [.revealed, .revealed])
+        XCTAssertEqual(ToolbarGallery.waiting.map(\.status.indicator), [.failure, .pendingDelivery])
+    }
+
     /// The row is a glance, not a sentence. The label budget is the next action's.
     func testEveryLabelStaysAGlance() {
         for state in ToolbarGallery.states {

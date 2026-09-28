@@ -64,9 +64,11 @@ clipboard status. The pointer's reveal, a dwell or a click on the mark, shows th
 result's view in place of the row, grown inward from the same centre; a result
 that arrives while the row is open waits for the next reveal rather than replacing
 the row under the pointer. Keyboard entry, Window › Focus floating toolbar,
-reveals the launcher row instead, with the launcher focused, and More opens with
-the result's own section: its title, a failure's reason, and Copy again, Retry,
-Record again, Open Workbench, Review and Dismiss as its view offers them (#211). A
+reveals the launcher row instead, with the launcher focused and keeping the
+result's status, the mark's glyph as a badge on the tool's symbol and its words in
+VoiceOver's value, and More opens with the result's own section: its title, a
+failure's reason, and Copy again, Retry, Record again, Open Workbench, Review and
+Dismiss as its view offers them (#211). A
 result's view takes the keyboard on its first command when the keyboard comes to
 it, and Escape leaves from it as from the row. At a right-hand dock a result grows
 leftward from the mark, so each result is mirrored there: its words, and a

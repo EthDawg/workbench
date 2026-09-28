@@ -178,6 +178,14 @@ public struct ToolbarRow: View {
                     } else {
                         Image(systemName: state.mode.symbol).font(.system(size: 15 * scale, weight: .medium))
                             .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
+                            .overlay(alignment: .topTrailing) {
+                                // A waiting result keeps its status on the launcher while the row is
+                                // open, the mark's glyph as a badge on the tool's symbol (#211 F1).
+                                if let glyph = ToolbarResultGlyph(state.status.indicator) {
+                                    Image(systemName: glyph.name).font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(glyph.color)
+                                        .offset(x: 5 * scale, y: -4 * scale)
+                                }
+                            }
                         Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(.secondary)
                     }
                 }
@@ -226,9 +234,8 @@ public struct ToolbarCompactMark: View {
         case .capture: ToolbarCaptureSignal(status: status, accent: accent)
         case .playback: symbol("speaker.wave.2.fill", accent)
         case .processing: symbol("ellipsis", Color.secondary)
-        case .failure: symbol("exclamationmark.triangle.fill", Color.orange)
-        case .pendingDelivery: symbol("doc.on.clipboard", Color.primary)
-        case .unsavedCapture: symbol("pencil", Color.primary)
+        case .failure, .pendingDelivery, .unsavedCapture:
+            if let glyph = ToolbarResultGlyph(status.indicator) { symbol(glyph.name, glyph.color) }
         case .paused: symbol("pause.fill", Color.secondary)
         case .live(let work): symbol(work.symbol, accent)
         }
@@ -237,6 +244,21 @@ public struct ToolbarCompactMark: View {
     private func symbol(_ name: String, _ style: Color) -> some View {
         Image(systemName: name).font(.system(size: 9, weight: .semibold)).foregroundStyle(style)
             .frame(width: ToolbarLayout.statusHeight, height: ToolbarLayout.statusHeight)
+    }
+}
+
+/// A waiting result's glyph: a failure's warning, a result waiting to be delivered, or an unsaved
+/// capture. The compact mark shows it at rest, and the launcher as a badge while the row is open.
+struct ToolbarResultGlyph {
+    let name: String
+    let color: Color
+    init?(_ indicator: ToolbarStatus.Indicator) {
+        switch indicator {
+        case .failure: (name, color) = ("exclamationmark.triangle.fill", .orange)
+        case .pendingDelivery: (name, color) = ("doc.on.clipboard", .primary)
+        case .unsavedCapture: (name, color) = ("pencil", .primary)
+        default: return nil
+        }
     }
 }
 
@@ -400,11 +422,14 @@ private struct ToolbarLauncher: NSViewRepresentable {
     }
     func updateNSView(_ view: LauncherButton, context: Context) {
         view.setAccessibilityLabel("Tool: " + state.mode.title)
-        view.setAccessibilityValue(state.status.indicator == .capture ? state.launcherDescription + ". " + state.status.spokenValue
-                                                                        : state.launcherDescription)
+        // A recording, and a result waiting for the person, keep their words on the launcher while
+        // the row is open, as the mark carries them at rest (#134 T4, #211 F1).
+        let status = state.status.indicator == .capture || ToolbarResultGlyph(state.status.indicator) != nil
+        view.setAccessibilityValue(status ? state.launcherDescription + ". " + state.status.spokenValue : state.launcherDescription)
         view.setAccessibilityHelp("Choose a tool")
         view.setAccessibilityIdentifier("toolbar.launcher")
-        view.toolTip = state.launcherDescription + ". Click to choose a tool; drag to move."
+        view.toolTip = (status ? state.launcherDescription + ". " + state.status.description : state.launcherDescription)
+            + ". Click to choose a tool; drag to move."
         view.escape = escape; view.drag = drag
         view.open = { [weak view] in if let view { open(view) } }
         view.options = { [weak view] in if let view { options(view) } }

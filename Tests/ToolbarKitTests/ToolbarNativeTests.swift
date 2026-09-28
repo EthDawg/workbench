@@ -109,6 +109,41 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertLessThan(warning.orange.minY, (ToolbarLayout.mark.height - ToolbarLayout.statusHeight) / 2 + 1, "the warning sits on the capsule's corner")
     }
 
+    /// A result waiting for the person keeps its status on the launcher while the row is open
+    /// (#211 F1): the mark's glyph as a badge on the tool's symbol, and its words in VoiceOver's
+    /// value and the tooltip. With nothing waiting, nothing is added.
+    @MainActor func testTheLauncherKeepsAWaitingResultsStatus() throws {
+        _ = NSApplication.shared
+        func launcher(_ activity: ToolbarActivity) throws -> (button: NSButton, orange: Int) {
+            let state = ToolbarViewState(name: "waiting", tier: .revealed, mode: .dictate, status: .resolve(activity))
+            let view = NSHostingView(rootView: ToolbarRow(state: state).environment(\.colorScheme, .light))
+            view.frame = NSRect(origin: .zero, size: view.fittingSize)
+            view.layoutSubtreeIfNeeded()
+            let button = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+            let frame = button.convert(button.bounds, to: view)
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let perPoint = CGFloat(bitmap.pixelsWide) / view.bounds.width
+            var orange = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide where (frame.minX..<frame.maxX).contains(CGFloat(x) / perPoint) {
+                    guard let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), colour.alphaComponent > 0.2 else { continue }
+                    if colour.redComponent > 0.8, (0.3...0.75).contains(colour.greenComponent), colour.blueComponent < 0.35 { orange += 1 }
+                }
+            }
+            return (button, orange)
+        }
+        let failure = try launcher(ToolbarActivity(failure: true))
+        XCTAssertGreaterThan(failure.orange, 0, "the warning is drawn on the launcher")
+        XCTAssertEqual(failure.button.accessibilityValue() as? String, "Dictate. Needs attention")
+        XCTAssertEqual(failure.button.toolTip, "Dictate. Needs attention. Click to choose a tool; drag to move.")
+        let receipt = try launcher(ToolbarActivity(pendingDelivery: true))
+        XCTAssertEqual(receipt.button.accessibilityValue() as? String, "Dictate. Result waiting to be delivered")
+        let idle = try launcher(.idle)
+        XCTAssertEqual(idle.orange, 0, "with nothing waiting, no badge")
+        XCTAssertEqual(idle.button.accessibilityValue() as? String, "Dictate")
+    }
+
     /// The standard row is 248 points, 340 with its accessory, at standard text.
     @MainActor func testTheStandardRowWidths() {
         _ = NSApplication.shared

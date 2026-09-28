@@ -131,6 +131,13 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .dictate, reading: .paused), name: "reading-paused-in-dictate")
     ]
 
+    /// A result waiting for the person, revealed from the keyboard (#211 F1): the launcher row, not
+    /// the result's own view, with the result's status as a badge on the launcher.
+    public static let waiting: [ToolbarViewState] = [
+        live(ToolbarLiveState(mode: .dictate), name: "waiting-failure", activity: ToolbarActivity(failure: true)),
+        live(ToolbarLiveState(mode: .present), name: "waiting-receipt", activity: ToolbarActivity(pendingDelivery: true))
+    ]
+
     /// The compact rest in each indicator (#134), in priority order: capture with its level,
     /// capture in silence, capture with a job that needs attention, playback, processing,
     /// failure, a pending result, an unsaved capture, paused work and other live work.
@@ -159,5 +166,5 @@ public enum ToolbarGallery {
     ]
 
     /// Everything, in a stable order.
-    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + statuses
+    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + waiting + statuses
 }
