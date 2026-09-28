@@ -261,7 +261,7 @@ struct HistoryView: View {
                 matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
                 resultText: { jobs.files($0)?.inputs.task ?? "" })
         }
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             header
             runningTask
             notices
@@ -290,7 +290,7 @@ struct HistoryView: View {
                 }
             }
             footer(shown: Set(entries.map(\.id)), stores: stores)
-        }.padding(32)
+        }.padding(Workbench.pagePadding)
             .sheet(item: $snap.draft) { draft in SnapEditorView(model: snap, draft: draft) }
             .sheet(isPresented: $showingConnections) {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to History") { showingConnections = false }
@@ -321,12 +321,7 @@ struct HistoryView: View {
     /// The title and Connections, which opens the provider settings over
     /// History so a Ready or failed task can be started without leaving it.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("History").font(.largeTitle.weight(.semibold))
-                Text("What you dictated, snapped and handed off, newest first.").foregroundStyle(.secondary)
-            }
-            Spacer()
+        WorkbenchPageHeader("history", summary: "What you dictated, snapped and handed off, newest first.") {
             Button("Connections…") { showingConnections = true }
         }
     }

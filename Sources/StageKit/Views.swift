@@ -52,24 +52,27 @@ struct ControlCenter: View {
                         ForEach(tabs.filter { $0.0 != "Shortcuts" }, id: \.0) { title, _ in
                             Text(title == "Present" ? "Overview" : title).tag(title)
                         }
-                    }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 28).padding(.top, 18)
+                    // Below Workbench's page title, left-aligned as Library's and Settings' switchers are (#134).
+                    }.pickerStyle(.segmented).labelsHidden().fixedSize().frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24).padding(.top, 16)
                         .onChange(of: app.selectedTab) { _, value in
                             app.finishRecording()
                             if value == "Shortcuts" { app.selectedTab = "Drawing"; app.onOpenShortcuts?() }
                         }
                 }
                 HStack {
-                    Text(app.embedded && app.selectedTab == "Present" ? "Drawing & presentation" : app.selectedTab).font(.system(size: 14, weight: .semibold))
+                    Text(app.embedded && app.selectedTab == "Present" ? "Drawing & presentation" : app.selectedTab).font(.body.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
                     Spacer()
                     Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") }
                     HStack(spacing: 6) {
                         Circle().fill(inkAccent).frame(width: 6, height: 6)
                         Text("Ready on \(app.displayCount) \(app.displayCount == 1 ? "display" : "displays")")
                     }.font(.system(size: 11)).foregroundStyle(.secondary)
-                }.padding(.horizontal, 28).padding(.vertical, 17)
+                }.padding(.horizontal, 24).padding(.vertical, 16)
                 Divider().overlay(Color.white.opacity(0.03))
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 16) {
                         if let message = app.notice ?? settings.notice {
                             HStack(alignment: .top) {
                                 Image(systemName: "info.circle").foregroundStyle(inkAccent)
@@ -94,15 +97,16 @@ struct ControlCenter: View {
                         case "Shortcuts": shortcuts
                         default: present
                         }
-                    }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
+                    }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
                 }.id(app.selectedTab)
             }
         }.background(inkBackground).tint(inkAccent).workbenchTheme()
             .sheet(isPresented: $choosingPersonas) { PersonaLibraryView(library: app.demoScenes.personas) }
     }
     private var present: some View {
-        VStack(alignment: .leading, spacing: 17) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 16) {
+            // Embedded, Workbench's page title and summary say this (#134).
+            if !app.embedded { HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Make the point.\nKeep the flow.").font(.system(size: 29, weight: .semibold)).tracking(-1)
                     Text("Draw attention to what matters,\nright over your live demo.")
@@ -110,7 +114,7 @@ struct ControlCenter: View {
                 }
                 Spacer(minLength: 10)
                 DemoIllustration().frame(width: 213, height: 132).padding(.top, 4).accessibilityHidden(true)
-            }.padding(.bottom, 3)
+            }.padding(.bottom, 3) }
             HStack(spacing: 10) {
                 startButton(.pen, title: "Draw on screen")
                 startButton(.arrow, title: "Point it out")
@@ -334,9 +338,10 @@ struct ControlCenter: View {
     private func colorBinding(_ key: WritableKeyPath<Preferences, InkColor>) -> Binding<Color> {
         Binding(get: { Color(nsColor: settings.value[keyPath: key].nsColor) }, set: { settings.value[keyPath: key] = InkColor(NSColor($0)) })
     }
+    /// Embedded, the section's name is its heading above, so only the detail shows (#134).
     private func pageIntro(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(.system(size: 26, weight: .semibold)).tracking(-0.7)
+            if !app.embedded { Text(title).font(.system(size: 26, weight: .semibold)).tracking(-0.7) }
             Text(detail).font(.system(size: 13)).foregroundStyle(.secondary)
         }
     }

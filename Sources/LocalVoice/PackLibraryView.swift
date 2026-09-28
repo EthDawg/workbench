@@ -41,12 +41,10 @@ struct PackLibraryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Packs").font(.system(size: 32, weight: .semibold))
-                    Text("Your team’s skills, scenes and personas, ready to use.")
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                // Library's title and switcher name this section, so it opens on its summary (#134).
+                Text("Your team’s skills, scenes and personas, ready to use.")
+                    .foregroundStyle(.secondary)
                 connection
                 addSource
                 if let message = model.notice {
@@ -78,7 +76,7 @@ struct PackLibraryView: View {
                     Text("Updates apply to shared starters. Existing sessions and personal copies keep their own content.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }.padding(32).frame(maxWidth: 920, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(Workbench.pagePadding).frame(maxWidth: 920, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
             if let pending = model.pendingSource { source = pending; model.pendingSource = nil }

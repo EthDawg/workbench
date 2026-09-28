@@ -27,12 +27,9 @@ struct PhotoHandoffView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("From iPhone").font(.system(size: 30, weight: .semibold)).tracking(-0.8)
-                    Text("The photos you send, ready for their next use.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
+            HStack(alignment: .firstTextBaseline) {
+                // Library's title and switcher name this section, so it opens on its summary (#134).
+                Text("The photos you send, ready for their next use.").foregroundStyle(.secondary)
                 Spacer()
                 Button { Task { await handoff.refresh() } } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
@@ -205,7 +202,7 @@ struct PhotoHandoffSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Label("Photo handoff", systemImage: "icloud").font(.headline)
+                Label("Photo handoff", systemImage: "icloud").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
                 Spacer()
                 if handoff.isBusy { ProgressView().controlSize(.small).accessibilityLabel("Checking photo handoff") }
                 if handoff.isEnabled {

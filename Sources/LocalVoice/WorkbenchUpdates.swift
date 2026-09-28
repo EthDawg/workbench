@@ -173,7 +173,7 @@ struct WorkbenchUpdateSettings: View {
     @ObservedObject private var updates = WorkbenchUpdates.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Workbench updates").font(.headline)
+            WorkbenchSectionTitle("Workbench updates")
             Text(updates.build.label)
             Text("Build \(updates.build.number) · Source \(updates.build.revision.prefix(8))")
                 .font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)

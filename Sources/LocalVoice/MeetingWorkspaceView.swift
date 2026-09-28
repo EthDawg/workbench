@@ -41,10 +41,8 @@ struct MeetingWorkspaceView: View {
     var openHistory: () -> Void
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Transcribe a meeting or call").font(.largeTitle.weight(.semibold))
-                Text("Choose the audio you want to keep. Recording starts only when you choose Start.")
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                WorkbenchPageHeader("meeting", summary: "Choose the audio you want to keep. Recording starts only when you choose Start.")
                 if let offer = model.offer {
                     HStack {
                         Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone")
@@ -97,7 +95,7 @@ struct MeetingWorkspaceView: View {
                 if let error = model.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).textSelection(.enabled) }
                 Divider()
                 MeetingDetectionSettings(model: model)
-            }.padding(32).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading)
         }.onAppear { model.refreshApps() }
     }
 }

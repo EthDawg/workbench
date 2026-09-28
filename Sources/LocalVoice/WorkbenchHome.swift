@@ -98,11 +98,13 @@ struct WorkbenchHome: View {
             Group {
                 switch model.page {
                 case "home": welcome
-                case "readback": ReadbackView(model: readback, onOpenPacks: { model.page = "packs" },
+                case "readback": titled("readback", summary: "Explain screens aloud and get a deck in seconds.", divided: true) {
+                    ReadbackView(model: readback, onOpenPacks: { model.page = "packs" },
                     onChooseSnaps: { model.page = "snap" }, onReviewHandoff: {
                         guard let session = readback.sessionURL else { return }
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
                     })
+                }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
                     Set(history.selected.filter { $0.kind == .snap }.map(\.id))
                 }, set: { ids in
@@ -121,8 +123,8 @@ struct WorkbenchHome: View {
                     catch { model.handoffJobs.error = error.localizedDescription }
                 })
                 case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.openHistory() })
-                case "annotate": stage.controlsView
-                case "present": stage.scenesView
+                case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
+                case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { stage.scenesView }
                 case "personas": stage.personasView
                 case _ where Self.destination(model.page).page == "library": library
                 case _ where Self.destination(model.page).page == "settings": settings
@@ -184,12 +186,12 @@ struct WorkbenchHome: View {
     private var library: some View {
         let section = Self.destination(model.page).section ?? "library"
         return VStack(alignment: .leading, spacing: 0) {
-            sectionSwitcher("library", selection: section) { model.page = $0 }
+            sectionedHeader("library", selection: section)
             switch section {
             case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
             case "photos":
                 PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
-                    .padding(32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(Workbench.pagePadding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             default: ContentView(model: model, embedded: true)
             }
         }
@@ -200,31 +202,30 @@ struct WorkbenchHome: View {
     private var settings: some View {
         let section = Self.destination(model.page).section ?? "settings"
         return VStack(alignment: .leading, spacing: 0) {
-            sectionSwitcher("settings", selection: section) { model.page = $0 }
+            sectionedHeader("settings", selection: section)
             switch section {
             case "shortcuts":
                 // Recording and practice pause global actions only while they run. Leaving this
                 // section ends them and restores the actions, as leaving the Keyboard page did.
-                ScrollView { KeyboardCoachView(model: keyboard).padding(.horizontal, 8) }
+                ScrollView { KeyboardCoachView(model: keyboard) }
             case "models":
-                ScrollView { VStack(alignment: .leading, spacing: 28) {
+                ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
                     CleanupModelSettingsView(isBusy: model.phase != .idle || model.preparing || model.rendering)
-                }.padding(32) }
+                }.padding(Workbench.pagePadding) }
             case "connections":
-                ScrollView { VStack(alignment: .leading, spacing: 22) {
+                ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     SubscriptionSettingsView(jobs: model.handoffJobs)
                     if model.photoHandoff.isConfigured {
                         Divider()
                         PhotoHandoffSettings(handoff: model.photoHandoff)
                     }
-                }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
+                }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
             default:
-                ScrollView { VStack(alignment: .leading, spacing: 22) {
-                    Text("Make yourself at home.").font(.largeTitle.weight(.semibold))
+                ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     Text("Only turn on the access you need. Closing this window leaves the menu-bar tools available; Quit stops Workbench.").foregroundStyle(.secondary)
                     WorkbenchAppearancePicker()
                     Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
@@ -245,20 +246,42 @@ struct WorkbenchHome: View {
                     Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
                     Divider()
                     FounderIntroductionCard(model: introduction, canDismiss: false)
-                }.padding(32).frame(maxWidth: .infinity, alignment: .leading) }
+                }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
             }
+        }
+    }
+
+    /// A page with sections: its name from the page record, then its switcher, where every
+    /// other page has its title (#134). Each section keeps its own summary below.
+    private func sectionedHeader(_ page: String, selection: String) -> some View {
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+            WorkbenchPageHeader(page)
+            sectionSwitcher(page, selection: selection) { model.page = $0 }
+        }.padding([.horizontal, .top], Workbench.pagePadding)
+    }
+
+    /// A page whose own view draws no page title takes its name from the page record here, in
+    /// the same place and type as every other page (#134). A page of two columns is divided
+    /// from its title, so both columns start below it.
+    private func titled<Page: View>(_ route: String, summary: String, divided: Bool = false, @ViewBuilder page: () -> Page) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            WorkbenchPageHeader(route, summary: summary)
+                .padding([.horizontal, .top], Workbench.pagePadding).padding(.bottom, divided ? Workbench.sectionSpacing : 0)
+            if divided { Divider() }
+            page()
         }
     }
 
     /// A page's section switcher, named for its page, with one segment per section in the page
     /// record. Choosing a segment opens that section's route, so the switcher, the sidebar and
-    /// every door agree on where you are.
+    /// every door agree on where you are. The page's title above it says the name, so the
+    /// switcher's label is for VoiceOver only.
     private func sectionSwitcher(_ page: String, selection: String, choose: @escaping (String) -> Void) -> some View {
         Picker(Self.name(of: page), selection: Binding(get: { selection }, set: { section in
             keyboard.stopInteraction(); choose(section)
         })) {
             ForEach(Self.sections.filter { $0.page == page }, id: \.id) { section in Text(section.title).tag(section.id) }
-        }.pickerStyle(.segmented).fixedSize().padding(.horizontal, 32).padding(.top, 32)
+        }.pickerStyle(.segmented).labelsHidden().fixedSize()
     }
 }
 
@@ -313,12 +336,14 @@ struct WorkbenchHomePage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(journey.showsGuide ? "Say something." : "Make room for the work.").font(.system(size: 34, weight: .semibold)).tracking(-0.7)
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Home's title is its welcome, in the page title's type (#134).
+                        Text(journey.showsGuide ? "Say something." : "Make room for the work.").font(Workbench.pageTitle)
+                            .accessibilityAddTraits(.isHeader)
                         Text(journey.showsGuide ? "One click, and your words are ready to paste anywhere." : "Speak a thought. Explain a screen. Give your demo a stage.")
-                            .font(.system(size: 15)).foregroundStyle(.secondary)
+                            .font(Workbench.bodyText).foregroundStyle(.secondary)
                         // One small switch for the guide until the first dictation (#15).
                         if journey.offersSkip {
                             Button("Skip for now") { skipGuide() }.buttonStyle(.link).font(.callout)
@@ -329,8 +354,9 @@ struct WorkbenchHomePage: View {
                         }
                     }
                     Spacer()
-                    Image(systemName: "square.stack.3d.up.fill").font(.system(size: 42)).foregroundStyle(Workbench.accent)
-                }.padding(.top, 16)
+                    Image(systemName: "square.stack.3d.up.fill").font(.system(size: 34)).foregroundStyle(Workbench.accent)
+                        .accessibilityHidden(true)
+                }
                 ForEach(journey.sections, id: \.self) { section in
                     switch section {
                     case .liveStrip: liveStrip
@@ -342,7 +368,7 @@ struct WorkbenchHomePage: View {
                 }
                 if !introduction.isDismissed { FounderIntroductionCard(model: introduction) }
                 if !journey.showsGuide && !model.ready { engineBanner }
-            }.padding(32)
+            }.padding(Workbench.pagePadding)
         }.onAppear { if journey.offersSkip { stayInGuide = true } }
     }
     /// What Home can count. The stage exposes no saved-scene or persona count, so
@@ -437,7 +463,7 @@ struct WorkbenchHomePage: View {
     }
     private var liveStrip: some View {
             VStack(alignment: .leading, spacing: 8) {
-                Text("LIVE").font(.system(size: 10, weight: .semibold)).tracking(1.6).foregroundStyle(.secondary)
+                WorkbenchSectionTitle("Live")
                 if model.phase == .recording {
                     liveRow("Recording…", "mic.fill") { Button("Stop") { model.toggleRecording() } }
                 } else if model.waitingForDrawing {
@@ -501,7 +527,7 @@ struct WorkbenchHomePage: View {
     }
     private var recentWork: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("RECENT WORK").font(.system(size: 10, weight: .semibold)).tracking(1.6).foregroundStyle(.secondary)
+            WorkbenchSectionTitle("Recent work")
             ForEach(recentOrder, id: \.self) { kind in
                 switch kind {
                 case .transcript: if let transcript = model.history.first {
@@ -568,7 +594,7 @@ struct WorkbenchHomePage: View {
 
     // The moments. Each tile is one click into the action; Prepare… opens its page.
     private var moments: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             moment("Working", "A utility for seconds, then back to work.") {
                 card("Dictate", model.phase == .recording ? "Stop" : "Start dictating", "mic", model.preferences.dictationShortcut.label, prepare: "dictate",
                      disabled: !model.ready || ![.idle, .recording].contains(model.phase) || readback.blocksDictation) { model.toggleRecording() }
@@ -610,8 +636,10 @@ struct WorkbenchHomePage: View {
     }
     private func moment<Tiles: View>(_ title: String, _ detail: String, @ViewBuilder tiles: () -> Tiles) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(1.6).foregroundStyle(.secondary)
-            Text(detail).font(.callout).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                WorkbenchSectionTitle(title)
+                Text(detail).font(.callout).foregroundStyle(.secondary)
+            }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) { tiles() }
         }
     }
