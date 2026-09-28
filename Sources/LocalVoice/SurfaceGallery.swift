@@ -348,8 +348,8 @@ enum SurfaceGallery {
     // MARK: Rendering
 
     func quickPanel(_ readback: ReadbackModel) -> WorkbenchQuickPanel {
-        WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt,
-                            open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, present: {}, timer: {}, personas: {})
+        WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap,
+                            open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {})
     }
 
     /// The popover's own material is not drawn; the panel sits on the window background.
@@ -540,15 +540,18 @@ enum SurfaceGallery {
             switch tool {
             case .dictate:
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
-                         page(panel, "Dictate · Options · Recent Transcripts…", "history"), page(panel, "Dictate · Options · Transcribe Meeting or Call…", "meeting"),
-                         page(panel, "Dictate · Options · Dictation Settings…", "dictate"),
+                         page(panel, "Dictate · Options · Recent Transcripts…", "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
+                         page(panel, "Dictate · Options · Open Dictate…", "dictate"),
                          action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings")]
             case .read:
-                list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading · Stop or Cancel", "Pauses, resumes, stops or cancels the reading")]
+                list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
+            case .snap:
+                list += [action(panel, "Snap", "Captures a region into Snap History"),
+                         action(panel, "Snap · Options · Region, Window or Screen", "Captures that area into Snap History"),
+                         page(panel, "Snap · Options · Open Snap…", "snap")]
             case .snapAndTalk:
-                list += [page(panel, "Snap (the row above Snap & Talk)", "snap"),
-                         action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
-                         page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Set Up or N · Review", "readback")]
+                list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
+                         page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Options · Review Snap & Talk…", "readback")]
             case .annotate:
                 list += [action(panel, "Draw", "Starts drawing on screen"), action(panel, "Draw · Tools", "Native menu, listed below")]
             case .present:
