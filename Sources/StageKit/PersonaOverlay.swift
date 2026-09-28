@@ -199,7 +199,8 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
             // at this width, so a resize that could not grow it leaves it alone.
             let kept = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: state.width),
                                             imageSize: image.size, in: screen.visibleFrame.size).width
-            if abs(kept - width) > 0.5 { state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width))) }
+            // Window frames are whole points, so a couple of points of rounding is the same width.
+            if abs(kept - width) > 2 { state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width))) }
         }
         finishDragging()
         updateHandles()
