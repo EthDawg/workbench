@@ -159,6 +159,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var freePosition: ToolbarFreePosition?
     private let positionControl = ToolbarPositionPanel()
     private let chooser = ToolbarChooserPanel()
+    /// The one-time coaching card, above the toolbar's place (#134 T5).
+    let coachPanel = ToolbarCoachPanel()
     var isAnimatingToolbar: Bool { motion.target != nil }
     /// The gallery reads where the chooser opened and opens it invisibly (#134).
     var chooserFrame: NSRect? { chooser.shownFrame }
@@ -248,6 +250,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             self.savePosition()
             self.tracking?.acceptsCrossings = self.surface == .tools && !self.dragging
             if self.surface == .tools { self.tracking?.settle() }
+            self.updateCoach()
         }
         panel.delegate = self
         panel.acceptsMouseMovedEvents = true
@@ -283,6 +286,16 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.cancelDragging(); self?.chooser.close(); self?.position() }
             .store(in: &observations)
+        // The coaching card (#134 T5): this host says when one may show, shows a pending one above
+        // its place and reports it presented, and takes it down when it goes. A narration
+        // starting takes it down too; a new dictation already does, through its owner.
+        model.coach.canPresent = { [weak self] in self?.coachMayShow ?? false }
+        model.coach.$card.receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateCoach() }
+            .store(in: &observations)
+        readback.$isRecording.removeDuplicates().filter { $0 }.receive(on: RunLoop.main)
+            .sink { [weak model] _ in model?.coach.remove() }
+            .store(in: &observations)
         // A Snap & Talk sequence is attention only once it is used in this launch: a capture or
         // narration marks its session, and closing or switching sessions ends it (#134).
         readback.$isCapturing.combineLatest(readback.$isRecording, readback.$sessionURL)
@@ -302,9 +315,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         guard let window, !measuringToolbar else { return }
         let previousSurface = self.surface
         let narrating = readback?.isRecording == true
+        let capturingScreen = readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture()
+        // A screen capture must not include the coaching card either (#134 T5).
+        if capturingScreen { model.coach.remove() }
         let surface = FloatingToolbarSurface.resolve(shown: model.floatingToolbarVisible, drawing: stage?.isDrawing == true,
             presenting: stage?.isPresenting == true, persona: stage?.hasActivePersona == true, inserting: model.promptInsertion.running,
-            capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture(),
+            capturingScreen: capturingScreen,
             dictation: Self.showsDictation(model), narration: narrating,
             reading: model.rendering || model.playing || model.paused || model.readingFailure != nil,
             cue: Self.showsCue(model) && !narrating)
@@ -318,7 +334,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
         if FloatingResult.pending(model) == nil { controls.resultEnded() } else { controls.showResultIfKeptOpen() }
         guard surface != .hidden else {
-            window.orderOut(nil); cancelDragging()
+            window.orderOut(nil); cancelDragging(); updateCoach()
             return
         }
         if surface == .tools { measureToolbar() }
@@ -335,6 +351,36 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         tracking?.acceptsCrossings = surface == .tools && !dragging && motion.target == nil
         if previousSurface != surface && surface == .tools { tracking?.settle() }
         showPositionForPreview(model)
+        updateCoach()
+    }
+
+    /// Whether a coaching card may show now: the toolbar is on screen, and the card would cover
+    /// neither permission UI, Workbench's own window in front, another of the toolbar's popovers,
+    /// nor a result's controls open in its place. A capture hides the toolbar, so none shows then.
+    private var coachMayShow: Bool {
+        guard let model, let window, window.isVisible, surface != .hidden else { return false }
+        if model.phase == .requesting || chooser.isShown || positionControl.isShown { return false }
+        if controls.revealsResult && controls.toolbar.state.tier == .revealed { return false }
+        if NSApp.isActive, let key = NSApp.keyWindow, key !== window { return false }
+        return true
+    }
+
+    /// Shows a pending card above the toolbar's place, follows the toolbar if it moves, drops a
+    /// card that cannot show now without spending its lesson, and takes a gone card down.
+    private func updateCoach() {
+        guard let model else { coachPanel.hide(); return }
+        let coach = model.coach
+        guard let card = coach.card else { coachPanel.hide(); return }
+        guard let window, window.isVisible, surface != .hidden, coach.isPresented || coachMayShow else {
+            if coach.isPresented { coach.remove() } else { coach.drop(card.id) }
+            coachPanel.hide()
+            return
+        }
+        let host = motion.target ?? window.frame
+        let launcher = ToolbarGeometry.launcherCentre(inWindow: host, growsLeftward: controls.rowAnchor.growsLeftward)
+        if !coachPanel.show(coach, host: host, launcherX: launcher.x, level: window.level), !coach.isPresented {
+            coach.drop(card.id)
+        }
     }
 
     /// Position dictation panel… on the Dictate page opens Position… at the toolbar, which is
@@ -616,6 +662,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     override func close() {
         observations.removeAll()
+        if let model { model.coach.canPresent = nil; model.coach.remove() }
+        coachPanel.hide()
         controls.resize = nil; controls.choosePosition = nil; controls.showPosition = nil
         controls.openChooser = nil; controls.chooserChoicesChanged = nil; controls.revealFromRest = nil
         positionControl.close(); chooser.close()
