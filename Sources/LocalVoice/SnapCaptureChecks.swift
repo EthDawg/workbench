@@ -11,15 +11,22 @@ import SwiftUI
 /// editor for the draft. The Snap owner uses a synthetic store, image source,
 /// preferences file and pasteboard in a new temporary folder: nothing captures
 /// the screen, touches the clipboard or reads the person's own Snaps, and the
-/// check window is never on a display.
+/// check window is never on a display. A watchdog on its own thread ends the
+/// process, naming the step, if any step stops making progress for two
+/// minutes, so a hang fails in CI instead of holding the job (#181). It stays
+/// armed while the process exits, so this check runs in a process of its own.
 @MainActor
 enum SnapCaptureChecks {
     static func run() async throws {
+        let started = Date(), priority = Task.currentPriority.checkName
+        let watchdog = CheckWatchdog("SNAP_CAPTURE_CHECK_FAILED", limit: 120, context: "check task at \(priority) priority")
         var count = 0
         func check(_ condition: Bool, _ name: String) throws {
             guard condition else { throw VoiceError.message("SNAP_CAPTURE_CHECK_FAILED: " + name) }
             count += 1
+            watchdog.passed(name)
         }
+        watchdog.step("preparing the synthetic store")
         let fm = FileManager.default
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
             .appendingPathComponent("SnapCaptureChecks-\(UUID().uuidString)", isDirectory: true)
@@ -58,6 +65,7 @@ enum SnapCaptureChecks {
                 let desktop = RecordingDesktop(page: door.page, windowOnScreen: door.windowOnScreen, inFront: door.inFront, lastOther: door.lastOther)
                 SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
                 let journey = "\(mode.title) from \(door.name)"
+                watchdog.step("\(journey): capture")
                 await snap.capture(mode)
                 try check(desktop.page == "snap" && desktop.windowOnScreen && desktop.log.last == "open snap"
                           && desktop.log.filter { $0 == "open snap" }.count == 1, "\(journey) opens the Snap page once with the window forward")
@@ -68,6 +76,7 @@ enum SnapCaptureChecks {
                 // Save & Copy, Save and Cancel each resolve the draft; only Save & Copy of a capture from another app returns there.
                 guard let draft = snap.draft else { throw VoiceError.message("SNAP_CAPTURE_CHECK_FAILED: \(journey) has no draft") }
                 desktop.log.removeAll()
+                watchdog.step("\(journey): " + ["Save & Copy", "Save", "Cancel"][resolution % 3])
                 switch resolution % 3 {
                 case 0:
                     try check(snap.saveDraft(draft, copyAfterSaving: true) && snap.items.count == 1
@@ -83,6 +92,7 @@ enum SnapCaptureChecks {
                     try check(snap.items.isEmpty && desktop.log.isEmpty, "\(journey): Cancel saves nothing and keeps Workbench in front")
                 }
                 let saved = snap.items.count
+                watchdog.step("\(journey): the next capture")
                 await snap.capture(mode)
                 try check(snap.draft != nil && source.requests == [mode, mode] && snap.items.count == saved,
                           "\(journey): another capture opens after the draft closes, with no hidden or duplicate item")
@@ -103,6 +113,7 @@ enum SnapCaptureChecks {
             let snap = snapModel("cancel-\(index)", source: SyntheticImageSource(next: .success(nil)))
             let desktop = RecordingDesktop(page: "history", windowOnScreen: cancel.windowOnScreen, inFront: cancel.inFront, lastOther: cancel.lastOther)
             SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
+            watchdog.step("a cancelled selector \(cancel.name)")
             await snap.capture(.region, origin: cancel.origin)
             try check(desktop.log == cancel.expected && desktop.page == "history" && desktop.windowOnScreen == cancel.windowOnScreen,
                       "a cancelled selector \(cancel.name) restores the window and the app in front: \(desktop.log)")
@@ -115,6 +126,7 @@ enum SnapCaptureChecks {
             let snap = snapModel("failure", source: SyntheticImageSource(next: .failure(SnapError.message("Synthetic capture failure."))))
             let desktop = RecordingDesktop(page: "home", windowOnScreen: false, inFront: safari, lastOther: mail)
             SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
+            watchdog.step("an acquisition problem")
             await snap.capture(.window)
             try check(desktop.page == "snap" && desktop.log.last == "open snap" && snap.notice == "Synthetic capture failure."
                       && snap.draft == nil && snap.items.isEmpty && !snap.isBusy, "an acquisition problem opens the Snap page with its explanation")
@@ -127,6 +139,7 @@ enum SnapCaptureChecks {
             let snap = snapModel("pending", source: source)
             let desktop = RecordingDesktop(page: "home", windowOnScreen: true, inFront: nil, lastOther: safari)
             SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
+            watchdog.step("a draft left in a hidden editor")
             await snap.capture(.screen)
             let first = snap.draft?.id
             try check(snap.isBusy && !snap.disablesCaptureDoors,
@@ -140,8 +153,12 @@ enum SnapCaptureChecks {
             try check(snap.draft != nil && snap.draft?.id != first && source.requests == [.screen, .region], "cancelling it lets the next capture start")
         }
 
-        try await checkEditorExposure(makeSnap: { snapModel($0, source: SyntheticImageSource(next: .success(image))) }, check: check)
-        print("SNAP_CAPTURE_CHECKS_OK: \(count) checks for every door's editor, Save & Copy, cancelled selectors, problems and hidden drafts")
+        try await checkEditorExposure(makeSnap: { snapModel($0, source: SyntheticImageSource(next: .success(image))) }, watchdog: watchdog, check: check)
+        print("SNAP_CAPTURE_CHECKS_OK: \(count) checks for every door's editor, Save & Copy, cancelled selectors, problems and hidden drafts, in "
+              + String(format: "%.1f s", Date().timeIntervalSince(started)) + " at \(priority) priority")
+        // Written now, so a slow exit cannot hide the result; the watchdog still covers the exit.
+        fflush(stdout)
+        watchdog.expectExit(within: 30)
     }
 
     /// The Snap page the host opens presents the editor for the captured draft,
@@ -150,7 +167,8 @@ enum SnapCaptureChecks {
     /// in far off every display, and sheets are recorded as attached instead of
     /// shown. A window restored from the Dock returns on a later turn, after the
     /// draft opened, and the editor must still appear then.
-    private static func checkEditorExposure(makeSnap: (String) -> SnapModel, check: (Bool, String) throws -> Void) async throws {
+    private static func checkEditorExposure(makeSnap: (String) -> SnapModel, watchdog: CheckWatchdog,
+                                            check: (Bool, String) throws -> Void) async throws {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         let sheets = SheetRequests()
@@ -171,40 +189,53 @@ enum SnapCaptureChecks {
             ("from Home with the window on screen", "home", true, false),
             ("from Home with the window minimised, restored from the Dock", "home", false, true),
             ("from the Snap page, with the window restored after the draft opened", "snap", true, true)]
+        /// Closes a check window only once no sheet is recorded on it.
+        func close(_ window: NSWindow) {
+            sheets.forget(window)
+            window.contentViewController = nil; window.close()
+        }
         for (index, journey) in journeys.enumerated() {
+            let name = "the editor for a capture \(journey.name)"
+            watchdog.step("\(name): opening the check window")
             let snap = makeSnap("exposure-\(index)")
             let (window, route) = fixture(snap, page: journey.page)
-            defer { window.contentViewController = nil; window.close() }
+            defer { watchdog.step("\(name): closing the check window"); close(window) }
             if journey.onScreen { window.orderFrontRegardless() }
-            try await settle()
+            try await settle(for: 0.3)
             let before = sheets.requests
-            try check(before == sheets.requests && window.frame.minX < -20_000, "the check window starts \(journey.name) off every display, with no sheet")
+            try check(!sheets.isAttached(to: window) && window.frame.minX < -20_000, "the check window starts \(journey.name) off every display, with no sheet")
             let host = SnapCaptureHost(desktop: WindowDesktop(window: window, route: route, returnsLater: journey.returnsLater))
             host.attach(to: snap) {}
+            watchdog.step("\(name): capture")
             await snap.capture(.region)
-            try await settle(for: 3) { sheets.requests > before }
-            try await settle()
-            try check(route.page == "snap" && snap.draft != nil && window.isVisible && sheets.requests == before + 1,
+            watchdog.step("\(name): waiting for the editor")
+            try await settle(for: 5) { sheets.requests > before }
+            // Long enough for a second presentation to show up.
+            try await settle(for: 0.3)
+            try check(route.page == "snap" && snap.draft != nil && window.isVisible && sheets.requests == before + 1 && sheets.isAttached(to: window),
                       "a capture \(journey.name) opens the Snap page, which presents the editor once")
             try check(window.frame.minX < -20_000, "the check window stayed off every display")
+            watchdog.step("\(name): cancelling the editor")
             snap.draft = nil
-            try await settle()
+            try await settle(for: 3) { !sheets.isAttached(to: window) }
+            try check(!sheets.isAttached(to: window), "cancelling the editor \(journey.name) ends its sheet")
         }
         // The fixture's own control: a draft while Home shows is never presented.
+        watchdog.step("the control: a draft while Home shows")
         let snap = makeSnap("exposure-control")
         let (window, _) = fixture(snap, page: "home")
-        defer { window.contentViewController = nil; window.close() }
+        defer { watchdog.step("the control: closing the check window"); close(window) }
         window.orderFrontRegardless()
-        try await settle()
+        try await settle(for: 0.3)
         let before = sheets.requests
         snap.draft = SnapDraft(originalPNG: try syntheticScreen(), source: .clipboard, title: "Fixture control", notes: "", tags: [], edit: .init())
-        try await settle()
+        try await settle(for: 0.6)
         try check(sheets.requests == before, "Home by itself never presents a draft, which is why the host opens the Snap page")
         snap.draft = nil
     }
 
     /// Lets the main run loop, where SwiftUI updates, run until `done` or the deadline.
-    private static func settle(for seconds: TimeInterval = 0.6, until done: () -> Bool = { false }) async throws {
+    private static func settle(for seconds: TimeInterval, until done: () -> Bool = { false }) async throws {
         let deadline = Date().addingTimeInterval(seconds)
         while !done() && Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
     }
@@ -309,56 +340,62 @@ private final class OffscreenCheckWindow: NSWindow {
 /// attached, and ending it removes the record. The window's sheet, the
 /// sheet's parent and its sheet flag read from that record, so SwiftUI and the
 /// Snap page see an attached sheet while none can appear on a display. The
-/// original methods return on stop.
-@MainActor
-private final class SheetRequests {
-    private(set) var requests = 0
+/// records are locked, never assumed to be on the main thread, since AppKit can
+/// ask from any thread. The original methods return on stop.
+private final class SheetRequests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
     private var sheets: [ObjectIdentifier: NSWindow] = [:]
     private var parents: [ObjectIdentifier: NSWindow] = [:]
     private var saved: [(Method, IMP)] = []
+
+    var requests: Int { lock.withLock { count } }
+    func isAttached(to window: NSWindow) -> Bool { lock.withLock { sheets[ObjectIdentifier(window)] != nil } }
+    /// Drops any record on `window`, so closing it never meets a recorded sheet.
+    func forget(_ window: NSWindow) { end(nil, on: window) }
+
+    private func attach(_ sheet: NSWindow, to parent: NSWindow) {
+        lock.withLock { count += 1; sheets[ObjectIdentifier(parent)] = sheet; parents[ObjectIdentifier(sheet)] = parent }
+    }
+    private func end(_ sheet: NSWindow?, on parent: NSWindow) {
+        lock.withLock {
+            if let recorded = sheets.removeValue(forKey: ObjectIdentifier(parent)) { parents.removeValue(forKey: ObjectIdentifier(recorded)) }
+            if let sheet { parents.removeValue(forKey: ObjectIdentifier(sheet)) }
+        }
+    }
+    private func sheet(on window: NSWindow) -> NSWindow? { lock.withLock { sheets[ObjectIdentifier(window)] } }
+    private func parent(of window: NSWindow) -> NSWindow? { lock.withLock { parents[ObjectIdentifier(window)] } }
+
     private func replace(_ name: String, with block: Any) -> IMP? {
         guard let method = class_getInstanceMethod(NSWindow.self, NSSelectorFromString(name)) else { return nil }
         let original = method_setImplementation(method, imp_implementationWithBlock(block))
         saved.append((method, original))
         return original
     }
-    private func attach(_ sheet: NSWindow, to parent: NSWindow) {
-        requests += 1; sheets[ObjectIdentifier(parent)] = sheet; parents[ObjectIdentifier(sheet)] = parent
-    }
-    private func end(_ sheet: NSWindow?, on parent: NSWindow) {
-        if let recorded = sheets.removeValue(forKey: ObjectIdentifier(parent)) { parents.removeValue(forKey: ObjectIdentifier(recorded)) }
-        if let sheet { parents.removeValue(forKey: ObjectIdentifier(sheet)) }
-    }
     func start() {
-        let begin: @convention(block) (NSWindow, NSWindow, Any?) -> Void = { [weak self] parent, sheet, _ in
-            MainActor.assumeIsolated { self?.attach(sheet, to: parent) }
-        }
+        let begin: @convention(block) (NSWindow, NSWindow, Any?) -> Void = { [weak self] parent, sheet, _ in self?.attach(sheet, to: parent) }
         _ = replace("beginSheet:completionHandler:", with: begin)
         _ = replace("beginCriticalSheet:completionHandler:", with: begin)
-        let end: @convention(block) (NSWindow, NSWindow) -> Void = { [weak self] parent, sheet in
-            MainActor.assumeIsolated { self?.end(sheet, on: parent) }
-        }
+        let end: @convention(block) (NSWindow, NSWindow) -> Void = { [weak self] parent, sheet in self?.end(sheet, on: parent) }
         _ = replace("endSheet:", with: end)
-        let endReturning: @convention(block) (NSWindow, NSWindow, Int) -> Void = { [weak self] parent, sheet, _ in
-            MainActor.assumeIsolated { self?.end(sheet, on: parent) }
-        }
+        let endReturning: @convention(block) (NSWindow, NSWindow, Int) -> Void = { [weak self] parent, sheet, _ in self?.end(sheet, on: parent) }
         _ = replace("endSheet:returnCode:", with: endReturning)
         typealias WindowGetter = @convention(c) (NSWindow, Selector) -> NSWindow?
         typealias ListGetter = @convention(c) (NSWindow, Selector) -> NSArray
         typealias FlagGetter = @convention(c) (NSWindow, Selector) -> Bool
         var attachedSheet: WindowGetter?, sheetParent: WindowGetter?, sheetList: ListGetter?, isSheet: FlagGetter?
         let readSheet: @convention(block) (NSWindow) -> NSWindow? = { [weak self] window in
-            MainActor.assumeIsolated { self?.sheets[ObjectIdentifier(window)] } ?? attachedSheet?(window, NSSelectorFromString("attachedSheet"))
+            self?.sheet(on: window) ?? attachedSheet?(window, NSSelectorFromString("attachedSheet"))
         }
         let readParent: @convention(block) (NSWindow) -> NSWindow? = { [weak self] window in
-            MainActor.assumeIsolated { self?.parents[ObjectIdentifier(window)] } ?? sheetParent?(window, NSSelectorFromString("sheetParent"))
+            self?.parent(of: window) ?? sheetParent?(window, NSSelectorFromString("sheetParent"))
         }
         let readList: @convention(block) (NSWindow) -> NSArray = { [weak self] window in
-            if let sheet = MainActor.assumeIsolated({ self?.sheets[ObjectIdentifier(window)] }) { return [sheet] as NSArray }
+            if let sheet = self?.sheet(on: window) { return [sheet] as NSArray }
             return sheetList?(window, NSSelectorFromString("sheets")) ?? []
         }
         let readFlag: @convention(block) (NSWindow) -> Bool = { [weak self] window in
-            MainActor.assumeIsolated { self?.parents[ObjectIdentifier(window)] != nil } || (isSheet?(window, NSSelectorFromString("isSheet")) ?? false)
+            self?.parent(of: window) != nil || (isSheet?(window, NSSelectorFromString("isSheet")) ?? false)
         }
         attachedSheet = replace("attachedSheet", with: readSheet).map { unsafeBitCast($0, to: WindowGetter.self) }
         sheetParent = replace("sheetParent", with: readParent).map { unsafeBitCast($0, to: WindowGetter.self) }
@@ -367,6 +404,71 @@ private final class SheetRequests {
     }
     func stop() {
         for (method, original) in saved.reversed() { method_setImplementation(method, original) }
-        saved.removeAll(); sheets.removeAll(); parents.removeAll()
+        saved.removeAll()
+        lock.withLock { sheets.removeAll(); parents.removeAll() }
+    }
+}
+
+/// Ends a check that stops making progress, naming the step it stopped in and
+/// the last check that passed, so a hang fails in minutes instead of holding
+/// CI until its job limit. It waits on a thread of its own, never on the main
+/// thread or Swift's shared pool, which a hang may hold, writes its message
+/// with a plain system call and ends the process without running exit
+/// handlers that a stuck thread could block.
+final class CheckWatchdog: @unchecked Sendable {
+    private let prefix: String
+    private let context: String
+    private let lock = NSLock()
+    private let changed = DispatchSemaphore(value: 0)
+    private var limit: TimeInterval
+    private var deadline: Date
+    private var current = "starting"
+    private var lastPassed: String?
+
+    init(_ prefix: String, limit: TimeInterval, context: String) {
+        self.prefix = prefix; self.context = context; self.limit = limit
+        deadline = Date().addingTimeInterval(limit)
+        let thread = Thread { [self] in watch() }
+        thread.name = "\(prefix) watchdog"
+        thread.start()
+    }
+
+    func step(_ name: String) { lock.withLock { current = name } }
+    func passed(_ name: String) { lock.withLock { lastPassed = name } }
+    /// After the checks pass: the process must end within `seconds` more.
+    func expectExit(within seconds: TimeInterval) {
+        lock.withLock { current = "exiting after all checks passed"; limit = seconds; deadline = Date().addingTimeInterval(seconds) }
+        changed.signal()
+    }
+
+    private func watch() {
+        while true {
+            let remaining = lock.withLock { deadline.timeIntervalSinceNow }
+            if remaining <= 0 { fire() }
+            _ = changed.wait(timeout: .now() + remaining)
+        }
+    }
+
+    private func fire() -> Never {
+        let message = lock.withLock {
+            "\(prefix): timed out after \(Int(limit)) s during \(current)" + (lastPassed.map { "; last passed: \($0)" } ?? "") + " (\(context))\n"
+        }
+        _ = message.withCString { write(STDERR_FILENO, $0, strlen($0)) }
+        // Keep what was already printed, unless the stuck thread holds stdout.
+        if ftrylockfile(stdout) == 0 { fflush(stdout); funlockfile(stdout) }
+        _exit(1)
+    }
+}
+
+extension TaskPriority {
+    /// A plain name for check output, such as "utility" rather than a raw value.
+    var checkName: String {
+        switch self {
+        case .high: "high"
+        case .medium: "medium"
+        case .low: "utility"
+        case .background: "background"
+        default: "priority \(rawValue)"
+        }
     }
 }
