@@ -354,7 +354,13 @@ final class PersonaVoiceRingLayer: CALayer {
         for layer in [lineEdge, lineLayer, barEdge, bars] { layer.frame = bounds; layer.contentsScale = contentsScale }
     }
 
+    /// Whether the ring is still easing or has sound waiting to play.
+    var isMoving: Bool { target.level > 0 || level > 0.002 || queue.contains { $0.level > 0 } }
+
     func enqueue(_ frames: [PersonaVoiceFrame]) {
+        // Waking from rest, the silence queued meanwhile is stale: start from
+        // the newest sound so the first syllable shows at once.
+        if !isMoving { queue.removeAll(); playhead = 0 }
         queue.append(contentsOf: frames)
         // Never fall behind the voice: keep at most a fifth of a second queued.
         var queued = queue.reduce(0) { $0 + $1.seconds }
@@ -391,7 +397,7 @@ final class PersonaVoiceRingLayer: CALayer {
         let pace = CGFloat(seconds) * (1 + CGFloat(level) * 3)
         phases = (phases.0 + pace * 0.55, phases.1 + pace * 0.8, phases.2 + pace * 1.2)
         render()
-        return !queue.isEmpty || target.level > 0 || level > 0.002
+        return isMoving
     }
 
     private func applyStyle() {

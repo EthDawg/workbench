@@ -187,9 +187,11 @@ private final class PersonaArtworkView: NSView {
         guard ringOn, size.width > 0, size.height > 0, let analysis = analyzed() else { return NSEdgeInsetsZero }
         return PersonaVoiceRingGeometry(outline: analysis.outline, artwork: CGRect(origin: .zero, size: size)).outsets
     }
+    /// Silence costs nothing: the display link sleeps until there is sound.
     func showVoice(_ frames: [PersonaVoiceFrame]) {
         guard ringOn, !frames.isEmpty else { return }
-        ring.enqueue(frames); tick()
+        ring.enqueue(frames)
+        if ring.isMoving { tick() }
     }
     func pauseRing() { ring.reset(); stopTicking() }
     func resumeRing() { if ringOn { ring.reset() } }

@@ -1,0 +1,101 @@
+{
+  "afterSpeech" : {
+    "count" : 94,
+    "max" : 0.018302477896213531,
+    "median" : 0,
+    "overQuarter" : 0,
+    "p90" : 0
+  },
+  "closesMs" : {
+    "hide" : 2.4809837341308594,
+    "personaKey" : 0.51391124725341797,
+    "quit" : 0.50604343414306641,
+    "turnOff" : 0.62191486358642578
+  },
+  "deliveriesPerSecond" : 10.5,
+  "device" : "MacBook Air Microphone",
+  "engine" : {
+    "competitor" : {
+      "buffers" : 30,
+      "heard" : true,
+      "peak" : 0.08330690860748291,
+      "sampleRate" : 48000,
+      "seconds" : 3.0674340724945068
+    },
+    "label" : "meeting capture microphone (second AVAudioEngine, 4,096-frame tap)",
+    "ringDeliveriesAfterStop" : 16,
+    "ringDeliveriesPerHalfSecond" : [
+      6,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    "ringLevels" : {
+      "count" : 221,
+      "max" : 1,
+      "median" : 0,
+      "overQuarter" : 0.25791855203619912,
+      "p90" : 0.89307647943496704
+    }
+  },
+  "engineRestarts" : 0,
+  "firstFramesMs" : 105.0490140914917,
+  "frameSeconds" : 0.021333333333333333,
+  "framesPerDelivery" : 4.6904761904761907,
+  "inputMetadata" : "Core Audio process object",
+  "microphoneOpenMs" : 1.2830495834350586,
+  "recorder" : {
+    "competitor" : {
+      "fileSeconds" : 3.1143125,
+      "heard" : true,
+      "peakPower" : -42.069915771484375,
+      "seconds" : 3.1229374999999999
+    },
+    "label" : "Dictate and Snap & Talk narration settings (AVAudioRecorder, 16 kHz PCM)",
+    "ringDeliveriesAfterStop" : 15,
+    "ringDeliveriesPerHalfSecond" : [
+      6,
+      5,
+      6,
+      5,
+      5,
+      5
+    ],
+    "ringLevels" : {
+      "count" : 220,
+      "max" : 0.45703327655792236,
+      "median" : 0,
+      "overQuarter" : 0.11363636363636363,
+      "p90" : 0.28368815779685974
+    }
+  },
+  "recorderFirst" : {
+    "recording" : {
+      "fileSeconds" : 2.7516250000000002,
+      "heard" : true,
+      "peakPower" : -44.64495849609375,
+      "seconds" : 2.7538125
+    },
+    "ringFramesMs" : 107.2080135345459
+  },
+  "room" : {
+    "count" : 197,
+    "max" : 0.21381326019763947,
+    "median" : 0,
+    "overQuarter" : 0,
+    "p90" : 0.021978558972477913
+  },
+  "speech" : {
+    "count" : 281,
+    "max" : 1,
+    "median" : 0.49969533085823059,
+    "overQuarter" : 0.8220640569395018,
+    "p90" : 0.85643869638442993
+  },
+  "window" : {
+    "height" : 324,
+    "width" : 324
+  }
+}
