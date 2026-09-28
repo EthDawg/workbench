@@ -142,7 +142,8 @@ enum WorkbenchControlChecks {
             try check(saved() == (.free(current), true), "#163's glyph edge becomes the launcher centre 18 points inside it")
             defaults.set(CapturePanelController.launcherRecord(current), forKey: "capturePanelLauncher.v1")
             try check(saved() == (.free(current), false), "this build's launcher record stands while the glyph copy beside it is unchanged")
-            let exact = ToolbarFreePosition(centre: CGPoint(x: 1082.123456789, y: 400.987654321), growsLeftward: true)
+            // 1010.123456789 + 18 crosses 1024, so the glyph edge converts back one bit off.
+            let exact = ToolbarFreePosition(centre: CGPoint(x: 1010.123456789, y: 400.987654321), growsLeftward: true)
             defaults.set(CapturePanelController.launcherRecord(exact), forKey: "capturePanelLauncher.v1")
             defaults.set(CapturePanelController.record(exact), forKey: "capturePanelFreePosition.v1")
             try check(saved() == (.free(exact), false), "a glyph copy that converts back a hair off is not a move")
