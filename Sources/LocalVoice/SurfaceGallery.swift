@@ -340,7 +340,7 @@ enum SurfaceGallery {
             var query = ""; var filter = PromptPickerList.Filter.all; var running = false; var attempt: PromptAttempt?; var details = false
         }
         let states = [
-            State(id: "empty", title: "No saved prompts", detail: "An empty library leads to Saved resources.", resources: [], mode: notes),
+            State(id: "empty", title: "No saved prompts", detail: "An empty picker leads to Library.", resources: [], mode: notes),
             State(id: "one", title: "One prompt", detail: "Inserting into Notes, the field in front when the picker opened.", resources: [library[0]], mode: notes),
             State(id: "grouped", title: "Favourites, then the rest", detail: "Product and Persona tags filter the one list. The last delivery went to Mail and says so.",
                   resources: library, mode: notes, attempt: stopped),
@@ -559,7 +559,16 @@ enum SurfaceGallery {
         let (models, modelsSize) = try renderPage("models", in: window)
         let modelsShot = try save(models, id: "state-dictating", title: "Models while a dictation records, minimum window, \(Int(modelsSize.width)) × \(Int(modelsSize.height)) pt",
                                   detail: "A recording holds the speech model: the controls wait until it finishes.", file: "page-models-state-dictating-\(theme).png", to: output)
-        return [("library", [libraryShot]), ("models", [modelsShot])]
+        model.phase = .idle; model.elapsed = 0
+        // General before any dictation: Show me a first dictation sits beside Dictate options… (#15).
+        let before = (history: model.history, guide: model.preferences.firstDictationGuide)
+        model.history = []; model.preferences.firstDictationGuide = nil
+        defer { model.history = before.history; model.preferences.firstDictationGuide = before.guide }
+        let (general, generalSize) = try renderPage("settings", in: window)
+        let generalShot = try save(general, id: "state-before-first-dictation", title: "General before the first dictation, minimum window, \(Int(generalSize.width)) × \(Int(generalSize.height)) pt",
+                                   detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate options… and opens Home on the guide.",
+                                   file: "page-settings-state-before-first-dictation-\(theme).png", to: output)
+        return [("library", [libraryShot]), ("models", [modelsShot]), ("settings", [generalShot])]
     }
 
     // MARK: Read states
@@ -1091,9 +1100,11 @@ enum SurfaceGallery {
             host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
             return (host, controls)
         }
-        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible, previousMeetings = model.meetings
+        // The synthetic meeting widens the resting element's live title below; the hosts observe it from the start.
+        model.meetings = recordingMeetings
         var (host, controls) = makeHost()
-        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode }
+        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode; model.meetings = previousMeetings }
         model.toolbarMode = .dictate; model.floatingToolbarVisible = true
         host.update(model: model)
         waitForToolbar(host, controls, tier: .resting, content: host.window?.contentView ?? NSView())
@@ -1113,7 +1124,10 @@ enum SurfaceGallery {
                 ? "\(what): the resting element is at \(Int(found.x)), \(Int(found.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
         }
         func free(_ origin: NSPoint) -> String? {
-            host.toolsPosition == .free(origin) && controls.anchor == nil ? nil : "the toolbar is not free at \(Int(origin.x)), \(Int(origin.y))"
+            guard case .free(let free) = host.toolsPosition, controls.anchor == nil else { return "the toolbar is docked, not free" }
+            let resting = free.restingFrame(size: controls.restingSize).origin
+            return abs(resting.x - origin.x) > 0.5 || abs(resting.y - origin.y) > 0.5
+                ? "the toolbar is free at \(Int(resting.x)), \(Int(resting.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
         }
         let size = controls.restingSize
         for (side, origin) in [("left", NSPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
@@ -1133,6 +1147,25 @@ enum SurfaceGallery {
             controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
             expect("Free on the \(side), collapsed again", [at(origin, "collapsed again")])
         }
+        // A live title that changes the resting width must neither turn a free row round nor move its
+        // glyph: released just left of the middle, and on the right half, then a meeting widens the title.
+        func glyphEdge() -> (leftward: Bool, x: CGFloat) {
+            let frame = host.window?.frame ?? .zero, leftward = controls.rowAnchor.growsLeftward
+            return (leftward, leftward ? frame.maxX : frame.minX)
+        }
+        for (place, midX) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
+            let origin = NSPoint(x: (midX - size.width / 2).rounded(), y: (screen.minY + screen.height * 0.45).rounded())
+            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
+            let before = glyphEdge(), width = controls.restingSize.width
+            for (change, start) in [("a meeting widens the title", true), ("the meeting ends", false)] {
+                try drive(recordingMeetings, start: start); settle(.resting)
+                let after = glyphEdge(), grown = controls.restingSize.width - width
+                expect("Released \(place), then \(change)", [
+                    start && abs(grown) < 0.5 ? "the resting width stayed \(Int(width)) pt, so this step shows nothing" : nil,
+                    after.leftward != before.leftward ? "the row turned round, from growing \(before.leftward ? "leftward" : "rightward")" : nil,
+                    after.leftward == before.leftward && abs(after.x - before.x) > 0.5 ? "the glyph moved \(Int((after.x - before.x).rounded())) pt" : nil])
+            }
+        }
         let dock = FloatingControlGeometry.frame(anchor: .bottomRight, size: size, visibleFrame: screen)
         host.releaseTools(at: dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance - 2), dy: 0)); settle(.resting)
         expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock", [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock.origin, "docked")])
@@ -1146,6 +1179,21 @@ enum SurfaceGallery {
         (host, controls) = makeHost()
         host.update(model: model); settle(.resting)
         expect("A new host, as after a relaunch", [free(kept), at(kept, "after a relaunch")])
+        // An earlier build saved only the resting element's origin and size: a new host decides its
+        // side once, where it was left, and saves that with it.
+        let earlier = NSRect(x: (screen.minX + screen.width * 0.65).rounded(), y: (screen.minY + screen.height * 0.3).rounded(), width: 132, height: 36)
+        host.close()
+        UserDefaults.standard.removeObject(forKey: "capturePanelFreePosition.v1"); UserDefaults.standard.removeObject(forKey: "capturePanelAnchor.v2")
+        UserDefaults.standard.set(NSStringFromPoint(earlier.origin), forKey: "capturePanelOrigin.v1")
+        UserDefaults.standard.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
+        (host, controls) = makeHost()
+        host.update(model: model); settle(.resting)
+        let migrated = UserDefaults.standard.dictionary(forKey: "capturePanelFreePosition.v1")
+        expect("A new host reading an earlier free save", [
+            controls.anchor == nil ? nil : "the earlier free save came back docked",
+            controls.rowAnchor.growsLeftward ? nil : "the earlier save on the right half grows rightward",
+            abs((host.window?.frame.maxX ?? 0) - earlier.maxX) > 0.5 ? "the glyph is at \(Int(host.window?.frame.maxX ?? 0)), not the saved edge \(Int(earlier.maxX))" : nil,
+            (migrated?["growsLeftward"] as? Bool) == true ? nil : "the side decided for the earlier save was not saved with it"])
         controls.choosePosition?(.bottom); settle(.resting)
         let bottom = FloatingControlGeometry.frame(anchor: .bottom, size: controls.restingSize, visibleFrame: screen)
         expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom.origin, "reset")])
@@ -1380,7 +1428,7 @@ enum SurfaceGallery {
         list += [page(home, "Dictate card", "dictate"), page(home, "Read card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
                  page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"),
                  page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "photos"),
-                 page("Settings page", "Dictate options…", "dictate"),
+                 page("Settings page", "Dictate options…", "dictate"), page("Settings page", "Show me a first dictation, until the first dictation", "home"),
                  page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"),
@@ -1419,7 +1467,7 @@ extension SurfacePass {
     func appMenuEntries(surface: String) -> [SurfaceGallery.Entry] {
         let actions = ["About Workbench": "Shows the About panel", "Check for Updates…": "Page: settings, and checks for updates",
                        "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
-                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page", "Quick controls": "Opens this panel",
+                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
                        "Show floating toolbar": "Shows the toolbar", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
                        "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in

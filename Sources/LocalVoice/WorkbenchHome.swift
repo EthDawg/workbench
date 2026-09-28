@@ -247,7 +247,13 @@ struct WorkbenchHome: View {
                     Divider()
                     MeetingDetectionSettings(model: model.meetings)
                     Divider()
-                    Button("Dictate options…") { model.page = "dictate" }
+                    HStack(spacing: 12) {
+                        Button("Dictate options…") { model.page = "dictate" }
+                        // Until the first dictation, Home's guide can be asked for here too (#15).
+                        if !HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide).hasDictated {
+                            Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
+                        }
+                    }
                     Text("Delivery, text style, activation, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
                     Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
                     Divider()

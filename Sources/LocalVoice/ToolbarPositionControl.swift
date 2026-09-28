@@ -121,13 +121,28 @@ private final class ToolbarPositionWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Why Position… closed, which decides where the keyboard goes next.
+enum ToolbarPositionClose: Equatable {
+    case chose, reset, escape
+    /// A click elsewhere, another window taking the keyboard, a drag or a menu on the toolbar,
+    /// or the toolbar leaving.
+    case dismissed
+
+    /// Opened from the toolbar's keyboard focus, a choice, Reset or Escape gives the keyboard
+    /// back to the toolbar, so a second Escape leaves for the field it came from. Opened by
+    /// pointer, or dismissed, Position… takes the keyboard nowhere.
+    func returnsKeyboard(openedFromKeyboard: Bool) -> Bool { openedFromKeyboard && self != .dismissed }
+}
+
 /// Shows Position… beside the toolbar and closes it on a choice, Escape or a click elsewhere.
 @MainActor final class ToolbarPositionPanel: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
+    private var closed: ((ToolbarPositionClose) -> Void)?
     var isShown: Bool { panel != nil }
 
     func show(beside toolbar: NSRect, level: NSWindow.Level, current: FloatingControlAnchor?,
-              choose: @escaping (FloatingControlAnchor) -> Void, reset: @escaping () -> Void) {
+              choose: @escaping (FloatingControlAnchor) -> Void, reset: @escaping () -> Void,
+              closed: @escaping (ToolbarPositionClose) -> Void = { _ in }) {
         close()
         let panel = ToolbarPositionWindow(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                                           backing: .buffered, defer: false)
@@ -138,15 +153,15 @@ private final class ToolbarPositionWindow: NSPanel {
         panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = NSHostingView(rootView: ToolbarPositionControl(current: current,
-            choose: { [weak self] anchor in self?.close(); choose(anchor) },
-            reset: { [weak self] in self?.close(); reset() },
-            close: { [weak self] in self?.close() }))
+            choose: { [weak self] anchor in self?.close(.chose); choose(anchor) },
+            reset: { [weak self] in self?.close(.reset); reset() },
+            close: { [weak self] in self?.close(.escape) }))
         let size = hosting.fittingSize
         hosting.frame = NSRect(origin: .zero, size: size)
         panel.contentView = hosting
         panel.setFrame(Self.frame(size: size, beside: toolbar), display: true)
         panel.delegate = self
-        self.panel = panel
+        self.panel = panel; self.closed = closed
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(hosting)
     }
@@ -161,10 +176,12 @@ private final class ToolbarPositionWindow: NSPanel {
 
     func windowDidResignKey(_ notification: Notification) { close() }
 
-    func close() {
+    func close(_ reason: ToolbarPositionClose = .dismissed) {
         guard let panel else { return }
-        self.panel = nil
+        let closed = self.closed
+        self.panel = nil; self.closed = nil
         panel.delegate = nil
         panel.orderOut(nil)
+        closed?(reason)
     }
 }

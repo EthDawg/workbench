@@ -16,11 +16,13 @@
     "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
-    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
+    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-position",
     "surface": "floating toolbar live controls",
-    "label": "Reset to bottom centre",
+    "label": "Reset position",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Quality (#197 review): renamed from Reset to bottom centre. The dictation panel's options repeat Position…'s Reset position, the same reset of the one shared position.",
+    "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.settings-for-next-capture",
@@ -652,12 +654,12 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-saved-resources",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
     "surface": "Saved Prompts picker",
-    "label": "Open Saved resources…",
+    "label": "Open Library…",
     "kind": "action",
     "belongsTo": "library",
-    "note": "Option of Saved resources: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159)."
+    "note": "Option of Library: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159). Quality: Open Saved resources… takes the place's Grammar name, Library (#134)."
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-14443435e8dd",
@@ -815,7 +817,7 @@
     "label": "Reset position",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options already offer the same reset as Reset to bottom centre."
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options offer the same reset under the same name."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",
@@ -939,6 +941,14 @@
     "kind": "action",
     "belongsTo": "settings",
     "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.show-me-a-first-dictation",
+    "surface": "settings page",
+    "label": "Show me a first dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: Settings › General's door back to Home's first-dictation guide, beside Dictate options… and shown only until the first dictation, as Home's own link is. It offers the guide again and opens Home (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
@@ -1272,7 +1282,7 @@
     "label": "Show me a first dictation",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option: a door on Home back to the existing first-dictation guide, the only resume route, shown only while nothing has been dictated and the guide was skipped (#15)."
+    "note": "Option: a door on Home back to the existing first-dictation guide, shown only while nothing has been dictated and the guide was skipped. Settings › General offers the same until the first dictation (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.skip-for-now",
@@ -1747,13 +1757,6 @@
     "belongsTo": "app",
     "aliasOf": "app",
     "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.quick-controls",
-    "surface": "app menu bar",
-    "label": "Quick controls",
-    "kind": "action",
-    "belongsTo": "app"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.quit-workbench",
