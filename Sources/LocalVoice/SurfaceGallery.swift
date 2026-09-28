@@ -920,8 +920,8 @@ enum SurfaceGallery {
                                                                              wasPasted: false, destinationName: nil), wordCount: 42) },
                        reset: { model.clipboardReceipt.clear() }),
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
-                       apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
-                       reset: { model.error = nil }),
+                       apply: { model.report("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.", on: .dictate) },
+                       reset: { model.dismissError() }),
             PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
                        apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
@@ -1415,9 +1415,13 @@ enum SurfaceGallery {
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
                  page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
                  page(panel, "Recovery · Open Dictate…, for a dictation error", "dictate"), page(panel, "Recovery · Open Read…, for a reading error", "speak"),
-                 page(panel, "Recovery · Open Models…, while speech is not ready", "models"), page(panel, "Recovery · Open Snap & Talk…, for its notice", "readback"),
+                 page(panel, "Recovery · Open History…, for a transcript removal or export", "history"),
+                 page(panel, "Recovery · Open Home…, when the speech model could not be prepared", "home"),
+                 page(panel, "Recovery · Open Models…, while speech is still preparing", "models"), page(panel, "Recovery · Open Snap & Talk…, for its notice", "readback"),
                  page(panel, "Recovery · Open Draw…, for a drawing notice", "annotate"), page(panel, "Recovery · Open Present…, for a scene notice", "present"),
                  page(panel, "Recovery · Open Persona…, for a persona notice", "personas"),
+                 page(panel, "Recovery · Open Keyboard…, for recording a shortcut", "shortcuts"),
+                 page(panel, "Recovery · Open Settings…, for login or saved drawing settings", "settings"),
                  page(panel, "Meeting status row, while a meeting is busy", "meeting"), action(panel, "Meeting status row · Stop or Cancel", "Stops or cancels the meeting")]
         list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true) }
         // Each page's switcher, from the same page record: a section opens its own route.

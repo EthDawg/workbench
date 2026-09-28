@@ -100,20 +100,13 @@ struct WorkbenchQuickPanel: View {
             .tint(Workbench.accent).workbenchTheme()
     }
 
-    /// What needs attention, and the page that shows it in full with its recovery (#134): a
-    /// Dictate or Read failure, a drawing, scene or persona notice, a Snap & Talk notice, or
-    /// speech that is not ready yet.
+    /// What needs attention, and the page that shows it in full with its recovery (#134). The page
+    /// is the one recorded where the problem was raised, never read from its words: a Voice
+    /// problem's `Attention`, a StageKit notice's page, a Snap & Talk notice, or speech that is not
+    /// ready yet.
     private var recovery: (message: String, page: String, warning: Bool)? {
-        if let error = model.error {
-            return (error, model.readingFailure?.message == error ? "speak" : "dictate", true)
-        }
-        if let notice = stage.notice {
-            switch stage.noticePage {
-            case .present: return (notice, "present", true)
-            case .persona: return (notice, "personas", true)
-            case .draw, nil: return (notice, "annotate", true)
-            }
-        }
+        if let attention = model.attention { return (attention.message, attention.page.route, true) }
+        if let notice = stage.notice, let page = stage.noticePage { return (notice, page.route, true) }
         if let notice = readback.notice { return (notice, "readback", false) }
         if model.phase == .idle && !model.ready { return (model.modelMessage, "models", false) }
         return nil
@@ -265,6 +258,19 @@ struct WorkbenchQuickPanel: View {
         case .operation(let operation):
             if case .start = operation {} else { model.onCloseMenu?() }
             dispatch.perform(operation)
+        }
+    }
+}
+
+extension StageNoticePage {
+    /// The route that opens the page a StageKit notice belongs to.
+    var route: String {
+        switch self {
+        case .draw: return "annotate"
+        case .present: return "present"
+        case .persona: return "personas"
+        case .keyboard: return "shortcuts"
+        case .general: return "settings"
         }
     }
 }

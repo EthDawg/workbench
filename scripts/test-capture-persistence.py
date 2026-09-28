@@ -29,6 +29,8 @@ methods = '\n'.join([
     extract('    private func transcribe(', '\n    func copyTranscript()'),
     extract('    func fail(', '\n    func persist()'),
     extract('    func saveNow()', '\n    func shutdown()'),
+    # Preparing the speech model, whose failure is Home's (#134).
+    extract('    func prepare() async', '\n    /// The one owner of text arriving in Read'),
     source[source.index('    func shutdown()'):source.rindex('\n}')],
 ])
 labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:', 'var canRecordAgain:', 'var hasSavedRecordings:']))
@@ -76,6 +78,10 @@ struct CaptureSettings {
         return result
     }
     func release() { let c = continuation; continuation = nil; c?.resume(returning: "um synthetic captured words") }
+    /// Preparing the speech model: ready, or this failure.
+    var prepareFailure: Error?
+    func prepare() async throws { if let prepareFailure { throw prepareFailure } }
+    func statusDescription() async -> String { "Fixture model ready" }
 }
 @MainActor final class Cleanup {
     struct Result { let text: String; let method: String }
@@ -124,8 +130,12 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     var speechText = "Reading stays separate", history: [Transcript] = [], replacements: [Replacement] = []
     var voice = "Fixture voice", rate = 180.0
     var transcriptionID: UUID?, transcriptionTask: Task<Void, Never>?
-    var captureFailure: String?, error: String?, status = "", captureProcessingLabel = ""
+    var captureFailure: String?, status = "", captureProcessingLabel = ""
+    var attention: Attention?
+    var error: String? { attention?.message }
+    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     var previewingPanel = false, canRetry = false, accessibilityGranted = false, ready = true
+    var preparing = false, modelMessage = ""
     var destination: String? = "Original app target"
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var recorder: AVAudioRecorder?, meter: Timer?, recordingAttempt: UUID?
@@ -523,6 +533,20 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(silenceReplies == ["No speech heard."] && shortcutSilence.captureCue == nil && shortcutSilence.captureFailure == nil
                   && !shortcutSilence.canRetry, "Shortcuts get one No speech heard reply and no floating cue; an imported file is never kept")
 
+        // A speech model that could not be prepared is Home's problem, beside its Retry model: the
+        // page is recorded where it is raised, so the menu-bar panel opens Home. Guessing from the
+        // words opened Dictate (#134 review).
+        let unprepared = CaptureHarness(directory: folder("model-preparation"))
+        unprepared.ready = false
+        unprepared.engine.prepareFailure = CheckFailure(description: "Synthetic model download failure")
+        await unprepared.prepare()
+        try check(unprepared.attention?.page == .home && unprepared.error?.hasPrefix("Could not prepare the speech model.") == true
+                  && unprepared.modelMessage == "Speech model needs attention" && !unprepared.ready && !unprepared.preparing,
+                  "A model that could not be prepared is Home's problem, where Retry model is")
+        unprepared.engine.prepareFailure = nil
+        await unprepared.prepare()
+        try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready", "Retry model prepares it")
+
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }
 }
@@ -535,7 +559,7 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
     executable = directory / 'checks'
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(directory / 'ModuleCache'),
                     str(swift), str(PROJECT / 'Sources/LocalVoice/TextPrimitives.swift'), str(PROJECT / 'Sources/LocalVoice/CaptureRecovery.swift'), str(PROJECT / 'Sources/LocalVoice/DrawingDeliveryGate.swift'),
-                    str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'),
+                    str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'), str(PROJECT / 'Sources/LocalVoice/Attention.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
 print('AppModel.swift SHA256:', hashlib.sha256(source.encode()).hexdigest())

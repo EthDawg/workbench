@@ -233,6 +233,11 @@ struct WorkbenchHome: View {
             default:
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     Text("Only turn on the access you need. Closing this window leaves the menu-bar tools available; Quit stops Workbench.").foregroundStyle(.secondary)
+                    // Saved drawing settings that could not be read or saved, and login, belong to
+                    // General: the menu-bar panel's Open Settings… leads to these words (#134).
+                    if let notice = stage.notice(on: .general) {
+                        Text(notice).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    }
                     WorkbenchAppearancePicker()
                     Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
                     Text("Start another action from the same place. Recording controls appear here while you speak.")
@@ -449,7 +454,14 @@ struct WorkbenchHomePage: View {
     private var engineBanner: some View {
         HStack {
             if model.preparing { ProgressView().controlSize(.small) }
-            Text(model.modelMessage).font(.callout)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.modelMessage).font(.callout)
+                // A failed preparation belongs here, beside Retry model: the menu-bar panel's
+                // Open Home… leads to these words (#134).
+                if let attention = model.attention, attention.page == .home {
+                    Text(attention.message).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Spacer()
             if !model.preparing { Button("Retry model") { Task { await model.prepare() } } }
             Button("Speech settings") { model.page = "models" }

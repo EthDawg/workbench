@@ -88,7 +88,8 @@ public final class StageKitController: ObservableObject {
         coordinator.onOpenScenes = onOpenScenes
         coordinator.demoScenes.onOpen = onOpenScenes
         coordinator.validateExternalShortcut = Self.reservedVoiceShortcut
-        if let migrationNotice { coordinator.notice = migrationNotice }
+        // Boards and scenes that could not be copied: Draw shows it with its other board notices.
+        if let migrationNotice { coordinator.post(migrationNotice, on: .draw) }
         observe(coordinator)
     }
     /// Checks wrap a coordinator on disposable storage; the app uses the initializer above.
@@ -236,21 +237,23 @@ public final class StageKitController: ObservableObject {
     public var isTimerRunning: Bool { coordinator.timerRunning }
     public var hasTimerSession: Bool { coordinator.timerSessionStarted }
     public var hasActiveTimer: Bool { coordinator.hasActiveTimer }
-    /// A card that could not show is live, so it comes before an older scene notice.
-    public var notice: String? {
+    /// Every current notice with its page, most urgent first. The drawing and settings stores
+    /// record their notice's page where it is raised; a persona or scene notice belongs to its own
+    /// page. A card that could not show is live, so it comes before an older scene notice.
+    private var notices: [StageNotice] {
         let personas = coordinator.demoScenes.personas
-        return coordinator.notice ?? coordinator.settings.notice ?? personas.cardFeedback ?? coordinator.demoScenes.notice ?? personas.notice
+        return [coordinator.postedNotice, coordinator.settings.postedNotice,
+                personas.cardFeedback.map { StageNotice(text: $0, page: .persona) },
+                coordinator.demoScenes.notice.map { StageNotice(text: $0, page: .present) },
+                personas.notice.map { StageNotice(text: $0, page: .persona) }].compactMap { $0 }
     }
-    /// The page that shows `notice` in full, in the same order: drawing and its settings on Draw,
-    /// a card or persona on Persona, a scene on Present. A surface with room for one sentence
-    /// opens it for the rest (#134).
-    public var noticePage: StageNoticePage? {
-        let personas = coordinator.demoScenes.personas
-        if coordinator.notice != nil || coordinator.settings.notice != nil { return .draw }
-        if personas.cardFeedback != nil { return .persona }
-        if coordinator.demoScenes.notice != nil { return .present }
-        return personas.notice != nil ? .persona : nil
-    }
+    /// The notice to show now.
+    public var notice: String? { notices.first?.text }
+    /// The page that shows `notice` in full, from the same record: a surface with room for one
+    /// sentence opens it for the rest (#134).
+    public var noticePage: StageNoticePage? { notices.first?.page }
+    /// The first notice a page owns, for that page to show in full.
+    public func notice(on page: StageNoticePage) -> String? { notices.first { $0.page == page }?.text }
 
     public func start() {
         guard !started else { return }
@@ -387,5 +390,13 @@ private struct PhotoBackdropChooser: View {
     }
 }
 
-/// Where a StageKit notice is shown in full.
-public enum StageNoticePage: Sendable { case draw, present, persona }
+/// Where a StageKit notice is shown in full, or acted on: drawing and boards on Draw, a scene on
+/// Present, a card or persona on Persona, recording a shortcut on Settings › Keyboard, and login
+/// and saved settings on Settings › General (#134).
+public enum StageNoticePage: Sendable, CaseIterable { case draw, present, persona, keyboard, general }
+
+/// A notice and its page, recorded together where the notice is raised (#134).
+struct StageNotice: Equatable {
+    let text: String
+    let page: StageNoticePage
+}

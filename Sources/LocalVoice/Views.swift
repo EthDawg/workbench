@@ -140,7 +140,7 @@ struct ContentView: View {
                         Spacer()
                         Button("Undo") {
                             do { try model.undoRememberedCorrection() }
-                            catch { model.error = error.localizedDescription }
+                            catch { model.report(error.localizedDescription, on: .dictate) }
                         }.disabled(model.phase != .idle)
                         Button { model.dismissRememberedCorrection() } label: { Image(systemName: "xmark") }
                             .buttonStyle(.plain).accessibilityLabel("Dismiss remembered correction")
@@ -450,7 +450,7 @@ struct DictionaryView: View {
                     Button(spellings.count > 1 ? "Keep “\(spelling)”" : "Keep one") {
                         guard let chosen = rules.first(where: { $0.written == spelling }) else { return }
                         do { try model.resolveReplacementConflict(keeping: chosen) }
-                        catch { model.error = error.localizedDescription }
+                        catch { model.report(error.localizedDescription, on: .dictate) }
                     }.accessibilityLabel("Keep \(spelling) for \(rules[0].heard)")
                 }
             }

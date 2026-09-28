@@ -243,7 +243,10 @@ final class SettingsStore: ObservableObject {
             save(); onChange?()
         }
     }
-    @Published var notice: String?
+    /// Reading or saving these settings failed. Settings › General owns it (#134).
+    @Published private(set) var postedNotice: StageNotice?
+    var notice: String? { postedNotice?.text }
+    func clearNotice() { postedNotice = nil }
     var onChange: (() -> Void)?
     private var loading = true
     private let defaults: UserDefaults
@@ -253,7 +256,7 @@ final class SettingsStore: ObservableObject {
         var decoded = false
         if let data = savedData {
             do { value = try JSONDecoder().decode(Preferences.self, from: data); value.validate(); decoded = true }
-            catch { value = Preferences(); notice = "Saved settings could not be read. Defaults are in use; the original settings have been preserved."; defaults.set(data, forKey: "preferences.recovery") }
+            catch { value = Preferences(); postedNotice = StageNotice(text: "Saved settings could not be read. Defaults are in use; the original settings have been preserved.", page: .general); defaults.set(data, forKey: "preferences.recovery") }
         } else { value = Preferences() }
         if defaults.integer(forKey: "preferences.schema") < 2 {
             var migrated = value
@@ -312,7 +315,7 @@ final class SettingsStore: ObservableObject {
     }
     private func save() {
         do { defaults.set(try JSONEncoder().encode(value), forKey: "preferences.v1") }
-        catch { notice = "Your settings could not be saved: \(error.localizedDescription)" }
+        catch { postedNotice = StageNotice(text: "Your settings could not be saved: \(error.localizedDescription)", page: .general) }
     }
     func setPointer(_ transform: (inout PointerAppearance) -> Void) {
         var appearance = value.pointerAppearance; transform(&appearance)

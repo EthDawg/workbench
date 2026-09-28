@@ -344,6 +344,11 @@ struct HistoryView: View {
     }
 
     @ViewBuilder private var notices: some View {
+        // Removing or exporting a transcript that went wrong: the menu-bar panel's Open History…
+        // leads to these words (#134).
+        if let attention = model.attention, attention.page == .history {
+            Text(attention.message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+        }
         if let notice = jobs.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
         if let error = jobs.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
         if let notice = snap.notice { Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }

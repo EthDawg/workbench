@@ -1,5 +1,6 @@
 import Foundation
 import ToolbarCore
+import StageKit
 
 /// The page record and its one route normaliser (#134): the sidebar is the eleven pages under
 /// their Grammar names, every route that ever opened a page still lands on a highlighted sidebar
@@ -77,6 +78,19 @@ enum WorkbenchPageChecks {
         }
         try check(WorkbenchHome.symbol(of: "dictionary") == WorkbenchHome.symbol(of: "dictate") && WorkbenchHome.symbol(of: "packs") == WorkbenchHome.symbol(of: "library"),
                   "a subpage or section shows its page's symbol")
+        // The panel's door opens the page recorded with the problem where it was raised, never one
+        // read from its words (#134 review): each page lands where that problem is shown and fixed.
+        for (page, route, section) in [(Attention.Page.dictate, "dictate", nil), (.read, "speak", nil), (.home, "home", nil), (.history, "history", nil)] as [(Attention.Page, String, String?)] {
+            let landing = WorkbenchHome.destination(page.route)
+            try check(page.route == route && landing.page == route && landing.section == section, "a Voice problem owned by \(page) opens \(route)")
+        }
+        try check(Set(Attention.Page.allCases.map(\.route)).count == Attention.Page.allCases.count, "each Voice owner has its own page")
+        for (page, route, section) in [(StageNoticePage.draw, "annotate", nil), (.present, "present", nil), (.persona, "personas", nil),
+                                       (.keyboard, "settings", "shortcuts"), (.general, "settings", "settings")] as [(StageNoticePage, String, String?)] {
+            let landing = WorkbenchHome.destination(page.route)
+            try check(landing.page == route && landing.section == section, "a StageKit notice owned by \(page) opens \(route)\(section.map { " on " + $0 } ?? "")")
+        }
+        try check(Set(StageNoticePage.allCases.map(\.route)).count == StageNoticePage.allCases.count, "each StageKit owner has its own page or section")
         // The menu-bar panel's recovery says one sentence and opens the page that says the rest.
         try check(PanelRecoveryRow.headline("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.") == "Microphone access is off.",
                   "a recovery row keeps only the first sentence")

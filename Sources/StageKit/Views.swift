@@ -78,7 +78,7 @@ struct ControlCenter: View {
                                 Image(systemName: "info.circle").foregroundStyle(inkAccent)
                                 Text(message).font(.system(size: 12)).textSelection(.enabled)
                                 Spacer()
-                                Button { app.notice = nil; settings.notice = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                                Button { app.clearNotice(); settings.clearNotice() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
                             }.padding(12).background(inkAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
                         }
                         if !app.shortcutFailures.isEmpty {

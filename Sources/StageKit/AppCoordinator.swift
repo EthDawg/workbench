@@ -39,8 +39,21 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published var quickTab = QuickTab.draw
     @Published private(set) var quickControlsVisible = false
     @Published private(set) var screenshotHandoffActive = false
-    @Published var notice: String?
+    /// The latest notice and the page that owns it, recorded where the notice is raised (#134):
+    /// drawing and boards belong to Draw, recording a shortcut to Settings › Keyboard, and login to
+    /// Settings › General.
+    @Published private(set) var postedNotice: StageNotice?
+    /// The notice's words, as Draw's controls show them.
+    var notice: String? { postedNotice?.text }
+    func post(_ text: String, on page: StageNoticePage) { postedNotice = StageNotice(text: text, page: page) }
+    func clearNotice() { postedNotice = nil }
     @Published var launchAtLogin = false
+    /// Adds or removes Workbench as a login item and returns what macOS decided. Checks replace it,
+    /// so nothing is registered.
+    var loginItem: (Bool) throws -> SMAppService.Status = { enabled in
+        if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        return SMAppService.mainApp.status
+    }
     var activeDisplayID: String?
     private(set) var panels: [String: OverlayPanel] = [:]
     private(set) var canvases: [String: AnnotationView] = [:]
@@ -126,7 +139,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             boardHistory = archive.displays.mapValues(CanvasHistory.init)
         } catch {
             storageBlocked = true
-            notice = "Your saved board could not be read. It has been kept safely at \(archiveURL.path). New boards will not replace it."
+            post("Your saved board could not be read. It has been kept safely at \(archiveURL.path). New boards will not replace it.", on: .draw)
         }
         hotkeys.onAction = { [weak self] action, down in self?.handleHotkey(action, down: down) }
         hotkeys.onEscape = { [weak self] in self?.escape() }
@@ -209,7 +222,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     func startDrawing(_ selected: DrawingTool, latched: Bool) -> Bool {
         guard !boardExportInProgress, !screenshotHandoffActive, !shortcutsSuspended, recordingAction == nil else { return false }
         guard (mayBeginDrawing ?? mayBeginInteraction)?() != false else {
-            notice = "Finish the current capture or keyboard practice before drawing."
+            post("Finish the current capture or keyboard practice before drawing.", on: .draw)
             return false
         }
         let wasDrawing = isDrawing
@@ -330,7 +343,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private func saveBoards() {
         guard !storageBlocked else { return }
         do { try BoardStorage.save(BoardArchive(displays: boardHistory.mapValues(\.annotations)), to: archiveURL) }
-        catch { notice = "Board saving failed: \(error.localizedDescription)" }
+        catch { post("Board saving failed: \(error.localizedDescription)", on: .draw) }
     }
     private var exportableBoardID: String? {
         if let activeDisplayID, boards[activeDisplayID] != nil { return activeDisplayID }
@@ -350,14 +363,14 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func copyBoard() {
         guard !boardExportInProgress else { return }
-        do { try boardImageExport().copy(); notice = "Board copied as an image." }
-        catch { notice = error.localizedDescription }
+        do { try boardImageExport().copy(); post("Board copied as an image.", on: .draw) }
+        catch { post(error.localizedDescription, on: .draw) }
     }
     func saveBoardPNG() {
         guard !boardExportInProgress else { return }
         let data: Data
         do { data = try boardImageExport().png() }
-        catch { notice = error.localizedDescription; return }
+        catch { post(error.localizedDescription, on: .draw); return }
         hideQuickControls()
         boardExportInProgress = true
         refreshWindows(); refreshPalette()
@@ -372,8 +385,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             boardSavePanel = nil; boardExportInProgress = false
             guard !shuttingDown else { return }
             if result == .OK, let url = panel.url {
-                do { try data.write(to: url, options: .atomic); notice = "Saved \(url.lastPathComponent)." }
-                catch { notice = "Board image could not be saved: \(error.localizedDescription)" }
+                do { try data.write(to: url, options: .atomic); post("Saved \(url.lastPathComponent).", on: .draw) }
+                catch { post("Board image could not be saved: \(error.localizedDescription)", on: .draw) }
             }
             refreshWindows(); refreshPalette(); refreshEffects()
         }
@@ -404,8 +417,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             overlayHistory.values.forEach { $0.pauseFade(by: duration) }
         }
         screenshotHandoffActive = false
-        notice = error.map { "Screenshot could not open: \($0.localizedDescription)" }
-            ?? "Screenshot closed. Your annotations are still available; choose a drawing tool to continue."
+        post(error.map { "Screenshot could not open: \($0.localizedDescription)" }
+            ?? "Screenshot closed. Your annotations are still available; choose a drawing tool to continue.", on: .draw)
         for canvas in canvases.values { canvas.needsDisplay = true }
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
         if error != nil { showControls(tab: "Drawing", preservingCanvas: true) }
@@ -770,19 +783,24 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             guard let self else { return event }
             if event.keyCode == 53 { self.finishRecording(); return nil }
             if event.keyCode == 51 { var shortcut = self.settings.value.shortcut(for: action); shortcut.enabled = false; self.settings.value.shortcuts[action.rawValue] = shortcut; self.finishRecording(); return nil }
-            let shortcut = Shortcut(event: event)
-            guard shortcut.modifiers & UInt32(controlKey | optionKey) != 0 else {
-                self.notice = "Include Control or Option with your shortcut."; return nil
-            }
-            if let conflict = Action.allCases.first(where: { $0 != action && self.settings.value.shortcut(for: $0) == shortcut }) {
-                self.notice = "That shortcut belongs to \(conflict.title). Choose another combination."; return nil
-            }
-            if let message = self.validateExternalShortcut?(shortcut.keyCode, shortcut.modifiers) {
-                self.notice = message; return nil
-            }
-            self.settings.value.shortcuts[action.rawValue] = shortcut
-            self.notice = nil; self.finishRecording(); return nil
+            self.record(Shortcut(event: event), for: action)
+            return nil
         }
+    }
+    /// A combination pressed while recording `action`'s shortcut: saved, or refused with a notice
+    /// that belongs to Settings › Keyboard, where shortcuts are recorded (#134).
+    func record(_ shortcut: Shortcut, for action: Action) {
+        guard shortcut.modifiers & UInt32(controlKey | optionKey) != 0 else {
+            post("Include Control or Option with your shortcut.", on: .keyboard); return
+        }
+        if let conflict = Action.allCases.first(where: { $0 != action && settings.value.shortcut(for: $0) == shortcut }) {
+            post("That shortcut belongs to \(conflict.title). Choose another combination.", on: .keyboard); return
+        }
+        if let message = validateExternalShortcut?(shortcut.keyCode, shortcut.modifiers) {
+            post(message, on: .keyboard); return
+        }
+        settings.value.shortcuts[action.rawValue] = shortcut
+        clearNotice(); finishRecording()
     }
     func finishRecording() {
         guard recordingAction != nil else { return }
@@ -840,12 +858,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         }
         demoScenes.personas.shortcutHint = hint.isEmpty ? nil : hint.joined(separator: "; ") + "."
     }
+    /// Login is a Settings › General choice, so its notices belong there (#134).
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
-            if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-            launchAtLogin = SMAppService.mainApp.status == .enabled
-            if SMAppService.mainApp.status == .requiresApproval { notice = "Approve Workbench in System Settings → General → Login Items."; SMAppService.openSystemSettingsLoginItems() }
-        } catch { notice = "Login setting could not be changed: \(error.localizedDescription)" }
+            let status = try loginItem(enabled)
+            launchAtLogin = status == .enabled
+            if status == .requiresApproval { post("Approve Workbench in System Settings → General → Login Items.", on: .general); SMAppService.openSystemSettingsLoginItems() }
+        } catch { post("Login setting could not be changed: \(error.localizedDescription)", on: .general) }
     }
     func openZoomSettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?Zoom")!)
