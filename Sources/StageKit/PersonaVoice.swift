@@ -1,6 +1,7 @@
 import Accelerate
 import AppKit
 import AVFoundation
+import VoiceAppearance
 
 /// One moment of the presenter's voice, as the outline shows it. Nothing about
 /// the sound itself survives: a frame says whether a voice is present and how
@@ -19,6 +20,8 @@ struct PersonaVoiceFrame: Equatable {
 
     static let quiet = PersonaVoiceFrame(level: 0, speaking: false, seconds: 0)
     func lasting(_ seconds: Double) -> PersonaVoiceFrame { var frame = self; frame.seconds = seconds; return frame }
+    /// This frame as the shared voice appearance reads it.
+    var sample: VoiceSample { VoiceSample(voiced: speaking, level: Double(level)) }
 }
 
 /// Microphone samples in, voice frames out. A voice is recognised by its pitch
@@ -39,8 +42,9 @@ final class PersonaVoiceAnalyzer {
     static let margin: Float = 6
     /// Pitch this clear starts speech; a little less continues it.
     static let startingPitch: Float = 0.7, continuingPitch: Float = 0.5
-    /// Speech is held through gaps this long, so words run together.
-    static let hold = 0.18
+    /// Speech is held through gaps this long, so words run together: the same
+    /// hold every source of the shared voice appearance uses.
+    static let hold = VoiceSample.hold
     /// A room that has not been heard yet: a quiet office.
     static let assumedRoom: Float = -62
     let sampleRate: Double

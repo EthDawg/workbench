@@ -62,16 +62,13 @@ enum PersonaArtworkOutline: Equatable {
         }
     }
 
-    /// The outline and a colour that belongs to this artwork.
-    static func analyze(_ image: CGImage) -> (outline: PersonaArtworkOutline, tint: NSColor) {
+    /// The outline of this artwork's visible pixels.
+    static func analyze(_ image: CGImage) -> PersonaArtworkOutline {
         let aspect = CGFloat(image.height) / CGFloat(max(1, image.width))
         let whole = PersonaArtworkOutline.roundedRect(CGRect(x: 0, y: 0, width: 1, height: aspect), radius: 0)
-        guard image.width > 0, image.height > 0, let pixels = Pixels(image, longest: 128) else { return (whole, fallbackTint) }
-        return (pixels.outline() ?? whole, pixels.tint())
+        guard image.width > 0, image.height > 0, let pixels = Pixels(image, longest: 128) else { return whole }
+        return pixels.outline() ?? whole
     }
-
-    /// Workbench mint, bright enough to read on dark and light screens.
-    static let fallbackTint = NSColor(srgbRed: 0.43, green: 0.89, blue: 0.73, alpha: 1)
 
     /// A small RGBA copy of the artwork, rows bottom-up like AppKit.
     private struct Pixels {
@@ -173,42 +170,6 @@ enum PersonaArtworkOutline: Equatable {
                 return CGFloat(step) * 2.squareRoot() / (2.squareRoot() - 1)
             }.sorted()
             return min(min(box.width, box.height) / 2, (radii[1] + radii[2]) / 2)
-        }
-
-        /// A colour from the artwork itself: its most prominent vivid hue, made
-        /// bright enough to read. Skin and muddy photos fall back to mint.
-        func tint() -> NSColor {
-            var weight = [CGFloat](repeating: 0, count: 24)
-            var sums = [(CGFloat, CGFloat, CGFloat)](repeating: (0, 0, 0), count: 24)
-            var opaqueCount: CGFloat = 0
-            for index in stride(from: 0, to: rgba.count, by: 4) where rgba[index + 3] >= 200 {
-                opaqueCount += 1
-                let alpha = CGFloat(rgba[index + 3]) / 255
-                let (r, g, b) = (CGFloat(rgba[index]) / 255 / alpha, CGFloat(rgba[index + 1]) / 255 / alpha, CGFloat(rgba[index + 2]) / 255 / alpha)
-                let high = max(r, g, b), low = min(r, g, b)
-                guard high > 0 else { continue }
-                let saturation = (high - low) / high
-                guard saturation >= 0.35, high >= 0.3, high > low else { continue }
-                var hue: CGFloat
-                if high == r { hue = (g - b) / (high - low) } else if high == g { hue = 2 + (b - r) / (high - low) } else { hue = 4 + (r - g) / (high - low) }
-                hue = (hue / 6).truncatingRemainder(dividingBy: 1); if hue < 0 { hue += 1 }
-                // Faces are the commonest colour in a headshot and a poor outline.
-                if hue > 10 / 360, hue < 50 / 360, saturation < 0.5 { continue }
-                let bin = min(23, Int(hue * 24)), vivid = saturation * high
-                weight[bin] += vivid
-                sums[bin].0 += r * vivid; sums[bin].1 += g * vivid; sums[bin].2 += b * vivid
-            }
-            guard opaqueCount > 0, let top = weight.indices.max(by: { weight[$0] < weight[$1] }),
-                  weight[top] >= 0.05 * opaqueCount else { return fallbackTint }
-            let chosen = [(top + 23) % 24, top, (top + 1) % 24]
-            let total = chosen.reduce(0) { $0 + weight[$1] }
-            let color = NSColor(srgbRed: chosen.reduce(0) { $0 + sums[$1].0 } / total,
-                                green: chosen.reduce(0) { $0 + sums[$1].1 } / total,
-                                blue: chosen.reduce(0) { $0 + sums[$1].2 } / total, alpha: 1)
-            var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-            color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-            return NSColor(hue: hue, saturation: min(0.9, max(0.45, saturation)), brightness: max(0.82, brightness), alpha: 1)
-                .usingColorSpace(.sRGB) ?? fallbackTint
         }
 
         static func circumcircle(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> (center: CGPoint, radius: CGFloat)? {
