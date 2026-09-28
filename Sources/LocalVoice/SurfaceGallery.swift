@@ -246,10 +246,48 @@ enum SurfaceGallery {
                                                    detail: "", file: "page-\(pages[index].route)-\(name)-\(theme).png", to: output))
             }
         }
+        for (route, shots) in try renderFoldedStates(to: output) {
+            if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
+        }
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+    }
+
+    // MARK: Folded page states
+
+    /// Library's Resources with long names and one selected, and Settings' Models while a
+    /// dictation records, at the minimum window size: the folded pages with long labels and an
+    /// active job (#134). Between the two, every page and section opens in turn; the draft, the
+    /// selections and the recording must come through unchanged, or the pass fails.
+    func renderFoldedStates(to output: URL) throws -> [(String, [SurfaceGallery.Shot])] {
+        let size = SurfaceGallery.sizes[1].size, library = model.library
+        let window = homeWindow(size: size)
+        defer { window.contentViewController = nil; window.close(); model.phase = .idle; model.elapsed = 0 }
+        var added: [DemoResource] = []
+        defer { for item in added { library.remove(item) }; library.notice = nil }
+        for title in ["Quarterly pricing walkthrough for the regional partner review, with the revised numbers",
+                      "Onboarding checklist for presenters joining the Thursday demo rotation",
+                      "Follow-up prompt: summarise the objections from the procurement call and propose next steps"] {
+            let item = DemoResource(title: title, product: "Synthetic product with a longer name", persona: "Operations lead", content: "Synthetic text for \(title).")
+            guard library.save(item) else { throw VoiceError.message("The gallery could not save a synthetic resource: \(library.error ?? "unknown").") }
+            added.append(item)
+        }
+        library.selection = added[0].id; library.notice = nil
+        let (resources, resourcesSize) = try renderPage("library", in: window)
+        let libraryShot = try save(resources, id: "state-long-names", title: "Resources with long names, one selected, minimum window, \(Int(resourcesSize.width)) × \(Int(resourcesSize.height)) pt",
+                                   detail: "Three synthetic resources with long titles; the first is selected and its detail shows.", file: "page-library-state-long-names-\(theme).png", to: output)
+        model.phase = .recording; model.elapsed = 14
+        let kept = (draft: model.transcript, selection: model.historyLibrary.selected, resource: library.selection)
+        for route in SurfacePass.pages.map(\.0) + ["library"] { model.page = route; settle(window.contentView?.superview ?? window.contentView!, seconds: 0.05) }
+        guard model.transcript == kept.draft, model.historyLibrary.selected == kept.selection, library.selection == kept.resource, model.phase == .recording else {
+            throw VoiceError.message("Opening every page and section changed the Dictate draft, a selection or the recording.")
+        }
+        let (models, modelsSize) = try renderPage("models", in: window)
+        let modelsShot = try save(models, id: "state-dictating", title: "Models while a dictation records, minimum window, \(Int(modelsSize.width)) × \(Int(modelsSize.height)) pt",
+                                  detail: "A recording holds the speech model: the controls wait until it finishes.", file: "page-models-state-dictating-\(theme).png", to: output)
+        return [("library", [libraryShot]), ("models", [modelsShot])]
     }
 
     // MARK: History states
