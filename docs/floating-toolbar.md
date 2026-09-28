@@ -35,6 +35,9 @@ right-click the glyph for the menu, drag anywhere to move. Work running in the
 selected mode is a dot on the glyph. The hover hint shows a key only for an
 operation that key performs: Present's key does not stop an insertion, Dictate's
 key does not stop a meeting, and the persona key does not pause a prepared set.
+A hint names the key that starts the capability; that same key also stops it
+only in toggle activation (the pen key ends drawing only when the pen is the
+active tool and Draw is set to toggle).
 
 `ToolbarModeFollower` in the host watches every owner and makes a capability
 the mode the moment it goes from not live to live, whichever door started it;

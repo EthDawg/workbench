@@ -521,20 +521,36 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.read",
+    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.operation",
     "surface": "floating toolbar hover action",
     "label": null,
-    "expression": "rendering | | playing | | paused ? \"Stop reading\" : \"Read\"",
-    "note": "Runtime label from rendering | | playing | | paused ? \"Stop reading\" : \"Read\"; no rendered text assumed.",
+    "expression": "ToolbarNextAction . title ( operation , live : live ( tool . mode ?? . snap ) )",
+    "note": "Runtime label from ToolbarNextAction . title ( operation , live : live ( tool . mode ?? . snap ) ); no rendered text assumed.",
     "kind": "action",
-    "belongsTo": "read"
+    "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.timer",
+    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.start",
     "surface": "floating toolbar hover action",
     "label": null,
-    "expression": "timerStarted ? \"Stop timer\" : \"Timer\"",
-    "note": "Runtime label from timerStarted ? \"Stop timer\" : \"Timer\"; no rendered text assumed.",
+    "expression": "tool . title",
+    "note": "Runtime label from tool . title; no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.startTimer",
+    "surface": "floating toolbar hover action",
+    "label": "Timer",
+    "kind": "capability",
+    "belongsTo": "timer",
+    "aliasOf": "timer",
+    "note": "The Timer row idle reads its capability name, as every idle row does."
+  },
+  {
+    "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.stopTimer",
+    "surface": "floating toolbar hover action",
+    "label": "Stop timer",
     "kind": "action",
     "belongsTo": "timer"
   },
@@ -1899,6 +1915,13 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopReading",
+    "surface": "floating toolbar next action",
+    "label": "Stop reading",
+    "kind": "action",
+    "belongsTo": "read"
+  },
+  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.wait",
     "surface": "floating toolbar next action",
     "label": null,
@@ -2544,64 +2567,5 @@
     "case": "whiteboard",
     "kind": "action",
     "belongsTo": "draw"
-  },
-  {
-    "id": "shortcut.voice.1",
-    "surface": "global shortcuts",
-    "label": "Dictate",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "shortcut.voice.2",
-    "surface": "global shortcuts",
-    "label": "Quick controls",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "shortcut.voice.3",
-    "surface": "global shortcuts",
-    "label": "Saved resources",
-    "kind": "action",
-    "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "shortcut.voice.4",
-    "surface": "global shortcuts",
-    "label": "Switch to",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "shortcut.voice.5",
-    "surface": "global shortcuts",
-    "label": "Snap & Talk",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk"
-  },
-  {
-    "id": "shortcut.voice.6",
-    "surface": "global shortcuts",
-    "label": "Read",
-    "kind": "action",
-    "belongsTo": "read"
-  },
-  {
-    "id": "shortcut.voice.7",
-    "surface": "global shortcuts",
-    "label": "Present",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "shortcut.voice.8",
-    "surface": "global shortcuts",
-    "label": "Snap",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Snap shortcut, off by default; Option of Snap, decided on #134."
   }
 ]
