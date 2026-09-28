@@ -4,9 +4,9 @@ import StageKit
 import ToolbarCore
 
 /// One compact panel, reached from the status item and the Quick Controls key.
-/// A row per capability in moment order, each reading the same next action the
-/// floating toolbar shows and acting on it. The action rows stay above receipts
-/// and inline shortcut editing. Its measures are #134's: 320 points wide with a
+/// A row per capability in moment order, each showing and acting on its own
+/// state while the floating toolbar keeps one contextual next action. The action
+/// rows stay above receipts and inline shortcut editing. Its measures are #134's: 320 points wide with a
 /// 12 point inset, 36 point rows with 13 point labels, and 11 point shortcut and
 /// Options controls, so larger text grows a row rather than clipping it.
 struct WorkbenchQuickPanel: View {
@@ -26,6 +26,8 @@ struct WorkbenchQuickPanel: View {
     var present: () -> Void
     var timer: () -> Void
     var personas: () -> Void
+    /// The gallery renders the same rows with frozen synthetic StageKit facts.
+    var controlState: WorkbenchControlState? = nil
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
     private var hasFeedback: Bool {
         editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true ||
@@ -51,24 +53,29 @@ struct WorkbenchQuickPanel: View {
     }
 
     var body: some View {
-        let state = context.state
+        let state = controlState ?? context.state
         VStack(alignment: .leading, spacing: 10) {
             Self.header(toolbarVisible: $model.floatingToolbarVisible)
             Divider()
             VStack(spacing: 2) {
                 ForEach(WorkbenchControlTool.allCases) { tool in
+                    let renderedAction = state.rowAction(tool)
                     HStack(spacing: 8) {
-                        // The capability's symbol and next action, as the toolbar and its page show them.
-                        Button { perform(tool) } label: {
+                        // Each capability retains its own symbol, action and live accent.
+                        Button { perform(tool, renderedAction: renderedAction) } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: tool.symbol).font(.system(size: 13)).foregroundStyle(.secondary)
+                                Image(systemName: tool.symbol).font(.system(size: 13))
+                                    .foregroundStyle(state.active(tool) ? Workbench.accent : .secondary)
                                     .frame(width: 18).accessibilityHidden(true)
                                 Text(state.actionTitle(tool)).font(.system(size: 13, weight: .medium))
                             }.frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                                 .contentShape(Rectangle())
                         }.buttonStyle(.plain)
+                            // Replacing the operation cancels a held SwiftUI button; a
+                            // mouse-up cannot retarget its old Stop to the new Start.
+                            .id(renderedAction)
                             .disabled(!state.enabled(tool) || keyboard.isInteracting)
-                            .help(state.actionTitle(tool) + ". " + context.detail(tool))
+                            .help(state.actionTitle(tool) + ". " + context.detail(tool, state: state))
                         shortcut(tool)
                         ZStack(alignment: .trailing) { options(tool) }
                             .frame(width: 64, height: 28, alignment: .trailing)
@@ -258,7 +265,8 @@ struct WorkbenchQuickPanel: View {
     /// The row does exactly what its label says: the same operation, through the
     /// same owner switch the floating toolbar uses. Only a start goes through
     /// this surface's own door.
-    private func perform(_ tool: WorkbenchControlTool) {
+    private func perform(_ tool: WorkbenchControlTool, renderedAction: WorkbenchRowAction) {
+        guard !keyboard.isInteracting, context.state.admits(renderedAction, for: tool) else { return }
         let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
             switch mode {
             case .dictate: model.onMenuRecording?()
@@ -270,7 +278,7 @@ struct WorkbenchQuickPanel: View {
             case .persona: personas()
             }
         }
-        switch context.state.rowAction(tool) {
+        switch renderedAction {
         case .startTimer, .stopTimer: timer()
         case .operation(let operation):
             if case .start = operation {} else { model.onCloseMenu?() }

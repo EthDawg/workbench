@@ -488,6 +488,7 @@ struct WorkbenchHomePage: View {
                 let persona = personaControl
                 liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
                     Button(persona.rowTitle) { perform(persona) }.help(persona.help)
+                        .id(persona.operation).disabled(!persona.isEnabled)
                 }
             }
             if stage.hasActiveTimer {
@@ -508,6 +509,8 @@ struct WorkbenchHomePage: View {
     }
     /// Does exactly what the Persona label names, through the switch the panel and toolbar use.
     private func perform(_ persona: HomePersonaControl) {
+        let state = WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap).state
+        guard persona.isAdmitted(in: state) else { return }
         WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { _ in stage.togglePersona() }
             .perform(persona.operation)
     }

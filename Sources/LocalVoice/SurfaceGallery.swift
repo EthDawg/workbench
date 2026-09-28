@@ -271,7 +271,7 @@ enum SurfaceGallery {
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
             try state.apply()
-            let rep = try renderPanel(state.readback)
+            let rep = try renderPanel(state.readback, controlState: state.controlState)
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
@@ -1175,12 +1175,19 @@ enum SurfaceGallery {
         }
     }
 
-    struct PanelState { var id, title, detail: String; var readback: ReadbackModel; var apply: () throws -> Void = {}; var reset: () throws -> Void = {} }
+    struct PanelState { var id, title, detail: String; var readback: ReadbackModel; var controlState: WorkbenchControlState? = nil; var apply: () throws -> Void = {}; var reset: () throws -> Void = {} }
 
-    /// Only the voice-owned states. Drawing, presenting, personas and the timer need live StageKit
-    /// windows or device capture, so the index lists them as not rendered.
+    /// Voice fixtures use their isolated owners. Combined StageKit states use a frozen
+    /// row projection, so the real panel draws them without opening overlays or capture.
     func panelStates() -> [PanelState] {
         let model = model
+        var combined = WorkbenchControlState()
+        combined.drawing = true; combined.presenting = true; combined.overlays = true
+        combined.timerStarted = true; combined.timerRunning = true
+        var recording = combined
+        recording.phase = .recording; recording.mayPresent = false
+        var hidden = recording
+        hidden.overlaySession = true; hidden.overlaysPaused = true
         return [
             PanelState(id: "idle", title: "Idle", detail: "Speech ready, no session, nothing running.", readback: readback),
             PanelState(id: "toolbar-off", title: "Floating toolbar off", detail: "The header's switch is off: the toolbar stays hidden between actions.", readback: readback,
@@ -1189,6 +1196,17 @@ enum SurfaceGallery {
                        apply: { model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes" },
                        reset: { model.ready = true; model.preparing = false; model.modelMessage = "Preparing local speech…" }),
             PanelState(id: "dictating", title: "Dictating", detail: "Recording for 14 seconds.", readback: readback,
+                       apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
+            PanelState(id: "combined-live", title: "Drawing, presenting, Persona and timer",
+                       detail: "Synthetic StageKit facts: each live row keeps its own Stop, End or Hide; Dictate, Read and Snap remain distinct.",
+                       readback: readback, controlState: combined),
+            PanelState(id: "dictating-live", title: "Dictating alongside live work",
+                       detail: "Only Dictate says Stop. Draw, Present, Persona and Timer keep their own endings; incompatible new captures are disabled.",
+                       readback: readback, controlState: recording,
+                       apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
+            PanelState(id: "persona-hidden-busy", title: "Hidden Persona set during dictation",
+                       detail: "Show personas waits for its owner's resume admission. Present, Draw and Timer remain independently usable.",
+                       readback: readback, controlState: hidden,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "snap-session", title: "Snap & Talk session", detail: "A session with three captures.", readback: sessionReadback),
             PanelState(id: "reading", title: "Reading", detail: "Read aloud playing.", readback: readback,
@@ -1211,14 +1229,14 @@ enum SurfaceGallery {
 
     // MARK: Rendering
 
-    func quickPanel(_ readback: ReadbackModel) -> WorkbenchQuickPanel {
+    func quickPanel(_ readback: ReadbackModel, controlState: WorkbenchControlState? = nil) -> WorkbenchQuickPanel {
         WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, editor: panelEditor, receipts: model.clipboardReceipt, snapModel: snap,
-                            open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {})
+                            open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {}, controlState: controlState)
     }
 
     /// The popover's own material is not drawn; the panel sits on the window background.
-    func renderPanel(_ readback: ReadbackModel) throws -> NSBitmapImageRep {
-        let host = NSHostingView(rootView: quickPanel(readback).background(Color(nsColor: .windowBackgroundColor)))
+    func renderPanel(_ readback: ReadbackModel, controlState: WorkbenchControlState? = nil) throws -> NSBitmapImageRep {
+        let host = NSHostingView(rootView: quickPanel(readback, controlState: controlState).background(Color(nsColor: .windowBackgroundColor)))
         let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
         window.contentView = host
         settle(host)
@@ -1982,7 +2000,7 @@ private struct SurfaceIndex {
                 + (missing ? "<td class=\"flag\">No page</td>" : "<td class=\"ok\">\(entry.route == nil ? "Action" : "Page exists")</td>") + "</tr>"
         }
         html += "</table><h2>Limitations</h2><ul>" + [
-            "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
+            "Combined drawing, presenting, Persona and timer rows use frozen synthetic state in the production panel. This proves labels and layout only; live StageKit windows, device capture and mouse interaction still need installed acceptance.",
             "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
             "The Saved Prompts panel is opened the same way, with no keyboard focus and no click monitors; its placement, focus return and dismissal need a pointer on the installed app.",
             "StageKit is never started, so Draw reports Ready on 0 displays.",
