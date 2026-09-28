@@ -451,6 +451,15 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         hush.stopRecording()
         try check(hush.captureCue?.reason == .tooQuiet && hush.captureFailure == nil && hush.error == nil && hush.status.contains("Sound"),
                   "Silence is a routine cue, with the microphone hint in the status")
+        // A second silent capture in a row points at the microphone, not a pause.
+        _ = try recording(hush, seconds: 3, peak: -70)
+        hush.stopRecording()
+        try check(hush.captureCue == nil && hush.captureFailure?.contains("twice in a row") == true && hush.error != nil,
+                  "A second silent capture in a row gets the explicit panel with where to look")
+        _ = try recording(hush, seconds: 3, peak: -70)
+        hush.stopRecording()
+        try check(hush.captureCue?.reason == .tooQuiet && hush.captureFailure == nil,
+                  "After that panel the count starts again, so the next silence is a cue")
 
         let nothing = CaptureHarness(directory: folder("no-speech-recognised")); nothing.announceForAccessibility = { _ in }
         nothing.engine.result = ""
@@ -511,8 +520,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             if case .failure(let error) = result { silenceReplies.append(error.localizedDescription) } else { silenceReplies.append("success") }
         }
         shortcutSilence.run(importedURL, owned: false); await finish(shortcutSilence)
-        try check(silenceReplies == ["No speech heard."] && shortcutSilence.captureCue?.reason == .nothingRecognised(keptAudio: false)
-                  && !shortcutSilence.canRetry, "Shortcuts get one No speech heard reply; an imported file is never kept")
+        try check(silenceReplies == ["No speech heard."] && shortcutSilence.captureCue == nil && shortcutSilence.captureFailure == nil
+                  && !shortcutSilence.canRetry, "Shortcuts get one No speech heard reply and no floating cue; an imported file is never kept")
 
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }

@@ -709,6 +709,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             guard try captureRecovery.audioURL(for: record)?.standardizedFileURL == ownedAudio.standardizedFileURL else { throw CaptureRecoveryError.invalid }
         }
         rawTranscript = raw; transcript = text; cleanupMethod = method
+        quietCapturesInARow = 0
         // retain keeps the result in memory even when the independent journal fails.
         do { try captureRecovery.retain(record) }
         catch {
@@ -1364,8 +1365,23 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private var captureCueClock: CaptureCueClock?
     private var captureCueExpiry: Task<Void, Never>?
     var announceForAccessibility: (String) -> Void = { CaptureCueAnnouncement.post($0) }
+    /// Silent captures in a row. A second is more likely a muted or wrong
+    /// microphone, or a closed lid, than a pause, so it gets the explicit panel
+    /// that says where to look instead of another brief cue.
+    private var quietCapturesInARow = 0
     func endWithoutSpeech(_ reason: CaptureCue.Reason) {
-        if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(CaptureCue.message + "."))) }
+        if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
+        if quietCapturesInARow >= 2 {
+            quietCapturesInARow = 0
+            fail("No speech heard twice in a row. Check the input in System Settings → Sound, and open the lid of a MacBook.")
+            return
+        }
+        if let id = shortcutRequest.id {
+            // A Shortcuts run gets its reply; a floating cue would only flash for automation.
+            shortcutRequest.finish(id: id, result: .failure(VoiceError.message(CaptureCue.message + ".")))
+            captureFailure = nil; phase = .idle; status = CaptureCue(reason: reason).status; onPhaseChange?()
+            return
+        }
         captureFailure = nil
         phase = .idle
         let cue = CaptureCue(reason: reason)
