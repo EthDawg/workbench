@@ -121,6 +121,8 @@ ENTRY_POINTS = [
     # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingResultView', 'floating toolbar live controls', 'page'),
+    # Persona's Appearance accessory opens its own menu for the selected live copy (#134 part B).
+    ('LocalVoice/FloatingToolbarState.swift', 'ToolbarAccessoryMenus', 'floating toolbar accessory', 'controls'),
     ('StageKit/AnnotationMenu.swift', 'AnnotationMenu', 'Draw menu', 'controls'),
     ('StageKit/DemoScenes.swift', 'DemoScenes.makeControlsMenu', 'Present menu', 'controls'),
     ('StageKit/DemoPresentation.swift', 'DemoPresentation.makeControlsMenu', 'Present menu', 'controls'),
@@ -187,7 +189,8 @@ EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortc
 CATALOGUES = [
     ('LocalVoice/WorkbenchControlTool.swift', 'WorkbenchControlState.actionTitle'),
     ('ToolbarCore/ToolbarViewState.swift', 'ToolbarMode'),
-    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarViewState'),
+    # Each tool's one accessory (#134 part B), titled as the row shows it.
+    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarAccessory'),
     ('StageKit/Settings.swift', 'Action'),
     ('LocalVoice/main.swift', 'AppDelegate.voiceShortcutEntries'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome'),
@@ -691,7 +694,25 @@ class Inventory:
             yield i, collection, body, var + ['$0'], bound
 
     def use_enum(self, found, member):
-        self.enums.setdefault(found[0].type_context(found[1] + 1), (found, member or 'title'))
+        # An enum that shows another enum's words case for case records that enum's choices,
+        # so the words are registered once, where they are defined.
+        found, member = self.bridged(found, member or 'title') or (found, member or 'title')
+        self.enums.setdefault(found[0].type_context(found[1] + 1), (found, member))
+
+    def bridged(self, found, member):
+        """(enum, member) whose words `found` shows unchanged, when every case's `member` is
+        Other(rawValue: rawValue)?.m ?? rawValue and Other has every one of its raw values:
+        StageKitController.PersonaShape shows PersonaAppearance.Shape's titles. Otherwise None,
+        and the labels stay runtime."""
+        swift, start, end = found
+        forms = {expr for _, expr in choice_labels(swift, start, end, member).values()}
+        match = len(forms) == 1 and re.fullmatch(r'((?:\w+ \. )*\w+) \( rawValue : rawValue \) \? \. (\w+) \?\? rawValue', next(iter(forms)) or '')
+        other = self.find_enum(swift, match[1].replace(' . ', '.')) if match else None
+        if not other or other[0].type_context(other[1] + 1) == swift.type_context(start + 1):
+            return None
+        mine = {raw for _, raw in enum_cases(swift, start, end).values()}
+        theirs = {raw for _, raw in enum_cases(*other).values()}
+        return (other, match[2]) if mine <= theirs else None
 
     def element(self, swift, element, position, member, hint):
         """(label, identity) of one literal list element, or None if it is not literal."""
@@ -1027,14 +1048,10 @@ class Inventory:
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
                 self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar modes', identity=case, case=case)
-        swift, ranges = self.owner(*CATALOGUES[2], kinds=('struct',))
-        for start, end in ranges:
-            for i in range(start, end - 3):
-                if swift.v[i:i + 4] == ['self', '.', 'accessoryTitle', '=']:
-                    k = i + 5
-                    while k < end and '\n' not in swift.source[swift.tokens[k - 1].end:swift.tokens[k].start]:
-                        k += 1
-                    self.add(swift, i, 'accessory-title', swift.tokens[i + 4:k], 'floating toolbar accessory', identity='present-prompts')
+        swift, ranges = self.owner(*CATALOGUES[2], kinds=('enum',))
+        for start, end in ranges[:1]:
+            for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
+                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar accessory', identity=case, case=case)
         # Stage shortcuts: every Action case, titled as the shortcut list shows it.
         swift, ranges = self.owner(*CATALOGUES[3], kinds=('enum',))
         for start, end in ranges[:1]:

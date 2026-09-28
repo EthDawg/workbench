@@ -12,7 +12,11 @@ import ToolbarCore
 /// crossing, just a slightly later one.
 @MainActor public final class ToolbarTrackingView: NSView {
     public var event: ((ToolbarEvent) -> Void)?
-    public var acceptsCrossings = false
+    /// Resize, drag and surface changes suspend tracking. They also cancel any
+    /// resting-pill dwell: a reveal from the previous geometry is no longer intent.
+    public var acceptsCrossings = false {
+        didSet { if !acceptsCrossings { cancelPendingEntry() } }
+    }
     /// True while the window shows the resting element rather than the row.
     public var isRestingSized: () -> Bool = { false }
     /// The one reveal delay, in seconds, for measured tuning.
@@ -21,6 +25,7 @@ import ToolbarCore
     private var gate = ToolbarPointerGate(point: NSEvent.mouseLocation)
     private let clock: ToolbarGraceClock
     private var entryPending = false
+    private var entryGeneration = 0
     /// Where the pointer is on screen. Tests inject it; production asks AppKit.
     var locatePointer: () -> NSPoint = { NSEvent.mouseLocation }
 
@@ -31,6 +36,11 @@ import ToolbarCore
         addSubview(content)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { cancelPendingEntry() }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     public override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -72,10 +82,18 @@ import ToolbarCore
         switch next {
         case .pointerEntered where isRestingSized():
             entryPending = true
+            entryGeneration += 1
+            let generation = entryGeneration
             clock.start { [weak self] in
-                guard let self, self.entryPending else { return }
+                guard let self, self.entryPending, self.acceptsCrossings,
+                      self.entryGeneration == generation else { return }
                 self.entryPending = false
                 if self.pointerInside { self.event?(.pointerEntered) }
+                else {
+                    // An exit can be swallowed by native tracking. The core never
+                    // saw the entry; reset the gate so the next real entry can dwell.
+                    self.gate.settled(at: self.locatePointer(), inside: false)
+                }
             }
         case .pointerLeft where entryPending:
             cancelPendingEntry()
@@ -87,6 +105,7 @@ import ToolbarCore
     private func cancelPendingEntry() {
         guard entryPending else { return }
         entryPending = false
+        entryGeneration += 1
         clock.cancel()
     }
 }

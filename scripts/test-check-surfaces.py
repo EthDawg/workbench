@@ -478,6 +478,31 @@ class SurfaceTests(unittest.TestCase):
         self.write('LocalVoice/MeetingModels.swift', 'enum Status: String, CaseIterable { case recording = "Recording" }')
         self.assertNotIn('Recording', self.labels())
 
+    def test_an_enum_showing_another_enums_words_records_that_enum(self):
+        self.write('StageKit/PersonaAppearance.swift', '''struct PersonaAppearance {
+          enum Shape: String, CaseIterable {
+            case circle, card
+            var title: String { switch self { case .circle: return "Circle"; case .card: return "Card" } }
+          }
+        }''')
+        owner = self.write('StageKit/StageKitController.swift', '''final class StageKitController {
+          public enum PersonaShape: String, CaseIterable {
+            case circle, card
+            public var title: String { PersonaAppearance.Shape(rawValue: rawValue)?.title ?? rawValue }
+          }
+          func makePersonaMenu() -> NSMenu {
+            for shape in PersonaShape.allCases { menu.addItem(StageMenuAction(shape.title) { set(shape) }) }
+            return menu
+          }
+        }''')
+        def choices():
+            return sorted((e['id'], e['label']) for e in self.entries() if e['id'].startswith('choices.'))
+        self.assertEqual([('choices.PersonaAppearance.Shape.card', 'Card'), ('choices.PersonaAppearance.Shape.circle', 'Circle')], choices())
+        # A case the other enum lacks would show its raw value: the words are its own, at runtime.
+        owner.write_text(owner.read_text().replace('case circle, card', 'case circle, card, star'))
+        self.assertEqual([('choices.StageKitController.PersonaShape.card', None), ('choices.StageKitController.PersonaShape.circle', None),
+                          ('choices.StageKitController.PersonaShape.star', None)], choices())
+
     def test_registry_schema_and_duplicate_ids(self):
         entry = {**self.registry()[0], 'kind': 'mystery', 'belongsTo': 'workspace'}
         errors = '\n'.join(self.errors([entry, entry]))
@@ -648,7 +673,7 @@ class SurfaceTests(unittest.TestCase):
             body = []
             for scope in {s for s in scopes if s}:
                 parts = scope.split('.')
-                kind = 'enum' if parts[0] in ('ToolbarMode', 'Action') else 'struct'
+                kind = 'enum' if parts[0] in ('ToolbarMode', 'ToolbarAccessory', 'Action') else 'struct'
                 inner = f'func {parts[1]}() {{}}' if len(parts) > 1 else ''
                 body.append(f'{kind} {parts[0]} {{ {inner} }}')
             if relative.endswith('WorkbenchHome.swift'):

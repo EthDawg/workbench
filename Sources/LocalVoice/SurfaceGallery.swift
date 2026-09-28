@@ -275,7 +275,7 @@ enum SurfaceGallery {
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
             try state.apply()
-            let rep = try renderPanel(state.readback)
+            let rep = try renderPanel(state.readback, controlState: state.controlState)
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
@@ -304,12 +304,13 @@ enum SurfaceGallery {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
-        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += try renderDictateStates(to: output) }
+        let dictateStates = try renderDictateStates(to: output)
+        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += dictateStates.shots }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)] }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
-        let checks = try review.checks + checkToolbarVisibility() + header.checks
+        let checks = try dictateStates.checks + review.checks + checkToolbarVisibility() + header.checks
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
@@ -990,39 +991,92 @@ enum SurfaceGallery {
     /// Delivery as an option; nothing waits on the approval. Only the model's status is set, as a
     /// dictation leaves it; the clipboard is not touched. The pass's draft, status, delivery and
     /// approval are restored afterwards.
-    func renderDictateStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+    func renderDictateStates(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [String]) {
         let kept = (draft: model.transcript, raw: model.rawTranscript, status: model.status,
                     delivery: model.preferences.delivery, granted: model.accessibilityGranted)
-        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
         defer {
-            window.contentViewController = nil; window.close()
             model.transcript = kept.draft; model.rawTranscript = kept.raw; model.status = kept.status
             model.preferences.delivery = kept.delivery; model.accessibilityGranted = kept.granted
         }
         let words = SurfacePass.history[1].text
         model.preferences.delivery = .paste; model.accessibilityGranted = false
         model.rawTranscript = words; model.transcript = words; model.status = TextDelivery.copiedMessage
-        let (rep, drawn) = try renderPage("dictate", in: window)
-        var shots = [try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                         detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
-                         file: "page-dictate-state-manual-copy-\(theme).png", to: output)]
-        // Settings' Dictate options… lands on the options, not the top of the page (#134 H2).
-        let narrow = homeWindow(size: SurfaceGallery.sizes[1].size)
-        defer { narrow.contentViewController = nil; narrow.close() }
-        model.page = "settings"; settle(narrow.contentView?.superview ?? narrow.contentView!)
+        // Its window closes before the options check, so that check's window is the only Home open.
+        func manualCopy() throws -> SurfaceGallery.Shot {
+            let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+            defer { window.contentViewController = nil; window.close() }
+            let (rep, drawn) = try renderPage("dictate", in: window)
+            return try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                            detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
+                            file: "page-dictate-state-manual-copy-\(theme).png", to: output)
+        }
+        let manual = try manualCopy()
+        let options = try renderDictateOptionsFocused(to: output)
+        return (shots: [manual, options.shot], checks: [options.check])
+    }
+
+    /// Settings' Dictate options… lands on Dictate's Options (#134 H2). The window is the only
+    /// Home open, so no other page can take the request, and its Dictate reports where Options and
+    /// the visible scroll area were laid out (`pageSectionFrames`, nil in the app). Both frames
+    /// must have an area. Options must first lie outside the visible area, judged after a settle,
+    /// or a page that never scrolled would pass. Then the request is set on Settings, and the check
+    /// waits, up to a deadline, until the page has taken it and Options lies inside the visible
+    /// area, and judges that again after the last settle, just before the shot.
+    func renderDictateOptionsFocused(to output: URL) throws -> (shot: SurfaceGallery.Shot, check: String) {
+        final class Frames { var byID: [String: CGRect] = [:] }
+        let frames = Frames()
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size) { id, frame in frames.byID[id] = frame }
+        defer { window.contentViewController = nil; window.close(); model.focusRequest = nil }
+        let root = window.contentView?.superview ?? window.contentView!
+        func text(_ rect: CGRect?) -> String {
+            rect.map { "\(Int($0.width)) × \(Int($0.height)) at (\(Int($0.minX)), \(Int($0.minY)))" } ?? "not laid out"
+        }
+        func state() -> String {
+            "page \(model.page), request \(model.focusRequest == nil ? "taken" : "not taken"), Options \(text(frames.byID["dictate.options"])), "
+                + "visible scroll area \(text(frames.byID["dictate.visible"]))"
+        }
+        /// Both frames reported with an area. A rect with no width or height is "contained" by any
+        /// rect around its origin, so a collapsed Options or a transient empty report proves nothing.
+        func laidOut() -> Bool {
+            guard let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
+            return !options.isEmpty && !visible.isEmpty
+        }
+        func optionsInView() -> Bool {
+            guard laidOut(), let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
+            return visible.insetBy(dx: -0.5, dy: -0.5).contains(options)
+        }
+        func wait(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(3)
+            repeat { settle(root, seconds: 0.1) } while !done() && Date() < deadline
+        }
+        model.focusRequest = nil
+        model.page = "dictate"
+        wait { laidOut() }
+        // One more settle, so a first layout pass cannot decide where Options starts.
+        settle(root)
+        guard laidOut(), !optionsInView() else {
+            throw VoiceError.message("Dictate's Options must be laid out outside the visible scroll area first, or the options door cannot be checked: \(state()).")
+        }
+        let before = frames.byID["dictate.options"]
+        model.page = "settings"; settle(root)
+        frames.byID = [:]
         model.focusRequest = PageFocusRequest(target: .dictateOptions)
         model.page = "dictate"
-        let optionsFrame = narrow.contentView?.superview ?? narrow.contentView!
-        // The page takes the request asynchronously. Wait for it rather than one fixed settle, which
-        // a busy runner can outlast; the check still fails if the request is never taken.
-        let taken = Date().addingTimeInterval(3)
-        repeat { settle(optionsFrame, seconds: 0.1) } while model.focusRequest != nil && Date() < taken
-        guard model.focusRequest == nil else { throw VoiceError.message("Dictate did not take Settings' request to show its options.") }
-        settle(optionsFrame)
-        let (options, optionsSize) = (try snapshot(optionsFrame), optionsFrame.bounds.size)
-        shots.append(try save(options, id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(optionsSize.width)) × \(Int(optionsSize.height)) pt",
-                              detail: "The page opens scrolled to its Options, where VoiceOver starts.", file: "page-dictate-state-options-focused-\(theme).png", to: output))
-        return shots
+        wait { model.focusRequest == nil && optionsInView() }
+        guard model.focusRequest == nil, optionsInView() else {
+            throw VoiceError.message("Settings' Dictate options… did not bring Dictate's Options into view: \(state()).")
+        }
+        settle(root)
+        // Judged again after the last settle, so the shot and the assertion describe the same moment.
+        guard model.focusRequest == nil, optionsInView() else {
+            throw VoiceError.message("Dictate's Options did not stay inside the visible scroll area once the page settled: \(state()).")
+        }
+        let size = root.bounds.size, landed = frames.byID["dictate.options"], visible = frames.byID["dictate.visible"]
+        let shot = try save(try snapshot(root), id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(size.width)) × \(Int(size.height)) pt",
+                            detail: "The page opens scrolled so its Options lie inside the visible area, where VoiceOver starts; the check waits for that and fails otherwise.",
+                            file: "page-dictate-state-options-focused-\(theme).png", to: output)
+        return (shot, "Settings' Dictate options…, in the only Workbench window open, moved Dictate's Options from \(text(before)) to \(text(landed)), "
+                    + "inside the visible scroll area \(text(visible)) below the title bar, and the page took the request.")
     }
 
     // MARK: Home states
@@ -1314,12 +1368,19 @@ enum SurfaceGallery {
         }
     }
 
-    struct PanelState { var id, title, detail: String; var readback: ReadbackModel; var apply: () throws -> Void = {}; var reset: () throws -> Void = {} }
+    struct PanelState { var id, title, detail: String; var readback: ReadbackModel; var controlState: WorkbenchControlState? = nil; var apply: () throws -> Void = {}; var reset: () throws -> Void = {} }
 
-    /// Only the voice-owned states. Drawing, presenting, personas and the timer need live StageKit
-    /// windows or device capture, so the index lists them as not rendered.
+    /// Voice fixtures use their isolated owners. Combined StageKit states use a frozen
+    /// row projection, so the real panel draws them without opening overlays or capture.
     func panelStates() -> [PanelState] {
         let model = model
+        var combined = WorkbenchControlState()
+        combined.drawing = true; combined.presenting = true; combined.overlays = true
+        combined.timerStarted = true; combined.timerRunning = true
+        var recording = combined
+        recording.phase = .recording; recording.mayPresent = false
+        var hidden = recording
+        hidden.overlaySession = true; hidden.overlaysPaused = true
         return [
             PanelState(id: "idle", title: "Idle", detail: "Speech ready, no session, nothing running.", readback: readback),
             PanelState(id: "toolbar-off", title: "Floating toolbar off", detail: "The header's switch is off: the toolbar stays hidden between actions.", readback: readback,
@@ -1328,6 +1389,17 @@ enum SurfaceGallery {
                        apply: { model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes" },
                        reset: { model.ready = true; model.preparing = false; model.modelMessage = "Preparing local speech…" }),
             PanelState(id: "dictating", title: "Dictating", detail: "Recording for 14 seconds.", readback: readback,
+                       apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
+            PanelState(id: "combined-live", title: "Drawing, presenting, Persona and timer",
+                       detail: "Synthetic StageKit facts: each live row keeps its own Stop, End or Hide; Dictate, Read and Snap remain distinct.",
+                       readback: readback, controlState: combined),
+            PanelState(id: "dictating-live", title: "Dictating alongside live work",
+                       detail: "Only Dictate says Stop. Draw, Present, Persona and Timer keep their own endings; incompatible new captures are disabled.",
+                       readback: readback, controlState: recording,
+                       apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
+            PanelState(id: "persona-hidden-busy", title: "Hidden Persona set during dictation",
+                       detail: "Show personas waits for its owner's resume admission. Present, Draw and Timer remain independently usable.",
+                       readback: readback, controlState: hidden,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "snap-session", title: "Snap & Talk session", detail: "A session with three captures.", readback: sessionReadback),
             PanelState(id: "reading", title: "Reading", detail: "Read aloud playing.", readback: readback,
@@ -1350,14 +1422,14 @@ enum SurfaceGallery {
 
     // MARK: Rendering
 
-    func quickPanel(_ readback: ReadbackModel) -> WorkbenchQuickPanel {
+    func quickPanel(_ readback: ReadbackModel, controlState: WorkbenchControlState? = nil) -> WorkbenchQuickPanel {
         WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, editor: panelEditor, receipts: model.clipboardReceipt, snapModel: snap,
-                            open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {})
+                            open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {}, controlState: controlState)
     }
 
     /// The popover's own material is not drawn; the panel sits on the window background.
-    func renderPanel(_ readback: ReadbackModel) throws -> NSBitmapImageRep {
-        let host = NSHostingView(rootView: quickPanel(readback).background(Color(nsColor: .windowBackgroundColor)))
+    func renderPanel(_ readback: ReadbackModel, controlState: WorkbenchControlState? = nil) throws -> NSBitmapImageRep {
+        let host = NSHostingView(rootView: quickPanel(readback, controlState: controlState).background(Color(nsColor: .windowBackgroundColor)))
         let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
         window.contentView = host
         settle(host)
@@ -1735,6 +1807,7 @@ enum SurfaceGallery {
         settle(.resting)
         try checkRecordingInTheHost(host: host, controls: controls, bottom: bottom, expect: expect, settle: settle, at: at, compact: compact)
         checkResultsInTheHost(host: host, controls: controls, expect: expect, settle: settle)
+        checkAccessoriesInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
         for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
@@ -1990,12 +2063,68 @@ enum SurfaceGallery {
         controls.choosePosition?(.bottom); settle(.resting)
     }
 
+    /// Each tool's one accessory (#134 part B) in the real host, docked at bottom centre. Revealed
+    /// with nothing live, Draw shows Tools and Present Prompts, each with its chevron, and no other
+    /// tool shows one: Dictate, Read and Snap never do, Snap & Talk only with a session open, and
+    /// Persona only with a live copy, which the gallery never shows over the Mac. Tools holds Draw's
+    /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
+    /// Snap & Talk's Review opens that session's review.
+    func checkAccessoriesInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
+                                   expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
+        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        controls.toolbar.send(.holdBegan(.keyboard))
+        for mode in ToolbarMode.allCases {
+            model.toolbarMode = mode; settle(.revealed)
+            let expected = ToolbarAccessory.offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false)
+            let found = host.window?.contentView.map(buttons)?.filter { $0.accessibilityIdentifier() == "toolbar.accessory" } ?? []
+            let title = expected.map { $0.opensList ? $0.title + " ⌄" : $0.title }
+            expect("\(mode.title)'s accessory, revealed with nothing live", [
+                found.count > 1 ? "the row shows \(found.count) accessories" : nil,
+                found.first?.title == title ? nil
+                    : "the row shows \(found.first.map { "\"\($0.title)\"" } ?? "no accessory"), not \(title.map { "\"\($0)\"" } ?? "none")",
+                found.first.map { $0.accessibilityLabel() == expected?.title ? nil : "VoiceOver hears \"\($0.accessibilityLabel() ?? "")\"" } ?? nil])
+        }
+        controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
+        var routes: [String] = []
+        let previousEditor = model.onShowEditor
+        model.onShowEditor = { routes.append($0) }
+        defer { model.onShowEditor = previousEditor; model.toolbarMode = .dictate }
+        func toolbar(_ readback: ReadbackModel) -> FloatingToolbar {
+            FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
+                            meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
+                            dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+        }
+        let plain = toolbar(readback)
+        model.toolbarMode = .draw
+        let tools = plain.accessoryMenu(.tools).items.map(\.title), drawing = stage.makeAnnotationMenu(includeSettings: false).items.map(\.title)
+        expect("Draw's Tools", [!tools.isEmpty && tools == drawing ? nil : "Tools lists \(tools), not Draw's drawing choices \(drawing)"])
+        model.toolbarMode = .persona
+        let more = plain.moreMenu(), before = opened.count
+        let door = more.items.firstIndex { $0.title == "Open Persona…" }
+        if let door, let action = more.items[door].action { NSApp.sendAction(action, to: more.items[door].target, from: more.items[door]) }
+        expect("Persona with no live copy", [
+            plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to change",
+            door == nil ? "More has no Open Persona…" : nil,
+            door == nil || Array(opened.dropFirst(before)) == ["personas"] ? nil : "Open Persona… opened \(Array(opened.dropFirst(before)))",
+            more.items.contains { $0.title == ToolbarAccessory.appearance.title } ? "More offers Appearance with no copy to change" : nil])
+        model.toolbarMode = .snapAndTalk
+        let session = toolbar(sessionReadback), review = session.accessory(session.live)
+        session.accessoryPanel(review)?(NSView())
+        expect("Snap & Talk with a session open", [
+            plain.accessory(plain.live) == nil ? nil : "Snap & Talk offers an accessory with no session open",
+            review == .review ? nil : "the open session offers \(review.map(\.title) ?? "nothing"), not Review",
+            routes == ["readback"] ? nil : "Review opened \(routes), not the session's review"])
+    }
+
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
-    func homeWindow(size: NSSize) -> NSWindow {
+    /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
+    /// lay out their named sections (`pageSectionFrames`), and no other window's.
+    func homeWindow(size: NSSize, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap))
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)
+            .environment(\.pageSectionFrames, sectionFrames))
         window.setContentSize(size)
         return window
     }
@@ -2401,7 +2530,7 @@ private struct SurfaceIndex {
                 + (missing ? "<td class=\"flag\">No page</td>" : "<td class=\"ok\">\(entry.route == nil ? "Action" : "Page exists")</td>") + "</tr>"
         }
         html += "</table><h2>Limitations</h2><ul>" + [
-            "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
+            "Combined drawing, presenting, Persona and timer rows use frozen synthetic state in the production panel. This proves labels and layout only; live StageKit windows, device capture and mouse interaction still need installed acceptance.",
             "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
             "The Saved Prompts panel is opened the same way, with no keyboard focus and no click monitors; its placement, focus return and dismissal need a pointer on the installed app.",
             "StageKit is never started, so Draw reports Ready on 0 displays.",

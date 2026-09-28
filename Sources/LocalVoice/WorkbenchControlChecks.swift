@@ -20,7 +20,7 @@ enum WorkbenchControlChecks {
             let restored = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(snapKey))
             try check(restored.shortcut(8) == snapKey.shortcut(8) && restored.enabledCombinations.contains(snapKey.shortcut(8).combination), "an assigned Snap shortcut survives reload and registers")
         }
-        // Two states per row: idle carries the capability's name, live the same next action the toolbar shows.
+        // Each row names and controls its own capability, including while other work runs.
         do {
             var live = WorkbenchControlState()
             try check(WorkbenchControlTool.allCases.allSatisfy { live.actionTitle($0) == $0.title }, "idle rows read their capability's name")
@@ -42,12 +42,37 @@ enum WorkbenchControlChecks {
             try check(live.actionTitle(.persona) == "Hide persona" && live.nextAction(.persona)?.operation == .hidePersona, "the Persona row hides the persona itself")
             live = WorkbenchControlState(); live.timerStarted = true
             try check(live.actionTitle(.timer) == "Stop timer", "Timer reads Stop timer once started")
-            live = WorkbenchControlState(); live.phase = .recording; live.presenting = true
-            try check(live.actionTitle(.present) == "Stop", "input-consuming work claims every row's label, exactly as it claims the toolbar's")
-            try check(live.rowAction(.present) == .operation(.stopDictation), "and the Present row's click stops the recording, never ends the scene")
             live = WorkbenchControlState(); live.drawing = true; live.presenting = true; live.overlays = true; live.timerStarted = true
-            try check(WorkbenchControlTool.allCases.allSatisfy { live.rowAction($0) == .operation(.finishDrawing) && live.actionTitle($0) == "Stop drawing" },
-                      "while drawing every row, Timer included, reads Stop drawing and its click stops drawing")
+            let independent: [(WorkbenchControlTool, WorkbenchRowAction, String)] = [
+                (.dictate, .operation(.start(.dictate)), "Dictate"),
+                (.read, .operation(.start(.read)), "Read"),
+                (.snap, .operation(.start(.snap)), "Snap"),
+                (.snapAndTalk, .operation(.start(.snapAndTalk)), "Snap & Talk"),
+                (.annotate, .operation(.finishDrawing), "Stop drawing"),
+                (.present, .operation(.endPresentation), "End presentation"),
+                (.persona, .operation(.hidePersona), "Hide persona"),
+                (.timer, .stopTimer, "Stop timer")]
+            for (tool, operation, title) in independent {
+                try check(live.rowAction(tool) == operation && live.actionTitle(tool) == title && live.enabled(tool),
+                          "\(tool.title) keeps its own enabled action while drawing, presenting, showing a persona and timing")
+            }
+            try check(WorkbenchControlTool.allCases.filter { live.active($0) } == [.annotate, .present, .persona, .timer],
+                      "only the live owners receive the menu's accent")
+            live.phase = .recording; live.mayPresent = false
+            for (tool, operation, title) in independent where tool != .dictate {
+                try check(live.rowAction(tool) == operation && live.actionTitle(tool) == title,
+                          "recording does not replace \(tool.title)'s action with Stop")
+            }
+            try check(live.rowAction(.dictate) == .operation(.stopDictation) && live.enabled(.dictate), "only Dictate stops its recording")
+            try check(!live.enabled(.snap) && !live.enabled(.snapAndTalk) && live.enabled(.read),
+                      "recording disables incompatible captures while Read can still open its page")
+            try check([WorkbenchControlTool.annotate, .present, .persona, .timer].allSatisfy(live.enabled),
+                      "live Draw, Present, Persona and Timer endings stay reachable during recording")
+            try check(ToolbarNextAction.resolve(live.live(.present)).operation == .stopDictation,
+                      "the toolbar retains its global recording priority while menu rows stay independent")
+            live.phase = .idle
+            try check(ToolbarNextAction.resolve(live.live(.present)).operation == .finishDrawing,
+                      "the toolbar retains its global drawing priority")
             live = WorkbenchControlState(); live.rendering = true
             try check(live.actionTitle(.read) == "Cancel" && live.rowAction(.read) == .operation(.cancelReading), "Read says Cancel while preparing, because that discards")
             live.rendering = false; live.playing = true
@@ -59,6 +84,79 @@ enum WorkbenchControlChecks {
             live.timerStarted = true
             try check(live.rowAction(.timer) == .stopTimer, "a started timer's row stops it")
             try check(AppDelegate.voiceShortcutCatalogue.map(\.0) == VoicePreferences.shortcutIDs, "the voice catalogue titles cover exactly the shortcut ids")
+        }
+        // Admission belongs to the operation shown. A continuation is a new capture, a
+        // hidden Persona set must pass its owner's resume guard, and waits never dispatch.
+        do {
+            var live = WorkbenchControlState(); live.hasSession = true; live.captureCount = 3
+            live.phase = .recording
+            try check(live.rowAction(.snapAndTalk) == .operation(.captureNext) && !live.enabled(.snapAndTalk),
+                      "Capture next stays visible but disabled while Dictate owns the microphone")
+            live.phase = .idle; live.meetingBusy = true
+            try check(!live.enabled(.dictate) && !live.enabled(.snapAndTalk), "meeting work retains shared audio admission")
+            live.meetingRecording = true
+            try check(live.rowAction(.dictate) == .operation(.stopMeetingTranscription) && live.enabled(.dictate),
+                      "a live meeting keeps its own Stop transcribing action")
+            live = WorkbenchControlState(); live.capturing = true
+            try check(live.actionTitle(.snapAndTalk) == "Capturing…" && !live.enabled(.snapAndTalk)
+                      && !live.admits(.operation(.wait), for: .snapAndTalk), "a screen capture wait can never dispatch")
+            for phase in [AppModel.Phase.transcribing, .cleaning, .delivering, .cancelling] {
+                live = WorkbenchControlState(); live.phase = phase; live.drawing = true
+                try check(live.rowAction(.dictate) == .operation(.wait) && !live.enabled(.dictate)
+                          && !live.admits(.operation(.wait), for: .dictate) && live.enabled(.annotate),
+                          "Dictate waits during \(phase.rawValue) while Draw keeps Stop drawing")
+            }
+            live = WorkbenchControlState(); live.overlays = true; live.overlaySession = true; live.overlaysPaused = true
+            live.phase = .recording; live.mayPresent = false
+            try check(live.actionTitle(.persona) == "Show personas" && !live.enabled(.persona) && !HomePersonaControl(live).isEnabled,
+                      "a hidden Persona set retains its identity and waits for its owner's resume admission")
+            live.overlaysPaused = false
+            try check(live.rowAction(.persona) == .operation(.pauseOverlays) && live.enabled(.persona),
+                      "hiding an active Persona set stays available while a new start is blocked")
+            live.overlaySession = false
+            try check(live.rowAction(.persona) == .operation(.hidePersona) && live.enabled(.persona),
+                      "hiding one live card stays available while a new start is blocked")
+            live = WorkbenchControlState(); live.presenting = true; live.insertingPrompt = true
+            try check(live.rowAction(.present) == .operation(.endPresentation), "Present still ends its scene during independent prompt insertion")
+        }
+        // A rendered action is a commitment to that operation, never a toggle resolved
+        // again on release. SwiftUI also replaces the button's identity when it changes.
+        do {
+            let ending: [(WorkbenchControlTool, (inout WorkbenchControlState) -> Void)] = [
+                (.dictate, { $0.phase = .recording }), (.read, { $0.playing = true }),
+                (.snapAndTalk, { $0.narrating = true }), (.annotate, { $0.drawing = true }),
+                (.present, { $0.presenting = true }), (.persona, { $0.overlays = true }),
+                (.timer, { $0.timerStarted = true })]
+            for (tool, start) in ending {
+                var live = WorkbenchControlState(); start(&live)
+                let pressed = live.rowAction(tool)
+                try check(live.admits(pressed, for: tool), "the unchanged \(tool.title) ending is admitted")
+                live = WorkbenchControlState()
+                try check(!live.admits(pressed, for: tool), "a completed \(tool.title) ending cannot become a fresh start on release")
+            }
+            var live = WorkbenchControlState(); live.hasSession = true
+            let next = live.rowAction(.snapAndTalk)
+            live.phase = .recording
+            try check(live.rowAction(.snapAndTalk) == next && !live.admits(next, for: .snapAndTalk),
+                      "a still-matching Capture next is rejected when admission changes before release")
+            live = WorkbenchControlState(); live.overlays = true
+            let hide = live.rowAction(.persona)
+            live.overlaySession = true
+            try check(!live.admits(hide, for: .persona), "Hide persona cannot act on a newly active prepared set")
+            live.overlaysPaused = true
+            let resume = live.rowAction(.persona)
+            live.mayPresent = false
+            try check(!live.admits(resume, for: .persona), "a pending Show personas is rejected if its owner becomes busy")
+            live.mayPresent = true
+            let homeResume = HomePersonaControl(live)
+            try check(homeResume.isAdmitted(in: live), "Home admits an unchanged enabled Show personas")
+            live.mayPresent = false
+            try check(!homeResume.isAdmitted(in: live), "Home rejects a rendered Show personas when its owner becomes busy")
+            live.overlaysPaused = false
+            let homeHide = HomePersonaControl(live)
+            try check(homeHide.isAdmitted(in: live), "Home keeps Hide personas admitted while new starts are blocked")
+            live = WorkbenchControlState()
+            try check(!homeHide.isAdmitted(in: live), "Home never turns an ended Persona's old Hide into Show")
         }
         var saved = VoicePreferences()
         saved.dictationShortcut.keyCode = 42
@@ -150,14 +248,20 @@ enum WorkbenchControlChecks {
             try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
                       "the row's own reading action is not repeated there, and no reading offers nothing")
         }
-        // Words waiting for drawing to end lead with Stop drawing, which delivers them; Copy now
-        // is in More (#211 F5).
+        // Words waiting for drawing to end lead the toolbar with Stop drawing, which delivers them;
+        // Copy now is in More (#211 F5). The menu's rows stay with their own capability (#214):
+        // Dictate waits and Draw's own row offers Stop drawing.
         do {
             var waiting = WorkbenchControlState(); waiting.phase = .delivering; waiting.waitingForDrawing = true; waiting.drawing = true
-            try check(waiting.live(.dictate).dictation == .waitingForDrawing && waiting.actionTitle(.dictate) == "Stop drawing"
-                      && waiting.rowAction(.dictate) == .operation(.finishDrawing), "words waiting for drawing lead with Stop drawing, not a disabled Processing…")
+            try check(waiting.live(.dictate).dictation == .waitingForDrawing && ToolbarNextAction.resolve(waiting.live(.dictate)).operation == .finishDrawing,
+                      "the toolbar leads words waiting for drawing with Stop drawing, not a disabled Processing…")
+            try check(waiting.rowAction(.dictate) == .operation(.wait) && !waiting.enabled(.dictate) && waiting.actionTitle(.dictate) == "Processing…",
+                      "the menu's Dictate row waits for them, disabled")
+            try check(waiting.rowAction(.annotate) == .operation(.finishDrawing) && waiting.enabled(.annotate) && waiting.actionTitle(.annotate) == "Stop drawing",
+                      "and Draw's own row offers Stop drawing")
             waiting.drawing = false
-            try check(waiting.actionTitle(.dictate) == "Processing…", "once drawing has ended they are a moment's processing")
+            try check(ToolbarNextAction.resolve(waiting.live(.dictate)).title == "Processing…" && waiting.actionTitle(.dictate) == "Processing…",
+                      "once drawing has ended they are a moment's processing")
         }
         // Keyboard entry keeps the launcher row: only the pointer's own reveal shows a waiting
         // result's controls, and a row that Keep open brings back waits for the pointer and holds
@@ -198,6 +302,47 @@ enum WorkbenchControlChecks {
             kept.unfocusToolbar(); kept.showResultIfKeptOpen()
             try check(kept.revealsResult, "once nothing is on it, the result takes the kept-open row's place")
             kept.toolbar.send(.keepOpenChanged(false))
+        }
+        // Persona's Appearance (#134 part B): Circle, Card and Original for the copy taken as the menu
+        // opens, its current look checked; a choice changes that copy and no other.
+        do {
+            var looks: [Int: StageKitController.PersonaShape] = [1: .card, 2: .circle]
+            let menu = ToolbarAccessoryMenus.appearance(copy: 1, current: { looks[$0] }, choose: { looks[$1] = $0 })
+            try check(menu.items.map(\.title) == ["Circle", "Card", "Original"] && menu.items.map(\.state) == [.off, .on, .off],
+                      "Appearance lists Circle, Card and Original with the copy's current look checked")
+            let original = menu.items[2]
+            _ = (original.target as AnyObject?)?.perform(original.action, with: original)
+            try check(looks == [1: .original, 2: .circle], "an Appearance choice changes the copy its menu opened for, and no other")
+            try check(ToolbarAccessoryMenus.appearance(copy: Int?.none, current: { _ in nil }, choose: { _, _ in }).items.isEmpty,
+                      "with no copy, Appearance has nothing to change")
+            // When the row has no room for Appearance it waits in More, unless Persona's own menu there
+            // already holds the choice, as a shown card's and a set's Appearance do. The StageKit suite
+            // checks the real Persona menus; these stand-ins check the rule around them (#216).
+            func personaMenu(_ titles: [String], appearance choices: [String]?) -> NSMenu {
+                let menu = NSMenu()
+                titles.forEach { menu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                if let choices {
+                    let item = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: ""), submenu = NSMenu()
+                    choices.forEach { submenu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                    item.submenu = submenu; menu.addItem(item)
+                }
+                return menu
+            }
+            let hiddenCard = personaMenu(["Show Again", "End Overlay"], appearance: nil)
+            let shownCard = personaMenu(["Choose Persona", "End Overlay"], appearance: ["Circle", "Card", "Original"])
+            // Choices that grow or change order under Persona's Appearance never bring a second one.
+            for grown in [["Card", "Circle", "Original"], ["Circle", "Card", "Original", "Outline"]] {
+                try check(!ToolbarAccessoryMenus.moreNeedsAppearance(personaMenu(["Choose Persona"], appearance: grown),
+                                                                      accessoryFits: false, hasCopy: true),
+                          "Persona's Appearance is found by its title, whatever choices it holds: \(grown)")
+            }
+            try check(ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: false, hasCopy: true),
+                      "a hidden card's Appearance waits in More when the row has no room for it")
+            try check(!ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: true, hasCopy: true),
+                      "while it fits, Appearance stays on the row and More does not repeat it")
+            try check(!ToolbarAccessoryMenus.moreNeedsAppearance(shownCard, accessoryFits: false, hasCopy: true),
+                      "a shown copy's Appearance in More already holds Circle, Card and Original")
+            try check(!ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: false, hasCopy: false), "with no copy, More has no Appearance")
         }
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.
@@ -277,7 +422,7 @@ enum WorkbenchControlChecks {
         try check(state.actionTitle(.persona) == "Show personas", "a temporarily hidden set offers to show again")
         // Home's Persona row and tile (#134) read Persona's own action from the shared owner: a hidden
         // prepared set, an active one, one card and an ended set, alone, beside an independent
-        // presentation and running timer, and while dictating claims the panel rows.
+        // presentation and running timer, and while dictating leaves their own actions reachable.
         do {
             let alongside: [(String, (inout WorkbenchControlState) -> Void)] = [
                 ("alone", { _ in }),
