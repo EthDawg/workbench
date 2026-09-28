@@ -21,7 +21,7 @@ Make frequent Mac tasks easy to start, understand and leave. Dictate, Snap, Pers
 | Keep a useful screen capture | Explicit region/window/display or imported image | Crop, annotate, copy and save in canonical Snap History; retain the original and avoid Desktop clutter |
 | Transcribe a meeting or Mac-routed call | Explicit selected Mac app audio and optional current microphone | Offer only when enabled, record only after Start, retain recovery audio and save a typed transcript |
 | Reuse selected evidence | One selection of stable transcript/Snap references | Review destination and roles, freeze inputs, preserve observable task/result state or use complete manual instructions |
-| Take a break | Timer session | Duration, start/pause/resume, hide |
+| Take a break | Timer session | Duration, start/pause/resume/restart, hide |
 | Chain an audio workflow | Shortcuts Record Audio owns recording/cancel | Transcribe with Workbench receives a file and returns text |
 
 Tapping an iPhone field focuses it; the user then taps the Dictation button. Workbench's USB preview sends no touches, keys or Mac dictation to the device. A narrow Mac browser page remains a Mac field. Apple documents that iPhone Mirroring does not support the iPhone microphone or camera.
@@ -45,7 +45,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Live presentation controls | Shared floating menu; Command-/ focuses it | Device source/reconnect/proportions, window placement, motion, native-app handoff and End | No second embedded presentation tile; ending a presentation leaves independent overlays intact |
 | Persona overlay | Explicit Show over browser | Audience-visible finished artwork | Drag or Position menu; lock enables click-through; hidden on app launch |
 | Switch to | Configured global shortcut, menu or Chrome extension | Named saved-link destinations in paired Chrome profiles | Transient picker; Escape restores the prior app, selection hides it before routing, failures explain recovery. Labels may be visible in a screen share. |
-| Break timer | Explicit timer action/shortcut | One countdown session and its separate window | Drag or choose one of eight Position menu anchors; Hide/close keeps the countdown and placement |
+| Break timer | Explicit timer action/shortcut | One countdown session and its separate window | Its transport follows one state on the Draw page, the quick controls and the timer window: Start before it starts or after Reset, Pause while it runs, Resume while it is paused and Restart once it finishes. No control offers Resume for a new or finished countdown. Start and Restart open the timer; the shortcut only shows or hides it. Drag or choose one of eight Position menu anchors; Hide/close keeps the countdown and placement |
 | Annotation layer | Explicit drawing action/shortcut | Marks over the current screen | Escape leaves drawing; existing clear/undo semantics remain |
 
 Snap & Talk preserves completed narration while the next screenshot captures. Cancelling a rerecord (or discarding silence) restores the section's prior readiness and keeps its earlier audio, original transcript and edited text. Portable sessions accept only each section's own UUID folder under `items/` or `trash/`; malformed paths and symbolic links are rejected before edits or deletion.
@@ -154,7 +154,7 @@ The current source includes contextual presentation controls, one persistent flo
 - Exercise compact/expanded states, Stop/cancel/results, frozen capture settings and focus.
 - Exercise click-only presentation, keyboard opening/Escape, source/reconnect and persona rendering.
 - Geometry tests cover anchors, negative display origins, removed displays, snap thresholds and resizing.
-- Break-timer checks cover drag and named-position persistence, corrupt/future-data preservation, display recovery and keyboard-accessible Position actions.
+- Break-timer checks cover drag and named-position persistence, corrupt/future-data preservation, display recovery, keyboard-accessible Position actions and the transport from idle, running, paused and finished states.
 - Test refinement with a loopback fixture, failures, cancellation and original preservation. Report actual model/hardware testing separately.
 - Test Services metadata and selector dispatch with empty, exact and long synthetic selections; verify TextEdit and a supported browser from an installed package, including Keep/Replace and online-provider disclosure.
 - Inspect native UI using synthetic data. Real phone, physical unplug and meeting receiver checks are distinct claims.

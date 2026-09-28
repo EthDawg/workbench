@@ -280,8 +280,9 @@ struct ControlCenter: View {
                 Toggle("Play a chime when time is up", isOn: $settings.value.timerChime)
             }.font(.system(size: 12)).surface()
             HStack {
-                Button { app.startTimer() } label: { Label("Start break", systemImage: "play.fill") }.buttonStyle(.borderedProminent).controlSize(.large)
-                Button(app.timerRunning ? "Pause" : "Resume") { app.pauseResumeTimer() }.controlSize(.large)
+                // One transport action for the current state: Start, Pause, Resume or Restart.
+                let transport = app.timerTransport
+                Button { app.performTimerTransport() } label: { Label(transport == .idle ? "Start break" : transport.title, systemImage: transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
                 Button("Reset") { app.resetTimer() }.controlSize(.large)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .timer).label)
             }
@@ -475,7 +476,7 @@ struct BreakTimerView: View {
                     .accessibilityLabel("Time remaining \(app.timerText)")
                 Capsule().fill(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.12)).frame(height: 3)
                     .overlay(alignment: .leading) { GeometryReader { bar in Capsule().fill(inkAccent).frame(width: bar.size.width * app.timerProgress) } }.frame(maxWidth: 300)
-                Text(app.timerFinished ? "Ready to continue" : app.timerRunning ? "" : "Paused")
+                Text(app.timerTransport == .finished ? "Ready to continue" : app.timerTransport == .paused ? "Paused" : "")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
                 if let notice = app.timerPlacementNotice {
                     Text(notice).font(.system(size: 10)).foregroundStyle(.orange).multilineTextAlignment(.center)
@@ -483,7 +484,7 @@ struct BreakTimerView: View {
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 18) {
-                    Button { if app.timerFinished { app.startTimer() } else { app.pauseResumeTimer() } } label: { Label(app.timerFinished ? "Restart" : app.timerRunning ? "Pause" : "Resume", systemImage: app.timerRunning ? "pause.fill" : "play.fill") }
+                    Button { app.performTimerTransport() } label: { Label(app.timerTransport.title, systemImage: app.timerTransport.symbol) }
                     Button("Reset") { app.resetTimer() }
                     Menu {
                         ForEach(FloatingControlAnchor.allCases) { anchor in

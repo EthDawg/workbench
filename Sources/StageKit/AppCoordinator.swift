@@ -49,7 +49,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var heldAction: Action?
     private var latched = false
     private var effectTimer: Timer?
-    private var countdownTimer: Timer?
+    /// The periodic countdown update. It exists only while a countdown runs.
+    private(set) var countdownTimer: Timer?
     private var lastMouse = NSEvent.mouseLocation
     private var lastMovement = Date.timeIntervalSinceReferenceDate
     private var lastClick: TimeInterval = 0
@@ -75,6 +76,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var registeredShortcuts: [String: Shortcut] = [:]
     private var registeredShortcutConflicts: [String: String] = [:]
     private var countdown = Countdown()
+    /// The countdown's clock. Checks move it instead of waiting.
+    var timerClock: () -> Date = { Date() }
     @Published private(set) var timerSessionStarted = false
     private var storageBlocked = false
     private let archiveURL: URL
@@ -608,27 +611,47 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         palette?.alphaValue = 1; palette?.ignoresMouseEvents = false; palette?.orderFrontRegardless()
     }
     var hasActiveTimer: Bool { timerSessionStarted && !timerFinished }
+    /// The next transport action every timer control shows.
+    var timerTransport: TimerTransport {
+        if timerFinished { return .finished }
+        if timerRunning { return .running }
+        return timerSessionStarted ? .paused : .idle
+    }
+    /// The timer shortcut and Home only show or hide the timer; they never pause or resume it.
     func toggleTimer() {
         guard mayBeginInteraction?() != false else { return }
         hideQuickControls()
         if timerWindow?.isVisible == true { timerWindow?.orderOut(nil); return }
         if !timerSessionStarted { startTimer() } else { showTimer() }
     }
+    /// Start and Restart take the normal start path; Pause and Resume keep the window as it is.
+    func performTimerTransport() {
+        if timerTransport.starts { startTimer() } else { pauseResumeTimer() }
+    }
     func startTimer() {
         guard mayBeginInteraction?() != false else { return }
         onBeginActivity?()
         timerSessionStarted = true
-        countdown.start(seconds: settings.value.timerMinutes * 60); timerFinished = false
+        countdown.start(seconds: settings.value.timerMinutes * 60, now: timerClock()); timerFinished = false
         ensureCountdownTimer(); updateCountdown(); showTimer()
     }
+    /// Pause and Resume act only on a started countdown that has time left. A new
+    /// or finished countdown starts through startTimer, never as a hidden Resume.
     func pauseResumeTimer() {
-        timerSessionStarted = true
-        if countdown.isRunning {
-            countdown.pause(); countdownTimer?.invalidate(); countdownTimer = nil
-        } else {
-            countdown.resume(); ensureCountdownTimer()
+        // One reading of the clock throughout, so a countdown crossing zero during
+        // this call finishes rather than pausing at 00:00.
+        let now = timerClock()
+        updateCountdown(now: now)
+        switch timerTransport {
+        case .running:
+            countdown.pause(now: now); countdownTimer?.invalidate(); countdownTimer = nil
+        case .paused:
+            countdown.resume(now: now)
+            if countdown.isRunning { ensureCountdownTimer() }
+        case .idle, .finished:
+            return
         }
-        updateCountdown()
+        updateCountdown(now: now)
     }
     func resetTimer() {
         timerSessionStarted = false
@@ -648,14 +671,15 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in self?.updateCountdown() }
         timer.tolerance = 0.05; RunLoop.main.add(timer, forMode: .common); countdownTimer = timer
     }
-    private func updateCountdown() {
-        let remaining = countdown.remaining()
+    private func updateCountdown(now: Date? = nil) {
+        let now = now ?? timerClock()
+        let remaining = countdown.remaining(at: now)
         let text = Countdown.formatted(remaining)
         if text != timerText { timerText = text }
         timerRunning = countdown.isRunning
         timerProgress = min(1, remaining / max(1, countdown.duration))
         if countdown.isRunning && remaining <= 0 {
-            countdown.pause(); timerRunning = false; timerFinished = true
+            countdown.pause(now: now); timerRunning = false; timerFinished = true
             countdownTimer?.invalidate(); countdownTimer = nil
             if settings.value.timerChime { NSSound(named: "Glass")?.play() }
         }

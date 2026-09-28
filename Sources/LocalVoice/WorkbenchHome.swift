@@ -524,7 +524,10 @@ struct WorkbenchHomePage: View {
                     if stage.isDrawing { stage.finishDrawing() } else { stage.draw() }
                 }
                 // showTimer toggles the timer window; the stage does not expose whether it is visible.
-                card("Timer", stage.hasTimerSession ? "Show or hide timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") { stage.showTimer() }
+                card("Timer", stage.hasTimerSession ? "Show or hide timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") {
+                    // The label is the action: after Reset the window may still show, and Start a break starts one.
+                    if stage.hasTimerSession { stage.showTimer() } else { stage.startTimer() }
+                }
             }
         }
     }

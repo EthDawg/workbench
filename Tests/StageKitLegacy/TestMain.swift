@@ -168,6 +168,26 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--timer-transport-only"] {
+            // Coordinator only: no global shortcut, chime or saved preference outside a temporary folder.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let timerTransport = TimerTransportTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
+                ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
+                ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
+                ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--screenshot-native-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -233,6 +253,7 @@ struct TestRunner {
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
+        let timerTransport = TimerTransportTests()
         let sceneSync = SceneSyncAdapterTests()
         let sceneList = SceneListTests()
         let sceneListTests: [(String, () throws -> Void)] = [
@@ -298,6 +319,10 @@ struct TestRunner {
             ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
             ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles),
             ("timer native close and reopen placement", timerPlacement.testNativeTimerReopensAtItsSavedAnchor),
+            ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
+            ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
+            ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
+            ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
