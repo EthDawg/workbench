@@ -850,20 +850,6 @@
     "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.speech-settings",
-    "surface": "window home",
-    "label": "Speech settings",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.try-the-keyboard",
-    "surface": "window home",
-    "label": "Try the keyboard",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
     "surface": "settings page",
     "label": "Open Workbench at login",
@@ -876,61 +862,6 @@
     "label": "Show floating toolbar",
     "kind": "setting",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.annotate",
-    "surface": "window home",
-    "label": "Annotate",
-    "kind": "capability",
-    "belongsTo": "draw",
-    "aliasOf": "draw",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.dictate",
-    "surface": "window home",
-    "label": "Dictate",
-    "kind": "capability",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.persona",
-    "surface": "window home",
-    "label": "Persona",
-    "kind": "capability",
-    "belongsTo": "persona"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.present-a-device",
-    "surface": "window home",
-    "label": "Present a device",
-    "kind": "capability",
-    "belongsTo": "present",
-    "aliasOf": "present",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.read-aloud",
-    "surface": "window home",
-    "label": "Read aloud",
-    "kind": "capability",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.snap",
-    "surface": "window home",
-    "label": "Snap",
-    "kind": "capability",
-    "belongsTo": "snap"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.card.snap-talk",
-    "surface": "window home",
-    "label": "Snap & Talk",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.annotate",
@@ -1064,6 +995,274 @@
     "belongsTo": "read",
     "aliasOf": "read",
     "note": "unify under Grammar Names"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.all-history",
+    "surface": "window home",
+    "label": "All history",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy",
+    "surface": "window home",
+    "label": "Copy",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Text ready: copies the waiting delivery."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy-instructions",
+    "surface": "window home",
+    "label": "Copy instructions",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Last Hand off job, not completed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy-text",
+    "surface": "window home",
+    "label": "Copy text",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: the first dictation on Home copies your words (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.2",
+    "surface": "window home",
+    "label": "Copy",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Copies the latest transcript."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.3",
+    "surface": "window home",
+    "label": "Copy",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Existing contextual \"Copy\" label inside snap; shared wording, not a separate capability. Copies the latest Snap from Home.",
+    "aliasOf": "snap"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.edit",
+    "surface": "window home",
+    "label": "Edit…",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest Snap in its editor."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.enable-automatic-paste",
+    "surface": "window home",
+    "label": "Enable automatic paste…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: on Home only while delivery is paste and Accessibility is not granted (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.end-presentation",
+    "surface": "window home",
+    "label": "End presentation",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.hand-off",
+    "surface": "window home",
+    "label": "Hand off…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Open Snap & Talk session with captures and nothing pending."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.hide-persona",
+    "surface": "window home",
+    "label": "Hide persona",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-dictate",
+    "surface": "window home",
+    "label": "Open in Dictate",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest transcript on the Dictate page."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-result",
+    "surface": "window home",
+    "label": "Open result",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Last Hand off job, completed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.paste",
+    "surface": "window home",
+    "label": "Paste",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Pastes the latest transcript where you were."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.prepare",
+    "surface": "window home",
+    "label": "Prepare…",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Option: each tile’s small link to its own page; one definition in the card helper, eight tiles (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
+    "surface": "window home",
+    "label": "Retry model",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: the existing engine banner gains Retry when preparation fails (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-160368cee30e",
+    "surface": "window home",
+    "label": null,
+    "expression": "readback . isCapturing ? \"Capturing…\" : \"Capture & narrate\"",
+    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Capture & narrate on the open session.",
+    "kind": "action",
+    "belongsTo": "snapAndTalk"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-690989861a19",
+    "surface": "window home",
+    "label": null,
+    "expression": "model . phase == . requesting ? \"Cancel\" : model . phase == . recording ? \"Stop\" : \"Start dictating\"",
+    "note": "Option: the guided first dictation; label follows phase as the Dictate page does (#134 W9).",
+    "kind": "capability",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",
+    "surface": "window home",
+    "label": "Speech settings",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop",
+    "surface": "window home",
+    "label": "Stop",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-drawing",
+    "surface": "window home",
+    "label": "Stop drawing",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-reading",
+    "surface": "window home",
+    "label": "Stop reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-task",
+    "surface": "window home",
+    "label": "Stop task",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Last Hand off job, running."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop.2",
+    "surface": "window home",
+    "label": "Stop",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability. Stops narration from Home.",
+    "aliasOf": "snapAndTalk"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.NativeControlMenu.timer",
+    "surface": "window home",
+    "label": "Timer",
+    "kind": "action",
+    "belongsTo": "timer",
+    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Reuses the Timer menu (Pause, Stop, Reset)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.dictate",
+    "surface": "window home",
+    "label": "Dictate",
+    "kind": "capability",
+    "belongsTo": "dictate",
+    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.draw",
+    "surface": "window home",
+    "label": "Draw",
+    "kind": "capability",
+    "belongsTo": "draw",
+    "note": "Quality: renamed to the Grammar name; the tile now acts instead of opening (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.persona",
+    "surface": "window home",
+    "label": "Persona",
+    "kind": "capability",
+    "belongsTo": "persona",
+    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.present",
+    "surface": "window home",
+    "label": "Present",
+    "kind": "capability",
+    "belongsTo": "present",
+    "note": "Quality: renamed to the Grammar name; the tile now acts instead of opening (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.read",
+    "surface": "window home",
+    "label": "Read",
+    "kind": "capability",
+    "belongsTo": "read",
+    "note": "Quality: renamed to the Grammar name; the tile now acts instead of opening (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap",
+    "surface": "window home",
+    "label": "Snap",
+    "kind": "capability",
+    "belongsTo": "snap",
+    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap-talk",
+    "surface": "window home",
+    "label": "Snap & Talk",
+    "kind": "workflow",
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.timer",
+    "surface": "window home",
+    "label": "Timer",
+    "kind": "capability",
+    "belongsTo": "timer",
+    "note": "Option: Timer tile on Home starts a break; Timer was only a panel row and a Draw tab (#134 W9)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-annotate-options.NativeControlMenu.tools",
