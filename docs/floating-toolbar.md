@@ -24,12 +24,13 @@ every app with only the microphone. The choice persists across relaunch under
 
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle,
 recording, playing, paused, processing, drawing, presenting, a persona, a timer,
-a Snap & Talk session, or a result waiting for the person. It is a 48 × 20
-capsule in a fixed 48 × 28 target. At idle it remembers the selected tool with
-that tool's neutral SF Symbol; live work, processing and attention take priority
-(see Status at rest). Colour identifies actual activity: a selected Present icon
-stays neutral until a presentation runs. The resting window is
-exactly that target, and everything outside it passes clicks through. Work never
+a Snap & Talk session, or a result waiting for the person. Its ordinary rest is a
+quiet 48 × 8 handle in a fixed 48 × 28 target. It carries no selected-tool or
+live-work icon: at this size the symbol adds little useful information, and one
+symbol cannot describe concurrent work. Hover or click reveals the remembered
+tool and its action. Recording, playback, processing, paused work and results
+retain their distinct signals in a 48 × 20 capsule inside the same target (see
+Status at rest). The resting window is exactly that target, and everything outside it passes clicks through. Work never
 holds the row open, and a new failure or result never opens it either. Keep open
 is the one explicit way to keep it up. Dictation, narration, reading and their
 results keep the toolbar up even while Hide toolbar is on, at rest as the mark.
@@ -150,8 +151,8 @@ not a start, so a restored Snap & Talk session does not move the mode.
 
 **The launcher** shows the current tool's symbol with a chevron. The symbol is
 shared with the menu bar, desktop navigation and chooser; no separate icon asset
-set is introduced. Its centre stays fixed through reveal, and the chevron appears
-beside it. A cog is reserved for Settings: the tool and chevron make choosing a
+set is introduced. It appears as the handle opens, centred on the same fixed
+point, with the chevron beside it. A cog is reserved for Settings: the tool and chevron make choosing a
 tool visible here. More stays at the inward end, with the hint `Options for Draw`
 (or the selected tool's name). A click, Space,
 Return or Down opens the chooser. When work is live in any tool, the launcher
@@ -226,8 +227,9 @@ toolbar still has the keyboard and that app is still running.
 the frame changes in one 160 ms ease-out animation with no bounce, and the side
 the row grows toward never changes during an interaction. The visible capsule,
 mask and content read the host's current layout bounds during that animation;
-there is no second animation clock or asynchronous size observer. The tool symbol
-keeps its centre while the capsule opens around it. Controls fade in only after
+there is no second animation clock or asynchronous size observer. The quiet
+handle grows into the row and its tool symbol appears at the anchored centre;
+recording and result signals keep that same centre through the transition. Controls fade in only after
 their entire labels fit, and fade away before closing can cut through them. The
 launcher remains anchored even while the host is smaller than its content.
 Reduce Motion changes the frame and content at once and holds the voice trace still.
@@ -290,13 +292,15 @@ did not finish is a failure until the person copies it again or sets it aside.
 | Pending delivery | A clipboard |
 | Unsaved capture | A pencil |
 | Paused | Pause bars |
-| Other live work | That work's capability symbol |
-| Idle | The selected tool's neutral SF Symbol inside the 48 × 20 capsule |
+| Other live work | The same neutral 48 × 8 handle as idle; reveal names the tool and action, and More reaches concurrent work |
+| Idle | A neutral 48 × 8 handle, with the selected tool remembered for reveal |
 
 A recording that goes on while another job needs attention keeps the recording
 signal and adds a small warning badge inside the same target, and its
 description names both ("Recording dictation, Needs attention"), the time limit
-too when it comes. Shape and words carry each state; colour never does alone.
+too when it comes. Distinct shapes identify the signals that need visibility
+before interaction; colour never does alone. Ordinary live work stays in the
+accessible status and the revealed controls without a tiny competing icon.
 VoiceOver's value for the mark and the launcher adds the level in words, Quiet,
 Receiving sound or Low microphone level once the dictation owner judges the
 microphone too quiet, and never announces it. VoiceOver announces each meaningful
@@ -377,7 +381,8 @@ A second rule: **a hold can only prevent a collapse, never cause a reveal.** Tha
 is why dragging the compact mark does not resize the window you are dragging.
 Keyboard focus is the one written-out exception, because focusing a toolbar that
 shows no controls is useless. Work is not a hold: a recording, a presentation or
-a waiting result never keeps the row up; it shows on the mark instead.
+a waiting result never keeps the row up; the mark remains available, with a
+visible signal when needed.
 
 `keepsOpen` is a hold that outlives the session. That is the whole of it.
 

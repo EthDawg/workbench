@@ -42,7 +42,8 @@ public extension View {
 /// The production look and the gallery are the same view, fed one frozen value.
 ///
 /// At rest the toolbar is the compact mark in every state (#134): a small capsule whose
-/// indicator says what is running. A click on it only reveals and takes the keyboard; a
+/// signals highlight recording, transport and recovery; tool identity waits for reveal.
+/// A click on it only reveals and takes the keyboard; a
 /// drag moves the toolbar. Revealed, the row is `[tool ▾] [next action] [accessory] [⋯]`,
 /// growing inward from the launcher, which sits exactly where the mark was; on a right-hand
 /// dock the order is reversed. The launcher opens the tool chooser, More holds the tool's
@@ -133,7 +134,7 @@ public struct ToolbarRow: View {
     private func chrome(mask: Bool = false) -> some View {
         GeometryReader { geometry in
             let size = viewport ?? geometry.size
-            let height = ToolbarRevealVisuals.capsuleHeight(progress: revealProgress, rowHeight: ToolbarLayout.rowHeight * scale)
+            let height = ToolbarRevealVisuals.capsuleHeight(progress: revealProgress, rowHeight: ToolbarLayout.rowHeight * scale, indicator: state.status.indicator)
             Capsule(style: .circular).fill(mask ? AnyShapeStyle(Color.white) : chromeFill)
                 .overlay {
                     if !mask { Capsule(style: .circular).strokeBorder(.primary.opacity(0.14), lineWidth: 1) }
@@ -156,7 +157,7 @@ public struct ToolbarRow: View {
 
     /// The compact rest: the same 48 × 28 target in every state, whatever it shows.
     private var compact: some View {
-        ToolbarCompactMark(status: state.status, mode: state.mode, accent: accent, drawsChrome: false, symbolSize: symbolSize)
+        ToolbarCompactMark(status: state.status, accent: accent, drawsChrome: false, symbolSize: symbolSize)
             .overlay {
                 ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.spokenValue,
                                   reveal: revealFromRest, options: menuOpener, drag: drag)
@@ -252,27 +253,26 @@ public struct ToolbarRow: View {
     }
 }
 
-/// The compact rest's look: a 48 × 20 capsule remembers the selected tool at idle,
-/// with live status taking priority. The whole 48 × 28 target is faintly filled so it takes
-/// the pointer, while everything outside the panel stays click-through.
+/// The compact rest's look: a quiet 48 × 8 handle, with a taller capsule only for a
+/// recording, transport or recovery signal. The whole 48 × 28 target is faintly filled
+/// so it takes the pointer, while everything outside the panel stays click-through.
 public struct ToolbarCompactMark: View {
     let status: ToolbarStatus
-    let mode: ToolbarMode
     let accent: Color
     let drawsChrome: Bool
     let symbolSize: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    public init(status: ToolbarStatus, mode: ToolbarMode = .dictate, accent: Color = .accentColor,
+    public init(status: ToolbarStatus, accent: Color = .accentColor,
                 drawsChrome: Bool = true, symbolSize: CGFloat = 12) {
-        self.status = status; self.mode = mode; self.accent = accent; self.drawsChrome = drawsChrome; self.symbolSize = symbolSize
+        self.status = status; self.accent = accent; self.drawsChrome = drawsChrome; self.symbolSize = symbolSize
     }
 
     public var body: some View {
         ZStack {
             // A fill the eye cannot see, so the whole target, not only the capsule, is the window's.
             Rectangle().fill(Color.black.opacity(0.012))
-            let height = ToolbarLayout.markCapsule.height
+            let height = ToolbarLayout.restingCapsuleHeight(for: status.indicator)
             if drawsChrome {
                 Capsule().fill(capsuleFill)
                     .overlay(Capsule().strokeBorder(.primary.opacity(0.14), lineWidth: 1))
@@ -290,14 +290,13 @@ public struct ToolbarCompactMark: View {
 
     @ViewBuilder private var indicator: some View {
         switch status.indicator {
-        case .idle: symbol(mode.symbol, Color.secondary)
+        case .idle, .live: EmptyView()
         case .capture: ToolbarCaptureSignal(status: status, accent: accent)
         case .playback: symbol("speaker.wave.2.fill", accent)
         case .processing: symbol("ellipsis", Color.secondary)
         case .failure, .pendingDelivery, .unsavedCapture:
             if let glyph = ToolbarResultGlyph(status.indicator) { symbol(glyph.name, glyph.color) }
         case .paused: symbol("pause.fill", Color.secondary)
-        case .live(let work): symbol(work.symbol, accent)
         }
     }
 

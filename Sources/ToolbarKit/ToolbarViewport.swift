@@ -40,7 +40,8 @@ enum ToolbarRevealVisuals {
     static func progress(viewportHeight: CGFloat, rowHeight: CGFloat) -> CGFloat {
         min(1, max(0, (viewportHeight - ToolbarLayout.mark.height) / max(1, rowHeight - ToolbarLayout.mark.height)))
     }
-    static func capsuleHeight(progress: CGFloat, rowHeight: CGFloat) -> CGFloat {
-        ToolbarLayout.markCapsule.height + (rowHeight - ToolbarLayout.markCapsule.height) * min(1, max(0, progress))
+    static func capsuleHeight(progress: CGFloat, rowHeight: CGFloat, indicator: ToolbarStatus.Indicator) -> CGFloat {
+        let rest = ToolbarLayout.restingCapsuleHeight(for: indicator)
+        return rest + (rowHeight - rest) * min(1, max(0, progress))
     }
 }
