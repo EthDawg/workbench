@@ -66,7 +66,9 @@ final class ClipboardReceiptModel: ObservableObject {
         } else if outcome.failure == .cancelled {
             title = "Delivery stopped"; detail = outcome.message; symbol = "pause.circle"
         } else if ownsClipboard {
-            title = "Ready to paste"; detail = outcome.message; symbol = "doc.on.clipboard"
+            // Copying is a supported result, whether chosen or waiting for
+            // Accessibility approval. A changed or unreadable field keeps its reason.
+            title = "Copied"; detail = TextDelivery.copiedDetail(outcome.failure); symbol = "doc.on.clipboard"
         } else {
             title = "Transcript ready"
             detail = "Clipboard changed. Copy the transcript again from Workbench."

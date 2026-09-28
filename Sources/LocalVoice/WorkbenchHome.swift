@@ -298,11 +298,15 @@ struct WorkbenchHomePage: View {
                     HStack(spacing: 12) {
                         Button { model.copyTranscript() } label: { Label("Copy text", systemImage: "doc.on.doc") }
                         if model.preferences.delivery == .paste && !model.accessibilityGranted {
-                            Button("Enable automatic paste…") { model.requestAccessibility() }
+                            Button("Set up automatic paste…") { model.requestAccessibility() }.buttonStyle(.link)
                         }
                         Spacer()
                         Button("Done") { stayInGuide = false }.buttonStyle(.link)
                     }.controlSize(.large)
+                    if model.preferences.delivery == .paste && !model.accessibilityGranted {
+                        Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
                         review: { model.clipboardReceipt.dismissHUD(); model.page = "history" },
                         showCue: { model.clipboardReceipt.revealHUD() })

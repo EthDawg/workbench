@@ -574,7 +574,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 } else {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
                     var delivery = settings.preferences.delivery
-                    if delivery == .paste, destination != nil, shouldDeferDelivery?() == true {
+                    // Without Accessibility approval the text is copied, so there is no paste to wait for.
+                    if delivery == .paste, destination != nil, accessibilityGranted, shouldDeferDelivery?() == true {
                         waitingForDrawing = true
                         captureProcessingLabel = "Finish drawing to paste, or copy now."
                         status = "Text ready. Finish drawing to return to your Mac text field."
@@ -734,7 +735,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard !text.isEmpty else { return }
         captureFailure = nil
         let count = TextDelivery.copy(text)
-        let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : "Copied to clipboard.", clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
+        let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
         status = outcome.message
         clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
     }

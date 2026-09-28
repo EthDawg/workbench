@@ -523,12 +523,12 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.QuickControls.VoiceOptions.Button.enable-automatic-paste",
+    "id": "LocalVoice.QuickControls.VoiceOptions.Button.set-up-automatic-paste",
     "surface": "dictate page options",
-    "label": "Enable automatic paste…",
+    "label": "Set up automatic paste…",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
+    "note": "Quality: Enable automatic paste… renamed in the same place (#134 W3). Shown only while Paste automatically waits for Accessibility approval, beside the note that an organisation may need to approve it; transcripts are copied until then (#165)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
@@ -944,14 +944,6 @@
     "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest Snap in its editor."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.enable-automatic-paste",
-    "surface": "window home",
-    "label": "Enable automatic paste…",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Option: on Home only while delivery is paste and Accessibility is not granted (#134 W9)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.end-presentation",
     "surface": "window home",
     "label": "End presentation",
@@ -1024,6 +1016,14 @@
     "note": "Option: the guided first dictation; label follows phase as the Dictate page does (#134 W9).",
     "kind": "capability",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.set-up-automatic-paste",
+    "surface": "window home",
+    "label": "Set up automatic paste…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: Enable automatic paste… renamed in the first-dictation guide (#134 W9). A secondary link shown only while Paste automatically waits for Accessibility approval; Copy text stays the first action (#165)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",
@@ -1169,6 +1169,14 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Quality: Dictate's recent-transcripts option in the same slot, renamed to the place it opens. It opens History on Transcripts (#137)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.set-up-automatic-paste",
+    "surface": "quick panel dictate options",
+    "label": "Set up automatic paste…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: the Dictate page's Set up automatic paste… beside the delivery choice it serves, so the panel, Home and Dictate agree. Shown only while Paste automatically waits for Accessibility approval, under a header saying transcripts are copied for ⌘V until then (#165)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.transcribe-meeting-or-call",
