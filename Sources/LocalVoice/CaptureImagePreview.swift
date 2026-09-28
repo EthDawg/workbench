@@ -12,6 +12,8 @@ struct CaptureImagePreviewItem: Equatable {
         case file(URL?, missing: String)
         /// A Snap's current image: the rendered edit when there is one, checked against its record.
         case snap(root: URL, id: UUID)
+        /// Bytes already in hand, such as an image a Hand off is about to share.
+        case bytes(Data)
     }
     var title: String
     var detail: String
@@ -26,8 +28,10 @@ struct CaptureImagePreviewItem: Equatable {
                      source: .file(session.flatMap { try? ReadbackStore.safeURL(root: $0, relative: section.screenshot) },
                                    missing: "This screenshot is missing from the session folder. The section and its narration are unchanged."))
     }
+    /// A deleted section has no number, and its display name is shared by every
+    /// capture from that display, so it is named by when it was captured.
     static func sectionTitle(number: Int?, section: ReadbackSection) -> String {
-        number.map { "Screenshot for section \($0)" } ?? "Screenshot for \(section.displayName), recently deleted"
+        number.map { "Screenshot for section \($0)" } ?? "Screenshot captured \(ReadbackItemNames.captured(section)), recently deleted"
     }
 
     /// A Snap in History or on the Snap page, archived or not.
@@ -36,6 +40,11 @@ struct CaptureImagePreviewItem: Equatable {
         if item.edit != SnapEdit() { detail += " · Edited; the original is kept" }
         if item.archivedAt != nil { detail += " · Archived" }
         return .init(title: item.title, detail: detail, source: .snap(root: store.root, id: item.id))
+    }
+
+    /// An image the Hand off review is about to share.
+    static func toShare(title: String, png: Data) -> Self {
+        .init(title: "Image to share for \(title)", detail: "The image this Hand off will share, as it will be sent.", source: .bytes(png))
     }
 
     /// The frozen copy a Hand off task used, which outlives the item it came from.
@@ -50,12 +59,36 @@ enum CaptureImagePreviewError: LocalizedError {
     var errorDescription: String? { if case .unavailable(let message) = self { return message }; return nil }
 }
 
-/// Reads and decodes a preview image. It runs away from the main thread and
-/// never writes, moves or copies the file.
+/// A decoded preview image and the size of the image it came from, which is
+/// what Actual size shows even when a very large image was decoded smaller.
+struct CapturePreviewImage {
+    let image: CGImage
+    let pixelSize: CGSize
+}
+
+/// Set once a preview is closed or replaced, so a decode that has not started never starts.
+final class CapturePreviewCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func cancel() { lock.withLock { cancelled = true } }
+}
+
+/// Reads and decodes a preview image on its own queue, off the main thread and
+/// outside Swift's shared pool. It never writes, moves or copies the file.
 enum CaptureImageLoader {
     static let maximumBytes = 100 * 1_024 * 1_024
+    static let queue = DispatchQueue(label: "Workbench.CaptureImagePreview", qos: .userInitiated)
 
-    static func image(_ source: CaptureImagePreviewItem.Source) throws -> CGImage {
+    /// About twice the largest display's longer side in pixels, within 2,048 and 8,192: a larger
+    /// image is decoded at this size, so an unusually large import cannot exhaust memory.
+    @MainActor static func pixelLimit(screens: [NSScreen] = NSScreen.screens) -> Int {
+        let largest = screens.map { max($0.frame.width, $0.frame.height) * $0.backingScaleFactor }.max() ?? 2_560
+        return min(8_192, max(2_048, Int(largest * 2)))
+    }
+
+    static func image(_ source: CaptureImagePreviewItem.Source, maximumPixelSize: Int,
+                      cancellation: CapturePreviewCancellation = CapturePreviewCancellation()) throws -> CapturePreviewImage {
         let data: Data
         switch source {
         case .file(let url, let missing):
@@ -68,12 +101,21 @@ enum CaptureImageLoader {
         case .snap(let root, let id):
             // A store of its own: SnapStore's load state belongs to the main thread's owner.
             data = try SnapStore(root: root).snapshot(id).imagePNG
+        case .bytes(let bytes):
+            data = bytes
         }
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
-            throw CaptureImagePreviewError.unavailable("This file is not an image Workbench can show. It is unchanged.")
-        }
-        return image
+        if cancellation.isCancelled { throw CancellationError() }
+        let notAnImage = CaptureImagePreviewError.unavailable("This file is not an image Workbench can show. It is unchanged.")
+        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              width > 0, height > 0 else { throw notAnImage }
+        let image = max(width, height) > maximumPixelSize
+            ? CGImageSourceCreateThumbnailAtIndex(imageSource, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceShouldCacheImmediately: true,
+                                                                    kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize] as CFDictionary)
+            : CGImageSourceCreateImageAtIndex(imageSource, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        guard let image else { throw notAnImage }
+        return CapturePreviewImage(image: image, pixelSize: CGSize(width: width, height: height))
     }
 }
 
@@ -99,30 +141,34 @@ enum CaptureImageZoom {
 
 @MainActor
 final class CaptureImagePreviewModel: ObservableObject {
-    enum State { case loading, shown(CGImage), unavailable(String) }
+    enum State { case loading, shown(CapturePreviewImage), unavailable(String) }
     enum Command { case fit, actualSize, zoomIn, zoomOut }
     let item: CaptureImagePreviewItem
     @Published private(set) var state: State = .loading
     @Published fileprivate(set) var percent = 100
     fileprivate weak var view: PreviewImageScrollView?
     private var loading: Task<Void, Never>?
+    private let cancellation = CapturePreviewCancellation()
 
     init(item: CaptureImagePreviewItem) { self.item = item }
 
     func load() {
-        let source = item.source
+        let source = item.source, limit = CaptureImageLoader.pixelLimit(), cancellation = cancellation
         loading = Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) { () -> Result<CGImage, Error> in
-                Result { try CaptureImageLoader.image(source) }
-            }.value
-            guard let self, !Task.isCancelled else { return }
+            let result: Result<CapturePreviewImage, Error> = await withCheckedContinuation { finished in
+                CaptureImageLoader.queue.async {
+                    finished.resume(returning: Result { try CaptureImageLoader.image(source, maximumPixelSize: limit, cancellation: cancellation) })
+                }
+            }
+            guard let self, !cancellation.isCancelled else { return }
             switch result {
             case .success(let image): self.state = .shown(image)
             case .failure(let error): self.state = .unavailable(error.localizedDescription)
             }
         }
     }
-    func cancel() { loading?.cancel() }
+    /// Closing or replacing the preview stops a decode that has not started and drops any result.
+    func cancel() { cancellation.cancel(); loading?.cancel() }
 
     func perform(_ command: Command) {
         guard let view else { return }
@@ -169,7 +215,7 @@ struct CaptureImagePreviewView: View {
             case .loading:
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
             case .shown(let image):
-                PreviewImage(image: image, model: model, accessibilityLabel: model.item.title)
+                PreviewImage(loaded: image, model: model, accessibilityLabel: model.item.title)
             case .unavailable(let message):
                 VStack(spacing: 10) {
                     Image(systemName: "photo.badge.exclamationmark").font(.largeTitle).foregroundStyle(.secondary)
@@ -181,18 +227,18 @@ struct CaptureImagePreviewView: View {
 }
 
 private struct PreviewImage: NSViewRepresentable {
-    let image: CGImage
+    let loaded: CapturePreviewImage
     let model: CaptureImagePreviewModel
     let accessibilityLabel: String
     func makeNSView(context: Context) -> PreviewImageScrollView {
         let view = PreviewImageScrollView()
         view.onZoom = { [weak model] percent in model?.percent = percent }
         model.view = view
-        view.show(image, label: accessibilityLabel)
+        view.show(loaded, label: accessibilityLabel)
         return view
     }
     func updateNSView(_ view: PreviewImageScrollView, context: Context) {
-        if view.image !== image { view.show(image, label: accessibilityLabel) }
+        if view.image !== loaded.image { view.show(loaded, label: accessibilityLabel) }
     }
 }
 
@@ -202,6 +248,8 @@ private struct PreviewImage: NSViewRepresentable {
 final class PreviewImageScrollView: NSScrollView {
     private let imageView = NSImageView()
     private(set) var image: CGImage?
+    /// The original image's pixels, which Actual size shows one to one.
+    private(set) var pixelSize: CGSize = .zero
     /// Fitting follows window resizes until the person chooses a zoom.
     private(set) var fitting = true
     var onZoom: ((Int) -> Void)?
@@ -221,11 +269,17 @@ final class PreviewImageScrollView: NSScrollView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private var backingScale: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
-    var fitMagnification: CGFloat { CaptureImageZoom.fit(image: imageView.frame.size, in: contentSize) }
+    /// The space a fitted image has. Scroll bars hide once it fits, whether the Mac shows them
+    /// always or only while scrolling, so they never count (#188).
+    private var fitSpace: NSSize {
+        NSScrollView.contentSize(forFrameSize: frame.size, horizontalScrollerClass: nil, verticalScrollerClass: nil,
+                                 borderType: borderType, controlSize: .regular, scrollerStyle: scrollerStyle)
+    }
+    var fitMagnification: CGFloat { CaptureImageZoom.fit(image: imageView.frame.size, in: fitSpace) }
 
-    func show(_ image: CGImage, label: String) {
-        self.image = image
-        imageView.image = NSImage(cgImage: image, size: .zero)
+    func show(_ loaded: CapturePreviewImage, label: String) {
+        image = loaded.image; pixelSize = loaded.pixelSize
+        imageView.image = NSImage(cgImage: loaded.image, size: .zero)
         imageView.setAccessibilityLabel(label)
         layoutImage()
         fit()
@@ -233,7 +287,7 @@ final class PreviewImageScrollView: NSScrollView {
 
     private func layoutImage() {
         guard let image else { return }
-        let size = CaptureImageZoom.actualSize(pixels: CGSize(width: image.width, height: image.height), backingScale: backingScale)
+        let size = CaptureImageZoom.actualSize(pixels: pixelSize == .zero ? CGSize(width: image.width, height: image.height) : pixelSize, backingScale: backingScale)
         imageView.frame = NSRect(origin: .zero, size: size)
         minMagnification = CaptureImageZoom.smallest(fit: fitMagnification)
         maxMagnification = CaptureImageZoom.largest
@@ -370,7 +424,8 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
 /// Names for Snap & Talk sections' preview doors, shared with the checks.
 enum ReadbackItemNames {
     static func view(sectionNumber: Int) -> String { "View screenshot for section \(sectionNumber)" }
-    static func viewDeleted(_ section: ReadbackSection) -> String { "View screenshot for \(section.displayName), recently deleted" }
+    static func viewDeleted(_ section: ReadbackSection) -> String { "View screenshot captured \(captured(section)), recently deleted" }
+    static func captured(_ section: ReadbackSection) -> String { section.capturedAt.formatted(date: .abbreviated, time: .shortened) }
 }
 
 /// A capture thumbnail that opens the read-only preview on click, and on

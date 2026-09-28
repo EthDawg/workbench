@@ -22,9 +22,14 @@ enum CaptureImagePreviewChecks {
             .appendingPathComponent("CapturePreviewChecks-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? fm.removeItem(at: root) }
-        func load(_ item: CaptureImagePreviewItem) -> Result<CGImage, Error> { Result { try CaptureImageLoader.image(item.source) } }
-        func pixels(_ result: Result<CGImage, Error>) -> CGSize? { (try? result.get()).map { CGSize(width: $0.width, height: $0.height) } }
-        func message(_ result: Result<CGImage, Error>) -> String? { if case .failure(let error) = result { return error.localizedDescription }; return nil }
+        func load(_ item: CaptureImagePreviewItem, limit: Int = 8_192) -> Result<CapturePreviewImage, Error> {
+            Result { try CaptureImageLoader.image(item.source, maximumPixelSize: limit) }
+        }
+        /// The decoded pixels, which match the original's unless it was larger than the limit.
+        func pixels(_ result: Result<CapturePreviewImage, Error>) -> CGSize? {
+            (try? result.get()).flatMap { $0.pixelSize == CGSize(width: $0.image.width, height: $0.image.height) ? $0.pixelSize : nil }
+        }
+        func message(_ result: Result<CapturePreviewImage, Error>) -> String? { if case .failure(let error) = result { return error.localizedDescription }; return nil }
         /// Every file under the folder with its bytes, to show a preview changed nothing.
         func snapshot(_ folder: URL) throws -> [String: Data] {
             var files: [String: Data] = [:]
@@ -83,6 +88,7 @@ enum CaptureImagePreviewChecks {
         try ReadbackStore.createPrivateDirectory(session.appendingPathComponent("trash"))
         try fm.moveItem(at: session.appendingPathComponent(deleted.directory), to: session.appendingPathComponent(trashDirectory))
         deleted.moveFiles(from: deleted.directory, to: trashDirectory); deleted.deletedAt = Date(timeIntervalSince1970: 1_789_550_000)
+        var sameDisplay = deleted; sameDisplay.capturedAt = deleted.capturedAt.addingTimeInterval(60)
         let sessionBefore = try snapshot(session)
         try check(pixels(load(.section(first, number: 1, session: session))) == CGSize(width: 2_940, height: 1_912),
                   "a replaced section shows its current screenshot")
@@ -91,9 +97,11 @@ enum CaptureImagePreviewChecks {
         try check(pixels(load(.section(deleted, number: nil, session: session))) == CGSize(width: 1_470, height: 956),
                   "a recently deleted section opens without restoring it")
         try check(ReadbackItemNames.view(sectionNumber: 3) == "View screenshot for section 3"
-                  && ReadbackItemNames.viewDeleted(deleted) == "View screenshot for Synthetic display, recently deleted"
+                  && ReadbackItemNames.viewDeleted(deleted) == "View screenshot captured \(deleted.capturedAt.formatted(date: .abbreviated, time: .shortened)), recently deleted"
+                  && ReadbackItemNames.viewDeleted(deleted) != ReadbackItemNames.viewDeleted(sameDisplay)
+                  && CaptureImagePreviewItem.section(deleted, number: nil, session: session).title.hasPrefix("Screenshot captured ")
                   && CaptureImagePreviewItem.section(failed, number: 2, session: session).title == "Screenshot for section 2",
-                  "section thumbnails and previews have specific names")
+                  "section thumbnails and previews have specific names, and recently deleted ones say when they were captured")
         try check(try snapshot(session) == sessionBefore, "opening sections left the session folder byte for byte as it was")
         try fm.removeItem(at: session.appendingPathComponent(failed.screenshot))
         let sessionNow = try snapshot(session)
@@ -109,6 +117,21 @@ enum CaptureImagePreviewChecks {
                   && (try Data(contentsOf: frozen)) == screen, "a task's saved copy opens unchanged")
         try check(message(load(.savedCopy(title: "Release notes", url: nil))) == "This saved image is missing from the task’s folder.",
                   "a missing saved copy says so")
+        // An image the Hand off review is about to share opens from its bytes.
+        try check(pixels(load(.toShare(title: "Release notes", png: screen))) == CGSize(width: 2_880, height: 1_800)
+                  && CaptureImagePreviewItem.toShare(title: "Release notes", png: screen).title == "Image to share for Release notes",
+                  "an image a Hand off is about to share opens as it will be sent")
+        // A very large image is decoded no larger than the limit, and Actual size still means its own pixels.
+        if case .success(let large) = load(.savedCopy(title: "Release notes", url: frozen), limit: 1_000) {
+            try check(max(large.image.width, large.image.height) <= 1_000 && large.pixelSize == CGSize(width: 2_880, height: 1_800),
+                      "an image larger than the limit is decoded smaller, keeping its own size for Actual size")
+        } else { try check(false, "an image larger than the limit is decoded smaller, keeping its own size for Actual size") }
+        try check((2_048...8_192).contains(CaptureImageLoader.pixelLimit(screens: [])) && (2_048...8_192).contains(CaptureImageLoader.pixelLimit()),
+                  "the decode limit is about twice the display, within 2,048 and 8,192 pixels")
+        let cancelled = CapturePreviewCancellation(); cancelled.cancel()
+        do { _ = try CaptureImageLoader.image(CaptureImagePreviewItem.savedCopy(title: "Release notes", url: frozen).source, maximumPixelSize: 8_192, cancellation: cancelled)
+            try check(false, "a closed preview never decodes its image")
+        } catch { try check(error is CancellationError, "a closed preview never decodes its image") }
 
         // Fit, actual size and zoom steps. Magnification 1 is one image pixel per screen pixel.
         let actual = CaptureImageZoom.actualSize(pixels: CGSize(width: 2_940, height: 1_912), backingScale: 2)
@@ -125,6 +148,8 @@ enum CaptureImagePreviewChecks {
         try check(CaptureImagePreviewPanel.command(for: "c") == nil, "other keys pass through to Workbench")
 
         // The real preview window, off every display: fit, zoom keys, a resize while fitting, and Escape.
+        // Once with scroll bars that show only while scrolling, and once with bars always shown, as on
+        // a Mac without a trackpad such as the CI runners: fitting must not count bars that then hide (#188).
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         let owner = NSWindow(contentRect: NSRect(x: -40_000, y: -40_000, width: 1_180, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
@@ -132,31 +157,44 @@ enum CaptureImagePreviewChecks {
         defer { owner.close() }
         let preview = CaptureImagePreview()
         preview.present = { _ in }
-        preview.show(.section(first, number: 1, session: session), over: owner)
-        guard let panel = preview.panel, let model = preview.model else { throw VoiceError.message("CAPTURE_PREVIEW_CHECK_FAILED: no preview window") }
-        panel.setFrame(NSRect(x: -40_000, y: -40_000, width: 1_100, height: 760), display: false)
-        try await settle(panel) { model.isShowingImage && scrollView(in: panel) != nil }
-        guard let scroll = scrollView(in: panel) else { throw VoiceError.message("CAPTURE_PREVIEW_CHECK_FAILED: the preview shows no image") }
-        try check(!panel.isVisible && panel.parent === owner && panel.title == "Screenshot for section 1", "the preview belongs to Workbench's window and names its image")
-        let fitted = scroll.magnification
-        try check(scroll.fitting && abs(fitted - scroll.fitMagnification) < 0.001 && fitted < 1 && model.percent == CaptureImageZoom.percent(fitted),
-                  "a full-display screenshot opens fitted to the window")
-        func key(_ characters: String, shift: Bool = false) -> NSEvent {
-            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.command, .shift] : [.command], timestamp: 0,
-                             windowNumber: panel.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
-                             isARepeat: false, keyCode: 0)!
+        for style in [NSScroller.Style.overlay, .legacy] {
+            let bars = style == .legacy ? "with scroll bars always shown" : "with scroll bars shown while scrolling"
+            preview.show(.section(first, number: 1, session: session), over: owner)
+            guard let panel = preview.panel, let model = preview.model else { throw VoiceError.message("CAPTURE_PREVIEW_CHECK_FAILED: no preview window") }
+            panel.setFrame(NSRect(x: -40_000, y: -40_000, width: 1_100, height: 760), display: false)
+            try await settle(panel) { model.isShowingImage && scrollView(in: panel) != nil }
+            guard let scroll = scrollView(in: panel) else { throw VoiceError.message("CAPTURE_PREVIEW_CHECK_FAILED: the preview shows no image") }
+            scroll.scrollerStyle = style
+            try await settle(panel) { false }
+            /// The whole image in the scroll view with no bars, which is how a fitted image is shown.
+            func expectedFit() -> CGFloat {
+                let space = NSScrollView.contentSize(forFrameSize: scroll.frame.size, horizontalScrollerClass: nil, verticalScrollerClass: nil,
+                                                     borderType: scroll.borderType, controlSize: .regular, scrollerStyle: style)
+                return CaptureImageZoom.fit(image: scroll.documentView?.frame.size ?? .zero, in: space)
+            }
+            try check(!panel.isVisible && panel.parent === owner && panel.title == "Screenshot for section 1", "the preview belongs to Workbench's window and names its image")
+            let fitted = scroll.magnification
+            try check(scroll.fitting && abs(fitted - expectedFit()) < 0.001 && fitted < 1 && model.percent == CaptureImageZoom.percent(fitted),
+                      "a full-display screenshot opens fitted to the window, \(bars)")
+            func key(_ characters: String, shift: Bool = false) -> NSEvent {
+                NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.command, .shift] : [.command], timestamp: 0,
+                                 windowNumber: panel.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                                 isARepeat: false, keyCode: 0)!
+            }
+            try check(panel.performKeyEquivalent(with: key("0")) && abs(scroll.magnification - 1) < 0.001 && model.percent == 100 && !scroll.fitting,
+                      "⌘0 shows actual size, \(bars)")
+            try check(panel.performKeyEquivalent(with: key("+", shift: true)) && abs(scroll.magnification - 1.25) < 0.001 && model.percent == 125, "⌘+ zooms in, \(bars)")
+            try check(panel.performKeyEquivalent(with: key("-")) && abs(scroll.magnification - 1) < 0.001, "⌘− zooms out, \(bars)")
+            panel.setFrame(NSRect(x: -40_000, y: -40_000, width: 900, height: 620), display: false)
+            try await settle(panel) { false }
+            try check(abs(scroll.magnification - 1) < 0.001, "a chosen zoom survives resizing the preview, \(bars)")
+            try check(panel.performKeyEquivalent(with: key("9")), "⌘9 is the preview's own key, \(bars)")
+            try await settle(panel) { false }
+            try check(scroll.fitting && abs(scroll.magnification - expectedFit()) < 0.001 && scroll.magnification < fitted,
+                      "⌘9 fits the image again, and fitting follows the window, \(bars): \(scroll.magnification) for \(expectedFit())")
+            panel.cancelOperation(nil)
+            try check(preview.panel == nil && owner.childWindows?.contains(panel) != true, "Escape closes the preview and leaves Workbench's window, \(bars)")
         }
-        try check(panel.performKeyEquivalent(with: key("0")) && abs(scroll.magnification - 1) < 0.001 && model.percent == 100 && !scroll.fitting,
-                  "⌘0 shows actual size")
-        try check(panel.performKeyEquivalent(with: key("+", shift: true)) && abs(scroll.magnification - 1.25) < 0.001 && model.percent == 125, "⌘+ zooms in")
-        try check(panel.performKeyEquivalent(with: key("-")) && abs(scroll.magnification - 1) < 0.001, "⌘− zooms out")
-        panel.setFrame(NSRect(x: -40_000, y: -40_000, width: 900, height: 620), display: false)
-        try await settle(panel) { false }
-        try check(abs(scroll.magnification - 1) < 0.001, "a chosen zoom survives resizing the preview")
-        try check(panel.performKeyEquivalent(with: key("9")) && scroll.fitting && abs(scroll.magnification - scroll.fitMagnification) < 0.001
-                  && scroll.magnification < fitted, "⌘9 fits the image again, and fitting follows the window")
-        panel.cancelOperation(nil)
-        try check(preview.panel == nil && owner.childWindows?.contains(panel) != true, "Escape closes the preview and leaves Workbench's window")
         try check(try snapshot(session) == sessionNow, "viewing, zooming and closing changed no session file")
 
         // A missing file shows its message in the window, with no zoom controls.
