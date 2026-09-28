@@ -167,7 +167,7 @@ Prefer a small explicit provider contract over a general agent framework. Add an
 
 Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. The quick panel and preparation pages follow the [Grammar names](#grammar); names that still differ, such as Annotate for Draw or Read aloud for Read, are recorded as aliases in the surface registry until they are unified. A label should explain an action; a status should describe what actually happened.
 
-Home introduces useful actions, first-use access requests explain themselves, and keyboard practice teaches muscle memory. Prefer these working experiences over an introductory slideshow. Use synthetic scenes, text and recordings in examples. Brand assets can improve later without changing the action or data architecture.
+Home introduces useful actions, first-use access requests explain themselves, and keyboard practice teaches muscle memory. Home follows the journey: before anything is captured it guides one first dictation; afterwards it shows what is live, the newest work of each kind, and the three moments as one-click tiles with Prepare… as the link to each page. Prefer these working experiences over an introductory slideshow. Use synthetic scenes, text and recordings in examples. Brand assets can improve later without changing the action or data architecture.
 
 ## Identity, migration and release
 
