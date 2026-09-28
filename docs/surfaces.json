@@ -1,5 +1,29 @@
 [
   {
+    "id": "LocalVoice.CaptureHistoryView.CaptureHistoryView.Button.open",
+    "surface": "history page",
+    "label": "Open",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Existing door, recorded, no change: Opens the transcript on the Dictate page (Option of dictate; #134)."
+  },
+  {
+    "id": "LocalVoice.CaptureHistoryView.CaptureHistoryView.Button.open-full-history",
+    "surface": "history page",
+    "label": "Open full history…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Existing door, recorded, no change: Opens the full History page (Option of history; #134)."
+  },
+  {
+    "id": "LocalVoice.CaptureHistoryView.CaptureHistoryView.Button.read-aloud",
+    "surface": "history page",
+    "label": "Read aloud",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Existing door, recorded, no change: Opens the transcript on the Read page (Option of read; #134)."
+  },
+  {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
     "surface": "floating toolbar live controls",
     "label": "Reset to bottom centre",
@@ -128,6 +152,14 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Runtime label from Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" ); no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.read-aloud",
+    "surface": "library page",
+    "label": "Read aloud",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Existing door, recorded, no change: Opens the saved text on the Read page (Option of read; #134)."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.change-tool",
@@ -475,6 +507,14 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.recent-transcripts",
+    "surface": "meeting page",
+    "label": "Recent transcripts",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Existing door, recorded, no change: Opens History from the meeting page (Option of history; #134)."
+  },
+  {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
     "surface": "proactive offer PhotoHandoffArrivalCue",
     "label": "From iPhone",
@@ -536,31 +576,35 @@
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Button.enable-automatic-paste",
-    "surface": "settings page",
+    "surface": "dictate page options",
     "label": "Enable automatic paste…",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
-    "surface": "settings page",
+    "surface": "dictate page options",
     "label": "Activation",
     "kind": "setting",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.cleanup",
-    "surface": "settings page",
+    "surface": "dictate page options",
     "label": "Cleanup",
     "kind": "setting",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.delivery",
-    "surface": "settings page",
+    "surface": "dictate page options",
     "label": "Delivery",
     "kind": "setting",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
   },
   {
     "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.cancel",
@@ -588,6 +632,70 @@
     "belongsTo": "snapAndTalk",
     "aliasOf": "snapAndTalk",
     "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.add-from-snap-history",
+    "surface": "snap & talk page",
+    "label": "Add from Snap History…",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Existing door, recorded, no change: Opens the Snap page to choose Snaps (Option of snap; #134)."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.manage-packs",
+    "surface": "snap & talk page",
+    "label": "Manage packs…",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Existing door, recorded, no change: Opens Packs (Library) (Option of library; #134)."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.review-selected-evidence",
+    "surface": "snap & talk page",
+    "label": "Review selected evidence…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Existing door, recorded, no change: Opens the Hand off review, an action on History items (Option of history; #134)."
+  },
+  {
+    "id": "LocalVoice.SnapWorkspaceView.SnapWorkspaceView.Button.add-to-snap-talk",
+    "surface": "snap page",
+    "label": "Add to Snap & Talk",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Existing door, recorded, no change: Sends selected Snaps to Snap & Talk and opens it (Option of snapAndTalk; #134)."
+  },
+  {
+    "id": "LocalVoice.SnapWorkspaceView.SnapWorkspaceView.Button.hand-off",
+    "surface": "snap page",
+    "label": "Hand off…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Existing door, recorded, no change: Opens the Hand off review, an action on History items (Option of history; #134)."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",
+    "surface": "dictate page options",
+    "label": "Position dictation panel…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.transcribe-a-meeting-or-call",
+    "surface": "dictate page",
+    "label": "Transcribe a meeting or call…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Existing door, recorded, no change: Opens Transcribe meeting or call, Dictate’s named workflow (Option of dictate; #134)."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.your-dictionary",
+    "surface": "dictate page options",
+    "label": "Your dictionary",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
   },
   {
     "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
@@ -711,6 +819,14 @@
     "note": "Runtime label from receipt . canSuggestPaste ? \"\\(receipt.wordCount) words from Workbench. Paste where you need them.\" : receipt . detail; no rendered text assumed."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.dictate-options",
+    "surface": "settings page",
+    "label": "Dictate options…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option (a door): Dictate's options live on the Dictate page; this keeps Settings free of dead ends (#134 W3)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.keyboard-and-practice",
     "surface": "settings page",
     "label": "Keyboard and practice",
@@ -723,13 +839,6 @@
     "label": "Models and local server",
     "kind": "action",
     "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.position-dictation-panel",
-    "surface": "settings page",
-    "label": "Position dictation panel…",
-    "kind": "action",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
@@ -753,13 +862,6 @@
     "label": "Try the keyboard",
     "kind": "action",
     "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.your-dictionary",
-    "surface": "settings page",
-    "label": "Your dictionary",
-    "kind": "action",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",

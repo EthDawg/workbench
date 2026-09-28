@@ -74,7 +74,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         didSet { UserDefaults.standard.set(floatingToolbarVisible, forKey: "workbench.floatingToolbar.v1") }
     }
     @Published var shortcutFailures: [UInt32: String] = [:]
-    @Published var quickTab = "Dictate"
     @Published var page = "home"
     /// How the next visit to History begins. The page applies it once and
     /// clears it; without one, History opens on All.
