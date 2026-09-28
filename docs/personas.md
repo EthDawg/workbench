@@ -12,13 +12,26 @@ From any app, the default **Option–F** shows or hides one persona and **Option
 
 ## Persona and Present
 
-The Persona workspace uses the existing saved library and overlay session. Opening it, changing pages or closing preparation leaves a shown overlay running over browsers and other windows. Use **Hide floating persona** for one card, **Hide all** / **Resume overlays** for a prepared arrangement, or **End overlays** to finish. These controls remain available even if no saved card is selected. The floating controls retain movement, locking/click-through, size, screen recovery and frozen live choices. No microphone is opened; speech-reactive framing is not implemented.
+The Persona workspace uses the existing saved library and overlay session. Opening it, changing pages or closing preparation leaves a shown overlay running over browsers and other windows. Use **Hide floating persona** for one card, **Hide all** / **Resume overlays** for a prepared arrangement, or **End overlays** to finish. These controls remain available even if no saved card is selected. The floating controls retain movement, locking/click-through, size, screen recovery and frozen live choices. [React to my voice](#react-to-my-voice) adds an optional voice ring.
 
 Present’s compact **Persona…** control sits beside the scene name above the preview. Add or change a card, set its size and position, or remove only its scene placement. A card placed in a scene is rendered into that presentation; a floating Persona is a separate window. Both use the same saved artwork without silently changing each other’s placements or live image snapshots.
 
 Present keeps **Full screen**, **Window**, **Connection & audio…** and **More** below the editor. At narrower widths these actions wrap into two rows. **Scene details** contains logo, crop, device-shape and hand adjustments. The connection button opens the existing route guide, including QuickTime and iPhone Mirroring launch actions; device capture, audio limits and native fallback ownership are unchanged.
 
 `StageKitController.personasView` supplies the standalone workspace. The host routes **Prepare Personas…** with `onOpenPersonas`; a host without that callback retains the existing preparation sheet. Scene-specific selection always uses its own sheet and keeps the original scene binding.
+
+## React to my voice
+
+**React to my voice** puts a ring around the shown persona that moves as you speak, so the audience can see who is talking, like the floating profile a streamer uses. Turn it on in **Persona** or in the live **Persona Overlay** menu. It is off by default and remembered.
+
+- **Shape and colour come from the artwork.** A round badge gets a ring around its circle; anything breaking out of the badge, such as a hat or a name label, stays in front of the ring. Cards and other artwork get a ring around the rounded rectangle of their visible pixels. The colour is the artwork's most prominent vivid colour, brightened to read on screen, or Workbench mint when it has none.
+- **It follows your voice, not the room.** Loudness is measured against the room's own noise and your recent speaking level, so a quiet laptop microphone and a loud headset both fill the ring, while breaths and fans leave it at rest. A thin line shows it is listening while you are quiet. Six pitch bands shape waves that travel around the ring and ease at the display's frame rate, so they read smoothly at a meeting app's lower frame rate too.
+- **The artwork keeps its size.** The persona's window grows to make room for the ring. Near a screen edge the persona moves in only as far as the ring needs to stay on screen and clear of the Dock; turning the ring off puts it back.
+- **One speaker at a time.** In a prepared set the ring frames the selected overlay, so choosing another overlay passes the voice to it. A hidden selection has no ring.
+- **Microphone use is bounded.** Turning it on asks macOS for microphone access at once, while you prepare, never later in front of an audience. The microphone runs only while the ring is on and the persona it frames is showing, and the menu item's second line names the input it is listening to. It measures loudness and pitch balance; nothing is recorded, kept or sent. Hiding the persona, Hide all, End, Quit, turning it off, a refused permission or a lost input stops it, the last two with a notice. When the Mac switches to another microphone, the ring follows it.
+- **Accessibility settings are followed.** Reduce Motion keeps the bars away and lets the line brighten while you speak. Increase Contrast strengthens the ring's dark edge.
+
+It measures alongside Dictate, meeting capture and Snap & Talk narration without taking their microphone, and none of them stops the ring.
 
 ## Prepare several overlays
 
@@ -69,5 +82,7 @@ Focused native QA used a disposable library and bundled fictional portraits. Pre
 The isolated host initially failed to load external test dylibs and had unbounded fixture-window sizing; both harness problems were corrected before native acceptance. The app release target compiled successfully. Eight site tests and the static site build passed. Receiving Teams/Zoom views, multiple displays, VoiceOver and physical configured hotkeys remain unverified. No public binary or App Store release is claimed by this guide.
 
 Signed local Preview **20260914204356** was installed and opened with the existing scene and persona library present. Its strict Developer ID signature passed normal macOS verification; the installed executable matches the archive. The preparation entry and five disabled shortcut defaults were confirmed in the installed UI without saving a user layout. The previous app was retained by the normal installer. This build is not notarized or in the public download.
+
+React to my voice has focused source checks and a signed Preview native check on this Mac's microphone, recorded in [the voice ring verification](verification/2026-09-28-persona-voice-ring.md). A real voice at the desk, Bluetooth headsets and a meeting receiver's view remain open.
 
 The September 2026 Persona workspace / compact Present increment has source-level launch and layout regression checks plus synthetic offscreen renders. Signed Preview `9d4aff1` passed combined navigation, Persona display/hide and compact Present controls. Full keyboard and small-display coverage, browser/window persistence, focus/click-through, physical screen changes and real device/receiver fallback remain native checks. The [capability Preview acceptance record](releases/2026-09-27-capability-preview.md) identifies the installed candidate and these limits; offscreen views alone do not establish installed acceptance.

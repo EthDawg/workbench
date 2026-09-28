@@ -100,6 +100,14 @@ protocol PersonaSessionDisplaying: AnyObject {
     func configure(image: NSImage, name: String, state: PersonaOverlayState)
     func hide()
     func shutdown()
+    /// Shows or removes the voice ring around this overlay.
+    func setVoiceRing(_ on: Bool)
+    func showVoice(_ frames: [PersonaVoiceFrame])
+}
+
+extension PersonaSessionDisplaying {
+    func setVoiceRing(_ on: Bool) {}
+    func showVoice(_ frames: [PersonaVoiceFrame]) {}
 }
 
 struct PersonaPreparedSessionGroup {
@@ -126,6 +134,7 @@ final class PersonaSessionController {
     private let makePanel: () -> any PersonaSessionDisplaying
     private let canSave: Bool
     private let softReveal: Bool
+    private(set) var voiceRing = false
 
     init(groups: [PersonaPreparedSessionGroup], initialGroupID: UUID, canSave: Bool, softReveal: Bool = false,
          makePanel: @escaping () -> any PersonaSessionDisplaying = { PersonaOverlayController() }) throws {
@@ -151,6 +160,14 @@ final class PersonaSessionController {
     var currentLayout: [PersonaOverlayItem] { groups.first { $0.source.id == currentGroupID }?.overlays ?? [] }
     var selectedFrame: CGRect? { selectedInstanceID.flatMap { panels[$0]?.frame } }
     var visibleCount: Int { phase == .active ? currentLayout.filter(\.visible).count : 0 }
+    /// The ring frames the selected overlay, so choosing another passes the
+    /// voice to it. A hidden selection has no ring; with nothing selected the
+    /// first shown overlay has it.
+    var voiceTargetID: UUID? {
+        guard voiceRing, phase == .active else { return nil }
+        if let selectedInstanceID { return currentLayout.first { $0.id == selectedInstanceID && $0.visible }?.id }
+        return currentLayout.first(where: \.visible)?.id
+    }
     var state: PersonaSessionViewState {
         guard phase != .idle, let index = groupIndex else { return PersonaSessionViewState() }
         let group = groups[index]
@@ -182,7 +199,7 @@ final class PersonaSessionController {
     }
     func selectInstance(_ id: UUID) {
         guard currentLayout.contains(where: { $0.id == id }) else { return }
-        selectedInstanceID = id; onChange?()
+        selectedInstanceID = id; applyVoiceRing(); onChange?()
     }
     @discardableResult func addOverlay(personaID: UUID) throws -> UUID {
         guard let index = groupIndex, groups[index].candidates.contains(where: { $0.id == personaID }) else { throw PersonaError.invalidSettings }
@@ -220,7 +237,9 @@ final class PersonaSessionController {
         guard x.isFinite, y.isFinite else { return }
         update(id) { $0.placement.x = min(1, max(0, x)); $0.placement.y = min(1, max(0, y)) }
     }
-    func pause() { guard phase == .active else { return }; phase = .paused; panels.values.forEach { $0.hide() }; onChange?() }
+    func pause() { guard phase == .active else { return }; phase = .paused; panels.values.forEach { $0.hide() }; applyVoiceRing(); onChange?() }
+    func setVoiceRing(_ on: Bool) { guard voiceRing != on else { return }; voiceRing = on; applyVoiceRing() }
+    func showVoice(_ frames: [PersonaVoiceFrame]) { if let id = voiceTargetID { panels[id]?.showVoice(frames) } }
     func resume() { guard phase == .paused else { return }; phase = .active; render(animated: false); onChange?() }
     func end() { closePanels(); phase = .idle; selectedInstanceID = nil; groups.removeAll(); savedLayouts.removeAll(); onChange?() }
     func markSaved(_ group: PersonaGroup) {
@@ -252,10 +271,15 @@ final class PersonaSessionController {
         change(&groups[groupIndex].overlays[index]); render(); onChange?()
     }
     private func closePanels() { panels.values.forEach { $0.shutdown() }; panels.removeAll() }
+    private func applyVoiceRing() {
+        let target = voiceTargetID
+        for (id, panel) in panels { panel.setVoiceRing(id == target) }
+    }
     private func render(animated: Bool = false) {
         guard phase != .idle else { return }
         let current = state
         let retained = Set(current.instances.map(\.id))
+        let voiceTarget = voiceTargetID
         for id in Array(panels.keys) where !retained.contains(id) { panels.removeValue(forKey: id)?.shutdown() }
         for item in current.instances {
             let panel: any PersonaSessionDisplaying
@@ -266,11 +290,13 @@ final class PersonaSessionController {
                 panel.onPlacementChange = { [weak self] position in self?.update(item.id) { $0.placement = position } }
             }
             if phase == .active && item.visible {
+                // Before showing, so the overlay is placed with its ring's room at once.
+                panel.setVoiceRing(item.id == voiceTarget)
                 let placed = panel.show(image: item.image, name: item.label, state: item.placement, animated: animated)
                 if let groupIndex, let index = groups[groupIndex].overlays.firstIndex(where: { $0.id == item.id }) {
                     groups[groupIndex].overlays[index].placement.screenID = placed.screenID
                 }
-            } else { panel.configure(image: item.image, name: item.label, state: item.placement); panel.hide() }
+            } else { panel.configure(image: item.image, name: item.label, state: item.placement); panel.hide(); panel.setVoiceRing(false) }
         }
     }
 }

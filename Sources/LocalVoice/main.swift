@@ -671,11 +671,25 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CorrectionRuleChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
-            try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run() }
+            try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }
         case "--check-floating-toolbar":
             try await WorkbenchControlChecks.run()
         case "--check-reading-cancellation":
             try await AudioRendererCancellationChecks.run()
+        case "--check-reading":
+            try await MainActor.run { try ReadingChecks.run() }
+        case "--check-reading-render":
+            try await ReadingChecks.runRender()
+        case "--measure-reading-latency":
+            // --measure-reading-latency VOICE_ID[,VOICE_ID] TEXT_FILE…
+            guard args.count >= 3 else { throw VoiceError.message("Usage: --measure-reading-latency VOICE_ID[,VOICE_ID] TEXT_FILE…") }
+            try await ReadingChecks.measureLatency(voices: args[1].split(separator: ",").map(String.init), files: args.dropFirst(2).map { URL(fileURLWithPath: $0) })
+        case "--render-reading-fixture":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-reading-fixture NEW_OUTPUT_FOLDER") }
+            try await MainActor.run {
+                _ = NSApplication.shared
+                try ReadingChecks.renderFixtures(to: URL(fileURLWithPath: args[1]))
+            }
         case "--check-library":
             try DemoLibraryChecks.run()
             try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
@@ -691,6 +705,15 @@ func runCLI(_ args: [String]) async -> Int32 {
                 NSApp.finishLaunching()
                 try ReadSelectionChecks.runNativePasteboard()
             }
+        case "--check-persona-voice-native":
+            guard args.count >= 2 else { throw VoiceError.message("Usage: --check-persona-voice-native NEW_OUTPUT_FOLDER [--speak]") }
+            await MainActor.run {
+                _ = NSApplication.shared
+                NSApp.setActivationPolicy(.accessory)
+                NSApp.finishLaunching()
+            }
+            print(try await PersonaVoiceNativeCheck.run(output: URL(fileURLWithPath: args[1]), speak: args.dropFirst(2).contains("--speak")))
+            print(WorkbenchBuild().details)
         case "--render-reading-service-fixture":
             guard args.count == 2 else { throw VoiceError.message("Usage: --render-reading-service-fixture OUTPUT.png") }
             try await MainActor.run {

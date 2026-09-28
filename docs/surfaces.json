@@ -1581,6 +1581,14 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
+    "surface": "Persona menu",
+    "label": "React to My Voice · Uses Microphone",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Voice framing, the Persona option named in the Grammar. Off by default; listens only while the framed persona shows."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-selected-persona",
     "surface": "Persona menu",
     "label": "Show Selected Persona",
