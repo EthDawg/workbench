@@ -125,6 +125,22 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--draw-page-only"] {
+            // Views only: no start(), overlays, monitors or shortcut registration.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let drawPage = DrawPageTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("embedded Draw page shows no inactive palette settings", drawPage.testEmbeddedDrawPageShowsNoInactivePaletteSettings)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--drawing-concurrency-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -313,7 +329,9 @@ struct TestRunner {
             ("backdrop failed save rollback and changed-image rejection", backdrop.testCommitFailureCleansOnlyNewCopyAndChangedSavedImageRejects),
             ("backdrop preview and saved composition pixels", backdrop.testPreviewAndSavedRenderingAtSameAspectKeepForeground)
         ]
+        let drawPage = DrawPageTests()
         var tests: [(String, () throws -> Void)] = [
+            ("embedded Draw page shows no inactive palette settings", drawPage.testEmbeddedDrawPageShowsNoInactivePaletteSettings),
             ("board export pixels orientation text and Retina", boardExport.testBoardPixelsOrientationTextAndRetinaScale),
             ("board snapshot file bounds and invalid input", boardExport.testSnapshotPersistenceBoundsAndInvalidInput),
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),

@@ -438,7 +438,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     private func refreshEffects() {
         let fadeActive = !screenshotHandoffActive && settings.value.autoFade && overlayHistory.values.contains { !$0.annotations.isEmpty }
-        let needsTimer = !screenshotHandoffActive && (pointerEnabled || isDrawing || fadeActive || (!boards.isEmpty && settings.value.boardPalette == .autoHide))
+        // Only the standalone app has a palette to auto-hide over a board.
+        let needsTimer = !screenshotHandoffActive && (pointerEnabled || isDrawing || fadeActive || (!embedded && !boards.isEmpty && settings.value.boardPalette == .autoHide))
         if needsTimer && effectTimer == nil {
             let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tickEffects() }
             timer.tolerance = 0.003; RunLoop.main.add(timer, forMode: .common); effectTimer = timer
