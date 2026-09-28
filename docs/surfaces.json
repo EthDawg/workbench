@@ -215,12 +215,13 @@
     "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.shape",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.appearance",
     "surface": "floating toolbar More menu",
-    "label": "Shape",
+    "label": "Appearance",
     "kind": "option",
     "belongsTo": "persona",
-    "note": "Persona's Shape accessory waiting in More when the row has no room for it (#134 part B), for a hidden card, whose Persona menu has no Appearance; a shown card's or a set's Appearance above already holds the same Circle, Card and Original."
+    "aliasOf": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance",
+    "note": "Persona's Appearance accessory waiting in More when the row has no room for it (#134 part B), for a hidden card, whose Persona menu has no Appearance; a shown card's or a set's Appearance above already holds the same Circle, Card and Original. The same choice and word as the Persona menu's Appearance (#169)."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel",
@@ -2634,6 +2635,16 @@
     "belongsTo": "app"
   },
   {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.appearance",
+    "surface": "floating toolbar accessory",
+    "label": "Appearance",
+    "case": "appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance",
+    "note": "Persona's one accessory while a live copy is selected, a hidden one included (#134 part B, which called it Shape): Circle, Card or Original for that copy only, the same choice and word as the Persona menu's Appearance (#169, #170). VoiceOver hears whose appearance it is, and that the copy is hidden when it is."
+  },
+  {
     "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.prompts",
     "surface": "floating toolbar accessory",
     "label": "Prompts",
@@ -2651,15 +2662,6 @@
     "belongsTo": "snapAndTalk",
     "aliasOf": "snapAndTalk",
     "note": "Snap & Talk's one accessory while a session is open (#134 part B): opens that session's review, as More's Review Snap & Talk item does; the count stays with Capture next. The same verb as Dictate's receipt and meeting offer Review: look at what was just made."
-  },
-  {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.shape",
-    "surface": "floating toolbar accessory",
-    "label": "Shape",
-    "case": "shape",
-    "kind": "option",
-    "belongsTo": "persona",
-    "note": "Persona's one accessory while a live copy is selected, a hidden one included (#134 part B): Circle, Card or Original for that copy only, the choice its Appearance menu holds (#169, #170). VoiceOver hears whose shape it is, and that the copy is hidden when it is."
   },
   {
     "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.tools",

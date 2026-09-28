@@ -539,7 +539,7 @@ final class MoreButton: NSButton {
 
 /// The chosen tool's one accessory (#134 part B). One that opens a list, a menu or the picker
 /// carries a chevron; Review goes straight to the session's review and carries none. VoiceOver
-/// hears its title without the chevron, or its description when it has one ("Shape of the
+/// hears its title without the chevron, or its description when it has one ("Appearance of the
 /// selected persona, hidden"), which the tooltip shows too.
 private struct ToolbarAccessoryButton: NSViewRepresentable {
     let title: String

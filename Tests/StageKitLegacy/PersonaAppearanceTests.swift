@@ -454,7 +454,7 @@ final class PersonaAppearanceTests {
             XCTAssertEqual(scenes.personas.shownCard?.appearance, .circle)
             XCTAssertEqual(scenes.personas.items[0].effectiveAppearance.shape, .card, "The saved persona keeps its look")
             XCTAssertEqual(StageKitController.PersonaShape.allCases.map(\.title), ["Circle", "Card", "Original"])
-            // Hidden, the card is still the copy the toolbar's Shape changes, and says it is hidden
+            // Hidden, the card is still the copy the toolbar's Appearance changes, and says it is hidden
             // (#134 part B); its new look shows when it is shown again.
             stage.togglePersona()
             XCTAssertTrue(stage.selectedPersonaCopy == copy, "The hidden card is still the selected copy")

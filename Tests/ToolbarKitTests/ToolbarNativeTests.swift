@@ -155,7 +155,7 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testEachAccessoryTakesItsSlotAndSaysWhatItIs() throws {
         _ = NSApplication.shared
         for accessory in ToolbarAccessory.allCases {
-            for description in [nil, "Shape of the selected persona, hidden"] {
+            for description in [nil, "Appearance of the selected persona, hidden"] {
                 let state = ToolbarViewState(name: "accessory", tier: .revealed, mode: accessory.mode, accessory: accessory, accessoryDescription: description)
                 let view = laidOut(ToolbarRow(state: state))
                 XCTAssertEqual(view.fittingSize, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight), "\(accessory)")

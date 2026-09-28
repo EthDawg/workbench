@@ -200,20 +200,21 @@ existing adjustment it needs most often, shown only while it applies
 (`ToolbarAccessory.offered`). Snap & Talk's **Review**, while a session is open,
 opens that session's review, as More's Review Snap & Talk item does; the count
 stays with Capture next. Draw's **Tools** is the drawing choices its More holds.
-Present's **Prompts** is the one Saved Prompts picker. Persona's **Shape**, while
-a live copy is selected, a hidden one included, is Circle, Card or Original for
-exactly that copy, as its Appearance menu offers them: the copy is taken as the
-menu opens (`selectedPersonaCopy`, `personaShape(of:)`, `setPersonaShape(_:for:)`)
-and a choice never changes the saved persona, another copy or the library's
-selection (#169, #170). With a prepared set only the selected copy changes.
-VoiceOver and the tooltip say "Shape of the selected persona", adding "hidden"
-while the copy is. With no live copy Persona has no accessory and More offers
-Open Persona… instead. Dictate, Read and Snap have none in this increment; their
-options stay in the menu-bar panel and on their pages. Review goes straight to
-the review and has no chevron; the others open a list and have one. An accessory
-that does not fit the display less 24 points waits in More, which already holds
-Review, Tools and Prompts, and Shape under a shown copy's Appearance; for a hidden
-card, whose Persona menu has no Appearance, More adds Shape itself.
+Present's **Prompts** is the one Saved Prompts picker. Persona's **Appearance**,
+while a live copy is selected, a hidden one included, is Circle, Card or Original
+for exactly that copy: the choice its Appearance menu offers, under the same word
+(#134's Shape). The copy is taken as the menu opens (`selectedPersonaCopy`,
+`personaShape(of:)`, `setPersonaShape(_:for:)`) and a choice never changes the
+saved persona, another copy or the library's selection (#169, #170). With a
+prepared set only the selected copy changes. VoiceOver and the tooltip say
+"Appearance of the selected persona", adding "hidden" while the copy is. With no
+live copy Persona has no accessory and More offers Open Persona… instead.
+Dictate, Read and Snap have none in this increment; their options stay in the
+menu-bar panel and on their pages. Review goes straight to the review and has no
+chevron; the others open a list and have one. An accessory that does not fit the
+display less 24 points waits in More, which already holds Review, Tools and
+Prompts, and a shown copy's Appearance; for a hidden card, whose Persona menu has
+no Appearance, More adds Appearance itself.
 
 **One popover at a time.** The chooser, More, the accessory's picker and
 Position… close one another, and hover never opens any of them. Each holds the
@@ -505,11 +506,11 @@ red, distinct from the voice colour.
 `ToolbarGallery.states` supplies both tiers at every anchor, every mode with its
 key, active work in its own mode and in another (Dictate selected, Draw busy),
 capture counts, active presentation/personas, prompt insertion, each tool's
-accessory (Shape also hidden and at a right-hand dock) and every compact status;
-`ToolbarGallery.choosers` supplies the chooser with and without live work. The
-renderer uses the production `ToolbarRow` and `ToolbarChooserView`, including the
-compact mark, the launcher and the accessory, in both themes and standard/larger
-type.
+accessory (Appearance also hidden and at a right-hand dock) and every compact
+status; `ToolbarGallery.choosers` supplies the chooser with and without live
+work. The renderer uses the production `ToolbarRow` and `ToolbarChooserView`,
+including the compact mark, the launcher and the accessory, in both themes and
+standard/larger type.
 
 Core transition tests, native layout tests and rendered fixtures establish only
 the behavior they exercise. They do not prove native pointer behavior. Before
@@ -593,7 +594,7 @@ mark the pointer came from, by the frames each view reports for its actions (#21
 Revealed with nothing live, only Draw and Present must show an accessory, Tools and
 Prompts; Tools must hold Draw's drawing choices, Persona's More must open Persona's
 page, and with a session open Snap & Talk's Review must open that session's review.
-Shape needs a live persona copy, which the gallery never shows over the Mac:
+Appearance needs a live persona copy, which the gallery never shows over the Mac:
 `--check-floating-toolbar` checks its menu with stand-in copies and when More must
 hold it, and the StageKit suite checks the copy it acts on and whether it is hidden.
 The floating shots render the no-speech cue, the reading that stopped, the receipt

@@ -2006,10 +2006,10 @@ enum SurfaceGallery {
         let door = more.items.firstIndex { $0.title == "Open Persona…" }
         if let door, let action = more.items[door].action { NSApp.sendAction(action, to: more.items[door].target, from: more.items[door]) }
         expect("Persona with no live copy", [
-            plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to shape",
+            plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to change",
             door == nil ? "More has no Open Persona…" : nil,
             door == nil || Array(opened.dropFirst(before)) == ["personas"] ? nil : "Open Persona… opened \(Array(opened.dropFirst(before)))",
-            more.items.contains { $0.title == ToolbarAccessory.shape.title } ? "More offers Shape with no copy to shape" : nil])
+            more.items.contains { $0.title == ToolbarAccessory.appearance.title } ? "More offers Appearance with no copy to change" : nil])
         model.toolbarMode = .snapAndTalk
         let session = toolbar(sessionReadback), review = session.accessory(session.live)
         session.accessoryPanel(review)?(NSView())

@@ -124,15 +124,16 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     case tools
     /// Present: Saved Prompts.
     case prompts
-    /// Persona: the selected live copy's shape, Circle, Card or Original.
-    case shape
+    /// Persona: the selected live copy's appearance, Circle, Card or Original. It carries the
+    /// Persona menus' word for that choice (#169), which #134 called Shape.
+    case appearance
 
     public var title: String {
         switch self {
         case .review: return "Review"
         case .tools: return "Tools"
         case .prompts: return "Prompts"
-        case .shape: return "Shape"
+        case .appearance: return "Appearance"
         }
     }
     /// The tool it belongs to.
@@ -141,21 +142,27 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         case .review: return .snapAndTalk
         case .tools: return .draw
         case .prompts: return .present
-        case .shape: return .persona
+        case .appearance: return .persona
         }
     }
     /// Opens a list, a menu or the picker, rather than going somewhere at once.
     public var opensList: Bool { self != .review }
 
+    /// What VoiceOver and the tooltip say for Appearance in place of its title: whose appearance
+    /// it changes, and that the copy is hidden when it is.
+    public static func appearanceDescription(copyHidden: Bool) -> String {
+        "Appearance of the selected persona" + (copyHidden ? ", hidden" : "")
+    }
+
     /// What the chosen tool offers now: Snap & Talk's Review once a session is open, Draw's Tools,
-    /// Present's Prompts, and Persona's Shape while a live copy is selected, a hidden one included.
-    /// With no live copy, Persona's preparation is a door in More instead.
+    /// Present's Prompts, and Persona's Appearance while a live copy is selected, a hidden one
+    /// included. With no live copy, Persona's preparation is a door in More instead.
     public static func offered(for live: ToolbarLiveState, selectedPersonaCopy: Bool) -> ToolbarAccessory? {
         switch live.mode {
         case .snapAndTalk: return live.captureCount != nil ? .review : nil
         case .draw: return .tools
         case .present: return .prompts
-        case .persona: return selectedPersonaCopy ? .shape : nil
+        case .persona: return selectedPersonaCopy ? .appearance : nil
         case .dictate, .read, .snap: return nil
         }
     }
@@ -185,7 +192,7 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// host decides it from the live state, with `ToolbarAccessory.offered(for:selectedPersonaCopy:)`.
     public var accessory: ToolbarAccessory?
     /// What VoiceOver and the tooltip say for it in place of its title, when the title alone
-    /// would not be the whole truth: the persona copy it would shape is hidden.
+    /// would not say enough: whose appearance Appearance changes, and that the copy is hidden.
     public var accessoryDescription: String?
     public var accessoryTitle: String? { accessory?.title }
     /// The accessory fits on this display. When it does not, it waits in More instead.

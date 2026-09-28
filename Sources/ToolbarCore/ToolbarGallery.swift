@@ -72,18 +72,18 @@ public enum ToolbarGallery {
     }
 
     /// Each tool's one accessory where it applies (#134 part B): Snap & Talk's Review once a
-    /// session is open, Draw's Tools, Present's Prompts, and Persona's Shape for the selected live
-    /// copy, a hidden one included, which its words say. Dictate, Read and Snap have none.
+    /// session is open, Draw's Tools, Present's Prompts, and Persona's Appearance for the selected
+    /// live copy, a hidden one included, which its words say. Dictate, Read and Snap have none.
     public static let accessories: [ToolbarViewState] = [
         live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 2), name: "accessory-snap-and-talk-review",
              activity: ToolbarActivity(live: [.snapAndTalk])),
         live(ToolbarLiveState(mode: .draw, drawing: true), name: "accessory-draw-tools"),
-        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-shape", personaCopy: true,
-             accessoryDescription: "Shape of the selected persona"),
-        live(ToolbarLiveState(mode: .persona, persona: .sessionHidden), name: "accessory-persona-shape-hidden", personaCopy: true,
-             accessoryDescription: "Shape of the selected persona, hidden"),
-        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-shape-right", personaCopy: true,
-             accessoryDescription: "Shape of the selected persona").anchored(.right)
+        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-appearance", personaCopy: true,
+             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: false)),
+        live(ToolbarLiveState(mode: .persona, persona: .sessionHidden), name: "accessory-persona-appearance-hidden", personaCopy: true,
+             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: true)),
+        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-appearance-right", personaCopy: true,
+             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: false)).anchored(.right)
     ]
 
     /// Work in progress. Input-consuming work takes the button whatever the

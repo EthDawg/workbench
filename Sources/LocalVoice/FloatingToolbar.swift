@@ -107,15 +107,15 @@ struct FloatingToolbar: View {
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
-    /// Draw's Tools, Present's Prompts, and Persona's Shape while a live copy is selected.
+    /// Draw's Tools, Present's Prompts, and Persona's Appearance while a live copy is selected.
     func accessory(_ live: ToolbarLiveState) -> ToolbarAccessory? {
         ToolbarAccessory.offered(for: live, selectedPersonaCopy: live.mode == .persona && stage.selectedPersonaCopy != nil)
     }
-    /// Shape says whose shape it changes, and that the copy is hidden when it is: the one floating
-    /// card kept for Show again, or a set's copy while the set or the copy is hidden.
+    /// Appearance says whose appearance it changes, and that the copy is hidden when it is: the one
+    /// floating card kept for Show again, or a set's copy while the set or the copy is hidden.
     func accessoryDescription(_ live: ToolbarLiveState) -> String? {
-        guard accessory(live) == .shape, let copy = stage.selectedPersonaCopy else { return nil }
-        return "Shape of the selected persona" + (stage.isPersonaCopyHidden(copy) ? ", hidden" : "")
+        guard accessory(live) == .appearance, let copy = stage.selectedPersonaCopy else { return nil }
+        return ToolbarAccessory.appearanceDescription(copyHidden: stage.isPersonaCopyHidden(copy))
     }
 
     /// A recording's elapsed time against its 5-minute limit, for the Stop that ends it (#134 T4).
@@ -184,20 +184,20 @@ struct FloatingToolbar: View {
     }
 
     /// The accessory that opens a place or a panel: Review opens the session's review, and Prompts
-    /// the one Saved Prompts picker. Tools and Shape open their menus instead.
+    /// the one Saved Prompts picker. Tools and Appearance open their menus instead.
     func accessoryPanel(_ accessory: ToolbarAccessory?) -> ((NSView) -> Void)? {
         switch accessory {
         case .review?: return { _ in model.onShowEditor?("readback") }
         case .prompts?: return { button in openPrompts(anchor: button, destination: controls.promptDestination?()) }
-        case .tools?, .shape?, nil: return nil
+        case .tools?, .appearance?, nil: return nil
         }
     }
-    /// Tools is the drawing choices, as Draw's own menu holds them; Shape is Circle, Card and
+    /// Tools is the drawing choices, as Draw's own menu holds them; Appearance is Circle, Card and
     /// Original for the copy selected when the menu opens, and only that copy.
     func accessoryMenu(_ accessory: ToolbarAccessory?) -> NSMenu {
         switch accessory {
         case .tools?: return stage.makeAnnotationMenu(includeSettings: false)
-        case .shape?: return ToolbarAccessoryMenus.shape(stage)
+        case .appearance?: return ToolbarAccessoryMenus.appearance(stage)
         case .review?, .prompts?, nil: return NSMenu()
         }
     }
@@ -271,14 +271,14 @@ struct FloatingToolbar: View {
             menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)
-            // With no live copy to shape, the tool's door to its preparation; with one, Shape waits
-            // here when the row has no room for it and Persona's menu has no Appearance (#134 part B).
+            // With no live copy to change, the tool's door to its preparation; with one, Appearance
+            // waits here when the row has no room for it and Persona's menu has none (#134 part B).
             if stage.selectedPersonaCopy == nil {
                 menu.addItem(ToolbarMenuAction("Open Persona…") { stage.showPersonas() })
-            } else if ToolbarAccessoryMenus.moreNeedsShape(menu, accessoryFits: controls.accessoryFits, hasCopy: true) {
-                let shape = NSMenuItem(title: "Shape", action: nil, keyEquivalent: "")
-                shape.submenu = ToolbarAccessoryMenus.shape(stage)
-                menu.addItem(shape)
+            } else if ToolbarAccessoryMenus.moreNeedsAppearance(menu, accessoryFits: controls.accessoryFits, hasCopy: true) {
+                let appearance = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
+                appearance.submenu = ToolbarAccessoryMenus.appearance(stage)
+                menu.addItem(appearance)
             }
         }
         // Work running in another tool is never a dead end: whatever the compact mark shows has

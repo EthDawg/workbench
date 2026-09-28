@@ -121,7 +121,7 @@ ENTRY_POINTS = [
     # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingResultView', 'floating toolbar live controls', 'page'),
-    # Persona's Shape accessory opens its own menu for the selected live copy (#134 part B).
+    # Persona's Appearance accessory opens its own menu for the selected live copy (#134 part B).
     ('LocalVoice/FloatingToolbarState.swift', 'ToolbarAccessoryMenus', 'floating toolbar accessory', 'controls'),
     ('StageKit/AnnotationMenu.swift', 'AnnotationMenu', 'Draw menu', 'controls'),
     ('StageKit/DemoScenes.swift', 'DemoScenes.makeControlsMenu', 'Present menu', 'controls'),
