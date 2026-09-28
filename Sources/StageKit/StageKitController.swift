@@ -124,13 +124,38 @@ public final class StageKitController: ObservableObject {
         return menu
     }
     public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
-    public func makeTimerMenu() -> NSMenu {
+    /// The panel row starts and stops the timer; the overlay keeps pause and reset.
+    public func startTimer() { coordinator.startTimer() }
+    public func stopTimer() { coordinator.resetTimer(); coordinator.hideTimer() }
+    /// The panel's persona options: the set, the persona, add, hide or show,
+    /// the layout and End. Selection-scoped adjustments (size, lock, position,
+    /// replace, order, remove) stay in the HUD and toolbar menus.
+    public func makePersonaPanelMenu() -> NSMenu {
+        let library = coordinator.demoScenes.personas
+        let menu = library.makeControlsMenu()
+        let feedback = library.sessionState.feedback
+        let selectionScoped = ["Lock Artwork · Clicks Pass Through", "Position Artwork", "Replace Selected", "Hide Selected",
+                               "Show Selected", "Bring Forward", "Send Backward", "Remove Selected"]
+        for item in menu.items {
+            let dropped = item.view != nil || (feedback != nil && item.title == feedback)
+                || selectionScoped.contains(item.title)
+                || (!item.isEnabled && item.submenu == nil && item.title.hasSuffix("first."))
+            if dropped { menu.removeItem(item) }
+        }
+        while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
+        return menu
+    }
+    /// `optionsOnly` leaves out the transport (start, pause, stop, reset): the
+    /// panel row starts and stops, and the overlay keeps pause and reset.
+    public func makeTimerMenu(optionsOnly: Bool = false) -> NSMenu {
         let app = coordinator
         let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
-        menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
-        menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: app.timerSessionStarted && !app.timerFinished) { [weak app] in app?.pauseResumeTimer() })
-        menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
-        menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
+        if !optionsOnly {
+            menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
+            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: app.timerSessionStarted && !app.timerFinished) { [weak app] in app?.pauseResumeTimer() })
+            menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
+            menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
+        }
         menu.addSubmenu("Duration", items: [1, 5, 10, 15, 30, 60].map { minutes in
             StageMenuAction("\(minutes) min", checked: app.settings.value.timerMinutes == Double(minutes)) { [weak app] in
                 app?.settings.value.timerMinutes = Double(minutes)
