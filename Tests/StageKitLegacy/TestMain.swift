@@ -61,19 +61,27 @@ struct TestRunner {
         if args == ["--persona-voice-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
-            let suite = PersonaVoiceTests()
+            let suite = PersonaVoiceTests(), latency = PersonaVoiceLatencyTests()
             let tests: [(String, () throws -> Void)] = [
                 ("persona voice ring listens only while on and showing", suite.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
                 ("persona voice ring asks while preparing and stops when unavailable", suite.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
                 ("persona voice ring single floating persona", suite.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
                 ("persona voice ring placement keeps artwork and ring on screen", suite.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
-                ("persona voice analyzer quiet and loud microphones", suite.testAnalyzerFillsTheRingForQuietAndLoudMicrophonesButNotForTheRoom),
+                ("persona voice analyzer quiet and loud microphones", suite.testAnalyzerHearsQuietAndLoudMicrophonesAlikeButNotTheRoom),
                 ("persona voice analyzer room and startup silence", suite.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
-                ("persona voice analyzer bands follow pitch", suite.testAnalyzerBandsFollowPitch),
+                ("persona voice analyzer recognises a voice by its pitch", suite.testAnalyzerRecognisesAVoiceByItsPitch),
                 ("persona voice ring outline fitting", suite.testOutlineFollowsARoundBadgeACardAndAPhoto),
                 ("persona voice ring colour from artwork", suite.testRingColourComesFromTheArtwork),
-                ("persona voice ring geometry scale", suite.testRingGeometryScalesWithTheArtwork),
-                ("persona voice ring sleeps in silence", suite.testRingSleepsInSilenceAndWakesOnTheFirstSyllable),
+                ("persona voice outline geometry", suite.testOutlineGeometryHugsTheArtworkAndScalesWithIt),
+                ("persona voice outline sleeps in silence and lights at once", suite.testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable),
+                ("persona voice outline latency: speech of every kind", latency.testOutlineRespondsWithinTargetsToSpeechOfEveryKind),
+                ("persona voice outline latency: long speech never becomes the room", latency.testLongSpeechNeverBecomesTheRoom),
+                ("persona voice outline: steady noise, typing and hum stay quiet", latency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
+                ("persona voice outline: raised voice reads as loud", latency.testRaisedVoiceShowsLoudAndUsualVoiceShowsNormal),
+                ("persona voice outline state eases and settles", latency.testOutlineStateEasesAndSettlesWithoutFrames),
+                ("persona voice outline lit through a held vowel", latency.testHeldVowelKeepsTheOutlineLit),
+                ("persona voice outline: chimes, beeps and music settle", latency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
+                ("optional Mac voices through the voice outline", latency.testSpokenSentencesFromSay),
                 ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders)
             ]
             for (name, test) in tests {
@@ -301,6 +309,7 @@ struct TestRunner {
         ]
         let personaWorkspace = PersonaWorkspaceTests()
         let personaVoice = PersonaVoiceTests()
+        let personaVoiceLatency = PersonaVoiceLatencyTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
@@ -492,13 +501,20 @@ struct TestRunner {
             ("persona voice ring asks while preparing and stops when unavailable", personaVoice.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
             ("persona voice ring single floating persona", personaVoice.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
             ("persona voice ring placement keeps artwork and ring on screen", personaVoice.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
-            ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerFillsTheRingForQuietAndLoudMicrophonesButNotForTheRoom),
+            ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerHearsQuietAndLoudMicrophonesAlikeButNotTheRoom),
             ("persona voice analyzer room and startup silence", personaVoice.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
-            ("persona voice analyzer bands follow pitch", personaVoice.testAnalyzerBandsFollowPitch),
+            ("persona voice analyzer recognises a voice by its pitch", personaVoice.testAnalyzerRecognisesAVoiceByItsPitch),
             ("persona voice ring outline fitting", personaVoice.testOutlineFollowsARoundBadgeACardAndAPhoto),
             ("persona voice ring colour from artwork", personaVoice.testRingColourComesFromTheArtwork),
-            ("persona voice ring geometry scale", personaVoice.testRingGeometryScalesWithTheArtwork),
-            ("persona voice ring sleeps in silence", personaVoice.testRingSleepsInSilenceAndWakesOnTheFirstSyllable),
+            ("persona voice outline geometry", personaVoice.testOutlineGeometryHugsTheArtworkAndScalesWithIt),
+            ("persona voice outline sleeps in silence and lights at once", personaVoice.testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable),
+            ("persona voice outline latency: speech of every kind", personaVoiceLatency.testOutlineRespondsWithinTargetsToSpeechOfEveryKind),
+            ("persona voice outline latency: long speech never becomes the room", personaVoiceLatency.testLongSpeechNeverBecomesTheRoom),
+            ("persona voice outline: steady noise, typing and hum stay quiet", personaVoiceLatency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
+            ("persona voice outline: raised voice reads as loud", personaVoiceLatency.testRaisedVoiceShowsLoudAndUsualVoiceShowsNormal),
+            ("persona voice outline state eases and settles", personaVoiceLatency.testOutlineStateEasesAndSettlesWithoutFrames),
+            ("persona voice outline lit through a held vowel", personaVoiceLatency.testHeldVowelKeepsTheOutlineLit),
+            ("persona voice outline: chimes, beeps and music settle", personaVoiceLatency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
             ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))

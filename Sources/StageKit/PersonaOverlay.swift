@@ -59,15 +59,22 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         position()
     }
     func hide() { artwork.cancelDragging(); artwork.pauseRing(); window?.orderOut(nil); window?.alphaValue = 1 }
-    /// The ring makes room for itself: the window grows around the artwork,
-    /// which keeps its size and moves in from a screen edge only as far as the
-    /// ring needs, so the ring is never cut off by the edge or the Dock.
+    /// The voice outline makes room for itself: the window grows around the
+    /// artwork, which keeps its size and moves in from a screen edge only as far
+    /// as the outline needs, so it is never cut off by the edge or the Dock.
     func setVoiceRing(_ on: Bool) {
         guard artwork.ringOn != on else { return }
         artwork.ringOn = on
         if window?.isVisible == true { position() }
     }
     func showVoice(_ frames: [PersonaVoiceFrame]) { artwork.showVoice(frames) }
+    /// The visible edge the voice outline follows. nil measures it from the
+    /// artwork's pixels; an appearance that knows its shape passes it in.
+    func setOutline(_ outline: PersonaArtworkOutline?) {
+        guard artwork.outline != outline else { return }
+        artwork.outline = outline
+        if window?.isVisible == true { position() }
+    }
     func shutdown() { hide(); artwork.ringOn = false; screenChanges = nil; onPlacementChange = nil; onSelection = nil }
 
     private static func screenID(_ screen: NSScreen) -> UInt32? {
@@ -129,15 +136,17 @@ private final class PersonaArtworkView: NSView {
     var onSelection: (() -> Void)?
     /// Off leaves the artwork exactly as it was: no room, layer or microphone.
     var ringOn = false { didSet { if ringOn != oldValue { ringChanged() } } }
-    /// Where the artwork sits inside the window; the rest belongs to the ring.
+    /// Where the artwork sits inside the window; the rest belongs to the outline.
     var artworkInsets = NSEdgeInsetsZero { didSet { needsLayout = true } }
     private var anchor: CGPoint?
     private var startingOrigin: CGPoint?
+    /// The artwork's visible edge when its appearance knows it; otherwise it
+    /// is measured from the pixels.
+    var outline: PersonaArtworkOutline? { didSet { if outline != oldValue { needsLayout = true } } }
     private let artworkLayer = CALayer()
     private let ring = PersonaVoiceRingLayer()
-    private var analysis: (image: ObjectIdentifier, outline: PersonaVoiceOutline, tint: NSColor)?
+    private var analysis: (image: ObjectIdentifier, outline: PersonaArtworkOutline, tint: NSColor)?
     private var ringLink: CADisplayLink?
-    private var lastTick: CFTimeInterval?
     private var displayOptions: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
@@ -146,7 +155,7 @@ private final class PersonaArtworkView: NSView {
         layerContentsRedrawPolicy = .never
         // No generated frame, label, material or shadow is baked over the user's
         // finished artwork. An opaque imported background remains opaque. The
-        // optional voice ring stands behind it, in room the window makes for it.
+        // optional voice outline stands behind it, in room the window makes for it.
         artworkLayer.contentsGravity = .resizeAspect
         artworkLayer.minificationFilter = .trilinear
         artworkLayer.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
@@ -170,7 +179,7 @@ private final class PersonaArtworkView: NSView {
         ring.frame = bounds
         if ringOn, let analysis = analyzed() {
             ring.tint = analysis.tint
-            ring.geometry = PersonaVoiceRingGeometry(outline: analysis.outline, artwork: rect)
+            ring.geometry = PersonaVoiceRingGeometry(outline: outline ?? analysis.outline, artwork: rect)
         }
         CATransaction.commit()
     }
@@ -183,15 +192,15 @@ private final class PersonaArtworkView: NSView {
         if window == nil { stopTicking() }
     }
 
-    /// Room the ring needs around artwork of this size; none while it is off.
+    /// Room the outline needs around artwork of this size; none while it is off.
     func ringInsets(for size: CGSize) -> NSEdgeInsets {
         guard ringOn, size.width > 0, size.height > 0, let analysis = analyzed() else { return NSEdgeInsetsZero }
-        return PersonaVoiceRingGeometry(outline: analysis.outline, artwork: CGRect(origin: .zero, size: size)).outsets
+        return PersonaVoiceRingGeometry(outline: outline ?? analysis.outline, artwork: CGRect(origin: .zero, size: size)).outsets
     }
-    /// Silence costs nothing: the display link sleeps until there is sound.
+    /// Silence costs nothing: the display link sleeps until there is a voice.
     func showVoice(_ frames: [PersonaVoiceFrame]) {
         guard ringOn, !frames.isEmpty else { return }
-        ring.enqueue(frames)
+        ring.receive(frames, at: CACurrentMediaTime())
         if ring.isMoving { tick() }
     }
     func pauseRing() { ring.reset(); stopTicking() }
@@ -207,12 +216,12 @@ private final class PersonaArtworkView: NSView {
         needsLayout = true
     }
     /// Measured once per artwork: the edge to follow and the colour to use.
-    private func analyzed() -> (image: ObjectIdentifier, outline: PersonaVoiceOutline, tint: NSColor)? {
+    private func analyzed() -> (image: ObjectIdentifier, outline: PersonaArtworkOutline, tint: NSColor)? {
         guard let image else { return nil }
         let key = ObjectIdentifier(image)
         if let analysis, analysis.image == key { return analysis }
         guard let bitmap = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let result = PersonaVoiceOutline.analyze(bitmap)
+        let result = PersonaArtworkOutline.analyze(bitmap)
         analysis = (key, result.outline, result.tint)
         return analysis
     }
@@ -242,7 +251,7 @@ private final class PersonaArtworkView: NSView {
         ring.increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
     }
 
-    /// The display link runs only while the ring is moving.
+    /// The display link runs only while the outline is lit or easing.
     private func tick() {
         if ringLink == nil {
             let link = displayLink(target: self, selector: #selector(advance(_:)))
@@ -251,12 +260,11 @@ private final class PersonaArtworkView: NSView {
         }
         ringLink?.isPaused = false
     }
+    /// Each frame is drawn for the moment it reaches the screen.
     @objc private func advance(_ link: CADisplayLink) {
-        let seconds = lastTick.map { min(0.1, max(0, link.timestamp - $0)) } ?? 1.0 / 60
-        lastTick = link.timestamp
-        if !ring.advance(by: seconds) { link.isPaused = true; lastTick = nil }
+        if !ring.advance(to: link.targetTimestamp) { link.isPaused = true }
     }
-    private func stopTicking() { ringLink?.invalidate(); ringLink = nil; lastTick = nil }
+    private func stopTicking() { ringLink?.invalidate(); ringLink = nil }
 
     override func mouseDown(with event: NSEvent) {
         guard let window, !window.ignoresMouseEvents else { return }
