@@ -116,6 +116,13 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         var next = state
         next.screenID = Self.screenID(screen)
         let available = screen.visibleFrame
+        // The same displayed width, not the same Size: tall artwork limited by the
+        // display's height shows narrower than its Size, and its new look must not
+        // grow to that Size. Only a look that cannot fit that width is smaller.
+        let sized = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: next.width), imageSize: image.size, in: available.size)
+        if abs(sized.width - before.width) > 2, available.width > 0 {
+            next.width = min(0.40, max(0.06, Double(before.width / available.width)))
+        }
         let placed = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: next.width), imageSize: image.size, in: available.size)
         let insets = artwork.ringInsets(for: placed.size)
         let size = CGSize(width: placed.width + insets.left + insets.right, height: placed.height + insets.top + insets.bottom)

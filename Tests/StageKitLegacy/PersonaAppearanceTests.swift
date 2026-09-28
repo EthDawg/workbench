@@ -249,6 +249,22 @@ final class PersonaAppearanceTests {
         XCTAssertEqual(Double(plain.width / plain.height), 0.75, accuracy: 0.02, file: #filePath, line: #line)
         XCTAssertTrue(window.ignoresMouseEvents)
 
+        // Tall artwork limited by the display's height shows narrower than its
+        // Size; a Circle made from it keeps that displayed width, not the Size.
+        let tallURL = try write(png(width: 200, height: 800), named: "tall.png", in: root)
+        if let tallImage = NSImage(contentsOf: tallURL) {
+            let tallCircle = try PersonaCircleRenderer.image(portrait: tallImage, framing: .centred)
+            let wide = PersonaOverlayState(x: 0.3, y: 0.3, width: 0.3, screenID: displayID(screen), locked: true)
+            controller.setOutline(nil)
+            _ = controller.show(image: tallImage, name: "Synthetic lead", state: wide)
+            if let limited = controller.visibleFrame, limited.width < screen.visibleFrame.width * 0.3 - 2 {
+                let round = controller.reshape(image: tallCircle, outline: PersonaAppearance.Shape.circle.outline, name: "Synthetic lead", state: wide)
+                XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(limited.width), accuracy: 1, file: #filePath, line: #line)
+                XCTAssertTrue(round.width < 0.3, "The Size follows the displayed width")
+                XCTAssertEqual(Double(controller.visibleFrame?.midX ?? 0), Double(limited.midX), accuracy: 1)
+            }
+        }
+
         // Near an edge it moves only as far as it must to stay on screen.
         let edge = PersonaOverlayState(x: 1, y: 1, width: 0.16, screenID: displayID(screen), locked: true)
         controller.setOutline(PersonaAppearance.Shape.circle.outline)
