@@ -29,7 +29,7 @@ The custom domain `workbench.mwdm.cloud` and any domain migration are deferred. 
 
 Vercel project: `less-go/workbench-mac`, framework Other. Direct CLI deployment uploads `site/` as the project root. When connecting GitHub later, set Root Directory to `site`. `vercel.json` defines the build and static output. Direct CLI deployment is the current publication path; automatic GitHub deployment needs a GitHub Login Connection in the Vercel account before this repository can be linked. Once connected, use `main` for production and PRs for previews. Do not expose a preview to the general audience in place of the production alias. The existing Vercel workspace is `less-go`; its member list was checked and contained only the maintainer as owner.
 
-Publish reviewed source with `vercel deploy --prod --yes --scope less-go --cwd site` from the repository root. Do not upload `.env` files.
+Publish reviewed source with `bash scripts/deploy-site.sh` from a clean checkout. It pins `less-go/workbench-mac` by its organisation and project IDs, so an unlinked checkout or worktree cannot create a new Vercel project, and it never runs `vercel link`, which would download `site/.env.local`. A bare `vercel deploy` from a checkout without `site/.vercel` silently creates a new project instead of updating this one. Do not upload `.env` files.
 
 The build publishes only an explicit allowlist. Binaries remain on GitHub. `scripts/release/publish_update.py` verifies the released package and public download before staging each edition's signed XML feed and JSON record in `updates/`. Those records own the download, version, release notes, checksum and feedback source links. Do not edit versions in HTML or `report.mjs`, synthesize a release record, or edit signed XML.
 
