@@ -30,13 +30,15 @@ public struct ToolbarActivity: Hashable, Sendable {
     public var paused: Bool
     /// Other live work, in `Live.allCases` order.
     public var live: [Live]
+    /// The capture stops by itself at its time limit within the last seconds (#134 T4).
+    public var stopsSoon: Bool
 
     public init(capture: Capture? = nil, level: Double? = nil, playback: Bool = false, processing: Bool = false,
                 failure: Bool = false, pendingDelivery: Bool = false, unsavedCapture: Bool = false,
-                paused: Bool = false, live: [Live] = []) {
+                paused: Bool = false, live: [Live] = [], stopsSoon: Bool = false) {
         self.capture = capture; self.level = level; self.playback = playback; self.processing = processing
         self.failure = failure; self.pendingDelivery = pendingDelivery; self.unsavedCapture = unsavedCapture
-        self.paused = paused; self.live = Live.allCases.filter(live.contains)
+        self.paused = paused; self.live = Live.allCases.filter(live.contains); self.stopsSoon = stopsSoon
     }
 
     public static let idle = ToolbarActivity()
@@ -80,12 +82,16 @@ public struct ToolbarStatus: Equatable, Sendable {
     /// Recording goes on while another job needs attention: the recording signal stays and a
     /// small warning badge joins it inside the same target.
     public var attentionBadge: Bool
+    /// The recording stops by itself at its time limit in the last seconds: a timer badge.
+    public var stopsSoonBadge: Bool
     public var level: Double?
     /// Every state the mark stands for, in words, for VoiceOver and the tooltip.
     public var description: String
 
-    public init(indicator: Indicator = .idle, attentionBadge: Bool = false, level: Double? = nil, description: String = "Nothing running") {
-        self.indicator = indicator; self.attentionBadge = attentionBadge; self.level = level; self.description = description
+    public init(indicator: Indicator = .idle, attentionBadge: Bool = false, stopsSoonBadge: Bool = false, level: Double? = nil,
+                description: String = "Nothing running") {
+        self.indicator = indicator; self.attentionBadge = attentionBadge; self.stopsSoonBadge = stopsSoonBadge
+        self.level = level; self.description = description
     }
 
     public static let idle = ToolbarStatus()
@@ -105,6 +111,7 @@ public struct ToolbarStatus: Equatable, Sendable {
         else { indicator = .idle }
         let attention = activity.failure || activity.pendingDelivery || activity.unsavedCapture
         return ToolbarStatus(indicator: indicator, attentionBadge: indicator == .capture && attention,
+                             stopsSoonBadge: indicator == .capture && activity.stopsSoon,
                              level: indicator == .capture ? activity.level.map { min(1, max(0, $0)) } : nil,
                              description: describe(activity))
     }
@@ -118,6 +125,7 @@ public struct ToolbarStatus: Equatable, Sendable {
         case .meeting?: parts.append("Recording a meeting")
         case nil: break
         }
+        if activity.capture != nil && activity.stopsSoon { parts.append("Stops at the 5-minute limit in a few seconds") }
         if activity.playback { parts.append("Reading aloud") }
         if activity.processing { parts.append("Processing") }
         if activity.failure { parts.append("Needs attention") }
@@ -130,7 +138,8 @@ public struct ToolbarStatus: Equatable, Sendable {
 
     /// Whether VoiceOver should hear about a change: a new indicator, badge or state in words,
     /// never a level, which the words leave out. So a failure, a pending result or an unsaved
-    /// capture arriving under processing or playback is heard, though the indicator stays.
+    /// capture arriving under processing or playback is heard, though the indicator stays, and
+    /// so is the time-limit warning, once, when it appears.
     public func announces(after previous: ToolbarStatus) -> Bool {
         indicator != previous.indicator || attentionBadge != previous.attentionBadge || description != previous.description
     }

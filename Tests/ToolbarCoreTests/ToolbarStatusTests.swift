@@ -85,6 +85,24 @@ final class ToolbarStatusTests: XCTestCase {
         }
     }
 
+    /// In a recording's last seconds before its 5-minute limit the mark carries a timer badge, and
+    /// VoiceOver hears it once, when it appears; it never outlasts the capture (#134 T4).
+    func testTheTimeLimitWarningIsABadgeHeardOnce() {
+        let recording = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.3))
+        let ending = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.6, stopsSoon: true))
+        XCTAssertEqual(ending.indicator, .capture)
+        XCTAssertTrue(ending.stopsSoonBadge)
+        XCTAssertFalse(ending.attentionBadge, "the limit is not another job needing attention")
+        XCTAssertTrue(ending.description.contains("Recording dictation") && ending.description.contains("5-minute limit"), ending.description)
+        XCTAssertTrue(ending.announces(after: recording), "the warning is heard when it appears")
+        XCTAssertFalse(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.1, stopsSoon: true)).announces(after: ending),
+                       "and not again while the seconds run down")
+        XCTAssertFalse(ToolbarStatus.resolve(ToolbarActivity(processing: true, stopsSoon: true)).stopsSoonBadge,
+                       "a capture that has ended carries no warning")
+        let both = ToolbarStatus.resolve(ToolbarActivity(capture: .narration, failure: true, stopsSoon: true))
+        XCTAssertTrue(both.attentionBadge && both.stopsSoonBadge, "a background failure and the limit keep both signals")
+    }
+
     /// Live work keeps one order, whatever order the host listed it in, and its words.
     func testLiveWorkHasOneOrderAndItsOwnWords() {
         let activity = ToolbarActivity(live: [.snapAndTalk, .timer, .drawing])

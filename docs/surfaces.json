@@ -66,86 +66,38 @@
     "note": "Runtime label from Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" ); no rendered text assumed."
   },
   {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.cancel",
-    "surface": "floating toolbar live controls",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "aliasOf": "dictate",
-    "note": "Existing contextual \"Cancel\" label inside dictate; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.copy-now",
-    "surface": "floating toolbar live controls",
-    "label": "Copy now",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.done-drawing",
-    "surface": "floating toolbar live controls",
-    "label": "Done drawing",
-    "kind": "action",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.open-workbench",
+    "id": "LocalVoice.CapturePanel.DictationResultView.Button.open-workbench",
     "surface": "floating toolbar live controls",
     "label": "Open Workbench",
     "kind": "action",
-    "belongsTo": "app"
+    "belongsTo": "app",
+    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself."
   },
   {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.record-again",
+    "id": "LocalVoice.CapturePanel.DictationResultView.Button.record-again",
     "surface": "floating toolbar live controls",
     "label": "Record again",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself."
   },
   {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-343c7a0bb03c",
+    "id": "LocalVoice.CapturePanel.DictationResultView.Button.runtime-343c7a0bb03c",
     "surface": "floating toolbar live controls",
     "label": null,
     "expression": "model . retryCaptureLabel",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Runtime label from model . retryCaptureLabel; no rendered text assumed."
+    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Runtime label from model . retryCaptureLabel; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-37613dff80ae",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "model . previewingPanel ? \"Done\" : \"Stop\"",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from model . previewingPanel ? \"Done\" : \"Stop\"; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-772d4201867d",
+    "id": "LocalVoice.CapturePanel.DictationResultView.Button.runtime-772d4201867d",
     "surface": "floating toolbar live controls",
     "label": null,
     "expression": "Image ( systemName : \"xmark\" )",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-8181053a682c",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" )",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" ); no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.CapturePanel.RecordingOverlay.Button.runtime-f8c29b226e48",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" )",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" ); no rendered text assumed."
+    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed."
   },
   {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.read-aloud",
@@ -154,6 +106,32 @@
     "kind": "action",
     "belongsTo": "read",
     "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel",
+    "surface": "floating toolbar More menu",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "aliasOf": "dictate",
+    "note": "Quality (#134 T4): the dictation panel's Cancel, moved into More under Dictate while a recording or its processing can still be cancelled. Existing contextual \"Cancel\" label inside dictate; the row's next action is Stop."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel.2",
+    "surface": "floating toolbar More menu",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Quality (#134 T4): the Snap & Talk narration panel's Cancel, moved into More under Snap & Talk while narration records; it keeps the screenshot. Existing contextual \"Cancel\" label inside snapAndTalk; the row's next action is Stop narration."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-now",
+    "surface": "floating toolbar More menu",
+    "label": "Copy now",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T4): the dictation panel's Copy now, moved into More under Dictate while finished text waits for drawing to end."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
@@ -263,6 +241,14 @@
     "belongsTo": "draw"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-reading",
+    "surface": "floating toolbar More menu",
+    "label": "Stop reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#134 T4): the reading controls' Stop, moved into More under Read; the row's next action pauses, resumes or cancels. Same words as the panel's Read row."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-transcribing",
     "surface": "floating toolbar More menu",
     "label": "Stop transcribing",
@@ -285,39 +271,21 @@
     "note": "Quality (#205 review): under Active work, the existing door to the meeting page, named as the panel and app menu name it, so a meeting recording saved for retry, which the compact mark shows as needing attention, reaches its recovery from any tool."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.retry",
+    "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.retry",
     "surface": "floating toolbar live controls",
     "label": "Retry",
     "kind": "action",
     "belongsTo": "read",
-    "note": "Quality (#156, #161): a reading that stopped because its audio could not be read keeps its compact controls, where Retry makes new audio. No new entry point; the Read page has the same Retry."
+    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Quality (#156, #161): a reading that stopped because its audio could not be read keeps its compact controls, where Retry makes new audio. No new entry point; the Read page has the same Retry."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-772d4201867d",
+    "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.runtime-772d4201867d",
     "surface": "floating toolbar live controls",
     "label": null,
     "expression": "Image ( systemName : \"xmark\" )",
-    "note": "Quality (#156, #161): dismisses a stopped reading's reason; its text and voice stay. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed.",
+    "note": "Quality (#134 T4): the same control in the same result view, which the toolbar now reveals from its compact rest in place of its row instead of showing it by itself. Quality (#156, #161): dismisses a stopped reading's reason; its text and voice stay. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed.",
     "kind": "action",
     "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-d5d0cbd9ef56",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "model . paused ? \"Resume\" : \"Pause\"",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Runtime label from model . paused ? \"Resume\" : \"Pause\"; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-da89eeb49706",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "model . rendering ? \"Cancel\" : \"Stop\"",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Runtime label from model . rendering ? \"Cancel\" : \"Stop\"; no rendered text assumed."
   },
   {
     "id": "LocalVoice.FounderIntroduction.FounderIntroductionCard.Button.copy-addresses",
@@ -620,33 +588,6 @@
     "kind": "setting",
     "belongsTo": "dictate",
     "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
-  },
-  {
-    "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.cancel",
-    "surface": "floating toolbar live controls",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "aliasOf": "snapAndTalk",
-    "note": "Existing contextual \"Cancel\" label inside snapAndTalk; shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.runtime-8181053a682c",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" )",
-    "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "note": "Runtime label from Image ( systemName : controls . isExpanded ? \"chevron.down\" : \"chevron.up\" ); no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.ReadbackView.ReadbackHUDView.Button.stop",
-    "surface": "floating toolbar live controls",
-    "label": "Stop",
-    "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "aliasOf": "snapAndTalk",
-    "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability."
   },
   {
     "id": "LocalVoice.ReadbackView.ReadbackView.Button.add-from-snap-history",

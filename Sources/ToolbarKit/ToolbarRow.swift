@@ -175,7 +175,12 @@ public struct ToolbarRow: View {
                 .allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay(alignment: .bottom) {
-                if state.hasLiveWork {
+                // While something records, the launcher carries the capture signal the compact mark
+                // showed, so opening the row never hides it (#134 T4); otherwise one live-work dot.
+                if state.status.indicator == .capture {
+                    ToolbarCaptureSignal(status: state.status, accent: accent, scale: 0.75)
+                        .padding(.bottom, 4 * scale).allowsHitTesting(false).accessibilityHidden(true)
+                } else if state.hasLiveWork {
                     Circle().fill(.tint).frame(width: 4, height: 4).padding(.bottom, 6 * scale).allowsHitTesting(false)
                 }
             }
@@ -214,14 +219,7 @@ public struct ToolbarCompactMark: View {
     @ViewBuilder private var indicator: some View {
         switch status.indicator {
         case .idle: EmptyView()
-        case .capture:
-            HStack(spacing: 3) {
-                Circle().fill(Color.red).frame(width: 6, height: 6)
-                ToolbarLevelBars(level: reduceMotion ? nil : status.level, accent: accent)
-                if status.attentionBadge {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
-                }
-            }
+        case .capture: ToolbarCaptureSignal(status: status, accent: accent)
         case .playback: symbol("speaker.wave.2.fill", accent)
         case .processing: symbol("ellipsis", Color.secondary)
         case .failure: symbol("exclamationmark.triangle.fill", Color.orange)
@@ -238,23 +236,46 @@ public struct ToolbarCompactMark: View {
     }
 }
 
+/// The capture signal: a red dot, the recording owner's live level, and its badges, a warning
+/// for another job that needs attention and a timer in the last seconds before the limit. The
+/// compact mark shows it at rest and the launcher, smaller, while the row is open (#134).
+struct ToolbarCaptureSignal: View {
+    let status: ToolbarStatus
+    let accent: Color
+    var scale: CGFloat = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        HStack(spacing: 3 * scale) {
+            Circle().fill(Color.red).frame(width: 6 * scale, height: 6 * scale)
+            ToolbarLevelBars(level: reduceMotion ? nil : status.level, accent: accent, scale: scale)
+            if status.attentionBadge {
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(.orange)
+            }
+            if status.stopsSoonBadge {
+                Image(systemName: "timer").font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(.orange)
+            }
+        }
+    }
+}
+
 /// A small live level: five bars from the recording owner's own level sample. Without a
 /// sample, in silence or with Reduce Motion, a still outline still reads as capture.
 struct ToolbarLevelBars: View {
     let level: Double?
     let accent: Color
+    var scale: CGFloat = 1
     private static let shape: [CGFloat] = [0.45, 0.75, 1, 0.75, 0.45]
     var body: some View {
-        HStack(alignment: .center, spacing: 1.5) {
+        HStack(alignment: .center, spacing: 1.5 * scale) {
             ForEach(Self.shape.indices, id: \.self) { index in
                 if let level, level > 0.02 {
-                    Capsule().fill(accent).frame(width: 2, height: max(2, 8 * Self.shape[index] * CGFloat(level)))
+                    Capsule().fill(accent).frame(width: 2 * scale, height: max(2, 8 * Self.shape[index] * CGFloat(level)) * scale)
                 } else {
-                    Capsule().strokeBorder(Color.secondary, lineWidth: 0.75).frame(width: 2, height: max(3, 6 * Self.shape[index]))
+                    Capsule().strokeBorder(Color.secondary, lineWidth: 0.75).frame(width: 2 * scale, height: max(3, 6 * Self.shape[index]) * scale)
                 }
             }
         }
-        .frame(height: 8)
+        .frame(height: 8 * scale)
     }
 }
 
@@ -319,6 +340,8 @@ private struct ToolbarPrimary: NSViewRepresentable {
         view.bezelColor = NSColor(accent)
         view.isEnabled = isEnabled
         view.toolTip = hint
+        // The hint (a recording's elapsed time, a count, the key) is VoiceOver's help too (#134 T4).
+        view.setAccessibilityHelp(hint)
         view.minimumWidth = max(minimumWidth, minimumTitles.map { PrimaryButton.width(of: $0, like: view) }.max() ?? 0)
         view.setAccessibilityLabel(title)
         view.setAccessibilityIdentifier("toolbar.primary")
@@ -387,7 +410,8 @@ private struct ToolbarLauncher: NSViewRepresentable {
     }
     func updateNSView(_ view: LauncherButton, context: Context) {
         view.setAccessibilityLabel("Tool: " + state.mode.title)
-        view.setAccessibilityValue(state.launcherDescription)
+        view.setAccessibilityValue(state.status.indicator == .capture ? state.launcherDescription + ". " + state.status.description
+                                                                        : state.launcherDescription)
         view.setAccessibilityHelp("Choose a tool")
         view.setAccessibilityIdentifier("toolbar.launcher")
         view.toolTip = state.launcherDescription + ". Click to choose a tool; drag to move."

@@ -256,7 +256,9 @@ struct WorkbenchControlContext {
                 || (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt?.isClipboardCurrent == true),
             unsavedCapture: snap?.draft != nil,
             paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
-            live: live)
+            live: live,
+            // The last ten seconds before a dictation or narration stops at its 5-minute limit (#134 T4).
+            stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290))
     }
 
     /// The break timer's part of the compact status: a running countdown is live work and a

@@ -97,6 +97,31 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .dictate, canRecordAgain: true), name: "idle-record-again")
     ]
 
+    /// Dictation, narration and reading in the same host as the tools (#134 T4). At rest each is
+    /// the compact mark with its status; revealed, the row's next action is its Stop, Pause or
+    /// Resume, the launcher carries the capture signal, and the rest of its commands are in More.
+    public static let recording: [ToolbarViewState] = [
+        live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation",
+             activity: ToolbarActivity(capture: .dictation, level: 0.55)),
+        live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation-resting", tier: .resting,
+             activity: ToolbarActivity(capture: .dictation, level: 0.55)),
+        // The last seconds before the 5-minute limit: a timer badge beside the signal.
+        live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation-stops-soon",
+             activity: ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true)),
+        live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation-stops-soon-resting", tier: .resting,
+             activity: ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true)),
+        // Dictating while Present is the tool: the recording claims the button, as everywhere.
+        live(ToolbarLiveState(mode: .present, dictation: .recording, presenting: true), name: "recording-dictation-in-present",
+             activity: ToolbarActivity(capture: .dictation, level: 0.3, live: [.presenting])),
+        live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing"),
+        live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing-resting", tier: .resting),
+        live(ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 2), name: "recording-narration",
+             activity: ToolbarActivity(capture: .narration, level: 0.4, live: [.snapAndTalk])),
+        live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing"),
+        live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing-resting", tier: .resting),
+        live(ToolbarLiveState(mode: .dictate, reading: .paused), name: "reading-paused-in-dictate")
+    ]
+
     /// The compact rest in each indicator (#134), in priority order: capture with its level,
     /// capture in silence, capture with a job that needs attention, playback, processing,
     /// failure, a pending result, an unsaved capture, paused work and other live work.
@@ -104,6 +129,7 @@ public enum ToolbarGallery {
         ("capture", ToolbarActivity(capture: .dictation, level: 0.62)),
         ("capture-silent", ToolbarActivity(capture: .meeting)),
         ("capture-attention", ToolbarActivity(capture: .narration, level: 0.35, failure: true)),
+        ("capture-stops-soon", ToolbarActivity(capture: .dictation, level: 0.5, failure: true, stopsSoon: true)),
         ("playback", ToolbarActivity(playback: true)),
         ("processing", ToolbarActivity(processing: true)),
         ("failure", ToolbarActivity(failure: true)),
@@ -124,5 +150,5 @@ public enum ToolbarGallery {
     ]
 
     /// Everything, in a stable order.
-    public static let states: [ToolbarViewState] = placements + modes + activity + idle + statuses
+    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + statuses
 }

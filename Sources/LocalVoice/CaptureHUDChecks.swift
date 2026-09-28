@@ -20,10 +20,10 @@ enum CaptureHUDChecks {
         try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false) == .hidden,
                   "an explicit idle-toolbar dismissal remains respected")
         for enabled in [true, false] {
-            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: true, narration: false) == .dictation,
-                      "dictation controls remain visible even with idle tools hidden")
-            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: false, narration: true) == .narration,
-                      "narration reuses the same operation surface")
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: true, narration: false) == .tools,
+                      "dictation keeps the shared host visible even with idle tools hidden (#134 T4)")
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: false, narration: true) == .tools,
+                      "narration uses the same host")
             try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: true, dictation: true, narration: true) == .hidden,
                       "screen acquisition temporarily hides all shared controls")
         }
@@ -85,8 +85,8 @@ enum CaptureHUDChecks {
                   "the cue keeps the compact size of the recording controls; the message layout stays for the explicit panel")
         try check(CaptureHUDLayout.size(recording: true, preview: false, expanded: true, cue: true) == CaptureHUDLayout.expanded,
                   "a cue never changes live recording controls")
-        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading,
-                  "a stopped reading keeps its controls even with the toolbar hidden")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools,
+                  "a stopped reading keeps the shared host, and its controls, even with the toolbar hidden")
         let cues = [CaptureCue(reason: .tooShort), CaptureCue(reason: .tooQuiet),
                     CaptureCue(reason: .nothingRecognised(keptAudio: true)), CaptureCue(reason: .nothingRecognised(keptAudio: false))]
         let words = cues.flatMap { [$0.message, $0.hint, $0.status] }.joined(separator: " ")

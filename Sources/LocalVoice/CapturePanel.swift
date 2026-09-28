@@ -42,7 +42,7 @@ final class CaptureHUDControls: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         toolbar = ToolbarSession(defaults: defaults)
         observation = toolbar.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
-        toolbar.show = { [weak self] _ in self?.resize?() }
+        toolbar.show = { [weak self] tier in self?.tierWillShow(tier); self?.resize?() }
         toolbar.releaseHolds = { [weak self] in self?.cancelDrag?(); self?.releaseKeyboardFocus?() }
     }
     func reportSize(_ size: NSSize, tier: ToolbarTier) {
@@ -64,9 +64,31 @@ final class CaptureHUDControls: ObservableObject {
     var menuWillBegin: (() -> Void)?
     func setDragging(_ value: Bool) { toolbar.send(value ? .holdBegan(.drag) : .holdEnded(.drag)) }
     func suspendToolbar() { toolbar.suspend() }
-    @Published var isExpanded = false {
-        didSet { if oldValue != isExpanded { resize?() } }
+
+    // MARK: Results (#134 T4)
+
+    /// The open row shows a result's own controls instead of the launcher row. It is decided as
+    /// the row opens, so a failure or receipt that arrives while the row is open never replaces
+    /// it under the pointer: it waits as the mark's status until the person reveals it.
+    @Published private(set) var revealsResult = false
+    /// A result is waiting for the person; the host answers from its owners.
+    var resultPending: () -> Bool = { false }
+    private func tierWillShow(_ tier: ToolbarTier) {
+        let reveals = tier == .revealed && resultPending()
+        if revealsResult != reveals { revealsResult = reveals }
     }
+    /// The result was resolved, dismissed or expired: the open row goes back to the launcher row.
+    func resultEnded() { if revealsResult { revealsResult = false } }
+    /// A row kept open by Keep open alone, with no pointer or hold on it, shows a new result in
+    /// its place, as it did before the compact rest: nobody is using the row, and a kept-open
+    /// toolbar has no rest to show the status on. The host sizes the window afterwards.
+    func showResultIfKeptOpen() {
+        let state = toolbar.state
+        guard !revealsResult, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside, state.holds.isEmpty,
+              resultPending() else { return }
+        revealsResult = true
+    }
+
     @Published var anchor: FloatingControlAnchor? = .bottom
     /// The anchor the row is drawn for: its dock, or the side a free row grows from (#163).
     @Published var rowAnchor: ToolbarAnchor = .bottom
@@ -129,6 +151,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var tracking: ToolbarTrackingView?
     private let motion = ToolbarWindowMotion()
     private var measuringToolbar = false
+    /// Position… is open for the Dictate page's Position dictation panel….
+    private var previewShowsPosition = false
     /// Where the tools rest while they are not docked (#163); nil while they are docked at
     /// `controls.anchor`. Only a person's placement changes it: a frame recovered onto
     /// another display, or a dictation panel dragged to a dock, is shown but never saved over it.
@@ -181,6 +205,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.chooserChoicesChanged = { [weak self] choices in self?.chooser.refresh(choices) }
         controls.revealFromRest = { [weak self] in self?.revealFromRest() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
+        controls.resultPending = { [weak model] in model.map { FloatingResult.pending($0) != nil } ?? false }
         controls.promptDestination = { [weak self] in
             guard let self else { return nil }
             return self.window?.isKeyWindow == true ? self.keyboardTarget : TextDelivery.capture()
@@ -276,11 +301,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         // by that same call once the measurement returns.
         guard let window, !measuringToolbar else { return }
         let previousSurface = self.surface
+        let narrating = readback?.isRecording == true
         let surface = FloatingToolbarSurface.resolve(shown: model.floatingToolbarVisible, drawing: stage?.isDrawing == true,
             presenting: stage?.isPresenting == true, persona: stage?.hasActivePersona == true, inserting: model.promptInsertion.running,
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture(),
-            dictation: Self.showsDictation(model), narration: readback?.isRecording == true,
-            reading: model.rendering || model.playing || model.paused || model.readingFailure != nil)
+            dictation: Self.showsDictation(model), narration: narrating,
+            reading: model.rendering || model.playing || model.paused || model.readingFailure != nil,
+            cue: Self.showsCue(model) && !narrating)
         if surface != self.surface {
             self.surface = surface
             tracking?.acceptsCrossings = false
@@ -288,20 +315,18 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             if surface == .tools { controls.toolbar.activate() }
             else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
+        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
+        if FloatingResult.pending(model) == nil { controls.resultEnded() } else { controls.showResultIfKeptOpen() }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging()
-            controls.isExpanded = false
             return
         }
         if surface == .tools { measureToolbar() }
-        let size = surface == .tools ? controls.preferredToolbarSize : surface == .reading ? CaptureHUDLayout.compact : CaptureHUDLayout.size(
-            recording: surface == .narration || model.phase == .recording,
-            preview: model.previewingPanel, expanded: controls.isExpanded, cue: Self.showsCue(model))
-        // The tools' frame follows the content's size around the launcher's fixed centre, at a
-        // dock or a free position alike. A drag keeps its window until release, which places it.
-        let moved = surface == .tools
-            ? !dragging && toolbarFrame(size: size).map({ Self.differs($0, motion.target ?? window.frame) }) == true
-            : (motion.target?.size ?? window.frame.size) != size
+        let size = surface == .tools ? controls.preferredToolbarSize : CaptureHUDLayout.compact
+        // The frame follows the content's size around the launcher's fixed centre, at a dock or a
+        // free position alike, for the tools, recording, results and the cue. A drag keeps its
+        // window until release, which places it.
+        let moved = !dragging && toolbarFrame(size: size).map({ Self.differs($0, motion.target ?? window.frame) }) == true
         if !window.isVisible { place(size: size, restoreSaved: true) }
         else if moved {
             place(size: size, restoreSaved: false, animated: surface == .tools && previousSurface == .tools && !dragging)
@@ -309,6 +334,18 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         window.orderFrontRegardless()
         tracking?.acceptsCrossings = surface == .tools && !dragging && motion.target == nil
         if previousSurface != surface && surface == .tools { tracking?.settle() }
+        showPositionForPreview(model)
+    }
+
+    /// Position dictation panel… on the Dictate page opens Position… at the toolbar, which is
+    /// where dictation shows now (#134 T4); closing it ends the preview.
+    private func showPositionForPreview(_ model: AppModel) {
+        guard model.previewingPanel else { previewShowsPosition = false; return }
+        guard !previewShowsPosition, surface == .tools else { return }
+        previewShowsPosition = true
+        DispatchQueue.main.async { [weak self, weak model] in
+            self?.showPositionControl(onClose: { model?.closePanelPreview() })
+        }
     }
 
     /// A routine no-speech cue, unless a failure or a new capture has since taken the surface.
@@ -405,8 +442,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let savedSize = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString) ?? size
         let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: savedSize) } : window.frame
         if surface == .tools { placeTools(previous: previous, preferred: preferred, animated: animated); return }
-        setFrame(CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
-            screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred), animated: animated)
+        // The cue shows at the toolbar's own place, growing inward from the launcher's centre.
+        setFrame(toolbarFrame(size: size, screen: toolsScreen(previous: previous, preferred: preferred)))
     }
 
     /// Puts the tools where they rest: the row is drawn for the side it grows from and
@@ -589,35 +626,21 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         super.close()
     }
 
+    /// The launcher's end is what docks, whatever the host shows: its slot is outlined, and a
+    /// dock's guide is active only within the snap distance. Recording and results move the one
+    /// shared position, as the tools do (#134 T4).
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
-        if surface == .tools {
-            // The launcher's end is what docks: its slot is outlined, and a dock's guide is active
-            // only within the snap distance.
-            let slot = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
-            let screen = FloatingControlPlacement.screen(for: slot, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-            snapGuide.show(controlFrame: slot, visibleFrame: screen,
-                           activeAnchor: FloatingControlPlacement.snapAnchor(for: slot, in: screen), below: window)
-            return
-        }
-        let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
-        snapGuide.show(controlFrame: window.frame, visibleFrame: screen, activeAnchor: anchor, below: window)
+        let slot = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
+        let screen = FloatingControlPlacement.screen(for: slot, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+        snapGuide.show(controlFrame: slot, visibleFrame: screen,
+                       activeAnchor: FloatingControlPlacement.snapAnchor(for: slot, in: screen), below: window)
     }
 
     func finishDragging() {
         defer { cancelDragging() }
-        guard dragging, let window, let preferred = preferredScreen else { return }
-        if surface == .tools {
-            releaseTools(atLauncher: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
-            return
-        }
-        let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
-        // The dictation panel docks where it is dropped. Docked tools follow it, as before; free
-        // tools keep their own place, and this dock lasts only while the panel shows.
-        if freePosition == nil || controls.anchor != nil { controls.anchor = anchor; freePosition = nil }
-        setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen))
+        guard dragging, let window else { return }
+        releaseTools(atLauncher: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
     }
 
     /// The tools released with their launcher at `centre` (#163, #134): within the snap
@@ -641,7 +664,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     /// Position…: the named docks and a reset, beside the toolbar, from the keyboard or pointer.
     /// Opened from the toolbar's keyboard focus, it hands the keyboard back when it closes.
-    private func showPositionControl() {
+    private func showPositionControl(onClose: (() -> Void)? = nil) {
         guard let window, window.isVisible else { return }
         chooser.close()
         // Position… takes the keyboard, and the toolbar forgets its target when it resigns: keep both now.
@@ -650,6 +673,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             choose: { [weak self] in self?.choosePosition($0) },
             reset: { [weak self] in self?.choosePosition(.bottom) },
             closed: { [weak self] reason in
+                onClose?()
                 guard reason.returnsKeyboard(openedFromKeyboard: fromKeyboard) else { return }
                 self?.returnKeyboardToToolbar(target: target)
             })
@@ -747,38 +771,29 @@ final class DragHandleView: NSView {
     }
 }
 
-struct RecordingOverlay: View {
+/// A dictation's result, revealed from the toolbar's place (#134 T4): the failure that needs
+/// attention, with Retry, Record again or Open Workbench and Dismiss, or the clipboard receipt
+/// with Review, its pin and its dismiss. Each keeps the message and commands it had in the
+/// dictation panel; recording and processing are the toolbar row's own now.
+struct DictationResultView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
-    var finishDrawing: (() -> Void)? = nil
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    private var isRecordingSurface: Bool { model.phase == .recording || model.previewingPanel }
-    private var size: NSSize {
-        CaptureHUDLayout.size(recording: model.phase == .recording, preview: model.previewingPanel, expanded: controls.isExpanded,
-                              cue: CapturePanelController.showsCue(model))
-    }
 
     var body: some View {
         HStack(spacing: 8) {
             PanelDragHandle().frame(width: 8, height: 40)
-            if model.phase == .idle && !model.previewingPanel, let failure = model.captureFailure {
+            if let failure = model.captureFailure {
                 failureState(failure)
-            } else if model.phase == .idle && !model.previewingPanel, let cue = model.captureCue {
-                NoSpeechCueView(cue: cue, hold: model.holdCaptureCue)
-            } else if model.phase == .idle && !model.previewingPanel {
+            } else {
                 // A copied prompt is kept in Library; a transcript in History.
                 CaptureReceiptView(receipts: model.clipboardReceipt, review: {
                     if model.clipboardReceipt.receipt?.source == .prompt { model.showLibrary() }
                     else { model.openHistory(); model.onShowEditor?("history") }
                 }, controls: controls)
-            } else if isRecordingSurface && !controls.isExpanded {
-                compactRecording
-            } else {
-                captureState
             }
         }.padding(.horizontal, 12)
-            .frame(width: size.width, height: size.height)
+            .frame(width: CaptureHUDLayout.message.width, height: CaptureHUDLayout.message.height)
             .background {
                 if reduceTransparency { RoundedRectangle(cornerRadius: 18).fill(Color(nsColor: .windowBackgroundColor)) }
                 else { RoundedRectangle(cornerRadius: 18).fill(.regularMaterial) }
@@ -786,107 +801,6 @@ struct RecordingOverlay: View {
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(0.12)))
             .transaction { $0.animation = nil }
             .tint(Workbench.accent).workbenchTheme()
-    }
-
-    private var compactRecording: some View {
-        HStack(spacing: 12) {
-            Image(systemName: model.previewingPanel ? "mic.slash" : "mic.fill")
-                .foregroundStyle(model.previewingPanel ? Color.secondary : .red)
-                .accessibilityLabel(model.previewingPanel ? "Preview; microphone off" : "Recording")
-            VStack(alignment: .leading, spacing: 5) {
-                Text(model.previewingPanel ? "Preview" : time(model.elapsed))
-                    .font(.system(size: 14, weight: .medium, design: .monospaced)).monospacedDigit()
-                    .accessibilityLabel(model.previewingPanel ? "Microphone off" : "\(Int(model.elapsed)) seconds recorded; five minute limit")
-                CaptureLevelMeter(level: model.previewingPanel ? 0 : model.level).frame(width: 62, height: 9)
-            }
-            Spacer(minLength: 0)
-            if let finishDrawing {
-                Button(action: finishDrawing) { Image(systemName: "pencil.tip.crop.circle.badge.checkmark").frame(width: 24, height: 28) }
-                    .buttonStyle(.plain).help("Done drawing · keep marks").accessibilityLabel("Done drawing; keep marks")
-            }
-            stopButton
-            expansionButton
-        }
-    }
-
-    private var captureState: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 7) {
-                Image(systemName: symbol).foregroundStyle(model.phase == .recording ? Color.red : Workbench.accent)
-                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                Spacer(minLength: 2)
-                if isRecordingSurface {
-                    if !model.previewingPanel {
-                        Text("\(time(model.elapsed)) / 5:00").font(.system(size: 12, design: .monospaced)).monospacedDigit()
-                            .accessibilityLabel("\(Int(model.elapsed)) seconds recorded; five minute limit")
-                    }
-                    stopButton
-                    expansionButton
-                }
-            }
-            if isRecordingSurface {
-                HStack(spacing: 7) {
-                    CaptureLevelMeter(level: model.previewingPanel ? 0 : model.level).frame(width: 56, height: 12)
-                    Text(model.previewingPanel ? "Microphone off" : model.isMicrophoneQuiet ? "Low microphone level" : "Microphone on")
-                        .font(.system(size: 12)).foregroundStyle(model.isMicrophoneQuiet ? Color.orange : Color.secondary)
-                    Spacer(minLength: 0)
-                    if !model.previewingPanel {
-                        Text(model.captureOutputModeLabel).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                            .help("Chosen for this capture: " + model.captureOutputModeLabel)
-                    }
-                }
-            } else if model.phase != .requesting {
-                HStack(spacing: 7) {
-                    if !reduceMotion && !model.waitingForDrawing { ProgressView().controlSize(.mini) }
-                    Text(model.captureProcessingLabel).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            Text(instruction).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            if isRecordingSurface {
-                if !model.previewingPanel && model.elapsed >= 290 {
-                    Text("Stops automatically in \(max(0, Int(ceil(300 - model.elapsed))))s.")
-                        .font(.system(size: 12)).foregroundStyle(.orange).monospacedDigit()
-                } else if !model.previewingPanel, let name = model.captureDestinationName {
-                    Text("For \(name)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            HStack {
-                if let finishDrawing {
-                    Button("Done drawing", action: finishDrawing).buttonStyle(.bordered).controlSize(.small)
-                }
-                if model.waitingForDrawing {
-                    Button("Copy now") { model.copyWaitingDelivery() }.buttonStyle(.bordered).controlSize(.small)
-                }
-                if !model.previewingPanel && model.canCancelCurrentCapture {
-                    Button { model.cancelCurrentCapture() } label: { Text("Cancel").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Cancel dictation and discard recording")
-                }
-                Spacer(minLength: 0)
-                CapturePositionMenu(controls: controls, settings: { model.onShowEditor?("settings") })
-            }
-        }
-    }
-
-    private var stopButton: some View {
-        Button {
-            if model.previewingPanel { model.closePanelPreview() }
-            else { model.stopRecording() }
-        } label: {
-            HStack(spacing: 5) {
-                if !model.previewingPanel { Image(systemName: "stop.fill").font(.system(size: 8)) }
-                Text(model.previewingPanel ? "Done" : "Stop")
-            }.frame(minWidth: 42, minHeight: 28)
-        }.buttonStyle(.borderedProminent).controlSize(.small)
-            .accessibilityLabel(model.previewingPanel ? "Close microphone-off preview" : "Stop recording and transcribe")
-    }
-
-    private var expansionButton: some View {
-        Button { controls.isExpanded.toggle() } label: {
-            Image(systemName: controls.isExpanded ? "chevron.down" : "chevron.up").frame(width: 28, height: 28)
-        }.buttonStyle(.plain)
-            .accessibilityLabel(controls.isExpanded ? "Collapse recording controls" : "Expand recording controls")
-            .help(controls.isExpanded ? "Show compact recording controls" : "Show details, Cancel and position options")
     }
 
     private func failureState(_ failure: String) -> some View {
@@ -917,48 +831,26 @@ struct RecordingOverlay: View {
         }
     }
 
-    private var title: String {
-        if model.previewingPanel { return "Panel preview" }
-        switch model.phase {
-        case .requesting:
-            switch AVCaptureDevice.authorizationStatus(for: .audio) {
-            case .notDetermined: return "Allow microphone access"
-            case .authorized: return "Starting microphone"
-            case .denied, .restricted: return "Microphone access is off"
-            @unknown default: return "Microphone permission needed"
+}
+
+/// The routine no-speech cue at the toolbar's place, for under two seconds, then the compact
+/// mark again (#156, #134 T4). It keeps the size of the recording controls it used to replace.
+struct NoSpeechCueHUD: View {
+    let cue: CaptureCue
+    let hold: (Bool) -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        NoSpeechCueView(cue: cue, hold: hold)
+            .padding(.horizontal, 20)
+            .frame(width: CaptureHUDLayout.compact.width, height: CaptureHUDLayout.compact.height)
+            .background {
+                if reduceTransparency { RoundedRectangle(cornerRadius: 18).fill(Color(nsColor: .windowBackgroundColor)) }
+                else { RoundedRectangle(cornerRadius: 18).fill(.regularMaterial) }
             }
-        case .recording: return "Recording"
-        case .transcribing: return "Transcribing"
-        case .cleaning: return "Tidying your words"
-        case .delivering: return model.waitingForDrawing ? "Text ready" : "Delivering text"
-        case .cancelling: return "Cancelling"
-        case .idle: return "Dictation"
-        }
-    }
-    private var symbol: String {
-        if model.previewingPanel { return "mic.slash" }
-        switch model.phase {
-        case .requesting: return "mic.badge.plus"
-        case .recording: return "mic.fill"
-        case .delivering: return "arrow.up.doc"
-        default: return "waveform"
-        }
-    }
-    private var instruction: String {
-        if model.previewingPanel { return "Drag to position, or choose a named position in options. No audio is recorded." }
-        if model.phase == .requesting {
-            switch AVCaptureDevice.authorizationStatus(for: .audio) {
-            case .notDetermined: return "Respond to the macOS prompt, or choose Cancel."
-            case .authorized: return "You can cancel before recording starts."
-            default: return "Check Privacy & Security → Microphone in System Settings."
-            }
-        }
-        if model.phase == .recording { return model.captureShortcutInstruction }
-        if model.waitingForDrawing { return "Your text is saved. The original field is checked again before paste." }
-        if model.phase == .delivering { return "Microphone off. Checking the destination." }
-        if model.phase == .cancelling { return "Microphone off. Waiting for processing to stop." }
-        if !model.canCancelCurrentCapture { return "Microphone off. Your original text is retained." }
-        return "Microphone off. Cancel to stop processing."
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(0.12)))
+            .transaction { $0.animation = nil }
+            .tint(Workbench.accent).workbenchTheme()
     }
 }
 
@@ -988,18 +880,6 @@ struct NoSpeechCueView: View {
         .accessibilityLabel(cue.message + ". " + cue.hint)
         .accessibilityFocused($voiceOverFocused)
         .onChange(of: voiceOverFocused) { _, focused in hold(focused || hovering) }
-    }
-}
-
-struct CaptureLevelMeter: View {
-    let level: Double
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<8) { index in
-                Capsule().fill(Double(index) / 8 < max(0, min(1, level)) ? Workbench.accent : Color.secondary.opacity(0.18))
-            }
-        }.accessibilityElement(children: .ignore).accessibilityLabel("Microphone level")
-            .accessibilityValue(level < 0.05 ? "Quiet" : "Receiving sound")
     }
 }
 

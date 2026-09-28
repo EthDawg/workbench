@@ -83,20 +83,25 @@ enum WorkbenchControlChecks {
         try check(ToolbarModeFollower.modeToSelect(previous: [], current: [.draw, .persona, .present]) == .present, "several starts in one tick: Present before Persona before the rest")
         try check(ToolbarModeFollower.modeToSelect(previous: [.present], current: [.present, .persona, .dictate]) == .persona, "Persona outranks the rest once Present is already live")
         try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
-        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading, "active reading has compact controls even with idle toolbar disabled")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools, "active reading keeps the shared host even with the idle toolbar disabled (#134 T4)")
         try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
         // Hide toolbar is authoritative for the tools over live Draw, Present and Persona (#155).
         func surface(shown: Bool = false, drawing: Bool = false, presenting: Bool = false, persona: Bool = false, inserting: Bool = false,
-                     dictation: Bool = false, narration: Bool = false, reading: Bool = false) -> FloatingToolbarSurface {
+                     dictation: Bool = false, narration: Bool = false, reading: Bool = false, cue: Bool = false,
+                     capturing: Bool = false) -> FloatingToolbarSurface {
             .resolve(shown: shown, drawing: drawing, presenting: presenting, persona: persona, inserting: inserting,
-                     capturingScreen: false, dictation: dictation, narration: narration, reading: reading)
+                     capturingScreen: capturing, dictation: dictation, narration: narration, reading: reading, cue: cue)
         }
         try check(surface() == .hidden && surface(drawing: true) == .hidden && surface(presenting: true) == .hidden && surface(persona: true) == .hidden
                   && surface(drawing: true, presenting: true, persona: true) == .hidden, "Hide toolbar hides the tools while drawing, presenting or showing a persona")
         try check(surface(shown: true) == .tools && surface(shown: true, drawing: true, presenting: true, persona: true) == .tools,
                   "Show floating toolbar brings the tools back over live work")
-        try check(surface(drawing: true, dictation: true) == .dictation && surface(presenting: true, narration: true) == .narration
-                  && surface(persona: true, reading: true) == .reading, "a live recording, narration or reading keeps its own controls while the tools are hidden")
+        // Recording, narration, reading and their results share the tools' host (#134 T4): it stays
+        // up while they run even with the tools hidden, and only the no-speech cue has its own view.
+        try check(surface(drawing: true, dictation: true) == .tools && surface(presenting: true, narration: true) == .tools
+                  && surface(persona: true, reading: true) == .tools, "a live recording, narration or reading keeps the shared host while the tools are hidden")
+        try check(surface(dictation: true, cue: true) == .cue && surface(shown: true, cue: true) == .cue
+                  && surface(dictation: true, cue: true, capturing: true) == .hidden, "the no-speech cue has its own view, and screen capture hides it too")
         try check(surface(inserting: true) == .tools, "a prompt insertion keeps its Stop on the tools until it ends")
         // Position… opened from the toolbar's keyboard focus hands the keyboard back (#197 review).
         let closes: [ToolbarPositionClose] = [.chose, .reset, .escape, .dismissed]

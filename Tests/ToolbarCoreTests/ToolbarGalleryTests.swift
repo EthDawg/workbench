@@ -109,13 +109,26 @@ final class ToolbarGalleryTests: XCTestCase {
             XCTAssertTrue(shown.contains(indicator), indicator)
         }
         XCTAssertTrue(ToolbarGallery.statuses.contains { $0.status.attentionBadge }, "recording with a job that needs attention")
+        XCTAssertTrue(ToolbarGallery.statuses.contains { $0.status.stopsSoonBadge }, "recording in its last seconds")
         XCTAssertTrue(ToolbarGallery.statuses.contains { if case .live = $0.status.indicator { return true }; return false })
         XCTAssertTrue(ToolbarGallery.statuses.allSatisfy { $0.tier == .resting })
     }
 
-    func testNoDeadReadingFixtureRemains() {
-        XCTAssertFalse(ToolbarGallery.states.contains { $0.name == "activity-reading" },
-                       "reading shows its own compact controls; the row never renders it")
+    /// Dictation, narration and reading are the row's own work now (#134 T4): revealed, the row's
+    /// next action stops, pauses or resumes them, and at rest they are the compact mark.
+    func testRecordingAndReadingRenderInTheSameRow() {
+        func state(_ name: String) -> ToolbarViewState? { ToolbarGallery.states.first { $0.name == name } }
+        XCTAssertEqual(state("recording-dictation")?.actionTitle, "Stop")
+        XCTAssertEqual(state("recording-dictation")?.status.indicator, .capture)
+        XCTAssertEqual(state("recording-dictation-in-present")?.actionTitle, "Stop", "the recording claims the button in any tool")
+        XCTAssertEqual(state("recording-processing")?.isActionEnabled, false)
+        XCTAssertEqual(state("recording-narration")?.actionTitle, "Stop narration")
+        XCTAssertEqual(state("reading-playing")?.actionTitle, "Pause reading")
+        XCTAssertEqual(state("reading-paused-in-dictate")?.actionTitle, "Resume reading")
+        XCTAssertEqual(state("recording-dictation-stops-soon")?.status.stopsSoonBadge, true)
+        for resting in ToolbarGallery.recording.filter({ $0.tier == .resting }) {
+            XCTAssertNotEqual(resting.status.indicator, .idle, "\(resting.name) rests with its status")
+        }
     }
 
     /// The row is a glance, not a sentence. The label budget is the next action's.

@@ -17,15 +17,6 @@ extension FloatingControlAnchor {
     }
 }
 
-/// The dictation panel always docks at one of the named destinations, even from
-/// mid-screen. The toolbar's tools rest wherever they are released instead, and
-/// dock only near a destination (`FloatingControlPlacement`, #163).
-enum FloatingToolbarDocking {
-    static func anchor(for frame: NSRect, in screen: NSRect) -> FloatingControlAnchor {
-        FloatingControlGeometry.nearestAnchor(to: frame, in: screen, threshold: .greatestFiniteMagnitude) ?? .bottom
-    }
-}
-
 /// What More's Active work section offers (#134): for each thing the compact mark can show
 /// that the chosen tool gives no way back to, its finish, resume or door, worded as its own
 /// tool words it. Nothing here is a new command; each item runs an existing one.
