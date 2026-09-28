@@ -1007,10 +1007,11 @@ enum SurfaceGallery {
 
     /// Settings' Dictate options… lands on Dictate's Options (#134 H2). The window is the only
     /// Home open, so no other page can take the request, and its Dictate reports where Options and
-    /// the visible scroll area were laid out (`pageSectionFrames`, nil in the app). Options must
-    /// first lie outside the visible area, or a page that never scrolled would pass. Then the
-    /// request is set on Settings, and the check waits, up to a deadline, until the page has taken
-    /// it and Options lies inside the visible area.
+    /// the visible scroll area were laid out (`pageSectionFrames`, nil in the app). Both frames
+    /// must have an area. Options must first lie outside the visible area, judged after a settle,
+    /// or a page that never scrolled would pass. Then the request is set on Settings, and the check
+    /// waits, up to a deadline, until the page has taken it and Options lies inside the visible
+    /// area, and judges that again after the last settle, just before the shot.
     func renderDictateOptionsFocused(to output: URL) throws -> (shot: SurfaceGallery.Shot, check: String) {
         final class Frames { var byID: [String: CGRect] = [:] }
         let frames = Frames()
@@ -1024,8 +1025,14 @@ enum SurfaceGallery {
             "page \(model.page), request \(model.focusRequest == nil ? "taken" : "not taken"), Options \(text(frames.byID["dictate.options"])), "
                 + "visible scroll area \(text(frames.byID["dictate.visible"]))"
         }
-        func optionsInView() -> Bool {
+        /// Both frames reported with an area. A rect with no width or height is "contained" by any
+        /// rect around its origin, so a collapsed Options or a transient empty report proves nothing.
+        func laidOut() -> Bool {
             guard let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
+            return !options.isEmpty && !visible.isEmpty
+        }
+        func optionsInView() -> Bool {
+            guard laidOut(), let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
             return visible.insetBy(dx: -0.5, dy: -0.5).contains(options)
         }
         func wait(until done: () -> Bool) {
@@ -1034,9 +1041,11 @@ enum SurfaceGallery {
         }
         model.focusRequest = nil
         model.page = "dictate"
-        wait { frames.byID["dictate.options"] != nil && frames.byID["dictate.visible"] != nil }
-        guard frames.byID["dictate.options"] != nil, frames.byID["dictate.visible"] != nil, !optionsInView() else {
-            throw VoiceError.message("Dictate's Options must start outside the visible scroll area, or the options door cannot be checked: \(state()).")
+        wait { laidOut() }
+        // One more settle, so a first layout pass cannot decide where Options starts.
+        settle(root)
+        guard laidOut(), !optionsInView() else {
+            throw VoiceError.message("Dictate's Options must be laid out outside the visible scroll area first, or the options door cannot be checked: \(state()).")
         }
         let before = frames.byID["dictate.options"]
         model.page = "settings"; settle(root)
@@ -1048,6 +1057,10 @@ enum SurfaceGallery {
             throw VoiceError.message("Settings' Dictate options… did not bring Dictate's Options into view: \(state()).")
         }
         settle(root)
+        // Judged again after the last settle, so the shot and the assertion describe the same moment.
+        guard model.focusRequest == nil, optionsInView() else {
+            throw VoiceError.message("Dictate's Options did not stay inside the visible scroll area once the page settled: \(state()).")
+        }
         let size = root.bounds.size, landed = frames.byID["dictate.options"], visible = frames.byID["dictate.visible"]
         let shot = try save(try snapshot(root), id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(size.width)) × \(Int(size.height)) pt",
                             detail: "The page opens scrolled so its Options lie inside the visible area, where VoiceOver starts; the check waits for that and fails otherwise.",
