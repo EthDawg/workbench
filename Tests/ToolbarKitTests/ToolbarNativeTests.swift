@@ -190,6 +190,38 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(admissions, 1, "and asks before it pops up")
     }
 
+    /// The accessory answers the keyboard as the launcher and More do (#216): it takes the focus,
+    /// Return, Enter and Down open it through the same admission, and Escape leaves keyboard
+    /// interaction without opening anything.
+    @MainActor func testTheAccessoryOpensFromTheKeyboardAsMoreDoes() throws {
+        _ = NSApplication.shared
+        func key(_ code: UInt16, _ characters: String) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                             characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!
+        }
+        let down = String(Character(UnicodeScalar(UInt32(NSDownArrowFunctionKey))!))
+        var admissions = 0, endings = 0, escapes = 0, opened = 0
+        let tools = laidOut(ToolbarRow(state: ToolbarViewState(name: "tools", tier: .revealed, mode: .draw, accessory: .tools),
+                                       menuBegan: { _ in admissions += 1; return false }, menuEnded: { endings += 1 },
+                                       escape: { escapes += 1 }))
+        let button = try XCTUnwrap(buttons(tools).first { $0.accessibilityIdentifier() == "toolbar.accessory" })
+        XCTAssertTrue(button.acceptsFirstResponder, "Tab reaches it, as it reaches More")
+        for (code, characters) in [(UInt16(36), "\r"), (76, "\u{3}"), (125, down)] {
+            let before = admissions
+            button.keyDown(with: key(code, characters))
+            XCTAssertEqual(admissions, before + 1, "key \(code) asks to open the accessory's menu")
+        }
+        XCTAssertEqual(endings, 0, "a refused menu never tracks")
+        button.keyDown(with: key(53, "\u{1b}"))
+        XCTAssertEqual(escapes, 1, "Escape leaves keyboard interaction")
+        XCTAssertEqual(admissions, 3, "and opens nothing")
+        // Review goes to the review from the keyboard too.
+        let review = laidOut(ToolbarRow(state: ToolbarViewState(name: "review", tier: .revealed, mode: .snapAndTalk, accessory: .review),
+                                        openAccessory: { _ in opened += 1 }))
+        try XCTUnwrap(buttons(review).first { $0.accessibilityIdentifier() == "toolbar.accessory" }).keyDown(with: key(36, "\r"))
+        XCTAssertEqual(opened, 1, "Return opens the session's review")
+    }
+
     /// The launcher sits exactly where the compact mark does: 24 points from the growth edge,
     /// at every anchor and text size, so the two share one centre on screen.
     @MainActor func testTheLauncherSharesTheCompactMarksCentre() throws {
