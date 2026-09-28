@@ -100,4 +100,21 @@ Checks in `scripts/test-stage.sh --persona-voice-only`:
 
 With `WORKBENCH_LAYOUT_EVIDENCE` the suite also writes the gallery: each state at native size, with a small Circle, a large Card and the trace in a compact mark, over light, dark and busy content, in both appearances, crossed with the other appearance's content, with Reduce Motion and with Increase Contrast, plus a motion recording of the shared sequence. The integration and review agents judge its look.
 
+Selected gallery evidence is in [voice-appearance-2026-09-28](voice-appearance-2026-09-28/), with synthetic artwork only:
+- **The four states on four backgrounds.** Each sheet shows quiet, soft, usual and raised, reading left to right and top to bottom, as a small Circle, a large Card and the trace at native size and at 4×.
+  - [Light](voice-appearance-2026-09-28/sheet-light.jpg)
+  - [Dark](voice-appearance-2026-09-28/sheet-dark.jpg)
+  - [Busy content, light appearance](voice-appearance-2026-09-28/sheet-busy-light.jpg)
+  - [Reduce Motion, dark](voice-appearance-2026-09-28/sheet-reduce-motion-dark.jpg)
+- **[The shared sequence in motion](voice-appearance-2026-09-28/motion.gif),** at 30 fps, dark content above light.
+
+**Visual verdict** (integration lead, 28 September), from these sheets, the other cases and consecutive motion frames:
+- The curves are clean, and the dot, gap and trace are balanced.
+- The peaks stay inside the pill, and there's no frame-to-frame jitter.
+- There's one accent on both surfaces, with the recording dot distinct.
+- The outline never dominates the portrait.
+- Quiet reads as a thin, still line while the dot still says "recording".
+
+This is source and render evidence, not installed acceptance.
+
 The toolbar adopts the trace in its own change (T4). The real-microphone check stays separate hardware evidence.
