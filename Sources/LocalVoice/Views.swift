@@ -16,16 +16,21 @@ struct ContentView: View {
     @State private var correctionSeed = ""
     @State private var correctionDraft = ""
     @State private var confirmingRecoveryDiscard = false
+    /// On Read, a stopped reading shows beside Listen with Retry, not in the banner as well.
+    private var bannerError: String? {
+        guard let error = model.error else { return nil }
+        if model.page == "speak", let failure = model.readingFailure, error == failure.message { return nil }
+        return error
+    }
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 24) {
-                if let error = model.error {
+                if let error = bannerError {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                         Text(error).font(.system(size: 12)).textSelection(.enabled)
                         Spacer()
-                        if model.canRetryReading { Button("Retry") { model.retryReading() }.controlSize(.small) }
-                        Button { model.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss error")
+                        Button { model.dismissError() } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss error")
                     }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 }
                 Group {
@@ -196,12 +201,21 @@ struct ContentView: View {
         }.font(.system(size: 10)).foregroundStyle(.tertiary)
     }
 
-    private var speak: some View {
+    /// While text waits for Replace reading or Keep current, the page scrolls,
+    /// so the incoming text, the choice and the current draft all stay readable
+    /// in a small window. Otherwise the draft fills the page as before.
+    @ViewBuilder private var speak: some View {
+        if model.pendingReadingSelection != nil { ScrollView { speakPage.padding(.trailing, 12) } }
+        else { speakPage }
+    }
+
+    private var speakPage: some View {
         VStack(alignment: .leading, spacing: 24) {
             heading("Give your words a voice.", "Paste something to hear it aloud, or save a reading to take with you.")
             if let selection = model.pendingReadingSelection {
                 ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
-                                           replacingDisabled: model.rendering,
+                                           replacingDisabled: !model.canReplaceReading,
+                                           waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
                                            keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
             }
             ReadingProviderView(model: model)
@@ -232,6 +246,15 @@ struct ContentView: View {
                 ReadingPlaybackStrip(elapsed: model.playbackTime, duration: model.audioDuration, renderingAhead: model.renderingAhead,
                                      seek: model.seekReading, skip: model.skipReading)
                     .disabled(!model.canSeekReading)
+            } else if let failure = model.readingFailure {
+                HStack(spacing: 10) {
+                    Label(failure.message, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(.orange)
+                    Spacer()
+                    Button("Retry") { model.retryReading() }.disabled(!model.canRetryReading)
+                        .accessibilityHint("Makes new audio and reads from the start")
+                    Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                        .accessibilityLabel("Dismiss reading error")
+                }
             }
             HStack(spacing: 12) {
                 Button { model.listen() } label: { Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill") }
@@ -432,19 +455,21 @@ struct ReadingSelectionReviewCard: View {
     let selection: ReadingSelectionImport
     let limitMessage: String?
     var replacingDisabled = false
+    /// Why Replace reading is unavailable for now, shown under the choice.
+    var waitReason: String? = nil
     let keep: () -> Void
     let replace: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Selected text is ready to review", systemImage: "text.quote")
+            Label("\(selection.origin.name) is ready to review", systemImage: "text.quote")
                 .font(.headline).foregroundStyle(mint)
             ScrollView {
                 Text(selection.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                    .accessibilityLabel("Imported selected text")
+                    .accessibilityLabel("Text to review")
                     .accessibilityValue(selection.text)
-            }.frame(maxHeight: 120).padding(12).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            Text("Your current reading stays unchanged until you choose Replace reading. Keep current discards only this imported selection.")
+            }.frame(minHeight: 56, maxHeight: 120).padding(12).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            Text("Your current reading stays unchanged until you choose Replace reading. " + selection.origin.keepNote)
                 .font(.caption).foregroundStyle(.secondary)
             if let limitMessage {
                 Label(limitMessage, systemImage: "exclamationmark.triangle.fill")
@@ -454,7 +479,10 @@ struct ReadingSelectionReviewCard: View {
                 Button("Keep current", action: keep)
                 Button("Replace reading", action: replace)
                     .buttonStyle(PrimaryButton()).disabled(replacingDisabled)
-                    .accessibilityHint("Replaces the current reading draft. It does not start audio or send text online.")
+                    .accessibilityHint("Replaces the reading draft and stops any reading in progress. It does not start audio or send text online.")
+            }
+            if let waitReason {
+                Label(waitReason, systemImage: "hourglass").font(.caption).foregroundStyle(.secondary)
             }
         }.padding(16).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain)

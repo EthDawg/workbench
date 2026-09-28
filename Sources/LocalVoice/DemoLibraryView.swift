@@ -203,7 +203,7 @@ struct DemoLibraryView: View {
                 HStack {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
-                    else { Button("Read aloud") { model.speechText = item.content; model.page = "speak" } }
+                    else { Button("Read aloud") { model.importReading(item.content, from: .savedText) } }
                 }
             }
             if !item.notes.isEmpty {

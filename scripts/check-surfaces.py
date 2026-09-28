@@ -152,8 +152,9 @@ ENTRY_POINTS = [
 ]
 # Calls that change the window's route or open a place (mode 'doors').
 # openHistory opens History with a door's starting view; openTranscript opens
-# a transcript on the Dictate page.
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript'}
+# a transcript on the Dictate page; importReading opens text on the Read page
+# through its import decision.
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading'}
 # Inline shortcut editors: the global shortcut catalogue records these shortcuts.
 EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
             'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}

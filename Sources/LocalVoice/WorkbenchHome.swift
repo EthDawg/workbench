@@ -515,7 +515,7 @@ struct WorkbenchHomePage: View {
     }
     private func readClipboard() {
         if let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            model.speechText = text; model.listen()
+            model.listen(to: text)
         } else { model.status = "Copy some text first."; model.page = "speak" }
     }
     private func snapAndTalk() {

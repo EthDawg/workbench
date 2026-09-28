@@ -363,6 +363,18 @@ enum ReadingChecks {
         for _ in 0..<10 { second.tick() }
         try check(late.failures == 1 && secondReports() == [false], "no retry loop or repeated error after a failure")
 
+        // A failure found just before a pause is still reported once: the paused
+        // reading ends at the next tick instead of waiting to be resumed.
+        let paused = FaultySource(frames: 22_050 * 10, failFrom: 22_050 * 5)
+        let (held, heldReports) = try play(paused)
+        _ = held.play()
+        while held.readFailure == nil && !held.isFinished { _ = try held.renderOffline(4_096); held.tick() }
+        held.pause()
+        try check(!held.isPlaying && !held.isFinished && heldReports().isEmpty, "the reading paused after its source failed, before the next tick")
+        for _ in 0..<5 { held.tick() }
+        try check(heldReports() == [false] && held.isFinished && paused.failures == 1, "a paused reading whose source failed ends once, as a failure")
+        try check(!held.play() && heldReports() == [false], "a paused reading that failed cannot resume")
+
         // A finished source that has nothing where it claims audio cannot catch up.
         let short = FaultySource(frames: 44_100, emptyFrom: 11_025)
         let (third, thirdReports) = try play(short)
