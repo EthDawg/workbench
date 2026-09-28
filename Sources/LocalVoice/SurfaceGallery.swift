@@ -488,17 +488,21 @@ enum SurfaceGallery {
 
     // MARK: Floating surface states
 
-    /// The floating surface's own moments, which no page shows: the routine cue in place of
-    /// the recording controls after a dictation that heard no speech, and a reading that
-    /// stopped because its audio could not be read. Both at the compact size they use.
+    /// The floating surface's own moments, which no page shows: the routine cue at the toolbar's
+    /// place after a dictation that heard no speech, and the results the toolbar reveals in place
+    /// of its row (#134 T4): a reading that stopped because its audio could not be read, and the
+    /// clipboard receipt with its ring. Each at the size it uses.
     func renderFloatingStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         let controls = CaptureHUDControls(defaults: .standard)
         model.announceForAccessibility = { _ in }
         var shots: [SurfaceGallery.Shot] = []
-        func shot(_ id: String, _ title: String, _ detail: String) throws {
+        func shot(_ id: String, _ title: String, _ detail: String, result: FloatingResult? = nil) throws {
             let size = CaptureHUDLayout.compact
-            let content = WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
-                                                   dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+            let content = Group {
+                if let result { FloatingResultView(result: result, model: model, controls: controls) }
+                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
+                                                dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}) }
+            }
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
                 .background(Color(nsColor: .windowBackgroundColor)))
             let window = offscreenWindow(size: size, styleMask: [.borderless])
@@ -509,11 +513,12 @@ enum SurfaceGallery {
         }
         model.endWithoutSpeech(.tooQuiet)
         try shot("floating-no-speech", "Floating: no speech heard",
-                 "In place of the recording controls for under two seconds, then the toolbar again. Hover holds it.")
+                 "At the toolbar's place for under two seconds, then the compact mark again. Hover holds it.")
         model.dismissCaptureCue()
         model.reportReadingFailure(.audioUnreadable)
         try shot("floating-reading-stopped", "Floating: reading stopped",
-                 "A reading whose audio could not be read keeps its controls with Retry and dismiss.")
+                 "Revealed from the compact mark's warning: a reading whose audio could not be read keeps Retry and dismiss.",
+                 result: .readingFailure)
         model.dismissReadingFailure()
 
         // The receipt's own countdown ring (#134 T5), frozen by a pointer hold so the render repeats.
@@ -521,9 +526,9 @@ enum SurfaceGallery {
                                                      wasPasted: false, destinationName: nil), wordCount: 42)
         model.clipboardReceipt.holdHUD(true)
         do {
+            // The receipt as the toolbar reveals it from the mark's clipboard status (#134 T4).
             let size = CaptureHUDLayout.message
-            let content = WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
-                                                   dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+            let content = FloatingResultView(result: .receipt, model: model, controls: controls)
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
                 .background(Color(nsColor: .windowBackgroundColor)))
             let window = offscreenWindow(size: size, styleMask: [.borderless])
@@ -1245,6 +1250,7 @@ enum SurfaceGallery {
         try drive(recordingMeetings, start: false)
         model.meetings = previousMeetings; model.objectWillChange.send()
         settle(.resting)
+        try checkRecordingInTheHost(host: host, controls: controls, bottom: bottom, expect: expect, settle: settle, at: at, compact: compact)
         // The chooser opens beside the launcher and inside the display, at larger text too.
         for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
@@ -1261,6 +1267,121 @@ enum SurfaceGallery {
             chooser.close()
         }
         return checks
+    }
+
+    /// Dictation, its processing and its results in the toolbar's host (#134 T4), and the coaching
+    /// card beside it (#134 T5), docked at bottom centre. At rest each is the same 48 × 28 mark on
+    /// the same centre; a new failure or receipt changes only the mark's status until the person
+    /// reveals it, and a result that arrives while the row is open waits rather than replacing it;
+    /// revealing shows the result's own controls from the same centre, and collapsing never
+    /// dismisses it; the no-speech cue shows at the same place; a Stop pressed through the
+    /// recording's completion does nothing; and the card sits 12 points above the mark, or below
+    /// it at a top dock, with nothing of the toolbar's in the gap and the mark where it was.
+    func checkRecordingInTheHost(host: CapturePanelController, controls: CaptureHUDControls, bottom: CGPoint,
+                                 expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void,
+                                 at: (CGPoint, String) -> String?, compact: (String) -> String?) throws {
+        let failure = "The speech engine stopped before it finished."
+        func rests(_ what: String, _ indicator: ToolbarStatus.Indicator) -> [String?] {
+            settle(.resting)
+            return [controls.toolbar.state.tier == .resting ? nil : "\(what): the row opened by itself", compact(what), at(bottom, what),
+                    controls.status.indicator == indicator ? nil : "\(what): the mark shows \"\(controls.status.description)\""]
+        }
+        func reveal() { controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed) }
+        func collapse() { controls.toolbar.send(.holdEnded(.keyboard)) }
+        /// A result's controls grow inward from the launcher's centre; a display edge may lift them.
+        func grewFromTheCentre(_ what: String) -> String? {
+            let frame = host.window?.frame ?? .zero
+            let x = ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: controls.rowAnchor.growsLeftward).x
+            return abs(x - bottom.x) > 0.5 ? "\(what): the controls grew from \(Int(x)), not the launcher's centre at \(Int(bottom.x))" : nil
+        }
+        model.toolbarMode = .dictate
+        model.phase = .recording; model.elapsed = 12
+        expect("At rest while dictating", rests("while dictating", .capture))
+        reveal()
+        expect("Revealed while dictating", [at(bottom, "revealed while dictating"),
+            controls.revealsResult ? "the row showed a result while dictating" : nil])
+        collapse()
+        model.phase = .transcribing
+        expect("At rest while transcribing", rests("while transcribing", .processing))
+        model.phase = .idle; model.elapsed = 0
+        model.captureFailure = failure
+        expect("A new failure, at rest", rests("with a new failure", .failure))
+        reveal()
+        expect("The failure, revealed", [controls.revealsResult ? nil : "revealing did not show the failure's own controls",
+            abs((host.window?.frame.width ?? 0) - CaptureHUDLayout.message.width) > 0.5 ? "the failure's controls are not their own size" : nil,
+            grewFromTheCentre("the failure")])
+        collapse()
+        expect("The failure, collapsed again", rests("after the failure was revealed", .failure)
+            + [model.captureFailure == nil ? "collapsing dismissed the failure" : nil])
+        model.dismissCaptureFailure(); settle(.resting)
+        // A result that arrives while the row is open never replaces the row under the pointer.
+        reveal()
+        let row = host.window?.frame.size ?? .zero
+        model.captureFailure = failure
+        settle(.revealed)
+        expect("A failure arriving while the row is open", [controls.revealsResult ? "the failure replaced the open row" : nil,
+            host.window?.frame.size == row ? nil : "the open row changed size for the failure"])
+        collapse()
+        model.dismissCaptureFailure(); settle(.resting)
+        model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
+                                                     wasPasted: false, destinationName: nil), wordCount: 12)
+        expect("A new receipt, at rest", rests("with a new receipt", .pendingDelivery))
+        reveal()
+        expect("The receipt, revealed", [controls.revealsResult ? nil : "revealing did not show the receipt", grewFromTheCentre("the receipt")])
+        collapse()
+        expect("The receipt, collapsed again", rests("after the receipt was revealed", .pendingDelivery)
+            + [model.clipboardReceipt.receipt == nil ? "collapsing dismissed the receipt" : nil])
+        model.clipboardReceipt.clear(); settle(.resting)
+        // The no-speech cue shows at the toolbar's own place, then the mark again. Too short, not
+        // too quiet: a second quiet capture in a row is a failure, and the floating shots had one.
+        model.endWithoutSpeech(.tooShort)
+        settle(.resting)
+        let cue = host.window?.frame ?? .zero
+        expect("The no-speech cue", [cue.size == CaptureHUDLayout.compact ? nil : "the cue is \(Self.points(cue.size))", grewFromTheCentre("the cue")])
+        model.dismissCaptureCue()
+        expect("After the no-speech cue", rests("after the cue", .idle) + [model.captureFailure.map { "a failure took the cue's place: \($0)" }])
+        // A Stop pressed as the recording completes: the press latched Stop, and the click must not
+        // become a new dictation (#134, #205 review).
+        var starts = 0
+        let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
+                                      meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
+                                      dictate: { starts += 1 }, snap: {}, snapCapture: {}, draw: {}, present: {})
+        model.phase = .recording; settle(.resting)
+        controls.pressGate.shown(ToolbarNextAction.resolve(toolbar.live).operation)
+        let click = toolbar.pressPrimary()
+        model.phase = .idle
+        click?()
+        expect("Stop pressed through the recording's completion", [click == nil ? "the press on Stop latched nothing" : nil,
+            starts > 0 ? "the click started a new dictation" : nil, model.phase != .idle ? "the click acted after the recording ended" : nil])
+        settle(.resting)
+        // The coaching card beside the compact mark (#134 T5).
+        let coach = model.coach
+        coach.announce = { _ in }; coach.voiceOverEnabled = { false }
+        host.coachPanel.offscreenForChecks = true
+        for anchor in [FloatingControlAnchor.bottom, .top] {
+            controls.choosePosition?(anchor); settle(.resting)
+            let mark = host.window?.frame ?? .zero
+            let card = FeedbackCoachModel.Card(tip: "gallery.placement.\(anchor.rawValue)", symbol: "keyboard",
+                                               title: "Hold ⌥V to dictate.", body: HoldLesson.body)
+            let requested = coach.request(card)
+            settle(.resting)
+            let frame = host.coachPanel.shownFrame ?? .zero
+            let above = anchor != .top
+            let gap = above ? NSRect(x: frame.minX, y: mark.maxY, width: frame.width, height: frame.minY - mark.maxY)
+                            : NSRect(x: frame.minX, y: frame.maxY, width: frame.width, height: mark.minY - frame.maxY)
+            let launcherX = ToolbarGeometry.launcherCentre(inWindow: mark, growsLeftward: controls.rowAnchor.growsLeftward).x
+            expect("The coaching card at the \(anchor.title.lowercased()) dock", [
+                requested ? nil : "the host would not let the card show",
+                coach.isPresented ? nil : "the card was never reported presented",
+                abs(gap.height - 12) > 0.5 ? "the card is \(Int(gap.height)) pt \(above ? "above" : "below") the mark, not 12" : nil,
+                abs(frame.midX - launcherX) > 1 ? "the card is not centred on the launcher" : nil,
+                (host.window?.frame ?? .zero).intersects(gap.insetBy(dx: 0, dy: 0.5)) || frame.intersects(gap.insetBy(dx: 0, dy: 0.5))
+                    ? "something of the toolbar's covers the gap" : nil,
+                host.window?.frame == mark ? nil : "the mark moved for the card"])
+            coach.remove(); settle(.resting)
+            if host.coachPanel.shownFrame != nil { expect("The coaching card goes", ["the card stayed after it was removed"]) }
+        }
+        controls.choosePosition?(.bottom); settle(.resting)
     }
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
