@@ -58,6 +58,8 @@ public struct ToolbarChooserView: View {
     let available: CGFloat?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
+    /// VoiceOver's cursor follows the keyboard highlight, so Up, Down and typing are heard.
+    @AccessibilityFocusState private var voiceOverRow: ToolbarMode?
 
     public init(model: ToolbarChooserModel, textScale: CGFloat = 1, accent: Color = .accentColor, available: CGFloat? = nil) {
         self.model = model; self.textScale = textScale; self.accent = accent; self.available = available
@@ -69,8 +71,13 @@ public struct ToolbarChooserView: View {
         let list = VStack(spacing: 0) { ForEach(model.state.choices) { row($0) } }
             .padding(.vertical, ToolbarChooserLayout.verticalPadding * scale)
         Group {
-            if let available, available < natural { ScrollView { list }.frame(height: available) }
-            else { list }
+            if let available, available < natural {
+                // On a short display the list scrolls to keep the keyboard highlight in view.
+                ScrollViewReader { proxy in
+                    ScrollView { list }.frame(height: available)
+                        .onChange(of: model.state.highlighted) { _, mode in proxy.scrollTo(mode) }
+                }
+            } else { list }
         }
         .frame(width: ToolbarChooserLayout.width * scale)
         .background {
@@ -81,6 +88,7 @@ public struct ToolbarChooserView: View {
         .tint(accent)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Choose a tool")
+        .onChange(of: model.state.highlighted) { _, mode in voiceOverRow = mode }
     }
 
     private func row(_ choice: ToolbarToolChoice) -> some View {
@@ -105,11 +113,15 @@ public struct ToolbarChooserView: View {
             RoundedRectangle(cornerRadius: 6).fill(highlighted ? accent.opacity(0.2) : Color.clear).padding(.horizontal, 5 * scale)
         }
         .contentShape(Rectangle())
+        .id(choice.mode)
         .onTapGesture { model.choose(choice.mode) }
         .onHover { inside in if inside { model.highlight(choice.mode) } }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(choice.mode.title + (choice.isLive ? ", running" : "") + (choice.key.map { ", \($0)" } ?? ""))
-        .accessibilityAddTraits(choice.isSelected ? [.isButton, .isSelected] : .isButton)
+        // The keyboard highlight is the selected row; the checkmark is the current tool.
+        .accessibilityLabel(choice.mode.title + (choice.isSelected ? ", current tool" : "") + (choice.isLive ? ", running" : "")
+                            + (choice.key.map { ", \($0)" } ?? ""))
+        .accessibilityAddTraits(highlighted ? [.isButton, .isSelected] : .isButton)
+        .accessibilityFocused($voiceOverRow, equals: choice.mode)
         .accessibilityAction { model.choose(choice.mode) }
     }
 }
