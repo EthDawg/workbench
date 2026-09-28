@@ -59,6 +59,8 @@ enum StoreFailure: Error { case simulated }
     var draftRevision: UInt64 = 0
     var persistWork: DispatchWorkItem?
     let store = StateStore()
+    /// History's observer records the first dictation for Home (#15); corrections never depend on it.
+    func recordFirstDictation() {}
     __EXACT_PROPERTIES__
     init(draft: String = " \ngit hub and cat.\t ", rules: [Replacement] = []) {
         transcript = draft

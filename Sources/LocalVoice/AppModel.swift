@@ -94,7 +94,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var error: String?
     @Published var transcript = "" { didSet { draftRevision &+= 1; persist() } }
     @Published var speechText = "" { didSet { persist() } }
-    @Published var history: [Transcript] = []
+    @Published var history: [Transcript] = [] { didSet { recordFirstDictation() } }
     let historyLibrary = WorkbenchHistoryModel(directory: Workbench.supportDirectory(component: "LocalVoice"))
     let handoffJobs = HandoffJobsModel(directory: Workbench.supportDirectory(component: "Handoffs"))
     lazy var meetings = MeetingModel(engine: engine, directory: Workbench.supportDirectory(component: "Meetings"))
@@ -289,6 +289,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         do {
             let state = try store.load()
             transcript = state.draft; speechText = state.speechText; history = state.history
+            // Observers do not run inside init, so a loaded History records it here.
+            recordFirstDictation()
             rawTranscript = state.rawDraft ?? state.draft
             replacements = state.replacements; voice = state.voice; rate = state.rate
             let removalIssues = MeetingTranscriptRemoval.reconcile(
@@ -815,6 +817,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// Every door opens History on All, even when History is already showing.
     /// Dictate's own option asks for Transcripts, and Hand off for its task.
     func openHistory(_ door: HistoryDoor = HistoryDoor()) { historyDoor = door; page = "history" }
+    /// Records the first dictation the moment History holds a transcript,
+    /// whichever door made it (the toolbar, a shortcut, the Dictate page or a
+    /// meeting), so removing transcripts later never brings Home's guide back (#15).
+    private func recordFirstDictation() {
+        if let next = HomeJourney(transcripts: history.count, guide: preferences.firstDictationGuide).guideToSave {
+            preferences.firstDictationGuide = next
+        }
+    }
     func savePrompt(_ text: String) { guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }; showLibrary(); library.newPrompt(text) }
     func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text) }
     func showPanelPreview() {

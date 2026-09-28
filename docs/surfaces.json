@@ -1011,6 +1011,14 @@
     "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest transcript on the Dictate page."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-history",
+    "surface": "window home",
+    "label": "Open in History",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-result",
     "surface": "window home",
     "label": "Open result",
@@ -1059,6 +1067,22 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality: Enable automatic paste… renamed in the first-dictation guide (#134 W9). A secondary link shown only while Paste automatically waits for Accessibility approval; Copy text stays the first action (#165)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.show-me-a-first-dictation",
+    "surface": "window home",
+    "label": "Show me a first dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door on Home back to the existing first-dictation guide, the only resume route, shown only while nothing has been dictated and the guide was skipped (#15)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.skip-for-now",
+    "surface": "window home",
+    "label": "Skip for now",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: hides Home's first-dictation guide and saves that choice with the Dictate preferences; Show me a first dictation brings it back until the first dictation (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",
