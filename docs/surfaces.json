@@ -968,14 +968,6 @@
     "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Open Snap & Talk session with captures and nothing pending."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.hide-persona",
-    "surface": "window home",
-    "label": "Hide persona",
-    "kind": "action",
-    "belongsTo": "persona",
-    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-dictate",
     "surface": "window home",
     "label": "Open in Dictate",
@@ -1024,6 +1016,15 @@
     "note": "Option: the guided first dictation; label follows phase as the Dictate page does (#134 W9).",
     "kind": "capability",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-98c01fb91a96",
+    "surface": "window home",
+    "label": null,
+    "expression": "persona . rowTitle",
+    "note": "Quality: the live strip's Persona action (was Button.hide-persona), with its label and click now from the shared Persona action: Hide persona, Hide personas, or Show personas for a hidden prepared set, as the toolbar and panel read (#134).",
+    "kind": "action",
+    "belongsTo": "persona"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",

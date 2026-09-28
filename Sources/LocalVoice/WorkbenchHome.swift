@@ -346,7 +346,10 @@ struct WorkbenchHomePage: View {
                 if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
                 if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
                 if stage.hasActivePersona {
-                    liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") { Button("Hide persona") { stage.togglePersona() } }
+                    let persona = personaControl
+                    liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
+                        Button(persona.rowTitle) { perform(persona) }.help(persona.help)
+                    }
                 }
                 if stage.hasActiveTimer {
                     // Pause, Stop and Reset live in the Timer menu the panel already uses.
@@ -354,6 +357,15 @@ struct WorkbenchHomePage: View {
                 }
                 MeetingQuickStatus(model: model.meetings) { model.page = "meeting" }
             }.padding(16).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+    }
+    /// Persona's label, tooltip and click, from the action the panel and toolbar share (#134).
+    private var personaControl: HomePersonaControl {
+        HomePersonaControl(WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap).state)
+    }
+    /// Does exactly what the Persona label names, through the switch the panel and toolbar use.
+    private func perform(_ persona: HomePersonaControl) {
+        WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { _ in stage.togglePersona() }
+            .perform(persona.operation)
     }
     private func liveRow<Action: View>(_ title: String, _ symbol: String, @ViewBuilder action: () -> Action) -> some View {
         HStack(spacing: 10) {
@@ -470,7 +482,9 @@ struct WorkbenchHomePage: View {
                 card("Present", stage.isPresenting ? "End presentation" : "Present the selected scene", "iphone", "Saved scenes and branding", prepare: "present") {
                     if stage.isPresenting { stage.endDeviceScene() } else { stage.presentSelectedScene() }
                 }
-                card("Persona", stage.hasActivePersona ? "Hide persona" : "Show a card over your apps", "person.crop.rectangle", "Independent of a scene", prepare: "personas") { stage.togglePersona() }
+                let persona = personaControl
+                card("Persona", persona.tileVerb, "person.crop.rectangle", "Independent of a scene", prepare: "personas",
+                     disabled: !persona.isEnabled) { perform(persona) }
                 card("Draw", stage.isDrawing ? "Stop drawing" : "Draw on screen", "pencil.tip", stage.drawingActivationTitle + " to draw", prepare: "annotate") {
                     if stage.isDrawing { stage.finishDrawing() } else { stage.draw() }
                 }
