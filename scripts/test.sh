@@ -25,6 +25,7 @@ BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
 "$BIN_DIR/LocalVoice" --check-reading-render
 "$BIN_DIR/LocalVoice" --check-shortcut-migration
 "$BIN_DIR/LocalVoice" --check-readback
+"$BIN_DIR/LocalVoice" --check-snap-capture
 "$BIN_DIR/LocalVoice" --check-presenter
 node --test BrowserExtension/tests/*.test.js
 

@@ -405,7 +405,7 @@ struct WorkbenchHomePage: View {
                         }
                         Spacer()
                         Button("Copy") { snap.copy(item.id) }
-                        Button("Edit…") { snap.edit(item.id); model.page = "snap" }.disabled(snap.isBusy)
+                        Button("Edit…") { snap.edit(item.id); model.page = "snap" }.disabled(snap.disablesCaptureDoors)
                     }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
                 }
                 case .session: if let session = readback.sessionURL {
@@ -467,7 +467,7 @@ struct WorkbenchHomePage: View {
                     else { readClipboard() }
                 }
                 card("Snap", "Capture a region", "viewfinder", "Window or screen on the Snap page", prepare: "snap",
-                     disabled: snap.isBusy) { Task { await snap.capture(.region) } }
+                     disabled: snap.disablesCaptureDoors) { Task { await snap.capture(.region) } }
             }
             moment("Capturing", "Explain screens aloud and get a deck in seconds.") {
                 card("Snap & Talk", readback.sessionURL == nil ? "New session…" : readback.isCapturing ? "Capturing…" : "Capture & narrate",
