@@ -232,7 +232,9 @@ final class PersonaHandleTests {
         RunLoop.current.run(until: Date().addingTimeInterval(PersonaManipulation.revealDelay + 0.1))
         XCTAssertTrue(controller.handleWindows.isEmpty, "A pointer that passed by leaves no handles")
         pointer.move(to: near)
-        RunLoop.current.run(until: Date().addingTimeInterval(PersonaManipulation.revealDelay + 0.1))
+        // Wait for the reveal timer rather than a fixed slice past it: a busy CI runner can fire it late.
+        let deadline = Date().addingTimeInterval(PersonaManipulation.revealDelay + 2)
+        while controller.handleWindows.isEmpty && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
         XCTAssertEqual(controller.handleWindows.count, PersonaHandle.allCases.count, "A pause near the artwork shows its handles")
         pointer.move(to: away)
         XCTAssertTrue(controller.handleWindows.isEmpty, "Leaving hides them at once")

@@ -124,6 +124,27 @@ struct WorkbenchControlState {
         tool.mode.map { ToolbarNextAction.resolve(live($0)) }
     }
 
+    /// Persona's own next action, in the words the toolbar's Persona mode uses:
+    /// Hide persona for one card, Hide personas for a prepared set, Show personas
+    /// while that set is hidden, and Show persona when nothing is live. Home's
+    /// Persona row and tile take their label and click from here (#134). They
+    /// name Persona itself, so work in another capability never claims them.
+    var personaAction: ToolbarNextAction {
+        let own = live(.persona)
+        return ToolbarNextAction.resolve(ToolbarLiveState(mode: .persona, persona: own.persona, mayStart: own.mayStart))
+    }
+
+    /// What the Persona action does, for its tooltip. It follows the same
+    /// action, so a hidden set is never described as being hidden again.
+    var personaDetail: String {
+        switch personaAction.operation {
+        case .pauseOverlays: return "Hide the set without ending it."
+        case .resumeOverlays: return "Show the set again, as you arranged it."
+        case .hidePersona: return "Hide the persona without ending the scene."
+        default: return "Show a prepared persona. Organise cards in Workbench."
+        }
+    }
+
     /// What a click on the row does: the same operation its label names, so
     /// input-consuming work claims every row's click as it claims its label.
     /// Read stops rather than pausing here (pause and resume live on the Read
@@ -159,6 +180,22 @@ struct WorkbenchControlState {
     }
 }
 
+/// Home's Persona row and tile (#134). Every live word, the tooltip and the
+/// click come from the shared Persona action, so a hidden prepared set reads
+/// Show personas on Home as it does on the toolbar and panel. Only the idle
+/// tile keeps a description, as Home's other tiles do.
+struct HomePersonaControl {
+    let action: ToolbarNextAction
+    let help: String
+    init(_ state: WorkbenchControlState) { action = state.personaAction; help = state.personaDetail }
+    /// The live strip's button.
+    var rowTitle: String { action.title }
+    /// The tile's second line.
+    var tileVerb: String { action.operation == .start(.persona) ? "Show a card over your apps" : action.title }
+    var operation: ToolbarOperation { action.operation }
+    var isEnabled: Bool { action.isEnabled }
+}
+
 enum WorkbenchDrawingAdmission {
     static func allows(phase: AppModel.Phase, suspended: Bool, capturingScreen: Bool, terminating: Bool) -> Bool {
         !suspended && !capturingScreen && !terminating && phase != .delivering && phase != .cancelling
@@ -183,7 +220,7 @@ struct WorkbenchControlContext {
             overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession,
             timerRunning: stage.isTimerRunning, canRecordAgain: model.canRecordAgain,
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
-            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.isBusy == true)
+            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true)
     }
     func shortcut(_ tool: WorkbenchControlTool) -> String? {
         switch tool {
@@ -219,6 +256,10 @@ struct WorkbenchControlContext {
         FloatingToolbar.shortcutLabel(model.preferences.shortcut(id), failure: model.shortcutFailures[id])
     }
     func detail(_ tool: WorkbenchControlTool) -> String {
+        // Without Screen Recording the Snap row still opens Snap, which explains and offers Paste and Import (#112).
+        if tool == .snap, snap?.isBusy != true, snap?.screenAccessGranted == false {
+            return "Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have."
+        }
         switch tool {
         case .dictate:
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
@@ -228,12 +269,15 @@ struct WorkbenchControlContext {
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
         case .snapAndTalk:
             if readback.isCapturing { return "Capturing the display under the pointer…" }
+            if !readback.screenPermissionGranted && !readback.isRecording {
+                return "Screen Recording is off for Workbench. Saved sessions and narration stay available; Snap & Talk shows how to allow it."
+            }
             let count = readback.activeSections.count
             let captured = "\(count) " + (count == 1 ? "capture" : "captures")
             return readback.hasPendingTranscriptions ? captured + " · transcribing narration…" : readback.sessionURL == nil ? "Capture a screen, then explain it." : captured + " in this session"
         case .annotate: return stage.isDrawing ? stage.drawingToolTitle + " · Stop keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
         case .present: return stage.isPresenting ? "End the scene; it stays saved." : "Present your selected device scene."
-        case .persona: return stage.hasActivePersona ? "Hide the persona without ending the scene." : "Show a prepared persona. Organise cards in Workbench."
+        case .persona: return state.personaDetail
         case .timer: return stage.hasTimerSession ? stage.timerText : "Start your saved timer."
         case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }

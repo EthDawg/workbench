@@ -16,16 +16,21 @@ struct ContentView: View {
     @State private var correctionSeed = ""
     @State private var correctionDraft = ""
     @State private var confirmingRecoveryDiscard = false
+    /// On Read, a stopped reading shows beside Listen with Retry, not in the banner as well.
+    private var bannerError: String? {
+        guard let error = model.error else { return nil }
+        if model.page == "speak", let failure = model.readingFailure, error == failure.message { return nil }
+        return error
+    }
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 24) {
-                if let error = model.error {
+                if let error = bannerError {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                         Text(error).font(.system(size: 12)).textSelection(.enabled)
                         Spacer()
-                        if model.canRetryReading { Button("Retry") { model.retryReading() }.controlSize(.small) }
-                        Button { model.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss error")
+                        Button { model.dismissError() } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss error")
                     }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 }
                 Group {
@@ -196,12 +201,21 @@ struct ContentView: View {
         }.font(.system(size: 10)).foregroundStyle(.tertiary)
     }
 
-    private var speak: some View {
+    /// While text waits for Replace reading or Keep current, the page scrolls,
+    /// so the incoming text, the choice and the current draft all stay readable
+    /// in a small window. Otherwise the draft fills the page as before.
+    @ViewBuilder private var speak: some View {
+        if model.pendingReadingSelection != nil { ScrollView { speakPage.padding(.trailing, 12) } }
+        else { speakPage }
+    }
+
+    private var speakPage: some View {
         VStack(alignment: .leading, spacing: 24) {
             heading("Give your words a voice.", "Paste something to hear it aloud, or save a reading to take with you.")
             if let selection = model.pendingReadingSelection {
                 ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
-                                           replacingDisabled: model.rendering,
+                                           replacingDisabled: !model.canReplaceReading,
+                                           waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
                                            keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
             }
             ReadingProviderView(model: model)
@@ -232,6 +246,15 @@ struct ContentView: View {
                 ReadingPlaybackStrip(elapsed: model.playbackTime, duration: model.audioDuration, renderingAhead: model.renderingAhead,
                                      seek: model.seekReading, skip: model.skipReading)
                     .disabled(!model.canSeekReading)
+            } else if let failure = model.readingFailure {
+                HStack(spacing: 10) {
+                    Label(failure.message, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(.orange)
+                    Spacer()
+                    Button("Retry") { model.retryReading() }.disabled(!model.canRetryReading)
+                        .accessibilityHint("Makes new audio and reads from the start")
+                    Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                        .accessibilityLabel("Dismiss reading error")
+                }
             }
             HStack(spacing: 12) {
                 Button { model.listen() } label: { Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill") }
@@ -334,17 +357,33 @@ struct DictionaryView: View {
     @ObservedObject var model: AppModel
     @State private var heard = ""
     @State private var written = ""
+    @State private var saveError: String?
+    /// What saving the fields would do, decided by the same rule as Remember correction.
+    private var change: Result<CorrectionRuleChange, Error>? {
+        guard !heard.isEmpty, !written.isEmpty else { return nil }
+        return Result { try CorrectionRule.change(heard: heard, written: written, replacements: model.replacements) }
+    }
     var body: some View {
+        let change = self.change
+        let pending = try? change?.get()
         VStack(alignment: .leading, spacing: 24) {
             Text("Your words, your way.").font(.system(size: 34, weight: .semibold)).tracking(-1)
             Text("Correct names and specialist terms after transcription. Matches whole words and phrases, ignoring case.")
                 .font(.system(size: 13)).foregroundStyle(.secondary)
-            HStack(alignment: .bottom, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) { Text("WHEN IT HEARS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. git hub", text: $heard) }
-                Image(systemName: "arrow.right").padding(.bottom, 7).foregroundStyle(mint)
-                VStack(alignment: .leading, spacing: 8) { Text("WRITE THIS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. GitHub", text: $written) }
-                Button("Add") { model.addReplacement(heard: heard, written: written); heard = ""; written = "" }.disabled(heard.trimmingCharacters(in: .whitespaces).isEmpty || written.trimmingCharacters(in: .whitespaces).isEmpty)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) { Text("HEARD").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. git hub", text: $heard).accessibilityLabel("Heard") }
+                    Image(systemName: "arrow.right").padding(.bottom, 7).foregroundStyle(mint)
+                    VStack(alignment: .leading, spacing: 8) { Text("WRITE INSTEAD").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. GitHub", text: $written).accessibilityLabel("Write instead") }
+                    Button(pending?.updatesExisting == true ? "Update" : "Add") { save(pending) }
+                        .disabled(pending == nil || pending?.isAlreadySaved == true)
+                }
+                if let note = note(for: change) {
+                    Text(note.text).font(.system(size: 12)).foregroundStyle(note.warning ? Color.orange : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }.textFieldStyle(.roundedBorder).controlSize(.large).padding(20).background(panelColor, in: RoundedRectangle(cornerRadius: 12))
+            ForEach(CorrectionRule.conflicts(in: model.replacements), id: \.[0].id) { rules in conflict(rules) }
             if model.replacements.isEmpty {
                 Text("No corrections yet. Add a name or phrase above when you need one.").font(.system(size: 12)).foregroundStyle(.secondary)
             }
@@ -357,6 +396,58 @@ struct DictionaryView: View {
                 }
             }
         }
+        .onChange(of: heard) { _, _ in saveError = nil }
+        .onChange(of: written) { _, _ in saveError = nil }
+    }
+
+    private func save(_ change: CorrectionRuleChange?) {
+        guard let change else { return }
+        do {
+            if change.updatesExisting { try model.updateReplacement(heard: heard, written: written) }
+            else { try model.addReplacement(heard: heard, written: written) }
+            heard = ""; written = ""; saveError = nil
+        } catch { saveError = error.localizedDescription }
+    }
+
+    /// The saved value before Update, a validation problem, or nothing for a new phrase.
+    private func note(for change: Result<CorrectionRuleChange, Error>?) -> (text: String, warning: Bool)? {
+        if let saveError { return (saveError, true) }
+        switch change {
+        case .none: return nil
+        case .failure(CorrectionRuleError.duplicateRules(let heard, let count)):
+            return ("“\(heard)” has \(count) rules. Choose the spelling to keep below.", true)
+        case .failure(let error): return (error.localizedDescription, true)
+        case .success(let change):
+            if change.isAlreadySaved { return ("Already in your dictionary.", false) }
+            guard let previous = change.previousRule else { return nil }
+            return ("“\(previous.heard)” currently writes “\(previous.written)”. Update changes future dictations only.", false)
+        }
+    }
+
+    /// Rules saved by earlier versions can share a phrase. The card names what
+    /// dictation writes for it today, from every rule in order, shows every
+    /// value and lets one explicit choice settle it.
+    private func conflict(_ rules: [Replacement]) -> some View {
+        let spellings = rules.map(\.written).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(spellings.count > 1
+                  ? "“\(rules[0].heard)” has \(rules.count) rules. Dictation writes “\(CorrectionRule.currentOutput(for: rules[0].heard, in: model.replacements))”."
+                  : "“\(rules[0].heard)” is saved \(rules.count) times.", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 13, weight: .medium))
+            Text("Keep one spelling. Only this phrase’s other rules are removed.")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(spellings, id: \.self) { spelling in
+                    Button(spellings.count > 1 ? "Keep “\(spelling)”" : "Keep one") {
+                        guard let chosen = rules.first(where: { $0.written == spelling }) else { return }
+                        do { try model.resolveReplacementConflict(keeping: chosen) }
+                        catch { model.error = error.localizedDescription }
+                    }.accessibilityLabel("Keep \(spelling) for \(rules[0].heard)")
+                }
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -364,19 +455,21 @@ struct ReadingSelectionReviewCard: View {
     let selection: ReadingSelectionImport
     let limitMessage: String?
     var replacingDisabled = false
+    /// Why Replace reading is unavailable for now, shown under the choice.
+    var waitReason: String? = nil
     let keep: () -> Void
     let replace: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Selected text is ready to review", systemImage: "text.quote")
+            Label("\(selection.origin.name) is ready to review", systemImage: "text.quote")
                 .font(.headline).foregroundStyle(mint)
             ScrollView {
                 Text(selection.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                    .accessibilityLabel("Imported selected text")
+                    .accessibilityLabel("Text to review")
                     .accessibilityValue(selection.text)
-            }.frame(maxHeight: 120).padding(12).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            Text("Your current reading stays unchanged until you choose Replace reading. Keep current discards only this imported selection.")
+            }.frame(minHeight: 56, maxHeight: 120).padding(12).background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            Text("Your current reading stays unchanged until you choose Replace reading. " + selection.origin.keepNote)
                 .font(.caption).foregroundStyle(.secondary)
             if let limitMessage {
                 Label(limitMessage, systemImage: "exclamationmark.triangle.fill")
@@ -386,7 +479,10 @@ struct ReadingSelectionReviewCard: View {
                 Button("Keep current", action: keep)
                 Button("Replace reading", action: replace)
                     .buttonStyle(PrimaryButton()).disabled(replacingDisabled)
-                    .accessibilityHint("Replaces the current reading draft. It does not start audio or send text online.")
+                    .accessibilityHint("Replaces the reading draft and stops any reading in progress. It does not start audio or send text online.")
+            }
+            if let waitReason {
+                Label(waitReason, systemImage: "hourglass").font(.caption).foregroundStyle(.secondary)
             }
         }.padding(16).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain)

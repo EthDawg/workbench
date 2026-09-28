@@ -260,6 +260,22 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--draw-page-only"] {
+            // Views only: no start(), overlays, monitors or shortcut registration.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let drawPage = DrawPageTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("embedded Draw page shows no inactive palette settings", drawPage.testEmbeddedDrawPageShowsNoInactivePaletteSettings)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--drawing-concurrency-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -328,6 +344,26 @@ struct TestRunner {
             let tests: [(String, () throws -> Void)] = [
                 ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
                 ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--timer-transport-only"] {
+            // Coordinator only: no global shortcut, chime or saved preference outside a temporary folder.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let timerTransport = TimerTransportTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
+                ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
+                ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
+                ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone)
             ]
             for (name, test) in tests {
                 let before = assertionFailures
@@ -408,6 +444,7 @@ struct TestRunner {
         let personaShown = PersonaShownTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
+        let timerTransport = TimerTransportTests()
         let sceneSync = SceneSyncAdapterTests()
         let sceneList = SceneListTests()
         let sceneListTests: [(String, () throws -> Void)] = [
@@ -432,7 +469,9 @@ struct TestRunner {
             ("backdrop failed save rollback and changed-image rejection", backdrop.testCommitFailureCleansOnlyNewCopyAndChangedSavedImageRejects),
             ("backdrop preview and saved composition pixels", backdrop.testPreviewAndSavedRenderingAtSameAspectKeepForeground)
         ]
+        let drawPage = DrawPageTests()
         var tests: [(String, () throws -> Void)] = [
+            ("embedded Draw page shows no inactive palette settings", drawPage.testEmbeddedDrawPageShowsNoInactivePaletteSettings),
             ("board export pixels orientation text and Retina", boardExport.testBoardPixelsOrientationTextAndRetinaScale),
             ("board snapshot file bounds and invalid input", boardExport.testSnapshotPersistenceBoundsAndInvalidInput),
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),
@@ -481,6 +520,10 @@ struct TestRunner {
             ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
             ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles),
             ("timer native close and reopen placement", timerPlacement.testNativeTimerReopensAtItsSavedAnchor),
+            ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
+            ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
+            ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
+            ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),

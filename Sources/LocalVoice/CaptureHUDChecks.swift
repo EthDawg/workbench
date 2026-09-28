@@ -62,6 +62,37 @@ enum CaptureHUDChecks {
         try check(CaptureHUDLayout.size(recording: false, preview: true, expanded: false) == CaptureHUDLayout.compact, "microphone-off preview uses the actual compact layout")
         let legacy = NSPoint(x: 100, y: 320)
         try check(CapturePanelPlacement.origin(saved: legacy, screens: [main], preferred: main) == legacy, "legacy free placement remains unchanged")
+
+        // A dictation that heard no speech is routine: its cue goes within two
+        // seconds unless the person holds it; a technical failure stays (#156).
+        let shown = Date(timeIntervalSinceReferenceDate: 1_000)
+        var routine = CaptureCueClock(routine: true, shownAt: shown)
+        try check(CaptureCueClock.routineSeconds < 2 && routine.deadline == shown.addingTimeInterval(CaptureCueClock.routineSeconds),
+                  "a routine cue is timed to go within two seconds")
+        try check(!routine.isExpired(at: shown.addingTimeInterval(1.5)) && routine.isExpired(at: shown.addingTimeInterval(2)),
+                  "a routine cue is gone by two seconds without a click")
+        routine.hold(true, at: shown.addingTimeInterval(1))
+        try check(routine.isHeld && routine.deadline == nil && !routine.isExpired(at: shown.addingTimeInterval(60)),
+                  "hovering the cue, or VoiceOver on it, holds it for as long as that lasts")
+        routine.hold(true, at: shown.addingTimeInterval(30))
+        routine.hold(false, at: shown.addingTimeInterval(60))
+        try check(!routine.isHeld && abs((routine.deadline?.timeIntervalSince(shown) ?? 0) - (60 + CaptureCueClock.routineSeconds - 1)) < 0.0001,
+                  "letting go resumes the time that was left, once")
+        let technical = CaptureCueClock(routine: false, shownAt: shown)
+        try check(technical.deadline == nil && !technical.isExpired(at: .distantFuture), "a technical failure never goes by itself")
+        try check(CaptureHUDLayout.size(recording: false, preview: false, expanded: true, cue: true) == CaptureHUDLayout.compact
+                  && CaptureHUDLayout.size(recording: false, preview: false, expanded: false) == CaptureHUDLayout.message,
+                  "the cue keeps the compact size of the recording controls; the message layout stays for the explicit panel")
+        try check(CaptureHUDLayout.size(recording: true, preview: false, expanded: true, cue: true) == CaptureHUDLayout.expanded,
+                  "a cue never changes live recording controls")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading,
+                  "a stopped reading keeps its controls even with the toolbar hidden")
+        let cues = [CaptureCue(reason: .tooShort), CaptureCue(reason: .tooQuiet),
+                    CaptureCue(reason: .nothingRecognised(keptAudio: true)), CaptureCue(reason: .nothingRecognised(keptAudio: false))]
+        let words = cues.flatMap { [$0.message, $0.hint, $0.status] }.joined(separator: " ")
+        try check(cues.allSatisfy { $0.message == "No speech heard" && $0.hint.count <= 40 } && !words.lowercased().contains("attention")
+                  && !words.contains("—") && !words.contains("–") && !words.contains(" - "),
+                  "the cue says No speech heard with a short hint, never Needs attention, with no dash punctuation")
         print("CAPTURE_HUD_CHECKS_OK: \(count) checks passed")
     }
 }
