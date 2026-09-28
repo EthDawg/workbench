@@ -903,8 +903,8 @@
     "id": "LocalVoice.WorkbenchControlTool.WorkbenchControlState.hover-title.operation",
     "surface": "floating toolbar hover action",
     "label": null,
-    "expression": "ToolbarNextAction . title ( operation , live : live ( tool . mode ?? . snap ) )",
-    "note": "Runtime label from ToolbarNextAction . title ( operation , live : live ( tool . mode ?? . snap ) ); no rendered text assumed.",
+    "expression": "nextAction ( tool ) ! . title",
+    "note": "Quality: existing capability rows name only their own current operation. The shared operation vocabulary is unchanged; this expression reads the capability-scoped projection.",
     "kind": "action",
     "belongsTo": "app"
   },
@@ -1626,7 +1626,7 @@
     "surface": "quick panel rows",
     "label": null,
     "expression": "state . actionTitle ( tool )",
-    "note": "Runtime label from state . actionTitle ( tool ); no rendered text assumed.",
+    "note": "Quality: existing rows use only their own capability state and owner admission, with a guard against obsolete clicks. No new entry or preference. Runtime label from state . actionTitle ( tool ); no rendered text assumed.",
     "kind": "action",
     "belongsTo": "app"
   },
