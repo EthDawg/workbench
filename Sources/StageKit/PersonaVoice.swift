@@ -178,7 +178,9 @@ final class PersonaVoiceAnalyzer {
 
     /// The room is what stays steady. A quieter room is learned at once; steady
     /// sound (a fan, hiss or hum) within a quarter to a whole second; anything
-    /// else only creeps in, so a voice never becomes the room.
+    /// else only creeps in, so a voice never becomes the room. Steady voiced
+    /// sound, such as a drawn-out "uhhh", never lifts the room to within 12 dB
+    /// of the presenter's usual level, so the outline stays lit through it.
     private func learnRoom(_ decibels: Float, pitch: Float, lag: Int, seconds: Double) {
         recent.append((decibels, pitch, lag))
         if recent.count > longSteadyCount { recent.removeFirst(recent.count - longSteadyCount) }
@@ -205,14 +207,18 @@ final class PersonaVoiceAnalyzer {
         } else if loose.0 && unvoiced {
             noiseFloor += (loose.mean - noiseFloor) * Float(1 - exp(-seconds / 0.2))
         } else if short.0 && tone {
-            noiseFloor += (short.mean - noiseFloor) * Float(1 - exp(-seconds / 0.2))
+            noiseFloor += max(0, voicedCeiling(short.mean) - noiseFloor) * Float(1 - exp(-seconds / 0.2))
         } else if long.0 {
-            noiseFloor += (long.mean - noiseFloor) * Float(1 - exp(-seconds / 0.2))
+            let target = unvoiced ? long.mean : voicedCeiling(long.mean)
+            noiseFloor += max(0, target - noiseFloor) * Float(1 - exp(-seconds / 0.2))
         } else {
             noiseFloor += min(eased - noiseFloor, 0.25 * Float(seconds))
         }
         noiseFloor = min(-20, max(-100, noiseFloor))
     }
+    /// How high steady voiced sound may lift the room: 12 dB below the
+    /// presenter's usual level once it is known.
+    private func voicedCeiling(_ level: Float) -> Float { speakingLevel.map { min(level, $0 - 12) } ?? level }
 
     /// How clearly the last ~40 ms repeats at a speaking pitch: 1 for a steady
     /// voiced tone, well under a half for noise, clicks and whispering.

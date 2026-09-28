@@ -66,6 +66,8 @@ struct TestRunner {
                 ("persona voice outline: steady noise, typing and hum stay quiet", latency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
                 ("persona voice outline: raised voice reads as loud", latency.testRaisedVoiceShowsLoudAndUsualVoiceShowsNormal),
                 ("persona voice outline state eases and settles", latency.testOutlineStateEasesAndSettlesWithoutFrames),
+                ("persona voice outline lit through a held vowel", latency.testHeldVowelKeepsTheOutlineLit),
+                ("persona voice outline: chimes, beeps and music settle", latency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
                 ("optional Mac voices through the voice outline", latency.testSpokenSentencesFromSay),
                 ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders)
             ]
@@ -452,6 +454,8 @@ struct TestRunner {
             ("persona voice outline: steady noise, typing and hum stay quiet", personaVoiceLatency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
             ("persona voice outline: raised voice reads as loud", personaVoiceLatency.testRaisedVoiceShowsLoudAndUsualVoiceShowsNormal),
             ("persona voice outline state eases and settles", personaVoiceLatency.testOutlineStateEasesAndSettlesWithoutFrames),
+            ("persona voice outline lit through a held vowel", personaVoiceLatency.testHeldVowelKeepsTheOutlineLit),
+            ("persona voice outline: chimes, beeps and music settle", personaVoiceLatency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
             ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))

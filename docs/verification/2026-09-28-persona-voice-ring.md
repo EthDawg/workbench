@@ -78,7 +78,9 @@ Words that open on "sh" or "f" light at their vowel, within 133 ms of it and 217
 
 With `WORKBENCH_VOICE_SAY=1` the same harness also measures 32 sentences from four Mac voices, written by `say -o` to a temporary folder and never played. At usual and soft levels: onset median 17 ms, 95th percentile 117 ms, worst 217 ms (sentences opening on "sh", "f" or "h"); from the first voiced frame, worst 17 ms usual and 117 ms soft; back to rest median 283 ms, worst 400 ms.
 
-Known limits: a steady 120 Hz tone present when the outline turns on shows for about 0.7 s before it is learned (mains hum at 50 or 60 Hz does not); a loud hiss concentrated above 4 kHz reads as an "s"; whispered speech lights only at its "s" sounds.
+Held vowels and periodic sound that is not speech, from review: a vowel held 1 s or 1.5 s mid-sentence first lifted the room 13–14 dB and dimmed the outline (lit for 86–95% of the sentence). Steady voiced sound may now lift the room no closer than 12 dB below the presenter's usual level; the outline stays lit through vowels held 0.6, 1 and 1.5 s, returning to rest within 300 ms after. Any periodic sound in the voice band reads as voiced, so it lights the outline while it sounds: a chime for 0.87 s, a 0.2 s beep for 0.48 s, a 2.4 s tune for 2.28 s, each settling within half a second after. A held C major chord does not repeat at a speaking pitch and never lit it. Call audio through the speakers is a voice to the analyser; headphones keep it out.
+
+Known limits: a steady 120 Hz tone present when the outline turns on shows for about 0.7 s before it is learned (mains hum at 50 or 60 Hz does not), and once a voice has been heard a steady tone as loud as it keeps the outline lit while it sounds; a loud hiss concentrated above 4 kHz reads as an "s"; whispered speech lights only at its "s" sounds.
 
 ### Native measurement
 
