@@ -1001,8 +1001,15 @@ enum SurfaceGallery {
         defer { narrow.contentViewController = nil; narrow.close() }
         model.page = "settings"; settle(narrow.contentView?.superview ?? narrow.contentView!)
         model.focusRequest = PageFocusRequest(target: .dictateOptions)
-        let (options, optionsSize) = try renderPage("dictate", in: narrow)
+        model.page = "dictate"
+        let optionsFrame = narrow.contentView?.superview ?? narrow.contentView!
+        // The page takes the request asynchronously. Wait for it rather than one fixed settle, which
+        // a busy runner can outlast; the check still fails if the request is never taken.
+        let taken = Date().addingTimeInterval(3)
+        repeat { settle(optionsFrame, seconds: 0.1) } while model.focusRequest != nil && Date() < taken
         guard model.focusRequest == nil else { throw VoiceError.message("Dictate did not take Settings' request to show its options.") }
+        settle(optionsFrame)
+        let (options, optionsSize) = (try snapshot(optionsFrame), optionsFrame.bounds.size)
         shots.append(try save(options, id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(optionsSize.width)) × \(Int(optionsSize.height)) pt",
                               detail: "The page opens scrolled to its Options, where VoiceOver starts.", file: "page-dictate-state-options-focused-\(theme).png", to: output))
         return shots
