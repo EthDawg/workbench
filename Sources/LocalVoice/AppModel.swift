@@ -94,7 +94,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var error: String?
     @Published var transcript = "" { didSet { draftRevision &+= 1; persist() } }
     @Published var speechText = "" { didSet { persist() } }
-    @Published var history: [Transcript] = []
+    @Published var history: [Transcript] = [] { didSet { recordFirstDictation() } }
     let historyLibrary = WorkbenchHistoryModel(directory: Workbench.supportDirectory(component: "LocalVoice"))
     let handoffJobs = HandoffJobsModel(directory: Workbench.supportDirectory(component: "Handoffs"))
     lazy var meetings = MeetingModel(engine: engine, directory: Workbench.supportDirectory(component: "Meetings"))
@@ -191,6 +191,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard readingGenerationActive else { return }
         let mayBeBilled = readingProvider == .speko
         let task = readingTask
+        if savingAudioID == readingGenerationID { savingAudioID = nil }
         readingGenerationID = nil
         readingTask = nil
         readingGenerationActive = false
@@ -201,6 +202,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
     }
     @Published private(set) var readingGenerationActive = false
+    /// Save audio's whole run, from making the audio to writing the file.
+    @Published private(set) var savingAudioID: UUID?
+    var savingAudio: Bool { savingAudioID != nil }
     @Published var cloudRequestActive = false
     @Published var rendering = false
     @Published var playing = false
@@ -208,6 +212,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var audioDuration = 0.0
     @Published var playbackTime = 0.0
     @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
+    @Published private(set) var readingFailure: ReadingFailure?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
     var retryCaptureLabel: String { captureRecovery.pending?.capture == nil ? "Retry transcription" : "Retry saving" }
@@ -284,6 +289,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         do {
             let state = try store.load()
             transcript = state.draft; speechText = state.speechText; history = state.history
+            // Observers do not run inside init, so a loaded History records it here.
+            recordFirstDictation()
             rawTranscript = state.rawDraft ?? state.draft
             replacements = state.replacements; voice = state.voice; rate = state.rate
             let removalIssues = MeetingTranscriptRemoval.reconcile(
@@ -332,44 +339,105 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         preparing = false
     }
 
+    /// The one owner of text arriving in Read: the macOS Service, History and
+    /// Saved resources all come here. An empty draft or the same text needs no
+    /// choice; a different draft waits behind Replace reading / Keep current,
+    /// with the current reading untouched. Nothing here starts audio or sends
+    /// text online.
     func receiveReadingSelection(_ selection: ReadingSelectionImport) {
         error = nil
         clipboardReceipt.dismissHUD()
         if ReadingSelectionImport.needsReview(current: speechText, incoming: selection.text) {
             pendingReadingSelection = selection
-            status = "Selected text is ready. Choose Replace reading or Keep current."
+            status = "\(selection.origin.name) is ready. Choose Replace reading or Keep current."
         } else {
             pendingReadingSelection = nil
             if speechText != selection.text { applyReadingSelection(selection) }
-            else { status = "The selected text already matches this reading draft." }
+            else { status = "\(selection.origin.name) already matches this reading draft." }
         }
         page = "speak"
         onShowEditor?("speak")
     }
 
-    func replaceReadingWithSelection() {
-        guard !rendering, let selection = pendingReadingSelection else { return }
-        applyReadingSelection(selection)
+    /// Read aloud in History and Saved resources.
+    func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
+        do { receiveReadingSelection(try ReadingSelectionImport(text: text, origin: origin)) }
+        catch {
+            page = "speak"; onShowEditor?("speak")
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Home's Read tile: the click is the choice. Different text replaces the
+    /// reading through the same step as Replace reading, then Listen starts.
+    /// The same text is not restarted: paused resumes, playing carries on.
+    func listen(to text: String) {
+        // Only replace the draft when the reading can start, so it never waits unheard.
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
+        guard phase == .idle else { return }
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        let setAside = pendingReadingSelection != nil
         pendingReadingSelection = nil
+        if text != speechText {
+            let note = endReadingForNewText()
+            speechText = text
+            let notes = [setAside ? "Reading the copied text instead of the text waiting for review." : nil, note].compactMap { $0 }
+            if !notes.isEmpty { status = notes.joined(separator: " ") }
+        }
+        guard !playing else { return }
+        listen()
+    }
+
+    /// Replace ends a reading that is generating, playing or paused, but waits
+    /// for Save audio, which the person chose, to finish.
+    var canReplaceReading: Bool { !savingAudio }
+    static let replaceWaitsForSave = "Save audio is still making its file. Replace reading when it finishes."
+
+    func replaceReadingWithSelection() {
+        guard pendingReadingSelection != nil else { return }
+        guard canReplaceReading, let selection = pendingReadingSelection else { status = Self.replaceWaitsForSave; return }
+        applyReadingSelection(selection)
     }
 
     func keepCurrentReading() {
-        guard pendingReadingSelection != nil else { return }
+        guard let selection = pendingReadingSelection else { return }
         pendingReadingSelection = nil
-        status = "Current reading kept. The imported selection was not saved or sent."
+        status = "Current reading kept. " + selection.origin.keptNote
     }
 
     func readingLimitMessage(for text: String) -> String? {
         guard text.count > readingLimit else { return nil }
         let provider = readingProvider == .speko ? "Speko" : "Mac reading"
-        return "This selection has \(text.count.formatted()) characters. \(provider) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
+        return "This text has \(text.count.formatted()) characters. \(provider) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
     }
 
     private func applyReadingSelection(_ selection: ReadingSelectionImport) {
-        invalidateAudio()
+        let note = endReadingForNewText()
+        pendingReadingSelection = nil
         speechText = selection.text
-        status = readingLimitMessage(for: selection.text)
-            ?? "Selected text imported for review. Choose Listen when you are ready."
+        status = [readingLimitMessage(for: selection.text) ?? "\(selection.origin.name) is ready. Choose Listen to hear it.", note]
+            .compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// New text ends everything the old text started, so nothing from it can
+    /// land later over the new text: its generation, through the same
+    /// cancellation as Cancel generation (which also stops a `say` process),
+    /// then playback, progress and reusable audio. A late result from the old
+    /// generation fails its generation check and is dropped. Returns Speko's
+    /// billing note when an online generation stopped.
+    private func endReadingForNewText() -> String? {
+        clearReadingFailure()
+        var note: String?
+        if readingGenerationActive {
+            if readingProvider == .speko { note = "Speko may still bill text already accepted." }
+            cancelReading()
+        } else if let task = readingTask {
+            // A Listen whose generation has not begun yet.
+            readingGenerationID = nil; readingTask = nil; rendering = false
+            task.cancel()
+        }
+        invalidateAudio()
+        return note
     }
 
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {
@@ -382,7 +450,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
-        captureFailure = nil
+        captureFailure = nil; dismissCaptureCue()
         previewingPanel = false
         stopPlayback()
         captureUsesHoldShortcut = fromShortcut && preferences.capture == .hold
@@ -457,7 +525,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
         guard duration >= 0.35, peakPower > -55 else {
             discardRecordingRecovery()
-            fail("No clear speech was captured. Check Sound → Input. For a MacBook’s built-in microphone, open the lid."); return
+            endWithoutSpeech(duration < 0.35 ? .tooShort : .tooQuiet); return
         }
         transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
         recordingSettings = nil
@@ -540,7 +608,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         let shortcutID = shortcutRequest.id
         let invocation = UUID(); transcriptionID = invocation
         clipboardReceipt.clear()
-        captureFailure = nil
+        captureFailure = nil; dismissCaptureCue()
         previewingPanel = false
         captureProcessingLabel = "Preparing transcription…"
         phase = .transcribing; status = "Turning speech into text…"; error = nil; canRetry = false; onPhaseChange?()
@@ -564,7 +632,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 guard transcriptionID == invocation else { throw CancellationError() }
                 if let shortcutID, shortcutRequest.id != shortcutID { throw CancellationError() }
                 let result = TextRules.apply(cleaned.text, replacements: settings.replacements)
-                guard !result.isEmpty else { throw VoiceError.message("No speech was recognised. Try speaking closer to the microphone.") }
+                guard !result.isEmpty else {
+                    // Silence, noise or a sound that is not speech came back as
+                    // no words. Our own recording stays for Retry on Dictate.
+                    canRetry = temporary && shortcutID == nil
+                    endWithoutSpeech(.nothingRecognised(keptAudio: temporary)); return
+                }
                 guard try commitRecognizedCapture(raw: raw, text: result, seconds: duration,
                     method: cleaned.method, ownedAudio: temporary ? url : nil, invocation: invocation) else { return }
                 accessibilityGranted = AXIsProcessTrusted()
@@ -637,6 +710,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             guard try captureRecovery.audioURL(for: record)?.standardizedFileURL == ownedAudio.standardizedFileURL else { throw CaptureRecoveryError.invalid }
         }
         rawTranscript = raw; transcript = text; cleanupMethod = method
+        quietCapturesInARow = 0
         // retain keeps the result in memory even when the independent journal fails.
         do { try captureRecovery.retain(record) }
         catch {
@@ -733,7 +807,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     private func copyTextWithReceipt(_ text: String) {
         guard !text.isEmpty else { return }
-        captureFailure = nil
+        captureFailure = nil; dismissCaptureCue()
         let count = TextDelivery.copy(text)
         let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
         status = outcome.message
@@ -743,6 +817,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// Every door opens History on All, even when History is already showing.
     /// Dictate's own option asks for Transcripts, and Hand off for its task.
     func openHistory(_ door: HistoryDoor = HistoryDoor()) { historyDoor = door; page = "history" }
+    /// Records the first dictation the moment History holds a transcript,
+    /// whichever door made it (the toolbar, a shortcut, the Dictate page or a
+    /// meeting), so removing transcripts later never brings Home's guide back (#15).
+    private func recordFirstDictation() {
+        if let next = HomeJourney(transcripts: history.count, guide: preferences.firstDictationGuide).guideToSave {
+            preferences.firstDictationGuide = next
+        }
+    }
     func savePrompt(_ text: String) { guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }; showLibrary(); library.newPrompt(text) }
     func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text) }
     func showPanelPreview() {
@@ -758,7 +840,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         let revision = draftRevision
         let settings = captureSettings()
         let invocation = UUID(); transcriptionID = invocation
-        clipboardReceipt.dismissHUD(); captureFailure = nil
+        clipboardReceipt.dismissHUD(); captureFailure = nil; dismissCaptureCue()
         previewingPanel = false; destination = nil
         captureProcessingLabel = "Text cleanup · on this Mac"
         phase = .cleaning; status = "Tidying your words…"; error = nil
@@ -919,6 +1001,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
         guard !rendering, phase == .idle else { return }
         stopVoicePreview()
+        clearReadingFailure()
         if playing {
             player?.pause(); playbackTime = player?.currentTime ?? 0
             playing = false; paused = true; status = "Reading paused."; return
@@ -1063,15 +1146,24 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if let previous = audio, previous !== playingTrack { previous.discard() }
         audio = track
     }
+    var canSaveAudio: Bool { !rendering && !renderingAhead && !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     func saveAudio() {
-        guard !rendering, !renderingAhead, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard canSaveAudio else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
+        saveAudio(to: destination)
+    }
+    /// The save the person chose. Replace and Home's Read tile wait for it
+    /// rather than cancel it; only Cancel generation ends it early.
+    func saveAudio(to destination: URL) {
+        guard canSaveAudio else { return }
         let generationID = UUID()
         readingGenerationID = generationID
+        savingAudioID = generationID
         rendering = true
         readingTask = Task {
             defer {
+                if savingAudioID == generationID { savingAudioID = nil }
                 if readingGenerationID == generationID {
                     rendering = false; readingGenerationActive = false; cloudRequestActive = false
                     readingTask = nil; readingGenerationID = nil
@@ -1081,7 +1173,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 let url = try await generateAudio(generationID: generationID, complete: true).url
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
-                try await Task.detached { try AudioRenderer.export(url, to: destination) }.value
+                try await AudioRenderer.exportBounded(url, to: destination)
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 status = "Audio saved to \(destination.lastPathComponent)."
@@ -1107,13 +1199,34 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         playingTrack = nil; renderingAhead = false
         if wasActive { status = "Reading stopped." }
     }
-    /// Shown when the playing audio cannot be read. Retry beside it makes new audio.
-    static let readingAudioUnreadable = "The reading stopped because its audio could not be read. Try again to make new audio."
-    var canRetryReading: Bool { error == Self.readingAudioUnreadable && phase == .idle && !rendering && !playing && !paused }
+    /// Why a reading stopped early. Read shows it beside Listen with Retry, and
+    /// the panel and other pages show its message, until Listen, Retry, a
+    /// replaced draft or Dismiss clears it. A later, unrelated error does not.
+    enum ReadingFailure: Equatable {
+        case audioUnreadable
+        var message: String { "The reading stopped because its audio could not be read. Try again to make new audio." }
+    }
+    var canRetryReading: Bool { readingFailure != nil && phase == .idle && !rendering && !playing && !paused }
     func retryReading() {
         guard canRetryReading else { return }
-        error = nil
         listen()
+    }
+    func reportReadingFailure(_ failure: ReadingFailure) {
+        readingFailure = failure
+        error = failure.message
+        announceForAccessibility(failure.message)
+    }
+    /// Dismiss beside Retry: the reading stays stopped, with its text and voice.
+    func dismissReadingFailure() { clearReadingFailure() }
+    /// The error banner's dismiss, which also dismisses a reading failure it shows.
+    func dismissError() {
+        if let failure = readingFailure, error == failure.message { readingFailure = nil }
+        error = nil
+    }
+    private func clearReadingFailure() {
+        guard let failure = readingFailure else { return }
+        if error == failure.message { error = nil }
+        readingFailure = nil
     }
     func readingPlayerDidFinish(_ finished: ReadingPlayer, successfully flag: Bool) {
         guard self.player === finished else { return }
@@ -1123,7 +1236,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             // Audio that could not be read is not reused: Retry or Listen makes
             // it again. The text, voice and pace stay as they were.
             if let track, audio === track { track.discard(); audio = nil }
-            error = Self.readingAudioUnreadable
+            reportReadingFailure(.audioUnreadable)
             return
         }
         status = flag ? "Finished reading." : "Playback interrupted."
@@ -1136,11 +1249,37 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             self.captureFailure = message; self.fail(message)
         }
     }
-    func addReplacement(heard: String, written: String) {
-        let heard = heard.trimmingCharacters(in: .whitespacesAndNewlines), written = written.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !heard.isEmpty, !written.isEmpty else { return }
+    // Dictionary saves through the same validation and phrase identity as Remember
+    // correction. Add never saves a phrase twice, and a new output for a saved
+    // phrase needs the explicit Update. Neither rewrites the current draft.
+    func addReplacement(heard: String, written: String) throws {
+        let change = try CorrectionRule.change(heard: heard, written: written, replacements: replacements)
+        guard !change.isAlreadySaved else { return }
+        guard change.isNew else {
+            throw VoiceError.message("“\(change.rule.heard)” is already in your dictionary as “\(change.previousRule?.written ?? "")”. Choose Update to change it.")
+        }
         rememberedCorrection = nil
-        replacements.append(Replacement(heard: heard, written: written)); persist()
+        replacements = change.updatedRules; persist()
+        status = "Added “\(change.rule.heard)” to your dictionary."
+    }
+    /// Keeps the saved rule's identity and place, so unrelated rules keep their order.
+    func updateReplacement(heard: String, written: String) throws {
+        let change = try CorrectionRule.change(heard: heard, written: written, replacements: replacements)
+        guard !change.isAlreadySaved else { return }
+        guard change.updatesExisting else {
+            throw VoiceError.message("“\(change.rule.heard)” is not in your dictionary yet. Choose Add to save it.")
+        }
+        rememberedCorrection = nil
+        replacements = change.updatedRules; persist()
+        status = "Updated “\(change.rule.heard)”. Future dictations write “\(change.rule.written)”."
+    }
+    /// Resolves one phrase's conflicting rules with the chosen output. Only that
+    /// phrase's other rules are removed.
+    func resolveReplacementConflict(keeping chosen: Replacement) throws {
+        let resolved = try CorrectionRule.resolvingConflict(keeping: chosen, in: replacements)
+        rememberedCorrection = nil
+        replacements = resolved; persist()
+        status = "Kept “\(chosen.written)”. The other rules for that phrase were removed."
     }
     func removeReplacement(_ item: Replacement) { rememberedCorrection = nil; replacements.removeAll { $0.id == item.id }; persist() }
 
@@ -1252,9 +1391,68 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return result
     }
     func fail(_ text: String) {
+        dismissCaptureCue()
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
         error = text; phase = .idle; status = "Needs attention"; onPhaseChange?()
+    }
+    /// A dictation that ended without words (#156). Routine outcomes are not
+    /// failures: no recovery panel and no error, just a cue in place of the
+    /// recording controls that goes by itself, the same words for VoiceOver,
+    /// and any recording of our own kept for Retry on the Dictate page.
+    /// Failures (permission, microphone, engine or provider, saving and
+    /// recovered recordings) keep going through fail() and the explicit panel.
+    @Published private(set) var captureCue: CaptureCue?
+    private var captureCueClock: CaptureCueClock?
+    private var captureCueExpiry: Task<Void, Never>?
+    var announceForAccessibility: (String) -> Void = { CaptureCueAnnouncement.post($0) }
+    /// Silent captures in a row. A second is more likely a muted or wrong
+    /// microphone, or a closed lid, than a pause, so it gets the explicit panel
+    /// that says where to look instead of another brief cue.
+    private var quietCapturesInARow = 0
+    func endWithoutSpeech(_ reason: CaptureCue.Reason) {
+        if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
+        if quietCapturesInARow >= 2 {
+            quietCapturesInARow = 0
+            fail("No speech heard twice in a row. Check the input in System Settings → Sound, and open the lid of a MacBook.")
+            return
+        }
+        if let id = shortcutRequest.id {
+            // A Shortcuts run gets its reply; a floating cue would only flash for automation.
+            shortcutRequest.finish(id: id, result: .failure(VoiceError.message(CaptureCue.message + ".")))
+            captureFailure = nil; phase = .idle; status = CaptureCue(reason: reason).status; onPhaseChange?()
+            return
+        }
+        captureFailure = nil
+        phase = .idle
+        let cue = CaptureCue(reason: reason)
+        captureCue = cue
+        captureCueClock = CaptureCueClock(routine: true, shownAt: Date())
+        status = cue.status
+        announceForAccessibility(cue.message)
+        scheduleCaptureCueExpiry()
+        onPhaseChange?()
+    }
+    /// Hovering the cue, or VoiceOver on it, pauses its time; letting go resumes it.
+    func holdCaptureCue(_ held: Bool) {
+        guard captureCue != nil, captureCueClock?.isHeld != held else { return }
+        captureCueClock?.hold(held, at: Date())
+        scheduleCaptureCueExpiry()
+    }
+    /// The cue goes; any kept recording stays exactly as it was.
+    func dismissCaptureCue() {
+        captureCueExpiry?.cancel(); captureCueExpiry = nil
+        captureCueClock = nil
+        if captureCue != nil { captureCue = nil; onPhaseChange?() }
+    }
+    private func scheduleCaptureCueExpiry() {
+        captureCueExpiry?.cancel(); captureCueExpiry = nil
+        guard let cue = captureCue, let deadline = captureCueClock?.deadline else { return }
+        captureCueExpiry = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, deadline.timeIntervalSinceNow) * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.captureCue?.id == cue.id else { return }
+            self.dismissCaptureCue()
+        }
     }
     func persist() {
         guard loaded else { return }

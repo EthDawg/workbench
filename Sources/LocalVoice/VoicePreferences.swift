@@ -5,6 +5,18 @@ import StageKit
 enum CaptureMode: String, Codable, CaseIterable { case toggle = "Toggle", hold = "Press & hold" }
 enum DeliveryMode: String, Codable, CaseIterable { case paste = "Paste automatically", clipboard = "Copy to clipboard" }
 
+/// How far Home's first-dictation guide has gone (#15). Offered until someone
+/// chooses Skip for now or finishes a dictation; Show me a first dictation
+/// offers it again. Saved with the other Dictate preferences.
+enum FirstDictationGuide: String, Codable {
+    case offered, skipped, completed
+    /// A value written by a newer build reads as offered instead of failing,
+    /// so it can never reset the other Dictate preferences.
+    init(from decoder: Decoder) throws {
+        self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .offered
+    }
+}
+
 struct VoiceShortcut: Codable, Equatable {
     var keyCode: UInt32 = UInt32(kVK_Space)
     var modifiers: UInt32 = UInt32(controlKey | optionKey)
@@ -76,6 +88,8 @@ struct VoicePreferences: Codable, Equatable {
     /// Workbench has asked macOS for Accessibility approval, which macOS shows
     /// once; later setup opens System Settings. Optional decoding keeps earlier preferences.
     var accessibilityRequested: Bool?
+    // Optional decoding keeps preferences saved before the first-dictation guide; nil reads as offered.
+    var firstDictationGuide: FirstDictationGuide?
     func shortcut(_ id: UInt32) -> VoiceShortcut {
         switch id {
         case 6: readingShortcut ?? VoiceShortcut(enabled: false)
