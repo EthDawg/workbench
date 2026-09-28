@@ -574,7 +574,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 } else {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
                     var delivery = settings.preferences.delivery
-                    if delivery == .paste, destination != nil, shouldDeferDelivery?() == true {
+                    // Without Accessibility approval the text is copied, so there is no paste to wait for.
+                    if delivery == .paste, destination != nil, accessibilityGranted, shouldDeferDelivery?() == true {
                         waitingForDrawing = true
                         captureProcessingLabel = "Finish drawing to paste, or copy now."
                         status = "Text ready. Finish drawing to return to your Mac text field."
