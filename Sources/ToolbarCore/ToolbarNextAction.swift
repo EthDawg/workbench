@@ -42,7 +42,7 @@ public struct ToolbarLiveState: Hashable, Sendable {
     }
 
     /// Whether a mode's own capability is running, whichever mode is selected.
-    /// The glyph dot uses it for the selected mode; the strip for the others.
+    /// The chooser's rows and the launcher's aggregate indicator use it.
     public func isLive(_ mode: ToolbarMode) -> Bool {
         switch mode {
         case .dictate: return dictation != .idle || meetingRecording
@@ -101,8 +101,8 @@ public enum ToolbarOperation: Hashable, Sendable {
 /// function of the live state, with a fixed priority so two identical screens
 /// never read differently: what is consuming your input now, then the cheapest
 /// to undo, then the mode's own session steps and endings, then its start verb.
-/// Work that runs in another mode never claims the label; its chip's dot says
-/// it is live and the glyph menu offers its finish item.
+/// Work that runs in another mode never claims the label; its chooser row says
+/// it is live and More offers its finish item.
 public struct ToolbarNextAction: Equatable, Sendable {
     public var title: String
     public var symbol: String
@@ -137,16 +137,17 @@ public struct ToolbarNextAction: Equatable, Sendable {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// The other modes as chips, each lit when its capability is live.
-    public static func switcher(for live: ToolbarLiveState, key: (ToolbarMode) -> String? = { _ in nil }) -> [ToolbarModeChip] {
-        ToolbarMode.allCases.filter { $0 != live.mode }.map {
-            ToolbarModeChip(mode: $0, isBusy: live.isLive($0), key: key($0))
+    /// The seven tools for the chooser (#134): the chosen one checked, each lit when its
+    /// capability is live, with its key.
+    public static func choices(for live: ToolbarLiveState, key: (ToolbarMode) -> String? = { _ in nil }) -> [ToolbarToolChoice] {
+        ToolbarMode.allCases.map {
+            ToolbarToolChoice(mode: $0, isSelected: $0 == live.mode, isLive: live.isLive($0), key: key($0))
         }
     }
 
     /// The label every mode would show for this live state. The primary keeps
-    /// the widest of them, so a mode switch never moves the strip under the
-    /// pointer that is about to click the next chip.
+    /// the widest of them, so choosing another tool never moves More or the
+    /// accessory beside it.
     public static func titles(across live: ToolbarLiveState) -> [String] {
         ToolbarMode.allCases.map { mode in
             var other = live; other.mode = mode

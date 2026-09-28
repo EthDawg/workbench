@@ -57,15 +57,17 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(ToolbarGallery.activity.first { $0.name == "activity-personas" }?.actionTitle, "Hide personas")
     }
 
-    /// Work started from a key while another mode is selected: the label follows
-    /// the work, the glyph stays quiet and that mode's chip lights instead.
-    func testWorkInAnotherModeLightsItsChipNotTheGlyph() throws {
+    /// Work started from a key while another tool is chosen: the label follows the work, the
+    /// chosen tool stays unlit and the chooser's row for that work lights instead (#134).
+    func testWorkInAnotherToolLightsItsChooserRow() throws {
         let state = try XCTUnwrap(ToolbarGallery.activity.first { $0.name == "activity-drawing-in-dictate" })
         XCTAssertEqual(state.mode, .dictate)
         XCTAssertEqual(state.actionTitle, "Stop drawing")
         XCTAssertFalse(state.isBusy)
-        XCTAssertEqual(state.switcher.filter(\.isBusy).map(\.mode), [.draw])
-        XCTAssertFalse(state.switcher.contains { $0.mode == state.mode }, "the selected mode is the glyph, not a chip")
+        XCTAssertEqual(state.choices.filter(\.isLive).map(\.mode), [.draw])
+        XCTAssertEqual(state.choices.filter(\.isSelected).map(\.mode), [.dictate], "one chosen tool, checked in the chooser")
+        XCTAssertTrue(state.hasLiveWork, "the launcher's one aggregate indicator shows other work")
+        XCTAssertEqual(state.launcherDescription, "Dictate. Also running: Draw")
     }
 
     /// A mode's own ending claims the label only in that mode.
@@ -74,7 +76,7 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(state.mode, .draw)
         XCTAssertEqual(state.actionTitle, "Draw")
         XCTAssertFalse(state.isBusy)
-        XCTAssertEqual(state.switcher.filter(\.isBusy).map(\.mode), [.present])
+        XCTAssertEqual(state.choices.filter(\.isLive).map(\.mode), [.present])
         XCTAssertTrue(state.minimumTitles.contains("End presentation"), "the floor covers the label Present mode would show")
     }
 
@@ -90,15 +92,25 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertNil(ToolbarGallery.modes.first { $0.mode == .dictate }?.accessoryTitle)
     }
 
+    /// At rest every state is the compact mark, and running work shows on it without hovering:
+    /// its indicator is never idle while something runs, in the chosen tool or another (#134).
     func testRunningWorkIsVisibleWithoutHovering() {
-        // Fixtures named "-in-<mode>" show work running in another mode: the
-        // glyph stays quiet there and the chip, hidden at rest, carries the dot.
-        let own = ToolbarGallery.activity.filter { $0.tier == .resting && !$0.name.contains("-in-") }
-        let other = ToolbarGallery.activity.filter { $0.tier == .resting && $0.name.contains("-in-") }
-        XCTAssertFalse(own.isEmpty, "the resting element must be reviewed in its busy state too")
-        XCTAssertTrue(own.allSatisfy(\.isBusy))
-        XCTAssertFalse(other.isEmpty)
-        XCTAssertTrue(other.allSatisfy { !$0.isBusy && $0.switcher.contains(where: \.isBusy) })
+        let resting = ToolbarGallery.activity.filter { $0.tier == .resting }
+        XCTAssertFalse(resting.isEmpty, "the compact rest must be reviewed with work running too")
+        for state in resting { XCTAssertNotEqual(state.status.indicator, .idle, state.name) }
+        let idle = ToolbarGallery.modes.filter { $0.tier == .resting }
+        XCTAssertTrue(idle.allSatisfy { $0.status == .idle }, "an idle tool's rest shows nothing but the mark")
+    }
+
+    /// Every compact indicator is reviewed, in both themes and at both text sizes.
+    func testEveryCompactIndicatorHasAFixture() {
+        let shown = Set(ToolbarGallery.statuses.map { "\($0.status.indicator)" })
+        for indicator in ["capture", "playback", "processing", "failure", "pendingDelivery", "unsavedCapture", "paused"] {
+            XCTAssertTrue(shown.contains(indicator), indicator)
+        }
+        XCTAssertTrue(ToolbarGallery.statuses.contains { $0.status.attentionBadge }, "recording with a job that needs attention")
+        XCTAssertTrue(ToolbarGallery.statuses.contains { if case .live = $0.status.indicator { return true }; return false })
+        XCTAssertTrue(ToolbarGallery.statuses.allSatisfy { $0.tier == .resting })
     }
 
     func testNoDeadReadingFixtureRemains() {
@@ -111,7 +123,8 @@ final class ToolbarGalleryTests: XCTestCase {
         for state in ToolbarGallery.states {
             XCTAssertFalse(state.actionTitle.isEmpty, state.name)
             XCTAssertLessThanOrEqual(state.actionTitle.count, ToolbarNextAction.titleBudget, state.name)
-            XCTAssertEqual(state.switcher.count, ToolbarMode.allCases.count - 1, state.name)
+            XCTAssertEqual(state.choices.map(\.mode), ToolbarMode.allCases, "the chooser always lists all seven tools, in order: \(state.name)")
+            XCTAssertEqual(state.choices.filter(\.isSelected).map(\.mode), [state.mode], state.name)
         }
     }
 

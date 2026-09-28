@@ -65,6 +65,9 @@ struct FloatingToolbar: View {
         }
     }
 
+    /// What the owners say is going on, for the compact rest's indicator (#134).
+    var activity: ToolbarActivity { context.activity(snapAndTalkSequence: controls.snapAndTalkSequence) }
+
     var viewState: ToolbarViewState {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
@@ -72,9 +75,10 @@ struct FloatingToolbar: View {
             anchor: controls.rowAnchor,
             mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
             actionHint: action.hint(key: action.operation.keyMode.flatMap(key)),
-            switcher: ToolbarNextAction.switcher(for: live, key: key),
+            choices: ToolbarNextAction.choices(for: live, key: key),
             minimumTitles: ToolbarNextAction.titles(across: live),
-            isBusy: live.isLive(live.mode))
+            isBusy: live.isLive(live.mode),
+            status: .resolve(activity), showsAccessory: controls.accessoryFits)
     }
 
     private var detail: String {
@@ -84,38 +88,48 @@ struct FloatingToolbar: View {
 
     var body: some View {
         let state = viewState
+        let operation = ToolbarNextAction.resolve(live).operation
         ToolbarRow(state: state, accent: Workbench.accent,
             openAccessory: { button in openPrompts(anchor: button, destination: controls.promptDestination?()) },
-            action: performSelected, selectMode: { model.toolbarMode = $0 }, makeMenu: toolsMenu,
-            menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
+            press: pressPrimary, openChooser: { launcher in controls.openChooser?(launcher, state.choices) },
+            makeMenu: moreMenu, menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
             focusButton: { button in
                 controls.focusFirstControl = { [weak button] in
                     guard let button else { return }
                     button.window?.makeFirstResponder(button)
                 }
-            }, escape: controls.endKeyboardInteraction, drag: controls.dragActions)
+            }, escape: controls.endKeyboardInteraction, revealFromRest: { controls.revealFromRest?() }, drag: controls.dragActions)
             // The host sizes its window from these reports (#152). A preference written
             // from a background GeometryReader never reached onPreferenceChange once the
             // row held conditional content, so every window kept its seed size.
             .onGeometryChange(for: ToolbarMeasurement.self) { ToolbarMeasurement(tier: state.tier, size: $0.size) } action: { measurement in
-                // A row that opens revealed (Keep open at launch) has not drawn its resting
-                // element yet. Measure it once, unseen, so a top or bottom dock centres on it.
-                if measurement.tier == .revealed && !controls.hasMeasured(.resting) {
-                    controls.reportRestingSize(NSHostingView(rootView: ToolbarRow(state: Self.resting(state))).fittingSize)
-                }
                 controls.reportSize(measurement.size, tier: measurement.tier)
             }
+            // Each change of the next action is a new generation, so a press latched on the
+            // old one cannot act on the new one (#134).
+            .onChange(of: operation, initial: true) { _, operation in controls.actionGeneration.observe(operation) }
+            .onChange(of: state.choices) { _, choices in controls.chooserChoicesChanged?(choices) }
+            .onChange(of: state.status, initial: true) { previous, status in controls.statusChanged(from: previous, to: status) }
             .pinnedToDock(state.anchor)
             .help(detail)
             .tint(Workbench.accent).workbenchTheme()
     }
 
-    private static func resting(_ state: ToolbarViewState) -> ToolbarViewState {
-        var resting = state; resting.tier = .resting
-        return resting
+    /// Latches the next action as the button goes down (#134). The click then acts only if
+    /// the same operation, in the same generation, is still the next action when it comes up,
+    /// so a Stop that completes while pressed is discarded rather than becoming a Start.
+    private func pressPrimary() -> (() -> Void)? {
+        let latched = ToolbarNextAction.resolve(live)
+        guard latched.isEnabled else { return nil }
+        let latch = controls.actionGeneration.latch(latched.operation)
+        return {
+            let now = ToolbarNextAction.resolve(live)
+            guard now.isEnabled, controls.actionGeneration.admits(latch, now: now.operation) else { return }
+            perform(now.operation)
+        }
     }
 
-    /// One Saved Prompts picker for the accessory and the glyph menu (#159). It
+    /// One Saved Prompts picker for the accessory and More (#159). It
     /// freezes the field that was in front when it was asked for.
     private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
         let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
@@ -127,10 +141,6 @@ struct FloatingToolbar: View {
 
     /// Each operation goes to the owner that already does it. The toolbar never
     /// ends anything but what its label names.
-    private func performSelected() {
-        perform(ToolbarNextAction.resolve(live).operation)
-    }
-
     private func perform(_ operation: ToolbarOperation) {
         WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { mode in
             switch mode {
@@ -145,17 +155,15 @@ struct FloatingToolbar: View {
         }.perform(operation)
     }
 
-    /// The mode's own options, then the constant tail. Dictate, Read and Snap
-    /// are start and stop here: their preparation stays in Workbench, one door
-    /// away. Cross-mode finish items stay so nothing is a dead end.
-    private func toolsMenu() -> NSMenu {
-        let menu = NSMenu(title: "Workbench"); menu.autoenablesItems = false
+    /// More (#134): the tool's own options, then the work running elsewhere, then the
+    /// toolbar's own items. The next action is the row's primary, not repeated here. Dictate,
+    /// Read and Snap are start and stop on the row: their preparation stays in Workbench, one
+    /// door away. A right-click on the launcher or the compact rest opens the same menu.
+    private func moreMenu() -> NSMenu {
+        let menu = NSMenu(title: "More"); menu.autoenablesItems = false
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
         let mode = live.mode
-        let next = ToolbarMenuAction(action.title, enabled: action.isEnabled) { perform(action.operation) }
-        Self.showKey(action.operation.keyMode.flatMap(key), on: next)
-        menu.addItem(next)
         switch mode {
         case .dictate:
             menu.addItem(ToolbarMenuAction("Open Dictate…") { model.onShowEditor?("dictate") })
@@ -178,20 +186,26 @@ struct FloatingToolbar: View {
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)
         }
-        // Work running in another mode is never a dead end: its finish item
-        // sits here, worded exactly as that mode's own label would be.
+        // Work running in another tool is never a dead end: its finish or resume item
+        // sits under Active work, worded exactly as that tool's own label would be.
+        var active: [NSMenuItem] = []
         if live.drawing && mode != .draw && action.operation != .finishDrawing {
-            menu.addItem(ToolbarMenuAction("Stop drawing") { stage.finishDrawing() })
+            active.append(ToolbarMenuAction("Stop drawing") { stage.finishDrawing() })
         }
         if live.presenting && mode != .present {
-            menu.addItem(ToolbarMenuAction("End presentation") { stage.endDeviceScene() })
+            active.append(ToolbarMenuAction("End presentation") { stage.endDeviceScene() })
         }
         if live.persona != .none && mode != .persona {
             let personaFinish = live.persona == .session ? "Hide personas" : live.persona == .sessionHidden ? "Show personas" : "Hide persona"
-            menu.addItem(ToolbarMenuAction(personaFinish) { stage.togglePersona() })
+            active.append(ToolbarMenuAction(personaFinish) { stage.togglePersona() })
         }
         if live.meetingRecording && mode != .dictate {
-            menu.addItem(ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } })
+            active.append(ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } })
+        }
+        if !active.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(.sectionHeader(title: "Active work"))
+            active.forEach(menu.addItem)
         }
         menu.addItem(.separator())
         // One command in place of the eight-item submenu: the named docks and a reset, for
@@ -209,24 +223,6 @@ struct FloatingToolbar: View {
     /// top level instead of behind a wrapper named after the mode.
     private static func inline(_ source: NSMenu, into menu: NSMenu) {
         for item in source.items { source.removeItem(item); menu.addItem(item) }
-    }
-
-    /// Show an assigned key beside the item, from the same label the hint uses.
-    /// Keys the menu cannot spell (function and arrow keys) are left off.
-    static func showKey(_ label: String?, on item: NSMenuItem) {
-        guard var keys = label else { return }
-        var mask: NSEvent.ModifierFlags = []
-        let modifiers: [(Character, NSEvent.ModifierFlags)] = [("⌃", .control), ("⌥", .option), ("⇧", .shift), ("⌘", .command)]
-        for (symbol, flag) in modifiers where keys.first == symbol {
-            mask.insert(flag); keys.removeFirst()
-        }
-        for (symbol, flag) in modifiers where keys.first == symbol {
-            mask.insert(flag); keys.removeFirst()
-        }
-        let equivalent = keys == "Space" ? " " : keys.count == 1 ? keys.lowercased() : nil
-        guard let equivalent else { return }
-        item.keyEquivalent = equivalent
-        item.keyEquivalentModifierMask = mask
     }
 
     static func shortcutLabel(_ shortcut: VoiceShortcut, failure: String?) -> String {

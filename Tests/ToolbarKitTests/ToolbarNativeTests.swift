@@ -6,75 +6,207 @@ import StageKit
 @testable import ToolbarKit
 
 final class ToolbarNativeTests: XCTestCase {
+    private func buttons(_ view: NSView) -> [NSButton] {
+        (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+    }
+    private func laidOut<V: View>(_ root: V, width: CGFloat? = nil) -> NSHostingView<V> {
+        let view = NSHostingView(rootView: root)
+        let size = view.fittingSize
+        view.frame = NSRect(x: 0, y: 0, width: width ?? size.width, height: size.height)
+        view.layoutSubtreeIfNeeded()
+        return view
+    }
+
+    /// Every resting fixture is the same 48 × 28 compact target, whatever it shows (#134); every
+    /// revealed row fits its content and grows with larger text.
     @MainActor func testProductionRowsFitContentForEveryFixtureAndLargerText() {
         _ = NSApplication.shared
         for scale in [CGFloat(1), 1.35] {
             for state in ToolbarGallery.states {
-                let view = NSHostingView(rootView: ToolbarRow(state: state, textScale: scale))
-                let size = view.fittingSize
-                XCTAssertGreaterThanOrEqual(size.height, 36 * scale - 1, state.name)
-                XCTAssertLessThan(size.width, 580, state.name)
-                XCTAssertGreaterThan(size.width, 30, state.name)
+                let size = NSHostingView(rootView: ToolbarRow(state: state, textScale: scale)).fittingSize
+                if state.tier == .resting {
+                    XCTAssertEqual(size, ToolbarLayout.mark, state.name)
+                    continue
+                }
+                XCTAssertGreaterThanOrEqual(size.height, ToolbarLayout.rowHeight * scale - 1, state.name)
+                XCTAssertLessThan(size.width, 700, state.name)
+                XCTAssertGreaterThanOrEqual(size.width, ToolbarLayout.standardWidth - 0.5, state.name)
                 let larger = NSHostingView(rootView: ToolbarRow(state: state, textScale: scale * 1.2)).fittingSize
                 XCTAssertGreaterThan(larger.width, size.width, state.name)
             }
         }
     }
 
-    @MainActor func testGlyphExposesANativeTargetActionForAccessibilityPress() {
-        var admissionRequests = 0
-        var endings = 0
-        let view = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "rest", tier: .resting),
-            menuBegan: { _ in admissionRequests += 1; return false }, menuEnded: { endings += 1 }))
-        view.frame = NSRect(origin: .zero, size: view.fittingSize)
-        view.layoutSubtreeIfNeeded()
-        func buttons(_ view: NSView) -> [NSButton] {
-            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+    /// The standard row is 248 points, 340 with its accessory, at standard text.
+    @MainActor func testTheStandardRowWidths() {
+        _ = NSApplication.shared
+        let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .dictate))).fittingSize
+        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present))).fittingSize
+        XCTAssertEqual(plain, NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight))
+        XCTAssertEqual(accessory, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight))
+        var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present)
+        waiting.showsAccessory = false
+        XCTAssertEqual(NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width, ToolbarLayout.standardWidth,
+                       "an accessory that does not fit waits in More and takes no room")
+    }
+
+    /// The launcher sits exactly where the compact mark does: 24 points from the growth edge,
+    /// at every anchor and text size, so the two share one centre on screen.
+    @MainActor func testTheLauncherSharesTheCompactMarksCentre() throws {
+        _ = NSApplication.shared
+        for scale in [CGFloat(1), 1.35] {
+            for anchor in ToolbarAnchor.allCases {
+                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .present), textScale: scale))
+                let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+                let frame = launcher.convert(launcher.bounds, to: view)
+                XCTAssertEqual(frame.width, ToolbarLayout.launcherWidth, "\(anchor) at \(scale)")
+                let inset = anchor.growsLeftward ? view.bounds.maxX - frame.midX : frame.midX
+                XCTAssertEqual(inset, ToolbarLayout.launcherInset, accuracy: 0.5, "\(anchor) at \(scale)")
+            }
         }
-        let glyph = buttons(view).first { $0.accessibilityIdentifier() == "toolbar.menu" }
-        XCTAssertNotNil(glyph)
-        XCTAssertNotNil(glyph?.target)
-        XCTAssertNotNil(glyph?.action)
-        XCTAssertTrue(glyph?.acceptsFirstResponder == true)
-        glyph?.performClick(nil)
+    }
+
+    /// A right-hand row reverses its slots: More, the accessory, the next action, then the
+    /// launcher at the docked edge. The reading order of the controls is the same in both.
+    @MainActor func testARightHandRowReversesItsSlots() {
+        _ = NSApplication.shared
+        func order(_ anchor: ToolbarAnchor) -> [String] {
+            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .present)))
+            return buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.") }
+                .sorted { $0.convert($0.bounds, to: view).minX < $1.convert($1.bounds, to: view).minX }
+                .map { $0.accessibilityIdentifier() }
+        }
+        XCTAssertEqual(order(.bottom), ["toolbar.launcher", "toolbar.primary", "toolbar.accessory", "toolbar.more"])
+        XCTAssertEqual(order(.right), ["toolbar.more", "toolbar.accessory", "toolbar.primary", "toolbar.launcher"])
+    }
+
+    /// The row holds no mode strip any more: the launcher is the one way to another tool.
+    @MainActor func testTheRowHasOneLauncherAndNoModeStrip() throws {
+        _ = NSApplication.shared
+        var opened: [NSView] = []
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "strip", tier: .revealed, mode: .dictate), openChooser: { opened.append($0) }))
+        XCTAssertTrue(buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.mode.") }.isEmpty)
+        let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+        XCTAssertTrue(launcher.acceptsFirstResponder && launcher.acceptsFirstMouse(for: nil))
+        XCTAssertEqual(launcher.accessibilityLabel(), "Tool: Dictate")
+        launcher.performClick(nil)
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertTrue(opened.first === launcher, "the chooser is anchored to the launcher")
+    }
+
+    /// More opens the tool's options only with admission, as the glyph menu did.
+    @MainActor func testMoreOpensTheOptionsWithAdmission() throws {
+        _ = NSApplication.shared
+        var admissionRequests = 0, endings = 0
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "more", tier: .revealed),
+            menuBegan: { _ in admissionRequests += 1; return false }, menuEnded: { endings += 1 }))
+        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" })
+        XCTAssertTrue(more.acceptsFirstResponder)
+        XCTAssertEqual(more.accessibilityLabel(), "More")
+        more.performClick(nil)
         XCTAssertEqual(admissionRequests, 1)
         XCTAssertEqual(endings, 0, "rejected native activation never enters menu tracking")
     }
 
-    @MainActor func testMenuGlyphDoesNotShiftWhenTheChevronAppears() throws {
-        func glyph(_ tier: ToolbarTier) throws -> NSRect {
-            let view = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "glyph", tier: tier)))
-            view.frame = NSRect(origin: .zero, size: view.fittingSize)
+    /// The next action asks its press for what to do, and does nothing when the press says so.
+    @MainActor func testThePrimaryActsOnlyThroughItsLatchedPress() throws {
+        _ = NSApplication.shared
+        var presses = 0, actions = 0, valid = true
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "press", tier: .revealed),
+            press: { presses += 1; return valid ? { actions += 1 } : nil }))
+        let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" })
+        primary.performClick(nil)
+        XCTAssertEqual(presses, 1); XCTAssertEqual(actions, 1)
+        valid = false
+        primary.performClick(nil)
+        XCTAssertEqual(presses, 2); XCTAssertEqual(actions, 1, "a press whose operation no longer holds does nothing")
+    }
+
+    /// The compact rest is one accessible button: pressing it reveals, and nothing else.
+    @MainActor func testTheCompactRestOnlyReveals() throws {
+        _ = NSApplication.shared
+        var reveals = 0, work = 0
+        let status = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.5))
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "rest", tier: .resting, status: status), action: { work += 1 },
+                                      revealFromRest: { reveals += 1 }))
+        func all(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(all) }
+        let target = try XCTUnwrap(all(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
+        XCTAssertTrue(target.isAccessibilityElement())
+        XCTAssertEqual(target.accessibilityValue() as? String, status.description)
+        XCTAssertTrue(target.accessibilityPerformPress())
+        XCTAssertEqual(reveals, 1); XCTAssertEqual(work, 0)
+        XCTAssertTrue(buttons(view).isEmpty, "no control is reachable at rest but the target")
+    }
+
+    /// The launcher holds its place while the window is briefly the wrong size, at every anchor,
+    /// because the content is pinned to the growth edge the launcher sits on.
+    @MainActor func testTheLauncherHoldsItsPlaceWhileTheWindowIsTheWrongSize() throws {
+        _ = NSApplication.shared
+        func inset(_ state: ToolbarViewState, width: CGFloat, pinned: Bool) throws -> CGFloat {
+            let row = ToolbarRow(state: state)
+            let view = NSHostingView(rootView: pinned ? AnyView(row.pinnedToDock(state.anchor)) : AnyView(row))
+            view.frame = NSRect(x: 0, y: 0, width: width, height: NSHostingView(rootView: row).fittingSize.height)
             view.layoutSubtreeIfNeeded()
-            func buttons(_ view: NSView) -> [NSButton] {
-                (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
-            }
-            let button = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.menu" })
-            return try XCTUnwrap(button.cell as? NSButtonCell).imageRect(forBounds: button.bounds)
+            let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+            let frame = launcher.convert(launcher.bounds, to: view)
+            return state.anchor.growsLeftward ? view.bounds.maxX - frame.maxX : frame.minX
         }
-        XCTAssertEqual(try glyph(.resting), try glyph(.revealed))
+        for anchor in ToolbarAnchor.allCases {
+            let state = ToolbarViewState(name: "jump", tier: .revealed, anchor: anchor, mode: .draw)
+            let exact = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize.width
+            let settled = try inset(state, width: exact, pinned: true)
+            for stale in [exact + 60, max(400, exact + 1)] {
+                XCTAssertEqual(try inset(state, width: stale, pinned: true), settled, accuracy: 0.5,
+                               "\(anchor.rawValue): the launcher moved in a \(Int(stale))-point window")
+            }
+            XCTAssertGreaterThan(abs(try inset(state, width: exact + 60, pinned: false) - settled), 20,
+                                 "\(anchor.rawValue): an unpinned row no longer moves, so this test no longer reproduces the jump")
+        }
     }
 
     @MainActor func testLongPrimaryActionGrowsInsteadOfShrinkingText() {
         let short = ToolbarViewState(name: "short", tier: .revealed, actionTitle: "Dictate")
-        var long = short; long.actionTitle = "Finish this longer action"
+        var long = short; long.actionTitle = "Finish this much longer action"
         let small = NSHostingView(rootView: ToolbarRow(state: short)).fittingSize
         let large = NSHostingView(rootView: ToolbarRow(state: long)).fittingSize
         XCTAssertGreaterThan(large.width, small.width + 40)
         XCTAssertEqual(large.height, small.height, accuracy: 1)
     }
 
+    /// A changing count redrew the row. With proportional digits each redraw
+    /// changed its width and re-placed the window under the pointer. The count
+    /// now lives in the label, so the label keeps one width per digit.
+    @MainActor func testAChangingCountKeepsTheRowTheSameWidth() {
+        _ = NSApplication.shared
+        func width(_ title: String) -> CGFloat {
+            NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "count", tier: .revealed, mode: .snapAndTalk,
+                actionTitle: title))).fittingSize.width
+        }
+        XCTAssertEqual(width("Capture next · 1"), width("Capture next · 8"), accuracy: 0.5, "digits of different shapes resized the window")
+        XCTAssertEqual(width("Capture next · 10"), width("Capture next · 99"), accuracy: 0.5)
+    }
+
+    /// Choosing another idle tool changes only the verb. The primary keeps the width of the
+    /// widest label, so More never moves under a pointer on its way there.
+    @MainActor func testChoosingAnotherIdleToolNeverMovesMore() {
+        _ = NSApplication.shared
+        let widths = ToolbarGallery.modes.filter { $0.tier == .revealed && $0.accessoryTitle == nil }
+            .map { NSHostingView(rootView: ToolbarRow(state: $0)).fittingSize.width }
+        XCTAssertGreaterThan(widths.count, 1)
+        for width in widths { XCTAssertEqual(width, widths[0], accuracy: 0.5, "\(widths)") }
+    }
+
     @MainActor func testImmediateRetargetSettlesSynchronouslyAtRequestedDestination() {
         _ = NSApplication.shared
-        let panel = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 36, height: 36),
+        let panel = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 48, height: 28),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         defer { panel.close() }
         let motion = ToolbarWindowMotion()
-        let final = NSRect(x: 200, y: 160, width: 36, height: 36)
+        let final = NSRect(x: 200, y: 160, width: 48, height: 28)
         var completions = 0
         motion.settled = { completions += 1 }
-        motion.move(panel, to: NSRect(x: 100, y: 100, width: 300, height: 36), animated: true)
+        motion.move(panel, to: NSRect(x: 100, y: 100, width: 248, height: 40), animated: true)
         // AppKit can finish the first animation before move returns (including
         // with Reduce Motion). A completion before retargeting is legitimate.
         let beforeRetarget = completions
@@ -88,14 +220,14 @@ final class ToolbarNativeTests: XCTestCase {
     }
 
     @MainActor func testFinishingBeforeDragCannotRestoreTheOldOriginLater() async {
-        let panel = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 36, height: 36),
+        let panel = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 48, height: 28),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         defer { panel.close() }
         let motion = ToolbarWindowMotion()
         var completions = 0
         motion.settled = { completions += 1 }
-        let expanded = NSRect(x: 100, y: 100, width: 300, height: 36)
+        let expanded = NSRect(x: 100, y: 100, width: 248, height: 40)
         motion.move(panel, to: expanded, animated: true)
         motion.finish(panel)
         XCTAssertNil(motion.target)
@@ -109,15 +241,18 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(panel.frame.origin, NSPoint(x: 350, y: 250))
     }
 
-    @MainActor func testBusyGlyphAndDotUseTheSameBrandColourInBothAppearances() throws {
+    /// Live work lights the launcher's symbol and its one aggregate dot in the brand accent,
+    /// in both appearances.
+    @MainActor func testBusyLauncherAndDotUseTheSameBrandColourInBothAppearances() throws {
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try XCTUnwrap(NSAppearance(named: name))
             var expected: NSColor!
             appearance.performAsCurrentDrawingAppearance {
                 expected = WorkbenchPalette.nativeAccent.usingColorSpace(.deviceRGB)
             }
+            let busy = ToolbarLiveState(mode: .draw, drawing: true)
             let view = NSHostingView(rootView: ToolbarRow(
-                state: ToolbarViewState(name: "busy-colour", tier: .resting, isBusy: true),
+                state: ToolbarViewState(name: "busy-colour", tier: .revealed, mode: .draw, choices: ToolbarNextAction.choices(for: busy), isBusy: true),
                 accent: WorkbenchPalette.accent)
                 .environment(\.colorScheme, name == .darkAqua ? .dark : .light))
             view.appearance = appearance
@@ -125,9 +260,11 @@ final class ToolbarNativeTests: XCTestCase {
             view.layoutSubtreeIfNeeded()
             let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
             view.cacheDisplay(in: view.bounds, to: bitmap)
+            // Only the launcher's 48 points: the next action's bezel is accent too.
+            let launcherPixels = Int(ToolbarLayout.launcherWidth * CGFloat(bitmap.pixelsWide) / view.bounds.width)
             var upperMatches = 0, lowerMatches = 0
             for y in 0..<bitmap.pixelsHigh {
-                for x in 0..<bitmap.pixelsWide {
+                for x in 0..<launcherPixels {
                     guard let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
                     let delta = abs(colour.redComponent - expected.redComponent)
                         + abs(colour.greenComponent - expected.greenComponent)
@@ -138,8 +275,8 @@ final class ToolbarNativeTests: XCTestCase {
                     }
                 }
             }
-            XCTAssertGreaterThan(upperMatches, 0, "glyph must render the brand accent in \(name)")
-            XCTAssertGreaterThan(lowerMatches, 0, "busy dot must render the same accent in \(name)")
+            XCTAssertGreaterThan(upperMatches, 0, "the launcher must render the brand accent in \(name)")
+            XCTAssertGreaterThan(lowerMatches, 0, "the aggregate dot must render the same accent in \(name)")
         }
     }
 
@@ -160,88 +297,34 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    /// The reported hover jump. The window can be the wrong size for a moment: the
-    /// first reveal is placed at a 280-point guess, a new tool's row at the last
-    /// tool's width, and a collapse shrinks a wide window around the lone glyph.
-    /// A centred row then moved the glyph under the pointer by half the error.
-    /// Pinned to its dock, the glyph keeps the same distance from the docked edge
-    /// whatever size the window is.
-    @MainActor func testTheGlyphHoldsItsPlaceWhileTheWindowIsTheWrongSize() throws {
+    /// The chooser is 280 points wide with 36-point rows, the seven tools in order, and it scrolls
+    /// only when its display leaves it less than its height.
+    @MainActor func testTheChooserMeasures() {
         _ = NSApplication.shared
-        func buttons(_ view: NSView) -> [NSButton] {
-            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+        let choices = ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate))
+        for scale in [CGFloat(1), 1.35] {
+            let size = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), textScale: scale)).fittingSize
+            XCTAssertEqual(size.width, ToolbarChooserLayout.width * scale, accuracy: 0.5, "at \(scale)")
+            // Rows of 48.6 points at larger text land on whole pixels.
+            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 7, scale: scale), accuracy: 1, "at \(scale)")
         }
-        func inset(_ state: ToolbarViewState, width: CGFloat, pinned: Bool) throws -> CGFloat {
-            let row = ToolbarRow(state: state)
-            let view = NSHostingView(rootView: pinned ? AnyView(row.pinnedToDock(state.anchor)) : AnyView(row))
-            view.frame = NSRect(x: 0, y: 0, width: width, height: NSHostingView(rootView: row).fittingSize.height)
-            view.layoutSubtreeIfNeeded()
-            let glyph = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.menu" })
-            let frame = glyph.convert(glyph.bounds, to: view)
-            return state.anchor.growsLeftward ? view.bounds.maxX - frame.maxX : frame.minX
-        }
-        for tier in ToolbarTier.allCases {
-            for anchor in ToolbarAnchor.allCases {
-                let state = ToolbarViewState(name: "jump", tier: tier, anchor: anchor, mode: .draw)
-                let exact = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize.width
-                let settled = try inset(state, width: exact, pinned: true)
-                for stale in [exact + 60, max(280, exact + 1)] {
-                    XCTAssertEqual(try inset(state, width: stale, pinned: true), settled, accuracy: 0.5,
-                                   "\(tier) at \(anchor.rawValue): the glyph moved in a \(Int(stale))-point window")
-                }
-                XCTAssertGreaterThan(abs(try inset(state, width: exact + 60, pinned: false) - settled), 20,
-                                     "\(tier) at \(anchor.rawValue): an unpinned row no longer moves, so this test no longer reproduces the jump")
-            }
-        }
+        let short = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), available: 150)).fittingSize
+        XCTAssertEqual(short.height, 150, accuracy: 0.5, "a short display scrolls the list rather than clipping it")
     }
 
-    /// A changing count redrew the row. With proportional digits each redraw
-    /// changed its width and re-placed the window under the pointer. The count
-    /// now lives in the label, so the label keeps one width per digit.
-    @MainActor func testAChangingCountKeepsTheRowTheSameWidth() {
-        _ = NSApplication.shared
-        func width(_ title: String) -> CGFloat {
-            NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "count", tier: .revealed, mode: .snapAndTalk,
-                actionTitle: title))).fittingSize.width
-        }
-        XCTAssertEqual(width("Capture next · 1"), width("Capture next · 8"), accuracy: 0.5, "digits of different shapes resized the window")
-    }
-
-    /// Switching modes at rest changes only the verb. The primary keeps the
-    /// width of the widest idle verb, so the strip never moves under the pointer
-    /// that is about to click the next chip.
-    @MainActor func testAnIdleModeSwitchNeverMovesTheStrip() {
-        _ = NSApplication.shared
-        let widths = ToolbarGallery.modes.filter { $0.tier == .revealed && $0.accessoryTitle == nil }
-            .map { NSHostingView(rootView: ToolbarRow(state: $0)).fittingSize.width }
-        XCTAssertGreaterThan(widths.count, 1)
-        for width in widths { XCTAssertEqual(width, widths[0], accuracy: 0.5, "\(widths)") }
-    }
-
-    /// The strip is one native button per other mode. A click switches; nothing
-    /// on it activates the app, so the other app's field keeps focus.
-    @MainActor func testTheStripOffersEveryOtherModeAndAClickSwitches() throws {
-        _ = NSApplication.shared
-        var selected: [ToolbarMode] = []
-        let state = ToolbarViewState(name: "strip", tier: .revealed, mode: .dictate)
-        let view = NSHostingView(rootView: ToolbarRow(state: state, selectMode: { selected.append($0) }))
-        view.frame = NSRect(origin: .zero, size: view.fittingSize)
-        view.layoutSubtreeIfNeeded()
-        func buttons(_ view: NSView) -> [NSButton] {
-            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
-        }
-        let chips = buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.mode.") }
-        XCTAssertEqual(chips.map { $0.accessibilityIdentifier() }, state.switcher.map { "toolbar.mode." + $0.mode.slug })
-        XCTAssertTrue(chips.allSatisfy { $0.acceptsFirstMouse(for: nil) && $0.acceptsFirstResponder })
-        XCTAssertEqual(chips.first?.toolTip, "Switch to Read")
-        try XCTUnwrap(chips.last).performClick(nil)
-        XCTAssertEqual(selected, [.persona])
-        let resting = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "rest", tier: .resting)))
-        resting.frame = NSRect(origin: .zero, size: resting.fittingSize)
-        resting.layoutSubtreeIfNeeded()
-        XCTAssertTrue(buttons(resting).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.mode.") }.isEmpty,
-                      "the strip only exists once the row is revealed")
-        XCTAssertNotNil(buttons(resting).first { $0.accessibilityIdentifier() == "toolbar.primary" },
-                        "the next action is part of the resting element")
+    /// The chooser's keys: Down, Return by identity, Escape without a change, typed names.
+    @MainActor func testTheChooserKeys() {
+        var chosen: [ToolbarMode] = [], dismissed = 0
+        let model = ToolbarChooserModel(choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)),
+                                        choose: { chosen.append($0) }, dismiss: { dismissed += 1 })
+        XCTAssertTrue(model.handle(keyCode: 125, characters: nil, time: 0))
+        XCTAssertEqual(model.state.highlighted, .read)
+        XCTAssertTrue(model.handle(keyCode: 53, characters: nil, time: 0))
+        XCTAssertEqual(dismissed, 1); XCTAssertTrue(chosen.isEmpty, "Escape changes nothing")
+        XCTAssertTrue(model.handle(keyCode: 35, characters: "p", time: 1))
+        XCTAssertEqual(model.state.highlighted, .present)
+        XCTAssertTrue(model.handle(keyCode: 36, characters: "\r", time: 1.1))
+        XCTAssertEqual(chosen, [.present])
+        XCTAssertFalse(model.handle(keyCode: 48, characters: "\t", time: 2), "Tab is not the chooser's")
     }
 }

@@ -222,6 +222,42 @@ struct WorkbenchControlContext {
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
             screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true)
     }
+    /// What the owners say is going on, for the toolbar's compact rest (#134). Only each
+    /// owner's structured state counts, recomputed whenever it is read and so at launch: never
+    /// a library, an old transcript, a restored Snap & Talk session or a status string. Dismissing
+    /// a result clears only that owner's own state, and so only its attention.
+    func activity(snapAndTalkSequence: URL?) -> ToolbarActivity {
+        var capture: ToolbarActivity.Capture?, level: Double?
+        if model.phase == .recording { capture = .dictation; level = model.level }
+        else if readback.isRecording { capture = .narration; level = readback.recordingLevel }
+        else if model.meetings.isRecording { capture = .meeting }
+        let dictationBusy: Bool
+        switch model.phase {
+        case .requesting, .transcribing, .cleaning, .cancelling: dictationBusy = true
+        case .delivering: dictationBusy = !model.waitingForDrawing
+        case .idle, .recording: dictationBusy = false
+        }
+        var live: [ToolbarActivity.Live] = []
+        if stage.isDrawing { live.append(.drawing) }
+        if stage.isPresenting { live.append(.presenting) }
+        if stage.hasActivePersona && !stage.isPersonaSessionPaused { live.append(.persona) }
+        if stage.hasTimerSession && stage.isTimerRunning { live.append(.timer) }
+        if model.promptInsertion.running { live.append(.inserting) }
+        // A sequence started in this launch; a session restored at launch alone is idle.
+        if let snapAndTalkSequence, readback.sessionURL?.standardizedFileURL == snapAndTalkSequence.standardizedFileURL {
+            live.append(.snapAndTalk)
+        }
+        return ToolbarActivity(capture: capture, level: level, playback: model.playing,
+            processing: dictationBusy || model.rendering || readback.isCapturing || readback.hasPendingTranscriptions
+                || model.meetings.isStarting || model.meetings.isProcessing || snap?.isCapturing == true,
+            failure: model.captureFailure != nil || model.readingFailure != nil || model.meetings.hasRecovery,
+            pendingDelivery: model.waitingForDrawing
+                || (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt?.isClipboardCurrent == true),
+            unsavedCapture: snap?.draft != nil,
+            paused: model.paused || (stage.hasTimerSession && !stage.isTimerRunning) || stage.isPersonaSessionPaused,
+            live: live)
+    }
+
     func shortcut(_ tool: WorkbenchControlTool) -> String? {
         switch tool {
         case .dictate: return voiceShortcut(1)
