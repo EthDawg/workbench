@@ -385,7 +385,6 @@ struct WorkbenchHomePage: View {
                 case .transcript: if let transcript = model.history.first {
                     recentRow("text.quote", transcript.text, "\(TextRules.wordCount(transcript.text)) words · \(transcript.date.formatted(date: .abbreviated, time: .shortened))") {
                         Button("Copy") { model.copyCapture(transcript) }
-                        Button("Paste") { model.onPasteTranscript?(transcript.text) }.disabled(model.phase != .idle)
                         Button("Open in Dictate") { model.openTranscript(transcript); model.page = "dictate" }
                     }
                 }
