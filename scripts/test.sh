@@ -35,6 +35,7 @@ bash scripts/test-stage.sh --ci
 
 "$BIN_DIR/LocalVoice" --check-transcript-handoff
 "$BIN_DIR/LocalVoice" --check-readback-pack
+"$BIN_DIR/LocalVoice" --check-capture-preview
 "$BIN_DIR/LocalVoice" --check-history-library
 "$BIN_DIR/LocalVoice" --check-handoff-jobs
 "$BIN_DIR/LocalVoice" --check-subscription-cli

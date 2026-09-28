@@ -707,6 +707,8 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-library":
             try DemoLibraryChecks.run()
             try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
+        case "--check-capture-preview":
+            try await CaptureImagePreviewChecks.run()
         case "--check-quick-look-panel":
             let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
             try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }

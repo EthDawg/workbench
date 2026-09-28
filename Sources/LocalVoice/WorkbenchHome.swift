@@ -434,7 +434,7 @@ struct WorkbenchHomePage: View {
                 }
                 case .snap: if let item = latestSnap {
                     HStack(spacing: 12) {
-                        HomeSnapThumbnail(model: snap, item: item)
+                        CapturePreviewButton("View latest Snap", item: { .snap(item, store: snap.store) }) { HomeSnapThumbnail(model: snap, item: item) }
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.title).lineLimit(1)
                             Text("Snap · " + item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)

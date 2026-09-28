@@ -291,10 +291,12 @@ struct ReadbackView: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 7) {
                 ZStack(alignment: .topLeading) {
-                    ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
-                        .frame(width: 250, height: 142).background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 9)).clipped()
+                    CapturePreviewButton(ReadbackItemNames.view(sectionNumber: number), item: { preview(section, number: number) }) {
+                        ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
+                            .frame(width: 250, height: 142).background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 9)).clipped()
+                    }
                     Text("\(number)").font(.caption.bold()).padding(.horizontal, 7).padding(.vertical, 4)
-                        .background(.ultraThickMaterial, in: Capsule()).padding(7)
+                        .background(.ultraThickMaterial, in: Capsule()).padding(7).allowsHitTesting(false).accessibilityHidden(true)
                 }
                 Text(section.displayName).font(.caption).foregroundStyle(.secondary)
                 Text(section.capturedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.tertiary)
@@ -308,12 +310,16 @@ struct ReadbackView: View {
                         .buttonStyle(.bordered).controlSize(.small)
                         .disabled(model.isRecording || model.isCapturing || [.queued, .transcribing].contains(section.status))
                         .help("Move this section to Recently Deleted")
+                    // Viewing stays available while the section records or transcribes; changes wait.
+                    let changing = model.isRecording || model.isCapturing || [.queued, .transcribing].contains(section.status)
                     Menu {
-                        Button("Replace screenshot…") { Task { await model.replaceScreenshot(section.id) } }
-                        Button(section.audio == nil ? "Record narration" : "Re-record narration") { model.startNarration(for: section.id) }
-                        Button("Redo screenshot and narration…") { Task { await model.redoBoth(section.id) } }
+                        Button("View image") { CaptureImagePreview.shared.show(preview(section, number: number)) }
+                        Divider()
+                        Button("Replace screenshot…") { Task { await model.replaceScreenshot(section.id) } }.disabled(changing)
+                        Button(section.audio == nil ? "Record narration" : "Re-record narration") { model.startNarration(for: section.id) }.disabled(changing)
+                        Button("Redo screenshot and narration…") { Task { await model.redoBoth(section.id) } }.disabled(changing)
                     } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
-                        .disabled(model.isRecording || model.isCapturing || [.queued, .transcribing].contains(section.status))
+                        .accessibilityLabel("More for section \(number)")
                 }
                 if let failure = section.failure { Text(failure).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 if section.status == .ready {
@@ -349,8 +355,10 @@ struct ReadbackView: View {
             VStack(spacing: 10) {
                 ForEach(model.deletedSections) { section in
                     HStack {
-                        ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
-                            .frame(width: 120, height: 68).clipped().opacity(0.72)
+                        CapturePreviewButton(ReadbackItemNames.viewDeleted(section), item: { preview(section, number: nil) }) {
+                            ReadbackThumbnail(root: model.sessionURL, relative: section.screenshot, revision: section.capturedAt)
+                                .frame(width: 120, height: 68).clipped().opacity(0.72)
+                        }
                         VStack(alignment: .leading) {
                             Text(section.displayName).font(.callout)
                             if let deletedAt = section.deletedAt { Text("Deleted \(deletedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
@@ -358,11 +366,20 @@ struct ReadbackView: View {
                         Spacer()
                         Button("Restore") { model.restoreSection(section.id) }
                     }.padding(10).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
+                        .contextMenu {
+                            Button("View image") { CaptureImagePreview.shared.show(preview(section, number: nil)) }
+                            Button("Restore") { model.restoreSection(section.id) }
+                        }
                 }
                 HStack { Spacer(); Button("Empty Recently Deleted…", role: .destructive) { confirmEmptyTrash = true } }
             }.padding(.top, 10)
         } label: { Label("Recently Deleted · \(model.deletedSections.count)", systemImage: "trash") }
             .padding(15).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// The section's current screenshot for the read-only preview; deleted sections have no number.
+    private func preview(_ section: ReadbackSection, number: Int?) -> CaptureImagePreviewItem {
+        .section(section, number: number, session: model.sessionURL)
     }
 
     private func statusSymbol(_ status: ReadbackSectionStatus) -> String {

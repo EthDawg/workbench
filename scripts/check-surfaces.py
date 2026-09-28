@@ -174,9 +174,11 @@ OFFER_TYPES = ['FounderIntroductionCard']
 # Choice lists with their own stable IDs and surface.
 ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 
+# CapturePreviewButton is a capture image that opens the read-only preview; its
+# first argument is its accessible name.
 CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
     Stepper Slider Link NativeControlMenu ToolbarMenuAction StageMenuAction
-    NSMenuItem NSButton addItem addSubmenu card command actionItem action'''.split())
+    NSMenuItem NSButton addItem addSubmenu card command actionItem action CapturePreviewButton'''.split())
 # Label-taking helpers, counted only in the file that declares them.
 HELPERS = {'card', 'command', 'actionItem', 'action'}
 IDENT = r'[A-Za-z_$][\w$]*'

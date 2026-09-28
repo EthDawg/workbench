@@ -1135,6 +1135,14 @@
     "aliasOf": "snapAndTalk"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-latest-snap",
+    "surface": "window home",
+    "label": "View latest Snap",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Quality (#154): the latest Snap's image on Home opens the read-only image preview, as every capture image does. It views an existing capture; editing stays Edit…."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.NativeControlMenu.timer",
     "surface": "window home",
     "label": "Timer",
