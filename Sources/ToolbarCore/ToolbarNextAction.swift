@@ -62,6 +62,9 @@ public enum ToolbarOperation: Hashable, Sendable {
     case stopInserting, cancelDictationRequest, stopDictation
     case finishNarration, finishDrawing
     case pauseReading, resumeReading, cancelReading
+    /// Never the toolbar's label (reading pauses there); the panel's Read row
+    /// stops instead, and dispatches through the same owner switch.
+    case stopReading
     case hidePersona, pauseOverlays, resumeOverlays
     case captureNext, stopMeetingTranscription, endPresentation
     case start(ToolbarMode)
@@ -72,7 +75,7 @@ public enum ToolbarOperation: Hashable, Sendable {
     public var mode: ToolbarMode? {
         switch self {
         case .cancelDictationRequest, .stopDictation, .stopMeetingTranscription: return .dictate
-        case .pauseReading, .resumeReading, .cancelReading: return .read
+        case .pauseReading, .resumeReading, .cancelReading, .stopReading: return .read
         case .finishNarration, .captureNext: return .snapAndTalk
         case .finishDrawing: return .draw
         case .stopInserting, .endPresentation: return .present
@@ -88,7 +91,7 @@ public enum ToolbarOperation: Hashable, Sendable {
     /// pause or resume a prepared set. Only these earn a key in the hint.
     public var keyMode: ToolbarMode? {
         switch self {
-        case .stopInserting, .stopMeetingTranscription, .pauseOverlays, .resumeOverlays, .wait: return nil
+        case .stopInserting, .stopMeetingTranscription, .pauseOverlays, .resumeOverlays, .stopReading, .wait: return nil
         default: return mode
         }
     }
@@ -195,7 +198,8 @@ public struct ToolbarNextAction: Equatable, Sendable {
         return .start(live.mode)
     }
 
-    static func title(_ operation: ToolbarOperation, live: ToolbarLiveState) -> String {
+    /// The words for an operation. Stop keeps what it made; Cancel discards.
+    public static func title(_ operation: ToolbarOperation, live: ToolbarLiveState) -> String {
         switch operation {
         case .stopInserting: return "Stop inserting"
         case .cancelDictationRequest: return "Cancel request"
@@ -205,6 +209,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .cancelReading: return "Cancel"
         case .pauseReading: return "Pause reading"
         case .resumeReading: return "Resume reading"
+        case .stopReading: return "Stop reading"
         case .pauseOverlays: return "Hide personas"
         case .resumeOverlays: return "Show personas"
         case .hidePersona: return "Hide persona"

@@ -9,7 +9,54 @@ enum WorkbenchControlChecks {
             guard condition else { throw VoiceError.message("Contextual controls: " + name) }
             count += 1
         }
-        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap & Talk", "Draw", "Present", "Persona Overlay", "Timer"], "shared controls retain their fixed order; standalone Snap is a separate navigation row")
+        try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "Timer"], "panel rows follow the moments: Dictate, Read, Snap, Snap & Talk, Draw, Present, Persona, Timer")
+        try check(WorkbenchControlTool.allCases.contains(.snap) && WorkbenchControlTool(mode: .snap) == .snap && WorkbenchControlTool.timer.mode == nil, "Snap is a real row sharing the toolbar's Snap mode; Timer is a row without a mode")
+        try check(VoicePreferences().shortcut(8).enabled == false, "the Snap shortcut (voice.8) starts off")
+        do {
+            var snapKey = VoicePreferences(); snapKey.setShortcut(VoiceShortcut(keyCode: 20), for: 8)
+            let restored = try JSONDecoder().decode(VoicePreferences.self, from: JSONEncoder().encode(snapKey))
+            try check(restored.shortcut(8) == snapKey.shortcut(8) && restored.enabledCombinations.contains(snapKey.shortcut(8).combination), "an assigned Snap shortcut survives reload and registers")
+        }
+        // Two states per row: idle carries the capability's name, live the same next action the toolbar shows.
+        do {
+            var live = WorkbenchControlState()
+            try check(WorkbenchControlTool.allCases.allSatisfy { live.actionTitle($0) == $0.title }, "idle rows read their capability's name")
+            live.phase = .recording
+            try check(live.actionTitle(.dictate) == "Stop", "Dictate reads Stop while recording")
+            live = WorkbenchControlState(); live.playing = true
+            try check(live.actionTitle(.read) == "Stop reading", "Read reads Stop reading while playing (pause and resume stay on the Read page)")
+            live = WorkbenchControlState(); live.snapBusy = true
+            try check(live.actionTitle(.snap) == "Snap" && !live.enabled(.snap), "Snap keeps its name and disables while a Snap is busy")
+            live = WorkbenchControlState(); live.narrating = true
+            try check(live.actionTitle(.snapAndTalk) == "Stop narration", "Snap & Talk reads Stop narration while narrating")
+            live = WorkbenchControlState(); live.hasSession = true; live.captureCount = 3
+            try check(live.actionTitle(.snapAndTalk) == "Capture next · 3", "an open session continues with its count in the label")
+            live = WorkbenchControlState(); live.drawing = true
+            try check(live.actionTitle(.annotate) == "Stop drawing", "Draw reads Stop drawing")
+            live = WorkbenchControlState(); live.presenting = true
+            try check(live.actionTitle(.present) == "End presentation" && live.nextAction(.present)?.operation == .endPresentation, "the Present row ends the presentation itself rather than focusing the toolbar")
+            live = WorkbenchControlState(); live.overlays = true
+            try check(live.actionTitle(.persona) == "Hide persona" && live.nextAction(.persona)?.operation == .hidePersona, "the Persona row hides the persona itself")
+            live = WorkbenchControlState(); live.timerStarted = true
+            try check(live.actionTitle(.timer) == "Stop timer", "Timer reads Stop timer once started")
+            live = WorkbenchControlState(); live.phase = .recording; live.presenting = true
+            try check(live.actionTitle(.present) == "Stop", "input-consuming work claims every row's label, exactly as it claims the toolbar's")
+            try check(live.rowAction(.present) == .operation(.stopDictation), "and the Present row's click stops the recording, never ends the scene")
+            live = WorkbenchControlState(); live.drawing = true; live.presenting = true; live.overlays = true; live.timerStarted = true
+            try check(WorkbenchControlTool.allCases.allSatisfy { live.rowAction($0) == .operation(.finishDrawing) && live.actionTitle($0) == "Stop drawing" },
+                      "while drawing every row, Timer included, reads Stop drawing and its click stops drawing")
+            live = WorkbenchControlState(); live.rendering = true
+            try check(live.actionTitle(.read) == "Cancel" && live.rowAction(.read) == .operation(.cancelReading), "Read says Cancel while preparing, because that discards")
+            live.rendering = false; live.playing = true
+            try check(live.rowAction(.read) == .operation(.stopReading), "the Read row stops rather than pauses")
+            live = WorkbenchControlState()
+            try check(WorkbenchControlTool.allCases.allSatisfy { tool in
+                tool.mode.map { live.rowAction(tool) == .operation(.start($0)) } ?? (live.rowAction(tool) == .startTimer)
+            }, "idle, each row's click starts its own mode, or the timer")
+            live.timerStarted = true
+            try check(live.rowAction(.timer) == .stopTimer, "a started timer's row stops it")
+            try check(AppDelegate.voiceShortcutCatalogue.map(\.0) == VoicePreferences.shortcutIDs, "the voice catalogue titles cover exactly the shortcut ids")
+        }
         var saved = VoicePreferences()
         saved.dictationShortcut.keyCode = 42
         saved.readbackShortcut = VoiceShortcut(keyCode: 18, enabled: false)
@@ -53,17 +100,17 @@ enum WorkbenchControlChecks {
         state.capturing = true
         try check(!state.enabled(.snapAndTalk), "screen capture cannot be re-entered")
         state = WorkbenchControlState(); state.hasSession = true
-        try check(state.actionTitle(.snapAndTalk) == "Capture next", "an existing session continues instead of starting another")
+        try check(state.actionTitle(.snapAndTalk) == "Capture next · 0", "an existing session continues instead of starting another")
         state = WorkbenchControlState(); state.overlays = true
-        try check(state.actionTitle(.persona) == "Hide Persona", "one floating card is hidden by the main Persona action")
+        try check(state.actionTitle(.persona) == "Hide persona", "one floating card is hidden by the main Persona action")
         state.overlaySession = true
-        try check(state.actionTitle(.persona) == "Hide All Temporarily", "a prepared set's main action names the pause it performs, not an end")
+        try check(state.actionTitle(.persona) == "Hide personas", "a prepared set's main action names the hide it performs, not an end")
         state.overlaysPaused = true
-        try check(state.actionTitle(.persona) == "Show Again", "a temporarily hidden set offers to show again")
+        try check(state.actionTitle(.persona) == "Show personas", "a temporarily hidden set offers to show again")
         state = WorkbenchControlState(); state.timerStarted = true
-        try check(state.actionTitle(.timer) == "Show or hide timer", "a paused or finished timer keeps its existing-session action")
+        try check(state.actionTitle(.timer) == "Stop timer", "a started timer offers to stop")
         state.timerStarted = false
-        try check(state.actionTitle(.timer) == "Start Timer", "a reset timer offers a new start")
+        try check(state.actionTitle(.timer) == "Timer", "a reset timer offers a new start")
         for phase in [AppModel.Phase.idle, .requesting, .recording, .transcribing, .cleaning] {
             try check(WorkbenchDrawingAdmission.allows(phase: phase, suspended: false, capturingScreen: false, terminating: false),
                       "annotation can coexist with \(phase.rawValue)")
