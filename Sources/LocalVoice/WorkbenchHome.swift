@@ -273,7 +273,7 @@ struct WorkbenchHome: View {
                             Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
                         }
                     }
-                    Text("Delivery, text style, activation, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
+                    Text("Delivery, text style, activation, your dictionary and the floating toolbar's position are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
                     Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
                     Divider()
                     FounderIntroductionCard(model: introduction, canDismiss: false)
@@ -333,30 +333,56 @@ struct WorkbenchHome: View {
 
 struct WorkbenchClipboardShelf: View {
     @ObservedObject var receipts: ClipboardReceiptModel
+    /// A delivery that did not finish, kept by its owner after the receipt has
+    /// gone (#134 T5). Shown only while no current receipt is.
+    var unresolved: UnresolvedDelivery? = nil
     let review: () -> Void
     let showCue: () -> Void
+    /// Review for an undelivered result: the Dictate page for the draft's
+    /// words, History for a transcript's.
+    var reviewUnresolved: (UnresolvedDelivery) -> Void = { _ in }
+    var copyAgain: () -> Void = {}
+    var dismissUnresolved: () -> Void = {}
     var body: some View {
-        if let receipt = receipts.receipt, receipt.isClipboardCurrent {
-            // The same words as the floating receipt, so the panel, Home and Dictate agree.
+        let receipt = receipts.receipt.flatMap { $0.isClipboardCurrent ? $0 : nil }
+        if receipt != nil || unresolved != nil {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label(receipt.title, systemImage: receipt.symbolName)
-                        .font(.callout.weight(.semibold)).lineLimit(1)
-                    if receipt.wordCount > 0 {
-                        Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                if let receipt {
+                    // The same words as the floating receipt, so the panel, Home and Dictate agree.
+                    HStack {
+                        Label(receipt.title, systemImage: receipt.symbolName)
+                            .font(.callout.weight(.semibold)).lineLimit(1)
+                        if receipt.wordCount > 0 {
+                            Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                        // One ⌘V: the key only when the receipt's words do not already say it.
+                        if receipt.canSuggestPaste && !receipt.detail.contains("⌘V") {
+                            Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary)
+                        }
                     }
-                    Spacer(minLength: 4)
-                    // One ⌘V: the key only when the receipt's words do not already say it.
-                    if receipt.canSuggestPaste && !receipt.detail.contains("⌘V") {
-                        Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary)
-                    }
+                    Text(receipt.detail)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                } else if let unresolved {
+                    // What happened and where the words are, read as one by VoiceOver;
+                    // never a ⌘V after an uncertain paste.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: unresolved.symbolName).foregroundStyle(.orange).accessibilityHidden(true)
+                            Text(unresolved.title).font(.callout.weight(.semibold)).lineLimit(1)
+                        }
+                        Text(unresolved.detail)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    }.accessibilityElement(children: .combine)
                 }
-                Text(receipt.detail)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 HStack {
-                    Button("Review text", action: review)
+                    Button("Review text") { if receipt == nil, let unresolved { reviewUnresolved(unresolved) } else { review() } }
                     Spacer()
-                    Button("Show cue", action: showCue)
+                    if receipt != nil { Button("Show cue", action: showCue) }
+                    else if let unresolved {
+                        if unresolved.offersCopy { Button("Copy again", action: copyAgain) }
+                        Button("Dismiss", action: dismissUnresolved).accessibilityLabel("Dismiss unfinished delivery")
+                    }
                 }.controlSize(.small)
             }.padding(12)
                 .background(Workbench.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
@@ -588,12 +614,14 @@ struct WorkbenchHomePage: View {
                         Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
+                    WorkbenchClipboardShelf(receipts: model.clipboardReceipt, unresolved: model.unresolvedDelivery,
                         review: {
                             let prompt = model.clipboardReceipt.receipt?.source == .prompt
                             model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
                         },
-                        showCue: { model.clipboardReceipt.revealHUD() })
+                        showCue: { model.clipboardReceipt.revealHUD() },
+                        reviewUnresolved: { model.page = $0.isDraft ? "dictate" : "history" },
+                        copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                 }
             }
         }

@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import VoiceAppearance
 
 /// The voice outline's response, measured offline. Deterministic speech-like
 /// sound runs through the real analyser and the real outline state with a
@@ -276,17 +277,17 @@ final class PersonaVoiceLatencyTests {
         var strayCues = 0
         var loudShareInRaised = 0.0
         var loudShareElsewhere = 0.0
-        var transitions: [(time: Double, state: PersonaVoiceRingState.Visible)] = []
+        var transitions: [(time: Double, state: VoiceEnvelope.Visible)] = []
         var receipts: [Double] = []
     }
 
     /// Plays `fixture` through the analyser in `buffer`-second deliveries and the outline state at `displayRate`.
     static func measure(_ fixture: Fixture, buffer: Double = 0.1, displayRate: Double = 60) -> Measurement {
         let analyzer = PersonaVoiceAnalyzer(sampleRate: fixture.rate)
-        var ring = PersonaVoiceRingState()
+        var ring = VoiceEnvelope()
         var result = Measurement()
         var frameEnds: [Int] = []
-        var ticks: [(time: Double, state: PersonaVoiceRingState.Visible)] = []
+        var ticks: [(time: Double, state: VoiceEnvelope.Visible)] = []
         let bufferSamples = Int(buffer * fixture.rate)
         var start = 0, tick = 0.0, produced = 0
         func advanceDisplay(to time: Double) {
@@ -304,7 +305,7 @@ final class PersonaVoiceLatencyTests {
             advanceDisplay(to: received)
             let frames = fixture.samples[start..<end].withUnsafeBufferPointer { analyzer.process($0) }
             for _ in frames { produced += 1; frameEnds.append(produced * analyzer.chunk); result.receipts.append(received) }
-            ring.receive(frames, at: received)
+            ring.receive(frames.map(\.sample), at: received)
             start = end
         }
         advanceDisplay(to: Double(fixture.samples.count) / fixture.rate + 1)
@@ -317,7 +318,7 @@ final class PersonaVoiceLatencyTests {
             if !firstHalf, sample % chunk < chunk / 2 { index -= 1 }
             return result.receipts.indices.contains(index) ? result.receipts[index] : nil
         }
-        func lit(_ state: PersonaVoiceRingState.Visible) -> Bool { state != .quiet }
+        func lit(_ state: VoiceEnvelope.Visible) -> Bool { state != .quiet }
         for utterance in fixture.utterances {
             guard let first = arrival(ofFrameCovering: utterance.speech.lowerBound, firstHalf: true),
                   let voiced = arrival(ofFrameCovering: utterance.firstVoiced, firstHalf: true),
@@ -581,10 +582,10 @@ final class PersonaVoiceLatencyTests {
     /// The outline's state never waits on the display: a delivery lights it
     /// by the next frame, and without deliveries it settles instead of freezing.
     func testOutlineStateEasesAndSettlesWithoutFrames() {
-        var state = PersonaVoiceRingState()
+        var state = VoiceEnvelope()
         XCTAssertFalse(state.isMoving)
         let voice = PersonaVoiceFrame(level: 0.5, speaking: true, seconds: 0.021)
-        state.receive([.quiet.lasting(0.021), voice], at: 10)
+        state.receive([PersonaVoiceFrame.quiet.lasting(0.021), voice].map(\.sample), at: 10)
         XCTAssertTrue(state.isMoving, "A voice wakes the display link")
         XCTAssertEqual(state.advance(to: 10 + 1.0 / 60), .normal, "Lit by the next display frame")
         for step in 2...12 { state.advance(to: 10 + Double(step) / 60) }
@@ -592,7 +593,7 @@ final class PersonaVoiceLatencyTests {
         var lastDelivery = 10.0
         for step in 13...60 {
             let time = 10 + Double(step) / 60
-            if step % 6 == 0 { state.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021)], at: time); lastDelivery = time }
+            if step % 6 == 0 { state.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021).sample], at: time); lastDelivery = time }
             state.advance(to: time)
         }
         XCTAssertEqual(state.visible, .loud, "A raised voice reads as loud")
@@ -602,7 +603,7 @@ final class PersonaVoiceLatencyTests {
             let time = 10 + Double(step) / 60
             if state.advance(to: time) == .quiet { settledAt = time }
         }
-        XCTAssertTrue(settledAt.map { $0 - lastDelivery <= PersonaVoiceRingState.starvation + 0.15 } ?? false, "Settles once frames stop (\(settledAt.map { $0 - lastDelivery } ?? -1))")
+        XCTAssertTrue(settledAt.map { $0 - lastDelivery <= VoiceEnvelope.starvation + 0.15 } ?? false, "Settles once frames stop (\(settledAt.map { $0 - lastDelivery } ?? -1))")
         for step in 151...230 { state.advance(to: 10 + Double(step) / 60) }
         XCTAssertFalse(state.isMoving, "At rest the display link sleeps")
         XCTAssertEqual(state.intensity, 0, accuracy: 0.0001)

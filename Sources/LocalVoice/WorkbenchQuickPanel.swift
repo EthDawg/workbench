@@ -28,7 +28,7 @@ struct WorkbenchQuickPanel: View {
     var personas: () -> Void
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
     private var hasFeedback: Bool {
-        editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true ||
+        editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true || model.unresolvedDelivery != nil ||
             !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
             readback.notice != nil || (model.phase == .idle && !model.ready)
     }
@@ -82,13 +82,17 @@ struct WorkbenchQuickPanel: View {
                 if editor.shortcutID != nil { shortcutEditor }
                 else {
                     VStack(alignment: .leading, spacing: 5) {
-                        WorkbenchClipboardShelf(receipts: receipts,
+                        WorkbenchClipboardShelf(receipts: receipts, unresolved: model.unresolvedDelivery,
                             review: {
                                 let prompt = receipts.receipt?.source == .prompt
                                 receipts.dismissHUD()
                                 if prompt { open("library") } else { model.openHistory(); open("history") }
                             },
-                            showCue: { model.onCloseMenu?(); receipts.revealHUD() })
+                            showCue: { model.onCloseMenu?(); receipts.revealHUD() },
+                            reviewUnresolved: { entry in
+                                if entry.isDraft { open("dictate") } else { model.openHistory(); open("history") }
+                            },
+                            copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                         if receipts.receipt?.isClipboardCurrent != true {
                             if !context.activitySummary.isEmpty {
                                 Text(context.activitySummary).font(.caption).foregroundStyle(.secondary)
@@ -150,6 +154,10 @@ struct WorkbenchQuickPanel: View {
             HStack {
                 Text(keyboard.selected?.title ?? "Shortcut").font(.callout.weight(.semibold))
                 Spacer()
+                // ✓ Saved for four seconds, in space kept for it (#134 T5). Practice
+                // happens on the Keyboard page, so this editor never shows its check.
+                ConfirmationLabel(text: keyboard.confirmation?.kind == .saved ? ShortcutConfirmation.saved.rawValue : nil,
+                                  reserving: [ShortcutConfirmation.saved.rawValue])
                 Button("Done") { editor.end() }
                     .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }
@@ -157,7 +165,10 @@ struct WorkbenchQuickPanel: View {
                 .font(.caption).foregroundStyle(keyboard.hasError ? .orange : .secondary).lineLimit(3)
             HStack {
                 Button("Change") { keyboard.beginRecording() }
+                // Off already: nothing to turn off, so nothing to confirm. It stays
+                // usable while recording, which this editor starts on opening.
                 Button("Turn off") { keyboard.disableSelected() }
+                    .disabled(keyboard.selected?.shortcut.enabled != true)
                 if keyboard.isInteracting { Button("Cancel") { keyboard.stopInteraction() } }
             }.controlSize(.small)
         }

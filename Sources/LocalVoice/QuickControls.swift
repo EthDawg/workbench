@@ -69,6 +69,11 @@ struct VoiceOptions: View {
             Picker("Activation", selection: $model.preferences.capture) {
                 ForEach(CaptureMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.fixedSize()
+            // The same words the one-time hold lesson uses, with the shortcut as it is saved (#134 T5).
+            Text(model.preferences.capture == .hold
+                 ? HoldLesson.title(shortcut: model.preferences.dictationShortcut.label) + " " + HoldLesson.body
+                 : "Press \(model.preferences.dictationShortcut.label) to start dictating, and again to finish.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.disabled(model.phase != .idle)
     }
 }

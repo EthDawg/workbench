@@ -25,6 +25,7 @@ swiftc -swift-version 5 -module-cache-path "$CHECK_DIR/ModuleCache" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapHandoff.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapCapture.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapModel.swift" \
+  "$PROJECT_DIR/Sources/LocalVoice/NoticeLifetime.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/SnapReadback.swift" \
   "$PROJECT_DIR/Sources/LocalVoice/ReadbackResources.swift" \
   "$CHECK_DIR/ReadbackStore.swift" \

@@ -120,7 +120,7 @@ enum PresenterChecks {
         panel = PresenterPanelController(model: presenter, setup: { [weak self] in self?.window.makeKeyAndOrderFront(nil) })
         var keys = VoicePreferences()
         for id: UInt32 in [1, 2, 3] { var key = keys.shortcut(id); key.enabled = false; keys.setShortcut(key, for: id) }
-        hotkeys.onKey = { [weak self] id, down in
+        hotkeys.onKey = { [weak self] id, down, _ in
             if id == 4 && down { self?.presenter.message = "Switch to shortcut received."; self?.panel.show() }
         }
         hotkeys.register(keys)

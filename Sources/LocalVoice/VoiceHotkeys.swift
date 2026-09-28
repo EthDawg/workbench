@@ -8,7 +8,10 @@ final class VoiceHotkeys {
     private var shortcuts: [UInt32: VoiceShortcut] = [:]
     private var pressed = Set<UInt32>()
     private var localMonitor: Any?
-    var onKey: ((UInt32, Bool) -> Void)?
+    /// The shortcut, down or up, and the key event's own time in seconds since
+    /// the Mac started (Carbon and NSEvent share that clock), so a hold is
+    /// measured from the keys themselves rather than from later callbacks.
+    var onKey: ((UInt32, Bool, TimeInterval) -> Void)?
     private(set) var failures: [UInt32: String] = [:]
     init() {
         var types = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)), EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
@@ -16,7 +19,7 @@ final class VoiceHotkeys {
             guard let event, let context else { return OSStatus(eventNotHandledErr) }
             var key = EventHotKeyID()
             guard GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &key) == noErr, key.signature == 0x4C564F49 else { return OSStatus(eventNotHandledErr) }
-            Unmanaged<VoiceHotkeys>.fromOpaque(context).takeUnretainedValue().dispatch(key.id, down: GetEventKind(event) == UInt32(kEventHotKeyPressed))
+            Unmanaged<VoiceHotkeys>.fromOpaque(context).takeUnretainedValue().dispatch(key.id, down: GetEventKind(event) == UInt32(kEventHotKeyPressed), at: GetEventTime(event))
             return noErr
         }, types.count, &types, Unmanaged.passUnretained(self).toOpaque(), &handler)
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
@@ -26,17 +29,18 @@ final class VoiceHotkeys {
     }
     func handle(_ event: NSEvent) -> NSEvent? {
         if event.type == .keyUp, let id = pressed.first(where: { shortcuts[$0]?.keyCode == UInt32(event.keyCode) }) {
-            dispatch(id, down: false); return nil
+            dispatch(id, down: false, at: event.timestamp); return nil
         }
         if let id = shortcuts.first(where: { $0.value == VoiceShortcut(event: event) })?.key {
-            dispatch(id, down: event.type == .keyDown); return nil
+            dispatch(id, down: event.type == .keyDown, at: event.timestamp); return nil
         }
         return event
     }
-    private func dispatch(_ id: UInt32, down: Bool) {
+    /// A repeated key-down is ignored, so a held key keeps its first press time.
+    private func dispatch(_ id: UInt32, down: Bool, at time: TimeInterval) {
         if down { guard pressed.insert(id).inserted else { return } }
         else { guard pressed.remove(id) != nil else { return } }
-        onKey?(id, down)
+        onKey?(id, down, time)
     }
     func register(_ preferences: VoicePreferences) {
         unregister(); failures = [:]

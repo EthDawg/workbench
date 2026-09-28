@@ -10,7 +10,7 @@ from swift_extract import ExtractError, Scope, SwiftFile, tokens
 
 PROJECT = Path(__file__).resolve().parents[1]
 # Every file a harness extracts from, so the reader is checked on the exact text it reads.
-HARNESS_SOURCES = ['AppModel.swift', 'Core.swift', 'ReadbackModel.swift', 'Shortcuts.swift', 'WorkbenchHome.swift']
+HARNESS_SOURCES = ['AppModel.swift', 'Core.swift', 'DeliveryOutcome.swift', 'ReadbackModel.swift', 'Shortcuts.swift', 'WorkbenchHome.swift']
 
 MODEL = '''import Foundation
 

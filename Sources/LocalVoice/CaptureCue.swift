@@ -16,6 +16,8 @@ struct CaptureCue: Identifiable, Equatable {
     }
     let id = UUID()
     let reason: Reason
+    /// A recording shorter than this cannot hold a word, so it is too short.
+    static let shortestSpeech: TimeInterval = 0.35
     /// The cue's words, on the surface and for VoiceOver alike.
     static let message = "No speech heard"
     var message: String { Self.message }

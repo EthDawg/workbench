@@ -13,6 +13,8 @@ public enum ToolbarLayout {
     public static let markCapsule = NSSize(width: 48, height: 8)
     /// A status glyph raises the mark's visible height to this, inside the same target.
     public static let statusHeight: CGFloat = 12
+    /// A badge on the capture signal or the launcher: a fixed square, whatever its symbol's metrics.
+    public static let badge: CGFloat = 7
     public static let rowHeight: CGFloat = 40
     public static let controlHeight: CGFloat = 32
     public static let launcherWidth: CGFloat = 48

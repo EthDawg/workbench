@@ -20,48 +20,26 @@ enum CaptureHUDChecks {
         try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false) == .hidden,
                   "an explicit idle-toolbar dismissal remains respected")
         for enabled in [true, false] {
-            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: true, narration: false) == .dictation,
-                      "dictation controls remain visible even with idle tools hidden")
-            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: false, narration: true) == .narration,
-                      "narration reuses the same operation surface")
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: true, narration: false) == .tools,
+                      "dictation keeps the shared host visible even with idle tools hidden (#134 T4)")
+            try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: false, dictation: false, narration: true) == .tools,
+                      "narration uses the same host")
             try check(FloatingToolbarSurface.resolve(enabled: enabled, capturingScreen: true, dictation: true, narration: true) == .hidden,
                       "screen acquisition temporarily hides all shared controls")
         }
+        // StageKit's named docks and drag destination agree, as its other floating controls use
+        // them; the toolbar's own placement is ToolbarPlacementTests' and the gallery's.
         let left = NSRect(x: -1920, y: -400, width: 1920, height: 1080)
-        let screens = [main, left]
-        for screen in screens {
+        for screen in [main, left] {
             for anchor in FloatingControlAnchor.allCases {
-                let compact = CaptureHUDGeometry.frame(size: CaptureHUDLayout.compact, anchor: anchor, previous: nil, screens: [screen], preferred: screen)
-                let expanded = CaptureHUDGeometry.frame(size: CaptureHUDLayout.expanded, anchor: anchor, previous: compact, screens: screens, preferred: main)
-                let collapsed = CaptureHUDGeometry.frame(size: CaptureHUDLayout.compact, anchor: anchor, previous: expanded, screens: screens, preferred: main)
-                try check(collapsed == compact && screen.contains(expanded), "anchor survives expansion and collapse on \(anchor.title)")
-                try check(FloatingControlGeometry.nearestAnchor(to: expanded, in: screen) == anchor, "menu and drag destination agree")
+                let frame = FloatingControlGeometry.frame(anchor: anchor, size: CaptureHUDLayout.message, visibleFrame: screen)
+                try check(screen.contains(frame) && FloatingControlGeometry.nearestAnchor(to: frame, in: screen) == anchor,
+                          "menu and drag destination agree on \(anchor.title)")
             }
         }
-        let defaultFrame = CaptureHUDGeometry.frame(size: CaptureHUDLayout.compact, anchor: nil, previous: nil, screens: screens, preferred: main)
-        try check(defaultFrame.midX == main.midX && defaultFrame.minY == main.minY + 16, "first recording sits above Dock at bottom centre")
-        let free = NSRect(x: 400, y: 350, width: 336, height: 64)
-        let enlarged = CaptureHUDGeometry.frame(size: CaptureHUDLayout.expanded, anchor: nil, previous: free, screens: screens, preferred: left)
-        try check(enlarged.midX == free.midX && enlarged.midY == free.midY, "free placement expands around its centre without changing display")
-        let oldDisplay = NSRect(x: -1800, y: -200, width: 336, height: 64)
-        let recovered = CaptureHUDGeometry.frame(size: CaptureHUDLayout.expanded, anchor: .right, previous: oldDisplay, screens: [main], preferred: main)
-        try check(main.contains(recovered) && recovered.maxX == main.maxX - 16, "removed display recovers the chosen right anchor")
-        let partlyOff = NSRect(x: 1300, y: 850, width: 336, height: 64)
-        let clamped = CaptureHUDGeometry.frame(size: CaptureHUDLayout.expanded, anchor: nil, previous: partlyOff, screens: [main], preferred: main)
-        try check(main.contains(clamped), "free expansion near the edge remains visible")
-        let tiny = NSRect(x: -300, y: -400, width: 200, height: 80)
-        let tinyFrame = CaptureHUDGeometry.frame(size: CaptureHUDLayout.expanded, anchor: .bottom, previous: nil, screens: [tiny], preferred: tiny)
-        try check(tiny.contains(tinyFrame), "small visible display keeps the frame recoverable")
-        let invalid = NSRect(x: CGFloat.infinity, y: CGFloat.nan, width: 336, height: 64)
-        let restored = CaptureHUDGeometry.frame(size: CaptureHUDLayout.compact, anchor: nil, previous: invalid, screens: screens, preferred: main)
-        try check(restored == defaultFrame, "invalid saved coordinates recover at the default")
         let top = FloatingControlGeometry.frame(anchor: .top, size: CaptureHUDLayout.compact, visibleFrame: main)
         try check(FloatingControlGeometry.nearestAnchor(to: top.offsetBy(dx: 28, dy: 0), in: main) == .top, "snap threshold includes its boundary")
         try check(FloatingControlGeometry.nearestAnchor(to: top.offsetBy(dx: 28.1, dy: 0), in: main) == nil, "drag outside snap threshold remains free")
-        try check(CaptureHUDLayout.size(recording: false, preview: false, expanded: true) == CaptureHUDLayout.message, "recording expansion cannot make a processing or receipt state permanent")
-        try check(CaptureHUDLayout.size(recording: false, preview: true, expanded: false) == CaptureHUDLayout.compact, "microphone-off preview uses the actual compact layout")
-        let legacy = NSPoint(x: 100, y: 320)
-        try check(CapturePanelPlacement.origin(saved: legacy, screens: [main], preferred: main) == legacy, "legacy free placement remains unchanged")
 
         // A dictation that heard no speech is routine: its cue goes within two
         // seconds unless the person holds it; a technical failure stays (#156).
@@ -80,13 +58,8 @@ enum CaptureHUDChecks {
                   "letting go resumes the time that was left, once")
         let technical = CaptureCueClock(routine: false, shownAt: shown)
         try check(technical.deadline == nil && !technical.isExpired(at: .distantFuture), "a technical failure never goes by itself")
-        try check(CaptureHUDLayout.size(recording: false, preview: false, expanded: true, cue: true) == CaptureHUDLayout.compact
-                  && CaptureHUDLayout.size(recording: false, preview: false, expanded: false) == CaptureHUDLayout.message,
-                  "the cue keeps the compact size of the recording controls; the message layout stays for the explicit panel")
-        try check(CaptureHUDLayout.size(recording: true, preview: false, expanded: true, cue: true) == CaptureHUDLayout.expanded,
-                  "a cue never changes live recording controls")
-        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading,
-                  "a stopped reading keeps its controls even with the toolbar hidden")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools,
+                  "a stopped reading keeps the shared host, and its controls, even with the toolbar hidden")
         let cues = [CaptureCue(reason: .tooShort), CaptureCue(reason: .tooQuiet),
                     CaptureCue(reason: .nothingRecognised(keptAudio: true)), CaptureCue(reason: .nothingRecognised(keptAudio: false))]
         let words = cues.flatMap { [$0.message, $0.hint, $0.status] }.joined(separator: " ")
