@@ -706,6 +706,9 @@ func runCLI(_ args: [String]) async -> Int32 {
                 _ = NSApplication.shared
                 try ReadSelectionChecks.renderReviewCard(to: URL(fileURLWithPath: args[1]))
             }
+        case "--render-surfaces":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --render-surfaces OUTPUT_DIRECTORY") }
+            try SurfaceGallery.run(output: URL(fileURLWithPath: args[1], isDirectory: true))
         case "--check-providers":
             try ProviderChecks.run(); try await ProviderChecks.runTransportChecks()
         case "--check-subscription-cli":
@@ -779,7 +782,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let second = try await engine.transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
-        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --self-test]")
+        default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --render-surfaces OUTPUT_DIRECTORY | --self-test]")
         }
         return 0
     } catch { fputs("Local Voice: \(error.localizedDescription)\n", stderr); return 1 }
@@ -791,6 +794,10 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fi
         let delegate = PresenterFixtureDelegate(root: URL(fileURLWithPath: CommandLine.arguments[2]))
         app.delegate = delegate; app.run()
     }
+} else if CommandLine.arguments.count > 1, CommandLine.arguments[1] == SurfaceGallery.passFlag {
+    // An isolated pass started by --render-surfaces. It waits on the main run loop for SwiftUI,
+    // so it runs here rather than inside a main-queue job.
+    MainActor.assumeIsolated { exit(SurfaceGallery.runPass(Array(CommandLine.arguments.dropFirst(2)))) }
 } else if CommandLine.arguments.count > 1, CommandLine.arguments[1].hasPrefix("--") {
     Task { let code = await runCLI(Array(CommandLine.arguments.dropFirst())); exit(code) }
     RunLoop.main.run()

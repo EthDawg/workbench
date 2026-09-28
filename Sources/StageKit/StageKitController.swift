@@ -74,10 +74,12 @@ public final class StageKitController: ObservableObject {
         }
     }
 
+    /// `defaults` replaces the edition's presentation preferences only for isolated fixtures.
     public init(onOpenControls: (() -> Void)? = nil, onOpenScenes: (() -> Void)? = nil,
-                reserving shortcuts: Set<GlobalShortcutCombination> = []) {
-        let migrationNotice = Workbench.prepareStageData()
-        let settings = SettingsStore(defaults: Workbench.stageDefaults, reserving: shortcuts)
+                reserving shortcuts: Set<GlobalShortcutCombination> = [], defaults: UserDefaults? = nil) {
+        let defaults = defaults ?? Workbench.stageDefaults
+        let migrationNotice = Workbench.prepareStageData(defaults: defaults)
+        let settings = SettingsStore(defaults: defaults, reserving: shortcuts)
         let coordinator = AppCoordinator(settings: settings, embedded: true, migrationFailure: migrationNotice)
         self.coordinator = coordinator
         self.onOpenControls = onOpenControls
