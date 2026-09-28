@@ -154,6 +154,8 @@ enum SurfaceGallery {
     let stage: StageKitController
     let readback: ReadbackModel
     let sessionReadback: ReadbackModel
+    /// The preferences that name the synthetic session as recent.
+    let sessionDefaults: UserDefaults
     let snap: SnapModel
     /// Meeting owners with a fixed audio-app list and a capture that records nothing.
     let meetings: MeetingModel
@@ -190,11 +192,14 @@ enum SurfaceGallery {
         model.transcript = SurfacePass.history[0].text; model.rawTranscript = model.transcript
         let noCapture: @MainActor () async throws -> ReadbackScreenshot = { throw ReadbackError.message("The surface gallery never captures the screen.") }
         let noSpeech: @MainActor (URL) async throws -> String = { _ in throw ReadbackError.message("The surface gallery never transcribes audio.") }
-        readback = ReadbackModel(engine: model.engine, captureDisplay: noCapture, transcribeAudio: noSpeech)
+        // Screen Recording reads as allowed, so pages render alike on every Mac; a separate state shows it off.
+        readback = ReadbackModel(engine: model.engine, captureDisplay: noCapture, transcribeAudio: noSpeech, screenAccess: .fixed(true))
         let session = try SurfacePass.makeSession(in: home)
         let sessionDefaults = try SurfaceGallery.isolatedDefaults("SnapSession", home: home)
         sessionDefaults.set([session.path], forKey: "readback.recentSessionPaths.v1")
-        sessionReadback = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech)
+        sessionReadback = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech,
+                                        screenAccess: .fixed(true))
+        self.sessionDefaults = sessionDefaults
         // Snap storage wants the resolved spelling of its folder, which may name /private as /tmp.
         let snaps = Workbench.supportDirectory(component: "Snaps")
         try FileManager.default.createDirectory(at: snaps, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -202,7 +207,7 @@ enum SurfaceGallery {
         let desktop = home.appendingPathComponent("Desktop", isDirectory: true)
         try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         snap = SnapModel(store: try SurfacePass.makeSnaps(SnapStore(root: snaps.resolvingSymlinksInPath())), desktop: desktop,
-                         trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") })
+                         trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") }, screenAccess: .fixed(true))
         stage = StageKitController(reserving: preferences.enabledCombinations, defaults: stageDefaults)
         stage.useSharedActivityControls()
         let model = model
@@ -243,6 +248,10 @@ enum SurfaceGallery {
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
+        // Screen Recording off (#112): Snap, Home's Snap card and a Snap & Talk session explain it.
+        for (route, shot) in try renderScreenAccessOff(to: output) {
+            if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
+        }
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
     }
 
@@ -275,7 +284,7 @@ enum SurfaceGallery {
         let size = NSSize(width: 1180, height: 1_180), jobs = model.handoffJobs, library = model.historyLibrary
         // A Snap folder that does not exist yet reads as an empty history.
         let emptySnaps = SnapModel(store: SnapStore(root: home.appendingPathComponent("Empty Snaps", isDirectory: true)), desktop: home.appendingPathComponent("Desktop"),
-                                   trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") })
+                                   trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") }, screenAccess: .fixed(true))
         var shots: [SurfaceGallery.Shot] = []
         func shot(_ id: String, _ title: String, _ detail: String, snaps: SnapModel, door: HistoryDoor? = nil) throws {
             let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
@@ -384,6 +393,37 @@ enum SurfaceGallery {
                              tags: index == 0 ? ["pricing"] : [], id: id, createdAt: Date(timeIntervalSince1970: 1_789_546_320 - Double(index) * 86_400))
         }
         return store
+    }
+
+    // MARK: Screen Recording off
+
+    /// The pages that capture the screen, with Screen Recording off: the Snap page, Home (taller, to
+    /// reach its Snap card) and a Snap & Talk session. The Snaps and session are the same synthetic ones.
+    func renderScreenAccessOff(to output: URL) throws -> [(String, SurfaceGallery.Shot)] {
+        let noCapture: @MainActor () async throws -> ReadbackScreenshot = { throw ReadbackError.message("The surface gallery never captures the screen.") }
+        let noSpeech: @MainActor (URL) async throws -> String = { _ in throw ReadbackError.message("The surface gallery never transcribes audio.") }
+        let snapOff = SnapModel(store: SnapStore(root: snap.store.root), desktop: home.appendingPathComponent("Desktop"),
+                                trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") }, screenAccess: .fixed(false))
+        let sessionOff = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech,
+                                       screenAccess: .fixed(false))
+        var shots: [(String, SurfaceGallery.Shot)] = []
+        for (route, size, detail, readback) in [
+            ("snap", SurfaceGallery.sizes[0].size, "Region, Window and Screen explain the missing access and offer Paste image, Import image and System Settings.", readback),
+            ("home", NSSize(width: 1180, height: 1_300), "The Snap card says Screen Recording is off before it is chosen.", readback),
+            ("readback", SurfaceGallery.sizes[0].size, "An open session explains the missing access; its screenshots and narration stay available.", sessionOff)] {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.page = route
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snapOff))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame, seconds: 1)
+            let rep = try snapshot(frame)
+            shots.append((route, try save(rep, id: "screen-access-off", title: "Screen Recording off", detail: detail,
+                                         file: "page-\(route)-screen-access-off-\(theme).png", to: output)))
+        }
+        return shots
     }
 
     static func syntheticMeetings(_ directory: URL) -> MeetingModel {
@@ -774,7 +814,7 @@ private struct SurfaceIndex {
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
             "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",
-            "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Screen Recording and Microphone access.",
+            "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Microphone access. Screen Recording reads as allowed, except in the Screen Recording off states.",
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
