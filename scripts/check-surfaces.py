@@ -13,8 +13,9 @@ menus that the rows, the floating toolbar and the app menu bar open, with any
 native views embedded in them; the floating toolbar's modes, next action and
 hover labels, accessory and glyph menu, and the live dictation, narration and
 reading controls shown in the same window; the app menu bar and any status item menu
-built in AppDelegate; the window sidebar; every control on Home and on the
-Settings page, including views embedded in them; the global shortcut
+built in AppDelegate; the window sidebar and the section switchers of pages with
+sections, both from the page record in WorkbenchHome; every control on Home and
+on the Settings page, including views embedded in them; the global shortcut
 catalogue; proactive offers, found as types named *Offer* or *Cue plus
 OFFER_TYPES; a capability page's own options (mode 'options' below), since a
 setting that reaches beyond one page counts wherever it appears; and a
@@ -152,9 +153,11 @@ ENTRY_POINTS = [
 # openHistory opens History with a door's starting view; openTranscript opens
 # a transcript on the Dictate page.
 ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript'}
-# Inline shortcut editors: the global shortcut catalogue records these shortcuts.
+# Shortcut editors, inline in the panel or the Keyboard section of Settings: the
+# global shortcut catalogue records these shortcuts.
 EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
-            'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}
+            'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap'],
+            'LocalVoice/KeyboardCoach.swift': ['KeyboardCoachView']}
 # Catalogue owners that must exist; their extractors are below.
 CATALOGUES = [
     ('LocalVoice/WorkbenchControlTool.swift', 'WorkbenchControlState.actionTitle'),
@@ -485,6 +488,28 @@ def choice_labels(swift, start, end, member):
         label = evaluate(tokens, case, raw)
         result[case] = (label, None if label is not None else expression(tokens))
     return result
+
+
+def record_items(swift, start, end, name, required=False):
+    """(index, parts) for each all-literal tuple in `let name = [(...), ...]` between start and
+    end: a list of the page record in WorkbenchHome."""
+    j = next((j for j in range(start, end - 2) if swift.v[j] == name and swift.v[j - 1] == 'let'), None)
+    if j is None:
+        if required:
+            raise ValueError(f'Missing surface owner: Sources/LocalVoice/WorkbenchHome.swift {name}. '
+                             'Update CATALOGUES in scripts/check-surfaces.py after a move.')
+        return []
+    while j < end and swift.v[j] != '=':
+        j += 1
+    if swift.v[j + 1] != '[':
+        return []
+    items = []
+    for item in swift.args(j + 1):
+        k = swift.tokens.index(item[0])
+        parts = swift.args(k) if swift.v[k] == '(' else []
+        if len(parts) > 1 and all(literal(part) is not None for part in parts):
+            items.append((k, parts))
+    return items
 
 
 class Tree:
@@ -919,21 +944,16 @@ class Inventory:
                     number = args[0][2].value
                     self.add(swift, i, 'shortcut', args[1], 'global shortcuts', identity=number)
                     self.entries[-1]['id'] = 'shortcut.voice.' + number
-        # Window sidebar: (page, title, symbol).
+        # The page record. Window sidebar: (page, title, symbol). The switcher of a page with
+        # sections: (route, page, title). Subpages have no control of their own, so only their
+        # names are read (page_names).
         swift, ranges = self.owner(*CATALOGUES[5], kinds=('struct',))
         for start, end in ranges[:1]:
-            j = next((j for j in range(start, end - 2) if swift.v[j] == 'navItems' and swift.v[j - 1] == 'let'), None)
-            if j is None and self.strict:
-                raise ValueError('Missing surface owner: Sources/LocalVoice/WorkbenchHome.swift navItems. '
-                                 'Update CATALOGUES in scripts/check-surfaces.py after a move.')
-            while j is not None and swift.v[j] != '=':
-                j += 1
-            if j is not None and swift.v[j + 1] == '[':
-                for item in swift.args(j + 1):
-                    k = swift.tokens.index(item[0])
-                    parts = swift.args(k) if swift.v[k] == '(' else []
-                    if len(parts) > 1 and literal(parts[0]) and literal(parts[1]):
-                        self.add(swift, k, 'sidebar', parts[1], 'window sidebar', identity=literal(parts[0]), page=literal(parts[0]))
+            for k, parts in record_items(swift, start, end, 'navItems', required=self.strict):
+                self.add(swift, k, 'sidebar', parts[1], 'window sidebar', identity=literal(parts[0]), page=literal(parts[0]))
+            for k, parts in record_items(swift, start, end, 'sections'):
+                if len(parts) > 2:
+                    self.add(swift, k, 'section', parts[2], 'page sections', identity=literal(parts[0]), page=literal(parts[0]))
 
     def enum_choices(self):
         for name, ((swift, start, end), member) in sorted(self.enums.items()):

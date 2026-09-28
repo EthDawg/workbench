@@ -28,9 +28,9 @@ These surfaces share the same underlying jobs and saved resources. Starting or a
 ## Get started
 
 1. Install **Workbench** from the [website](https://workbench-mac.vercel.app/). Open it from Applications.
-2. Open **Models** to prepare the default local Parakeet recognizer, then try Dictate with a disposable sentence. The first model download can take several minutes.
+2. Open **Settings → Models** to prepare the default local Parakeet recognizer, then try Dictate with a disposable sentence. The first model download can take several minutes.
 3. Use the menu bar for quick actions and the floating toolbar while working. Open the desktop app for preparation and review.
-4. Open **Keyboard** to see, change or practise shortcuts. Recording a shortcut temporarily suspends Workbench's global shortcuts.
+4. Open **Settings → Keyboard** to see, change or practise shortcuts. Recording a shortcut temporarily suspends Workbench's global shortcuts.
 5. Use **Settings → Workbench updates** for updates and **Copy build details** when reporting a problem.
 
 Closing the desktop window leaves Workbench available. Quit Workbench stops the app. Open at login is optional. Older releases without the updater need one manual upgrade; see [installation and updates](docs/updating.md).

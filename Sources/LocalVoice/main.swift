@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         model.meetings.mayStart = { [weak self] in
             guard let self, !self.terminating else { return "Workbench is closing." }
-            guard self.model.ready else { return "Prepare your speech engine in Models first." }
+            guard self.model.ready else { return "Prepare your speech engine in Settings › Models first." }
             return self.model.phase == .idle && !self.model.rendering && !self.readback.blocksDictation && !self.shortcutsSuspended
                 ? nil : "Finish Dictate, reading or Snap & Talk before starting a meeting."
         }
@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             for entry in self.voiceShortcutEntries() {
                 let saved = entry.shortcut
                 if saved.enabled && saved.keyCode == code && saved.modifiers == modifiers {
-                    return "Also assigned to \(entry.title). Both shortcuts are paused; change or turn off one in Keyboard shortcuts."
+                    return "Also assigned to \(entry.title). Both shortcuts are paused; change or turn off one in Settings › Keyboard."
                 }
             }
             return nil

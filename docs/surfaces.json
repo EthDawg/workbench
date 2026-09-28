@@ -146,6 +146,120 @@
     "note": "Runtime label from Image ( systemName : \"pencil.tip.crop.circle.badge.checkmark\" ); no rendered text assumed."
   },
   {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.cancel",
+    "surface": "settings page",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Cancel stops the current Ollama request or closes the download question; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.cancel.2",
+    "surface": "settings page",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "settings",
+    "aliasOf": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Cancel stops the current Ollama request or closes the download question; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.check-installed",
+    "surface": "settings page",
+    "label": "Check installed",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.download-model",
+    "surface": "settings page",
+    "label": "Download model…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.download-model.3ba377ba",
+    "surface": "settings page",
+    "label": "Download model",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.load-model",
+    "surface": "settings page",
+    "label": "Load model",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Button.save-refinement-choice",
+    "surface": "settings page",
+    "label": "Save refinement choice",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.browse-models",
+    "surface": "settings page",
+    "label": "Browse models",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.disable-ollama-cloud",
+    "surface": "settings page",
+    "label": "Disable Ollama Cloud",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Link.get-ollama",
+    "surface": "settings page",
+    "label": "Get Ollama",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Menu.installed-models",
+    "surface": "settings page",
+    "label": "Installed models",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.Picker.natural-cleanup-model",
+    "surface": "settings page",
+    "label": "Natural cleanup model",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.TextField.model-name",
+    "surface": "settings page",
+    "label": "Model name",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.CleanupModelSettingsView.CleanupModelSettingsView.TextField.ollama-address",
+    "surface": "settings page",
+    "label": "Ollama address",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
     "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.read-aloud",
     "surface": "library page",
     "label": "Read aloud",
@@ -463,6 +577,39 @@
     "note": "Quality: the meeting page's existing door to History takes the place's name (was Recent transcripts; #137)."
   },
   {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-aeb8a4573b22",
+    "surface": "settings page",
+    "label": null,
+    "expression": "applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Runtime label from applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Picker.transcribe-with",
+    "surface": "settings page",
+    "label": "Transcribe with",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.TextField.http-127-0-0-1-8080-v1-audio-transcriptions",
+    "surface": "settings page",
+    "label": "http://127.0.0.1:8080/v1/audio/transcriptions",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.TextField.whisper-1",
+    "surface": "settings page",
+    "label": "whisper-1",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
     "surface": "proactive offer PhotoHandoffArrivalCue",
     "label": "From iPhone",
@@ -719,20 +866,6 @@
     "note": "Option (a door): Dictate's options live on the Dictate page; this keeps Settings free of dead ends (#134 W3)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.keyboard-and-practice",
-    "surface": "settings page",
-    "label": "Keyboard and practice",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.models-and-local-server",
-    "surface": "settings page",
-    "label": "Models and local server",
-    "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
     "surface": "window sidebar",
     "label": null,
@@ -754,6 +887,42 @@
     "label": "Show floating toolbar",
     "kind": "setting",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.connections",
+    "surface": "page sections",
+    "label": "Connections",
+    "page": "connections",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: Settings' assistant connections and photo handoff move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.models",
+    "surface": "page sections",
+    "label": "Models",
+    "page": "models",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: the Models sidebar item becomes the Models section of Settings, on the same route, models (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",
+    "surface": "page sections",
+    "label": "General",
+    "page": "settings",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: Settings opens on General, what the page showed before its fold, now named by its switcher (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.shortcuts",
+    "surface": "page sections",
+    "label": "Keyboard",
+    "page": "shortcuts",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: the Keyboard sidebar item becomes the Keyboard section of Settings, on the same route, shortcuts. Practice still pauses global actions only while it runs (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.annotate",
@@ -799,14 +968,6 @@
     "note": "Quality: Saved resources takes its Grammar place name, Library, in the same place. The alias it needed is gone (#134)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.models",
-    "surface": "window sidebar",
-    "label": "Models",
-    "page": "models",
-    "kind": "option",
-    "belongsTo": "settings"
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.packs",
     "surface": "window sidebar",
     "label": "Packs",
@@ -846,16 +1007,6 @@
     "page": "settings",
     "kind": "place",
     "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.shortcuts",
-    "surface": "window sidebar",
-    "label": "Keyboard",
-    "page": "shortcuts",
-    "kind": "option",
-    "belongsTo": "settings",
-    "aliasOf": "settings",
-    "note": "unify under Grammar Names"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.snap",
@@ -2480,6 +2631,42 @@
     "case": "topRight",
     "kind": "option",
     "belongsTo": "app"
+  },
+  {
+    "id": "choices.NaturalCleanupProvider.apple",
+    "surface": "choices NaturalCleanupProvider",
+    "label": "Apple Intelligence",
+    "case": "apple",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "choices.NaturalCleanupProvider.ollama",
+    "surface": "choices NaturalCleanupProvider",
+    "label": "Ollama on this Mac",
+    "case": "ollama",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "choices.RecognitionProvider.localServer",
+    "surface": "choices RecognitionProvider",
+    "label": "Local model server",
+    "case": "localServer",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
+  },
+  {
+    "id": "choices.RecognitionProvider.parakeet",
+    "surface": "choices RecognitionProvider",
+    "label": "Parakeet on this Mac",
+    "case": "parakeet",
+    "kind": "option",
+    "belongsTo": "settings",
+    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134)."
   },
   {
     "id": "choices.SnapCapture.Mode.region",

@@ -56,7 +56,7 @@ final class AnnotationMenuTests: XCTestCase {
             // Stop drawing is the toolbar's and panel's label while drawing, so
             // the Draw menu holds only drawing choices (#143, #134 decision 3).
             XCTAssertTrue(item("finish", in: menu) == nil, "No Finish Drawing in the Draw menu")
-            XCTAssertTrue(item("shortcuts", in: menu) == nil, "Keys live on the Keyboard page, not behind a Draw menu door")
+            XCTAssertTrue(item("shortcuts", in: menu) == nil, "Keys live in Settings › Keyboard, not behind a Draw menu door")
 
             app.settings.value.shortcuts[Action.pen.rawValue] = Shortcut(keyCode: UInt32(kVK_F18), modifiers: UInt32(controlKey | optionKey | shiftKey))
             reopen(menu)

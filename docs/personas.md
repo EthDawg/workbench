@@ -8,7 +8,7 @@ Open **Persona** in Workbench, or **Persona Overlay → Options → Prepare Pers
 
 **Hide** only removes the floating card from the screen. **Remove saved persona…** in the library asks for confirmation before removing that entry and its group memberships; original artwork stays available to saved scenes. **Members…** changes only the selected group's membership.
 
-From any app, the default **Option–F** shows or hides one persona and **Option–R** advances through the current prepared group, or through all saved personas when no group is selected. **Previous floating persona** starts disabled; its suggested key is **Option–Shift–R**. Shortcuts are editable and practisable under **Keyboard**, and existing custom assignments are retained. If no card is visible, Next or an enabled Previous first shows the current persona; these single-card shortcuts never replace a prepared multi-overlay session.
+From any app, the default **Option–F** shows or hides one persona and **Option–R** advances through the current prepared group, or through all saved personas when no group is selected. **Previous floating persona** starts disabled; its suggested key is **Option–Shift–R**. Shortcuts are editable and practisable under **Settings → Keyboard**, and existing custom assignments are retained. If no card is visible, Next or an enabled Previous first shows the current persona; these single-card shortcuts never replace a prepared multi-overlay session.
 
 ## Persona and Present
 
@@ -53,7 +53,7 @@ The shared floating toolbar's **Persona Overlay** menu names the selected copy a
 - **Save this layout for next time** explicitly saves the current group's arrangement. A conflicting preparation change is reported instead of overwritten. Other groups' temporary changes are not implicitly saved.
 - **End overlays** removes all of this session's cards and controls. It keeps saved personas/layouts, leaves browser tabs and other apps alone, and does not restore desktop wallpaper. Unsaved live placement changes are temporary.
 
-The main **Persona Overlay** action shows or hides one card, or pauses/resumes an existing prepared arrangement. Its Options menu offers the shared live controls and explicit End actions. **Keyboard shortcuts** includes the same five actions. They remain off by default so they do not collide with the existing single-persona shortcuts; assign and practise combinations in Workbench's existing conflict-checking interface. Stream Deck can send a configured hotkey; there is no special Stream Deck integration. No global Escape, browser-tab shortcut or hover-only action is added. Explicit keyboard focus selects the tile; Space opens its native menu.
+The main **Persona Overlay** action shows or hides one card, or pauses/resumes an existing prepared arrangement. Its Options menu offers the shared live controls and explicit End actions. **Settings → Keyboard** includes the same five actions. They remain off by default so they do not collide with the existing single-persona shortcuts; assign and practise combinations in Workbench's existing conflict-checking interface. Stream Deck can send a configured hotkey; there is no special Stream Deck integration. No global Escape, browser-tab shortcut or hover-only action is added. Explicit keyboard focus selects the tile; Space opens its native menu.
 
 ## Before sharing and after presenting
 

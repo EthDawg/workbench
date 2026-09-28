@@ -480,6 +480,31 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(('Snap & Talk', 'snap'), (entries['quick-panel.row.snap']['label'], entries['quick-panel.row.snap']['case']))
         self.assertEqual(3, len(entries))  # No second entry for each row's Text(tool.title).
 
+    def test_page_record_sections_are_doors_to_their_routes(self):
+        home = self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("settings", "Settings", "gear")]
+          static let sections: [(id: String, page: String, title: String)] = [("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard")]
+          static let subpages: [(id: String, page: String, title: String)] = [("meeting", "dictate", "Transcribe meeting or call")]
+        }''')
+        entries = {e['id']: e for e in self.entries()}
+        keyboard = entries['LocalVoice.WorkbenchHome.WorkbenchHome.section.shortcuts']
+        self.assertEqual(('page sections', 'Keyboard', 'shortcuts'), (keyboard['surface'], keyboard['label'], keyboard['page']))
+        self.assertEqual('General', entries['LocalVoice.WorkbenchHome.WorkbenchHome.section.settings']['label'])
+        self.assertEqual('settings', entries['LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.settings']['page'])
+        self.assertNotIn('Transcribe meeting or call', self.labels(), 'a subpage has no control of its own')
+        before = self.registry()
+        home.write_text(home.read_text().replace('("shortcuts", "settings", "Keyboard")]', '("shortcuts", "settings", "Keyboard"), ("models", "settings", "Models")]'))
+        self.assertIn('Unregistered entry on page sections: "Models".', '\n'.join(self.errors(before)))
+
+    def test_the_keyboard_section_is_the_catalogue_editor(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          private var settings: some View { KeyboardCoachView(model: keyboard); Toggle("Open Workbench at login", isOn: $x) }
+        }''')
+        self.write('LocalVoice/KeyboardCoach.swift', '''struct KeyboardCoachView: View {
+          var body: some View { Button("Record shortcut") {}; Button("Practice") {} }
+        }''')
+        self.assertEqual(['Open Workbench at login'], [e['label'] for e in self.entries() if e['surface'] == 'settings page'])
+
     def test_voice_and_stage_shortcuts_have_stable_ids(self):
         self.write('LocalVoice/main.swift', '''class AppDelegate {
           func voiceShortcutEntries() -> [ShortcutEntry] { [(UInt32(1), "Dictate"), (UInt32(8), "New action")].map { id, title in entry(id, title) } }

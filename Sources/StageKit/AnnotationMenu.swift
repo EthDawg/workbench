@@ -86,11 +86,11 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
                 app.perform(action)
             }
         item.state = checked ? .on : .off
-        // Keys live in the row's shortcut slot and the Keyboard page; the label
+        // Keys live in the row's shortcut slot and Settings › Keyboard; the label
         // stays the action's name. A working key still shows in the key column.
         let shortcut = app.settings.value.shortcut(for: action)
         if !shortcut.enabled {
-            item.toolTip = "Shortcut off. Assign a key in Keyboard Shortcuts."
+            item.toolTip = "Shortcut off. Assign a key in Settings › Keyboard."
         } else if let failure = app.shortcutFailures[action] {
             item.toolTip = "\(shortcut.label): \(failure)"
         } else {

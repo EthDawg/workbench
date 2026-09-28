@@ -17,8 +17,14 @@ enum SurfaceGallery {
     static let workPrefix = ".surface-pass-"
     /// AppDelegate opens Home at 1180 × 800. Its 1050 × 730 minimum grows by the title bar.
     static let sizes: [(name: String, size: NSSize)] = [("default", NSSize(width: 1180, height: 800)), ("narrow", NSSize(width: 1050, height: 730))]
-    /// Pages with no sidebar item: Settings opens Your dictionary; Dictate opens the meeting page.
-    static let extraPages = [("dictionary", "Your dictionary"), ("meeting", "Meeting or call")]
+    /// Routes with no sidebar item, all from the page record: every section but a page's first,
+    /// which is the page itself, then the pages Dictate opens (Your dictionary, Transcribe meeting
+    /// or call).
+    static var extraPages: [(String, String)] {
+        WorkbenchHome.sections.filter { section in !WorkbenchHome.navItems.contains { $0.id == section.id } }
+            .map { ($0.id, WorkbenchHome.name(of: $0.page) + " › " + $0.title) }
+            + WorkbenchHome.subpages.map { ($0.id, $0.title) }
+    }
     static let unknownRoute = "surface-gallery-unknown-route"
 
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
@@ -575,7 +581,7 @@ enum SurfaceGallery {
 
     // MARK: Entries
 
-    static let pages: [(String, String)] = WorkbenchHome.navItems.map { ($0.0, $0.1) } + SurfaceGallery.extraPages
+    static let pages: [(String, String)] = WorkbenchHome.navItems.map { ($0.id, $0.title) } + SurfaceGallery.extraPages
 
     /// StageKit items that only open a page. They are run with StageKit's page callbacks recording.
     static let stageLinks: Set<String> = ["Drawing Controls…", "Keyboard Shortcuts…", "Prepare Personas…"]
@@ -661,13 +667,17 @@ enum SurfaceGallery {
                  action(panel, WorkbenchUpdates.shared.panelTitle, "Checks for updates"), action(panel, "Quit", "Quits Workbench"),
                  page(panel, "Clipboard receipt · Review text", "history"), action(panel, "Clipboard receipt · Show cue", "Shows the clipboard cue"),
                  page(panel, "Meeting status row, while a meeting is busy", "meeting"), action(panel, "Meeting status row · Stop or Cancel", "Stops or cancels the meeting")]
-        list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.1, leads: "Page: \($0.0)", route: $0.0, ran: true) }
+        list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true) }
+        // Each page's switcher, from the same page record: a section opens its own route.
+        list += WorkbenchHome.sections.map {
+            E(surface: "Section switcher", label: WorkbenchHome.name(of: $0.page) + " › " + $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true)
+        }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings"), action("Home sidebar", "Suite appearance", "Changes the appearance")]
         list += [page(home, "Dictate card", "dictate"), page(home, "Read card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
-                 page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"), page(home, "Try the keyboard", "shortcuts"),
+                 page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"),
                  page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "library"),
-                 page("Settings page", "Your dictionary", "dictionary"), page("Settings page", "Models and local server", "models"),
-                 page("Settings page", "Keyboard and practice", "shortcuts"), action("Settings page", "Position dictation panel…", "Shows the dictation panel preview"),
+                 page("Settings page", "Dictate options…", "dictate"),
+                 page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"),
                  action("Snap page", "Use selected · Organise… · Hand off for synthesis…", "Opens the handoff review for a Snap review"),
