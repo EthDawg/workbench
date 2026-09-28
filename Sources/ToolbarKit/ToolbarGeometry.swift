@@ -27,28 +27,28 @@ public enum ToolbarGeometry {
                       y: y, width: width, height: height)
     }
 
-    /// The resting element's frame: at its dock, or at its free origin kept whole on `screen`.
+    /// The resting element's frame: at its dock, or at its free position kept whole on `screen`.
     public static func restingFrame(size: NSSize, position: ToolbarPosition, screen: NSRect) -> NSRect {
         switch position {
         case .docked(let anchor): return frame(size: size, restingWidth: size.width, anchor: anchor, screen: screen)
-        case .free(let origin): return clamp(NSRect(origin: origin, size: size), to: screen)
+        case .free(let free): return clamp(free.restingFrame(size: size), to: screen)
         }
     }
 
-    /// A row grows inward: a dock by its anchor, a free position toward the middle of its
-    /// screen. That depends only on where the resting element is, so no reveal, mode or
-    /// label ever turns the row round under the pointer.
-    public static func growsLeftward(_ position: ToolbarPosition, restingSize: NSSize, screen: NSRect) -> Bool {
+    /// A row grows inward: a dock by its anchor, a free position by the side decided when
+    /// it was released. Neither depends on the resting element's width, so no reveal, mode
+    /// or live label ever turns the row round under the pointer.
+    public static func growsLeftward(_ position: ToolbarPosition) -> Bool {
         switch position {
         case .docked(let anchor): return anchor.growsLeftward
-        case .free: return restingFrame(size: restingSize, position: position, screen: screen).midX > screen.midX
+        case .free(let free): return free.growsLeftward
         }
     }
 
     /// The anchor the row is drawn for: its dock, or the side a free row grows from.
-    public static func rowAnchor(_ position: ToolbarPosition, restingSize: NSSize, screen: NSRect) -> ToolbarAnchor {
+    public static func rowAnchor(_ position: ToolbarPosition) -> ToolbarAnchor {
         if case .docked(let anchor) = position { return anchor }
-        return growsLeftward(position, restingSize: restingSize, screen: screen) ? .right : .left
+        return growsLeftward(position) ? .right : .left
     }
 
     /// The window for a row of `size`. The resting element keeps its place and the row
@@ -59,9 +59,9 @@ public enum ToolbarGeometry {
         }
         let resting = restingFrame(size: restingSize, position: position, screen: screen)
         let width = min(max(1, size.width), screen.width), height = min(max(1, size.height), screen.height)
-        let x = growsLeftward(position, restingSize: restingSize, screen: screen) ? resting.maxX - width : resting.minX
+        let x = growsLeftward(position) ? resting.maxX - width : resting.minX
         return NSRect(x: min(max(screen.minX, x), screen.maxX - width),
-                      y: min(max(screen.minY, resting.minY), screen.maxY - height), width: width, height: height)
+                      y: min(max(screen.minY, resting.midY - height / 2), screen.maxY - height), width: width, height: height)
     }
 
     /// A frame kept whole inside `screen`, shrunk only if it is larger than the screen.
@@ -73,11 +73,44 @@ public enum ToolbarGeometry {
     }
 }
 
-/// Where the tools rest (#163): at a named dock, or wherever they were dragged. A free
-/// position is the resting element's origin, so a reveal or collapse never moves it.
+/// Where the tools rest (#163): at a named dock, or wherever they were dragged.
 public enum ToolbarPosition: Equatable, Sendable {
     case docked(ToolbarAnchor)
-    case free(CGPoint)
+    case free(ToolbarFreePosition)
+}
+
+/// A free position. The side the row grows toward is decided once, when the toolbar is
+/// released (or when an older save is first read), and kept with the position. The glyph's
+/// side of the resting element is what is pinned: its left edge for a row that grows
+/// rightward, its right edge for one that grows leftward. So a resting element that changes
+/// width, as live labels do, never moves its glyph, and only a new placement turns it round.
+public struct ToolbarFreePosition: Equatable, Sendable {
+    /// The glyph's edge of the resting element, in screen coordinates.
+    public var glyphEdge: CGFloat
+    /// The resting element's vertical centre.
+    public var centreY: CGFloat
+    /// The row grows leftward from its glyph, toward the middle of its display.
+    public var growsLeftward: Bool
+
+    public init(glyphEdge: CGFloat, centreY: CGFloat, growsLeftward: Bool) {
+        self.glyphEdge = glyphEdge; self.centreY = centreY; self.growsLeftward = growsLeftward
+    }
+
+    /// Decided where the resting element was released: its row grows toward the middle of
+    /// the display it rests on, and its glyph's edge stays where it was let go.
+    public init(released resting: NSRect, on screen: NSRect) {
+        growsLeftward = resting.midX > screen.midX
+        glyphEdge = growsLeftward ? resting.maxX : resting.minX
+        centreY = resting.midY
+    }
+
+    /// The resting element of `size` at this position, before it is kept on a display.
+    public func restingFrame(size: NSSize) -> NSRect {
+        NSRect(x: growsLeftward ? glyphEdge - size.width : glyphEdge, y: centreY - size.height / 2,
+               width: size.width, height: size.height)
+    }
+
+    public var isFinite: Bool { glyphEdge.isFinite && centreY.isFinite }
 }
 
 /// A press on the glyph, the next action or the row's empty chrome moves the toolbar only

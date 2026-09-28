@@ -95,6 +95,11 @@ enum WorkbenchControlChecks {
         try check(surface(drawing: true, dictation: true) == .dictation && surface(presenting: true, narration: true) == .narration
                   && surface(persona: true, reading: true) == .reading, "a live recording, narration or reading keeps its own controls while the tools are hidden")
         try check(surface(inserting: true) == .tools, "a prompt insertion keeps its Stop on the tools until it ends")
+        // Position… opened from the toolbar's keyboard focus hands the keyboard back (#197 review).
+        let closes: [ToolbarPositionClose] = [.chose, .reset, .escape, .dismissed]
+        try check(closes.map { $0.returnsKeyboard(openedFromKeyboard: true) } == [true, true, true, false]
+                  && !closes.contains { $0.returnsKeyboard(openedFromKeyboard: false) },
+                  "Position… gives the keyboard back to the toolbar after a choice, Reset or Escape, only when opened from the keyboard")
         var state = WorkbenchControlState()
         state.presenting = true; state.drawing = true; state.phase = .recording
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present),
