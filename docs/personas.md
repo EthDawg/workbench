@@ -12,7 +12,7 @@ From any app, the default **Option–F** shows or hides one persona and **Option
 
 ## Persona and Present
 
-The Persona workspace uses the existing saved library and overlay session. Opening it, changing pages or closing preparation leaves a shown overlay running over browsers and other windows. Use **Hide floating persona** for one card, **Hide all** / **Resume overlays** for a prepared arrangement, or **End overlays** to finish. These controls remain available even if no saved card is selected. The floating controls retain movement, locking/click-through, size, screen recovery and frozen live choices. [React to my voice](#react-to-my-voice) adds an optional voice outline.
+The Persona workspace uses the existing saved library and overlay session. Opening it, changing pages or closing preparation leaves a shown overlay running over browsers and other windows. Use **Hide floating persona** for one card, **Hide all** / **Resume overlays** for a prepared arrangement, or **End overlays** to finish. These controls remain available even if no saved card is selected. The floating controls retain movement, locking/click-through, size, screen recovery and frozen live choices. A shown card also moves and resizes directly from its handles; see [Move and resize directly](#move-and-resize-directly). [React to my voice](#react-to-my-voice) adds an optional voice outline.
 
 Present’s compact **Persona…** control sits beside the scene name above the preview. Add or change a card, set its size and position, or remove only its scene placement. A card placed in a scene is rendered into that presentation; a floating Persona is a separate window. Both use the same saved artwork without silently changing each other’s placements or live image snapshots.
 
@@ -43,6 +43,12 @@ It measures alongside Dictate, meeting capture and Snap & Talk narration without
 5. Choose **Start overlays**. Optional **Soft reveal** fades in the initial artwork or a newly added copy briefly; it does not animate faces or loop. It respects Reduce Motion. Start defaults to still appearance.
 
 A session supports up to eight groups, eight placed overlays per group and 32 different prepared personas, within a 256 MB rendered-image budget. Unreadable images or unsupported preparation block Start before replacing the current session. This avoids loading a whole unbounded library during a meeting.
+
+## Move and resize directly
+
+Bring the pointer near a card and its handles appear: a small grab handle above its top edge, and resize handles at its corners and edges. Drag the grab handle to move the card, or a corner or edge to resize it; the artwork keeps its shape, the opposite corner or edge stays put, and the size stays within the Size slider's range. Released partly off the display, the card comes back fully on screen.
+
+The handles work while a card is locked and leave the lock as it was: the locked artwork keeps passing clicks through to the app beneath, and only the handles themselves take the pointer. They are small windows of their own, so the voice outline's room and the transparent corners of a round badge never block the app beneath. An unlocked card also drags by its artwork; a press that moves less than four points is a click, which selects the card without moving it. Using a handle changes only that copy and never changes which copy is selected. Handles never take keyboard focus from the app in front; **Position Artwork** and **Size** in the Persona Overlay menu remain the keyboard and precise route. As with every live change, saving a prepared layout stays explicit.
 
 ## During the demo
 
