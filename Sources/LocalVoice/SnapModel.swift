@@ -136,9 +136,11 @@ final class SnapModel: ObservableObject {
     private func stopInbox() { inboxTimer?.invalidate(); inboxTimer = nil; inboxSizes.removeAll() }
 
     /// Imports screenshots whose size has settled since the last check. A later
-    /// manual location change pauses the redirect instead of fighting it.
+    /// manual location change pauses the redirect instead of fighting it. An
+    /// open editor never holds this up: the draft keeps its own bytes, and
+    /// Save's revision check already guards an edit after History reloads.
     func importInbox() {
-        guard keepsScreenshotsOffDesktop, !isBusy else { return }
+        guard keepsScreenshotsOffDesktop, !importingScreenshots else { return }
         // Published only when it changes, so History and the Snap page are not redrawn every tick.
         let paused = screenshotLocation.location != screenshotInbox.path
         if paused != screenshotRedirectPaused { screenshotRedirectPaused = paused }
@@ -153,7 +155,10 @@ final class SnapModel: ObservableObject {
             } catch { /* Left in the folder; an identical retry only clears it. */ }
         }
         inboxSizes = sizes
-        if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
+        guard added > 0 else { return }
+        refresh()
+        // While a Snap is being captured or edited, its own message stays; the new screenshots appear in the grid.
+        if !isBusy { notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
     }
 
     // MARK: Desktop screenshots
