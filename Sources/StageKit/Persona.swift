@@ -273,8 +273,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Decoded images the floating card may keep, counting a pending replacement.
     /// The same 256 MB as a prepared session; checks lower it.
     var cardImageBudget = PersonaSessionController.maximumImageBytes
-    /// The last card that could not show, so a later successful card clears only that notice.
-    private var cardFailure: String?
+    /// Why the last one-card Show, Next, Previous or Choose Persona could not show
+    /// its card. It lasts until a card shows or the floating card is hidden.
+    private(set) var cardFailure: String?
+    /// The one-card failure while it is still the notice, for live controls and the menu panel.
+    var cardFeedback: String? { cardFailure.flatMap { $0 == notice ? $0 : nil } }
     private var liveImages: [UUID: NSImage] { cardDeck?.images ?? [:] }
     private var liveLabels: [UUID: String] { cardDeck?.labels ?? [:] }
     private var session: PersonaSessionController?
@@ -557,6 +560,15 @@ final class PersonaLibrary: NSObject, ObservableObject {
         sessionState = PersonaSessionViewState(); overlayVisible = false; hud?.hide()
         overlay?.hide(); liveSelection = nil; displayedID = nil
         displayedImage = nil; displayedLabel = nil; cardDeck = nil; shownCard = nil
+        clearCardFailure()
+    }
+    private func reportCardFailure(_ error: Error) {
+        notice = error.localizedDescription; cardFailure = notice
+    }
+    /// A failure notice goes with its card set; any other notice stays.
+    private func clearCardFailure() {
+        if notice != nil && notice == cardFailure { notice = nil }
+        cardFailure = nil
     }
     func saveSessionLayout() throws {
         guard let session, let source = session.currentSource else { throw PersonaSessionError.missingGroup }
@@ -613,27 +625,24 @@ final class PersonaLibrary: NSObject, ObservableObject {
         else { refreshHUD() }
     }
 
+    /// Next and Previous count from the shown card and pass over cards that could
+    /// not show while it has been up, so every press moves on when another card can.
     func stepLivePersona(_ offset: Int) {
-        guard var next = liveSelection else { return }
-        // Step from the last requested card, so one that cannot show is passed over.
-        if let cursor = cardDeck?.cursor { next.select(cursor) }
-        next.step(offset)
-        if let id = next.currentID { selectLivePersona(id) }
+        guard let shown = displayedID, let target = cardDeck?.step(from: shown, by: offset) else { return }
+        selectLivePersona(target)
     }
     /// Decodes the requested frozen card before it replaces the shown one. If it
     /// cannot show, the shown card stays up and the notice names the card.
     func selectLivePersona(_ id: UUID) {
         guard var session = liveSelection, session.candidateIDs.contains(id), let deck = cardDeck else { return }
-        deck.cursor = id
         let image: NSImage
         do { image = try deck.image(for: id, shown: displayedID, render: { renderedImage(for: $0) }) }
-        catch { notice = error.localizedDescription; cardFailure = notice; return }
+        catch { reportCardFailure(error); return }
         if !isReadOnly {
             do { try commit(items, selection: id) }
             catch { notice = error.localizedDescription; return }
         }
-        if notice != nil && notice == cardFailure { notice = nil }
-        cardFailure = nil
+        clearCardFailure()
         session.select(id); liveSelection = session; displayedID = id
         deck.didShow(id)
         if let source = deck.sources[id] { shownCard = PersonaShownCard(copyID: shownCard?.copyID ?? UUID(), source: source) }
@@ -682,7 +691,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// otherwise visible only when Personas is opened again.
     @discardableResult func showOverlay() -> Result<Void, Error> {
         do { try showOverlayChecked(); return .success(()) }
-        catch { notice = error.localizedDescription; return .failure(error) }
+        catch { reportCardFailure(error); return .failure(error) }
     }
     /// Freezes who can follow this card and how each looks, but decodes only the
     /// requested card: unrelated missing, large or numerous saved items cannot
@@ -695,9 +704,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
         let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         let deck = PersonaCardDeck(candidates: candidateIDs.compactMap { byID[$0] }, root: root,
                                    budget: cardImageBudget, label: publicLabel(for:))
-        let image = try deck.image(for: initialID, shown: nil, render: { renderedImage(for: $0) })
-        if notice != nil && notice == cardFailure { notice = nil }
-        cardFailure = nil
+        // A card already up stays decoded until this one is ready, so it counts too.
+        if let shown = displayedID { cardDeck?.release(keeping: shown) }
+        let image = try deck.image(for: initialID, shown: nil, reserved: cardDeck?.retainedBytes ?? 0,
+                                   render: { renderedImage(for: $0) })
         endOverlaySession()
         liveSelection = activeGroup.map { PersonaLiveSelection(group: $0, selectedID: initialID) }
             ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: initialID)
@@ -910,6 +920,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
             menu.addItem(action("Save Layout for Next Time", .saveLayout, enabled: state.canSaveLayout && state.hasUnsavedLayout))
             menu.addItem(action("End Overlays", .end))
         } else if overlayVisible, let current = displayedID {
+            // A Next, Previous or choice that could not show says why where it happened.
+            if let failure = cardFeedback { menu.addItem(StageMenuAction(failure, enabled: false) {}) }
             let ids = liveSelection?.candidateIDs ?? [current]
             menu.addSubmenu("Choose Persona", items: ids.enumerated().map { index, id in
                 StageMenuAction(liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)", checked: id == current) { [weak self] in
