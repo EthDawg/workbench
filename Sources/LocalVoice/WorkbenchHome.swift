@@ -192,30 +192,50 @@ struct WorkbenchHome: View {
 
 struct WorkbenchClipboardShelf: View {
     @ObservedObject var receipts: ClipboardReceiptModel
+    /// A delivery that did not finish, kept by its owner after the receipt has
+    /// gone (#134 T5). Shown only while no current receipt is.
+    var unresolved: UnresolvedDelivery? = nil
     let review: () -> Void
     let showCue: () -> Void
+    var copyAgain: () -> Void = {}
+    var dismissUnresolved: () -> Void = {}
     var body: some View {
-        if let receipt = receipts.receipt, receipt.isClipboardCurrent {
-            // The same words as the floating receipt, so the panel, Home and Dictate agree.
+        let receipt = receipts.receipt.flatMap { $0.isClipboardCurrent ? $0 : nil }
+        if receipt != nil || unresolved != nil {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label(receipt.title, systemImage: receipt.symbolName)
-                        .font(.callout.weight(.semibold)).lineLimit(1)
-                    if receipt.wordCount > 0 {
-                        Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                if let receipt {
+                    // The same words as the floating receipt, so the panel, Home and Dictate agree.
+                    HStack {
+                        Label(receipt.title, systemImage: receipt.symbolName)
+                            .font(.callout.weight(.semibold)).lineLimit(1)
+                        if receipt.wordCount > 0 {
+                            Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                        // One ⌘V: the key only when the receipt's words do not already say it.
+                        if receipt.canSuggestPaste && !receipt.detail.contains("⌘V") {
+                            Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary)
+                        }
                     }
-                    Spacer(minLength: 4)
-                    // One ⌘V: the key only when the receipt's words do not already say it.
-                    if receipt.canSuggestPaste && !receipt.detail.contains("⌘V") {
-                        Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary)
+                    Text(receipt.detail)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                } else if let unresolved {
+                    // What happened and where the words are; never a ⌘V after an uncertain paste.
+                    HStack(spacing: 6) {
+                        Image(systemName: unresolved.symbolName).foregroundStyle(.orange).accessibilityHidden(true)
+                        Text(unresolved.title).font(.callout.weight(.semibold)).lineLimit(1)
                     }
+                    Text(unresolved.detail)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 }
-                Text(receipt.detail)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 HStack {
                     Button("Review text", action: review)
                     Spacer()
-                    Button("Show cue", action: showCue)
+                    if receipt != nil { Button("Show cue", action: showCue) }
+                    else if let unresolved {
+                        if unresolved.offersCopy { Button("Copy again", action: copyAgain) }
+                        Button("Dismiss", action: dismissUnresolved)
+                    }
                 }.controlSize(.small)
             }.padding(12)
                 .background(Workbench.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
@@ -326,12 +346,13 @@ struct WorkbenchHomePage: View {
                         Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V. Your organisation may need to approve this.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
+                    WorkbenchClipboardShelf(receipts: model.clipboardReceipt, unresolved: model.unresolvedDelivery,
                         review: {
                             let prompt = model.clipboardReceipt.receipt?.source == .prompt
                             model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
                         },
-                        showCue: { model.clipboardReceipt.revealHUD() })
+                        showCue: { model.clipboardReceipt.revealHUD() },
+                        copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                 }
             }
         }

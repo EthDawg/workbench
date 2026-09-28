@@ -21,16 +21,31 @@ def extract(start, end):
 
 methods = '\n'.join([
     extract('    func resumeWaitingDelivery()', '\n    @Published var isMicrophoneQuiet'),
+    # The Dictate shortcut's press and release, and the attempt it starts (#134 T5).
+    extract('    func toggleRecording(', '\n    private func startRecording('),
     extract('    func cancelShortcut(', '\n    func transcribeForShortcut'),
     extract('    func stopRecording()', '\n    func cancelRecording()'),
     extract('    func cancelRecording()', '\n    func importAudio()'),
     extract('    func importAudio(_ url:', '\n    func retryTranscription()'),
     extract('    func retryTranscription()', '\n    private func captureSettings()'),
     extract('    private func transcribe(', '\n    func copyTranscript()'),
+    # Manual copies and the undelivered result they resolve (#134 T5).
+    extract('    func copyTranscript()', '\n    func showLibrary()'),
+    extract('    func copyCapture(', '\n    func showPanelPreview()'),
     extract('    func fail(', '\n    func persist()'),
     extract('    func saveNow()', '\n    func shutdown()'),
     source[source.index('    func shutdown()'):source.rindex('\n}')],
 ])
+def clear_call_sites():
+    sites, member = set(), None
+    for line in source.splitlines():
+        stripped = line.strip()
+        if line.startswith('    ') and not line.startswith('     ') and ' func ' in ' ' + stripped:
+            member = stripped.split('func ', 1)[1].split('(', 1)[0]
+        if 'clipboardReceipt.clear()' in line:
+            sites.add(member)
+    return sites
+clear_sites = clear_call_sites()
 labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:', 'var canRecordAgain:', 'var hasSavedRecordings:']))
 request = shortcuts[shortcuts.index('@MainActor\nfinal class DictationRequest'):shortcuts.index('/// Shortcuts owns Record Audio')]
 fixture = r'''
@@ -90,12 +105,31 @@ struct CaptureSettings {
     static var continuation: CheckedContinuation<Void, Never>?
     static var beforeDelivery: (() -> Void)?
     static var lastMode: DeliveryMode?, lastTarget: String?
-    struct Outcome { let message = "Fixture delivered after save" }
+    enum FailureKind: String, Equatable {
+        case copyFailed, accessibilityUnavailable, focusChanged, fieldUnreadable, pasteUnavailable
+        case pasteUnconfirmed, clipboardChanged, clipboardRestoreFailed, cancelled
+    }
+    struct Outcome: Equatable {
+        var message = "Fixture delivered after save"
+        var clipboardChangeCount: Int? = 1
+        var wasPasted = false
+        var destinationName: String? = nil
+        var failure: FailureKind? = nil
+        var pasteWasAttempted = false
+    }
+    /// What the next delivery reports: copied, pasted, or an undelivered outcome.
+    static var nextOutcome = Outcome()
+    static var copies: [String] = []
+    static var copyFails = false
+    static let copiedMessage = "Copied. Paste with ⌘V."
+    typealias Target = String
+    static func capture() -> String? { "Frontmost fixture field" }
+    static func copy(_ text: String) -> Int? { copies.append(text); return copyFails ? nil : copies.count }
     static func deliver(_ text: String, target: String?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
         lastMode = mode; lastTarget = target
         beforeDelivery?(); calls += 1
         if delayed { await withCheckedContinuation { continuation = $0 } }
-        return Outcome()
+        return nextOutcome
     }
     static func release() { let c = continuation; continuation = nil; c?.resume() }
 }
@@ -111,9 +145,24 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     func shutdown() { shutdownCount += 1 }
 }
 
+enum CaptureMode { case toggle, hold }
+struct FixtureShortcut { var label = "⌥V" }
+struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationShortcut = FixtureShortcut() }
+
 @MainActor final class CaptureHarness {
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var phase = Phase.idle
+    // The press path and the coach (#134 T5).
+    var preferences = FixtureVoicePreferences()
+    var coach: FeedbackCoachModel
+    var holdGesture: HoldGesture?
+    var captureUsesHoldShortcut = false, isMicrophoneQuiet = false, rendering = false
+    var microphoneStartFailure: ((String?) -> String?)?
+    var unresolvedDelivery: UnresolvedDelivery?
+    var deliveringCaptureID: UUID?
+    /// Starting the recorder is the one step these checks script: nothing here opens a microphone.
+    var startedAttempts: [UUID] = []
+    func startRecording(_ attempt: UUID) async { startedAttempts.append(attempt) }
     let engine = Engine(), cleanupEngine = Cleanup(), store = StateStore()
     let clipboardReceipt = ClipboardReceipt(), shortcutRequest = DictationRequest()
     let meetings = AuxiliaryCaptureWork(), handoffJobs = AuxiliaryCaptureWork()
@@ -138,7 +187,11 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     let drawingDelivery = DrawingDeliveryGate()
     var captureOptions = CaptureSettings()
     __LABELS__
-    init(directory: URL, state: SavedState? = nil) {
+    /// Lessons live in a preferences file inside the check's own temporary folder, never the person's.
+    init(directory: URL, state: SavedState? = nil,
+         tips: CoachTips = CoachTips(defaults: UserDefaults(suiteName: FileManager.default.temporaryDirectory.appendingPathComponent("workbench-capture-tips-" + UUID().uuidString).path)!)) {
+        coach = FeedbackCoachModel(tips: tips, workspace: NotificationCenter(), distributed: NotificationCenter())
+        coach.voiceOverEnabled = { false }; coach.announce = { _ in }
         captureRecovery = CaptureRecoveryStore(directory: directory)
         if let state { transcript = state.draft; rawTranscript = state.rawDraft ?? state.draft; history = state.history }
     }
@@ -148,6 +201,11 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
         let url = try captureRecovery.beginRecording(); try bytes.write(to: url); recordURL = url; return url
     }
     func run(_ url: URL, owned: Bool) { transcribe(url, duration: 1, temporary: owned) }
+    /// The recorder started for the attempt the shortcut began, with this much audio and loudness.
+    func recorderStarted(audio seconds: Double, peak: Float, wav: Data) throws {
+        precondition(phase == .requesting && recordingAttempt != nil)
+        _ = try makeRecording(wav); phase = .recording; elapsed = seconds; peakPower = peak
+    }
     func restore() { restoreCaptureRecovery() }
     func admitsCapture() -> Bool { admitNewCapture() }
     func staleCommit(_ invocation: UUID, url: URL) throws -> Bool {
@@ -523,11 +581,161 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(silenceReplies == ["No speech heard."] && shortcutSilence.captureCue == nil && shortcutSilence.captureFailure == nil
                   && !shortcutSilence.canRetry, "Shortcuts get one No speech heard reply and no floating cue; an imported file is never kept")
 
+        // The hold lesson (#134 T5): only a press of the Dictate shortcut in Hold,
+        // whose recorder started, let go before the shortest speech and ending
+        // too short, asks for the coach, which replaces that attempt's cue. The
+        // lesson is spent only when a host shows it. Everything else keeps #156.
+        func tips(_ name: String) -> CoachTips { CoachTips(defaults: UserDefaults(suiteName: folder("tips-" + name).path)!) }
+        func holdTap(_ model: CaptureHarness, down: TimeInterval = 50, up: TimeInterval = 50.2, audio: Double = 0.15, peak: Float = -20) throws {
+            model.shortcutChanged(down: true, at: down)
+            try model.recorderStarted(audio: audio, peak: peak, wav: wav)
+            model.shortcutChanged(down: false, at: up)
+        }
+        let lessons = tips("lesson")
+        let taught = CaptureHarness(directory: folder("hold-lesson"), tips: lessons)
+        taught.coach.canPresent = { true }
+        try holdTap(taught)
+        let lesson = taught.coach.card
+        try check(lesson?.title == "Hold ⌥V to dictate." && lesson?.body == "Keep holding while you speak. Release to finish."
+                  && taught.captureCue == nil && taught.captureFailure == nil && taught.phase == .idle,
+                  "a too-short press of the shortcut in Hold asks for the lesson in place of the cue")
+        try check(!lessons.isRetired(HoldLesson.tip), "asking is not showing: the lesson is not spent yet")
+        taught.coach.didPresent(lesson!.id)
+        try check(lessons.isRetired(HoldLesson.tip) && taught.coach.isPresented, "shown by the host, the lesson is spent")
+        try holdTap(taught, down: 60, up: 60.1)
+        try check(taught.coach.card == nil && taught.captureCue?.reason == .tooShort, "a new capture removes it; the next short press gets #156's cue, not the lesson again")
+        let relaunched = CaptureHarness(directory: folder("hold-lesson-relaunch"), tips: tips("lesson"))
+        relaunched.coach.canPresent = { true }
+        relaunched.preferences.dictationShortcut.label = "⌃⌥Space"
+        try holdTap(relaunched)
+        try check(relaunched.coach.card == nil && relaunched.captureCue?.reason == .tooShort, "relaunch and a new binding keep the lesson taught")
+
+        let rebound = CaptureHarness(directory: folder("hold-lesson-rebound"), tips: tips("rebound"))
+        rebound.coach.canPresent = { true }
+        rebound.preferences.dictationShortcut.label = "⌃⌥Space"
+        try holdTap(rebound)
+        try check(rebound.coach.card?.title == "Hold ⌃⌥Space to dictate.", "the lesson names the shortcut as it is saved now")
+
+        let noHost = tips("no-host")
+        let hostless = CaptureHarness(directory: folder("hold-lesson-no-host"), tips: noHost)
+        try holdTap(hostless)
+        try check(hostless.coach.card == nil && hostless.captureCue?.reason == .tooShort && !noHost.isRetired(HoldLesson.tip),
+                  "with no host to show it, the cue shows and the lesson waits")
+        hostless.coach.canPresent = { true }
+        try holdTap(hostless, down: 70, up: 70.1)
+        try check(hostless.coach.card != nil, "the next qualifying press can be taught")
+        hostless.coach.drop(hostless.coach.card!.id)
+        try check(!noHost.isRetired(HoldLesson.tip), "a blocked presentation does not spend it")
+
+        func neverTeaches(_ name: String, _ description: String, _ act: (CaptureHarness) throws -> Void) throws {
+            let unspent = tips(name)
+            let model = CaptureHarness(directory: folder("never-" + name), tips: unspent)
+            model.coach.canPresent = { true }
+            try act(model)
+            try check(model.coach.card == nil && !unspent.isRetired(HoldLesson.tip), description + " never teaches the hold")
+        }
+        try neverTeaches("toggle", "Toggle") { model in
+            model.preferences.capture = .toggle
+            model.shortcutChanged(down: true, at: 1)
+            try model.recorderStarted(audio: 0.1, peak: -20, wav: wav)
+            model.shortcutChanged(down: false, at: 1.05)
+            model.shortcutChanged(down: true, at: 1.1)
+            try check(model.captureCue?.reason == .tooShort, "a short Toggle press keeps #156's cue")
+        }
+        try neverTeaches("click", "a click on the recording button") { model in
+            model.toggleRecording()
+            try model.recorderStarted(audio: 0.1, peak: -20, wav: wav)
+            model.stopRecording()
+            try check(model.captureCue?.reason == .tooShort, "a short click-started capture keeps #156's cue")
+        }
+        try neverTeaches("denied", "a permission or start failure") { model in
+            model.shortcutChanged(down: true, at: 1)
+            model.fail("Microphone access is off.")
+            model.shortcutChanged(down: false, at: 1.1)
+            try check(model.captureCue == nil && model.error == "Microphone access is off.", "a failed start keeps its own explanation")
+        }
+        try neverTeaches("cancel-requesting", "a release before the recorder started") { model in
+            model.shortcutChanged(down: true, at: 1)
+            model.shortcutChanged(down: false, at: 1.1)
+            try check(model.phase == .idle && model.captureCue == nil, "releasing while the recorder starts cancels quietly")
+        }
+        try neverTeaches("cancel-recording", "an explicit cancel") { model in
+            model.shortcutChanged(down: true, at: 1)
+            try model.recorderStarted(audio: 0.1, peak: -20, wav: wav)
+            model.cancelCurrentCapture()
+            model.shortcutChanged(down: false, at: 1.1)
+            try check(model.phase == .idle && model.captureCue == nil && model.status == "Recording discarded.", "Cancel discards and teaches nothing")
+        }
+        try neverTeaches("silent", "a genuine hold that heard only silence") { model in
+            try holdTap(model, down: 1, up: 4, audio: 3, peak: -70)
+            try check(model.captureCue?.reason == .tooQuiet, "a silent hold keeps #156's cue")
+        }
+        try neverTeaches("slow-start", "a long hold whose recorder started late") { model in
+            try holdTap(model, down: 1, up: 2, audio: 0.2)
+            try check(model.captureCue?.reason == .tooShort, "a slow start is judged by the key, and keeps #156's cue")
+        }
+
+        let learned = tips("learned")
+        let fluent = CaptureHarness(directory: folder("hold-success"), tips: learned)
+        fluent.coach.canPresent = { true }
+        fluent.shortcutChanged(down: true, at: 1)
+        try fluent.recorderStarted(audio: 1.2, peak: -20, wav: wav)
+        fluent.shortcutChanged(down: false, at: 2.2); await finish(fluent)
+        try check(fluent.history.count == 1 && learned.isRetired(HoldLesson.tip), "a hold that produced words retires the lesson")
+        try holdTap(fluent, down: 10, up: 10.1)
+        try check(fluent.coach.card == nil && fluent.captureCue?.reason == .tooShort, "after a successful hold a later tap is never taught")
+
+        // An undelivered result stays with its owner (#134 T5). The receipt going,
+        // its clear() on a new or retried capture, and teardown cannot resolve it;
+        // copying the same words again, or Dismiss, does.
+        let clearCallSites: Set<String> = __CLEAR_CALL_SITES__
+        try check(clearCallSites == ["toggleRecording", "transcribe", "shutdown"],
+                  "every clipboardReceipt.clear() call site is covered below: \(clearCallSites.sorted())")
+        let undelivered = CaptureHarness(directory: folder("undelivered"))
+        TextDelivery.nextOutcome = TextDelivery.Outcome(message: "Could not copy.", clipboardChangeCount: nil, failure: .copyFailed)
+        undelivered.run(try undelivered.makeRecording(wav), owned: true); await finish(undelivered)
+        let failedID = undelivered.history.first?.id
+        try check(undelivered.unresolvedDelivery?.kind == .copyFailed && undelivered.unresolvedDelivery?.reference == failedID.map { .transcript($0) }
+                  && undelivered.unresolvedDelivery?.offersCopy == true, "a failed copy is kept with its transcript in History")
+        TextDelivery.nextOutcome = TextDelivery.Outcome()
+        undelivered.toggleRecording()
+        try check(undelivered.unresolvedDelivery?.kind == .copyFailed, "a new capture (toggleRecording's clear) does not resolve it")
+        undelivered.cancelRecording()
+        undelivered.run(try undelivered.makeRecording(wav), owned: true); await finish(undelivered)
+        try check(undelivered.history.count == 2 && undelivered.unresolvedDelivery?.reference == failedID.map { .transcript($0) },
+                  "a later transcription (transcribe's clear) and its successful delivery do not resolve an older result")
+        undelivered.shutdown()
+        try check(undelivered.unresolvedDelivery?.kind == .copyFailed, "teardown (shutdown's clear) leaves it for its canonical record")
+        let copiesBefore = TextDelivery.copies.count
+        undelivered.copyUnresolvedDelivery()
+        try check(TextDelivery.copies.count == copiesBefore + 1 && TextDelivery.copies.last == undelivered.history.first(where: { $0.id == failedID })?.text
+                  && undelivered.unresolvedDelivery == nil, "Copy again copies those exact words, and only then is it resolved")
+
+        let uncertain = CaptureHarness(directory: folder("uncertain"))
+        TextDelivery.nextOutcome = TextDelivery.Outcome(message: "Paste sent · insertion could not be confirmed.", failure: .pasteUnconfirmed, pasteWasAttempted: true)
+        uncertain.run(try uncertain.makeRecording(wav), owned: true); await finish(uncertain)
+        TextDelivery.nextOutcome = TextDelivery.Outcome()
+        let uncertainCopies = TextDelivery.copies.count
+        uncertain.copyUnresolvedDelivery()
+        try check(uncertain.unresolvedDelivery?.kind == .pasteUnconfirmed && TextDelivery.copies.count == uncertainCopies,
+                  "an unconfirmed paste offers no second copy to paste, and stays until the person decides")
+        uncertain.dismissUnresolvedDelivery()
+        try check(uncertain.unresolvedDelivery == nil && uncertain.history.count == 1, "Dismiss sets it aside; the transcript stays in History")
+
+        let draft = CaptureHarness(directory: folder("draft-copy"))
+        TextDelivery.copyFails = true
+        draft.copyTranscript()
+        try check(draft.unresolvedDelivery?.kind == .copyFailed && draft.unresolvedDelivery?.reference == .draft, "a failed copy of the draft is kept too")
+        TextDelivery.copyFails = false
+        draft.copyTranscript()
+        try check(draft.unresolvedDelivery == nil, "copying the draft again resolves it")
+
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }
 }
 '''
 values = core[:core.index('struct StateStore {')]
+fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)
@@ -536,6 +744,8 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(directory / 'ModuleCache'),
                     str(swift), str(PROJECT / 'Sources/LocalVoice/TextPrimitives.swift'), str(PROJECT / 'Sources/LocalVoice/CaptureRecovery.swift'), str(PROJECT / 'Sources/LocalVoice/DrawingDeliveryGate.swift'),
                     str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'),
+                    str(PROJECT / 'Sources/LocalVoice/NoticeLifetime.swift'), str(PROJECT / 'Sources/LocalVoice/FeedbackCoach.swift'),
+                    str(PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
 print('AppModel.swift SHA256:', hashlib.sha256(source.encode()).hexdigest())

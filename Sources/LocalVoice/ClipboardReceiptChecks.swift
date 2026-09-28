@@ -9,7 +9,7 @@ enum ClipboardReceiptChecks {
             passed += 1
         }
         var clipboardCount = 10
-        var clock = Date(timeIntervalSince1970: 1_000)
+        var clock: TimeInterval = 1_000
         let model = ClipboardReceiptModel(clipboardChangeCount: { clipboardCount }, now: { clock }, automaticallySchedules: false)
         func copied(_ count: Int) -> TextDelivery.Outcome {
             TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil)
@@ -19,7 +19,7 @@ enum ClipboardReceiptChecks {
                   "own copy creates visible metadata receipt")
         try check(model.receipt?.title == "Copied" && model.receipt?.detail == "Paste with ⌘V.",
                   "a copy's receipt reads Copied and Paste with ⌘V.")
-        clock.addTimeInterval(8); model.refreshClipboardOwnership()
+        clock += 8; model.refreshClipboardOwnership()
         try check(!model.isHUDVisible && model.receipt?.isClipboardCurrent == true,
                   "copied HUD expires but current clipboard shelf remains")
         let retainedID = model.receipt?.id
@@ -33,20 +33,20 @@ enum ClipboardReceiptChecks {
 
         model.record(outcome: copied(11), wordCount: 3)
         model.keepVisible = true
-        clock.addTimeInterval(80); model.refreshClipboardOwnership()
+        clock += 80; model.refreshClipboardOwnership()
         try check(model.isHUDVisible && model.keepVisible, "pin survives the normal HUD deadline")
         clipboardCount = 12; model.refreshClipboardOwnership()
         try check(model.receipt == nil && !model.isHUDVisible && !model.keepVisible, "new clipboard ends a pinned receipt")
 
         model.record(outcome: copied(12), wordCount: 4)
         let oldID = model.receipt?.id
-        clock.addTimeInterval(7)
+        clock += 7
         model.record(outcome: copied(12), wordCount: 8)
         let newID = model.receipt?.id
-        clock.addTimeInterval(2); model.refreshClipboardOwnership()
+        clock += 2; model.refreshClipboardOwnership()
         try check(model.isHUDVisible && model.receipt?.id == newID && newID != oldID,
                   "an older receipt deadline cannot hide a newer receipt")
-        clock.addTimeInterval(6); model.refreshClipboardOwnership()
+        clock += 6; model.refreshClipboardOwnership()
         try check(!model.isHUDVisible && model.receipt?.id == newID, "new receipt uses its own full deadline")
 
         let restored = TextDelivery.Outcome(message: "Pasted into Notes. Previous clipboard restored.",
@@ -55,7 +55,7 @@ enum ClipboardReceiptChecks {
         try check(model.receipt?.title == "Pasted into Notes" && model.receipt?.isClipboardCurrent == false
                   && model.receipt?.clipboardChangeCount == nil && model.receipt?.canSuggestPaste == false,
                   "restored clipboard never advertises copied transcript or duplicate paste")
-        clock.addTimeInterval(4); model.refreshClipboardOwnership()
+        clock += 4; model.refreshClipboardOwnership()
         try check(model.receipt == nil && !model.isHUDVisible, "pasted-and-restored receipt ends after four seconds")
 
         model.record(outcome: copied(11), wordCount: 1)
@@ -68,6 +68,23 @@ enum ClipboardReceiptChecks {
                   "dismiss hides and unpins while preserving owned clipboard shelf")
         model.clear()
         try check(model.receipt == nil && !model.isHUDVisible && !model.keepVisible, "new recording clear removes all receipt state")
+
+        // The HUD's countdown is its own lifetime (#134 T5): the pointer and a pin hold it,
+        // the ring reads the same value, and only the HUD ends when it is due.
+        model.record(outcome: copied(12), wordCount: 2)
+        let receiptEvent = model.lifetime?.event
+        clock += 2
+        try check(abs((model.lifetime?.fraction(at: clock) ?? 0) - 0.75) < 0.0001, "a copy's ring shows six of eight seconds left")
+        model.holdHUD(true); clock += 30; model.refreshClipboardOwnership()
+        try check(model.isHUDVisible && abs((model.lifetime?.remaining(at: clock) ?? 0) - 6) < 0.0001,
+                  "the pointer over the HUD pauses its time")
+        model.holdHUD(false); clock += 5.9; model.refreshClipboardOwnership()
+        try check(model.isHUDVisible, "letting go resumes the time that was left")
+        model.keepVisible = true; clock += 60; model.refreshClipboardOwnership()
+        try check(model.isHUDVisible && model.lifetime?.event == receiptEvent, "a pin holds the same lifetime")
+        model.keepVisible = false; clock += 0.2; model.refreshClipboardOwnership()
+        try check(!model.isHUDVisible && model.receipt?.isClipboardCurrent == true, "unpinned, the HUD goes when its time is spent; the shelf stays")
+        model.clear()
 
         model.record(outcome: TextDelivery.Outcome(message: "Copy was unavailable.", clipboardChangeCount: nil,
                                                  wasPasted: false, destinationName: nil, failure: .copyFailed), wordCount: 5)

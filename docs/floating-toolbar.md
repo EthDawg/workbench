@@ -16,6 +16,12 @@ that heard no speech shows a brief "No speech heard" cue in place of its
 recording controls, then the toolbar returns by itself; a reading whose audio
 could not be read keeps its compact controls with the reason, Retry and
 dismiss. Like the live controls, both appear even when Hide toolbar is on.
+The floating receipt's × carries a ring that counts its own eight seconds (four
+after a confirmed paste); the pointer or its pin holds it. The one-time
+coaching card (#134 T5) is shown by this host above the compact anchor, never
+by expanding the row: the host shows it only when `FeedbackCoachModel.canPresent`
+allows, reports `didPresent` once it is on screen and `drop` when it cannot be
+shown, and removes it on screen capture and another capture.
 
 **The mode follows you.** A mode is one capability or named workflow: Dictate,
 Read, Snap, Snap & Talk, Draw, Present or Persona. Starting anything from any
