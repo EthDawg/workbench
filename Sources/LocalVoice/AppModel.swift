@@ -50,6 +50,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func copyWaitingDelivery() { drawingDelivery.resolve(.copy) }
     @Published var isMicrophoneQuiet = false
     @Published var captureUsesHoldShortcut = false
+    /// This attempt's press of the global Dictate shortcut in Hold, timed by
+    /// the native key events (#134 T5).
+    private var holdGesture: HoldGesture?
+    /// The one-time coaching card; the floating control's host shows it.
+    let coach = FeedbackCoachModel()
+    /// A delivery that did not finish, kept by this owner rather than by the
+    /// receipt, so hiding or clearing the receipt cannot resolve it (T5).
+    @Published private(set) var unresolvedDelivery: UnresolvedDelivery?
+    private var deliveringCaptureID: UUID?
     @Published private(set) var captureOutputModeLabel = "Light cleanup"
     @Published private(set) var captureShortcutInstruction = "Use Stop to finish"
     @Published var captureFailure: String?
@@ -451,6 +460,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
         captureFailure = nil; dismissCaptureCue()
+        coach.remove(); holdGesture = nil
         previewingPanel = false
         stopPlayback()
         captureUsesHoldShortcut = fromShortcut && preferences.capture == .hold
@@ -461,12 +471,23 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         phase = .requesting
         Task { await startRecording(attempt) }
     }
-    func shortcutChanged(down: Bool) {
+    /// `time` is the key event's own timestamp (NSEvent or Carbon), in
+    /// seconds since the Mac started. A hold is timed from the press that
+    /// began the attempt to its release, never from later callbacks.
+    func shortcutChanged(down: Bool, at time: TimeInterval? = nil) {
         let usesHold = phase == .idle ? preferences.capture == .hold : captureUsesHoldShortcut
         if !usesHold { if down { toggleRecording(fromShortcut: true) }; return }
-        if down { if phase == .idle { toggleRecording(fromShortcut: true) } }
-        else if phase == .recording { stopRecording() }
-        else if phase == .requesting { cancelRecording() }
+        if down {
+            guard phase == .idle else { return }
+            toggleRecording(fromShortcut: true)
+            if phase == .requesting, captureUsesHoldShortcut, let attempt = recordingAttempt, let time {
+                holdGesture = HoldGesture(attempt: attempt, pressedAt: time)
+            }
+        } else {
+            if let time, let attempt = recordingAttempt, holdGesture?.attempt == attempt { holdGesture?.release(at: time) }
+            if phase == .recording { stopRecording() }
+            else if phase == .requesting { cancelRecording() }
+        }
     }
 
     private func startRecording(_ attempt: UUID) async {
@@ -523,11 +544,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard phase == .recording, let url = recordURL else { return }
         let duration = recorder?.currentTime ?? elapsed
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
-        guard duration >= 0.35, peakPower > -55 else {
+        // The recorder ran, so a shortcut press that began this attempt can be judged.
+        let gesture = recordingAttempt.flatMap { attempt in holdGesture?.attempt == attempt ? holdGesture : nil }
+        holdGesture = nil
+        guard duration >= CaptureCue.shortestSpeech, peakPower > -55 else {
             discardRecordingRecovery()
-            endWithoutSpeech(duration < 0.35 ? .tooShort : .tooQuiet); return
+            let reason: CaptureCue.Reason = duration < CaptureCue.shortestSpeech ? .tooShort : .tooQuiet
+            endWithoutSpeech(reason, teachesHold: HoldLesson.teaches(gesture, outcome: reason)); return
         }
-        transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
+        transcribe(url, duration: duration, temporary: true, settings: recordingSettings, heldShortcut: gesture != nil)
         recordingSettings = nil
     }
 
@@ -537,7 +562,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         guard phase == .recording else { return }
         shortcutRequest.cancel()
-        recordingAttempt = nil
+        recordingAttempt = nil; holdGesture = nil
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
         let discarded = discardRecordingRecovery()
         phase = .idle; level = 0
@@ -603,7 +628,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return settings
     }
 
-    private func transcribe(_ url: URL, duration: Double, temporary: Bool, settings: CaptureSettings? = nil) {
+    private func transcribe(_ url: URL, duration: Double, temporary: Bool, settings: CaptureSettings? = nil, heldShortcut: Bool = false) {
         let settings = settings ?? captureSettings()
         let shortcutID = shortcutRequest.id
         let invocation = UUID(); transcriptionID = invocation
@@ -640,6 +665,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 }
                 guard try commitRecognizedCapture(raw: raw, text: result, seconds: duration,
                     method: cleaned.method, ownedAudio: temporary ? url : nil, invocation: invocation) else { return }
+                // A hold that produced words shows the gesture is known: never teach it.
+                if heldShortcut { coach.tips.retire(HoldLesson.tip) }
                 accessibilityGranted = AXIsProcessTrusted()
                 if let shortcutID {
                     status = "Transcript returned to Shortcuts."
@@ -662,6 +689,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                     guard transcriptionID == invocation else { return }
                     status = outcome.message
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
+                    if let captureID = deliveringCaptureID {
+                        noteDelivery(outcome, of: .transcript(captureID), wordCount: TextRules.wordCount(result))
+                    }
                 }
                 phase = .idle; onPhaseChange?()
             } catch {
@@ -703,6 +733,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard transcriptionID == invocation else { throw CancellationError() }
         let id = ownedAudio != nil ? (captureRecovery.pending?.id ?? UUID()) : UUID()
         let capture = Transcript(id: id, text: text, seconds: seconds, rawText: raw, cleanupMethod: method)
+        deliveringCaptureID = capture.id
         let record = CaptureRecoveryRecord(id: id, audioFilename: ownedAudio?.lastPathComponent, capture: capture)
         _ = try record.validated()
         guard captureRecovery.pending == nil || captureRecovery.pending?.id == id else { throw CaptureRecoveryError.pending }
@@ -803,16 +834,37 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
 
     func copyTranscript() {
-        copyTextWithReceipt(transcript)
+        copyTextWithReceipt(transcript, of: .draft)
     }
-    private func copyTextWithReceipt(_ text: String) {
+    private func copyTextWithReceipt(_ text: String, of reference: UnresolvedDelivery.Reference) {
         guard !text.isEmpty else { return }
         captureFailure = nil; dismissCaptureCue()
         let count = TextDelivery.copy(text)
         let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
         status = outcome.message
         clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
+        noteDelivery(outcome, of: reference, wordCount: TextRules.wordCount(text))
     }
+    /// Keeps an undelivered result, or resolves it when the same words are
+    /// delivered. Another result's success never resolves it.
+    private func noteDelivery(_ outcome: TextDelivery.Outcome, of reference: UnresolvedDelivery.Reference, wordCount: Int) {
+        if let kind = UnresolvedDelivery.kind(of: outcome) {
+            unresolvedDelivery = UnresolvedDelivery(kind: kind, reference: reference, wordCount: wordCount)
+        } else if unresolvedDelivery?.reference == reference {
+            unresolvedDelivery = nil
+        }
+    }
+    /// Copy again, for a result whose copy failed or was never pasted.
+    func copyUnresolvedDelivery() {
+        guard let unresolved = unresolvedDelivery, unresolved.offersCopy else { return }
+        switch unresolved.reference {
+        case .draft: copyTranscript()
+        case .transcript(let id):
+            if let item = history.first(where: { $0.id == id }) { copyCapture(item) }
+        }
+    }
+    /// The person's own choice to set it aside. Hiding a notice never does this.
+    func dismissUnresolvedDelivery() { unresolvedDelivery = nil }
     func showLibrary() { page = "library"; onShowEditor?("library"); libraryFocusToken = UUID() }
     /// Every door opens History on All, even when History is already showing.
     /// Dictate's own option asks for Transcripts, and Hand off for its task.
@@ -826,7 +878,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
     func savePrompt(_ text: String) { guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }; showLibrary(); library.newPrompt(text) }
-    func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text) }
+    func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text, of: .transcript(item.id)) }
     func showPanelPreview() {
         guard phase == .idle else { return }
         captureUsesHoldShortcut = false
@@ -1410,7 +1462,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// microphone, or a closed lid, than a pause, so it gets the explicit panel
     /// that says where to look instead of another brief cue.
     private var quietCapturesInARow = 0
-    func endWithoutSpeech(_ reason: CaptureCue.Reason) {
+    func endWithoutSpeech(_ reason: CaptureCue.Reason, teachesHold: Bool = false) {
         if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
         if quietCapturesInARow >= 2 {
             quietCapturesInARow = 0
@@ -1425,6 +1477,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         captureFailure = nil
         phase = .idle
+        // A press of the Dictate shortcut in Hold let go too soon learns the
+        // gesture once, in place of this attempt's cue (#134 T5). A lesson
+        // already taught, or one no host can show, leaves the cue.
+        if teachesHold, coach.request(HoldLesson.card(shortcut: preferences.dictationShortcut.label)) {
+            status = "No speech heard. " + HoldLesson.title(shortcut: preferences.dictationShortcut.label)
+            onPhaseChange?()
+            return
+        }
         let cue = CaptureCue(reason: reason)
         captureCue = cue
         captureCueClock = CaptureCueClock(routine: true, shownAt: Date())
@@ -1476,7 +1536,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         meetings.shutdown(); handoffJobs.shutdown()
         photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
-        clipboardReceipt.clear(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
+        clipboardReceipt.clear(); coach.remove(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
         stopPlayback(); saveNow(); AudioRenderer.remove(audioURL)
         // Quit stops work. Only a durable capture commit or explicit Cancel may
         // delete the owned audio/journal; the next launch discovers unfinished work.

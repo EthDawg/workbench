@@ -695,6 +695,22 @@
     "belongsTo": "timer"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.copy-again",
+    "surface": "quick panel status rows",
+    "label": "Copy again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T5): a dictation whose copy failed or was never pasted stays in the shelf after its receipt has gone; Copy again copies those exact words from History or the draft. Never offered after an uncertain paste, and nothing retries by itself."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.dismiss",
+    "surface": "quick panel status rows",
+    "label": "Dismiss",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T5): the person sets an undelivered result aside; the words stay in History. Hiding a notice never does this."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.review-text",
     "surface": "quick panel status rows",
     "label": "Review text",
@@ -734,6 +750,24 @@
     "kind": "status",
     "belongsTo": "dictate",
     "note": "Quality: the receipt's own detail, such as Paste with ⌘V., replacing the shelf's separate wording (#165). Runtime label from receipt . detail; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-09d99a85b0f2",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "unresolved . title",
+    "kind": "status",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T5): an undelivered result's title, such as Copy failed or Paste unconfirmed, kept by the delivery owner rather than the receipt. Runtime label from unresolved . title; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-81dfc2765d94",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "unresolved . detail",
+    "kind": "status",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T5): what happened and where the words are. Runtime label from unresolved . detail; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.dictate-options",

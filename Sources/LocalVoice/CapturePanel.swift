@@ -910,12 +910,15 @@ private struct CaptureReceiptView: View {
                                 .accessibilityLabel(receipts.keepVisible ? "Unpin receipt" : "Keep receipt visible")
                                 .help("Keep visible while this text is on the clipboard")
                         }
+                        // The ring reads the receipt's own lifetime: eight seconds for a copy, four for a paste (#134 T5).
                         Button { receipts.dismissHUD() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
                             .buttonStyle(.plain).accessibilityLabel("Dismiss dictation receipt")
+                            .overlay { LiveCountdownRing(lifetime: receipts.lifetime, clock: receipts.now).allowsHitTesting(false) }
                     }
                 }
                 CapturePositionMenu(controls: controls)
             }
+            .onHover { receipts.holdHUD($0) }
         }
     }
 }

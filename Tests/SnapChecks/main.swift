@@ -378,4 +378,46 @@ try MainActor.assumeIsolated {
               "a later manual location change pauses collecting with a draft open, and is kept")
     model.draft = nil
 }
+// Saves and exports are classified where they happen (#134 T5): a full success
+// gets a four-second confirmation that clears only itself; a save whose copy
+// failed is a partial failure whose notice stays; nothing times an editor.
+try MainActor.assumeIsolated {
+    var clock: TimeInterval = 500
+    let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("confirmed-history")), clock: { clock })
+    model.draft = SnapDraft(originalPNG: png, source: .region, title: "Saved quietly", notes: "", tags: [], edit: .init())
+    try check(model.saveDraft(model.draft!, copyAfterSaving: false) && model.lastOutcome == .saved
+              && model.confirmation?.kind == .saved && model.notice == nil, "a save is confirmed as Saved to History, with no lingering notice")
+    let savedEvent = model.confirmation!.lifetime.event
+    clock += 3.9; model.expireConfirmation(savedEvent)
+    try check(model.confirmation?.kind == .saved, "the confirmation lasts four seconds")
+    let before = model.items
+    clock += 0.1; model.expireConfirmation(savedEvent)
+    try check(model.confirmation == nil && model.items == before && model.lastOutcome == .saved, "expiry clears only the confirmation")
+
+    var pasted: [Data] = []
+    model.copyImage = { pasted.append($0); return true }
+    model.draft = SnapDraft(originalPNG: png, source: .window, title: "Saved and copied", notes: "", tags: [], edit: .init())
+    try check(model.saveDraft(model.draft!, copyAfterSaving: true) && model.lastOutcome == .savedAndCopied
+              && model.confirmation?.kind == .savedAndCopied && pasted.count == 1, "Save & Copy confirms both only after both happened")
+    let copiedEvent = model.confirmation!.lifetime.event
+    model.copyImage = { _ in false }
+    model.draft = SnapDraft(originalPNG: png, source: .screen, title: "Copy refused", notes: "", tags: [], edit: .init())
+    try check(model.saveDraft(model.draft!, copyAfterSaving: true) && model.lastOutcome == .savedButCopyFailed
+              && model.confirmation == nil && model.notice?.contains("Copy failed") == true,
+              "a save whose copy failed is a partial failure, never a timed success")
+    clock += 60; model.expireConfirmation(copiedEvent)
+    try check(model.notice?.contains("Copy failed") == true && model.lastOutcome == .savedButCopyFailed,
+              "an earlier success's expiry cannot hide the partial failure")
+
+    let exported = directory.appendingPathComponent("Exported.png")
+    model.export(model.items[0].id, to: exported)
+    try check(fm.fileExists(atPath: exported.path) && model.lastOutcome == .exported && model.confirmation?.kind == .exported && model.notice == nil,
+              "an export is confirmed only once its file is written")
+    model.export(model.items[0].id, to: directory.appendingPathComponent("missing-folder/Exported.png"))
+    try check(model.lastOutcome == .failed && model.confirmation == nil && model.notice != nil, "a failed export keeps its reason and no success")
+    model.draft = SnapDraft(originalPNG: png, source: .region, title: "   ", notes: "", tags: [], edit: .init())
+    try check(!model.saveDraft(model.draft!, copyAfterSaving: false) && model.lastOutcome == .failed && model.draft != nil
+              && model.confirmation == nil, "a refused save keeps the editor open and claims nothing")
+    model.draft = nil
+}
 print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")

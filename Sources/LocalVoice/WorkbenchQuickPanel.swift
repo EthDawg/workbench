@@ -26,7 +26,7 @@ struct WorkbenchQuickPanel: View {
     var personas: () -> Void
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
     private var hasFeedback: Bool {
-        editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true ||
+        editor.shortcutID != nil || receipts.receipt?.isClipboardCurrent == true || model.unresolvedDelivery != nil ||
             !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
             readback.notice != nil || (model.phase == .idle && !model.ready)
     }
@@ -59,13 +59,14 @@ struct WorkbenchQuickPanel: View {
                 if editor.shortcutID != nil { shortcutEditor }
                 else {
                     VStack(alignment: .leading, spacing: 5) {
-                        WorkbenchClipboardShelf(receipts: receipts,
+                        WorkbenchClipboardShelf(receipts: receipts, unresolved: model.unresolvedDelivery,
                             review: {
                                 let prompt = receipts.receipt?.source == .prompt
                                 receipts.dismissHUD()
                                 if prompt { open("library") } else { model.openHistory(); open("history") }
                             },
-                            showCue: { model.onCloseMenu?(); receipts.revealHUD() })
+                            showCue: { model.onCloseMenu?(); receipts.revealHUD() },
+                            copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                         if receipts.receipt?.isClipboardCurrent != true {
                             if !context.activitySummary.isEmpty {
                                 Text(context.activitySummary).font(.caption).foregroundStyle(.secondary)
@@ -118,6 +119,8 @@ struct WorkbenchQuickPanel: View {
             HStack {
                 Text(keyboard.selected?.title ?? "Shortcut").font(.callout.weight(.semibold))
                 Spacer()
+                // ✓ Saved or ✓ Practice complete for four seconds, in space kept for it (#134 T5).
+                ConfirmationLabel(text: keyboard.confirmation?.kind.rawValue, reserving: ShortcutConfirmation.texts)
                 Button("Done") { editor.end() }
                     .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }

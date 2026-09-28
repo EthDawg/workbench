@@ -327,6 +327,7 @@ struct HistoryView: View {
                 Text("What you dictated, snapped and handed off, newest first.").foregroundStyle(.secondary)
             }
             Spacer()
+            ConfirmationLabel(text: snap.confirmation?.kind.rawValue, reserving: SnapConfirmation.texts)
             Button("Connections…") { showingConnections = true }
         }
     }

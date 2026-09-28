@@ -515,6 +515,49 @@ enum SurfaceGallery {
         try shot("floating-reading-stopped", "Floating: reading stopped",
                  "A reading whose audio could not be read keeps its controls with Retry and dismiss.")
         model.dismissReadingFailure()
+
+        // The receipt's own countdown ring (#134 T5), frozen by a pointer hold so the render repeats.
+        model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
+                                                     wasPasted: false, destinationName: nil), wordCount: 42)
+        model.clipboardReceipt.holdHUD(true)
+        do {
+            let size = CaptureHUDLayout.message
+            let content = WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
+                                                   dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+            let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: size, styleMask: [.borderless])
+            window.contentView = host
+            defer { window.contentView = nil; window.close() }
+            settle(host)
+            shots.append(try save(try snapshot(host), id: "floating-receipt", title: "Floating: copied receipt",
+                                  detail: "Its ring counts the receipt's own eight seconds; the pointer or a pin holds it.",
+                                  file: "panel-floating-receipt-\(theme).png", to: output))
+        }
+        model.clipboardReceipt.clear()
+
+        // The one-time coaching card, shown by a host, with its ring half spent and, for VoiceOver, still.
+        for (id, title, detail, fraction, voiceOver) in [
+            ("floating-coach", "Floating: hold lesson", "After a too-short press of the Dictate shortcut in Hold, once. Its ring is half spent at two of four seconds.", 0.5, false),
+            ("floating-coach-voiceover", "Floating: hold lesson with VoiceOver", "With VoiceOver on it waits for Dismiss hint, with a still close control.", 1.0, true)] {
+            let tips = CoachTips(defaults: try SurfaceGallery.isolatedDefaults("Coach-" + id, home: home))
+            let coach = FeedbackCoachModel(tips: tips, clock: { 100 }, workspace: NotificationCenter(), distributed: NotificationCenter())
+            coach.voiceOverEnabled = { voiceOver }; coach.announce = { _ in }; coach.canPresent = { true }
+            let card = HoldLesson.card(shortcut: VoicePreferences.defaultDictationShortcut.label)
+            guard coach.request(card) else { throw VoiceError.message("The gallery's coach did not accept its card.") }
+            coach.didPresent(card.id)
+            // The host proposes the card's standard width; its text wraps and it grows downward.
+            let view = CoachCardView(coach: coach, fixedFraction: fraction).frame(width: 320)
+                .fixedSize(horizontal: false, vertical: true).padding(12)
+            let host = NSHostingView(rootView: view.background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
+            window.contentView = host
+            defer { window.contentView = nil; window.close() }
+            settle(host)
+            window.setContentSize(host.fittingSize)
+            settle(host, seconds: 0.05)
+            shots.append(try save(try snapshot(host), id: id, title: title, detail: detail, file: "panel-\(id)-\(theme).png", to: output))
+        }
         return shots
     }
 
