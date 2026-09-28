@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import StageKit
+import PhotoHandoffKit
 import ServiceManagement
 import ImageIO
 
@@ -43,6 +44,13 @@ struct WorkbenchHome: View {
     /// the section, so a later Library door returns to Resources.
     static let photoArrivals = "photos"
 
+    /// The page pinned below the sidebar's scrolling list, and the items a small unnamed break
+    /// follows: Home, then the tools, then History and Library (#134).
+    static let pinnedPage = "settings"
+    /// What the floating toolbar's one switch does, wherever it appears (#134).
+    static let floatingToolbarHelp = "Show between actions. Recording and recovery controls still appear when needed."
+    static let sidebarBreaks: Set<String> = ["home", "personas"]
+
     /// Where a route lands: the sidebar page it highlights and, on a page with sections, the
     /// section it shows. Every door resolves here, so a route that was once a page of its own
     /// still works and nothing lands without a highlighted item. A route nothing knows shows
@@ -69,36 +77,36 @@ struct WorkbenchHome: View {
     }
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 0) {
                 if let logo = packs.brandLogo {
                     Image(nsImage: logo).resizable().scaledToFit().frame(maxWidth: 150, maxHeight: 36)
                         .padding(8).background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
-                        .accessibilityLabel(packs.brandLabel ?? "Workspace")
+                        .accessibilityLabel(packs.brandLabel ?? "Workspace").padding(.bottom, 8)
                 }
-                WorkbenchHeader(title: packs.brandLabel ?? "Workbench", subtitle: packs.brandLabel == nil ? "Everyday tools. A little less friction." : "Your workspace in Workbench", symbol: "square.stack.3d.up.fill")
-                    .padding(.vertical, 20)
-                ScrollView {
+                // The compact name and mark with the Preview identity; a pack's workspace keeps its name (#134).
+                WorkbenchHeader(title: packs.brandLabel ?? "Workbench", subtitle: packs.brandLabel == nil ? "" : "Your workspace in Workbench", symbol: "square.stack.3d.up.fill")
+                    .padding(.horizontal, 4).padding(.bottom, 12)
                 // A section or subpage keeps its page's item highlighted.
                 let current = Self.destination(model.page).page
-                VStack(spacing: 4) { ForEach(Self.navItems, id: \.id) { page, title, symbol in
-                    Button {
-                        keyboard.stopInteraction()
-                        // Every door opens History on All, even from History itself.
-                        if page == "history" { model.openHistory() } else { model.page = page }
-                    } label: {
-                        Label(title, systemImage: symbol).font(.system(size: 13, weight: current == page ? .semibold : .regular))
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 9)
-                            .foregroundStyle(current == page ? Workbench.accent : .primary)
-                            .background(current == page ? Workbench.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                    }.buttonStyle(.plain).accessibilityAddTraits(current == page ? .isSelected : [])
-                } }
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(Self.navItems.filter { $0.id != Self.pinnedPage }, id: \.id) { item in
+                            navItem(item, current: current)
+                            // Small unnamed breaks after Home and after the tools.
+                            if Self.sidebarBreaks.contains(item.id) { Spacer().frame(height: 10) }
+                        }
+                    }
                 }
                 if updates.availableVersion != nil || updates.restartWaiting {
                     Button(updates.buttonTitle) { model.page = "settings"; updates.checkForUpdates() }
-                        .font(.caption).buttonStyle(.bordered)
+                        .font(.caption).buttonStyle(.bordered).padding(.vertical, 6)
                 }
-                WorkbenchAppearancePicker().controlSize(.small)
-                Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 10)
+                // Settings stays reachable below the list, whatever it scrolls to (#134).
+                if let settings = Self.navItems.first(where: { $0.id == Self.pinnedPage }) {
+                    Divider().padding(.vertical, 6)
+                    navItem(settings, current: current)
+                }
+                Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 8)
             }.padding(16).frame(width: 215).background(Workbench.surface.opacity(0.6))
             Divider()
             Group {
@@ -183,8 +191,8 @@ struct WorkbenchHome: View {
             }
     }
     private var welcome: some View {
-        WorkbenchHomePage(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap,
-                          introduction: introduction, handoffReview: $handoffReview)
+        WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: introduction,
+                          jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings)
     }
     /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
     /// at the top (#134). The route alone chooses the section, so every Library door opens
@@ -238,10 +246,15 @@ struct WorkbenchHome: View {
                     if let notice = stage.notice(on: .general) {
                         Text(notice).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                     }
-                    WorkbenchAppearancePicker()
-                    Toggle("Show floating toolbar", isOn: $model.floatingToolbarVisible)
-                    Text("Start another action from the same place. Recording controls appear here while you speak.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    // Appearance first: the suite's look, and the one floating-toolbar switch the panel,
+                    // the Window menu and the toolbar's own Hide toolbar share (#134).
+                    VStack(alignment: .leading, spacing: 8) {
+                        WorkbenchSectionTitle("Appearance")
+                        WorkbenchAppearancePicker().fixedSize()
+                        Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
+                            .help(WorkbenchHome.floatingToolbarHelp)
+                        Text(WorkbenchHome.floatingToolbarHelp).font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
                         do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
                         catch { loginError = error.localizedDescription }
@@ -253,7 +266,8 @@ struct WorkbenchHome: View {
                     MeetingDetectionSettings(model: model.meetings)
                     Divider()
                     HStack(spacing: 12) {
-                        Button("Dictate options…") { model.page = "dictate" }
+                        // Opens Dictate on its options and focuses them (#134).
+                        Button("Dictate options…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
                         // Until the first dictation, Home's guide can be asked for here too (#15).
                         if !HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide).hasDictated {
                             Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
@@ -266,6 +280,21 @@ struct WorkbenchHome: View {
                 }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
             }
         }
+    }
+
+    /// A sidebar item: the record's symbol and name, at least 36 points tall. Choosing it opens
+    /// its page and starts nothing; every door opens History on All, even from History itself.
+    private func navItem(_ item: (id: String, title: String, symbol: String), current: String) -> some View {
+        Button {
+            keyboard.stopInteraction()
+            if item.id == "history" { model.openHistory() } else { model.page = item.id }
+        } label: {
+            Label(item.title, systemImage: item.symbol).font(.system(size: 13, weight: current == item.id ? .semibold : .regular))
+                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading).padding(.horizontal, 12)
+                .foregroundStyle(current == item.id ? Workbench.accent : .primary)
+                .background(current == item.id ? Workbench.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain).accessibilityAddTraits(current == item.id ? .isSelected : [])
     }
 
     /// A page with sections: its name from the page record, then its switcher, where every
@@ -361,76 +390,194 @@ struct WorkbenchClipboardShelf: View {
     }
 }
 
-/// Home follows the journey (#134). Until the first dictation it guides one,
-/// whatever else has been captured (#15). Afterwards it shows what is live,
-/// what was done last, and the three moments as one-click tiles; Prepare… is
-/// each tile's small link to its page. WorkbenchHome embeds it as the "home" page.
+/// Home follows the journey (#134): what is running or needs recovering, the first-dictation
+/// guide while it is offered (#15), three quick starts, the newest History entries, a loaded
+/// Snap & Talk session, photos saved from iPhone and the founder card. It is not another tool
+/// menu: every tool keeps its sidebar page, where it is prepared.
 struct WorkbenchHomePage: View {
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
-    @ObservedObject var keyboard: KeyboardCoachModel
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var snap: SnapModel
     @ObservedObject var introduction: FounderIntroductionModel
-    @Binding var handoffReview: HandoffReviewRequest?
+    @ObservedObject var jobs: HandoffJobsModel
+    @ObservedObject var photos: PhotoHandoffModel
+    @ObservedObject var meetings: MeetingModel
     /// Keeps the guide up after the first dictation lands, so where the words
     /// went is seen once; Done or leaving Home ends it.
     @State private var stayInGuide = false
+    /// Recent work, merged and sorted again only when a store's rows change: never on a level,
+    /// status or selection redraw (#150). History's own filter, search and selection are not read.
+    @State private var recentRows = HistoryRowsCache()
+    @State private var storesRevision = 0
 
     var body: some View {
-        ScrollView {
+        // The page's own background fills the scrolled content to at least the window's height,
+        // so it is drawn with the content, as Dictate's is.
+        GeometryReader { proxy in ScrollView {
             VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Home's title is its welcome, in the page title's type (#134).
-                        Text(journey.showsGuide ? "Say something." : "Make room for the work.").font(Workbench.pageTitle)
-                            .accessibilityAddTraits(.isHeader)
-                        Text(journey.showsGuide ? "One click, and your words are ready to paste anywhere." : "Speak a thought. Explain a screen. Give your demo a stage.")
-                            .font(Workbench.bodyText).foregroundStyle(.secondary)
-                        // One small switch for the guide until the first dictation (#15).
-                        if journey.offersSkip {
-                            Button("Skip for now") { skipGuide() }.buttonStyle(.link).font(.callout)
-                                .help("Hide this guide. Show me a first dictation brings it back.")
-                        } else if journey.offersGuide {
-                            Button("Show me a first dictation") { showGuide() }.buttonStyle(.link).font(.callout)
-                                .help("Bring back the short guide to your first dictation.")
-                        }
+                WorkbenchPageHeader("home") {
+                    // The way back to the guide after Skip for now, until the first dictation (#15).
+                    if journey.offersGuide {
+                        Button("Show me a first dictation") { showGuide() }.buttonStyle(.link)
+                            .help("Bring back the short guide to your first dictation.")
                     }
-                    Spacer()
-                    Image(systemName: "square.stack.3d.up.fill").font(.system(size: 34)).foregroundStyle(Workbench.accent)
-                        .accessibilityHidden(true)
                 }
                 ForEach(journey.sections, id: \.self) { section in
                     switch section {
-                    case .liveStrip: liveStrip
+                    case .currentWork: currentWork
                     case .guide: firstDictation
                     case .firstResult: firstResult
+                    case .quickStart: quickStart
                     case .recentWork: recentWork
-                    case .moments: moments
+                    case .continueSession: continueSession
+                    case .fromIPhone: fromIPhone
                     }
                 }
                 if !introduction.isDismissed { FounderIntroductionCard(model: introduction) }
-                if !journey.showsGuide && !model.ready { engineBanner }
             }.padding(Workbench.pagePadding)
-        }.onAppear { if journey.offersSkip { stayInGuide = true } }
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+                .background(Workbench.background)
+        } }
+        .background(Workbench.background)
+        .onAppear { if journey.offersSkip { stayInGuide = true } }
+        .onReceive(model.$history.dropFirst()) { _ in storesRevision &+= 1 }
+        .onReceive(snap.$items.dropFirst()) { _ in storesRevision &+= 1 }
+        .onReceive(jobs.$jobs.dropFirst()) { _ in storesRevision &+= 1 }
     }
-    /// What Home can count. The stage exposes no saved-scene or persona count, so
-    /// someone who has only prepared scenes still sees the guide; presenting,
-    /// drawing and personas still surface through the live strip.
+    /// What Home shows, from its owners. Dictation alone ends the guide (#15).
     private var journey: HomeJourney {
-        HomeJourney(transcripts: model.history.count, snaps: snap.items.count,
-                    sessions: (readback.sessionURL == nil ? 0 : 1) + readback.recentSessionURLs.count,
-                    handoffJobs: model.handoffJobs.jobs.count, photos: model.photoHandoff.photos.count,
-                    guide: model.preferences.firstDictationGuide, isLive: isLive, stayInGuide: stayInGuide)
+        HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide,
+                    hasCurrentWork: hasCurrentWork, hasSession: hasSession, photos: photos.photos.count, stayInGuide: stayInGuide)
     }
     /// Skip for now and Show me a first dictation, saved with the Dictate preferences.
     private func skipGuide() { stayInGuide = false; model.preferences.firstDictationGuide = .skipped }
     private func showGuide() { model.preferences.firstDictationGuide = .offered; stayInGuide = true }
 
+    // MARK: Current work
+
+    /// Dictation, reading and their recovery, each read from its owner.
+    private var dictationLive: Bool { model.phase != .idle || model.waitingForDrawing }
+    private var readingLive: Bool { model.rendering || model.playing || model.paused }
+    private var captureRecovery: Bool { model.hasCaptureRecovery && model.phase == .idle }
+    /// Anything running, paused or waiting for recovery. A saved transcript or session alone is not.
+    private var hasCurrentWork: Bool {
+        dictationLive || readingLive || captureRecovery || model.readingFailure != nil || !model.ready
+            || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
+            || stage.hasActivePersona || stage.hasActiveTimer || meetings.isBusy || jobs.isBusy
+    }
+    /// Active input first, then recovery, then other running or resumable work, each with its
+    /// own truthful action. Leaving Home collapses, acknowledges or discards none of it.
+    private var currentWork: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            WorkbenchSectionTitle("Current work")
+            // Active input. Stop only stops: a click that lands after the recording ended starts nothing.
+            if model.phase == .recording {
+                liveRow("Dictating", "mic.fill") { Button("Stop") { model.stopRecording() } }
+            }
+            if readback.isRecording {
+                liveRow("Narrating", WorkbenchHome.symbol(of: "readback")) { Button("Stop") { readback.stopNarration() } }
+            }
+            if meetings.isRecording { MeetingQuickStatus(model: meetings) { model.page = "meeting" } }
+            // Recovery.
+            if captureRecovery {
+                liveRow("A capture is kept for recovery", "exclamationmark.arrow.circlepath") {
+                    if model.canRetry { Button(model.retryCaptureLabel) { model.retryTranscription() }.help(model.retryCaptureHelp) }
+                    else { Button("Open Dictate") { model.page = "dictate" } }
+                }
+            }
+            if model.readingFailure != nil {
+                liveRow("A reading stopped", "exclamationmark.triangle") {
+                    Button("Retry") { model.retryReading() }.disabled(!model.canRetryReading)
+                        .help("Makes new audio and reads from the start")
+                }
+            }
+            // The guide shows the speech engine itself while it is offered.
+            if !model.ready && !journey.showsGuide { engineBanner }
+            // Other running or resumable work.
+            if model.waitingForDrawing {
+                liveRow("Text ready", "doc.on.clipboard") { Button("Copy") { model.copyWaitingDelivery() } }
+            } else if model.phase != .idle && model.phase != .recording {
+                liveRow("Processing speech", "waveform") { ProgressView().controlSize(.small) }
+            }
+            if model.rendering {
+                liveRow("Making audio to read", "speaker.wave.2") { Button("Cancel") { model.cancelReading() } }
+            } else if model.playing || model.paused {
+                liveRow(model.paused ? "Reading paused" : "Reading", "speaker.wave.2") { Button("Stop reading") { model.stopPlayback() } }
+            }
+            if !readback.isRecording && readback.hasPendingTranscriptions {
+                liveRow("Transcribing narration", WorkbenchHome.symbol(of: "readback")) { ProgressView().controlSize(.small) }
+            }
+            if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
+            if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
+            if stage.hasActivePersona {
+                let persona = personaControl
+                liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
+                    Button(persona.rowTitle) { perform(persona) }.help(persona.help)
+                }
+            }
+            if stage.hasActiveTimer {
+                // Pause, Stop and Reset live in the Timer menu the panel already uses.
+                liveRow("Timer · " + stage.timerText, "timer") { NativeControlMenu(title: "Timer") { stage.makeTimerMenu() }.frame(width: 64, height: 24) }
+            }
+            if jobs.isBusy {
+                liveRow("Running · " + (jobs.jobs.first { $0.id == jobs.activeID }?.title ?? "Hand off task"), "arrow.up.forward.app") {
+                    Button("Stop task") { jobs.cancel() }
+                }
+            }
+            if meetings.isBusy && !meetings.isRecording { MeetingQuickStatus(model: meetings) { model.page = "meeting" } }
+        }.padding(16).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+    }
+    /// Persona's label, tooltip and click, from the action the panel and toolbar share (#134).
+    private var personaControl: HomePersonaControl {
+        HomePersonaControl(WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap).state)
+    }
+    /// Does exactly what the Persona label names, through the switch the panel and toolbar use.
+    private func perform(_ persona: HomePersonaControl) {
+        WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { _ in stage.togglePersona() }
+            .perform(persona.operation)
+    }
+    private func liveRow<Action: View>(_ title: String, _ symbol: String, @ViewBuilder action: () -> Action) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(Workbench.accent).frame(width: 20).accessibilityHidden(true)
+            Text(title).font(.callout.weight(.medium))
+            Spacer()
+            action()
+        }.controlSize(.small).frame(minHeight: 28)
+    }
+    private var engineBanner: some View {
+        HStack {
+            if model.preparing { ProgressView().controlSize(.small) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.modelMessage).font(.callout)
+                // A failed preparation belongs here, beside Retry model: the menu-bar panel's
+                // Open Home… leads to these words (#134).
+                if let attention = model.attention, attention.page == .home {
+                    Text(attention.message).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer()
+            if !model.preparing { Button("Retry model") { Task { await model.prepare() } } }
+            Button("Speech settings") { model.page = "models" }
+        }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: First dictation
+
     // One guided first dictation: the engine banner until speech is ready, then
     // one accent button whose label follows the phase as the Dictate page does.
     private var firstDictation: some View {
         VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                WorkbenchSectionTitle("First dictation")
+                Spacer()
+                // One small switch for the guide until the first dictation (#15).
+                if journey.offersSkip {
+                    Button("Skip for now") { skipGuide() }.buttonStyle(.link)
+                        .help("Hide this guide. Show me a first dictation brings it back.")
+                }
+            }
+            Text("One click, and your words are ready to paste anywhere.").foregroundStyle(.secondary)
             if !model.ready { engineBanner } else {
                 HStack(spacing: 16) {
                     Button { model.toggleRecording() } label: {
@@ -479,22 +626,6 @@ struct WorkbenchHomePage: View {
             }
         }
     }
-    private var engineBanner: some View {
-        HStack {
-            if model.preparing { ProgressView().controlSize(.small) }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.modelMessage).font(.callout)
-                // A failed preparation belongs here, beside Retry model: the menu-bar panel's
-                // Open Home… leads to these words (#134).
-                if let attention = model.attention, attention.page == .home {
-                    Text(attention.message).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer()
-            if !model.preparing { Button("Retry model") { Task { await model.prepare() } } }
-            Button("Speech settings") { model.page = "models" }
-        }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-    }
     // Once, after the first dictation: where the words were kept and the way back
     // to them. It reads the transcript History already holds (#15).
     private var firstResult: some View {
@@ -508,232 +639,203 @@ struct WorkbenchHomePage: View {
         }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    // What is live, each with its one action; shown only while something runs.
-    private var isLive: Bool {
-        model.phase != .idle || model.playing || model.paused || readback.isRecording || readback.hasPendingTranscriptions
-            || stage.isDrawing || stage.isPresenting || stage.hasActivePersona || stage.hasActiveTimer || model.meetings.isBusy
-    }
-    private var liveStrip: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                WorkbenchSectionTitle("Live")
-                if model.phase == .recording {
-                    liveRow("Recording…", "mic.fill") { Button("Stop") { model.toggleRecording() } }
-                } else if model.waitingForDrawing {
-                    liveRow("Text ready", "doc.on.clipboard") { Button("Copy") { model.copyWaitingDelivery() } }
-                } else if model.phase != .idle {
-                    liveRow("Processing speech", "waveform") { ProgressView().controlSize(.small) }
-                }
-                if model.playing || model.paused {
-                    liveRow(model.paused ? "Reading paused" : "Reading", "speaker.wave.2") { Button("Stop reading") { model.stopPlayback() } }
-                }
-                if readback.isRecording {
-                    liveRow("Narrating", "rectangle.dashed.badge.record") { Button("Stop") { readback.stopNarration() } }
-                } else if readback.hasPendingTranscriptions {
-                    liveRow("Transcribing narration", "rectangle.dashed.badge.record") { ProgressView().controlSize(.small) }
-                }
-                if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
-                if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
-                if stage.hasActivePersona {
-                    let persona = personaControl
-                    liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
-                        Button(persona.rowTitle) { perform(persona) }.help(persona.help)
-                    }
-                }
-                if stage.hasActiveTimer {
-                    // Pause, Stop and Reset live in the Timer menu the panel already uses.
-                    liveRow("Timer · " + stage.timerText, "timer") { NativeControlMenu(title: "Timer") { stage.makeTimerMenu() }.frame(width: 64, height: 24) }
-                }
-                MeetingQuickStatus(model: model.meetings) { model.page = "meeting" }
-            }.padding(16).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-    }
-    /// Persona's label, tooltip and click, from the action the panel and toolbar share (#134).
-    private var personaControl: HomePersonaControl {
-        HomePersonaControl(WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap).state)
-    }
-    /// Does exactly what the Persona label names, through the switch the panel and toolbar use.
-    private func perform(_ persona: HomePersonaControl) {
-        WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { _ in stage.togglePersona() }
-            .perform(persona.operation)
-    }
-    private func liveRow<Action: View>(_ title: String, _ symbol: String, @ViewBuilder action: () -> Action) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol).foregroundStyle(Workbench.accent).frame(width: 20)
-            Text(title).font(.callout.weight(.medium))
-            Spacer()
-            action()
-        }.controlSize(.small)
-    }
+    // MARK: Quick start
 
-    // The newest thing of each kind, with the action you would take next.
-    private enum RecentKind: Hashable { case transcript, snap, session, handoff, photos }
-    private var latestSnap: SnapItem? { snap.items.filter { $0.archivedAt == nil }.max { $0.createdAt < $1.createdAt } }
-    private var latestJob: HandoffJob? { model.handoffJobs.jobs.max { $0.updatedAt < $1.updatedAt } }
-    private var recentOrder: [RecentKind] {
-        var rows: [(Date, RecentKind)] = []
-        if let transcript = model.history.first { rows.append((transcript.date, .transcript)) }
-        if let item = latestSnap { rows.append((item.createdAt, .snap)) }
-        if readback.sessionURL != nil { rows.append((readback.manifest?.updatedAt ?? .distantPast, .session)) }
-        if let job = latestJob { rows.append((job.updatedAt, .handoff)) }
-        if !model.photoHandoff.photos.isEmpty { rows.append((Date(), .photos)) }
-        return rows.sorted { $0.0 > $1.0 }.prefix(5).map(\.1)
-    }
-    private var recentWork: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            WorkbenchSectionTitle("Recent work")
-            ForEach(recentOrder, id: \.self) { kind in
-                switch kind {
-                case .transcript: if let transcript = model.history.first {
-                    recentRow("text.quote", transcript.text, "\(TextRules.wordCount(transcript.text)) words · \(transcript.date.formatted(date: .abbreviated, time: .shortened))") {
-                        Button("Copy") { model.copyCapture(transcript) }
-                        Button("Open in Dictate") { model.openTranscript(transcript); model.page = "dictate" }
-                    }
-                }
-                case .snap: if let item = latestSnap {
-                    HStack(spacing: 12) {
-                        CapturePreviewButton("View latest Snap", item: { .snap(item, store: snap.store) }) { HomeSnapThumbnail(model: snap, item: item) }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.title).lineLimit(1)
-                            Text("Snap · " + item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+    /// Dictate, Read and Snap as three neutral tiles, each doing only what it says. The guide's
+    /// own Start dictating replaces the Dictate tile while it shows, and a tile whose operation
+    /// is already listed in Current work steps aside.
+    private var quickStart: some View {
+        let tools = HomeJourney.quickStarts(showsGuide: journey.showsGuide, dictationLive: dictationLive, readingLive: readingLive)
+        return VStack(alignment: .leading, spacing: 8) {
+            WorkbenchSectionTitle("Quick start")
+            // Equal tiles: a label that wraps grows its row, never one tile alone.
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(tools) { tool in
+                    switch tool {
+                    case .dictate:
+                        // Only ever a start: the toggle would stop a recording begun since this was drawn.
+                        card("Dictate", "Start dictating", disabled: !model.ready || model.phase != .idle || readback.blocksDictation) {
+                            if model.phase == .idle { model.toggleRecording() }
                         }
-                        Spacer()
-                        Button("Copy") { snap.copy(item.id) }
-                        Button("Edit…") { snap.edit(item.id); model.page = "snap" }.disabled(snap.disablesCaptureDoors)
-                    }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
-                }
-                case .session: if let session = readback.sessionURL {
-                    let count = readback.activeSections.count
-                    recentRow("rectangle.dashed.badge.record", readback.manifest?.title ?? "Snap & Talk session",
-                              "\(count) " + (count == 1 ? "capture" : "captures") + (readback.hasPendingTranscriptions ? " · transcribing narration…" : "")) {
-                        if count >= 1 && !readback.hasPendingTranscriptions && !readback.isRecording {
-                            Button("Hand off…") {
-                                handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
-                            }
-                        } else {
-                            Button(readback.isCapturing ? "Capturing…" : "Capture & narrate") { Task { await readback.captureNewSection(fromEditor: true) } }
-                                .disabled(!readback.permissionsReady || readback.isCapturing || readback.isRecording)
-                        }
+                    case .read:
+                        card("Read", "Read the clipboard aloud", disabled: model.phase != .idle) { readClipboard() }
+                    default:
+                        card("Snap", "Capture a region", disabled: snap.disablesCaptureDoors) { Task { await snap.capture(.region) } }
                     }
                 }
-                case .handoff: if let job = latestJob {
-                    recentRow("arrow.up.forward.app", job.title, "Hand off · " + job.status.title + " · " + job.updatedAt.formatted(date: .abbreviated, time: .shortened)) {
-                        switch job.status {
-                        case .completed: Button("Open result") { model.handoffJobs.showResult(job) }
-                        case .running: Button("Stop task", role: .destructive) { model.handoffJobs.cancel() }
-                        default: Button("Copy instructions") { model.handoffJobs.copy(job) }
-                        }
-                    }
-                }
-                case .photos:
-                    PhotoHandoffArrivalCue(handoff: model.photoHandoff) {
-                        model.page = WorkbenchHome.photoArrivals
-                    }
-                }
-            }
-            Button("All history") { model.page = "history" }.buttonStyle(.link)
-        }
-    }
-    private func recentRow<Actions: View>(_ symbol: String, _ title: String, _ detail: String, @ViewBuilder actions: () -> Actions) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(Workbench.accent).frame(width: 24)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).lineLimit(2)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            actions()
-        }.controlSize(.small).padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    // The moments. Each tile is one click into the action; Prepare… opens its page.
-    private var moments: some View {
-        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            moment("Working", "A utility for seconds, then back to work.") {
-                card("Dictate", model.phase == .recording ? "Stop" : "Start dictating", "mic", model.preferences.dictationShortcut.label, prepare: "dictate",
-                     disabled: !model.ready || ![.idle, .recording].contains(model.phase) || readback.blocksDictation) { model.toggleRecording() }
-                card("Read", model.rendering ? "Cancel" : model.playing || model.paused ? "Stop reading" : "Read the clipboard aloud",
-                     "speaker.wave.2", "Mac voices included", prepare: "speak",
-                     disabled: !(model.rendering || model.playing || model.paused) && model.phase != .idle) {
-                    if model.rendering { model.cancelReading() }
-                    else if model.playing || model.paused { model.stopPlayback() }
-                    else { readClipboard() }
-                }
-                card("Snap", "Capture a region", "viewfinder", "Window or screen on the Snap page", prepare: "snap",
-                     disabled: snap.disablesCaptureDoors,
-                     note: snap.screenAccessGranted ? nil : "Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.") {
-                    Task { await snap.capture(.region) }
-                }
-            }
-            moment("Capturing", "Explain screens aloud and get a deck in seconds.") {
-                card("Snap & Talk", readback.sessionURL == nil ? "New session…" : readback.isCapturing ? "Capturing…" : "Capture & narrate",
-                     "rectangle.dashed.badge.record", model.preferences.shortcut(5).label, prepare: "readback",
-                     disabled: readback.isCapturing || readback.isRecording, note: readback.notice) { snapAndTalk() }
-            }
-            moment("Presenting", "Demonstrate with a device, your persona and live marks.") {
-                card("Present", stage.isPresenting ? "End presentation" : "Present the selected scene", "iphone", "Saved scenes and branding", prepare: "present") {
-                    if stage.isPresenting { stage.endDeviceScene() } else { stage.presentSelectedScene() }
-                }
-                let persona = personaControl
-                card("Persona", persona.tileVerb, "person.crop.rectangle", "Independent of a scene", prepare: "personas",
-                     disabled: !persona.isEnabled) { perform(persona) }
-                card("Draw", stage.isDrawing ? "Stop drawing" : "Draw on screen", "pencil.tip", stage.drawingActivationTitle + " to draw", prepare: "annotate") {
-                    if stage.isDrawing { stage.finishDrawing() } else { stage.draw() }
-                }
-                // showTimer toggles the timer window; the stage does not expose whether it is visible.
-                card("Timer", stage.hasTimerSession ? "Show or hide timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") {
-                    // The label is the action: after Reset the window may still show, and Start a break starts one.
-                    if stage.hasTimerSession { stage.showTimer() } else { stage.startTimer() }
-                }
+            }.fixedSize(horizontal: false, vertical: true)
+            if tools.contains(.snap) && !snap.screenAccessGranted {
+                Text("Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
-    private func moment<Tiles: View>(_ title: String, _ detail: String, @ViewBuilder tiles: () -> Tiles) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                WorkbenchSectionTitle(title)
-                Text(detail).font(.callout).foregroundStyle(.secondary)
-            }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) { tiles() }
-        }
-    }
-    private func card(_ title: String, _ verb: String, _ symbol: String, _ footnote: String, prepare page: String, disabled: Bool = false, note: String? = nil, action: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button(action: action) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack { Image(systemName: symbol).font(.system(size: 22)).foregroundStyle(Workbench.accent); Spacer(); Image(systemName: "play.circle").foregroundStyle(.tertiary) }
-                    Text(title).font(.system(size: 18, weight: .semibold))
-                    Text(verb).foregroundStyle(.secondary).font(.system(size: 13))
-                    Text(footnote).font(.system(size: 11, design: .monospaced)).foregroundStyle(Workbench.accent)
-                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).disabled(disabled).accessibilityLabel(title + ". " + verb)
-            Button("Prepare…") { keyboard.stopInteraction(); model.page = page }.buttonStyle(.link).font(.caption)
-            if let note { Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
-        }.padding(18).frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
-            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Workbench.border))
+    /// A quick-start tile: the capability's registry symbol and name with the exact action it
+    /// takes. The whole tile is that one action; its page is the sidebar item.
+    private func card(_ title: String, _ verb: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: WorkbenchControlTool.allCases.first { $0.title == title }?.symbol ?? "questionmark")
+                    .font(.system(size: 20)).foregroundStyle(.secondary).frame(width: 28).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Workbench.sectionTitle)
+                    Text(verb).font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }.padding(12).frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .leading)
+                .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Workbench.border))
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain).disabled(disabled).accessibilityLabel(title + ". " + verb)
     }
     private func readClipboard() {
         if let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             model.listen(to: text)
         } else { model.status = "Copy some text first."; model.page = "speak" }
     }
-    private func snapAndTalk() {
-        if readback.sessionURL == nil { readback.createSession() }
-        else { Task { await readback.captureNewSection(fromEditor: true) } }
+
+    // MARK: Recent work
+
+    /// History All's five newest entries, from History's own merge and order (#134).
+    private var recent: [HistoryEntry] {
+        HomeRecentWork.newest(recentRows, revision: storesRevision, transcripts: model.history, snaps: snap.items, results: jobs.visibleJobs)
+    }
+    private var recentWork: some View {
+        let entries = recent
+        return VStack(alignment: .leading, spacing: 8) {
+            WorkbenchSectionTitle("Recent work")
+            if entries.isEmpty {
+                Text("Your dictations, Snaps and results will appear here.").foregroundStyle(.secondary)
+            } else {
+                ForEach(entries) { entry in recentRow(entry) }
+            }
+            Button("Open History") { model.openHistory() }.buttonStyle(.link)
+        }
+    }
+    /// One entry: its title opens a review of that exact item, and Copy sits beside it where
+    /// the owner copies truthfully. Nothing here selects, edits or opens it in Dictate.
+    @ViewBuilder private func recentRow(_ entry: HistoryEntry) -> some View {
+        HStack(spacing: 12) {
+            switch entry {
+            case .transcript(let item):
+                Button { if let door = HomeRecentWork.review(for: entry) { model.openHistory(door) } } label: {
+                    recentLabel(symbol: "text.quote", title: item.text, detail: "Transcript · " + stamp(item.date))
+                }.buttonStyle(.plain).help("Show it in History")
+                Button("Copy") { model.copyCapture(item) }
+            case .snap(let item):
+                CapturePreviewButton("View Snap", item: { .snap(item, store: snap.store) }) {
+                    HStack(spacing: 12) {
+                        HomeSnapThumbnail(model: snap, item: item)
+                        recentText(title: item.title, detail: "Snap · " + stamp(item.createdAt))
+                    }.contentShape(Rectangle())
+                }
+                Button("Copy") { snap.copy(item.id) }
+            case .result(let job):
+                Button { if let door = HomeRecentWork.review(for: entry) { model.openHistory(door) } } label: {
+                    recentLabel(symbol: "arrow.up.forward.app", title: job.title, detail: "Hand off · \(job.status.title) · " + stamp(job.createdAt))
+                }.buttonStyle(.plain).help("Show it in History")
+            }
+        }.controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 56)
+            .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+    }
+    private func recentLabel(symbol: String, title: String, detail: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(Workbench.accent).frame(width: 24).accessibilityHidden(true)
+            recentText(title: title, detail: detail)
+        }.contentShape(Rectangle())
+    }
+    private func recentText(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).lineLimit(2).multilineTextAlignment(.leading)
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func stamp(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .shortened) }
+
+    // MARK: Snap & Talk and iPhone
+
+    /// The loaded session with captures, not already listed as current work.
+    private var hasSession: Bool {
+        readback.sessionURL != nil && readback.currentSessionProblem == nil && !readback.activeSections.isEmpty
+            && !readback.isRecording && !readback.hasPendingTranscriptions
+    }
+    /// Opens the loaded session's review. It changes the page only: nothing is reloaded, queued or reset.
+    private var continueSession: some View {
+        let count = readback.activeSections.count
+        let updated = readback.manifest.map { " · updated " + stamp($0.updatedAt) } ?? ""
+        return VStack(alignment: .leading, spacing: 8) {
+            WorkbenchSectionTitle("Continue Snap & Talk")
+            HStack(spacing: 12) {
+                Image(systemName: WorkbenchHome.symbol(of: "readback")).font(.title3).foregroundStyle(Workbench.accent).frame(width: 24)
+                    .accessibilityHidden(true)
+                recentText(title: readback.manifest?.title ?? "Snap & Talk session", detail: "\(count) " + (count == 1 ? "capture" : "captures") + updated)
+                Button("Open session") { model.page = "readback" }
+            }.controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 56)
+                .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+    /// Photos saved from iPhone live in Library; Home links to them with their count and the
+    /// newest one's stored date. It never calls them new.
+    @ViewBuilder private var fromIPhone: some View {
+        if let saved = HomeRecentWork.savedFromIPhone(photos.photos.map(\.created)) {
+            Button(saved) { model.page = WorkbenchHome.photoArrivals }
+                .buttonStyle(.link).accessibilityIdentifier("home.phone-photos")
+        }
     }
 }
 
-/// What Home knows about the journey and the sections it shows, in order.
-/// Counting is what LocalVoice can reach; live state comes from every module.
-/// The first-dictation guide is gated on dictation alone (#15): Snaps, Snap &
-/// Talk sessions, Hand off jobs and photos are recent work, never a reason to
-/// stop offering it. Skip for now keeps one small way back until someone dictates.
+/// History All's newest entries for Home (#134): History's own merge, order and exclusions
+/// with an empty search, the grouped results History shows, then the first five. The cache is
+/// History's: it merges and sorts again only when `revision` changes, so a redraw costs nothing
+/// (#150). History's filter, search and selection are neither read nor changed.
+@MainActor
+enum HomeRecentWork {
+    static let limit = 5
+    static func newest(_ cache: HistoryRowsCache, revision: Int, transcripts: @autoclosure () -> [Transcript],
+                       snaps: @autoclosure () -> [SnapItem], results: @autoclosure () -> [HandoffJob]) -> [HistoryEntry] {
+        let stores = cache.stores(revision: revision) {
+            HistoryRowsCache.Stores(merged: HistoryList.merged(transcripts: transcripts(), snaps: snaps(), results: results()))
+        }
+        return cache.shown(.init(stores: revision, search: 0, filter: .all, query: "")) {
+            Array(HistoryList.shown(stores.merged, filter: .all, query: "", matchTranscripts: { list, _ in list },
+                                    matchSnap: { _, _ in true }, resultText: { _ in "" }).prefix(limit))
+        }
+    }
+    /// Where a row's title leads: History on All, showing that transcript or that task. A Snap
+    /// opens its own preview instead. Nothing is selected, and a transcript never replaces
+    /// Dictate's text (`AppModel.openTranscript` would).
+    static func review(for entry: HistoryEntry) -> HistoryDoor? {
+        switch entry {
+        case .transcript(let item): return HistoryDoor(transcript: item.id)
+        case .result(let job): return HistoryDoor(job: job.id)
+        case .snap: return nil
+        }
+    }
+    /// Home's link to photos saved from iPhone: how many, and the newest one's stored date. They
+    /// are Library's, so they never join Recent work, and the clock never dates them.
+    static func savedFromIPhone(_ created: [Date]) -> String? {
+        guard let newest = created.max() else { return nil }
+        return "Saved from iPhone · \(created.count) \(created.count == 1 ? "photo" : "photos") · newest "
+            + newest.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+/// What Home shows, and in what order. Counting is what LocalVoice can reach; live state comes
+/// from every module. The first-dictation guide is gated on dictation alone (#15): Snaps,
+/// sessions, results and photos never stop offering it. Skip for now keeps one small way back
+/// until someone dictates.
 struct HomeJourney: Equatable {
-    var transcripts = 0, snaps = 0, sessions = 0, handoffJobs = 0, photos = 0
+    var transcripts = 0
     /// Saved with the Dictate preferences; nil reads as offered.
     var guide: FirstDictationGuide? = nil
-    var isLive = false
+    /// Something is running, paused or waiting for recovery.
+    var hasCurrentWork = false
+    /// A loaded Snap & Talk session with captures, not already current work.
+    var hasSession = false
+    /// Photos saved from iPhone, in Library.
+    var photos = 0
     var stayInGuide = false
-    enum Section: Hashable { case liveStrip, guide, firstResult, recentWork, moments }
+    enum Section: Hashable { case currentWork, guide, firstResult, quickStart, recentWork, continueSession, fromIPhone }
     /// Any transcript in History ends first use: a dictation, or a meeting or call
     /// transcribed from Dictate. A recorded completion outlasts removing them.
     var hasDictated: Bool { transcripts > 0 || guide == .completed }
@@ -744,14 +846,24 @@ struct HomeJourney: Equatable {
     var offersGuide: Bool { !showsGuide && !hasDictated }
     /// What to save once History holds a dictation.
     var guideToSave: FirstDictationGuide? { transcripts > 0 && guide != .completed ? .completed : nil }
-    private var hasRecentWork: Bool { transcripts + snaps + sessions + handoffJobs + photos > 0 }
-    /// The live strip comes first, so what is running can be ended from Home.
-    /// Recent work stays below the guide, except right after the first dictation,
-    /// when the guide's own result would only repeat it.
+    /// Current work first, so what is running can be ended from Home; the guide while it is
+    /// offered; the quick starts; recent work, except right after the first dictation, when the
+    /// guide's own result would repeat it; then a loaded session and photos saved from iPhone.
     var sections: [Section] {
         let result = showsGuide && hasDictated
-        return (isLive ? [.liveStrip] : []) + (showsGuide ? [.guide] : []) + (result ? [.firstResult] : [])
-            + (hasRecentWork && !result ? [.recentWork] : []) + [.moments]
+        return (hasCurrentWork ? [.currentWork] : []) + (showsGuide ? [.guide] : []) + (result ? [.firstResult] : [])
+            + [.quickStart] + (result ? [] : [.recentWork]) + (hasSession ? [.continueSession] : []) + (photos > 0 ? [.fromIPhone] : [])
+    }
+    /// Dictate, Read and Snap, in that order. The guide's own Start dictating replaces the
+    /// Dictate tile while it shows; a tile whose operation Current work already lists steps aside.
+    static func quickStarts(showsGuide: Bool, dictationLive: Bool, readingLive: Bool) -> [WorkbenchControlTool] {
+        [WorkbenchControlTool.dictate, .read, .snap].filter { tool in
+            switch tool {
+            case .dictate: return !showsGuide && !dictationLive
+            case .read: return !readingLive
+            default: return true
+            }
+        }
     }
 }
 

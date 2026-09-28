@@ -71,11 +71,18 @@ struct TranscriptHistoryRow: View {
     @Binding var original: Transcript?
     @Binding var details: Transcript?
     @Binding var removal: TranscriptRemoval?
+    /// A door asked History to show this transcript (#134): its heading line is then a focus stop
+    /// that takes keyboard and VoiceOver focus, as a revealed task's heading does. Focus is not
+    /// selection; the checkbox and the shared selection are untouched.
+    var shown = false
+    var focus: FocusState<UUID?>.Binding
+    var voiceOverFocus: AccessibilityFocusState<UUID?>.Binding
 
     var body: some View {
         let context = CaptureHistoryAccessibility.context(for: item, history: history)
         let metadata = library.metadata(for: item.id)
         let ref = WorkbenchItemReference(kind: .transcript, id: item.id)
+        let words = TextRules.wordCount(item.text)
         HStack(alignment: .top, spacing: 12) {
             Toggle("", isOn: Binding(get: { library.selected.contains(ref) }, set: { include in
                 var refs = library.selected
@@ -88,8 +95,12 @@ struct TranscriptHistoryRow: View {
                     Image(systemName: "mic").foregroundStyle(Workbench.accent).accessibilityHidden(true)
                     Text(item.date, format: .dateTime.month(.abbreviated).day().hour().minute())
                     Text(metadata.purpose.title).fontWeight(.medium)
-                    Spacer(); Text("\(TextRules.wordCount(item.text)) words")
+                    Spacer(); Text("\(words) words")
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(CaptureHistoryAccessibility.label("Transcript, " + metadata.purpose.title, context: context) + ", \(words) words")
+                    .focusable(shown).focused(focus, equals: item.id)
+                    .accessibilityFocused(voiceOverFocus, equals: item.id)
                 let fields = [metadata.person, metadata.company] + metadata.tags.map { "#" + $0 }
                 if fields.contains(where: { !$0.isEmpty }) { Text(fields.filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
                 Text(item.text).font(.system(size: 14)).lineLimit(8)

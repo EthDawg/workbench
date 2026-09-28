@@ -90,6 +90,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     @Published var shortcutFailures: [UInt32: String] = [:]
     @Published var page = "home"
+    /// A section a named door asks its page to show and focus once it appears, such as Dictate's
+    /// options (#134). The page clears it when it has.
+    @Published var focusRequest: PageFocusRequest?
     /// How the next visit to History begins. The page applies it once and
     /// clears it; without one, History opens on All.
     @Published var historyDoor: HistoryDoor?
