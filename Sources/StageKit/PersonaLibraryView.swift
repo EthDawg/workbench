@@ -46,10 +46,9 @@ struct PersonaLibraryView: View {
     @State private var creatingGroup = false
     @State private var renamingGroup = false
     @State private var editingGroup: PersonaGroup?
-    @State private var editingCard: SavedPersona?
-    /// A new editable portrait between choosing its picture and Add persona. It
-    /// exists only here, so Cancel or Escape at any step saves nothing.
-    @State private var creatingCard: PersonaPortraitDraft?
+    /// The one editor open at a time: a saved card, or a new portrait's draft,
+    /// which exists only there until Add persona. A second draft never replaces it.
+    @State private var editors = PersonaEditorHolder()
     @State private var choosingStarter = false
     @State private var starterDraft: PersonaPortraitDraft?
     @State private var preparingPresentation = false
@@ -88,7 +87,7 @@ struct PersonaLibraryView: View {
                         Button("Choose a starter portrait…") { choosingStarter = true }
                         Divider()
                         Button("Import portrait for an editable card…") {
-                            library.importPortrait { creatingCard = $0 }
+                            library.importPortrait(in: NSApp.keyWindow) { editors.open(.new($0)) }
                         }
                         Button("Import finished card…") { library.importImage() }
                         Button("Paste finished image") { library.pasteImage() }
@@ -133,7 +132,7 @@ struct PersonaLibraryView: View {
                                     Button("Choose members…") { editingGroup = group }.disabled(library.isReadOnly)
                                 } else {
                                     Button("Add starter portrait…") { choosingStarter = true }.disabled(library.isReadOnly)
-                                    Button("Import image…") { library.importImage() }.disabled(library.isReadOnly)
+                                    Button("Import finished card…") { library.importImage() }.disabled(library.isReadOnly)
                                 }
                             }.padding()
                         }
@@ -148,7 +147,7 @@ struct PersonaLibraryView: View {
                             }.disabled(library.isReadOnly)
                                 .help("Remove this library entry and its group memberships; retain artwork used by saved scenes")
                             if selected.card != nil {
-                                Button("Edit visible label and colour…") { editingCard = selected }.disabled(library.isReadOnly)
+                                Button("Edit visible label and colour…") { editors.open(.saved(selected)) }.disabled(library.isReadOnly)
                             } else {
                                 Text("Finished artwork stays as imported. For editable text and colour, add a portrait without baked labels.")
                                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -249,10 +248,9 @@ struct PersonaLibraryView: View {
                 }
                 Button("Keep editing", role: .cancel) { }
             }
-            .sheet(item: $editingCard) { PersonaCardEditor(library: library, subject: .saved($0)) }
-            .sheet(item: $creatingCard) { PersonaCardEditor(library: library, subject: .new($0)) }
+            .sheet(item: $editors.current) { PersonaCardEditor(library: library, session: $0) }
             .sheet(isPresented: $choosingStarter, onDismiss: {
-                if let draft = starterDraft { starterDraft = nil; creatingCard = draft }
+                if let draft = starterDraft { starterDraft = nil; editors.open(.new(draft)) }
             }) {
                 PersonaStarterChooser(library: library) { starterDraft = $0 }
             }
@@ -450,67 +448,106 @@ private struct PersonaStarterChooser: View {
     }
 }
 
-/// Edits a saved card, or finishes a new editable portrait. A saved card keeps
-/// Save and Cancel. A new portrait is a draft until Add persona, which saves its
-/// picture, card, selection and group membership together; Cancel or Escape
-/// drops it without a trace, and a failed Add keeps it here to try again.
-struct PersonaCardEditor: View {
+/// What the persona card editor changes before Save or Add: a saved card's
+/// label and colour, or a new portrait's draft. Nothing is written until
+/// `commit`, so Cancel, and Escape, which presses Cancel, simply drop it.
+final class PersonaEditorSession: ObservableObject, Identifiable {
     enum Subject { case saved(SavedPersona), new(PersonaPortraitDraft) }
-    @ObservedObject var library: PersonaLibrary
+    let id = UUID()
     let subject: Subject
-    @Environment(\.dismiss) private var dismiss
-    @State private var style: PersonaCardStyle
-    @State private var failure: String?
-    init(library: PersonaLibrary, subject: Subject) {
-        self.library = library; self.subject = subject
+    @Published var style: PersonaCardStyle
+    /// Why the last Add could not save. The draft stays for another try.
+    @Published private(set) var failure: String?
+    /// Saved, added or cancelled: the editor can close.
+    private(set) var isFinished = false
+
+    init(_ subject: Subject) {
+        self.subject = subject
         switch subject {
-        case .saved(let persona): _style = State(initialValue: persona.card ?? PersonaCardStyle())
-        case .new(let draft): _style = State(initialValue: draft.card)
+        case .saved(let persona): style = persona.card ?? PersonaCardStyle()
+        case .new(let draft): style = draft.card
         }
     }
-    private var isNew: Bool { if case .new = subject { return true }; return false }
-    private var preview: NSImage? {
+    var isNew: Bool { if case .new = subject { return true }; return false }
+
+    func preview(in library: PersonaLibrary) -> NSImage? {
         switch subject {
         case .saved(let persona): var item = persona; item.card = style; return library.renderedImage(for: item)
         case .new(let draft): return try? PersonaCardRenderer.image(portrait: draft.portrait, style: style)
         }
     }
+
+    /// Save card, or Add persona. Returns whether the editor can close. An Add
+    /// that finds the persona already saved, as a second press would, is done.
+    @discardableResult func commit(to library: PersonaLibrary) -> Bool {
+        guard !isFinished else { return true }
+        switch subject {
+        case .saved(let persona):
+            guard library.updateCard(persona.id, style: style) else { return false }
+        case .new(var draft):
+            draft.card = style
+            do { try library.add(draft) }
+            catch PersonaError.alreadyAdded {}
+            catch {
+                let reason = (error as? PersonaError) == .changedOnDisk
+                    ? "Couldn’t add this persona: the saved personas changed on disk again while it was being added."
+                    : "Couldn’t add this persona. " + (error.localizedDescription)
+                failure = reason + " Your picture and changes are kept here, so you can choose Add persona again."
+                return false
+            }
+        }
+        isFinished = true; failure = nil
+        return true
+    }
+
+    /// Cancel, or Escape: the edits and any new picture go, and nothing is written.
+    func cancel() { isFinished = true }
+}
+
+/// The one persona editor open at a time. A second draft, from another import
+/// or starter, never replaces an open one, so its edits are never lost.
+struct PersonaEditorHolder {
+    var current: PersonaEditorSession?
+    @discardableResult mutating func open(_ subject: PersonaEditorSession.Subject) -> Bool {
+        guard current == nil else { return false }
+        current = PersonaEditorSession(subject)
+        return true
+    }
+}
+
+/// Edits a saved card, or finishes a new editable portrait. A saved card keeps
+/// Save and Cancel. A new portrait is a draft until Add persona, which saves its
+/// picture, card, selection and group membership together; Cancel or Escape
+/// drops it without a trace, and a failed Add keeps it here to try again.
+struct PersonaCardEditor: View {
+    @ObservedObject var library: PersonaLibrary
+    @ObservedObject var session: PersonaEditorSession
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(isNew ? "New persona card" : "Edit persona card").font(.title2.bold())
-            TextField("Visible label", text: $style.label).textFieldStyle(.roundedBorder)
-            ColorPicker("Background colour", selection: Binding(get: { Color(nsColor: style.background.nsColor) },
-                set: { style.background = InkColor(NSColor($0)) }), supportsOpacity: false)
-            if let image = preview {
+            Text(session.isNew ? "New persona card" : "Edit persona card").font(.title2.bold())
+            TextField("Visible label", text: $session.style.label).textFieldStyle(.roundedBorder)
+            ColorPicker("Background colour", selection: Binding(get: { Color(nsColor: session.style.background.nsColor) },
+                set: { session.style.background = InkColor(NSColor($0)) }), supportsOpacity: false)
+            if let image = session.preview(in: library) {
                 Image(nsImage: image).resizable().scaledToFit().frame(height: 265).frame(maxWidth: .infinity)
                     .accessibilityLabel("Preview of the persona card")
             }
-            Text(isNew ? "Nothing is saved until you choose Add persona. Leave the label empty to hide it."
-                       : "Leave the label empty to hide it. Scenes keep their existing copy until you use the card again.")
+            Text(session.isNew ? "Nothing is saved until you choose Add persona. Leave the label empty to hide it."
+                               : "Leave the label empty to hide it. Scenes keep their existing copy until you use the card again.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let failure {
+            if let failure = session.failure {
                 Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             } else if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
             HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { session.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(isNew ? "Add persona" : "Save card") { commit() }
-                    .keyboardShortcut(.defaultAction).disabled(library.isReadOnly || (try? style.validated()) == nil)
+                Button(session.isNew ? "Add persona" : "Save card") { if session.commit(to: library) { dismiss() } }
+                    .keyboardShortcut(.defaultAction).disabled(library.isReadOnly || (try? session.style.validated()) == nil)
             }
         }.padding(24).frame(width: 420).background(Workbench.background).workbenchTheme()
-    }
-    private func commit() {
-        switch subject {
-        case .saved(let persona):
-            if library.updateCard(persona.id, style: style) { dismiss() }
-        case .new(var draft):
-            draft.card = style
-            do { try library.add(draft); dismiss() }
-            catch {
-                failure = "Couldn’t add this persona. " + error.localizedDescription
-                    + " Your picture and changes are kept, so you can choose Add persona again."
-            }
-        }
+            // However the sheet closes, an unfinished edit is dropped.
+            .onDisappear { session.cancel() }
     }
 }
 
