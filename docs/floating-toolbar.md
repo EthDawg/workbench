@@ -239,6 +239,13 @@ sizes and longer labels; the committed overview sheets in
 retains the full gallery as an artifact. These are real native views, not HTML
 approximations. Visual acceptance still requires inspecting the images.
 
+The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
+production `CapturePanelController` offscreen for every mode at rest and revealed
+and flags a window smaller than its row, the check the renderer above cannot make
+because it sizes its own window to the row. The host pins seed sizes until the row
+reports (`CaptureHUDControls.reportSize`), so a report that never arrives leaves the
+row and its corners clipped (#152). The flags appear in the gallery's index and log.
+
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted
 Keep open choice. `ToolbarTrackingView` owns the one tracking area and the

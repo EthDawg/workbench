@@ -25,6 +25,7 @@ final class CaptureHUDControls: ObservableObject {
     /// The resting element, `[glyph][next action]`, seeded until measured.
     private(set) var restingSize = NSSize(width: 132, height: 36)
     private var restingMeasured = false
+    private var rowMeasured = false
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
     var promptDestination: (() -> TextDelivery.Target?)?
@@ -34,6 +35,9 @@ final class CaptureHUDControls: ObservableObject {
     var menuDidClose: (() -> Void)?
     var preferredToolbarSize: NSSize { toolbar.state.tier == .resting ? restingSize : measuredRowSize }
     var restingWidth: CGFloat { restingSize.width }
+    /// Whether the row has reported its size for `tier`. Until it has, the seed size above is what
+    /// the window gets, which is how a host can sit under a row that draws wider than it.
+    func hasMeasured(_ tier: ToolbarTier) -> Bool { tier == .resting ? restingMeasured : rowMeasured }
 
     init(defaults: UserDefaults = .standard) {
         toolbar = ToolbarSession(defaults: defaults)
@@ -49,7 +53,7 @@ final class CaptureHUDControls: ObservableObject {
         // element itself has been measured; afterwards the two sizes must not
         // trade places on every reveal.
         if tier == .resting { restingSize = size; restingMeasured = true }
-        else { measuredRowSize = size; if !restingMeasured { restingSize.height = size.height } }
+        else { measuredRowSize = size; rowMeasured = true; if !restingMeasured { restingSize.height = size.height } }
         if previous != preferredToolbarSize { resize?() }
     }
     func focusToolbar() { toolbar.send(.holdBegan(.keyboard)) }
