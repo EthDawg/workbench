@@ -139,9 +139,10 @@ public struct ToolbarRow: View {
     }
 
     @ViewBuilder private var accessory: some View {
-        if let accessoryTitle = state.shownAccessory {
-            ToolbarAccessory(title: accessoryTitle, fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
-                             began: menuBegan, ended: menuEnded)
+        if let accessory = state.accessory, state.shownAccessory != nil {
+            ToolbarAccessoryButton(title: accessory.title, opensList: accessory.opensList, description: state.accessoryDescription,
+                                   fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
+                                   began: menuBegan, ended: menuEnded)
                 .frame(width: ToolbarLayout.accessoryWidth * scale, height: ToolbarLayout.controlHeight * scale)
         }
     }
@@ -536,8 +537,14 @@ final class MoreButton: NSButton {
     }
 }
 
-private struct ToolbarAccessory: NSViewRepresentable {
+/// The chosen tool's one accessory (#134 part B). One that opens a list, a menu or the picker
+/// carries a chevron; Review goes straight to the session's review and carries none. VoiceOver
+/// hears its title without the chevron, or its description when it has one ("Appearance of the
+/// selected persona, hidden"), which the tooltip shows too.
+private struct ToolbarAccessoryButton: NSViewRepresentable {
     let title: String
+    let opensList: Bool
+    let description: String?
     let fontSize: CGFloat
     let makeMenu: () -> NSMenu
     let openPanel: ((NSView) -> Void)?
@@ -545,8 +552,9 @@ private struct ToolbarAccessory: NSViewRepresentable {
     let ended: () -> Void
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
     func updateNSView(_ view: AccessoryButton, context: Context) {
-        view.title = title + " ⌄"; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
-        view.setAccessibilityLabel(title); view.setAccessibilityIdentifier("toolbar.accessory")
+        view.title = opensList ? title + " ⌄" : title; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
+        view.setAccessibilityLabel(description ?? title); view.setAccessibilityIdentifier("toolbar.accessory")
+        view.toolTip = description
         view.open = { [weak view] in
             guard let view else { return }
             if let openPanel { openPanel(view); return }

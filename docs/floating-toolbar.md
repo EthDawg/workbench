@@ -182,7 +182,8 @@ Draw holds the drawing menu inline. Present holds the presentation items inline,
 Saved Prompts… and Switch to Browser Tab; source, reconnect, proportions, motion,
 window placement, native-app handoff and End remain reachable there. Persona
 holds the persona menu inline: the frozen session's public labels, size,
-position, lock, add/remove, visibility, explicit layout saving and End. Mac
+position, lock, add/remove, visibility, explicit layout saving and End, and,
+while no live copy is selected, `Open Persona…`, its door to preparation. Mac
 colour selection updates the same drawing settings from either entry point.
 Native menus snapshot their content before tracking rather than rebuilding under
 the pointer.
@@ -191,10 +192,30 @@ The primary keeps the width of the widest label any tool would show for the
 current live state, so choosing another tool never moves More or the accessory
 under the pointer, idle or mid-session. The row holds no information-only text:
 the assigned key and any count are the action's hover hint. Snap & Talk keeps its
-session capture count in the label between captures and while saving. Present's
-accessory is Prompts. Disabled or unassigned shortcut combinations are omitted;
-the toolbar has no shortcut editor. Keep open is an explicit persistent
-preference.
+session capture count in the label between captures and while saving. Disabled or
+unassigned shortcut combinations are omitted; the toolbar has no shortcut editor.
+Keep open is an explicit persistent preference.
+
+**Contextual accessories** (#134 part B). A tool has at most one accessory, the
+existing adjustment it needs most often, shown only while it applies
+(`ToolbarAccessory.offered`). Snap & Talk's **Review**, while a session is open,
+opens that session's review, as More's Review Snap & Talk item does; the count
+stays with Capture next. Draw's **Tools** is the drawing choices its More holds.
+Present's **Prompts** is the one Saved Prompts picker. Persona's **Appearance**,
+while a live copy is selected, a hidden one included, is Circle, Card or Original
+for exactly that copy: the choice its Appearance menu offers, under the same word
+(#134's Shape). The copy is taken as the menu opens (`selectedPersonaCopy`,
+`personaShape(of:)`, `setPersonaShape(_:for:)`) and a choice never changes the
+saved persona, another copy or the library's selection (#169, #170). With a
+prepared set only the selected copy changes. VoiceOver and the tooltip say
+"Appearance of the selected persona", adding "hidden" while the copy is. With no
+live copy Persona has no accessory and More offers Open Persona… instead.
+Dictate, Read and Snap have none in this increment; their options stay in the
+menu-bar panel and on their pages. Review goes straight to the review and has no
+chevron; the others open a list and have one. An accessory that does not fit the
+display less 24 points waits in More, which already holds Review, Tools and
+Prompts, and a shown copy's Appearance; for a hidden card, whose Persona menu has
+no Appearance, More adds Appearance itself.
 
 **One popover at a time.** The chooser, More, the accessory's picker and
 Position… close one another, and hover never opens any of them. Each holds the
@@ -490,11 +511,12 @@ red, distinct from the voice colour.
 
 `ToolbarGallery.states` supplies both tiers at every anchor, every mode with its
 key, active work in its own mode and in another (Dictate selected, Draw busy),
-capture counts, active presentation/personas, prompt insertion and every compact
+capture counts, active presentation/personas, prompt insertion, each tool's
+accessory (Appearance also hidden and at a right-hand dock) and every compact
 status; `ToolbarGallery.choosers` supplies the chooser with and without live
 work. The renderer uses the production `ToolbarRow` and `ToolbarChooserView`,
-including the compact mark, the launcher and the Prompts button, in both themes
-and standard/larger type.
+including the compact mark, the launcher and the accessory, in both themes and
+standard/larger type.
 
 Core transition tests, native layout tests and rendered fixtures establish only
 the behavior they exercise. They do not prove native pointer behavior. Before
@@ -521,8 +543,9 @@ swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
 ```
 
 The gallery generates individual fixtures and four overview sheets. It covers
-both tiers at every anchor, each mode, active work in and out of its mode, every
-compact status and the chooser, light/dark appearance and standard/larger type. `ToolbarKitTests` checks intrinsic
+both tiers at every anchor, each mode, active work in and out of its mode, each
+tool's accessory, every compact status and the chooser, light/dark appearance and
+standard/larger type. `ToolbarKitTests` checks intrinsic
 sizes and longer labels; the committed overview sheets in
 [assets/floating-toolbar](assets/floating-toolbar) provide PR image diffs. CI
 retains the full gallery as an artifact. These are real native views, not HTML
@@ -558,29 +581,34 @@ room to spare or covers the launcher. A toolbar that does not rest where it was
 put fails the run. It renders Position… and the chooser in both themes.
 
 The same host then carries dictation, its processing and its results, docked at
-bottom centre (#134 T4). Dictating and transcribing must rest as the 48 × 28 mark
-on the launcher's centre with their statuses; a new failure or receipt must change
-only the mark's status, reveal its own controls grown from the same centre, and
-survive a collapse, and one that arrives while the row is open must wait, a kept-open
-row too while a hold is on it, until it lets go; the
-no-speech cue must show at the toolbar's place and give way to the mark; a Stop
-pressed through the recording's completion must start nothing; and the coaching
-card must sit 12 points above the mark, or below it at a top dock, centred on the
-launcher, with nothing of the toolbar's in the gap and the mark unmoved. Each
-fails the run. Then, with the toolbar's keyboard hold standing in for the
-keyboard, which the gallery never takes: keyboard entry onto a waiting receipt
-must keep the launcher row, whose launcher takes the focus, and Escape must leave
-without dismissing the receipt, from the receipt's own controls too; Position…
-closing onto a receipt waiting on a kept-open row must leave the launcher row with
-the keyboard back; and at the right-hand dock no action of a dictation failure,
-the receipt or a stopped reading may sit over the mark the pointer came from, by the
-frames each view reports for its actions (#211). The floating shots render the no-speech cue, the reading that
-stopped, the receipt with its ring and the coaching card.
-`ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
-inward growth, a width change that must not move the launcher or turn the row
-round, earlier saves, clamping and recovery. `--check-floating-toolbar` checks the
-chooser's placement and focus rules and every earlier save's migration without a
-window.
+bottom centre (#134 T4). Dictating and transcribing must rest as the 48 × 28 mark on
+the launcher's centre with their statuses; a new failure or receipt must change only
+the mark's status, reveal its own controls grown from the same centre, and survive a
+collapse, and one that arrives while the row is open must wait, a kept-open row too
+while a hold is on it, until it lets go; the no-speech cue must show at the
+toolbar's place and give way to the mark; a Stop pressed through the recording's
+completion must start nothing; and the coaching card must sit 12 points above the
+mark, or below it at a top dock, centred on the launcher, with nothing of the
+toolbar's in the gap and the mark unmoved. Each fails the run. Then, with the
+toolbar's keyboard hold standing in for the keyboard, which the gallery never takes:
+keyboard entry onto a waiting receipt must keep the launcher row, whose launcher
+takes the focus, and Escape must leave without dismissing the receipt, from the
+receipt's own controls too; Position… closing onto a receipt waiting on a kept-open
+row must leave the launcher row with the keyboard back; and at the right-hand dock
+no action of a dictation failure, the receipt or a stopped reading may sit over the
+mark the pointer came from, by the frames each view reports for its actions (#211).
+Revealed with nothing live, only Draw and Present must show an accessory, Tools and
+Prompts; Tools must hold Draw's drawing choices, Persona's More must open Persona's
+page, and with a session open Snap & Talk's Review must open that session's review.
+Appearance needs a live persona copy, which the gallery never shows over the Mac:
+`--check-floating-toolbar` checks its menu with stand-in copies and when More must
+hold it, and the StageKit suite checks the copy it acts on and whether it is hidden.
+The floating shots render the no-speech cue, the reading that stopped, the receipt
+with its ring and the coaching card. `ToolbarPlacementTests` covers the 4-point
+threshold, the 16-point snap zone, inward growth, a width change that must not move
+the launcher or turn the row round, earlier saves, clamping and recovery.
+`--check-floating-toolbar` checks the chooser's placement and focus rules and every
+earlier save's migration without a window.
 
 The gallery opens the Saved Prompts picker's production panel,
 `PromptPickerController`, the same way: invisible, ignoring the pointer, with no

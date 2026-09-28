@@ -153,6 +153,11 @@ public final class StageKitController: ObservableObject {
     public func personaShape(of copy: PersonaCopy) -> PersonaShape? {
         coordinator.demoScenes.personas.liveShape(of: copy.copy).flatMap { PersonaShape(rawValue: $0.rawValue) }
     }
+    /// Whether that copy is hidden now: the one floating card kept for Show again,
+    /// or a set's copy while the set or the copy is hidden. False once it is gone.
+    public func isPersonaCopyHidden(_ copy: PersonaCopy) -> Bool {
+        coordinator.demoScenes.personas.liveCopyHidden(copy.copy) == true
+    }
     /// Changes exactly that live copy's look, as its Appearance menu does. The
     /// saved persona, other copies and the layout's saved state are unchanged.
     public func setPersonaShape(_ shape: PersonaShape, for copy: PersonaCopy) {
