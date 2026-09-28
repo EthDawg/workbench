@@ -124,18 +124,37 @@ struct WorkbenchControlState {
         tool.mode.map { ToolbarNextAction.resolve(live($0)) }
     }
 
-    /// What the row says. Idle rows carry the capability's name; live rows the
-    /// same next action the toolbar shows. Read stops rather than pausing here
-    /// (pause and resume live on the Read page), and Timer keeps its own two
-    /// lines because it is not a toolbar mode.
-    func actionTitle(_ tool: WorkbenchControlTool) -> String {
+    /// What a click on the row does: the same operation its label names, so
+    /// input-consuming work claims every row's click as it claims its label.
+    /// Read stops rather than pausing here (pause and resume live on the Read
+    /// page). Timer is not a mode: once nothing global claims the row it keeps
+    /// its own start and stop.
+    func rowAction(_ tool: WorkbenchControlTool) -> WorkbenchRowAction {
         switch tool {
-        case .timer: return timerStarted ? "Stop timer" : "Timer"
-        case .read: return rendering || playing || paused ? "Stop reading" : "Read"
+        case .timer:
+            // Snap has no ending of its own, so its next action is exactly the
+            // global claim, or a start once nothing is consuming input.
+            let global = ToolbarNextAction.resolve(live(.snap)).operation
+            if case .start = global { return timerStarted ? .stopTimer : .startTimer }
+            return .operation(global)
+        case .read:
+            switch ToolbarNextAction.resolve(live(.read)).operation {
+            case .pauseReading, .resumeReading: return .operation(.stopReading)
+            case let operation: return .operation(operation)
+            }
         default:
-            guard let action = nextAction(tool) else { return tool.title }
-            if case .start = action.operation { return tool.title }
-            return action.title
+            return .operation(ToolbarNextAction.resolve(live(tool.mode ?? .snap)).operation)
+        }
+    }
+
+    /// What the row says: its capability's name when the click starts it, and
+    /// otherwise the words for exactly the operation the click performs.
+    func actionTitle(_ tool: WorkbenchControlTool) -> String {
+        switch rowAction(tool) {
+        case .startTimer: return "Timer"
+        case .stopTimer: return "Stop timer"
+        case .operation(.start): return tool.title
+        case .operation(let operation): return ToolbarNextAction.title(operation, live: live(tool.mode ?? .snap))
         }
     }
 }

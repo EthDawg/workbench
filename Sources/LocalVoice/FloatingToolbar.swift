@@ -99,21 +99,7 @@ struct FloatingToolbar: View {
     }
 
     private func perform(_ operation: ToolbarOperation) {
-        switch operation {
-        case .stopInserting: promptInsertion.cancel()
-        case .cancelDictationRequest: model.cancelRecording()
-        case .stopDictation: model.stopRecording()
-        case .finishNarration: readback.stopNarration()
-        case .finishDrawing: stage.finishDrawing()
-        case .pauseReading, .resumeReading: model.listen()
-        case .cancelReading: model.cancelReading()
-        case .hidePersona, .pauseOverlays, .resumeOverlays: stage.togglePersona()
-        case .captureNext: snap()
-        case .stopMeetingTranscription: Task { await meetings.stop() }
-        case .endPresentation: stage.endDeviceScene()
-        case .wait: break
-        case .start(let mode):
-            model.toolbarMode = mode
+        WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { mode in
             switch mode {
             case .dictate: dictate()
             case .read: model.onShowEditor?("speak")
@@ -123,7 +109,7 @@ struct FloatingToolbar: View {
             case .present: present()
             case .persona: stage.togglePersona()
             }
-        }
+        }.perform(operation)
     }
 
     /// The mode's own options, then the constant tail. Dictate, Read and Snap

@@ -196,28 +196,26 @@ struct WorkbenchQuickPanel: View {
         }
     }
 
-    /// The row acts on its own next action; ending and hiding happen here, not
-    /// by handing you to the toolbar.
+    /// The row does exactly what its label says: the same operation, through the
+    /// same owner switch the floating toolbar uses. Only a start goes through
+    /// this surface's own door.
     private func perform(_ tool: WorkbenchControlTool) {
-        let state = context.state
-        switch tool {
-        case .dictate:
-            if model.waitingForDrawing { model.copyWaitingDelivery() }
-            else { model.onMenuRecording?() }
-        case .read:
-            if model.rendering { model.cancelReading() }
-            else if model.playing || model.paused { model.stopPlayback() }
-            else { open("speak") }
-        case .snap: model.toolbarMode = .snap; snapCapture(.region)
-        case .snapAndTalk: model.toolbarMode = .snapAndTalk; snap()
-        case .annotate: model.toolbarMode = .draw; draw()
-        case .present:
-            model.toolbarMode = .present
-            if state.nextAction(.present)?.operation == .endPresentation { stage.endDeviceScene() } else { present() }
-        case .persona:
-            model.toolbarMode = .persona
-            personas()
-        case .timer: timer()
+        let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
+            switch mode {
+            case .dictate: model.onMenuRecording?()
+            case .read: open("speak")
+            case .snap: snapCapture(.region)
+            case .snapAndTalk: snap()
+            case .draw: draw()
+            case .present: present()
+            case .persona: personas()
+            }
+        }
+        switch context.state.rowAction(tool) {
+        case .startTimer, .stopTimer: timer()
+        case .operation(let operation):
+            if case .start = operation {} else { model.onCloseMenu?() }
+            dispatch.perform(operation)
         }
     }
 }

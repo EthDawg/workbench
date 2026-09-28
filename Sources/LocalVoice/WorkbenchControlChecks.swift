@@ -41,6 +41,21 @@ enum WorkbenchControlChecks {
             try check(live.actionTitle(.timer) == "Stop timer", "Timer reads Stop timer once started")
             live = WorkbenchControlState(); live.phase = .recording; live.presenting = true
             try check(live.actionTitle(.present) == "Stop", "input-consuming work claims every row's label, exactly as it claims the toolbar's")
+            try check(live.rowAction(.present) == .operation(.stopDictation), "and the Present row's click stops the recording, never ends the scene")
+            live = WorkbenchControlState(); live.drawing = true; live.presenting = true; live.overlays = true; live.timerStarted = true
+            try check(WorkbenchControlTool.allCases.allSatisfy { live.rowAction($0) == .operation(.finishDrawing) && live.actionTitle($0) == "Stop drawing" },
+                      "while drawing every row, Timer included, reads Stop drawing and its click stops drawing")
+            live = WorkbenchControlState(); live.rendering = true
+            try check(live.actionTitle(.read) == "Cancel" && live.rowAction(.read) == .operation(.cancelReading), "Read says Cancel while preparing, because that discards")
+            live.rendering = false; live.playing = true
+            try check(live.rowAction(.read) == .operation(.stopReading), "the Read row stops rather than pauses")
+            live = WorkbenchControlState()
+            try check(WorkbenchControlTool.allCases.allSatisfy { tool in
+                tool.mode.map { live.rowAction(tool) == .operation(.start($0)) } ?? (live.rowAction(tool) == .startTimer)
+            }, "idle, each row's click starts its own mode, or the timer")
+            live.timerStarted = true
+            try check(live.rowAction(.timer) == .stopTimer, "a started timer's row stops it")
+            try check(AppDelegate.voiceShortcutCatalogue.map(\.0) == VoicePreferences.shortcutIDs, "the voice catalogue titles cover exactly the shortcut ids")
         }
         var saved = VoicePreferences()
         saved.dictationShortcut.keyCode = 42
