@@ -396,7 +396,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func listen(to text: String) {
         // Only replace the draft when the reading can start, so it never waits unheard.
         guard !meetings.isBusy else {
-            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTile); return
+            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTileMeeting); return
         }
         guard phase == .idle else { return }
         guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
@@ -405,7 +405,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // nothing starts. The reason is Read's, heard at once wherever the tile was (#173).
         if let rejection = readingRejection(for: text) {
             let reason = copiedTextRefusal(rejection, text: text)
-            report(reason, on: .read, from: .homeReadTile)
+            report(reason, on: .read, from: .homeReadTileRefused)
             announceForAccessibility(reason)
             return
         }

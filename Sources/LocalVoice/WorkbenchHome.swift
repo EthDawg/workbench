@@ -669,8 +669,9 @@ struct WorkbenchHomePage: View {
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             // Why the Read tile did nothing, beside it (#173): only the tile's own problem, gone as
-            // soon as anything replaces or clears it. Read's banner shows every Read problem.
-            if tools.contains(.read), let notice = Attention.besideHomeReadTile(model.attention) {
+            // soon as anything replaces or clears it, and a meeting wait only while the meeting runs.
+            // Read's banner shows every Read problem.
+            if tools.contains(.read), let notice = Attention.besideHomeReadTile(model.attention, meetingBusy: meetings.isBusy) {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }

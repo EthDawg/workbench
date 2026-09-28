@@ -26,8 +26,10 @@ struct Attention: Equatable {
     }
     /// A control that shows its own problem beside itself, as well as on its page (#173).
     enum Origin: Equatable {
-        /// Home's Read tile: copied text it refused, or a meeting it had to wait for.
-        case homeReadTile
+        /// Home's Read tile refused copied text its provider cannot read.
+        case homeReadTileRefused
+        /// Home's Read tile waited for a meeting that was recording or transcribing.
+        case homeReadTileMeeting
     }
     let message: String
     let page: Page
@@ -36,10 +38,14 @@ struct Attention: Equatable {
     var origin: Origin? = nil
 
     /// What Home shows under its Read tile: the tile's own problem while it is the one in the
-    /// slot, never another door's. Read's banner and the menu-bar panel show every problem.
-    static func besideHomeReadTile(_ attention: Attention?) -> String? {
-        guard let attention, attention.origin == .homeReadTile else { return nil }
-        return attention.message
+    /// slot, never another door's, and its meeting wait only while a meeting still runs. Read's
+    /// banner and the menu-bar panel show every problem.
+    static func besideHomeReadTile(_ attention: Attention?, meetingBusy: Bool) -> String? {
+        guard let attention, let origin = attention.origin else { return nil }
+        switch origin {
+        case .homeReadTileRefused: return attention.message
+        case .homeReadTileMeeting: return meetingBusy ? attention.message : nil
+        }
     }
 }
 

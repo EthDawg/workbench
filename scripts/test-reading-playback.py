@@ -13,6 +13,7 @@ Optional --write-fixture DIR produces disposable material for native UI checks.
 import argparse
 import hashlib
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -42,13 +43,23 @@ methods = "\n".join([
 ])
 # The checks drive the private playback step directly instead of waiting for timers.
 exposed = methods.replace("    private func ", "    func ")
-# Home's Read tile shows only what the tile itself reported (#173): the tag appears only in
-# listen(to:), and the Speko key doors, which these checks cannot drive, report untagged.
+# Home's Read tile shows only what the tile itself reported (#173). Its tags, however they are
+# spelled, appear nowhere in Sources but listen(to:), once each; Attention.swift only declares
+# and reads them. The Speko key doors, which these checks cannot drive, report untagged.
 def member(signature: str) -> str:
     begin = source.index(signature)
     return source[begin:source.index("\n    }\n", begin)]
-tile = member("    func listen(to text: String) {")
-assert source.count("from: .homeReadTile") == tile.count("from: .homeReadTile") == 2, "only the tile's refusal and meeting wait carry its tag"
+tile_start = source.index("    func listen(to text: String) {")
+tile_end = source.index("\n    }\n", tile_start)
+tags = []
+for path in sorted((PROJECT / "Sources").rglob("*.swift")):
+    if path.name == "Attention.swift":
+        continue
+    for found in re.finditer(r"\bhomeReadTile\w*", path.read_text()):
+        inside = path == SOURCES / "AppModel.swift" and tile_start <= found.start() < tile_end
+        tags.append((path.relative_to(PROJECT).as_posix(), found.group(), inside))
+assert all(inside for _, _, inside in tags) and sorted(tag for _, tag, _ in tags) == ["homeReadTileMeeting", "homeReadTileRefused"], \
+    f"only listen(to:) tags its reports, its refusal and its meeting wait once each: {tags}"
 for door in ("    func saveSpekoKey(", "    func removeSpekoKey("):
     body = member(door)
     assert "report(" in body and "from:" not in body, door.strip() + " reports on Read without the tile's tag"
@@ -434,7 +445,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(model.player == nil && !model.playing && model.audio == nil && !exists(failing)
                   && model.error?.contains("stopped responding") == true, "A failed render stops playback and reports it")
         try check(model.attention?.page == .read, "A render that failed partway is Read's problem, so the menu-bar panel opens Read (#134)")
-        try check(Attention.besideHomeReadTile(model.attention) == nil, "a render that stopped partway never shows beside Home's Read tile (#173)")
+        try check(Attention.besideHomeReadTile(model.attention, meetingBusy: model.meetings.isBusy) == nil, "a render that stopped partway never shows beside Home's Read tile (#173)")
 
         // Guards that keep other work and other providers unchanged.
         let busy = ReadingHarness()
@@ -442,10 +453,13 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         busy.listen()
         try check(busy.error?.contains("meeting") == true && busy.readingTask == nil, "A meeting in progress blocks reading")
         try check(busy.attention?.page == .read, "A reading a meeting blocked is Read's to explain (#134)")
-        try check(Attention.besideHomeReadTile(busy.attention) == nil, "Listen on Read during a meeting never shows beside Home's Read tile (#173)")
+        try check(Attention.besideHomeReadTile(busy.attention, meetingBusy: busy.meetings.isBusy) == nil, "Listen on Read during a meeting never shows beside Home's Read tile (#173)")
         busy.listen(to: "Copied during the meeting.")
-        try check(Attention.besideHomeReadTile(busy.attention) == busy.error && busy.error?.contains("meeting") == true
+        try check(Attention.besideHomeReadTile(busy.attention, meetingBusy: busy.meetings.isBusy) == busy.error && busy.error?.contains("meeting") == true
                   && busy.speechText != "Copied during the meeting.", "the tile's own meeting wait shows beside it, and the draft stays")
+        busy.meetings.isBusy = false
+        try check(Attention.besideHomeReadTile(busy.attention, meetingBusy: busy.meetings.isBusy) == nil && busy.error?.contains("meeting") == true,
+                  "once the meeting ends, the wait leaves the tile; Read's banner keeps it until it is replaced or dismissed")
         let missing = ReadingHarness()
         missing.voiceChoice = .missing("Matilda")
         let before = MacSpeechRenderer.created.count
@@ -881,20 +895,20 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let macReason = refused("50,001", "Mac reading", "50,000")
         try check(idle.error == macReason && idle.attention?.page == .read, "Read shows why, in the words Home's tile gives: \(idle.error ?? "nothing")")
         try check(idle.announcements.last == macReason, "VoiceOver hears the reason where the tile was clicked")
-        try check(Attention.besideHomeReadTile(idle.attention) == macReason, "Home shows the refusal under the tile that was clicked")
+        try check(Attention.besideHomeReadTile(idle.attention, meetingBusy: idle.meetings.isBusy) == macReason, "Home shows the refusal under the tile that was clicked")
         idle.report("Speko could not save that key.", on: .read)
-        try check(idle.error == "Speko could not save that key." && Attention.besideHomeReadTile(idle.attention) == nil,
+        try check(idle.error == "Speko could not save that key." && Attention.besideHomeReadTile(idle.attention, meetingBusy: idle.meetings.isBusy) == nil,
                   "a Speko key that failed to save shows on Read, never beside Home's tile, and replaces the tile's notice there")
         idle.listen(to: macOver)
         idle.dismissError()
-        try check(idle.attention == nil && Attention.besideHomeReadTile(idle.attention) == nil, "dismissing the notice takes it from beside the tile")
+        try check(idle.attention == nil && Attention.besideHomeReadTile(idle.attention, meetingBusy: idle.meetings.isBusy) == nil, "dismissing the notice takes it from beside the tile")
         idle.listen(to: macOver)
         idle.listen(to: macLimit)
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         let limitRender = MacSpeechRenderer.created.last!
         try check(idle.speechText == macLimit && limitRender.text.spoken.count == 50_000 && !exists(idleAudio?.url) && idle.error == nil,
                   "50,000 characters, the Mac limit, still replace A and read the copied text")
-        try check(Attention.besideHomeReadTile(idle.attention) == nil, "a reading that starts clears the tile's notice")
+        try check(Attention.besideHomeReadTile(idle.attention, meetingBusy: idle.meetings.isBusy) == nil, "a reading that starts clears the tile's notice")
         try limitRender.deliver(seconds: 0.5)
         await settle { idle.playing }
         let limitPlayer = idle.player

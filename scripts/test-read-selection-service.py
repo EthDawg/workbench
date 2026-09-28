@@ -132,7 +132,7 @@ __METHODS__
         try check(doors.error == "This saved item has no text to read." && doors.speechText == "Current draft" && doors.page == "speak",
                   "an empty item explains itself and leaves the draft")
         try check(doors.attention?.page == .read, "the import's problem is Read's, so the menu-bar panel opens Read (#134)")
-        try check(Attention.besideHomeReadTile(doors.attention) == nil, "a History or Library Read aloud failure never shows beside Home's Read tile (#173)")
+        try check(Attention.besideHomeReadTile(doors.attention, meetingBusy: doors.meetings.isBusy) == nil, "a History or Library Read aloud failure never shows beside Home's Read tile (#173)")
         let emptyDraft = SelectionHarness()
         emptyDraft.playing = true
         emptyDraft.importReading("Saved prompt", from: .savedText)
@@ -164,7 +164,10 @@ __METHODS__
         try check(home.speechText == "Copied text" && home.listens == 2 && home.error?.contains("meeting") == true,
                   "a meeting in progress leaves the draft alone and says why")
         try check(home.attention?.page == .read, "a reading a meeting blocked is Read's to explain (#134)")
-        try check(Attention.besideHomeReadTile(home.attention) == home.error, "the tile's own meeting wait shows beside it (#173)")
+        try check(Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == home.error, "the tile's own meeting wait shows beside it (#173)")
+        home.meetings.isBusy = false
+        try check(Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == nil && home.error?.contains("meeting") == true,
+                  "a meeting ending removes the wait from beside the tile, while Read keeps the notice")
         // Text the provider cannot read is refused before the owner touches the draft (#173).
         home.meetings.isBusy = false
         let refusedInvalidations = home.invalidations
@@ -172,12 +175,12 @@ __METHODS__
         try check(home.speechText == "Copied text" && home.listens == 2 && home.invalidations == refusedInvalidations
                   && home.error?.hasPrefix("The copied text has 10,001 characters") == true && home.attention?.page == .read
                   && home.announcements.last == home.error, "the tile refuses text over the limit, keeps the draft and says why")
-        try check(Attention.besideHomeReadTile(home.attention) == home.error, "the refusal shows beside the tile")
+        try check(Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == home.error, "the refusal shows beside the tile")
         home.receiveReadingSelection(try ReadingSelectionImport(text: "Copied text"))
-        try check(home.attention == nil && Attention.besideHomeReadTile(home.attention) == nil, "anything that clears Read's notice clears it beside the tile")
+        try check(home.attention == nil && Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == nil, "anything that clears Read's notice clears it beside the tile")
         home.listen(to: String(repeating: "z", count: 10_001))
         home.report("A later Read problem.", on: .read)
-        try check(home.error == "A later Read problem." && Attention.besideHomeReadTile(home.attention) == nil,
+        try check(home.error == "A later Read problem." && Attention.besideHomeReadTile(home.attention, meetingBusy: home.meetings.isBusy) == nil,
                   "a later notice from another door replaces it: Read shows the new one, and the tile shows nothing")
         print("READ_SELECTION_MODEL_OK: \(count) checks; actual handoff methods, isolated draft and provider state")
     }
