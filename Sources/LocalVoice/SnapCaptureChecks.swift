@@ -33,10 +33,13 @@ enum SnapCaptureChecks {
         defer { pasteboard.releaseGlobally() }
         let image = try syntheticScreen()
         func snapModel(_ name: String, source: SyntheticImageSource) -> SnapModel {
-            SnapModel(store: SnapStore(root: root.appendingPathComponent(name, isDirectory: true)), desktop: root.appendingPathComponent("Desktop"),
-                      screenshotLocation: FixedScreenshotLocation(), preferences: preferences, screenshotInbox: root.appendingPathComponent("Inbox"),
-                      trash: { _ in throw SnapError.message("This check never moves a file to the Trash.") },
-                      applyScreenshotLocation: {}, imageSource: source, pasteboard: pasteboard)
+            let snap = SnapModel(store: SnapStore(root: root.appendingPathComponent(name, isDirectory: true)), desktop: root.appendingPathComponent("Desktop"),
+                                 screenshotLocation: FixedScreenshotLocation(), preferences: preferences, screenshotInbox: root.appendingPathComponent("Inbox"),
+                                 trash: { _ in throw SnapError.message("This check never moves a file to the Trash.") },
+                                 applyScreenshotLocation: {}, imageSource: source, pasteboard: pasteboard)
+            // Search is not what this check tests: saved Snaps get empty search data, never Vision (#181).
+            snap.analyzeImage = { _, digest in SnapDerivedData(imageSHA256: digest, text: "", featurePrint: nil) }
+            return snap
         }
 
         // Each door starts the same capture; what differs is what was on screen.
@@ -224,6 +227,8 @@ enum SnapCaptureChecks {
 /// Answers each capture with a fixed result and records the modes asked for.
 @MainActor
 private final class SyntheticImageSource: SnapImageSource {
+    /// Nothing is on screen to wait for.
+    let settleDelay: UInt64 = 0
     let next: Result<Data?, Error>
     private(set) var requests: [SnapCapture.Mode] = []
     init(next: Result<Data?, Error>) { self.next = next }
