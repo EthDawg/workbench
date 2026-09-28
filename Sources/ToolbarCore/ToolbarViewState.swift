@@ -144,6 +144,9 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var actionHint: String?
     /// The other modes, in the strip beside the action once the row is revealed.
     public var switcher: [ToolbarModeChip]
+    /// Every label another mode would show right now. The action keeps the
+    /// widest of them, so switching modes never moves the strip.
+    public var minimumTitles: [String]
     public var accessoryTitle: String?
     /// The selected mode's work is running. The resting glyph says so; that is
     /// the only thing it says beyond being findable.
@@ -152,7 +155,7 @@ public struct ToolbarViewState: Equatable, Sendable {
     public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
                 mode: ToolbarMode = .dictate, actionTitle: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
-                switcher: [ToolbarModeChip]? = nil, isBusy: Bool = false) {
+                switcher: [ToolbarModeChip]? = nil, minimumTitles: [String]? = nil, isBusy: Bool = false) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
@@ -161,6 +164,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.isActionEnabled = isActionEnabled
         self.actionHint = actionHint
         self.switcher = switcher ?? ToolbarMode.allCases.filter { $0 != mode }.map { ToolbarModeChip(mode: $0) }
+        self.minimumTitles = minimumTitles ?? ToolbarNextAction.idleVerbs
         self.accessoryTitle = mode == .present ? "Prompts" : nil
         self.isBusy = isBusy
     }

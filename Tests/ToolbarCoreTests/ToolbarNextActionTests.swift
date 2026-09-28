@@ -32,11 +32,21 @@ final class ToolbarNextActionTests: XCTestCase {
         }}}}}}}}}}}}}}}
     }
 
-    /// Rows 1 to 12: something is live that the label can act on.
-    private static func rows1to12(_ live: ToolbarLiveState) -> Bool {
+    /// Input-consuming work claims the label whatever the mode.
+    private static func inputLive(_ live: ToolbarLiveState) -> Bool {
         live.insertingPrompt || live.dictation != .idle || live.capturingScreen || live.narrating || live.drawing
-            || live.reading != .idle || live.persona != .none
-            || (live.mode == .snapAndTalk && live.captureCount != nil) || live.meetingRecording
+            || live.reading != .idle
+    }
+
+    /// The selected mode's own step or ending, which claims the label only there.
+    private static func ownLive(_ live: ToolbarLiveState) -> Bool {
+        switch live.mode {
+        case .persona: return live.persona != .none
+        case .snapAndTalk: return live.captureCount != nil
+        case .dictate: return live.meetingRecording
+        case .present: return live.presenting
+        case .read, .snap, .draw: return false
+        }
     }
 
     func testTheNamedOperationsCapabilityIsLiveInTheInput() {
@@ -53,12 +63,12 @@ final class ToolbarNextActionTests: XCTestCase {
             case .cancelReading: ok = live.reading == .preparing
             case .pauseReading: ok = live.reading == .playing
             case .resumeReading: ok = live.reading == .paused
-            case .pauseOverlays: ok = live.persona == .session
-            case .resumeOverlays: ok = live.persona == .sessionHidden
-            case .hidePersona: ok = live.persona == .shown
+            case .pauseOverlays: ok = live.persona == .session && live.mode == .persona
+            case .resumeOverlays: ok = live.persona == .sessionHidden && live.mode == .persona
+            case .hidePersona: ok = live.persona == .shown && live.mode == .persona
             case .captureNext: ok = live.mode == .snapAndTalk && live.captureCount != nil
-            case .stopMeetingTranscription: ok = live.meetingRecording
-            case .endPresentation: ok = live.presenting
+            case .stopMeetingTranscription: ok = live.meetingRecording && live.mode == .dictate
+            case .endPresentation: ok = live.presenting && live.mode == .present
             case .start(let mode): ok = mode == live.mode
             case .wait: ok = live.capturingScreen || live.dictation == .processing || live.dictation == .cancelling
             }
@@ -67,24 +77,43 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
     }
 
-    func testEndPresentationOnlyWhenNothingEarlierIsLive() {
+    /// A mode's ending never claims another mode's label: presenting in Draw
+    /// reads Draw, a meeting in Read reads Read, a persona set in Snap reads Snap.
+    func testCrossModeEndingsNeverClaimTheLabel() {
+        var failures = 0
+        Self.product { live in
+            let operation = ToolbarNextAction.resolve(live).operation
+            if operation == .endPresentation, live.mode != .present { failures += 1 }
+            if operation == .stopMeetingTranscription, live.mode != .dictate { failures += 1 }
+            if [.pauseOverlays, .resumeOverlays, .hidePersona].contains(operation), live.mode != .persona { failures += 1 }
+            if operation == .captureNext, live.mode != .snapAndTalk { failures += 1 }
+        }
+        XCTAssertEqual(failures, 0)
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, presenting: true)).title, "Draw")
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, meetingRecording: true)).title, "Read")
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap, persona: .session)).title, "Snap")
+    }
+
+    func testTheModesOwnEndingOnlyWhenNoInputWorkIsLive() {
         var failures = 0
         Self.product { live in
             let action = ToolbarNextAction.resolve(live)
-            if action.operation == .endPresentation, Self.rows1to12(live) { failures += 1 }
-            if live.presenting, !Self.rows1to12(live), action.operation != .endPresentation { failures += 1 }
+            let own = [.endPresentation, .stopMeetingTranscription, .captureNext, .pauseOverlays, .resumeOverlays, .hidePersona]
+                .contains(action.operation)
+            if own, Self.inputLive(live) { failures += 1 }
+            if Self.ownLive(live), !Self.inputLive(live), !own { failures += 1 }
         }
         XCTAssertEqual(failures, 0)
     }
 
-    func testTheStartVerbOnlyWhenNothingIsLiveAndEnabledOnlyByAdmission() {
+    func testTheStartVerbOnlyWhenNothingClaimsTheLabelAndEnabledOnlyByAdmission() {
         var failures = 0
         Self.product { live in
             let action = ToolbarNextAction.resolve(live)
             if case .start = action.operation {
-                if Self.rows1to12(live) || live.presenting { failures += 1 }
+                if Self.inputLive(live) || Self.ownLive(live) { failures += 1 }
                 if action.isEnabled != live.mayStart { failures += 1 }
-            } else if !Self.rows1to12(live), !live.presenting {
+            } else if !Self.inputLive(live), !Self.ownLive(live) {
                 failures += 1
             }
         }
@@ -137,7 +166,7 @@ final class ToolbarNextActionTests: XCTestCase {
     }
 
     func testTheFixedPriorityReadsTheSameOnTwoIdenticalScreens() {
-        // Input first, then the cheapest to undo, then session steps, then the ending.
+        // Input first, then the cheapest to undo, then the mode's own step or ending.
         let everything = ToolbarLiveState(mode: .dictate, dictation: .recording, reading: .playing, narrating: true,
                                           captureCount: 3, drawing: true, presenting: true, persona: .session,
                                           insertingPrompt: true, meetingRecording: true)
@@ -151,13 +180,17 @@ final class ToolbarNextActionTests: XCTestCase {
         next.drawing = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Pause reading")
         next.reading = .idle
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Hide personas")
-        next.persona = .none
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop transcribing")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop transcribing", "Dictate owns the meeting")
         next.meetingRecording = false
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Dictate", "presenting and personas belong to other modes")
+        next.mode = .present
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "End presentation")
         next.presenting = false
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Dictate")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Present")
+        next.mode = .persona
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Hide personas")
+        next.persona = .none
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Show persona")
         next.mode = .snapAndTalk
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Capture next · 3")
         next.captureCount = nil
@@ -174,14 +207,43 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(ToolbarShortcut.assigned("⌥V").hintKey, "⌥V")
     }
 
+    /// A key is offered only for an operation that key performs.
+    func testOnlyOperationsAKeyPerformsHaveAKeyMode() {
+        XCTAssertNil(ToolbarOperation.stopInserting.keyMode, "Present's key does not stop an insertion")
+        XCTAssertNil(ToolbarOperation.stopMeetingTranscription.keyMode, "Dictate's key does not stop a meeting")
+        XCTAssertNil(ToolbarOperation.pauseOverlays.keyMode, "the persona key refuses to pause a prepared set")
+        XCTAssertNil(ToolbarOperation.resumeOverlays.keyMode)
+        XCTAssertNil(ToolbarOperation.wait.keyMode)
+        XCTAssertEqual(ToolbarOperation.stopDictation.keyMode, .dictate)
+        XCTAssertEqual(ToolbarOperation.hidePersona.keyMode, .persona)
+        XCTAssertEqual(ToolbarOperation.captureNext.keyMode, .snapAndTalk)
+        XCTAssertEqual(ToolbarOperation.endPresentation.keyMode, .present)
+        XCTAssertEqual(ToolbarOperation.start(.snap).keyMode, .snap)
+        XCTAssertEqual(ToolbarOperation.stopMeetingTranscription.mode, .dictate, "the symbol still belongs to Dictate")
+    }
+
     func testTheStripLightsTheModeWhoseWorkIsLive() {
         let chips = ToolbarNextAction.switcher(for: ToolbarLiveState(mode: .dictate, drawing: true))
         XCTAssertEqual(chips.map(\.mode), ToolbarMode.allCases.filter { $0 != .dictate })
         XCTAssertEqual(chips.filter(\.isBusy).map(\.mode), [.draw])
         XCTAssertFalse(ToolbarLiveState(mode: .dictate, drawing: true).isLive(.dictate))
+        let presenting = ToolbarNextAction.switcher(for: ToolbarLiveState(mode: .draw, presenting: true))
+        XCTAssertEqual(presenting.filter(\.isBusy).map(\.mode), [.present])
     }
 
-    func testEveryIdleVerbIsShortAndCoversEveryMode() {
+    /// The width floor follows the live state, so a mode switch mid-session
+    /// never moves the strip either.
+    func testTitlesAcrossModesNameEveryModesLabelForThisLiveState() {
+        let live = ToolbarLiveState(mode: .dictate, captureCount: 3, presenting: true)
+        let titles = ToolbarNextAction.titles(across: live)
+        XCTAssertEqual(titles.count, ToolbarMode.allCases.count)
+        XCTAssertTrue(titles.contains("Capture next · 3"))
+        XCTAssertTrue(titles.contains("End presentation"))
+        XCTAssertTrue(titles.contains("Dictate"))
+        for (mode, title) in zip(ToolbarMode.allCases, titles) {
+            var other = live; other.mode = mode
+            XCTAssertEqual(title, ToolbarNextAction.resolve(other).title)
+        }
         XCTAssertEqual(ToolbarNextAction.idleVerbs.count, ToolbarMode.allCases.count + 2)
         for verb in ToolbarNextAction.idleVerbs { XCTAssertLessThanOrEqual(verb.count, ToolbarNextAction.titleBudget) }
     }

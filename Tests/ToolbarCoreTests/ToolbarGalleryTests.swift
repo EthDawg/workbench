@@ -68,6 +68,16 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertFalse(state.switcher.contains { $0.mode == state.mode }, "the selected mode is the glyph, not a chip")
     }
 
+    /// A mode's own ending claims the label only in that mode.
+    func testAnotherModesEndingLightsItsChipAndKeepsTheStartVerb() throws {
+        let state = try XCTUnwrap(ToolbarGallery.activity.first { $0.name == "activity-presenting-in-draw" })
+        XCTAssertEqual(state.mode, .draw)
+        XCTAssertEqual(state.actionTitle, "Draw")
+        XCTAssertFalse(state.isBusy)
+        XCTAssertEqual(state.switcher.filter(\.isBusy).map(\.mode), [.present])
+        XCTAssertTrue(state.minimumTitles.contains("End presentation"), "the floor covers the label Present mode would show")
+    }
+
     func testTheCountLivesInTheLabelAndTheKeyInTheHint() {
         let between = ToolbarGallery.idle.first { $0.name == "idle-session-open" }
         XCTAssertEqual(between?.actionTitle, "Capture next · 3")
@@ -81,9 +91,14 @@ final class ToolbarGalleryTests: XCTestCase {
     }
 
     func testRunningWorkIsVisibleWithoutHovering() {
-        let resting = ToolbarGallery.activity.filter { $0.tier == .resting && $0.mode != .dictate }
-        XCTAssertFalse(resting.isEmpty, "the resting element must be reviewed in its busy state too")
-        XCTAssertTrue(resting.allSatisfy(\.isBusy))
+        // Fixtures named "-in-<mode>" show work running in another mode: the
+        // glyph stays quiet there and the chip, hidden at rest, carries the dot.
+        let own = ToolbarGallery.activity.filter { $0.tier == .resting && !$0.name.contains("-in-") }
+        let other = ToolbarGallery.activity.filter { $0.tier == .resting && $0.name.contains("-in-") }
+        XCTAssertFalse(own.isEmpty, "the resting element must be reviewed in its busy state too")
+        XCTAssertTrue(own.allSatisfy(\.isBusy))
+        XCTAssertFalse(other.isEmpty)
+        XCTAssertTrue(other.allSatisfy { !$0.isBusy && $0.switcher.contains(where: \.isBusy) })
     }
 
     func testNoDeadReadingFixtureRemains() {

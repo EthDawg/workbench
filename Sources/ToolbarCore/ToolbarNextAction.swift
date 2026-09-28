@@ -68,7 +68,7 @@ public enum ToolbarOperation: Hashable, Sendable {
     /// Nothing to do but wait; the label says why and is disabled.
     case wait
 
-    /// The capability the operation belongs to, for its key and symbol.
+    /// The capability the operation belongs to, for its symbol.
     public var mode: ToolbarMode? {
         switch self {
         case .cancelDictationRequest, .stopDictation, .stopMeetingTranscription: return .dictate
@@ -81,12 +81,25 @@ public enum ToolbarOperation: Hashable, Sendable {
         case .wait: return nil
         }
     }
+
+    /// The capability whose assigned key performs exactly this operation, or
+    /// nil when no key does: Present's key does not stop an insertion, Dictate's
+    /// key does not stop a meeting transcription, and Persona's key refuses to
+    /// pause or resume a prepared set. Only these earn a key in the hint.
+    public var keyMode: ToolbarMode? {
+        switch self {
+        case .stopInserting, .stopMeetingTranscription, .pauseOverlays, .resumeOverlays, .wait: return nil
+        default: return mode
+        }
+    }
 }
 
 /// The label under the pointer at rest, and what clicking it does. One pure
 /// function of the live state, with a fixed priority so two identical screens
 /// never read differently: what is consuming your input now, then the cheapest
-/// to undo, then session steps, then the one ending, then the mode's start verb.
+/// to undo, then the mode's own session steps and endings, then its start verb.
+/// Work that runs in another mode never claims the label; its chip's dot says
+/// it is live and the glyph menu offers its finish item.
 public struct ToolbarNextAction: Equatable, Sendable {
     public var title: String
     public var symbol: String
@@ -128,13 +141,24 @@ public struct ToolbarNextAction: Equatable, Sendable {
         }
     }
 
-    /// Every verb a mode can start with. The primary keeps this width so an
-    /// idle mode switch never moves the strip under the pointer.
+    /// The label every mode would show for this live state. The primary keeps
+    /// the widest of them, so a mode switch never moves the strip under the
+    /// pointer that is about to click the next chip.
+    public static func titles(across live: ToolbarLiveState) -> [String] {
+        ToolbarMode.allCases.map { mode in
+            var other = live; other.mode = mode
+            return resolve(other).title
+        }
+    }
+
+    /// Every verb a mode can start with: the floor when nothing is live.
     public static let idleVerbs: [String] = ["Record again", "Capture"] + ToolbarMode.allCases.map {
         title(.start($0), live: ToolbarLiveState(mode: $0))
     }
 
     static func operation(for live: ToolbarLiveState) -> ToolbarOperation {
+        // Input-consuming work is global: whichever mode is selected, this is
+        // what a click must address first.
         if live.insertingPrompt { return .stopInserting }
         switch live.dictation {
         case .requesting: return .cancelDictationRequest
@@ -151,15 +175,23 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .paused: return .resumeReading
         case .idle: break
         }
-        switch live.persona {
-        case .session: return .pauseOverlays
-        case .sessionHidden: return .resumeOverlays
-        case .shown: return .hidePersona
-        case .none: break
+        // From here the label belongs to the selected mode alone.
+        switch live.mode {
+        case .persona:
+            switch live.persona {
+            case .session: return .pauseOverlays
+            case .sessionHidden: return .resumeOverlays
+            case .shown: return .hidePersona
+            case .none: break
+            }
+        case .snapAndTalk:
+            if live.captureCount != nil { return .captureNext }
+        case .dictate:
+            if live.meetingRecording { return .stopMeetingTranscription }
+        case .present:
+            if live.presenting { return .endPresentation }
+        case .read, .snap, .draw: break
         }
-        if live.mode == .snapAndTalk, live.captureCount != nil { return .captureNext }
-        if live.meetingRecording { return .stopMeetingTranscription }
-        if live.presenting { return .endPresentation }
         return .start(live.mode)
     }
 

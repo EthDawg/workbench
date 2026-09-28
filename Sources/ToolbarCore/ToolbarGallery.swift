@@ -36,13 +36,15 @@ public enum ToolbarGallery {
         let action = ToolbarNextAction.resolve(live)
         return ToolbarViewState(name: name, tier: tier, mode: live.mode, actionTitle: action.title,
                                 isActionEnabled: action.isEnabled,
-                                actionHint: action.hint(key: exampleKey(action.operation.mode ?? live.mode)),
+                                actionHint: action.hint(key: action.operation.keyMode.flatMap(exampleKey)),
                                 switcher: ToolbarNextAction.switcher(for: live, key: exampleKey),
+                                minimumTitles: ToolbarNextAction.titles(across: live),
                                 isBusy: live.isLive(live.mode))
     }
 
-    /// Work in progress. The one button becomes the finish action and the glyph
-    /// of the mode whose work it is lights, wherever it sits.
+    /// Work in progress. Input-consuming work takes the button whatever the
+    /// mode; a mode's own ending takes it only in that mode, and elsewhere its
+    /// chip's dot says it is live while the start verb stays.
     public static let activity: [ToolbarViewState] = [
         live(ToolbarLiveState(mode: .draw, drawing: true), name: "activity-drawing"),
         live(ToolbarLiveState(mode: .draw, drawing: true), name: "activity-drawing-resting", tier: .resting),
@@ -54,7 +56,12 @@ public enum ToolbarGallery {
         // Drawing started from its key while Dictate is the mode: the label
         // follows the work, and the Draw chip lights instead of the glyph.
         live(ToolbarLiveState(mode: .dictate, drawing: true), name: "activity-drawing-in-dictate"),
-        live(ToolbarLiveState(mode: .dictate, drawing: true), name: "activity-drawing-in-dictate-resting", tier: .resting)
+        live(ToolbarLiveState(mode: .dictate, drawing: true), name: "activity-drawing-in-dictate-resting", tier: .resting),
+        // Switched to Draw by chip after a presentation started (starting one
+        // from Draw makes Present the mode): ending is Present's own, so the
+        // label stays Draw and the Present chip lights instead.
+        live(ToolbarLiveState(mode: .draw, presenting: true), name: "activity-presenting-in-draw"),
+        live(ToolbarLiveState(mode: .draw, presenting: true), name: "activity-presenting-in-draw-resting", tier: .resting)
     ]
 
     /// Between steps: the count sits in the label and the key in the hint.
