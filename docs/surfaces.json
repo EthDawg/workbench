@@ -13,7 +13,7 @@
     "label": "Read aloud",
     "kind": "action",
     "belongsTo": "read",
-    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137)."
+    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
@@ -265,21 +265,7 @@
     "label": "Read aloud",
     "kind": "action",
     "belongsTo": "read",
-    "note": "Existing door, recorded, no change: Opens the saved text on the Read page (Option of read; #134)."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.position",
-    "surface": "floating toolbar glyph menu",
-    "label": "Position",
-    "kind": "option",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.saved-prompts",
-    "surface": "floating toolbar glyph menu",
-    "label": "Saved Prompts",
-    "kind": "action",
-    "belongsTo": "present"
+    "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
@@ -324,6 +310,14 @@
     "belongsTo": "snap"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
+    "surface": "floating toolbar glyph menu",
+    "label": "Position…",
+    "kind": "option",
+    "belongsTo": "app",
+    "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
     "surface": "floating toolbar glyph menu",
     "label": null,
@@ -349,6 +343,14 @@
     "note": "Runtime label from action . title; no rendered text assumed.",
     "kind": "action",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.saved-prompts",
+    "surface": "floating toolbar glyph menu",
+    "label": "Saved Prompts…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: the glyph menu's Saved Prompts, in the same place, now opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.settings",
@@ -377,6 +379,23 @@
     "label": "Switch to Browser Tab…",
     "kind": "action",
     "belongsTo": "present"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.retry",
+    "surface": "floating toolbar live controls",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#156, #161): a reading that stopped because its audio could not be read keeps its compact controls, where Retry makes new audio. No new entry point; the Read page has the same Retry."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-772d4201867d",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : \"xmark\" )",
+    "note": "Quality (#156, #161): dismisses a stopped reading's reason; its text and voice stay. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-d5d0cbd9ef56",
@@ -633,41 +652,71 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.all-prompts",
-    "surface": "Saved Prompts menu",
-    "label": "All Prompts",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-saved-resources",
+    "surface": "Saved Prompts picker",
+    "label": "Open Saved resources…",
     "kind": "action",
-    "belongsTo": "present"
+    "belongsTo": "library",
+    "note": "Option of Saved resources: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159)."
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.by-persona",
-    "surface": "Saved Prompts menu",
-    "label": "By Persona",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.by-product",
-    "surface": "Saved Prompts menu",
-    "label": "By Product",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.ToolbarMenuAction.runtime-e77e635dc1d9",
-    "surface": "Saved Prompts menu",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-14443435e8dd",
+    "surface": "Saved Prompts picker",
     "label": null,
-    "expression": "prompt . title",
+    "expression": "model . mode . actionTitle",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Runtime label from prompt . title; no rendered text assumed."
+    "note": "Quality: the picker's action for the highlighted prompt, Insert into the frozen field's app, or Copy prompt without Accessibility approval or a readable field (#159, #165). Runtime label from model . mode . actionTitle; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.ToolbarMenuAction.stop-inserting",
-    "surface": "Saved Prompts menu",
-    "label": "Stop Inserting",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-54146627b2ad",
+    "surface": "Saved Prompts picker",
+    "label": null,
+    "expression": "prompt . pickerTitle",
     "kind": "action",
-    "belongsTo": "present"
+    "belongsTo": "present",
+    "note": "Quality: one row per saved prompt, favourites first, replacing the menu's repeated prompt items (#159). Runtime label from prompt . pickerTitle; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-7ace8db149f9",
+    "surface": "Saved Prompts picker",
+    "label": null,
+    "expression": "model . showsDetails ? \"Hide details\" : \"Details\"",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: shows the last delivery's full reason behind its one-line status (#159). Runtime label; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.show-all-prompts",
+    "surface": "Saved Prompts picker",
+    "label": "Show all prompts",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: clears the picker's own search and category after no match (#159)."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.stop-inserting",
+    "surface": "Saved Prompts picker",
+    "label": "Stop inserting",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: the menu's Stop Inserting, in the picker while a prompt is being inserted, worded as the toolbar's label (#159)."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Picker.category",
+    "surface": "Saved Prompts picker",
+    "label": "Category",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Quality: one optional Product or Persona filter that narrows the same list, replacing the By Product and By Persona submenus (#159)."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.choice.all-prompts",
+    "surface": "Saved Prompts picker",
+    "label": "All prompts",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Quality: the category filter's default, every saved prompt (#159)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Button.set-up-automatic-paste",
@@ -759,6 +808,14 @@
     "kind": "action",
     "belongsTo": "snapAndTalk",
     "note": "Existing door, recorded, no change: Sends selected Snaps to Snap & Talk and opens it (Option of snapAndTalk; #134)."
+  },
+  {
+    "id": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position",
+    "surface": "floating toolbar position control",
+    "label": "Reset position",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options already offer the same reset as Reset to bottom centre."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",
@@ -1135,20 +1192,20 @@
     "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Open Snap & Talk session with captures and nothing pending."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.hide-persona",
-    "surface": "window home",
-    "label": "Hide persona",
-    "kind": "action",
-    "belongsTo": "persona",
-    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-dictate",
     "surface": "window home",
     "label": "Open in Dictate",
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest transcript on the Dictate page."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-history",
+    "surface": "window home",
+    "label": "Open in History",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-result",
@@ -1193,12 +1250,37 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-98c01fb91a96",
+    "surface": "window home",
+    "label": null,
+    "expression": "persona . rowTitle",
+    "note": "Quality: the live strip's Persona action (was Button.hide-persona), with its label and click now from the shared Persona action: Hide persona, Hide personas, or Show personas for a hidden prepared set, as the toolbar and panel read (#134).",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.set-up-automatic-paste",
     "surface": "window home",
     "label": "Set up automatic paste…",
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality: Enable automatic paste… renamed in the first-dictation guide (#134 W9). A secondary link shown only while Paste automatically waits for Accessibility approval; Copy text stays the first action (#165)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.show-me-a-first-dictation",
+    "surface": "window home",
+    "label": "Show me a first dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: a door on Home back to the existing first-dictation guide, the only resume route, shown only while nothing has been dictated and the guide was skipped (#15)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.skip-for-now",
+    "surface": "window home",
+    "label": "Skip for now",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: hides Home's first-dictation guide and saves that choice with the Dictate preferences; Show me a first dictation brings it back until the first dictation (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",
@@ -1248,6 +1330,14 @@
     "belongsTo": "snapAndTalk",
     "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability. Stops narration from Home.",
     "aliasOf": "snapAndTalk"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-latest-snap",
+    "surface": "window home",
+    "label": "View latest Snap",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Quality (#154): the latest Snap's image on Home opens the read-only image preview, as every capture image does. It views an existing capture; editing stays Edit…."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.NativeControlMenu.timer",

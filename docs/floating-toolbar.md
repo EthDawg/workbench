@@ -11,7 +11,11 @@ permission to preserve a bug.
 The floating toolbar is the shared live control surface for Snap & Talk, Draw,
 Present and Persona Overlay. Desktop pages own preparation and saved libraries.
 The compact menu-bar panel owns quick utilities, adjustments and shortcut editing.
-Dictate and Read expose only their compact active controls here.
+Dictate and Read expose only their compact active controls here. A dictation
+that heard no speech shows a brief "No speech heard" cue in place of its
+recording controls, then the toolbar returns by itself; a reading whose audio
+could not be read keeps its compact controls with the reason, Retry and
+dismiss. Like the live controls, both appear even when Hide toolbar is on.
 
 **The mode follows you.** A mode is one capability or named workflow: Dictate,
 Read, Snap, Snap & Talk, Draw, Present or Persona. Starting anything from any
@@ -31,7 +35,8 @@ Another mode's ending never claims the label: presenting while Draw is the mode
 reads `Draw`, the Present chip's dot says the scene is live, and the glyph menu
 offers `End presentation`. Two identical screens never read differently, and the
 label never ends anything but what it names. Click the label to do it, click or
-right-click the glyph for the menu, drag anywhere to move. Work running in the
+right-click the glyph for the menu, and drag the glyph, the label or the row's
+empty chrome to move it (see Placement). Work running in the
 selected mode is a dot on the glyph. The hover hint shows a key only for an
 operation that key performs: Present's key does not stop an insertion, Dictate's
 key does not stop a meeting, and the persona key does not pause a prepared set.
@@ -60,11 +65,11 @@ The glyph menu is the mode's own options plus four constant items: the next
 action with its key, then only the current mode's items, then cross-mode finish
 items (`Stop drawing`, `End presentation`, `Hide persona`/`Hide personas`/
 `Show personas`, `Stop transcribing`) when that work runs in another mode,
-then Position, Keep open, Hide toolbar and Settings. There is no Change tool.
+then Position…, Keep open, Hide toolbar and Settings. There is no Change tool.
 Dictate, Read and Snap are start and stop on this surface, so each carries one
 door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and
 `Open Snap…`. Snap & Talk offers its review. Draw holds the
-drawing menu inline. Present holds the presentation items inline, Saved Prompts
+drawing menu inline. Present holds the presentation items inline, Saved Prompts…
 and Switch to Browser Tab; source, reconnect, proportions, motion, window
 placement, native-app handoff and End remain reachable there. Persona holds the
 persona menu inline: the frozen session's public labels, size, position, lock,
@@ -72,12 +77,69 @@ add/remove, visibility, explicit layout saving and End. Mac colour selection
 updates the same drawing settings from either entry point. Native menus snapshot
 their content before tracking rather than rebuilding under the pointer.
 
+Hide toolbar hides the tools in every mode, including while drawing, presenting
+or showing personas. It is the same persistent choice as Settings' Show floating
+toolbar, so it survives relaunch. The work carries on: hiding never clears marks,
+ends a scene, hides persona artwork or stops a timer, and each keeps its key and
+its menu-bar panel row. Window → Show floating toolbar, Window → Focus floating
+toolbar and Settings bring the tools back with the current mode and live state.
+A prompt insertion keeps the tools until it ends, because its Stop is there.
+Recording, processing, narration and reading keep their own controls whatever the
+choice (`FloatingToolbarSurface.resolve`, checked by `--check-floating-toolbar`).
+
 Saved Prompts reads the existing Library. Favourite, Product and
-Persona groupings do not create another store. The original field, value and
-UTF-16 selection are captured before the picker opens. Supported fields receive
-confirmed literal chunks; other readable fields get one guarded paste labelled
-as such. Escape, Stop, changed focus/selection/value and shortcut editing cancel
+Persona groupings do not create another store. The Prompts accessory and the
+glyph menu's Saved Prompts… open one picker: a search field, favourites and then
+every other prompt once, and one optional Product or Persona filter that narrows
+the list without a submenu. It is a transient panel of at most 420 points, kept
+16 points inside the display near either edge, above a bottom dock and below a
+top one. Long names wrap to two lines or truncate and keep their full accessible
+text. It takes keyboard focus without activating Workbench, holds the row open
+as a native menu does, and closes on Escape, a click outside, a second click on
+Prompts or a choice; ↑ ↓ and Return choose. A choice acts only after the picker
+has gone, as a menu item's action runs after tracking, and typing waits, for about
+a second at most, until the frozen app is in front with the frozen field focused.
+The picker's panel is sized from its content's `onGeometryChange` report, never
+from a background `GeometryReader` preference (#152).
+
+The original field, value and UTF-16 selection are captured before the picker
+opens. Supported fields receive confirmed literal chunks; other readable fields
+get one guarded paste labelled as such. Without Accessibility approval, or with
+no readable field, the action is Copy prompt: one copy of the exact text and the
+Copied, Paste with ⌘V. receipt, with no paste or Accessibility write. The last
+delivery is one line naming its destination, with Details for the full reason.
+Escape, Stop, changed focus/selection/value and shortcut editing cancel
 insertion. No partial write is replayed and no submit key is sent.
+
+## Placement
+
+The toolbar goes where you put it (#163). A press on the glyph, the label or the
+row's empty chrome becomes a move after 4 points; below that it is a click, and
+the click does what it always does. Mode chips and the Prompts picker are ordinary
+controls and never start a move. While you drag, the eight named docks show as
+guides. The one within 16 points of the resting element is highlighted, and
+releasing there docks the toolbar. Releasing anywhere else leaves it right there,
+kept whole inside the visible display it covers most.
+
+The position is the resting element's. A docked row grows inward from its dock,
+and a free row grows toward the middle of its display, so near an edge it expands
+inward. Revealing or collapsing never moves the resting element, and nothing but a
+new placement turns the row round. The toolbar sizes to its content and has no
+resize handles.
+
+Position… in the glyph menu opens one compact control with the eight docks and
+Reset position, which docks at bottom centre. It is the keyboard and precise way
+in, beside dragging: arrow keys move between docks, Return or Space moves the
+toolbar there, and Escape closes. The control takes the keyboard without making
+Workbench the active app.
+
+The choice persists through `CapturePanelController`: a dock by name, or a free
+position as the resting element's origin. It survives collapse and reveal, every
+update and relaunch. If its display is removed, the toolbar comes back whole on
+the display in use; the saved position is kept, so it returns when that display
+does. The drag threshold, snap distance and recovery are StageKit's
+`FloatingControlPlacement`, for Persona overlays to share with their own
+per-copy state.
 
 ## The three layers
 
@@ -190,8 +252,23 @@ The core cannot be right if the host feeds it fiction.
   not animate its own size at the same time.
 - **The row grows inward from the docked edge**, so the resting element keeps
   its place on screen and a right-hand dock does not run off it.
-  `ToolbarAnchor.growsLeftward` is the whole of that geometry; `ToolbarGeometry`
-  centres the top and bottom docks on the measured resting width.
+  `ToolbarAnchor.growsLeftward` is the whole of that geometry for a dock;
+  `ToolbarGeometry` centres the top and bottom docks on the measured resting width.
+  A free position (`ToolbarPosition.free`) grows toward the middle of its display
+  and draws its row for that side (`CaptureHUDControls.rowAnchor`). An update
+  compares the window with the frame of the position the toolbar actually has, so
+  it never pulls a free toolbar back to a dock.
+- **The window is the row's size.** `FloatingToolbar` reports the row with
+  `onGeometryChange`. Before sizing the tools, the host lays the row out
+  (`layoutSubtreeIfNeeded`), so the report for the tier, mode and labels about to
+  show arrives first. A reveal, a count crossing 9→10 or a mode switch goes
+  straight to the right frame, and a drag keeps its window until release. A row
+  that opens revealed (Keep open at launch) measures its resting element once,
+  off screen, so a top or bottom dock centres on it. After that, only the resting
+  element's own report changes the width, so an open row is never re-centred under
+  the pointer. Do not measure with a preference written from a background
+  `GeometryReader`: once the row held conditional content, that report never
+  arrived, and every window kept a seed size (#152).
 - **Effects are instructions, not suggestions.** The host never reads the state
   to decide what to do.
 
@@ -214,9 +291,10 @@ Core transition tests, native layout tests and rendered fixtures establish only
 the behavior they exercise. They do not prove native pointer behavior. Before
 claiming a hover fix, reproduce the failure and record the native sequence. Test
 repeated entry/exit, menu dismissal, content-width changes and a stationary pointer
-during resize at all eight anchors, including screen edges and Reduce Motion.
-Explicitly report any input-tool or hardware limit. Multi-display dragging and
-meeting receiver visibility require their own evidence.
+during resize at all eight anchors and at free positions on both halves of the
+display, including screen edges and Reduce Motion. Explicitly report any
+input-tool or hardware limit. Multi-display dragging and meeting receiver
+visibility require their own evidence.
 
 When changing the interaction model, update the state table and targeted
 regressions. A passing legacy test does not justify preserving a broken experience.
@@ -238,6 +316,36 @@ sizes and longer labels; the committed overview sheets in
 [assets/floating-toolbar](assets/floating-toolbar) provide PR image diffs. CI
 retains the full gallery as an artifact. These are real native views, not HTML
 approximations. Visual acceptance still requires inspecting the images.
+
+The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
+production `CapturePanelController` offscreen for every mode at rest and revealed,
+then switches between Dictate and Present with the row open, a width change that
+reaches the host only through the row's own report. It flags a window smaller than
+its row, the check the renderer above cannot make because it sizes its own window
+to the row. The host pins seed sizes until the row
+reports (`CaptureHUDControls.reportSize`), so a report that never arrives leaves the
+row and its corners clipped (#152). The flags appear in the gallery's index and log.
+A size problem fails the run once the index is written: a row the host never heard,
+a window smaller than its row, or a window that is not the size the host prefers.
+A row that did not settle into its tier, which a real pointer over the invisible
+panel can cause in a local run, is reported and its sizes are not compared; the
+gallery's other flags are reported without failing it too. A Mac with no display
+renders no host states and has nothing to fail.
+
+The gallery also releases the same host at free positions on each half of the
+display and near a dock, then checks it after an update, a reveal and a collapse,
+in a new host as after a relaunch, and after Reset position. A toolbar that does
+not rest where it was put fails the run. It renders Position… in both themes.
+`ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
+inward growth, clamping and recovery.
+
+The gallery opens the Saved Prompts picker's production panel,
+`PromptPickerController`, the same way: invisible, ignoring the pointer, with no
+keyboard focus and no click monitors. It narrows the list to one row, adds a status
+line and its Details, then shows every prompt again. A panel that is not the size
+its content wants within the display, or that never heard its content's size,
+fails the run, as a toolbar window does. A picker that closes during the check is
+reported only.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted

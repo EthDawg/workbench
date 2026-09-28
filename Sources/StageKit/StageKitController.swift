@@ -89,8 +89,16 @@ public final class StageKitController: ObservableObject {
         coordinator.demoScenes.onOpen = onOpenScenes
         coordinator.validateExternalShortcut = Self.reservedVoiceShortcut
         if let migrationNotice { coordinator.notice = migrationNotice }
+        observe(coordinator)
+    }
+    /// Checks wrap a coordinator on disposable storage; the app uses the initializer above.
+    init(coordinator: AppCoordinator) {
+        self.coordinator = coordinator
+        observe(coordinator)
+    }
+    private func observe(_ coordinator: AppCoordinator) {
         coordinator.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
-        settings.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
+        coordinator.settings.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.demoScenes.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         coordinator.demoScenes.personas.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
     }
@@ -135,7 +143,8 @@ public final class StageKitController: ObservableObject {
     public func makePersonaPanelMenu() -> NSMenu {
         let library = coordinator.demoScenes.personas
         let menu = library.makeControlsMenu()
-        let feedback = library.sessionState.feedback
+        // The panel already shows these in its own feedback line.
+        let feedback = library.sessionState.feedback ?? library.cardFeedback
         let selectionScoped = ["Lock Artwork · Clicks Pass Through", "Position Artwork", "Replace Selected", "Hide Selected",
                                "Show Selected", "Bring Forward", "Send Backward", "Remove Selected"]
         for item in menu.items {
@@ -154,7 +163,8 @@ public final class StageKitController: ObservableObject {
         let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
         if !optionsOnly {
             menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
-            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: app.timerSessionStarted && !app.timerFinished) { [weak app] in app?.pauseResumeTimer() })
+            let transport = app.timerTransport
+            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: transport == .running || transport == .paused) { [weak app] in app?.pauseResumeTimer() })
             menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
             menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
         }
@@ -223,7 +233,11 @@ public final class StageKitController: ObservableObject {
     public var isTimerRunning: Bool { coordinator.timerRunning }
     public var hasTimerSession: Bool { coordinator.timerSessionStarted }
     public var hasActiveTimer: Bool { coordinator.hasActiveTimer }
-    public var notice: String? { coordinator.notice ?? coordinator.settings.notice ?? coordinator.demoScenes.notice }
+    /// A card that could not show is live, so it comes before an older scene notice.
+    public var notice: String? {
+        let personas = coordinator.demoScenes.personas
+        return coordinator.notice ?? coordinator.settings.notice ?? personas.cardFeedback ?? coordinator.demoScenes.notice ?? personas.notice
+    }
 
     public func start() {
         guard !started else { return }

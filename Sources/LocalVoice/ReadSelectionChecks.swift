@@ -50,6 +50,19 @@ enum ReadSelectionChecks {
         try check(!ReadingSelectionImport.needsReview(current: "", incoming: "Incoming"), "empty reading can adopt the selection directly")
         try check(!ReadingSelectionImport.needsReview(current: "Incoming", incoming: "Incoming"), "identical re-import needs no destructive choice")
         try check(ReadingSelectionImport.needsReview(current: "Current", incoming: "Incoming"), "different existing reading requires replace or keep")
+
+        // History and Saved resources use the same import, named for where the text came from.
+        func emptyMessage(_ origin: ReadingSelectionImport.Origin) -> String? {
+            do { _ = try ReadingSelectionImport(text: " \n", origin: origin); return nil } catch { return error.localizedDescription }
+        }
+        try check(emptyMessage(.transcript) == "This transcript has no words to read." && emptyMessage(.savedText) == "This saved item has no text to read."
+                  && emptyMessage(.selection)?.contains("Read Selection") == true, "an empty import explains itself for each origin")
+        try check((try? ReadingSelectionImport(text: "Saved prompt", origin: .savedText))?.origin == .savedText
+                  && (try? ReadingSelectionImport(text: "Selected"))?.origin == .selection, "the Service's import stays a selection by default")
+        let origins: [ReadingSelectionImport.Origin] = [.selection, .transcript, .savedText]
+        let copy = origins.flatMap { [$0.name, $0.keepNote, $0.keptNote] }.joined(separator: " ")
+        try check(!copy.contains("—") && !copy.contains("–") && !copy.contains(" - ") && !copy.lowercased().contains("attention"),
+                  "import wording is plain, with no dash punctuation")
         print("READ_SELECTION_CHECKS_OK: \(count) checks passed")
     }
 

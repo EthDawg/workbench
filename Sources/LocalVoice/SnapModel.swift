@@ -18,18 +18,41 @@ final class SnapModel: ObservableObject {
     @Published private(set) var items: [SnapItem] = []
     @Published private(set) var problems: [String] = []
     @Published private(set) var isCapturing = false
-    @Published var draft: SnapDraft? { didSet { onStateChange?() } }
+    @Published var draft: SnapDraft? {
+        didSet {
+            if let closed = oldValue, closed.id != draft?.id { onDraftClosed?(closed.id, closingWithCopy) }
+            onStateChange?()
+        }
+    }
     @Published var notice: String?
     @Published var search = ""
     @Published var showingArchived = false
     let store: SnapStore
     var onStateChange: (() -> Void)?
-    var onHideForCapture: (() -> Void)?
-    var onRestoreAfterCapture: (() -> Void)?
+    /// Before acquisition, with the app the capture was started over when the
+    /// door knows it better than the frontmost app (the menu-bar panel's visit).
+    var onHideForCapture: ((pid_t?) -> Void)?
+    /// Every capture request ends here, from any door, with what happened. The
+    /// host shows the editor, or the problem, on the Snap page, or puts back
+    /// what was on screen before a cancelled capture.
+    var onRestoreAfterCapture: ((SnapCaptureOutcome) -> Void)?
+    /// A draft left the editor: saved, saved and copied (true), or cancelled.
+    var onDraftClosed: ((UUID, Bool) -> Void)?
     var mayBeginCapture: (() -> String?)?
     /// Text Vision found in each image, so search finds a Snap by what it shows.
     @Published private(set) var recognizedText: [UUID: String] = [:]
     @Published private(set) var importingScreenshots = false
+    /// Whether macOS lets Workbench record the screen. Without it Region,
+    /// Window and Screen cannot capture, but saved Snaps, Paste image and
+    /// Import image all still work (#112).
+    @Published private(set) var screenAccessGranted: Bool
+    /// Back from Screen Recording settings with access still off: macOS may
+    /// need Workbench to reopen before a grant applies.
+    @Published private(set) var suggestsReopenForScreenAccess = false
+    private var openedScreenAccessSettings = false
+    private let screenAccess: ScreenCaptureAccess
+    /// Removed in deinit; checks create many Snap owners.
+    nonisolated(unsafe) private var activationObserver: NSObjectProtocol?
     let desktop: URL
     private let trash: (URL) throws -> Void
     /// Set when new screenshots are redirected into History but macOS now
@@ -43,11 +66,24 @@ final class SnapModel: ObservableObject {
     private var inboxSizes: [URL: Int] = [:]
     static let redirectKey = "workbench.snap.screenshots.redirect.v1"
     static let previousLocationKey = "workbench.snap.screenshots.previous-location.v1"
-    private let captureService = SnapCapture()
+    private let captureService: any SnapImageSource
+    private let pasteboard: NSPasteboard
     private var captureRequest: UUID?
+    private var closingWithCopy = false
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
+    /// Reads an image's visible text and repeat fingerprint for search. A check
+    /// that does not test search replaces it before saving, so it never runs Vision.
+    var analyzeImage: @Sendable (_ png: Data, _ imageSHA256: String) throws -> SnapDerivedData = { try SnapAnalysis.analyze(png: $0, imageSHA256: $1) }
+    /// Vision reads one image at a time here, off the main thread and outside
+    /// Swift's shared pool. Its text reader waits for work it schedules on that
+    /// pool, so a pool thread blocked inside it can deadlock the pool (#181).
+    private static let analysisQueue = DispatchQueue(label: "Workbench.SnapAnalysis", qos: .utility)
     var isBusy: Bool { isCapturing || draft != nil }
+    /// Capture doors (Home's card and Edit, the panel row, the toolbar) are
+    /// disabled only while a capture is in flight. A pending draft keeps them
+    /// open: `capture` brings its editor back instead of starting another (#151).
+    var disablesCaptureDoors: Bool { isCapturing }
     var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0, query: search) } }
 
     /// Snap search: title, notes, source type, tags and the text Vision read in
@@ -62,7 +98,13 @@ final class SnapModel: ObservableObject {
     init(store: SnapStore? = nil, desktop: URL? = nil, screenshotLocation: (any ScreenshotLocationStore)? = nil,
          preferences: UserDefaults = .standard, screenshotInbox: URL? = nil,
          trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash,
-         applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService) {
+         applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService,
+         imageSource: (any SnapImageSource)? = nil, pasteboard: NSPasteboard = .general,
+         screenAccess: ScreenCaptureAccess = .system) {
+        self.captureService = imageSource ?? SnapCapture()
+        self.pasteboard = pasteboard
+        self.screenAccess = screenAccess
+        screenAccessGranted = screenAccess.isGranted()
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
         self.desktop = desktop ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
         self.screenshotLocation = screenshotLocation ?? SystemScreenshotLocation()
@@ -73,6 +115,36 @@ final class SnapModel: ObservableObject {
         self.applyScreenshotLocation = applyScreenshotLocation
         refresh()
         if keepsScreenshotsOffDesktop { startInbox() }
+        // Access can change in System Settings while Workbench runs.
+        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.returnedToWorkbench() }
+        }
+    }
+
+    deinit { if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) } }
+
+    // MARK: Screen Recording access
+
+    static let screenAccessOff = "Screen Recording is off for Workbench, so Snap can't capture the screen. Your Snaps are still here, and you can paste or import an image you already have."
+
+    func refreshScreenAccess() {
+        let granted = screenAccess.isGranted()
+        if granted != screenAccessGranted { screenAccessGranted = granted }
+        if granted && suggestsReopenForScreenAccess { suggestsReopenForScreenAccess = false }
+    }
+
+    /// Workbench is active again, perhaps back from System Settings. Only a
+    /// return after Snap opened Screen Recording settings suggests reopening.
+    func returnedToWorkbench() {
+        refreshScreenAccess()
+        let suggests = openedScreenAccessSettings && !screenAccessGranted
+        if suggests != suggestsReopenForScreenAccess { suggestsReopenForScreenAccess = suggests }
+    }
+
+    /// System Settings → Privacy & Security → Screen Recording. It changes nothing by itself.
+    func openScreenRecordingSettings() {
+        openedScreenAccessSettings = true
+        screenAccess.openSettings()
     }
 
     // MARK: New screenshots off the Desktop
@@ -121,9 +193,11 @@ final class SnapModel: ObservableObject {
     private func stopInbox() { inboxTimer?.invalidate(); inboxTimer = nil; inboxSizes.removeAll() }
 
     /// Imports screenshots whose size has settled since the last check. A later
-    /// manual location change pauses the redirect instead of fighting it.
+    /// manual location change pauses the redirect instead of fighting it. An
+    /// open editor never holds this up: the draft keeps its own bytes, and
+    /// Save's revision check already guards an edit after History reloads.
     func importInbox() {
-        guard keepsScreenshotsOffDesktop, !isBusy else { return }
+        guard keepsScreenshotsOffDesktop, !importingScreenshots else { return }
         // Published only when it changes, so History and the Snap page are not redrawn every tick.
         let paused = screenshotLocation.location != screenshotInbox.path
         if paused != screenshotRedirectPaused { screenshotRedirectPaused = paused }
@@ -138,7 +212,10 @@ final class SnapModel: ObservableObject {
             } catch { /* Left in the folder; an identical retry only clears it. */ }
         }
         inboxSizes = sizes
-        if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
+        guard added > 0 else { return }
+        refresh()
+        // While a Snap is being captured or edited, its own message stays; the new screenshots appear in the grid.
+        if !isBusy { notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
     }
 
     // MARK: Desktop screenshots
@@ -177,6 +254,7 @@ final class SnapModel: ObservableObject {
     }
 
     func refresh() {
+        refreshScreenAccess()
         do { let read = try store.load(); items = read.items; problems = read.problems }
         catch { problems = [error.localizedDescription] }
         refreshDerivedData()
@@ -187,44 +265,58 @@ final class SnapModel: ObservableObject {
     /// an open editor, and a failure only leaves that Snap searchable by title.
     private func refreshDerivedData() {
         guard analysis == nil else { analysisRequested = true; return }
-        // A separate store instance: SnapStore keeps unsynchronised load state
-        // for editor conflict checks, which must never be touched off the main thread.
-        let store = SnapStore(root: self.store.root), items = self.items
-        analysis = Task.detached(priority: .utility) { [weak self] in
-            var texts: [UUID: String] = [:]
-            for item in items {
-                if Task.isCancelled { break }
-                if let derived = store.derived(for: item) { texts[item.id] = derived.text; continue }
-                guard let image = try? store.snapshot(item.id).imagePNG,
-                      let derived = try? SnapAnalysis.analyze(png: image, imageSHA256: item.imageSHA256) else { continue }
-                try? store.writeDerived(derived, for: item.id)
-                texts[item.id] = derived.text
+        let root = store.root, items = self.items, analyze = analyzeImage
+        analysis = Task { [weak self] in
+            let found: [UUID: String] = await withCheckedContinuation { finished in
+                Self.analysisQueue.async {
+                    // A separate store instance: SnapStore keeps unsynchronised load state
+                    // for editor conflict checks, which must never be touched off the main thread.
+                    let store = SnapStore(root: root)
+                    var texts: [UUID: String] = [:]
+                    for item in items {
+                        if let derived = store.derived(for: item) { texts[item.id] = derived.text; continue }
+                        guard let image = try? store.snapshot(item.id).imagePNG,
+                              let derived = try? analyze(image, item.imageSHA256) else { continue }
+                        try? store.writeDerived(derived, for: item.id)
+                        texts[item.id] = derived.text
+                    }
+                    finished.resume(returning: texts)
+                }
             }
-            let found = texts
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.recognizedText = found
-                self.analysis = nil
-                if self.analysisRequested { self.analysisRequested = false; self.refreshDerivedData() }
-            }
+            guard let self else { return }
+            self.recognizedText = found
+            self.analysis = nil
+            if self.analysisRequested { self.analysisRequested = false; self.refreshDerivedData() }
         }
     }
 
-    func capture(_ mode: SnapCapture.Mode) async {
-        guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
+    func capture(_ mode: SnapCapture.Mode, origin: pid_t? = nil) async {
+        guard !isCapturing else { notice = "Finish or cancel the current Snap first."; return }
         if let reason = mayBeginCapture?() { notice = reason; return }
+        // An open editor, even one hidden with its window, never silently
+        // blocks a capture door: the host brings it back to finish or cancel.
+        guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); return }
+        refreshScreenAccess()
+        guard screenAccessGranted else {
+            // Asked from the person's own action: the first request lists Workbench
+            // in System Settings. Nothing is hidden, and the Snap page explains.
+            _ = screenAccess.request()
+            notice = Self.screenAccessOff
+            onRestoreAfterCapture?(.failed); return
+        }
         let request = UUID(); captureRequest = request
         isCapturing = true; notice = mode == .screen ? "Capturing the display under the pointer…" : "Choose a \(mode.title.lowercased()). Escape cancels."
-        onStateChange?(); onHideForCapture?()
-        defer { captureRequest = nil; isCapturing = false; onRestoreAfterCapture?(); onStateChange?() }
+        onStateChange?(); onHideForCapture?(origin)
+        var outcome = SnapCaptureOutcome.cancelled
+        defer { captureRequest = nil; isCapturing = false; onRestoreAfterCapture?(outcome); onStateChange?() }
         do {
-            try await Task.sleep(nanoseconds: 250_000_000)
+            if captureService.settleDelay > 0 { try await Task.sleep(nanoseconds: captureService.settleDelay) }
             guard captureRequest == request else { return }
             guard let bytes = try await captureService.capture(mode) else { notice = "Capture cancelled. Nothing was added to history."; return }
             guard captureRequest == request else { return }
-            try beginDraft(bytes, source: mode.source, title: "\(mode.title) \(Date().formatted(date: .abbreviated, time: .shortened))")
+            outcome = .draft(try beginDraft(bytes, source: mode.source, title: "\(mode.title) \(Date().formatted(date: .abbreviated, time: .shortened))"))
             notice = nil
-        } catch { notice = error.localizedDescription }
+        } catch { notice = error.localizedDescription; outcome = .failed }
     }
 
     func cancelCapture() { captureRequest = nil; captureService.cancel(); notice = "Capture cancelled. Nothing was added to history." }
@@ -232,7 +324,7 @@ final class SnapModel: ObservableObject {
     func pasteImage() {
         guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
         do {
-            let board = NSPasteboard.general
+            let board = pasteboard
             guard let bytes = board.data(forType: .png) ?? board.data(forType: .tiff) else {
                 notice = "Copy an image, then choose Paste image. Clipboard text and files are not imported."; return
             }
@@ -253,9 +345,12 @@ final class SnapModel: ObservableObject {
         } catch { notice = error.localizedDescription }
     }
 
-    private func beginDraft(_ bytes: Data, source: SnapSource, title: String) throws {
+    @discardableResult
+    private func beginDraft(_ bytes: Data, source: SnapSource, title: String) throws -> UUID {
         _ = try SnapRendering.image(bytes)
-        draft = .init(originalPNG: bytes, source: source, title: title, notes: "", tags: [], edit: .init())
+        let opened = SnapDraft(originalPNG: bytes, source: source, title: title, notes: "", tags: [], edit: .init())
+        draft = opened
+        return opened.id
     }
 
     func edit(_ id: UUID) {
@@ -282,8 +377,11 @@ final class SnapModel: ObservableObject {
                 _ = try store.insert(originalPNG: draft.originalPNG, renderedPNG: rendered, width: dimensions.width,
                                         height: dimensions.height, title: title, source: draft.source, edit: draft.edit, notes: draft.notes, tags: draft.tags)
             }
-            self.draft = nil; refresh()
-            if copyAfterSaving { notice = copyBytes(rendered) ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
+            // Copied before the draft closes, so the host knows the image is ready to paste.
+            let copied = copyAfterSaving && copyBytes(rendered)
+            closingWithCopy = copied; self.draft = nil; closingWithCopy = false
+            refresh()
+            if copyAfterSaving { notice = copied ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
             else { notice = "Saved to History. Your original image is preserved." }
             return true
         } catch { notice = "Snap was not saved. \(error.localizedDescription)"; return false }
@@ -293,7 +391,7 @@ final class SnapModel: ObservableObject {
         do { let snapshot = try store.snapshot(id); notice = copyBytes(snapshot.imagePNG) ? "Image copied. Paste it where you need it." : "The image could not be copied. Try again." }
         catch { notice = error.localizedDescription }
     }
-    private func copyBytes(_ bytes: Data) -> Bool { NSPasteboard.general.clearContents(); return NSPasteboard.general.setData(bytes, forType: .png) }
+    private func copyBytes(_ bytes: Data) -> Bool { pasteboard.clearContents(); return pasteboard.setData(bytes, forType: .png) }
 
     func export(_ id: UUID) {
         do {

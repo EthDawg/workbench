@@ -277,7 +277,10 @@ struct WorkbenchClipboardShelf: View {
                         Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 4)
-                    if receipt.canSuggestPaste { Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary) }
+                    // One ⌘V: the key only when the receipt's words do not already say it.
+                    if receipt.canSuggestPaste && !receipt.detail.contains("⌘V") {
+                        Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary)
+                    }
                 }
                 Text(receipt.detail)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
@@ -292,10 +295,10 @@ struct WorkbenchClipboardShelf: View {
     }
 }
 
-/// Home follows the journey (#134). Before anything is captured it guides one
-/// first dictation. Afterwards it shows what is live, what was done last, and
-/// the three moments as one-click tiles; Prepare… is each tile's small link to
-/// its page. WorkbenchHome embeds it as the "home" page.
+/// Home follows the journey (#134). Until the first dictation it guides one,
+/// whatever else has been captured (#15). Afterwards it shows what is live,
+/// what was done last, and the three moments as one-click tiles; Prepare… is
+/// each tile's small link to its page. WorkbenchHome embeds it as the "home" page.
 struct WorkbenchHomePage: View {
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
@@ -304,8 +307,8 @@ struct WorkbenchHomePage: View {
     @ObservedObject var snap: SnapModel
     @ObservedObject var introduction: FounderIntroductionModel
     @Binding var handoffReview: HandoffReviewRequest?
-    /// Keeps the guide up after the first transcript lands, so the copy step is
-    /// seen once; Done or leaving Home ends it.
+    /// Keeps the guide up after the first dictation lands, so where the words
+    /// went is seen once; Done or leaving Home ends it.
     @State private var stayInGuide = false
 
     var body: some View {
@@ -316,6 +319,14 @@ struct WorkbenchHomePage: View {
                         Text(journey.showsGuide ? "Say something." : "Make room for the work.").font(.system(size: 34, weight: .semibold)).tracking(-0.7)
                         Text(journey.showsGuide ? "One click, and your words are ready to paste anywhere." : "Speak a thought. Explain a screen. Give your demo a stage.")
                             .font(.system(size: 15)).foregroundStyle(.secondary)
+                        // One small switch for the guide until the first dictation (#15).
+                        if journey.offersSkip {
+                            Button("Skip for now") { skipGuide() }.buttonStyle(.link).font(.callout)
+                                .help("Hide this guide. Show me a first dictation brings it back.")
+                        } else if journey.offersGuide {
+                            Button("Show me a first dictation") { showGuide() }.buttonStyle(.link).font(.callout)
+                                .help("Bring back the short guide to your first dictation.")
+                        }
                     }
                     Spacer()
                     Image(systemName: "square.stack.3d.up.fill").font(.system(size: 42)).foregroundStyle(Workbench.accent)
@@ -324,6 +335,7 @@ struct WorkbenchHomePage: View {
                     switch section {
                     case .liveStrip: liveStrip
                     case .guide: firstDictation
+                    case .firstResult: firstResult
                     case .recentWork: recentWork
                     case .moments: moments
                     }
@@ -331,7 +343,7 @@ struct WorkbenchHomePage: View {
                 if !introduction.isDismissed { FounderIntroductionCard(model: introduction) }
                 if !journey.showsGuide && !model.ready { engineBanner }
             }.padding(32)
-        }.onAppear { if journey.isFirstRun { stayInGuide = true } }
+        }.onAppear { if journey.offersSkip { stayInGuide = true } }
     }
     /// What Home can count. The stage exposes no saved-scene or persona count, so
     /// someone who has only prepared scenes still sees the guide; presenting,
@@ -340,8 +352,11 @@ struct WorkbenchHomePage: View {
         HomeJourney(transcripts: model.history.count, snaps: snap.items.count,
                     sessions: (readback.sessionURL == nil ? 0 : 1) + readback.recentSessionURLs.count,
                     handoffJobs: model.handoffJobs.jobs.count, photos: model.photoHandoff.photos.count,
-                    isLive: isLive, stayInGuide: stayInGuide)
+                    guide: model.preferences.firstDictationGuide, isLive: isLive, stayInGuide: stayInGuide)
     }
+    /// Skip for now and Show me a first dictation, saved with the Dictate preferences.
+    private func skipGuide() { stayInGuide = false; model.preferences.firstDictationGuide = .skipped }
+    private func showGuide() { model.preferences.firstDictationGuide = .offered; stayInGuide = true }
 
     // One guided first dictation: the engine banner until speech is ready, then
     // one accent button whose label follows the phase as the Dictate page does.
@@ -384,7 +399,10 @@ struct WorkbenchHomePage: View {
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
-                        review: { model.clipboardReceipt.dismissHUD(); model.page = "history" },
+                        review: {
+                            let prompt = model.clipboardReceipt.receipt?.source == .prompt
+                            model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
+                        },
                         showCue: { model.clipboardReceipt.revealHUD() })
                 }
             }
@@ -398,6 +416,18 @@ struct WorkbenchHomePage: View {
             if !model.preparing { Button("Retry model") { Task { await model.prepare() } } }
             Button("Speech settings") { model.page = "models" }
         }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+    // Once, after the first dictation: where the words were kept and the way back
+    // to them. It reads the transcript History already holds (#15).
+    private var firstResult: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "clock").foregroundStyle(Workbench.accent).frame(width: 20)
+            Text("Also saved in History, newest first. You can copy it again from there.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 12)
+            Button("Open in History") { model.openHistory(HistoryDoor(filter: .transcripts)) }
+                .help("Opens History on your transcripts; this one is at the top.")
+        }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 
     // What is live, each with its one action; shown only while something runs.
@@ -426,7 +456,10 @@ struct WorkbenchHomePage: View {
                 if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
                 if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
                 if stage.hasActivePersona {
-                    liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") { Button("Hide persona") { stage.togglePersona() } }
+                    let persona = personaControl
+                    liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
+                        Button(persona.rowTitle) { perform(persona) }.help(persona.help)
+                    }
                 }
                 if stage.hasActiveTimer {
                     // Pause, Stop and Reset live in the Timer menu the panel already uses.
@@ -434,6 +467,15 @@ struct WorkbenchHomePage: View {
                 }
                 MeetingQuickStatus(model: model.meetings) { model.page = "meeting" }
             }.padding(16).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+    }
+    /// Persona's label, tooltip and click, from the action the panel and toolbar share (#134).
+    private var personaControl: HomePersonaControl {
+        HomePersonaControl(WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap).state)
+    }
+    /// Does exactly what the Persona label names, through the switch the panel and toolbar use.
+    private func perform(_ persona: HomePersonaControl) {
+        WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { _ in stage.togglePersona() }
+            .perform(persona.operation)
     }
     private func liveRow<Action: View>(_ title: String, _ symbol: String, @ViewBuilder action: () -> Action) -> some View {
         HStack(spacing: 10) {
@@ -470,14 +512,14 @@ struct WorkbenchHomePage: View {
                 }
                 case .snap: if let item = latestSnap {
                     HStack(spacing: 12) {
-                        HomeSnapThumbnail(model: snap, item: item)
+                        CapturePreviewButton("View latest Snap", item: { .snap(item, store: snap.store) }) { HomeSnapThumbnail(model: snap, item: item) }
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.title).lineLimit(1)
                             Text("Snap · " + item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         Button("Copy") { snap.copy(item.id) }
-                        Button("Edit…") { snap.edit(item.id); model.page = "snap" }.disabled(snap.isBusy)
+                        Button("Edit…") { snap.edit(item.id); model.page = "snap" }.disabled(snap.disablesCaptureDoors)
                     }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
                 }
                 case .session: if let session = readback.sessionURL {
@@ -539,7 +581,10 @@ struct WorkbenchHomePage: View {
                     else { readClipboard() }
                 }
                 card("Snap", "Capture a region", "viewfinder", "Window or screen on the Snap page", prepare: "snap",
-                     disabled: snap.isBusy) { Task { await snap.capture(.region) } }
+                     disabled: snap.disablesCaptureDoors,
+                     note: snap.screenAccessGranted ? nil : "Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.") {
+                    Task { await snap.capture(.region) }
+                }
             }
             moment("Capturing", "Explain screens aloud and get a deck in seconds.") {
                 card("Snap & Talk", readback.sessionURL == nil ? "New session…" : readback.isCapturing ? "Capturing…" : "Capture & narrate",
@@ -550,12 +595,17 @@ struct WorkbenchHomePage: View {
                 card("Present", stage.isPresenting ? "End presentation" : "Present the selected scene", "iphone", "Saved scenes and branding", prepare: "present") {
                     if stage.isPresenting { stage.endDeviceScene() } else { stage.presentSelectedScene() }
                 }
-                card("Persona", stage.hasActivePersona ? "Hide persona" : "Show a card over your apps", "person.crop.rectangle", "Independent of a scene", prepare: "personas") { stage.togglePersona() }
+                let persona = personaControl
+                card("Persona", persona.tileVerb, "person.crop.rectangle", "Independent of a scene", prepare: "personas",
+                     disabled: !persona.isEnabled) { perform(persona) }
                 card("Draw", stage.isDrawing ? "Stop drawing" : "Draw on screen", "pencil.tip", stage.drawingActivationTitle + " to draw", prepare: "annotate") {
                     if stage.isDrawing { stage.finishDrawing() } else { stage.draw() }
                 }
                 // showTimer toggles the timer window; the stage does not expose whether it is visible.
-                card("Timer", stage.hasTimerSession ? "Show or hide timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") { stage.showTimer() }
+                card("Timer", stage.hasTimerSession ? "Show or hide timer" : "Start a break", "timer", stage.hasTimerSession ? stage.timerText : "Saved duration", prepare: "annotate") {
+                    // The label is the action: after Reset the window may still show, and Start a break starts one.
+                    if stage.hasTimerSession { stage.showTimer() } else { stage.startTimer() }
+                }
             }
         }
     }
@@ -584,7 +634,7 @@ struct WorkbenchHomePage: View {
     }
     private func readClipboard() {
         if let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            model.speechText = text; model.listen()
+            model.listen(to: text)
         } else { model.status = "Copy some text first."; model.page = "speak" }
     }
     private func snapAndTalk() {
@@ -595,15 +645,35 @@ struct WorkbenchHomePage: View {
 
 /// What Home knows about the journey and the sections it shows, in order.
 /// Counting is what LocalVoice can reach; live state comes from every module.
+/// The first-dictation guide is gated on dictation alone (#15): Snaps, Snap &
+/// Talk sessions, Hand off jobs and photos are recent work, never a reason to
+/// stop offering it. Skip for now keeps one small way back until someone dictates.
 struct HomeJourney: Equatable {
     var transcripts = 0, snaps = 0, sessions = 0, handoffJobs = 0, photos = 0
+    /// Saved with the Dictate preferences; nil reads as offered.
+    var guide: FirstDictationGuide? = nil
     var isLive = false
     var stayInGuide = false
-    enum Section: Hashable { case liveStrip, guide, recentWork, moments }
-    var isFirstRun: Bool { transcripts == 0 && snaps == 0 && sessions == 0 && handoffJobs == 0 && photos == 0 }
-    var showsGuide: Bool { isFirstRun || stayInGuide }
-    /// The live strip comes first in both states, so what is running can be ended from Home.
-    var sections: [Section] { (isLive ? [.liveStrip] : []) + (showsGuide ? [.guide] : [.recentWork]) + [.moments] }
+    enum Section: Hashable { case liveStrip, guide, firstResult, recentWork, moments }
+    /// Any transcript in History ends first use: a dictation, or a meeting or call
+    /// transcribed from Dictate. A recorded completion outlasts removing them.
+    var hasDictated: Bool { transcripts > 0 || guide == .completed }
+    var showsGuide: Bool { (!hasDictated && guide != .skipped) || stayInGuide }
+    /// Skip for now, while the guide shows and nothing has been dictated.
+    var offersSkip: Bool { showsGuide && !hasDictated }
+    /// Show me a first dictation, while the guide is skipped and nothing has been dictated.
+    var offersGuide: Bool { !showsGuide && !hasDictated }
+    /// What to save once History holds a dictation.
+    var guideToSave: FirstDictationGuide? { transcripts > 0 && guide != .completed ? .completed : nil }
+    private var hasRecentWork: Bool { transcripts + snaps + sessions + handoffJobs + photos > 0 }
+    /// The live strip comes first, so what is running can be ended from Home.
+    /// Recent work stays below the guide, except right after the first dictation,
+    /// when the guide's own result would only repeat it.
+    var sections: [Section] {
+        let result = showsGuide && hasDictated
+        return (isLive ? [.liveStrip] : []) + (showsGuide ? [.guide] : []) + (result ? [.firstResult] : [])
+            + (hasRecentWork && !result ? [.recentWork] : []) + [.moments]
+    }
 }
 
 /// A small thumbnail for Home's Recent work row; the Snap page keeps its own.

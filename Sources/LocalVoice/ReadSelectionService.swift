@@ -1,20 +1,64 @@
 import AppKit
 
+/// Text arriving in Read from elsewhere. Every import goes through the same
+/// decision in AppModel; the origin only names the text in what Read says.
 struct ReadingSelectionImport: Identifiable, Equatable {
     static let maximumCharacters = 1_000_000
 
+    enum Origin: Equatable {
+        /// The macOS Service's selected text.
+        case selection
+        /// Read aloud on a History transcript.
+        case transcript
+        /// Read aloud on a Saved resources item.
+        case savedText
+
+        var name: String {
+            switch self {
+            case .selection: return "Selected text"
+            case .transcript: return "The transcript"
+            case .savedText: return "The saved text"
+            }
+        }
+        /// What Keep current leaves behind, said on the review and after it.
+        var keepNote: String {
+            switch self {
+            case .selection: return "Keep current discards only this imported selection."
+            case .transcript: return "Keep current leaves it in History."
+            case .savedText: return "Keep current leaves it in Saved resources."
+            }
+        }
+        var keptNote: String {
+            switch self {
+            case .selection: return "The imported selection was not saved or sent."
+            case .transcript: return "The transcript is still in History."
+            case .savedText: return "The saved text is still in Saved resources."
+            }
+        }
+        fileprivate var emptyMessage: String {
+            switch self {
+            case .selection: return "Select some text, then choose Read Selection in Workbench again."
+            case .transcript: return "This transcript has no words to read."
+            case .savedText: return "This saved item has no text to read."
+            }
+        }
+    }
+
     let id: UUID
     let text: String
+    let origin: Origin
 
-    init(id: UUID = UUID(), text: String) throws {
+    init(id: UUID = UUID(), text: String, origin: Origin = .selection) throws {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw VoiceError.message("Select some text, then choose Read Selection in Workbench again.")
+            throw VoiceError.message(origin.emptyMessage)
         }
         guard text.count <= Self.maximumCharacters else {
-            throw VoiceError.message("The selection is too large to review safely. Select a smaller passage and try again.")
+            throw VoiceError.message(origin == .selection ? "The selection is too large to review safely. Select a smaller passage and try again."
+                                                          : "This text is too large to review safely.")
         }
         self.id = id
         self.text = text
+        self.origin = origin
     }
 
     static func read(from pasteboard: NSPasteboard) throws -> Self {

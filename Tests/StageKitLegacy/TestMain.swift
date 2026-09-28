@@ -24,22 +24,86 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-handles-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let suite = PersonaHandleTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("persona handles sit on the visible artwork", suite.testHandlesSitOnTheVisibleArtworkNotItsTransparentRoom),
+                ("persona resize keeps shape and limits", suite.testResizeFollowsThePointerKeepsTheShapeAndStaysWithinLimits),
+                ("persona locked artwork moves and resizes from handles", suite.testLockedArtworkMovesAndResizesFromItsHandlesAndStaysLocked),
+                ("persona handles appear after a brief pause", suite.testHandlesAppearAfterABriefPauseNearTheArtwork),
+                ("persona unlocked artwork takes clicks only on its body", suite.testUnlockedArtworkTakesClicksOnlyOnItsBody),
+                ("persona handles change only their own copy", suite.testHandlesChangeOnlyTheirOwnCopy),
+                ("persona native window focus lock drag and visibility", PersonaTests().testNativeOverlayWindowAndDragLifecycle),
+                ("optional offscreen persona handle renders", suite.testOffscreenHandleRenders)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--persona-one-card-only"] {
+            // Disposable libraries only; no shortcut, preference or microphone.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let oneCard = PersonaOneCardTests(), sessions = PersonaSessionTests(), personas = PersonaTests(), workspace = PersonaWorkspaceTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("one card despite many, missing or large saved items", oneCard.testOneCardShowsDespiteManyMissingOrLargeUnrelatedItems),
+                ("one card unavailable request keeps the shown card", oneCard.testUnavailableRequestedCardKeepsTheShownCardAndCyclingContinues),
+                ("one card bad replacement keeps the shown card", oneCard.testReplacingTheShownCardWithABadOneKeepsIt),
+                ("one card oversized request stays within the budget", oneCard.testOversizedRequestedCardKeepsTheShownCardWithinTheBudget),
+                ("one card decoding drops neighbours before refusing", oneCard.testDecodingDropsNeighboursOnceMoreBeforeRefusing),
+                ("one card frozen sources and bounded decoding", oneCard.testFrozenSourcesKeepAppearanceAndDecodingStaysBounded),
+                ("one card failed Next in live menu and panel notice", oneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+                ("prepared sessions keep their limits and preflight", oneCard.testPreparedSessionsKeepTheirLimitsAndPreflight),
+                ("persona sessions: bounded replacement preflight", sessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
+                ("persona: visible single-card launch failure", sessions.testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput),
+                ("persona sessions: frozen artwork and failed start", sessions.testFrozenArtworkSurvivesLibraryEditsAndFailedReplacementStart),
+                ("shared persona menu frozen target and session generation", sessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions),
+                ("persona sessions: read-only and busy state", sessions.testReadOnlySessionsAndInteractionGuardsNeverWriteOrTrapOverlays),
+                ("personas: LiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames", personas.testLiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames),
+                ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona read-only HUD browsing and placement", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement),
+                ("persona workspace single card immediate show and stop", workspace.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
+                ("persona workspace failure preserves active session", workspace.testWorkspaceFailureIsImmediateAndDoesNotReplaceSession)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-voice-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
-            let suite = PersonaVoiceTests()
+            let suite = PersonaVoiceTests(), latency = PersonaVoiceLatencyTests()
             let tests: [(String, () throws -> Void)] = [
                 ("persona voice ring listens only while on and showing", suite.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
                 ("persona voice ring asks while preparing and stops when unavailable", suite.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
                 ("persona voice ring single floating persona", suite.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
                 ("persona voice ring placement keeps artwork and ring on screen", suite.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
-                ("persona voice analyzer quiet and loud microphones", suite.testAnalyzerFillsTheRingForQuietAndLoudMicrophonesButNotForTheRoom),
+                ("persona voice analyzer quiet and loud microphones", suite.testAnalyzerHearsQuietAndLoudMicrophonesAlikeButNotTheRoom),
                 ("persona voice analyzer room and startup silence", suite.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
-                ("persona voice analyzer bands follow pitch", suite.testAnalyzerBandsFollowPitch),
+                ("persona voice analyzer recognises a voice by its pitch", suite.testAnalyzerRecognisesAVoiceByItsPitch),
                 ("persona voice ring outline fitting", suite.testOutlineFollowsARoundBadgeACardAndAPhoto),
                 ("persona voice ring colour from artwork", suite.testRingColourComesFromTheArtwork),
-                ("persona voice ring geometry scale", suite.testRingGeometryScalesWithTheArtwork),
-                ("persona voice ring sleeps in silence", suite.testRingSleepsInSilenceAndWakesOnTheFirstSyllable),
+                ("persona voice outline geometry", suite.testOutlineGeometryHugsTheArtworkAndScalesWithIt),
+                ("persona voice outline sleeps in silence and lights at once", suite.testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable),
+                ("persona voice outline latency: speech of every kind", latency.testOutlineRespondsWithinTargetsToSpeechOfEveryKind),
+                ("persona voice outline latency: long speech never becomes the room", latency.testLongSpeechNeverBecomesTheRoom),
+                ("persona voice outline: steady noise, typing and hum stay quiet", latency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
+                ("persona voice outline: raised voice reads as loud", latency.testRaisedVoiceShowsLoudAndUsualVoiceShowsNormal),
+                ("persona voice outline state eases and settles", latency.testOutlineStateEasesAndSettlesWithoutFrames),
+                ("persona voice outline lit through a held vowel", latency.testHeldVowelKeepsTheOutlineLit),
+                ("persona voice outline: chimes, beeps and music settle", latency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
+                ("optional Mac voices through the voice outline", latency.testSpokenSentencesFromSay),
                 ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders)
             ]
             for (name, test) in tests {
@@ -82,6 +146,22 @@ struct TestRunner {
                 ("annotation menu native actions and live state", suite.testNativeActionsRefreshSelectionAndHistory),
                 ("annotation menu preserves ink and boards", suite.testBoardsAndControlsPreserveInkUntilExplicitClear),
                 ("annotation menu rechecks admission", suite.testStaleMenuCannotBypassChangedAdmission)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
+        if args == ["--draw-page-only"] {
+            // Views only: no start(), overlays, monitors or shortcut registration.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let drawPage = DrawPageTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("embedded Draw page shows no inactive palette settings", drawPage.testEmbeddedDrawPageShowsNoInactivePaletteSettings)
             ]
             for (name, test) in tests {
                 let before = assertionFailures
@@ -168,6 +248,26 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--timer-transport-only"] {
+            // Coordinator only: no global shortcut, chime or saved preference outside a temporary folder.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let timerTransport = TimerTransportTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
+                ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
+                ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
+                ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--screenshot-native-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -223,16 +323,20 @@ struct TestRunner {
         let sceneMedia = SceneMediaTests()
         let personas = PersonaTests()
         let personaSessions = PersonaSessionTests()
+        let personaOneCard = PersonaOneCardTests()
         let personaControls = PersonaControlsTests()
+        let personaHandles = PersonaHandleTests()
         let personaControlTests: [(String, () throws -> Void)] = [
             ("persona controls: single size slider", personaControls.testSingleSizeControlIsVisibleAndRoutesAbsoluteWidth),
             ("persona controls: selected copy and empty recovery", personaControls.testSessionControlsTargetSelectedCopyAndRecoverFromEmptySet)
         ]
         let personaWorkspace = PersonaWorkspaceTests()
         let personaVoice = PersonaVoiceTests()
+        let personaVoiceLatency = PersonaVoiceLatencyTests()
         let personaStarters = PersonaStarterTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
+        let timerTransport = TimerTransportTests()
         let sceneSync = SceneSyncAdapterTests()
         let sceneList = SceneListTests()
         let sceneListTests: [(String, () throws -> Void)] = [
@@ -257,7 +361,9 @@ struct TestRunner {
             ("backdrop failed save rollback and changed-image rejection", backdrop.testCommitFailureCleansOnlyNewCopyAndChangedSavedImageRejects),
             ("backdrop preview and saved composition pixels", backdrop.testPreviewAndSavedRenderingAtSameAspectKeepForeground)
         ]
+        let drawPage = DrawPageTests()
         var tests: [(String, () throws -> Void)] = [
+            ("embedded Draw page shows no inactive palette settings", drawPage.testEmbeddedDrawPageShowsNoInactivePaletteSettings),
             ("board export pixels orientation text and Retina", boardExport.testBoardPixelsOrientationTextAndRetinaScale),
             ("board snapshot file bounds and invalid input", boardExport.testSnapshotPersistenceBoundsAndInvalidInput),
             ("board private clipboard image and failure preservation", boardExport.testPrivateClipboardPNGAndFailurePreservation),
@@ -279,6 +385,14 @@ struct TestRunner {
             ("persona sessions: invalid and future archive preservation", personaSessions.testInvalidLayoutsAndFutureArchivePreserveOriginalBytes),
             ("persona sessions: bounded replacement preflight", personaSessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
             ("persona: visible single-card launch failure", personaSessions.testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput),
+            ("one card despite many, missing or large saved items", personaOneCard.testOneCardShowsDespiteManyMissingOrLargeUnrelatedItems),
+            ("one card unavailable request keeps the shown card", personaOneCard.testUnavailableRequestedCardKeepsTheShownCardAndCyclingContinues),
+            ("one card bad replacement keeps the shown card", personaOneCard.testReplacingTheShownCardWithABadOneKeepsIt),
+            ("one card oversized request stays within the budget", personaOneCard.testOversizedRequestedCardKeepsTheShownCardWithinTheBudget),
+            ("one card decoding drops neighbours before refusing", personaOneCard.testDecodingDropsNeighboursOnceMoreBeforeRefusing),
+            ("one card frozen sources and bounded decoding", personaOneCard.testFrozenSourcesKeepAppearanceAndDecodingStaysBounded),
+            ("one card failed Next in live menu and panel notice", personaOneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+            ("prepared sessions keep their limits and preflight", personaOneCard.testPreparedSessionsKeepTheirLimitsAndPreflight),
             ("floating: AllTargetsAreDistinctFiniteAndBounded", floating.testAllTargetsAreDistinctFiniteAndBounded),
             ("floating: GuideLayoutPreservesTargetsAndFlipsDisplayCoordinates", floating.testGuideLayoutPreservesTargetsAndFlipsDisplayCoordinates),
             ("floating: GuideStateClearsWhenDragOrDisplayEnds", floating.testGuideStateClearsWhenDragOrDisplayEnds),
@@ -298,6 +412,10 @@ struct TestRunner {
             ("timer free and named placement recovery", timerPlacement.testFreeAndNamedPositionsRecoverAcrossDisplayChanges),
             ("timer placement corrupt and concurrent preservation", timerPlacement.testStoragePreservesFutureCorruptAndConcurrentFiles),
             ("timer native close and reopen placement", timerPlacement.testNativeTimerReopensAtItsSavedAnchor),
+            ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
+            ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
+            ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
+            ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
@@ -318,6 +436,12 @@ struct TestRunner {
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
             ("persona scene attachment transparency and missing-file recovery", personas.testSceneAttachmentTransparencyAndMissingFile),
             ("persona native window focus lock drag and visibility", personas.testNativeOverlayWindowAndDragLifecycle),
+            ("persona handles sit on the visible artwork", personaHandles.testHandlesSitOnTheVisibleArtworkNotItsTransparentRoom),
+            ("persona resize keeps shape and limits", personaHandles.testResizeFollowsThePointerKeepsTheShapeAndStaysWithinLimits),
+            ("persona locked artwork moves and resizes from handles", personaHandles.testLockedArtworkMovesAndResizesFromItsHandlesAndStaysLocked),
+            ("persona handles appear after a brief pause", personaHandles.testHandlesAppearAfterABriefPauseNearTheArtwork),
+            ("persona unlocked artwork takes clicks only on its body", personaHandles.testUnlockedArtworkTakesClicksOnlyOnItsBody),
+            ("persona handles change only their own copy", personaHandles.testHandlesChangeOnlyTheirOwnCopy),
             ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
             ("persona read-only HUD browsing and placement", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement),
             ("desktop verification waits for macOS and times out safely", scenes.testDesktopVerificationWaitsForMacOSAndStopsAtTimeout),
@@ -406,13 +530,20 @@ struct TestRunner {
             ("persona voice ring asks while preparing and stops when unavailable", personaVoice.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
             ("persona voice ring single floating persona", personaVoice.testSingleFloatingPersonaIsPlacedWithRoomForItsRing),
             ("persona voice ring placement keeps artwork and ring on screen", personaVoice.testPlacementKeepsArtworkSizeAndTheRingOnScreen),
-            ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerFillsTheRingForQuietAndLoudMicrophonesButNotForTheRoom),
+            ("persona voice analyzer quiet and loud microphones", personaVoice.testAnalyzerHearsQuietAndLoudMicrophonesAlikeButNotTheRoom),
             ("persona voice analyzer room and startup silence", personaVoice.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
-            ("persona voice analyzer bands follow pitch", personaVoice.testAnalyzerBandsFollowPitch),
+            ("persona voice analyzer recognises a voice by its pitch", personaVoice.testAnalyzerRecognisesAVoiceByItsPitch),
             ("persona voice ring outline fitting", personaVoice.testOutlineFollowsARoundBadgeACardAndAPhoto),
             ("persona voice ring colour from artwork", personaVoice.testRingColourComesFromTheArtwork),
-            ("persona voice ring geometry scale", personaVoice.testRingGeometryScalesWithTheArtwork),
-            ("persona voice ring sleeps in silence", personaVoice.testRingSleepsInSilenceAndWakesOnTheFirstSyllable),
+            ("persona voice outline geometry", personaVoice.testOutlineGeometryHugsTheArtworkAndScalesWithIt),
+            ("persona voice outline sleeps in silence and lights at once", personaVoice.testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable),
+            ("persona voice outline latency: speech of every kind", personaVoiceLatency.testOutlineRespondsWithinTargetsToSpeechOfEveryKind),
+            ("persona voice outline latency: long speech never becomes the room", personaVoiceLatency.testLongSpeechNeverBecomesTheRoom),
+            ("persona voice outline: steady noise, typing and hum stay quiet", personaVoiceLatency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
+            ("persona voice outline: raised voice reads as loud", personaVoiceLatency.testRaisedVoiceShowsLoudAndUsualVoiceShowsNormal),
+            ("persona voice outline state eases and settles", personaVoiceLatency.testOutlineStateEasesAndSettlesWithoutFrames),
+            ("persona voice outline lit through a held vowel", personaVoiceLatency.testHeldVowelKeepsTheOutlineLit),
+            ("persona voice outline: chimes, beeps and music settle", personaVoiceLatency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
             ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))

@@ -24,29 +24,52 @@ struct PromptInsertionPlan {
     }
 }
 
+/// The picker has just closed when insertion starts, and the frozen field may take a
+/// moment to be in front again, longer when Workbench had come forward for the
+/// toolbar's keyboard focus. Typing waits for it, for about a second at most; the
+/// runner still checks the field before every write.
+enum PromptFieldReturn {
+    static let limit: TimeInterval = 1
+    static let interval: UInt64 = 20_000_000
+    /// Returns whether the field came back in time.
+    @MainActor static func wait(until returned: () -> Bool, limit: TimeInterval = limit, now: () -> Date = Date.init,
+                                pause: () async -> Void = { try? await Task.sleep(nanoseconds: interval) }) async -> Bool {
+        let deadline = now().addingTimeInterval(limit)
+        while !returned() {
+            guard now() < deadline, !Task.isCancelled else { return false }
+            await pause()
+        }
+        return true
+    }
+}
+
 @MainActor
 final class PromptInsertion: ObservableObject {
     @Published private(set) var running = false
-    @Published private(set) var status = ""
+    /// The latest delivery, named by its prompt and destination (#159).
+    @Published private(set) var lastAttempt: PromptAttempt?
     private var task: Task<Void, Never>?
     private var escapeMonitors: [Any] = []
     var mayInsert: () -> Bool = { true }
 
     func cancel() { task?.cancel() }
 
-    func insert(_ text: String, into target: TextDelivery.Target?) {
+    func insert(_ text: String, title: String, into target: TextDelivery.Target?) {
         guard !running else { return }
+        let destinationName = target?.app.localizedName ?? "Selected app"
         guard !text.isEmpty, text.count <= 50_000 else {
-            status = "Use a saved prompt between 1 and 50,000 characters. Nothing was inserted."
+            lastAttempt = PromptAttempt(prompt: title, destination: destinationName,
+                                        result: "Use a saved prompt between 1 and 50,000 characters. Nothing was inserted.")
             return
         }
         guard let target, let element = target.element, let value = target.value, let selection = target.selection,
               PromptInsertionPlan(value: value, selection: selection, text: text) != nil else {
-            status = "Choose a readable destination text field, then open Prompts again. Nothing was inserted."
+            lastAttempt = PromptAttempt(prompt: title, destination: destinationName,
+                                        result: "Choose a readable destination text field, then open Prompts again. Nothing was inserted.")
             return
         }
-        let destinationName = target.app.localizedName ?? "Selected app"
-        running = true; status = "Inserting Prompt into \(destinationName)…"
+        running = true
+        lastAttempt = PromptAttempt(prompt: title, destination: destinationName, result: "Inserting…", finished: false)
         if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
             if event.keyCode == 53 { self?.cancel() }
         }) { escapeMonitors.append(monitor) }
@@ -54,14 +77,16 @@ final class PromptInsertion: ObservableObject {
             guard event.keyCode == 53 else { return event }
             self?.cancel(); return nil
         }) { escapeMonitors.append(monitor) }
-        // The menu owner starts insertion only after NSMenu.popUp returns.
-        // Revalidate the frozen field and selection before any write.
+        // The picker starts insertion only after it has closed. Revalidate
+        // the frozen field and selection before any write.
         task = Task { [weak self] in
             guard let self else { return }
             defer {
                 escapeMonitors.forEach(NSEvent.removeMonitor); escapeMonitors.removeAll()
                 running = false; task = nil
             }
+            // Escape, Stop and shortcut editing end the wait as they end insertion.
+            _ = await PromptFieldReturn.wait(until: { !self.mayInsert() || TextDelivery.eligible(target) })
             let destination = PromptInsertionRunner.Snapshot(value: value, selection: selection)
             @MainActor func unchanged() -> Bool {
                 !Task.isCancelled && mayInsert() && TextDelivery.eligible(target)
@@ -86,12 +111,52 @@ final class PromptInsertion: ObservableObject {
                 },
                 waitForConfirmation: { try await Task.sleep(nanoseconds: 45_000_000) },
                 paste: { text, expected in
-                    let result = await TextDelivery.deliver(text, target: target, mode: .paste, restoreClipboard: true,
-                                                          validateTarget: unchanged, expectedValue: expected.value, expectedSelection: expected.selection)
-                    return result.wasPasted ? "Prompt pasted. This field does not support progressive insertion." : result.message
+                    Self.describe(await TextDelivery.deliver(text, target: target, mode: .paste, restoreClipboard: true,
+                                                             validateTarget: unchanged, expectedValue: expected.value,
+                                                             expectedSelection: expected.selection))
                 })
             let result = await PromptInsertionRunner.run(text: text, destination: destination, driver: driver)
-            status = "\(destinationName) · \(result)"
+            lastAttempt = PromptAttempt(prompt: title, destination: destinationName, result: result)
+        }
+    }
+
+    /// Copy prompt: the action when a prompt cannot be typed into a field.
+    /// One copy of the exact text, and the same receipt as a copied dictation.
+    /// It posts no paste and writes nothing through Accessibility.
+    @discardableResult
+    func copy(_ text: String, title: String, receipts: ClipboardReceiptModel, system: TextDelivery.System? = nil) -> Bool {
+        guard !running else { return false }
+        let pasteboard = (system ?? .live).pasteboard
+        guard let owned = TextDelivery.copy(text, to: pasteboard) else {
+            receipts.record(outcome: .init(message: "Could not copy the prompt.", clipboardChangeCount: nil, wasPasted: false,
+                                           destinationName: nil, failure: .copyFailed), wordCount: TextRules.wordCount(text), source: .prompt)
+            lastAttempt = PromptAttempt(prompt: title, destination: "Clipboard", result: "Could not copy the prompt. Nothing was changed.")
+            return false
+        }
+        receipts.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: owned, wasPasted: false,
+                                       destinationName: nil), wordCount: TextRules.wordCount(text), source: .prompt)
+        lastAttempt = PromptAttempt(prompt: title, destination: "Clipboard", result: TextDelivery.copiedMessage)
+        return true
+    }
+
+    /// A paste fallback's result in a prompt's words; dictation's say "transcript".
+    static func describe(_ outcome: TextDelivery.Outcome) -> String {
+        if outcome.wasPasted {
+            return outcome.failure == .clipboardRestoreFailed
+                ? "Prompt pasted once. This field does not support typing, so it was pasted, and the previous clipboard could not be restored. Nothing was submitted."
+                : "Prompt pasted once. This field does not support typing, so it was pasted. Nothing was submitted."
+        }
+        switch outcome.failure {
+        case .copyFailed: return "Could not copy the prompt for pasting. Nothing was inserted."
+        case .accessibilityUnavailable: return TextDelivery.copiedMessage
+        case .focusChanged, .fieldUnreadable, .pasteUnavailable: return "Copied. " + TextDelivery.copiedDetail(outcome.failure)
+        case .clipboardChanged: return "The clipboard changed before pasting, so nothing was pasted."
+        case .pasteUnconfirmed: return "Paste sent. Insertion could not be confirmed; check the field before trying again."
+        case .cancelled:
+            if outcome.pasteWasAttempted { return "Stopped after the paste was sent. Check the field; nothing was replayed." }
+            return outcome.clipboardChangeCount == nil ? "Stopped before pasting. Nothing was inserted."
+                : "Stopped before pasting. The prompt is copied; paste with ⌘V if you still want it."
+        default: return outcome.message
         }
     }
 
@@ -104,49 +169,5 @@ final class PromptInsertion: ObservableObject {
         guard AXValueGetType(ax) == .cfRange, AXValueGetValue(ax, .cfRange, &range),
               range.location >= 0, range.length >= 0 else { return nil }
         return NSRange(location: range.location, length: range.length)
-    }
-}
-
-@MainActor
-enum SavedPromptMenu {
-    static func make(library: DemoLibraryModel, delivery: PromptInsertion, target: TextDelivery.Target?,
-                     afterTracking: @escaping (@escaping () -> Void) -> Void, prepare: @escaping () -> Void = {}) -> NSMenu {
-        let menu = NSMenu(title: "Saved Prompts"); menu.autoenablesItems = false
-        // Freeze order, content and destination for this open menu. The library
-        // still owns records, favourites and both tags; nothing is copied to a
-        // second store and no shortcut collection is registered.
-        let prompts = DemoResource.matching(library.resources.filter { $0.kind == .prompt && !$0.content.isEmpty }, query: "")
-        func item(_ prompt: DemoResource) -> NSMenuItem {
-            ToolbarMenuAction(prompt.title, enabled: !delivery.running) {
-                afterTracking { prepare(); delivery.insert(prompt.content, into: target) }
-            }
-        }
-        if prompts.isEmpty { menu.addItem(ToolbarMenuAction("Save a prompt in Library first.", enabled: false) {}) }
-        else {
-            menu.addItem(ToolbarMenuAction("Insert into the selected field · never submits", enabled: false) {})
-            menu.addItem(ToolbarMenuAction("Types progressively when supported; otherwise pastes once", enabled: false) {})
-            let favourites = prompts.filter(\.favorite)
-            for prompt in (favourites.isEmpty ? Array(prompts.prefix(8)) : Array(favourites.prefix(8))) { menu.addItem(item(prompt)) }
-            menu.addItem(.separator())
-            for (title, key) in [("By Product", \DemoResource.product), ("By Persona", \DemoResource.persona)] {
-                let tags = Set(prompts.map { $0[keyPath: key] }.filter { !$0.isEmpty }).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-                if !tags.isEmpty {
-                    let tagged = NSMenu(); tagged.autoenablesItems = false
-                    for tag in tags {
-                        let group = NSMenuItem(title: tag, action: nil, keyEquivalent: "")
-                        let list = NSMenu(); list.autoenablesItems = false
-                        prompts.filter { $0[keyPath: key] == tag }.forEach { list.addItem(item($0)) }
-                        group.submenu = list; tagged.addItem(group)
-                    }
-                    let group = NSMenuItem(title: title, action: nil, keyEquivalent: ""); group.submenu = tagged; menu.addItem(group)
-                }
-            }
-            let all = NSMenuItem(title: "All Prompts", action: nil, keyEquivalent: "")
-            let list = NSMenu(); list.autoenablesItems = false; prompts.forEach { list.addItem(item($0)) }
-            all.submenu = list; menu.addItem(all)
-        }
-        if !delivery.status.isEmpty { menu.addItem(.separator()); menu.addItem(ToolbarMenuAction(delivery.status, enabled: false) {}) }
-        if delivery.running { menu.addItem(ToolbarMenuAction("Stop Inserting") { delivery.cancel() }) }
-        return menu
     }
 }

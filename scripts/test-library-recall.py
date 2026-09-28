@@ -37,9 +37,16 @@ struct StateStore {
 }
 struct FixtureShortcut { var label = "⌃⌥J" }
 struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { FixtureShortcut() } }
+/// Read aloud goes to Read's one import owner (#173); this fixture only records it.
+struct ReadingSelectionImport { enum Origin: Equatable { case selection, transcript, savedText } }
 @MainActor final class AppModel: ObservableObject {
     @Published var transcript = "A synthetic transcript for this disposable app."
     @Published var speechText = ""
+    private(set) var readAloud: [(text: String, origin: ReadingSelectionImport.Origin)] = []
+    var onImportReading: ((String) -> Void)?
+    func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
+        readAloud.append((text, origin)); onImportReading?(text)
+    }
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
@@ -204,6 +211,9 @@ import SwiftUI
             ])
         } catch { fatalError("Synthetic fixture preparation failed: \(error)") }
         let events = self.events
+        model.onImportReading = { text in
+            events.count += 1; events.latest = "\(events.count). READ ALOUD (simulated, Read's import review): \(text)"
+        }
         library = DemoLibraryModel(store: store, copyText: { text in
             events.count += 1
             events.latest = "\(events.count). \(events.failCopy ? "COPY FAILED" : "COPY"): \(text)"
