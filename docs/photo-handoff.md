@@ -8,7 +8,7 @@ Product and engineering contract for selected-photo handoff. A real existing iPh
 
 | Rank | Outcome | Current scope |
 | --- | --- | --- |
-| **1** | A chosen photo reaches the Mac later, without matching folders by hand. | Native Camera/Photos, optional name, local preservation, explicit Send, private account-bound cloud queue, Mac **Saved resources → From iPhone**. One real received photo is verified; repeat deferred delivery and recovery remain acceptance work. |
+| **1** | A chosen photo reaches the Mac later, without matching folders by hand. | Native Camera/Photos, optional name, local preservation, explicit Send, private account-bound cloud queue, Mac **Library → From iPhone**. One real received photo is verified; repeat deferred delivery and recovery remain acceptance work. |
 | **2** | Reuse that photo as a backdrop without rebuilding a composition. | **Use as backdrop…** chooses an existing saved scene and opens its ordinary replacement preview. Applying saves only its backdrop/crop; foreground layers and currently presented output stay intact. Implemented. |
 | **3** | Take a nearby photo directly into the Mac. | Apple's Continuity Camera integration is parked. It is a different, Mac-initiated job and does not solve capture while away. |
 
@@ -41,8 +41,8 @@ A Claude architecture critique received a generic design brief, not repository s
 
 1. On iPhone or iPad, open **Saved → Photo handoff** (opens **Photo for Mac**) using its toolbar action, or reopen a saved photo. Take a photo or select one with the native Photos picker. Camera denial, cancellation or unavailable hardware leaves Photos available. For the primary presentation-preparation job, **Tools → Scenes** owns camera/photo selection directly; it does not require a separate photo handoff first.
 2. Review the image and optional name. **Keep on this device** saves locally. **Send photo** saves locally first, then explicitly queues that photo for the connected private iCloud account. Enabling handoff alone does not send older local photos.
-3. On the Mac, enable handoff using the same Apple Account and open **Saved resources → From iPhone**. Launch, activation and **Refresh** check for arrivals when enabled. A downloaded copy can be used offline.
-4. Choose **Save a copy…**, or **Use as backdrop… → saved scene → Preview backdrop**. The replacement editor requires a deliberate apply action. With no saved scene, prepare one in **Present a device** first; receiving a photo does not create a duplicate scene.
+3. On the Mac, enable handoff using the same Apple Account and open **Library → From iPhone**. Launch, activation and **Refresh** check for arrivals when enabled. A downloaded copy can be used offline.
+4. Choose **Save a copy…**, or **Use as backdrop… → saved scene → Preview backdrop**. The replacement editor requires a deliberate apply action. With no saved scene, prepare one in **Present** first; receiving a photo does not create a duplicate scene.
 
 ```mermaid
 flowchart LR
@@ -99,7 +99,7 @@ The photo adapter continues to use bounded CloudKit operations and its own durab
 
 | Reader | Canonical entry and responsibility |
 | --- | --- |
-| **Human** | Saved → Photo handoff on mobile (opens Photo for Mac); Saved resources/From iPhone on Mac. Enable, choose, send, refresh and reuse are visible actions. Keep local and cloud removal distinct. Use native Share/Save a copy when cloud is unavailable. |
+| **Human** | Saved → Photo handoff on mobile (opens Photo for Mac); Library/From iPhone on Mac. Enable, choose, send, refresh and reuse are visible actions. Keep local and cloud removal distinct. Use native Share/Save a copy when cloud is unavailable. |
 | **AI agent** | Follow this contract and the user's chosen action. There is no photo-handoff CLI, App Intent, public API server or automatic agent upload entry. Do not edit the manifest to bypass consent, account binding or signing. Use explicit synthetic test mode for demonstrations; never substitute personal photos or reset a live library. |
 | **Developer** | [`PhotoHandoffKit`](../Sources/PhotoHandoffKit) owns model, store, validation and the `PhotoHandoffTransport` seam. [`PhotoHandoffView` on mobile](../Mobile/Workbench/PhotoHandoffView.swift) owns native capture/selection; [Mac UI](../Sources/LocalVoice/PhotoHandoffView.swift) owns recall/export. [`StageKitController`](../Sources/StageKit/StageKitController.swift) opens the existing [`DemoScenes`](../Sources/StageKit/DemoScenes.swift) replacement transaction. |
 

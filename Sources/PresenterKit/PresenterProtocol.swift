@@ -125,7 +125,7 @@ public enum PresenterError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidMessage: "The Chrome connection sent an unsupported message. Update Workbench and its extension."
-        case .unavailable: "Open Workbench and enable Chrome connection in Saved resources, then Retry."
+        case .unavailable: "Open Workbench and enable Chrome connection in Library, then Retry."
         case .unsafePath: "Workbench could not create its private Chrome connection. Restart Workbench or choose Retry."
         case .disconnected: "The Chrome connection closed. Open that profile and choose Retry."
         }

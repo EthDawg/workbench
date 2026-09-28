@@ -106,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         model.meetings.mayStart = { [weak self] in
             guard let self, !self.terminating else { return "Workbench is closing." }
-            guard self.model.ready else { return "Prepare your speech engine in Models first." }
+            guard self.model.ready else { return "Prepare your speech engine in Settings › Models first." }
             return self.model.phase == .idle && !self.model.rendering && !self.readback.blocksDictation && !self.shortcutsSuspended
                 ? nil : "Finish Dictate, reading or Snap & Talk before starting a meeting."
         }
@@ -149,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             for entry in self.voiceShortcutEntries() {
                 let saved = entry.shortcut
                 if saved.enabled && saved.keyCode == code && saved.modifiers == modifiers {
-                    return "Also assigned to \(entry.title). Both shortcuts are paused; change or turn off one in Keyboard shortcuts."
+                    return "Also assigned to \(entry.title). Both shortcuts are paused; change or turn off one in Settings › Keyboard."
                 }
             }
             return nil
@@ -396,44 +396,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.editingShortcut = nil; model.shortcutRecordingMessage = nil; registerShortcuts()
     }
     private func setupMenus() {
-        let main = NSMenu(); let application = NSMenuItem(); let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Copy build details", action: #selector(copyBuildDetails), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
-        appMenu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
-        let services = NSMenu(title: "Services")
-        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
-        servicesItem.submenu = services; appMenu.addItem(servicesItem); NSApp.servicesMenu = services
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Workbench", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Workbench", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        application.submenu = appMenu; main.addItem(application)
-        let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
-        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
-        edit.submenu = editMenu; main.addItem(edit)
-        let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
-        annotate.submenu = stage.makeAnnotationMenu(); main.addItem(annotate)
-        let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
-        menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
-        menu.addItem(withTitle: "Quick controls", action: #selector(toggleControls), keyEquivalent: "")
-        menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
-        menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
-        menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
-        menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
-        menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
-        menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
-        menu.addItem(withTitle: "History", action: #selector(showHistory), keyEquivalent: "")
-        menu.addItem(withTitle: "Persona", action: #selector(showPersonas), keyEquivalent: "")
-        menu.addItem(withTitle: "Transcribe meeting or call…", action: #selector(showMeeting), keyEquivalent: "")
-        let savePrompt = menu.addItem(withTitle: "Save clipboard as prompt…", action: #selector(saveClipboardPrompt), keyEquivalent: "s")
-        savePrompt.keyEquivalentModifierMask = [.command, .shift]
-        windows.submenu = menu; main.addItem(windows); NSApp.mainMenu = main; NSApp.windowsMenu = menu
-        let help = NSMenuItem(); help.title = "Help"
-        let helpMenu = NSMenu(title: "Help")
-        helpMenu.addItem(withTitle: "Workbench Guide", action: #selector(showGuide), keyEquivalent: "")
-        help.submenu = helpMenu; main.addItem(help); NSApp.helpMenu = helpMenu
+        let menus = makeMainMenu()
+        NSApp.mainMenu = menus.main; NSApp.servicesMenu = menus.services; NSApp.windowsMenu = menus.window; NSApp.helpMenu = menus.help
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = NSStatusItem.AutosaveName("Workbench.MenuBar")
         // AppKit restores autosaved visibility, including a previously removed
@@ -441,6 +405,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.isVisible = true
         statusItem.button?.target = self; statusItem.button?.action = #selector(statusClicked(_:))
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp]); updateRecordingUI()
+    }
+    /// The menu bar, built without installing it, so the surface gallery lists the same items.
+    /// Window keeps window and surface controls, then the few pages worth a menu door; every
+    /// page item takes its name and route from the page record the sidebar uses (#134).
+    func makeMainMenu() -> (main: NSMenu, services: NSMenu, window: NSMenu, help: NSMenu) {
+        let main = NSMenu(); let application = NSMenuItem(); let appMenu = NSMenu(title: "Workbench")
+        appMenu.addItem(withTitle: "About Workbench", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Copy build details", action: #selector(copyBuildDetails), keyEquivalent: "")
+        appMenu.addItem(pageItem("settings", more: true, key: ","))
+        appMenu.addItem(pageItem("shortcuts", more: true))
+        let services = NSMenu(title: "Services")
+        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        servicesItem.submenu = services; appMenu.addItem(servicesItem)
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Workbench", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Workbench", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        application.submenu = appMenu; main.addItem(application)
+        let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
+        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
+        edit.submenu = editMenu; main.addItem(edit)
+        let draw = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
+        draw.submenu = stage.makeAnnotationMenu(); main.addItem(draw)
+        let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
+        menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
+        menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
+        menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
+        menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(pageItem("readback")); menu.addItem(pageItem("personas")); menu.addItem(pageItem("history"))
+        menu.addItem(pageItem("library", key: "l")); menu.addItem(pageItem("meeting", more: true))
+        windows.submenu = menu; main.addItem(windows)
+        let help = NSMenuItem(); help.title = "Help"
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(withTitle: "Workbench Guide", action: #selector(showGuide), keyEquivalent: "")
+        help.submenu = helpMenu; main.addItem(help)
+        return (main, services, menu, helpMenu)
+    }
+    /// A menu item that opens a page: `WorkbenchHome.name(of:)` names it, so it can't differ from
+    /// the sidebar, and `more` adds the native … for a page that asks for more before anything
+    /// happens. scripts/check-surfaces.py reads these calls.
+    private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+        item.representedObject = route
+        return item
+    }
+    /// Opens the page a menu item names. History starts on All and Library focuses its search,
+    /// as their other doors do.
+    @objc func openPage(_ sender: NSMenuItem) {
+        guard let route = sender.representedObject as? String else { return }
+        switch route {
+        case "history": keyboard?.stopInteraction(); model.openHistory(); showWindow()
+        case "library": keyboard?.stopInteraction(); model.showLibrary()
+        default: navigate(route)
+        }
     }
     @objc func statusClicked(_ sender: Any?) {
         // Left click, right click and the shortcut open the same panel.
@@ -571,19 +592,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func showUpdates() { showSettings(); WorkbenchUpdates.shared.checkForUpdates() }
     @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
-    @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
-    @objc func showHistory() { model.openHistory(); showWindow() }
-    @objc func showReadback() { model.page = "readback"; showWindow() }
-    @objc func showPersonas() { model.page = "personas"; showWindow() }
-    @objc func showMeeting() { model.page = "meeting"; showWindow() }
-    @objc func showLibrary() { model.showLibrary() }
     @objc func showPresenter() {
         guard model.phase == .idle, !shortcutsSuspended else { return }
         stage.escape(); closeControls(); presenterPanel.show()
-    }
-    @objc func saveClipboardPrompt() {
-        guard let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { model.showLibrary(); model.library.notice = "Copy some text first."; return }
-        model.savePrompt(text)
     }
     @objc func showWindow() { closeControls(); if window.isMiniaturized { window.deminiaturize(nil) }; window.makeKeyAndOrderFront(nil); statusItem?.isVisible = true; NSApp.activate(ignoringOtherApps: true) }
     @objc func showAbout() { NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Workbench.displayName, .applicationVersion: WorkbenchUpdates.shared.build.label, .credits: NSAttributedString(string: "\(WorkbenchUpdates.shared.build.details)\n\nEveryday tools for speaking, explaining and presenting.\nSpeech powered by Parakeet, FluidAudio, macOS voices and your chosen providers.")]) }
@@ -628,7 +639,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
     /// The voice catalogue's titles, one per id in `VoicePreferences.shortcutIDs`.
-    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Saved resources"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
+    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Library"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
     func voiceShortcutEntries() -> [ShortcutEntry] {
         Self.voiceShortcutCatalogue.map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
@@ -683,6 +694,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
             try PanelDestinationChecks.run()
+            try await MainActor.run { try WorkbenchPageChecks.run() }
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }

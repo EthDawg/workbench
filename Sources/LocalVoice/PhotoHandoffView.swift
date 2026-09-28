@@ -239,7 +239,7 @@ struct PhotoHandoffArrivalCue: View {
                     Image(systemName: "photo.on.rectangle").font(.title2).foregroundStyle(Workbench.accent)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("From iPhone").font(.headline)
-                        Text("\(handoff.photos.count) \(handoff.photos.count == 1 ? "photo" : "photos") in Saved resources")
+                        Text("\(handoff.photos.count) \(handoff.photos.count == 1 ? "photo" : "photos") in Library")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()

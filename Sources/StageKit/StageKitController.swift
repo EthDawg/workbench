@@ -120,7 +120,9 @@ public final class StageKitController: ObservableObject {
         let library = coordinator.demoScenes.personas
         if library.sessionState.phase == .paused { return "Hidden" }
         if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
-        return library.overlayVisible ? "Shown" : ""
+        if library.overlayVisible { return "Shown" }
+        // A hidden card is kept for Show again, like a paused set.
+        return library.hasHiddenCard ? "Hidden" : ""
     }
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }
@@ -134,18 +136,40 @@ public final class StageKitController: ObservableObject {
         return menu
     }
     public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
+    /// One live persona copy, named exactly: the one floating card, or one copy of
+    /// a prepared set. Capture it when a control is drawn, so a later choice
+    /// changes that copy and never another (#169, #134).
+    public struct PersonaCopy: Equatable { fileprivate let copy: PersonaLiveCopy }
+    /// Circle, Card or Original: Persona's one appearance choice.
+    public enum PersonaShape: String, CaseIterable, Sendable {
+        case circle, card, original
+        public var title: String { PersonaAppearance.Shape(rawValue: rawValue)?.title ?? rawValue }
+    }
+    /// The live copy Persona's Options act on now: the selected copy of a prepared
+    /// set, or else the one floating card. nil when no persona is live.
+    public var selectedPersonaCopy: PersonaCopy? { coordinator.demoScenes.personas.selectedLiveCopy.map { PersonaCopy(copy: $0) } }
+    /// The look that copy shows now; nil once it is no longer live.
+    public func personaShape(of copy: PersonaCopy) -> PersonaShape? {
+        coordinator.demoScenes.personas.liveShape(of: copy.copy).flatMap { PersonaShape(rawValue: $0.rawValue) }
+    }
+    /// Changes exactly that live copy's look, as its Appearance menu does. The
+    /// saved persona, other copies and the layout's saved state are unchanged.
+    public func setPersonaShape(_ shape: PersonaShape, for copy: PersonaCopy) {
+        guard let look = PersonaAppearance.Shape(rawValue: shape.rawValue) else { return }
+        coordinator.demoScenes.personas.setLiveShape(look, for: copy.copy)
+    }
     /// The panel row starts and stops the timer; the overlay keeps pause and reset.
     public func startTimer() { coordinator.startTimer() }
     public func stopTimer() { coordinator.resetTimer(); coordinator.hideTimer() }
     /// The panel's persona options: the set, the persona, add, hide or show,
-    /// the layout and End. Selection-scoped adjustments (size, lock, position,
+    /// the layout and End. Selection-scoped adjustments (size, lock, position, appearance,
     /// replace, order, remove) stay in the HUD and toolbar menus.
     public func makePersonaPanelMenu() -> NSMenu {
         let library = coordinator.demoScenes.personas
         let menu = library.makeControlsMenu()
         // The panel already shows these in its own feedback line.
         let feedback = library.sessionState.feedback ?? library.cardFeedback
-        let selectionScoped = ["Lock Artwork · Clicks Pass Through", "Position Artwork", "Replace Selected", "Hide Selected",
+        let selectionScoped = ["Lock Artwork · Clicks Pass Through", "Position Artwork", "Appearance", "Replace Selected", "Hide Selected",
                                "Show Selected", "Bring Forward", "Send Backward", "Remove Selected"]
         for item in menu.items {
             let dropped = item.view != nil || (feedback != nil && item.title == feedback)
@@ -263,8 +287,6 @@ public final class StageKitController: ObservableObject {
     public func focusOverlayControls() { coordinator.demoScenes.personas.focusOverlayControls() }
     public func stepOverlaySet(_ offset: Int) { coordinator.demoScenes.personas.performOverlayAction(.stepGroup(offset)) }
     public func toggleOverlayVisibility() { coordinator.demoScenes.personas.performOverlayAction(.pauseResume) }
-    public func endOverlays() { coordinator.demoScenes.personas.hideOverlay() }
-    public func endPresentation() { coordinator.demoScenes.endPresentation(); coordinator.demoScenes.personas.hideOverlay(); coordinator.hideTimer(); coordinator.escape() }
     public func escape() { coordinator.escape() }
     public func performShortcut(id: String) {
         guard let action = Action(rawValue: id) else { return }
@@ -338,7 +360,7 @@ private struct PhotoBackdropChooser: View {
                             description: Text("The scene library could not be read. Its original files are preserved. You can still save a separate copy of this photo."))
                     } else if model.scenes.isEmpty {
                         ContentUnavailableView("Prepare a scene first", systemImage: "rectangle.on.rectangle",
-                            description: Text("Create a scene in Present a device, then return to this photo. Choosing a backdrop never creates a duplicate scene."))
+                            description: Text("Create a scene in Present, then return to this photo. Choosing a backdrop never creates a duplicate scene."))
                     } else {
                         List(selection: $sceneID) {
                             ForEach(model.scenes) { scene in

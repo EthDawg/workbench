@@ -45,7 +45,7 @@ final class AnnotationMenuTests: XCTestCase {
         // This fixture never starts, so even enabled synthetic shortcuts remain
         // display data and cannot compete with a running app's registrations.
         try withFixture(start: false) { app, menu in
-            XCTAssertEqual(menu.title, "Annotate")
+            XCTAssertEqual(menu.title, "Draw", "The menu bar shows this title for the Draw menu")
             XCTAssertFalse(menu.autoenablesItems)
             for tool in DrawingTool.allCases {
                 XCTAssertNotNil(menu.items.first { $0.identifier?.rawValue == "annotation.\(tool.rawValue)" })
@@ -56,7 +56,7 @@ final class AnnotationMenuTests: XCTestCase {
             // Stop drawing is the toolbar's and panel's label while drawing, so
             // the Draw menu holds only drawing choices (#143, #134 decision 3).
             XCTAssertTrue(item("finish", in: menu) == nil, "No Finish Drawing in the Draw menu")
-            XCTAssertTrue(item("shortcuts", in: menu) == nil, "Keys live on the Keyboard page, not behind a Draw menu door")
+            XCTAssertTrue(item("shortcuts", in: menu) == nil, "Keys live in Settings › Keyboard, not behind a Draw menu door")
 
             app.settings.value.shortcuts[Action.pen.rawValue] = Shortcut(keyCode: UInt32(kVK_F18), modifiers: UInt32(controlKey | optionKey | shiftKey))
             reopen(menu)
@@ -68,7 +68,7 @@ final class AnnotationMenuTests: XCTestCase {
                 charactersIgnoringModifiers: String(UnicodeScalar(NSF18FunctionKey)!), isARepeat: false, keyCode: UInt16(kVK_F18))!
             XCTAssertFalse(menu.performKeyEquivalent(with: event), "The existing held-key owner alone dispatches shortcuts")
             let mainMenu = NSMenu(title: "Main")
-            let annotationItem = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
+            let annotationItem = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
             annotationItem.submenu = menu
             mainMenu.addItem(annotationItem)
             XCTAssertFalse(mainMenu.performKeyEquivalent(with: event), "Embedding under the app menu must not add a second key route")

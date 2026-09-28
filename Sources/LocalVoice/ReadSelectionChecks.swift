@@ -51,7 +51,7 @@ enum ReadSelectionChecks {
         try check(!ReadingSelectionImport.needsReview(current: "Incoming", incoming: "Incoming"), "identical re-import needs no destructive choice")
         try check(ReadingSelectionImport.needsReview(current: "Current", incoming: "Incoming"), "different existing reading requires replace or keep")
 
-        // History and Saved resources use the same import, named for where the text came from.
+        // History and Library use the same import, named for where the text came from.
         func emptyMessage(_ origin: ReadingSelectionImport.Origin) -> String? {
             do { _ = try ReadingSelectionImport(text: " \n", origin: origin); return nil } catch { return error.localizedDescription }
         }

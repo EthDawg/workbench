@@ -10,7 +10,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
         case selection
         /// Read aloud on a History transcript.
         case transcript
-        /// Read aloud on a Saved resources item.
+        /// Read aloud on a Library item.
         case savedText
 
         var name: String {
@@ -25,14 +25,14 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             switch self {
             case .selection: return "Keep current discards only this imported selection."
             case .transcript: return "Keep current leaves it in History."
-            case .savedText: return "Keep current leaves it in Saved resources."
+            case .savedText: return "Keep current leaves it in Library."
             }
         }
         var keptNote: String {
             switch self {
             case .selection: return "The imported selection was not saved or sent."
             case .transcript: return "The transcript is still in History."
-            case .savedText: return "The saved text is still in Saved resources."
+            case .savedText: return "The saved text is still in Library."
             }
         }
         fileprivate var emptyMessage: String {
