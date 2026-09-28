@@ -8,12 +8,15 @@ enum PersonaLibraryMode { case sheet, workspace }
 struct PersonaLibraryLaunchState {
     enum Request {
         case oneCard
+        /// The hidden floating card, as it was.
+        case showAgain
         case prepared(groupIDs: [UUID], softReveal: Bool)
         case resume
         var isResume: Bool { if case .resume = self { return true }; return false }
         func perform(in library: PersonaLibrary) -> Result<Void, Error> {
             switch self {
             case .oneCard: return library.showOverlay()
+            case .showAgain: return library.showAgain()
             case .prepared(let groupIDs, let softReveal):
                 return Result {
                     guard let first = groupIDs.first else { throw PersonaSessionError.missingGroup }
@@ -46,9 +49,12 @@ struct PersonaLibraryView: View {
     @State private var creatingGroup = false
     @State private var renamingGroup = false
     @State private var editingGroup: PersonaGroup?
-    @State private var editingCard: SavedPersona?
+    /// The one editor open at a time: a saved persona's appearance, or a new
+    /// portrait's draft, which exists only there until Add persona. A second
+    /// draft never replaces it.
+    @State private var editors = PersonaEditorHolder()
     @State private var choosingStarter = false
-    @State private var starterToEdit: SavedPersona?
+    @State private var starterDraft: PersonaPortraitDraft?
     @State private var preparingPresentation = false
     @State private var launchState = PersonaLibraryLaunchState()
     @State private var unsavedPresentationLayout = false
@@ -84,8 +90,8 @@ struct PersonaLibraryView: View {
                     Menu {
                         Button("Choose a starter portrait…") { choosingStarter = true }
                         Divider()
-                        Button("Import portrait for an editable card…") {
-                            library.importImage(card: PersonaCardStyle()) { editingCard = $0 }
+                        Button("Import portrait…") {
+                            library.importPortrait(in: NSApp.keyWindow) { editors.open(.new($0)) }
                         }
                         Button("Import finished card…") { library.importImage() }
                         Button("Paste finished image") { library.pasteImage() }
@@ -99,7 +105,7 @@ struct PersonaLibraryView: View {
             if !preparingPresentation {
                 Text(onChoose == nil ? "Show a persona card over your apps, or arrange several cards together." : "Choose a persona card to place in this scene.")
                     .font(.callout).foregroundStyle(.secondary)
-                if onChoose == nil { overlayActions }
+                if onChoose == nil { overlayActions; shownPanel }
                 ViewThatFits(in: .horizontal) {
                     HStack { groupPicker; groupActions }
                     VStack(alignment: .leading, spacing: 8) { groupPicker; groupActions }
@@ -130,7 +136,7 @@ struct PersonaLibraryView: View {
                                     Button("Choose members…") { editingGroup = group }.disabled(library.isReadOnly)
                                 } else {
                                     Button("Add starter portrait…") { choosingStarter = true }.disabled(library.isReadOnly)
-                                    Button("Import image…") { library.importImage() }.disabled(library.isReadOnly)
+                                    Button("Import finished card…") { library.importImage() }.disabled(library.isReadOnly)
                                 }
                             }.padding()
                         }
@@ -139,47 +145,27 @@ struct PersonaLibraryView: View {
                         if let selected = library.selected {
                             thumbnail(selected, width: 265, height: 155)
                                 .frame(maxWidth: .infinity)
-                            Text(selected.name).font(.headline).lineLimit(2)
-                            Button(role: .destructive) { removingPersona = selected } label: {
-                                Label("Remove saved persona…", systemImage: "trash")
-                            }.disabled(library.isReadOnly)
-                                .help("Remove this library entry and its group memberships; retain artwork used by saved scenes")
-                            if selected.card != nil {
-                                Button("Edit visible label and colour…") { editingCard = selected }.disabled(library.isReadOnly)
-                            } else {
-                                Text("Finished artwork stays as imported. For editable text and colour, add a portrait without baked labels.")
-                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            // Selected is what you browse and prepare; Shown, above, is what is live.
+                            Text("Selected: " + selected.name).font(.headline).lineLimit(2)
+                                .accessibilityLabel("Selected persona: " + selected.name)
+                            // One quick choice; it is the look used the next time this persona is shown or placed.
+                            Picker("Appearance", selection: Binding(get: { selected.effectiveAppearance.shape },
+                                                                    set: { library.setShape($0, for: selected.id) })) {
+                                ForEach(PersonaAppearance.Shape.allCases) { Text($0.title).tag($0) }
+                            }.pickerStyle(.segmented).fixedSize().disabled(library.isReadOnly)
+                                .help("Circle, Card or Original, the next time this persona is shown or placed. A card already shown keeps its look until you choose Update shown card.")
+                            HStack {
+                                Button("Edit appearance…") { editors.open(.saved(selected)) }.disabled(library.isReadOnly)
+                                Button(role: .destructive) { removingPersona = selected } label: {
+                                    Label("Remove saved persona…", systemImage: "trash")
+                                }.disabled(library.isReadOnly)
+                                    .help("Remove this library entry and its group memberships; retain artwork used by saved scenes")
                             }
                             HStack {
                                 if let onChoose {
                                     Button("Use in scene") { onChoose(selected); dismiss() }
                                         .disabled(library.renderedImage(for: selected) == nil)
                                 }
-                            }
-                            if onChoose == nil && library.sessionState.phase == .idle {
-                                Toggle("Lock artwork · clicks pass through", isOn: Binding(
-                                    get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
-                                HStack(spacing: 8) {
-                                    Text("Size \(Int((library.overlayWidth * 100).rounded()))%")
-                                        .font(.caption.monospacedDigit()).frame(width: 58, alignment: .leading)
-                                    Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
-                                        .accessibilityLabel("Floating persona size")
-                                        .help("Width as a percentage of the display; changes the floating card immediately")
-                                    Menu("Position") {
-                                        Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
-                                        Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
-                                        Button("Top right") { library.setOverlayPosition(x: 0.98, y: 0.98) }
-                                        Divider()
-                                        Button("Left centre") { library.setOverlayPosition(x: 0.02, y: 0.5) }
-                                        Button("Right centre") { library.setOverlayPosition(x: 0.98, y: 0.5) }
-                                        Divider()
-                                        Button("Bottom left") { library.setOverlayPosition(x: 0.02, y: 0.02) }
-                                        Button("Bottom centre") { library.setOverlayPosition(x: 0.5, y: 0.02) }
-                                        Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
-                                    }.fixedSize()
-                                }
-                                Text("Drag Size toward the left for a smaller card. Hide removes it from the screen, not your saved personas." + (library.shortcutHint.map { " " + $0 } ?? ""))
-                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {
                                 HStack {
@@ -246,11 +232,11 @@ struct PersonaLibraryView: View {
                 }
                 Button("Keep editing", role: .cancel) { }
             }
-            .sheet(item: $editingCard) { PersonaCardEditor(library: library, persona: $0) }
+            .sheet(item: $editors.current) { PersonaCardEditor(library: library, session: $0) }
             .sheet(isPresented: $choosingStarter, onDismiss: {
-                if let persona = starterToEdit { starterToEdit = nil; editingCard = persona }
+                if let draft = starterDraft { starterDraft = nil; editors.open(.new(draft)) }
             }) {
-                PersonaStarterChooser(library: library) { starterToEdit = $0 }
+                PersonaStarterChooser(library: library) { starterDraft = $0 }
             }
             .sheet(item: $editingGroup) { PersonaGroupEditor(library: library, group: $0) }
             .alert("Rename persona", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -297,13 +283,19 @@ struct PersonaLibraryView: View {
     private var overlayActions: some View {
         HStack(spacing: 10) {
             if library.sessionState.phase == .idle {
-                Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
-                    if library.overlayVisible { library.hideOverlay() }
-                    else { requestLaunch(.oneCard) }
-                }.buttonStyle(.borderedProminent)
-                    .disabled(!library.overlayVisible && library.selected.flatMap { library.renderedImage(for: $0) } == nil)
-                Text(library.overlayVisible ? "Shown over your apps" : "Separate from Present")
-                    .font(.caption).foregroundStyle(.secondary)
+                if library.overlayVisible {
+                    Button("Hide floating persona") { library.hideOverlay() }.buttonStyle(.borderedProminent)
+                        .help("Hide keeps this card for Show again")
+                    Button("End overlay") { library.endOverlaySession() }
+                } else if library.hasHiddenCard {
+                    Button("Show again") { requestLaunch(.showAgain) }.buttonStyle(.borderedProminent)
+                        .help("Shows the hidden card as it was, whatever is selected")
+                    Button("End overlay") { library.endOverlaySession() }
+                } else {
+                    Button("Show selected") { requestLaunch(.oneCard) }.buttonStyle(.borderedProminent)
+                        .disabled(library.selected.flatMap { library.renderedImage(for: $0) } == nil)
+                    Text("Separate from Present").font(.caption).foregroundStyle(.secondary)
+                }
             } else {
                 if library.sessionState.phase == .paused {
                     Button("Resume overlays") { requestLaunch(.resume) }.buttonStyle(.borderedProminent)
@@ -325,6 +317,74 @@ struct PersonaLibraryView: View {
                 }
                 .help("A quiet outline around the shown persona brightens as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures loudness and records nothing. In a prepared set, the outline follows the selected overlay.")
             }
+        }
+    }
+    /// Shown: the live copy, beside its size, lock and position, with Replace
+    /// shown and Update shown card when they apply. Browsing Selected below never
+    /// changes it.
+    @ViewBuilder private var shownPanel: some View {
+        if let shown = library.shownIdentity {
+            VStack(alignment: .leading, spacing: 10) {
+                // Narrow windows put the actions under the name.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 12) { shownName(shown); Spacer(minLength: 8); shownActions(shown) }
+                    VStack(alignment: .leading, spacing: 8) { shownName(shown); HStack { shownActions(shown) } }
+                }
+                HStack(spacing: 8) {
+                    Text("Size \(Int((library.overlayWidth * 100).rounded()))%")
+                        .font(.caption.monospacedDigit()).frame(width: 58, alignment: .leading)
+                    Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
+                        .accessibilityLabel("Size of the shown card, " + shown.name)
+                        .help("Width as a percentage of the display; changes the shown card immediately")
+                    Menu("Position") {
+                        Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
+                        Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
+                        Button("Top right") { library.setOverlayPosition(x: 0.98, y: 0.98) }
+                        Divider()
+                        Button("Left centre") { library.setOverlayPosition(x: 0.02, y: 0.5) }
+                        Button("Right centre") { library.setOverlayPosition(x: 0.98, y: 0.5) }
+                        Divider()
+                        Button("Bottom left") { library.setOverlayPosition(x: 0.02, y: 0.02) }
+                        Button("Bottom centre") { library.setOverlayPosition(x: 0.5, y: 0.02) }
+                        Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
+                    }.fixedSize().accessibilityLabel("Position of the shown card, " + shown.name)
+                }
+                Toggle("Lock artwork · clicks pass through", isOn: Binding(
+                    get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
+                    .accessibilityLabel("Lock the shown card, " + shown.name + ", so clicks pass through")
+                Text("Size, position and lock change this card only. Hide keeps it for Show again; End releases it. Your saved personas stay as they are." + (library.shortcutHint.map { " " + $0 } ?? ""))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel((shown.hidden ? "Hidden card: " : "Shown card: ") + shown.name)
+        }
+    }
+    private func shownName(_ shown: PersonaShownIdentity) -> some View {
+        HStack(spacing: 12) {
+            Group {
+                if let image = shown.image {
+                    Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
+                } else { Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary) }
+            }.frame(width: 54, height: 54).opacity(shown.hidden ? 0.5 : 1).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text((shown.hidden ? "Hidden: " : "Shown: ") + shown.name).font(.headline).lineLimit(1)
+                    .accessibilityLabel((shown.hidden ? "Hidden persona: " : "Shown persona: ") + shown.name)
+                Text(shown.place ?? (shown.hidden ? "Kept for Show again" : "Floating over your apps"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+    @ViewBuilder private func shownActions(_ shown: PersonaShownIdentity) -> some View {
+        if let replacement = library.replacementForShown {
+            Button("Replace shown with \(replacement.name)") { library.replaceShownWithSelected() }
+                .lineLimit(1)
+                .help("Shows \(replacement.name) in this card's place, keeping its size, position and lock")
+        }
+        if library.shownCardHasNewerLook {
+            Button("Update shown card") { library.updateShownCard() }
+                .help("Shows \(shown.name) as it is saved now, in this card only")
         }
     }
     private func requestLaunch(_ request: PersonaLibraryLaunchState.Request) {
@@ -368,7 +428,8 @@ struct PersonaLibraryView: View {
 
 private struct PersonaStarterChooser: View {
     @ObservedObject var library: PersonaLibrary
-    let onChoose: (SavedPersona) -> Void
+    /// Receives the chosen starter as a draft; nothing is saved until Add persona.
+    let onChoose: (PersonaPortraitDraft) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedID: String?
     @State private var thumbnails: [String: NSImage] = [:]
@@ -382,7 +443,7 @@ private struct PersonaStarterChooser: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Choose a starter portrait").font(.title2.bold())
-            Text("Choose one portrait, then edit its role label and background colour.")
+            Text("Choose one portrait, then choose how it looks: Circle, Card or Original.")
                 .font(.callout).foregroundStyle(.secondary)
             if loading {
                 ProgressView("Opening portraits…").frame(maxWidth: .infinity, minHeight: 280)
@@ -429,7 +490,7 @@ private struct PersonaStarterChooser: View {
                 Button("Use portrait") {
                     guard let selected, !importing else { return }
                     importing = true
-                    do { let persona = try starters.add(selected, to: library); onChoose(persona); dismiss() }
+                    do { onChoose(try starters.draft(selected, for: library)); dismiss() }
                     catch { notice = error.localizedDescription; importing = false }
                 }.keyboardShortcut(.defaultAction).disabled(selected == nil || library.isReadOnly || importing)
             }
@@ -445,34 +506,228 @@ private struct PersonaStarterChooser: View {
     }
 }
 
-private struct PersonaCardEditor: View {
-    @ObservedObject var library: PersonaLibrary
-    let persona: SavedPersona
-    @Environment(\.dismiss) private var dismiss
-    @State private var style: PersonaCardStyle
-    init(library: PersonaLibrary, persona: SavedPersona) {
-        self.library = library; self.persona = persona; _style = State(initialValue: persona.card ?? PersonaCardStyle())
+/// What the persona editor changes before Save or Add: a saved persona's
+/// appearance, label and colour, or a new portrait's draft. Nothing is written
+/// until `commit`, so Cancel, and Escape, which presses Cancel, simply drop it.
+final class PersonaEditorSession: ObservableObject, Identifiable {
+    enum Subject { case saved(SavedPersona), new(PersonaPortraitDraft) }
+    let id = UUID()
+    let subject: Subject
+    @Published var style: PersonaCardStyle
+    /// Circle, Card or Original, with Circle's framing. Card's label and colour
+    /// stay in `style` whichever is chosen.
+    @Published var appearance: PersonaAppearance
+    /// Why the last Add could not save. The draft stays for another try.
+    @Published private(set) var failure: String?
+    /// False once the saved personas cannot be read: Add is not offered again
+    /// until Workbench is reopened, though Cancel still is.
+    @Published private(set) var canRetry = true
+    /// Saved, added or cancelled: the editor can close.
+    private(set) var isFinished = false
+
+    init(_ subject: Subject) {
+        self.subject = subject
+        switch subject {
+        case .saved(let persona): style = persona.card ?? PersonaCardStyle(); appearance = persona.effectiveAppearance
+        case .new(let draft): style = draft.card; appearance = draft.appearance
+        }
     }
-    private var draft: SavedPersona { var item = persona; item.card = style; return item }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Edit persona card").font(.title2.bold())
-            TextField("Visible label", text: $style.label).textFieldStyle(.roundedBorder)
-            ColorPicker("Background colour", selection: Binding(get: { Color(nsColor: style.background.nsColor) },
-                set: { style.background = InkColor(NSColor($0)) }), supportsOpacity: false)
-            if let image = library.renderedImage(for: draft) {
-                Image(nsImage: image).resizable().scaledToFit().frame(height: 265).frame(maxWidth: .infinity)
+    var isNew: Bool { if case .new = subject { return true }; return false }
+    /// The picture every look is drawn from, never changed by the editor.
+    func portrait(in library: PersonaLibrary) -> NSImage? {
+        switch subject {
+        case .saved(let persona): return library.image(named: persona.image)
+        case .new(let draft): return draft.portrait
+        }
+    }
+
+    /// Save, or Add persona. Returns whether the editor can close. An Add that
+    /// finds the persona already saved, as a second press would, is done.
+    @discardableResult func commit(to library: PersonaLibrary) -> Bool {
+        guard !isFinished else { return true }
+        switch subject {
+        case .saved(let persona):
+            guard library.updateAppearance(persona.id, appearance: appearance, card: style) else { return false }
+        case .new(var draft):
+            draft.card = style; draft.appearance = appearance
+            do { try library.add(draft) }
+            catch PersonaError.alreadyAdded {}
+            catch PersonaError.libraryUnavailable {
+                failure = "Couldn’t add this persona: the saved personas are missing, unreadable or from a newer Workbench."
+                    + " Reopen Workbench, then add the portrait again."
+                canRetry = false
+                return false
             }
-            Text("Leave the label empty to hide it. Scenes keep their existing copy until you use the card again.")
+            catch {
+                let reason = (error as? PersonaError) == .changedOnDisk
+                    ? "Couldn’t add this persona: the saved personas changed on disk again while it was being added."
+                    : "Couldn’t add this persona. " + error.localizedDescription
+                failure = reason + " Your picture and changes are kept here, so you can choose Add persona again."
+                return false
+            }
+        }
+        isFinished = true; failure = nil
+        return true
+    }
+
+    /// Cancel, or Escape: the edits and any new picture go, and nothing is written.
+    func cancel() { isFinished = true }
+}
+
+/// The one persona editor open at a time. A second draft, from another import
+/// or starter, never replaces an open one, so its edits are never lost.
+struct PersonaEditorHolder {
+    var current: PersonaEditorSession?
+    @discardableResult mutating func open(_ subject: PersonaEditorSession.Subject) -> Bool {
+        guard current == nil else { return false }
+        current = PersonaEditorSession(subject)
+        return true
+    }
+}
+
+/// Edits a saved persona's appearance, or finishes a new editable portrait.
+/// Circle, Card and Original are one choice; Circle's framing and Card's label
+/// and colour are kept whichever is chosen. A saved persona keeps Save and
+/// Cancel. A new portrait is a draft until Add persona, which saves its picture,
+/// appearance, selection and group membership together; Cancel or Escape drops
+/// it without a trace, and a failed Add keeps it here to try again.
+struct PersonaCardEditor: View {
+    @ObservedObject var library: PersonaLibrary
+    @ObservedObject var session: PersonaEditorSession
+    @Environment(\.dismiss) private var dismiss
+    private var framing: Binding<PersonaFraming> {
+        Binding(get: { session.appearance.currentFraming }, set: { session.appearance.framing = $0 })
+    }
+    var body: some View {
+        let portrait = session.portrait(in: library)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(session.isNew ? "New persona" : "Edit appearance").font(.title2.bold())
+            Picker("Appearance", selection: $session.appearance.shape) {
+                ForEach(PersonaAppearance.Shape.allCases) { Text($0.title).tag($0) }
+            }.pickerStyle(.segmented)
+            preview(portrait).frame(height: 265).frame(maxWidth: .infinity)
+            switch session.appearance.shape {
+            case .circle:
+                if let portrait {
+                    HStack(spacing: 8) {
+                        Text("Zoom")
+                        Slider(value: Binding(get: { session.appearance.currentFraming.zoom },
+                                              set: { session.appearance.framing = session.appearance.currentFraming.zoomed(to: $0, portrait: portrait.size) }),
+                               in: PersonaFraming.zoomRange)
+                            .accessibilityLabel("Circle zoom")
+                        Button("Reset framing") { session.appearance.framing = nil }.disabled(session.appearance.framing == nil)
+                    }
+                }
+                Text("Drag the picture, or focus it and use the arrow keys, to frame it. The label and colour stay with Card.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            case .card:
+                TextField("Visible label", text: $session.style.label).textFieldStyle(.roundedBorder)
+                ColorPicker("Background colour", selection: Binding(get: { Color(nsColor: session.style.background.nsColor) },
+                    set: { session.style.background = InkColor(NSColor($0)) }), supportsOpacity: false)
+                Text("Leave the label empty to hide it.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            case .original:
+                Text("Shows the picture exactly as imported, including its transparency and any text in it.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Text(session.isNew ? "Nothing is saved until you choose Add persona."
+                               : "A card already shown keeps its look until you choose Update shown card. Scenes keep their existing copy until you use the persona again.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
+            if let failure = session.failure {
+                Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            } else if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
             HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { session.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save card") { if library.updateCard(persona.id, style: style) { dismiss() } }
-                    .keyboardShortcut(.defaultAction).disabled(library.isReadOnly || (try? style.validated()) == nil)
+                Button(session.isNew ? "Add persona" : "Save") { if session.commit(to: library) { dismiss() } }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(library.isReadOnly || !session.canRetry || (try? session.style.validated()) == nil
+                              || (try? session.appearance.validated()) == nil)
             }
         }.padding(24).frame(width: 420).background(Workbench.background).workbenchTheme()
+            // However the sheet closes, an unfinished edit is dropped.
+            .onDisappear { session.cancel() }
+    }
+    @ViewBuilder private func preview(_ portrait: NSImage?) -> some View {
+        if let portrait {
+            switch session.appearance.shape {
+            case .circle:
+                PersonaFramingPreview(portrait: portrait, framing: framing)
+            case .card, .original:
+                if let image = try? session.appearance.image(portrait: portrait, card: session.style) {
+                    Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
+                        .accessibilityLabel(session.appearance.shape == .card ? "Preview of the card" : "Preview of the original picture")
+                }
+            }
+        } else {
+            Label("Image missing", systemImage: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Circle's framing: the picture under a round window, exactly as Circle draws it.
+/// Drag the picture, pinch or use Zoom, or focus it and use the arrow keys;
+/// VoiceOver can zoom it and move it with named actions.
+struct PersonaFramingPreview: View {
+    let portrait: NSImage
+    @Binding var framing: PersonaFraming
+    var diameter: CGFloat = 240
+    @State private var dragStart: PersonaFraming?
+    @State private var pinchStart: PersonaFraming?
+
+    /// One arrow-key step: the picture moves a twentieth of the circle that way.
+    static func nudged(_ framing: PersonaFraming, _ direction: MoveCommandDirection, diameter: CGFloat, portrait size: CGSize) -> PersonaFraming {
+        let step = diameter * 0.05
+        let move: CGSize
+        switch direction {
+        case .left: move = CGSize(width: -step, height: 0)
+        case .right: move = CGSize(width: step, height: 0)
+        case .up: move = CGSize(width: 0, height: -step)
+        case .down: move = CGSize(width: 0, height: step)
+        @unknown default: move = .zero
+        }
+        return framing.dragged(by: move, diameter: diameter, portrait: size)
+    }
+
+    var body: some View {
+        let size = portrait.size
+        let crop = framing.crop(in: size)
+        let scale = crop.width > 0 ? diameter / crop.width : 1
+        Image(nsImage: portrait).resizable().interpolation(.high)
+            .frame(width: size.width * scale, height: size.height * scale)
+            .offset(x: -crop.minX * scale, y: -(size.height - crop.maxY) * scale)
+            .frame(width: diameter, height: diameter, alignment: .topLeading)
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(Color.primary.opacity(0.2), lineWidth: 1))
+            .contentShape(Circle())
+            .gesture(DragGesture(minimumDistance: 1).onChanged { value in
+                let start = dragStart ?? framing
+                dragStart = start
+                framing = start.dragged(by: value.translation, diameter: diameter, portrait: size)
+            }.onEnded { _ in dragStart = nil })
+            .simultaneousGesture(MagnifyGesture().onChanged { value in
+                let start = pinchStart ?? framing
+                pinchStart = start
+                framing = start.zoomed(to: start.zoom * value.magnification, portrait: size)
+            }.onEnded { _ in pinchStart = nil })
+            .focusable()
+            .onMoveCommand { direction in framing = Self.nudged(framing, direction, diameter: diameter, portrait: size) }
+            .accessibilityElement()
+            .accessibilityLabel("Circle framing")
+            .accessibilityValue("Zoom \(String(format: "%.1f", framing.zoom)) times")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: framing = framing.zoomed(to: framing.zoom + 0.25, portrait: size)
+                case .decrement: framing = framing.zoomed(to: framing.zoom - 0.25, portrait: size)
+                @unknown default: break
+                }
+            }
+            // VoiceOver moves the picture with the same step as the arrow keys.
+            .accessibilityAction(named: "Move left") { framing = Self.nudged(framing, .left, diameter: diameter, portrait: size) }
+            .accessibilityAction(named: "Move right") { framing = Self.nudged(framing, .right, diameter: diameter, portrait: size) }
+            .accessibilityAction(named: "Move up") { framing = Self.nudged(framing, .up, diameter: diameter, portrait: size) }
+            .accessibilityAction(named: "Move down") { framing = Self.nudged(framing, .down, diameter: diameter, portrait: size) }
+            .help("Drag to frame the picture in the circle")
     }
 }
 

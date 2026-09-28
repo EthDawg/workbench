@@ -36,7 +36,7 @@ struct CleanupConfigurationStore {
     }
     func snapshot() -> CleanupConfiguration {
         do { return try load() }
-        catch { return .init(settingsIssue: "Refinement settings need attention. Save them again in Models.") }
+        catch { return .init(settingsIssue: "Refinement settings need attention. Save them again in Settings › Models.") }
     }
     func save(_ configuration: CleanupConfiguration) throws {
         defaults.set(try JSONEncoder().encode(configuration.validated()), forKey: Self.key)

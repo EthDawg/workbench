@@ -268,7 +268,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             case .overlayNext: demoScenes.personas.performOverlayAction(.stepGroup(1))
             case .overlayPrevious: demoScenes.personas.performOverlayAction(.stepGroup(-1))
             case .overlayVisibility: demoScenes.personas.performOverlayAction(.pauseResume)
-            case .overlayEnd: demoScenes.personas.hideOverlay()
+            // End releases the one floating card too; Hide is what keeps it for Show again.
+            case .overlayEnd: demoScenes.personas.endOverlaySession()
             default: break
             }
             return

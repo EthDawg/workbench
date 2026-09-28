@@ -23,7 +23,7 @@ enum ShortcutConflict {
         var failures: [String: String] = [:]
         for entry in entries where entry.shortcut.enabled {
             if let other = entries.first(where: { $0.id != entry.id && $0.shortcut.enabled && $0.shortcut.combination == entry.shortcut.combination }) {
-                failures[entry.id] = "Also assigned to \(other.title). Both shortcuts are paused; change or turn off one in Keyboard shortcuts."
+                failures[entry.id] = "Also assigned to \(other.title). Both shortcuts are paused; change or turn off one in Settings › Keyboard."
             }
         }
         return failures

@@ -14,8 +14,9 @@ embedded in them, and the Saved Prompts picker the toolbar opens; the
 floating toolbar's modes (its launcher's chooser), next action and hover
 labels, accessory and More menu, and the live dictation, narration and
 reading controls shown in the same window; the app menu bar and any status
-item menu built in AppDelegate; the window sidebar; every control on Home and on the
-Settings page, including views embedded in them; the global shortcut
+item menu built in AppDelegate; the window sidebar and the section switchers of
+pages with sections, both from the page record in WorkbenchHome; every control
+on Home and on the Settings page, including views embedded in them; the global shortcut
 catalogue; proactive offers, found as types named *Offer* or *Cue plus
 OFFER_TYPES; a capability page's own options (mode 'options' below), since a
 setting that reaches beyond one page counts wherever it appears; and a
@@ -51,6 +52,16 @@ removes stale ones; reviewed fields survive only while the source facts match.
 aliasOf declares an intentional alternative or repeated label and needs a note.
 Other exact labels shared by different owners fail as a collision; runtime
 expressions are not compared as text.
+
+Menu names: an app menu entry that opens a page must carry the name that page
+has in the page record (WorkbenchHome navItems and sections, as registered on
+the window sidebar and page sections, and subpages, read from the record), with
+at most a trailing …; anything else fails as menu name drift. A page item built
+with pageItem("route") is named by the record, and a hand-written item whose
+action is openPage fails outright. An item written with its own title records
+the page its #selector method opens when that method's own top-level statements
+route to one page, so such a door is compared too. A route chosen inside a
+condition or a helper, and a title built at runtime, are not seen.
 
 Limits: this is a small Swift lexer with targeted extractors, not a compiler
 or a reachability analysis, so it also inventories definitions behind
@@ -159,9 +170,16 @@ ENTRY_POINTS = [
 # a transcript on the Dictate page; importReading opens text on the Read page
 # through its import decision.
 ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading'}
-# Inline shortcut editors: the global shortcut catalogue records these shortcuts.
+# Calls in a menu action's own body that open a page (Inventory.menu_page): None takes
+# the route from the call's literal argument; otherwise the call always opens that page.
+MENU_ROUTES = {'navigate': None, 'onShowEditor': None, 'openHistory': 'history', 'showLibrary': 'library'}
+# A menu door may add the native ellipsis to its page's name, and nothing else.
+MENU_PUNCTUATION = re.compile(r'\s*(?:…|\.\.\.)$')
+# Shortcut editors, inline in the panel or the Keyboard section of Settings: the
+# global shortcut catalogue records these shortcuts.
 EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
-            'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}
+            'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap'],
+            'LocalVoice/KeyboardCoach.swift': ['KeyboardCoachView']}
 # Catalogue owners that must exist; their extractors are below.
 CATALOGUES = [
     ('LocalVoice/WorkbenchControlTool.swift', 'WorkbenchControlState.actionTitle'),
@@ -496,6 +514,41 @@ def choice_labels(swift, start, end, member):
     return result
 
 
+def selector_name(action):
+    """The method a #selector(...) names: the last identifier before any argument labels, so
+    openPage, self.openPage, AppDelegate.openPage(_:) and openPage(_:) all name openPage."""
+    words = [t.value for t in action or []]
+    if words[:3] != ['#', 'selector', '('] or words[-1:] != [')']:
+        return None
+    inner = words[3:-1]
+    if inner[-1:] == [')'] and '(' in inner:
+        inner = inner[:len(inner) - 1 - inner[::-1].index('(')]
+    names = [w for w in inner if re.fullmatch(IDENT, w)]
+    return names[-1] if names else None
+
+
+def record_items(swift, start, end, name, required=False):
+    """(index, parts) for each all-literal tuple in `let name = [(...), ...]` between start and
+    end: a list of the page record in WorkbenchHome."""
+    j = next((j for j in range(start, end - 2) if swift.v[j] == name and swift.v[j - 1] == 'let'), None)
+    if j is None:
+        if required:
+            raise ValueError(f'Missing surface owner: Sources/LocalVoice/WorkbenchHome.swift {name}. '
+                             'Update CATALOGUES in scripts/check-surfaces.py after a move.')
+        return []
+    while j < end and swift.v[j] != '=':
+        j += 1
+    if swift.v[j + 1] != '[':
+        return []
+    items = []
+    for item in swift.args(j + 1):
+        k = swift.tokens.index(item[0])
+        parts = swift.args(k) if swift.v[k] == '(' else []
+        if len(parts) > 1 and all(literal(part) is not None for part in parts):
+            items.append((k, parts))
+    return items
+
+
 class Tree:
     """Lazily lexed Mac module sources, with a raw-text index for lookups."""
     def __init__(self, root):
@@ -522,6 +575,22 @@ class Tree:
                     self._declared.setdefault((m[1], m[2]), []).append(p)
         paths = {p for k in ('struct', 'class', 'enum') if re.fullmatch(kind, k) for p in self._declared.get((k, name), [])}
         return sorted(paths, key=lambda p: (p.parent.name != near, str(p)))
+
+    def page_names(self):
+        """Route -> name from the page record in WorkbenchHome. A page's own name wins over a
+        section's, so "settings" is Settings rather than General; subpages come last."""
+        if not hasattr(self, '_page_names'):
+            names = {}
+            swift = self.file(CATALOGUES[5][0])
+            for start, end, kind, name, _ in (swift.scopes if swift else []):
+                if kind == 'struct' and name == CATALOGUES[5][1]:
+                    for list_name, title in (('subpages', 2), ('sections', 2), ('navItems', 1)):
+                        for _, parts in record_items(swift, start, end, list_name):
+                            if len(parts) > title:
+                                names[literal(parts[0])] = literal(parts[title])
+                    break
+            self._page_names = names
+        return self._page_names
 
     def views(self, native):
         """Names of SwiftUI views, or of AppKit views, declared in the modules."""
@@ -767,7 +836,7 @@ class Inventory:
                     or bool(calls & ROUTES) or bool(set(words) & injected)
                     or any(words[n:n + 2] == ['open', '('] and words[n - 1] != '.' for n in range(1, len(words) - 1)))
 
-        def record(i, api, tokens):
+        def record(i, api, tokens, **metadata):
             if mode == 'options' and not persistent(i, api):
                 return  # The page's own content is not an entry point.
             if mode == 'doors' and not door(i, api):
@@ -780,7 +849,7 @@ class Inventory:
             if loop:
                 self.items(swift, i, api, tokens, where, loop)
             else:
-                self.add(swift, i, api, tokens, where)
+                self.add(swift, i, api, tokens, where, **metadata)
 
         # A closure that labels a control: Button(action:) { ... }, Toggle(isOn:) { ... },
         # Link(destination:) { ... } or label: { ... }. Its first Text or Label is the
@@ -829,7 +898,16 @@ class Inventory:
                 tokens = args[0]
             if not tokens or (literal(tokens) == '' and api not in ('TextField', 'SecureField')):
                 continue
-            record(i, api, tokens)
+            # A menu item written with its own title records the page its action opens, so the
+            # menu name check can compare the two. openPage takes its route from the item, which
+            # only pageItem sets, so a hand-written item that uses it is refused outright.
+            page = None
+            if mode == 'controls' and swift.stem == 'main' and api in ('addItem', 'NSMenuItem'):
+                if selector_name(named_arg(args, 'action')) == 'openPage' and 'pageItem' not in swift.context(i).split('.'):
+                    raise ValueError(f'{swift.path}: the menu item {expression(tokens)} opens a page through openPage by hand. '
+                                     'Build it with pageItem("route") so the page record names it and gives its route.')
+                page = self.menu_page(swift, args)
+            record(i, api, tokens, **({'page': page} if page else {}))
 
         for i, _, args, end in swift.calls({'Text', 'setAccessibilityLabel'}):
             if not inside(i) or not args or i in consumed:
@@ -842,10 +920,54 @@ class Inventory:
             elif mode == 'panel' and literal(args[0]) is None and not in_closure(i):
                 record(i, 'status', args[0])  # Runtime Text in the panel is a status row.
 
+        if mode == 'controls' and swift.stem == 'main':
+            self.page_items(swift, inside, surface)
         if mode not in ('page', 'options', 'doors'):
             self.live_labels(swift, inside)
         if follow or mode not in ('page', 'options', 'doors'):
             self.follow(swift, inside, mode, surface, swiftui=follow)
+
+    def menu_page(self, swift, args):
+        """The page a menu item opens when its #selector names a method in the same file whose own
+        top-level statements route to one page: page = "x", navigate("x"), onShowEditor("x"),
+        openHistory() or showLibrary(). A route inside a guard, branch or closure, or behind
+        another method, is not one: that item is an action that may show a page on the way."""
+        method = selector_name(named_arg(args, 'action'))
+        bodies = [s for s in swift.scopes if s[2] == 'func' and method and s[3] == method]
+        if len(bodies) != 1:
+            return None
+        v, (start, end) = swift.v, bodies[0][:2]
+        k = start + 1
+        while k < end:
+            if v[k] == '{':
+                k = swift.pairs[k] + 1  # A nested block runs only sometimes.
+                continue
+            if v[k:k + 2] == ['page', '='] and literal([swift.tokens[k + 2]]):
+                return literal([swift.tokens[k + 2]])
+            if v[k] in MENU_ROUTES and v[k - 1] != 'func':
+                j = k + 1 + (v[k + 1] == '?')
+                if v[j] == '(':
+                    route = MENU_ROUTES[v[k]] or next((literal(arg) for arg in swift.args(j)[:1]), None)
+                    if route:
+                        return route
+            k += 1
+        return None
+
+    def page_items(self, swift, inside, surface):
+        """Menu items built from the page record, pageItem("route", more:, key:): the record
+        names each one, with the native … when `more` is true, and each opens its route."""
+        names = self.tree.page_names()
+        for i, _, args, _ in swift.calls({'pageItem'}):
+            if not inside(i) or not args:
+                continue
+            route = literal(args[0])
+            if route not in names:
+                if self.strict:
+                    raise ValueError(f'{swift.path}: pageItem({expression(args[0])}) names no route in the page record '
+                                     '(WorkbenchHome navItems, sections or subpages).')
+                continue
+            label = names[route] + ('…' if expression(named_arg(args, 'more') or []) == 'true' else '')
+            self.add(swift, i, 'page-item', [Token(json.dumps(label), 0, 0)], surface(swift, i, 'page-item'), identity=route, page=route)
 
     def live_labels(self, swift, inside):
         """Titles assigned in code rather than passed to a control."""
@@ -928,21 +1050,16 @@ class Inventory:
                     number = args[0][2].value
                     self.add(swift, i, 'shortcut', args[1], 'global shortcuts', identity=number)
                     self.entries[-1]['id'] = 'shortcut.voice.' + number
-        # Window sidebar: (page, title, symbol).
+        # The page record. Window sidebar: (page, title, symbol). The switcher of a page with
+        # sections: (route, page, title). Subpages have no control of their own, so only their
+        # names are read (page_names).
         swift, ranges = self.owner(*CATALOGUES[5], kinds=('struct',))
         for start, end in ranges[:1]:
-            j = next((j for j in range(start, end - 2) if swift.v[j] == 'navItems' and swift.v[j - 1] == 'let'), None)
-            if j is None and self.strict:
-                raise ValueError('Missing surface owner: Sources/LocalVoice/WorkbenchHome.swift navItems. '
-                                 'Update CATALOGUES in scripts/check-surfaces.py after a move.')
-            while j is not None and swift.v[j] != '=':
-                j += 1
-            if j is not None and swift.v[j + 1] == '[':
-                for item in swift.args(j + 1):
-                    k = swift.tokens.index(item[0])
-                    parts = swift.args(k) if swift.v[k] == '(' else []
-                    if len(parts) > 1 and literal(parts[0]) and literal(parts[1]):
-                        self.add(swift, k, 'sidebar', parts[1], 'window sidebar', identity=literal(parts[0]), page=literal(parts[0]))
+            for k, parts in record_items(swift, start, end, 'navItems', required=self.strict):
+                self.add(swift, k, 'sidebar', parts[1], 'window sidebar', identity=literal(parts[0]), page=literal(parts[0]))
+            for k, parts in record_items(swift, start, end, 'sections'):
+                if len(parts) > 2:
+                    self.add(swift, k, 'section', parts[2], 'page sections', identity=literal(parts[0]), page=literal(parts[0]))
 
     def enum_choices(self):
         for name, ((swift, start, end), member) in sorted(self.enums.items()):
@@ -976,8 +1093,8 @@ def quick_panel_surface(swift, index, api):
     return 'quick panel status rows' if api == 'status' else 'quick panel footer'
 
 
-def derive(root, require_roots=True):
-    tree = Tree(root)
+def derive(root, require_roots=True, tree=None):
+    tree = tree or Tree(root)
     inventory = Inventory(tree, require_roots)
     # Proactive offers, the app raises these on its own. First, so a surface
     # that embeds an offer does not claim it.
@@ -1032,7 +1149,27 @@ def reconcile(actual, registered):
     return result
 
 
-def compare(actual, registered):
+def menu_name_drift(registered, page_names=None):
+    """An app menu entry that opens a page must carry that page's name from the page record, as
+    the registry holds it on the window sidebar and page sections, or as the record gives it
+    for a subpage (page_names, from Tree.page_names). A page's own name wins over its first
+    section's, so a door to "settings" is Settings. Only a trailing … may differ."""
+    names = dict(page_names or {})
+    names.update({e['page']: e['label'] for e in registered if e.get('surface') == 'page sections' and e.get('page') and e.get('label')})
+    names.update({e['page']: e['label'] for e in registered if e.get('surface') == 'window sidebar' and e.get('page') and e.get('label')})
+    errors = []
+    for entry in registered:
+        page, label = entry.get('page'), entry.get('label')
+        if entry.get('surface') != 'app menu bar' or not page or label is None or page not in names:
+            continue
+        if MENU_PUNCTUATION.sub('', label) != names[page]:
+            errors.append(f'Menu name drift on app menu bar: {json.dumps(label, ensure_ascii=False)} opens {names[page]} ({page}) under another name. '
+                          'A menu door carries the name its page has in the page record (WorkbenchHome navItems, sections and subpages); '
+                          f'only a trailing … may differ. Build it with pageItem("{page}") in AppDelegate. [{entry["id"]}]')
+    return errors
+
+
+def compare(actual, registered, page_names=None):
     errors = []
     ids = Counter(e.get('id') for e in registered)
     for key, count in sorted(ids.items(), key=lambda pair: str(pair[0])):
@@ -1067,6 +1204,7 @@ def compare(actual, registered):
             errors.append(f'Invalid aliasOf for {key}: name a Grammar id or a different registered entry.')
         if alias and not entry.get('note'):
             errors.append(f'Alias {key} needs a note explaining the intentional alternative.')
+    errors += menu_name_drift([entry for entry in registered if entry.get('id') in source], page_names)
     labels = defaultdict(list)
     for entry in registered:
         if entry.get('label') and entry.get('id') in source:
@@ -1087,14 +1225,15 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true', help='Machine-readable actual entries and errors for review.')
     args = parser.parse_args(argv)
     try:
-        actual = derive(args.root.resolve())
+        tree = Tree(args.root.resolve())
+        actual = derive(args.root.resolve(), tree=tree)
         registered = json.loads(args.registry.read_text()) if args.registry.exists() else []
         if not isinstance(registered, list) or any(not isinstance(e, dict) for e in registered):
             raise ValueError('Registry must be a JSON array of entry objects.')
         if args.update:
             registered = reconcile(actual, registered)
             args.registry.write_text(json.dumps(registered, indent=2, ensure_ascii=False) + '\n')
-        errors = compare(actual, registered)
+        errors = compare(actual, registered, tree.page_names())
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f'Surface registry error: {error}', file=sys.stderr)
         return 2

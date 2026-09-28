@@ -18,6 +18,10 @@ struct PersonaCardStyle: Codable, Equatable {
 
 enum PersonaCardRenderer {
     static let size = CGSize(width: 480, height: 600)
+    static let cornerRadius: CGFloat = 28
+    /// The card's visible edge, which the voice outline and the handles follow.
+    static let outline = PersonaArtworkOutline.roundedRect(CGRect(x: 0, y: 0, width: 1, height: size.height / size.width),
+                                                           radius: cornerRadius / size.width)
 
     static func image(portrait: NSImage, style: PersonaCardStyle) throws -> NSImage {
         let style = try style.validated()
@@ -30,7 +34,7 @@ enum PersonaCardRenderer {
         NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = graphics
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSColor.clear.setFill(); CGRect(origin: .zero, size: size).fill(using: .copy)
-        let outline = NSBezierPath(roundedRect: CGRect(origin: .zero, size: size), xRadius: 28, yRadius: 28)
+        let outline = NSBezierPath(roundedRect: CGRect(origin: .zero, size: size), xRadius: cornerRadius, yRadius: cornerRadius)
         outline.addClip(); style.background.nsColor.setFill(); outline.fill()
         let footer: CGFloat = style.label.isEmpty ? 0 : 100
         let available = CGRect(x: 18, y: footer, width: size.width - 36, height: size.height - footer - 18)
