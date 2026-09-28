@@ -46,8 +46,13 @@ final class SnapModel: ObservableObject {
     /// Window and Screen cannot capture, but saved Snaps, Paste image and
     /// Import image all still work (#112).
     @Published private(set) var screenAccessGranted: Bool
+    /// Back from Screen Recording settings with access still off: macOS may
+    /// need Workbench to reopen before a grant applies.
+    @Published private(set) var suggestsReopenForScreenAccess = false
+    private var openedScreenAccessSettings = false
     private let screenAccess: ScreenCaptureAccess
-    private var activationObserver: NSObjectProtocol?
+    /// Removed in deinit; checks create many Snap owners.
+    nonisolated(unsafe) private var activationObserver: NSObjectProtocol?
     let desktop: URL
     private let trash: (URL) throws -> Void
     /// Set when new screenshots are redirected into History but macOS now
@@ -105,9 +110,11 @@ final class SnapModel: ObservableObject {
         if keepsScreenshotsOffDesktop { startInbox() }
         // Access can change in System Settings while Workbench runs.
         activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshScreenAccess() }
+            MainActor.assumeIsolated { self?.returnedToWorkbench() }
         }
     }
+
+    deinit { if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) } }
 
     // MARK: Screen Recording access
 
@@ -116,10 +123,22 @@ final class SnapModel: ObservableObject {
     func refreshScreenAccess() {
         let granted = screenAccess.isGranted()
         if granted != screenAccessGranted { screenAccessGranted = granted }
+        if granted && suggestsReopenForScreenAccess { suggestsReopenForScreenAccess = false }
+    }
+
+    /// Workbench is active again, perhaps back from System Settings. Only a
+    /// return after Snap opened Screen Recording settings suggests reopening.
+    func returnedToWorkbench() {
+        refreshScreenAccess()
+        let suggests = openedScreenAccessSettings && !screenAccessGranted
+        if suggests != suggestsReopenForScreenAccess { suggestsReopenForScreenAccess = suggests }
     }
 
     /// System Settings → Privacy & Security → Screen Recording. It changes nothing by itself.
-    func openScreenRecordingSettings() { NSWorkspace.shared.open(ScreenCaptureAccess.settingsURL) }
+    func openScreenRecordingSettings() {
+        openedScreenAccessSettings = true
+        screenAccess.openSettings()
+    }
 
     // MARK: New screenshots off the Desktop
 

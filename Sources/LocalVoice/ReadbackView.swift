@@ -255,6 +255,9 @@ struct ReadbackView: View {
                         if model.screenPermissionGranted { model.openMicrophoneSettings() } else { model.openScreenRecordingSettings() }
                     }.help("Privacy & Security. Workbench changes no setting itself; a managed Mac may keep this off.")
                 }
+                if model.suggestsReopenForScreenAccess && !model.screenPermissionGranted {
+                    Text(ScreenCaptureAccess.reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if let onChooseSnaps, !model.isRecording {
                 HStack {

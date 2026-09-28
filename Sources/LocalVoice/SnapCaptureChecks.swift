@@ -143,8 +143,8 @@ enum SnapCaptureChecks {
         // saved Snaps and an image the person already has keep working.
         var savedSnapshots: [SnapHandoffSnapshot] = []
         do {
-            var granted = false, requests = 0
-            let access = ScreenCaptureAccess(isGranted: { granted }, request: { requests += 1; return false })
+            var granted = false, requests = 0, settingsOpened = 0
+            let access = ScreenCaptureAccess(isGranted: { granted }, request: { requests += 1; return false }, openSettings: { settingsOpened += 1 })
             let source = SyntheticImageSource(next: .success(image))
             let snap = snapModel("screen-access-off", source: source, screenAccess: access)
             let saved = try snap.store.insert(originalPNG: image, width: 640, height: 400, title: "Saved before access changed", source: .region)
@@ -169,8 +169,22 @@ enum SnapCaptureChecks {
             } else { try check(false, "Paste image still brings in an image the person already has") }
             savedSnapshots = try snap.handoffSnapshots(ids: [saved.id])
             try check(savedSnapshots.count == 1, "saved Snaps can still be handed off")
+            // A grant can need a relaunch: after Snap opened Screen Recording settings,
+            // a return with access still off suggests quitting and reopening, never before.
+            func returnToWorkbench() async throws {
+                NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApplication.shared)
+                try await settle(for: 0.3)
+            }
+            try await returnToWorkbench()
+            try check(!snap.suggestsReopenForScreenAccess, "no quit-and-reopen hint before Settings has been opened")
+            snap.openScreenRecordingSettings()
+            try check(settingsOpened == 1 && !snap.suggestsReopenForScreenAccess, "Open System Settings… asks the seam, and the hint waits for the return")
+            try await returnToWorkbench()
+            try check(snap.suggestsReopenForScreenAccess && !snap.screenAccessGranted,
+                      "back from Settings with access still off, Snap suggests quitting and reopening")
             granted = true
-            snap.refreshScreenAccess()
+            try await returnToWorkbench()
+            try check(!snap.suggestsReopenForScreenAccess && snap.screenAccessGranted, "once access reads as allowed, the hint goes away")
             let desktop = RecordingDesktop(page: "home", windowOnScreen: true, inFront: nil, lastOther: safari)
             SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
             await snap.capture(.window)
@@ -217,6 +231,13 @@ enum SnapCaptureChecks {
         try check(try Data(contentsOf: session.appendingPathComponent(directory + "/screen.png")) == screenshot, "the section's screenshot is kept")
         readback.updateTranscript("Edited narration", for: id)
         try check(ReadbackStore.readText(root: session, relative: directory + "/narration.txt") == "Edited narration", "narration stays editable")
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApplication.shared)
+        try await settle(for: 0.3)
+        try check(!readback.suggestsReopenForScreenAccess, "Snap & Talk shows no quit-and-reopen hint before Settings has been opened")
+        readback.openScreenRecordingSettings()
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApplication.shared)
+        try await settle(for: 0.3) { readback.suggestsReopenForScreenAccess }
+        try check(readback.suggestsReopenForScreenAccess, "back from Settings with access still off, Snap & Talk suggests quitting and reopening")
         readback.importSnapSnapshots(snapshots)
         try check(readback.activeSections.count == 2, "saved Snaps can still be added to the session")
     }

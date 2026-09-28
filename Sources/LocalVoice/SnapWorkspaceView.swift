@@ -128,6 +128,9 @@ struct SnapWorkspaceView: View {
                 Button("Open System Settings…") { model.openScreenRecordingSettings() }
                     .help("Privacy & Security → Screen Recording. Workbench changes no setting itself.")
             }
+            if model.suggestsReopenForScreenAccess {
+                Text(ScreenCaptureAccess.reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            }
             Text("Allow Workbench under Privacy & Security → Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)

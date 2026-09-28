@@ -16,10 +16,15 @@ struct ScreenCaptureAccess {
     var isGranted: () -> Bool
     /// Asks macOS. The first request lists Workbench in System Settings.
     var request: () -> Bool
-    static let system = ScreenCaptureAccess(isGranted: { CGPreflightScreenCaptureAccess() }, request: { CGRequestScreenCaptureAccess() })
+    /// Opens System Settings at Screen Recording. It changes nothing by itself; checks open nothing.
+    var openSettings: () -> Void = {}
+    static let system = ScreenCaptureAccess(isGranted: { CGPreflightScreenCaptureAccess() }, request: { CGRequestScreenCaptureAccess() },
+                                            openSettings: { NSWorkspace.shared.open(settingsURL) })
     static func fixed(_ granted: Bool) -> Self { .init(isGranted: { granted }, request: { granted }) }
     /// System Settings → Privacy & Security → Screen Recording.
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+    /// macOS keeps a running app's Screen Recording off after it is allowed, until the app reopens.
+    static let reopenHint = "If Workbench already shows as allowed there, quit and reopen it."
 }
 
 /// How a standalone capture ended, so the host can finish every door the same way.

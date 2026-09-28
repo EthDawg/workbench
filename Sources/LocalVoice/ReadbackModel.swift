@@ -397,6 +397,11 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     private let transcribeAudio: @MainActor (URL) async throws -> String
     private let screenAccess: ScreenCaptureAccess
+    /// Back from Screen Recording settings with access still off: macOS may
+    /// need Workbench to reopen before a grant applies.
+    @Published private(set) var suggestsReopenForScreenAccess = false
+    private var openedScreenAccessSettings = false
+    nonisolated(unsafe) private var activationObserver: NSObjectProtocol?
     private let defaults: UserDefaults
     private let skillPacks: ReadbackSkillPackStore
     private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
@@ -421,6 +426,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         self.captureDisplay = captureDisplay
         super.init()
         screenPermissionGranted = screenAccess.isGranted()
+        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.returnedToWorkbench() }
+        }
         newSessionSkillID = defaults.string(forKey: "readback.newSessionSkillID.v1")
         newSessionStyle = defaults.string(forKey: Self.styleKey).flatMap(ReadbackDeckStyle.init(rawValue:)) ?? .neutral
         refreshSkillPacks()
@@ -494,6 +502,17 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             notice = "Session folder located. No files were moved or deleted."
             return true
         } catch { notice = "The session could not be located. \(error.localizedDescription)"; return false }
+    }
+
+    deinit { if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) } }
+
+    /// Workbench is active again, perhaps back from System Settings. Only a
+    /// return after Snap & Talk opened Screen Recording settings suggests reopening.
+    func returnedToWorkbench() {
+        let granted = screenAccess.isGranted()
+        if granted != screenPermissionGranted { screenPermissionGranted = granted }
+        let suggests = openedScreenAccessSettings && !granted
+        if suggests != suggestsReopenForScreenAccess { suggestsReopenForScreenAccess = suggests; stateChanged() }
     }
 
     func refreshPermissionState() {
@@ -662,7 +681,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func openScreenRecordingSettings() {
-        NSWorkspace.shared.open(ScreenCaptureAccess.settingsURL)
+        openedScreenAccessSettings = true
+        screenAccess.openSettings()
     }
 
     func openMicrophoneSettings() {
