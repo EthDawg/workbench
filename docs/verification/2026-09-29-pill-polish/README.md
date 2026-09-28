@@ -38,4 +38,11 @@ The earlier local Superwhisper and Wispr Flow study supplies reference observati
 
 The ordinary renderer covers idle/live modes, all docks, dark/light, larger text and accessibility variants. The native tests cover content fit, width retention/reset, tooltip/accessibility parity, anchor stability and interrupted hover/animation handling. The complete Mac app is compiled separately so the actual shortcut-owner projections are checked too.
 
-Exact source, final check counts and CI links are recorded in the PR. This is source and synthetic native evidence. It does not claim installed Preview acceptance, physical hover, VoiceOver traversal or multi-display hardware acceptance. The installed QA owner retains the shared Preview and desktop input.
+Source checked: `f3fcb7f79948e14925dc58e54a6f98b3d183089b`, after integrating main's voice/result host (#211). The integration retains the shared voice trace, result and attention badges, and the recording's elapsed-time hint. The launcher mask leaves its full status area visible.
+
+- Complete LocalVoice source build passed.
+- 150 ToolbarCore/ToolbarKit tests passed.
+- 115 synthetic control checks passed, plus the existing prompt insertion, delivery, accessibility and picker checks.
+- 300 production-view fixtures rendered; both native motion sequences passed every sampled anchor check.
+
+Final CI and surface-gallery results are recorded in the PR. This is source and synthetic native evidence. It does not claim installed Preview acceptance, physical hover, VoiceOver traversal or multi-display hardware acceptance. The installed QA owner retains the shared Preview and desktop input.
