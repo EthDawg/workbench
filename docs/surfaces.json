@@ -943,6 +943,14 @@
     "note": "Runtime label from updates . buttonTitle; no rendered text assumed."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.show-me-a-first-dictation",
+    "surface": "settings page",
+    "label": "Show me a first dictation",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: Settings › General's door back to Home's first-dictation guide, beside Dictate options… and shown only until the first dictation, as Home's own link is. It offers the guide again and opens Home (#15)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
     "surface": "settings page",
     "label": "Open Workbench at login",
@@ -1274,7 +1282,7 @@
     "label": "Show me a first dictation",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option: a door on Home back to the existing first-dictation guide, the only resume route, shown only while nothing has been dictated and the guide was skipped (#15)."
+    "note": "Option: a door on Home back to the existing first-dictation guide, shown only while nothing has been dictated and the guide was skipped. Settings › General offers the same until the first dictation (#15)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.skip-for-now",
