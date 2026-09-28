@@ -77,6 +77,50 @@ enum CorrectionRuleChecks {
         try check(TextRules.apply("  ALPHA git hub omega  ", replacements: updated.updatedRules) == "A GitHub Z",
                   "a subsequent transcription observes the saved correction through production TextRules")
 
+        // Dictionary and Remember correction decide through one change: an exact pair
+        // or a Heard casing change is already saved, and a Write casing change updates.
+        let saved = Replacement(heard: "git hub", written: "GitHub")
+        let exact = try CorrectionRule.change(heard: " git hub ", written: " GitHub ", replacements: [before, saved, after])
+        try check(exact.isAlreadySaved && exact.rule == saved && exact.updatedRules == [before, saved, after], "an exact saved pair is a no-op")
+        let heardCasing = try CorrectionRule.change(heard: "GIT HUB", written: "GitHub", replacements: [before, saved, after])
+        try check(heardCasing.isAlreadySaved && heardCasing.updatedRules == [before, saved, after], "a change only to Heard casing is the same rule")
+        let heardCasingProposal = try CorrectionRule.propose(heard: "Git Hub", written: "GitHub", draft: "git hub", replacements: [saved])
+        try check(heardCasingProposal.isAlreadyRemembered && heardCasingProposal.updatedRules == [saved] && heardCasingProposal.previewText == "GitHub",
+                  "Remember correction treats a Heard casing change as the saved rule")
+        let writeCasing = try CorrectionRule.change(heard: "git hub", written: "Github", replacements: [before, saved, after])
+        try check(writeCasing.updatesExisting && writeCasing.rule.id == saved.id && writeCasing.rule.written == "Github"
+                  && writeCasing.updatedRules.map(\.id) == [before.id, saved.id, after.id], "a Write casing change updates the rule in place")
+        let fresh = try CorrectionRule.change(heard: "stage mark", written: "StageMark", replacements: [saved])
+        try check(fresh.isNew && fresh.updatedRules == [saved, fresh.rule], "a new phrase is added last")
+        // Phrase identity agrees with TextRules' case-insensitive matching.
+        for (heard, text, same) in [("straße", "STRASSE", true), ("ﬁle", "FILE", true), ("café", "CAFÉ", true),
+                                    ("café", "cafe\u{301}", false), ("git hub", "git  hub", false)] {
+            let applies = TextRules.apply(text, replacements: [Replacement(heard: heard, written: "X")]) == "X"
+            try check((CorrectionRule.phraseKey(heard) == CorrectionRule.phraseKey(text)) == same && applies == same,
+                      "phrase identity follows TextRules matching for \(heard)")
+        }
+
+        // Rules saved by earlier versions can contradict each other. They are listed
+        // with every value and change only through an explicit choice of one output.
+        let one = Replacement(heard: "qa velcor 928", written: "VelcorOne928"), two = Replacement(heard: "QA VELCOR 928", written: "VelcorTwo928")
+        let legacy = [before, one, after, two]
+        try check(TextRules.apply("Please ask qa velcor 928 tomorrow.", replacements: legacy) == "Please ask VelcorOne928 tomorrow.",
+                  "the first conflicting rule is the one that applies")
+        try check(CorrectionRule.conflicts(in: legacy) == [[one, two]] && CorrectionRule.conflicts(in: [before, saved, after]).isEmpty,
+                  "conflicts list every rule for a shared phrase, in dictionary order")
+        try rejects(.duplicateRules(heard: "qa velcor 928", count: 2), heard: "qa velcor 928", written: "VelcorTwo928", rules: legacy)
+        let resolved = try CorrectionRule.resolvingConflict(keeping: two, in: legacy)
+        try check(resolved.map(\.id) == [before.id, one.id, after.id] && resolved[1].heard == one.heard && resolved[1].written == two.written,
+                  "resolution keeps the first rule's identity and place with the chosen output, removing only that phrase's other rules")
+        try check(TextRules.apply("Please ask qa velcor 928 tomorrow.", replacements: resolved) == "Please ask VelcorTwo928 tomorrow.",
+                  "future output uses the chosen spelling")
+        do {
+            _ = try CorrectionRule.resolvingConflict(keeping: two, in: resolved)
+            throw VoiceError.message("CORRECTION_RULE_CHECK_FAILED: resolved a conflict that no longer exists")
+        } catch let error as CorrectionRuleError {
+            try check(error == .conflictChanged(heard: "QA VELCOR 928"), "a stale conflict choice is refused")
+        }
+
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CorrectionRuleChecks-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = StateStore(directory: directory)

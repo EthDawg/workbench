@@ -42,6 +42,8 @@ struct RememberCorrectionView: View {
     private var saveTitle: String {
         guard let proposal else { return "Remember" }
         if proposal.isAlreadyRemembered { return proposal.changesDraft ? "Correct draft" : "Already remembered" }
+        // A different output for a saved phrase is an explicit Update, as in Dictionary.
+        if proposal.replacesExisting { return proposal.changesDraft ? "Update & correct draft" : "Update" }
         return proposal.changesDraft ? "Remember & correct draft" : "Remember"
     }
 
