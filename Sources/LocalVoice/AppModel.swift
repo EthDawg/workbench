@@ -61,7 +61,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var preferences: VoicePreferences {
         didSet {
             preferences.save()
-            if (UInt32(1)...7).contains(where: { oldValue.shortcut($0) != preferences.shortcut($0) }) { onShortcutsChanged?() }
+            if (UInt32(1)...8).contains(where: { oldValue.shortcut($0) != preferences.shortcut($0) }) { onShortcutsChanged?() }
         }
     }
     @Published var rawTranscript = ""

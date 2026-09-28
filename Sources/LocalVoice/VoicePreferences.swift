@@ -66,11 +66,14 @@ struct VoicePreferences: Codable, Equatable {
     // Read is opt-in and Present defaults to its presenter key; earlier assignments remain unchanged.
     var readingShortcut: VoiceShortcut?
     var presentationShortcut: VoiceShortcut?
+    // Snap is opt-in; it has no 2.0.0 default to migrate from.
+    var snapShortcut: VoiceShortcut?
     var restoreClipboard = true
     func shortcut(_ id: UInt32) -> VoiceShortcut {
         switch id {
         case 6: readingShortcut ?? VoiceShortcut(enabled: false)
         case 7: presentationShortcut ?? Self.defaultPresentationShortcut
+        case 8: snapShortcut ?? VoiceShortcut(enabled: false)
         case 1: dictationShortcut
         case 4: presenterShortcut ?? Self.defaultPresenterShortcut
         case 3: libraryShortcut ?? Self.defaultLibraryShortcut
@@ -82,6 +85,7 @@ struct VoicePreferences: Codable, Equatable {
         switch id {
         case 6: readingShortcut = shortcut
         case 7: presentationShortcut = shortcut
+        case 8: snapShortcut = shortcut
         case 1: dictationShortcut = shortcut
         case 4: presenterShortcut = shortcut
         case 3: libraryShortcut = shortcut
@@ -99,7 +103,7 @@ struct VoicePreferences: Codable, Equatable {
     }
     static let shortcutRevisionKey = "voicePreferences.shortcutRevision"
     var enabledCombinations: Set<GlobalShortcutCombination> {
-        Set((UInt32(1)...7).map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
+        Set((UInt32(1)...8).map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
     }
     private func stored(_ id: UInt32) -> VoiceShortcut? {
         switch id {
@@ -109,6 +113,7 @@ struct VoicePreferences: Codable, Equatable {
         case 4: presenterShortcut
         case 5: readbackShortcut
         case 6: readingShortcut
+        case 8: snapShortcut
         default: presentationShortcut
         }
     }
