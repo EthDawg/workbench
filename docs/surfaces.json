@@ -248,6 +248,14 @@
     "note": "Quality (#134 T4): the clipboard shelf's Copy again, first in More under the undelivered result's own title once its receipt has gone, so the compact mark's warning reaches its recovery from the toolbar. Only where it cannot lead to a second insertion, as on the shelf."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again.2",
+    "surface": "floating toolbar More menu",
+    "label": "Copy again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): the undelivered words' Copy again under the waiting receipt, which leads More, only where a second copy cannot insert twice; the same owner as its own section's."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-now",
     "surface": "floating toolbar More menu",
     "label": "Copy now",
@@ -262,6 +270,14 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality (#134 T4): the clipboard shelf's Dismiss, in the same More section: the person sets the undelivered result aside; the words stay in History. Revealing or collapsing the toolbar never does this."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.dismiss.2",
+    "surface": "floating toolbar More menu",
+    "label": "Dismiss",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): the waiting result's own dismiss, as its view's ×, first in More now that keyboard entry keeps the launcher row: a dictation failure, the receipt, or a stopped reading, each through its own owner."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
@@ -314,12 +330,44 @@
     "note": "Quality (#205 review): under Active work while another tool is chosen, the same Open Snap… door, so an unsaved Snap capture the compact mark shows reaches its editor. Snap's own options already offer it."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-workbench",
+    "surface": "floating toolbar More menu",
+    "label": "Open Workbench",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality (#211 F1): a dictation failure's Open Workbench, as its view offers it, under the failure first in More."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
     "surface": "floating toolbar More menu",
     "label": "Position…",
     "kind": "option",
     "belongsTo": "app",
     "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.record-again",
+    "surface": "floating toolbar More menu",
+    "label": "Record again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): a dictation failure's Record again, as its view offers it, under the failure first in More."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.retry",
+    "surface": "floating toolbar More menu",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#211 F1): a stopped reading's Retry, as its view offers it, under the reading first in More."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.review",
+    "surface": "floating toolbar More menu",
+    "label": "Review",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): the waiting receipt's Review, as its view offers it, first in More: Library for a copied prompt, History for a transcript."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-2a736db79384",
@@ -329,6 +377,15 @@
     "kind": "action",
     "belongsTo": "timer",
     "note": "Quality (#205 review): under Active work, the break timer's next transport as TimerTransport names it (Pause timer, Resume timer or Restart timer), the same command as the Timer menu's, whichever tool is chosen, since Timer is not a tool. Runtime label from transport . title + \" timer\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-343c7a0bb03c",
+    "surface": "floating toolbar More menu",
+    "label": null,
+    "expression": "model . retryCaptureLabel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from model . retryCaptureLabel: Retry transcription or Retry saving, as the failure's own Retry reads, under the failure first in More (#211 F1). No rendered text assumed."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",

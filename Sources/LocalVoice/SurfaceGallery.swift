@@ -1399,6 +1399,7 @@ enum SurfaceGallery {
         model.meetings = previousMeetings; model.objectWillChange.send()
         settle(.resting)
         try checkRecordingInTheHost(host: host, controls: controls, bottom: bottom, expect: expect, settle: settle, at: at, compact: compact)
+        checkResultsInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
         for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
@@ -1434,8 +1435,10 @@ enum SurfaceGallery {
             return [controls.toolbar.state.tier == .resting ? nil : "\(what): the row opened by itself", compact(what), at(bottom, what),
                     controls.status.indicator == indicator ? nil : "\(what): the mark shows \"\(controls.status.description)\""]
         }
-        func reveal() { controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed) }
-        func collapse() { controls.toolbar.send(.holdEnded(.keyboard)) }
+        // The pointer's reveal, which alone shows a waiting result's own controls (#211 F1), held by
+        // a menu's hold: the real pointer is elsewhere, and the host would find it gone and collapse.
+        func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
+        func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
         /// A result's controls grow inward from the launcher's centre; a display edge may lift them.
         func grewFromTheCentre(_ what: String) -> String? {
             let frame = host.window?.frame ?? .zero
@@ -1544,6 +1547,56 @@ enum SurfaceGallery {
             if host.coachPanel.shownFrame != nil { expect("The coaching card goes", ["the card stayed after it was removed"]) }
         }
         controls.choosePosition?(.bottom); settle(.resting)
+    }
+
+    /// A waiting result from the keyboard (#211), in the same host. The
+    /// gallery never takes the person's keyboard: the toolbar's keyboard hold stands in for it.
+    /// Keyboard entry onto a waiting receipt must keep the launcher row, whose launcher takes the
+    /// focus, and Escape must leave without dismissing the receipt; Escape must leave a result's
+    /// own controls too (F1).
+    func checkResultsInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
+                               expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
+        func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+        /// A receipt pinned, so its own eight seconds never end it while the steps run.
+        func receipt() {
+            model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
+                                                         wasPasted: false, destinationName: nil), wordCount: 12)
+            model.clipboardReceipt.keepVisible = true
+        }
+        /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere and the host
+        /// would otherwise find it gone and collapse the row.
+        func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)) }
+        func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
+        func escape() {
+            guard let window = host.window, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+                isARepeat: false, keyCode: 53) else { return }
+            window.sendEvent(event)
+        }
+        model.toolbarMode = .dictate
+        receipt(); settle(.resting)
+        controls.focusToolbar(); settle(.revealed)
+        let launcher = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.launcher" }
+        controls.focusFirstControl?()
+        let focused = launcher != nil && host.window?.firstResponder === launcher
+        let showedResult = controls.revealsResult
+        escape(); settle(.resting)
+        expect("Keyboard entry onto a waiting receipt", [
+            showedResult ? "the receipt's controls took the launcher row's place" : nil,
+            launcher == nil ? "the row has no launcher" : focused ? nil : "the launcher did not take the keyboard's focus",
+            controls.toolbar.state.holds.contains(.keyboard) ? "Escape left the keyboard's hold in place" : nil,
+            controls.toolbar.state.tier == .resting ? nil : "the row stayed open after Escape",
+            model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
+        // The pointer's reveal shows the receipt's own controls; the keyboard taken after it, and
+        // Escape from them, leave as from the launcher row.
+        reveal(); settle(.revealed)
+        let pointerShowed = controls.revealsResult
+        controls.focusToolbar(); escape()
+        let released = !controls.toolbar.state.holds.contains(.keyboard)
+        collapse(); settle(.resting)
+        expect("Escape from a waiting receipt's own controls", [pointerShowed ? nil : "the pointer's reveal did not show the receipt",
+            released ? nil : "Escape left the keyboard's hold in place", model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
+        model.clipboardReceipt.clear(); settle(.resting)
     }
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it

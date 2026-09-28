@@ -11,6 +11,15 @@ final class CapturePanel: NSPanel {
     var allowsKeyboardFocus = false
     override var canBecomeKey: Bool { allowsKeyboardFocus }
     override var canBecomeMain: Bool { false }
+    /// Escape that nothing inside handled leaves keyboard interaction, whatever the toolbar shows,
+    /// the launcher row or a result's own controls (#211 F1).
+    var escape: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) {
+        if let escape { escape() } else { super.cancelOperation(sender) }
+    }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, let escape { escape() } else { super.keyDown(with: event) }
+    }
 }
 
 final class CaptureHostingView<Content: View>: NSHostingView<Content> {
@@ -68,22 +77,27 @@ final class CaptureHUDControls: ObservableObject {
     // MARK: Results (#134 T4)
 
     /// The open row shows a result's own controls instead of the launcher row. It is decided as
-    /// the row opens, so a failure or receipt that arrives while the row is open never replaces
-    /// it under the pointer: it waits as the mark's status until the person reveals it.
+    /// the row opens, and only for the pointer's own reveal, a dwell or a click on the mark: a
+    /// failure or receipt that arrives while the row is open never replaces it under the pointer,
+    /// and waits as the mark's status until the person reveals it. Keyboard entry keeps the
+    /// launcher row, with the result's own commands first in More (#211 F1), and a row that Keep
+    /// open brings back waits for the checks the kept-open swap makes (#211 F8).
     @Published private(set) var revealsResult = false
     /// A result is waiting for the person; the host answers from its owners.
     var resultPending: () -> Bool = { false }
     private func tierWillShow(_ tier: ToolbarTier) {
-        let reveals = tier == .revealed && resultPending()
+        let state = toolbar.state
+        let reveals = tier == .revealed && state.pointerInside && !state.holds.contains(.keyboard) && resultPending()
         if revealsResult != reveals { revealsResult = reveals }
     }
     /// The result was resolved, dismissed or expired: the open row goes back to the launcher row.
     func resultEnded() { if revealsResult { revealsResult = false } }
     /// A row kept open by Keep open alone shows a new result in its place, as the dictation
     /// panel did: Keep open is the person's choice of persistent controls, and there is no rest to
-    /// show the status on. Only while no pointer is on it and nothing holds it, a menu or the
-    /// chooser included; the host also waits for Position… to close. It never activates Workbench,
-    /// takes the keyboard or moves the anchor: the host sizes the window from the same centre.
+    /// show the status on. Only while no pointer is on it and nothing holds it, a menu, the chooser
+    /// or the keyboard included; the host also waits for Position… to close, and for the pointer
+    /// to be found again when the row comes back. It never activates Workbench, takes the keyboard
+    /// or moves the anchor: the host sizes the window from the same centre.
     func showResultIfKeptOpen() {
         let state = toolbar.state
         guard !revealsResult, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside, state.holds.isEmpty,
@@ -209,6 +223,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.chooserChoicesChanged = { [weak self] choices in self?.chooser.refresh(choices) }
         controls.revealFromRest = { [weak self] in self?.revealFromRest() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
+        panel.escape = { [weak controls] in controls?.endKeyboardInteraction() }
         controls.resultPending = { [weak model] in model.map { FloatingResult.pending($0) != nil } ?? false }
         controls.promptDestination = { [weak self] in
             guard let self else { return nil }
@@ -340,10 +355,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             if surface == .tools { controls.toolbar.activate() }
             else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
-        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4),
-        // or, in a row kept open by Keep open alone, takes its place once nothing is using it.
+        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
         if FloatingResult.pending(model) == nil { controls.resultEnded() }
-        else if !chooser.isShown && !positionControl.isShown { controls.showResultIfKeptOpen() }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging(); updateCoach()
             return
@@ -361,6 +374,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         window.orderFrontRegardless()
         tracking?.acceptsCrossings = surface == .tools && !dragging && motion.target == nil
         if previousSurface != surface && surface == .tools { tracking?.settle() }
+        // In a row kept open by Keep open alone, a waiting result takes the row's place once nothing
+        // is using it: after the pointer is found again above, so a row that comes back under the
+        // pointer keeps its launcher until the pointer leaves (#211 F8).
+        if FloatingResult.pending(model) != nil, !chooser.isShown, !positionControl.isShown { controls.showResultIfKeptOpen() }
         showPositionForPreview(model)
         updateCoach()
     }
@@ -435,13 +452,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// action from the toolbar will use, and Workbench is not made the active app.
     func revealFromRest() {
         guard surface == .tools, let panel = window as? CapturePanel else { return }
+        // The click is the pointer's: it reveals as a dwell would, a waiting result's own controls
+        // included (#211 F1), and only then takes the keyboard. A panel that cannot take it holds
+        // nothing, so no keyboard hold is left that nothing can release.
+        controls.toolbar.send(.pointerEntered)
         let target = panel.allowsKeyboardFocus && panel.isKeyWindow ? keyboardTarget : TextDelivery.capture()
-        guard takeKeyboard(panel, target: target) else {
-            // The panel could not take the keyboard: reveal for the pointer that clicked, as a
-            // dwell would, so no keyboard hold is left that nothing can release.
-            controls.toolbar.send(.pointerEntered)
-            return
-        }
+        takeKeyboard(panel, target: target)
     }
 
     /// Gives the toolbar the keyboard, with `target` as the field it came from, and focuses the
@@ -839,18 +855,24 @@ struct DictationResultView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// The failure's commands, the first of which takes the keyboard's focus (#211 F1).
+    enum Action: Hashable { case retry, recordAgain, openWorkbench, dismiss }
+    @FocusState private var focused: Action?
+
+    private var firstAction: Action {
+        if model.canRetry { return .retry }
+        return model.canRecordAgain ? .recordAgain : .openWorkbench
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             PanelDragHandle().frame(width: 8, height: 40)
             if let failure = model.captureFailure {
                 failureState(failure)
+                    .defaultFocus($focused, firstAction)
+                    .onAppear { ResultKeyboard.appeared(controls) { focused = firstAction } }
             } else {
-                // A copied prompt is kept in Library; a transcript in History.
-                CaptureReceiptView(receipts: model.clipboardReceipt, review: {
-                    if model.clipboardReceipt.receipt?.source == .prompt { model.showLibrary() }
-                    else { model.openHistory(); model.onShowEditor?("history") }
-                }, controls: controls)
+                CaptureReceiptView(receipts: model.clipboardReceipt, review: { Self.review($0, model: model) }, controls: controls)
             }
         }.padding(.horizontal, 12)
             .frame(width: CaptureHUDLayout.message.width, height: CaptureHUDLayout.message.height)
@@ -860,7 +882,14 @@ struct DictationResultView: View {
             }
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(0.12)))
             .transaction { $0.animation = nil }
+            .onExitCommand(perform: controls.endKeyboardInteraction)
             .tint(Workbench.accent).workbenchTheme()
+    }
+
+    /// Review opens where the words are kept: Library for a copied prompt, History for a transcript.
+    static func review(_ receipt: ClipboardReceipt, model: AppModel) {
+        if receipt.source == .prompt { model.showLibrary() }
+        else { model.openHistory(); model.onShowEditor?("history") }
     }
 
     private func failureState(_ failure: String) -> some View {
@@ -875,17 +904,21 @@ struct DictationResultView: View {
                 if model.canRetry {
                     Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
                         .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
+                        .focused($focused, equals: .retry)
                 }
                 if model.canRecordAgain {
                     Button("Record again") { model.toggleRecording() }
                         .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
+                        .focused($focused, equals: .recordAgain)
                 } else if !model.canRetry || model.hasCaptureRecovery {
                     Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
                         Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
                     }.buttonStyle(.bordered)
+                        .focused($focused, equals: .openWorkbench)
                 }
                 Button { model.dismissCaptureFailure() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
                     .buttonStyle(.plain).accessibilityLabel("Dismiss dictation error")
+                    .focused($focused, equals: .dismiss)
             }.controlSize(.small)
             CapturePositionMenu(controls: controls)
         }
@@ -945,8 +978,12 @@ struct NoSpeechCueView: View {
 
 private struct CaptureReceiptView: View {
     @ObservedObject var receipts: ClipboardReceiptModel
-    let review: () -> Void
+    /// Opens where the words are kept, for the receipt as it was when Review was pressed:
+    /// dismissing a receipt whose words have left the clipboard clears it.
+    let review: (ClipboardReceipt) -> Void
     @ObservedObject var controls: CaptureHUDControls
+    /// Review, the receipt's first command, takes the keyboard's focus (#211 F1).
+    @FocusState private var reviewFocused: Bool
     var body: some View {
         if let receipt = receipts.receipt {
             HStack(spacing: 9) {
@@ -960,8 +997,9 @@ private struct CaptureReceiptView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 VStack(spacing: 3) {
-                    Button { receipts.dismissHUD(); review() } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
+                    Button { receipts.dismissHUD(); review(receipt) } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
                         .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
+                        .focused($reviewFocused)
                     HStack(spacing: 2) {
                         if receipt.isClipboardCurrent {
                             Button { receipts.keepVisible.toggle() } label: {
@@ -980,7 +1018,21 @@ private struct CaptureReceiptView: View {
             }
             // The pointer holds its time, including one resting where it appears (#134 T5).
             .background(PointerPresence { receipts.holdHUD($0) })
+            .defaultFocus($reviewFocused, true)
+            .onAppear { ResultKeyboard.appeared(controls) { reviewFocused = true } }
         }
+    }
+}
+
+/// Keyboard for a result's own controls (#211 F1). Keyboard entry keeps the launcher row, so a
+/// result shows only for the pointer's reveal; a person who then takes the keyboard, by the
+/// click on the mark or Window › Focus floating toolbar, lands on the result's first command,
+/// and Escape leaves as it does from the launcher row (`.onExitCommand` on each result, and
+/// `CapturePanel.escape` for a key nothing inside handled).
+@MainActor enum ResultKeyboard {
+    static func appeared(_ controls: CaptureHUDControls, focusFirst: @escaping () -> Void) {
+        controls.focusFirstControl = focusFirst
+        if controls.toolbar.state.holds.contains(.keyboard) { focusFirst() }
     }
 }
 

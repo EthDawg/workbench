@@ -139,6 +139,41 @@ enum WorkbenchControlChecks {
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
         }
+        // Keyboard entry keeps the launcher row: only the pointer's own reveal shows a waiting
+        // result's controls, and a row that Keep open brings back waits for the pointer and holds
+        // as the kept-open swap does (#211 F1, F8).
+        do {
+            let suite = "Workbench.ToolbarResultChecks." + UUID().uuidString
+            guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            func toolbar() -> CaptureHUDControls {
+                let controls = CaptureHUDControls(defaults: defaults)
+                controls.resultPending = { true }
+                controls.toolbar.activate()
+                return controls
+            }
+            let keyboard = toolbar()
+            keyboard.focusToolbar()
+            try check(keyboard.toolbar.state.tier == .revealed && !keyboard.revealsResult,
+                      "keyboard entry onto a waiting result reveals the launcher row, not the result's controls")
+            let pointer = toolbar()
+            pointer.toolbar.send(.pointerEntered)
+            try check(pointer.revealsResult, "the pointer's own reveal shows the waiting result's controls")
+            pointer.focusToolbar()
+            try check(pointer.revealsResult, "and the keyboard taken after it, by the click on the mark, keeps them")
+            let kept = toolbar()
+            kept.toolbar.send(.keepOpenChanged(true))
+            kept.suspendToolbar(); kept.toolbar.activate()
+            try check(kept.toolbar.state.tier == .revealed && !kept.revealsResult,
+                      "a kept-open row that comes back keeps its launcher until the host has found the pointer")
+            kept.toolbar.send(.pointerEntered); kept.showResultIfKeptOpen()
+            try check(!kept.revealsResult, "and while the pointer is on it the result waits")
+            kept.focusToolbar(); kept.toolbar.send(.pointerLeft); kept.showResultIfKeptOpen()
+            try check(!kept.revealsResult, "as it does while the keyboard holds the row")
+            kept.unfocusToolbar(); kept.showResultIfKeptOpen()
+            try check(kept.revealsResult, "once nothing is on it, the result takes the kept-open row's place")
+            kept.toolbar.send(.keepOpenChanged(false))
+        }
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.
         try check([ToolbarChooserClose.chose, .escape, .dismissed].map(\.returnsKeyboardToLauncher) == [true, true, false],
