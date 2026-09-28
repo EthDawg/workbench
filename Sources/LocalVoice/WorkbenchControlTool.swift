@@ -120,30 +120,7 @@ struct WorkbenchControlState {
             mayStart: WorkbenchControlTool(mode: mode).map(mayStart) ?? false)
     }
 
-    /// Only this capability's state enters a menu row. The toolbar still sees
-    /// all live work and retains its global next-action priority. Admission
-    /// still includes the other owners, so an incompatible start stays disabled.
-    private func ownLive(_ mode: ToolbarMode) -> ToolbarLiveState {
-        let all = live(mode)
-        var own = ToolbarLiveState(mode: mode, mayStart: all.mayStart)
-        switch mode {
-        case .dictate:
-            own.dictation = all.dictation; own.meetingRecording = all.meetingRecording
-            own.canRecordAgain = all.canRecordAgain
-        case .read: own.reading = all.reading
-        case .snap: break
-        case .snapAndTalk:
-            own.narrating = all.narrating; own.capturingScreen = capturing
-            own.pendingNarration = all.pendingNarration; own.captureCount = all.captureCount
-        case .draw: own.drawing = all.drawing
-        case .present: own.presenting = all.presenting
-        case .persona: own.persona = all.persona
-        }
-        return own
-    }
-
-    /// The capability's own action, in the shared action vocabulary. The panel
-    /// stops a reading; pause and resume remain on Read and the toolbar.
+    /// The row's next action, from the same function as the toolbar's label.
     func nextAction(_ tool: WorkbenchControlTool) -> ToolbarNextAction? {
         guard let mode = tool.mode else { return nil }
         let own = ownLive(mode)
@@ -187,6 +164,31 @@ struct WorkbenchControlState {
     func rowAction(_ tool: WorkbenchControlTool) -> WorkbenchRowAction {
         if tool == .timer { return timerStarted ? .stopTimer : .startTimer }
         return .operation(nextAction(tool)!.operation)
+    }
+
+    /// Only this capability's state enters a menu row. The toolbar still sees
+    /// all live work and retains its global next-action priority. Admission
+    /// still includes the other owners, so an incompatible start stays disabled.
+    private func ownLive(_ mode: ToolbarMode) -> ToolbarLiveState {
+        let all = live(mode)
+        var own = ToolbarLiveState(mode: mode, mayStart: all.mayStart)
+        switch mode {
+        case .dictate:
+            // Delivery may be waiting for another owner (such as drawing). The
+            // Dictate row waits; only that owner's own row offers its ending.
+            own.dictation = phase == .delivering ? .processing : all.dictation
+            own.meetingRecording = all.meetingRecording
+            own.canRecordAgain = all.canRecordAgain
+        case .read: own.reading = all.reading
+        case .snap: break
+        case .snapAndTalk:
+            own.narrating = all.narrating; own.capturingScreen = capturing
+            own.pendingNarration = all.pendingNarration; own.captureCount = all.captureCount
+        case .draw: own.drawing = all.drawing
+        case .present: own.presenting = all.presenting
+        case .persona: own.persona = all.persona
+        }
+        return own
     }
 
     /// Re-read the owners when a rendered button commits. A completed Stop,

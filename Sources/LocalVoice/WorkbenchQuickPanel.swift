@@ -71,8 +71,8 @@ struct WorkbenchQuickPanel: View {
                             }.frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                                 .contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                            // Replacing the operation cancels a held SwiftUI button; a
-                            // mouse-up cannot retarget its old Stop to the new Start.
+                            // Give each rendered operation a distinct button identity;
+                            // perform also rejects an obsolete action at commit.
                             .id(renderedAction)
                             .disabled(!state.enabled(tool) || keyboard.isInteracting)
                             .help(state.actionTitle(tool) + ". " + context.detail(tool, state: state))
