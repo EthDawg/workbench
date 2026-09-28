@@ -14,31 +14,28 @@ import argparse
 import hashlib
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import wave
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 
 PROJECT = Path(__file__).resolve().parents[1]
 SOURCES = PROJECT / "Sources/LocalVoice"
-source = (SOURCES / "AppModel.swift").read_text()
 
-
-def extract(start: str, end: str) -> str:
-    begin = source.index(start)
-    return source[begin:source.index(end, begin)].rstrip()
-
-
-methods = "\n".join([
-    extract("    var followAlongText: String?", "\n    func makeReadingPlayer("),
-    extract("    var canSeekReading: Bool", "\n    func listen()"),
-    extract("    func cancelReading()", "\n    @Published private(set) var readingGenerationActive"),
-    extract("    func listen()", "\n    func saveAudio()"),
-    extract("    func saveAudio(to destination: URL)", "\n    func stopPlayback()"),
-    extract("    func stopPlayback()", "\n    nonisolated func audioRecorderEncodeErrorDidOccur"),
+methods = SwiftFile(SOURCES / "AppModel.swift").type("AppModel").extract([
+    # Listen, pause, seek and the reading's own failure.
+    "followAlongText", "canSeekReading", "seekReading", "skipReading", "listen()", "followPlayback",
+    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:)",
+    "cancelReading", "stopPlayback", "ReadingFailure", "canRetryReading", "retryReading", "reportReadingFailure",
+    "dismissReadingFailure", "report", "dismissError", "clearReadingFailure", "readingPlayerDidFinish",
     # The one owner of text arriving in Read, with the step that ends the old reading.
-    extract("    private func invalidateAudio()", "\n    func cancelReading()"),
-    extract("    func receiveReadingSelection(", "\n    func toggleRecording("),
+    "invalidateAudio", "receiveReadingSelection", "importReading", "listen(to:)", "canReplaceReading",
+    "replaceWaitsForSave", "replaceReadingWithSelection", "keepCurrentReading", "readingLimitMessage",
+    "applyReadingSelection", "endReadingForNewText",
 ])
 # The checks drive the private playback step directly instead of waiting for timers.
 exposed = methods.replace("    private func ", "    func ")

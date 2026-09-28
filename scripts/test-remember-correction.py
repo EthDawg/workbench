@@ -10,31 +10,26 @@ state, clipboard, models or UI are accessed.
 import hashlib
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 
 PROJECT = Path(__file__).resolve().parents[1]
-source = (PROJECT / "Sources/LocalVoice/AppModel.swift").read_text()
-core = (PROJECT / "Sources/LocalVoice/Core.swift").read_text()
+model = SwiftFile(PROJECT / "Sources/LocalVoice/AppModel.swift").type("AppModel")
+core = SwiftFile(PROJECT / "Sources/LocalVoice/Core.swift")
 
-
-def extract(start: str, end: str) -> str:
-    begin = source.index(start)
-    return source[begin:source.index(end, begin)].rstrip()
-
-
-methods = "\n".join([
-    extract("    func addReplacement(", "\n    func removeTranscript("),
-    extract("    func persist()", "\n    func shutdown()"),
+methods = model.extract([
+    "addReplacement", "updateReplacement", "resolveReplacementConflict", "removeReplacement",
+    "rememberCorrection", "undoRememberedCorrection", "dismissRememberedCorrection",
+    "persist", "saveBeforeUpdate", "saveNow",
 ])
-names = ["rawTranscript", "cleanupMethod", "phase", "status", "attention", "transcript",
-         "speechText", "history", "replacements", "rememberedCorrection", "voice", "rate"]
-properties = "\n".join(next(line for line in source.splitlines()
-                             if "@Published" in line and f" var {name}" in line
-                             and line.split(f" var {name}", 1)[1][:1] in [" ", ":"])
-                       for name in names)
-values = core[:core.index("struct StateStore {")]
+properties = model.extract(["rawTranscript", "cleanupMethod", "phase", "status", "attention", "transcript",
+                            "speechText", "history", "replacements", "rememberedCorrection", "voice", "rate"])
+values = "\n".join([core.imports(), core.extract(["VoiceError", "SavedState"])])
 
 fixture = r'''
 import Foundation

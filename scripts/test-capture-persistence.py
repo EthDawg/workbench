@@ -8,33 +8,33 @@ recognition, delivery and the state writer are injected fixtures.
 import hashlib
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 PROJECT = Path(__file__).resolve().parents[1]
-source = (PROJECT / 'Sources/LocalVoice/AppModel.swift').read_text()
-core = (PROJECT / 'Sources/LocalVoice/Core.swift').read_text()
-shortcuts = (PROJECT / 'Sources/LocalVoice/Shortcuts.swift').read_text()
+app_model = SwiftFile(PROJECT / 'Sources/LocalVoice/AppModel.swift')
+model = app_model.type('AppModel')
+core = SwiftFile(PROJECT / 'Sources/LocalVoice/Core.swift')
 
-def extract(start, end):
-    begin = source.index(start)
-    return source[begin:source.index(end, begin)].rstrip()
-
-methods = '\n'.join([
-    extract('    func resumeWaitingDelivery()', '\n    @Published var isMicrophoneQuiet'),
-    extract('    func cancelShortcut(', '\n    func transcribeForShortcut'),
-    extract('    func stopRecording()', '\n    func cancelRecording()'),
-    extract('    func cancelRecording()', '\n    func importAudio()'),
-    extract('    func importAudio(_ url:', '\n    func retryTranscription()'),
-    extract('    func retryTranscription()', '\n    private func captureSettings()'),
-    extract('    private func transcribe(', '\n    func copyTranscript()'),
-    extract('    func fail(', '\n    func persist()'),
-    extract('    func saveNow()', '\n    func shutdown()'),
+methods = model.extract([
+    'resumeWaitingDelivery', 'copyWaitingDelivery', 'cancelShortcut', 'stopRecording', 'cancelRecording',
+    'cancelCurrentCapture', 'importAudio(_:)', 'retryTranscription',
+    # Transcription, its commit and the recovery it keeps.
+    'transcribe', 'admitNewCapture', 'commitRecognizedCapture', 'savePendingCapture', 'restoreCaptureRecovery',
+    'discardRecordingRecovery', 'discardCaptureRecovery', 'showCaptureRecoveryFiles', 'showSavedRecordings',
+    # Failures, and the routine no-speech cue (#156).
+    'fail', 'captureCue', 'captureCueClock', 'captureCueExpiry', 'announceForAccessibility', 'quietCapturesInARow',
+    'endWithoutSpeech', 'holdCaptureCue', 'dismissCaptureCue', 'scheduleCaptureCueExpiry',
+    'saveNow', 'shutdown',
     # Preparing the speech model, whose failure is Home's (#134).
-    extract('    func prepare() async', '\n    /// The one owner of text arriving in Read'),
-    source[source.index('    func shutdown()'):source.rindex('\n}')],
+    'prepare',
 ])
-labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:', 'var canRecordAgain:', 'var hasSavedRecordings:']))
-request = shortcuts[shortcuts.index('@MainActor\nfinal class DictationRequest'):shortcuts.index('/// Shortcuts owns Record Audio')]
+labels = model.extract(['retryCaptureLabel', 'retryCaptureHelp', 'hasCaptureRecovery', 'canRecordAgain',
+                        'hasSavedRecordings', 'canDiscardCaptureRecovery'])
+request = SwiftFile(PROJECT / 'Sources/LocalVoice/Shortcuts.swift').extract(['DictationRequest'])
 fixture = r'''
 import AppKit
 import AVFoundation
@@ -551,7 +551,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
     }
 }
 '''
-values = core[:core.index('struct StateStore {')]
+values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState'])])
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)
@@ -562,4 +562,4 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
                     str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'), str(PROJECT / 'Sources/LocalVoice/Attention.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
-print('AppModel.swift SHA256:', hashlib.sha256(source.encode()).hexdigest())
+print('AppModel.swift SHA256:', hashlib.sha256(app_model.source.encode()).hexdigest())
