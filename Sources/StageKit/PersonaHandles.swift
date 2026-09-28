@@ -143,6 +143,10 @@ final class PersonaHandleSet {
         panel.title = "Workbench persona handle"
         panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
+        // A clear panel passes clicks on its transparent pixels through by default,
+        // which would leave only the thin drawn mark to grab. The panel is exactly
+        // the handle's hit region, so it takes every click inside it.
+        panel.ignoresMouseEvents = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         let view = PersonaHandleView(handle: handle)
