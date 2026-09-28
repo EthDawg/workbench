@@ -1387,7 +1387,7 @@
     "kind": "action",
     "belongsTo": "settings",
     "aliasOf": "settings",
-    "note": "unify under Grammar Names"
+    "note": "The panel footer's word for this door stays Shortcuts, as the Grammar lists the footer (Open Workbench, Settings, Shortcuts) and #134 decision 3 keeps it. It opens Settings › Keyboard on the same route, shortcuts, so it names the Keyboard section's job rather than a separate place (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-persona-options.NativeControlMenu.options",
