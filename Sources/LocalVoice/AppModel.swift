@@ -191,6 +191,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard readingGenerationActive else { return }
         let mayBeBilled = readingProvider == .speko
         let task = readingTask
+        if savingAudioID == readingGenerationID { savingAudioID = nil }
         readingGenerationID = nil
         readingTask = nil
         readingGenerationActive = false
@@ -201,6 +202,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
     }
     @Published private(set) var readingGenerationActive = false
+    /// Save audio's whole run, from making the audio to writing the file.
+    @Published private(set) var savingAudioID: UUID?
+    var savingAudio: Bool { savingAudioID != nil }
     @Published var cloudRequestActive = false
     @Published var rendering = false
     @Published var playing = false
@@ -371,23 +375,26 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // Only replace the draft when the reading can start, so it never waits unheard.
         guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
         guard phase == .idle else { return }
-        guard canReplaceReading else { status = "Save audio is still writing its file. Try again in a moment."; return }
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        let setAside = pendingReadingSelection != nil
         pendingReadingSelection = nil
         if text != speechText {
             let note = endReadingForNewText()
             speechText = text
-            if let note { status = note }
+            status = [setAside ? "Reading the copied text instead of the text waiting for review." : nil, note].compactMap { $0 }.joined(separator: " ")
         }
         guard !playing else { return }
         listen()
     }
 
-    /// Replace waits only while Save audio writes its file. A reading that is
-    /// generating, playing or paused is ended by it instead.
-    var canReplaceReading: Bool { !rendering || readingGenerationActive }
+    /// Replace ends a reading that is generating, playing or paused, but waits
+    /// for Save audio, which the person chose, to finish.
+    var canReplaceReading: Bool { !savingAudio }
+    static let replaceWaitsForSave = "Save audio is still making its file. Replace reading when it finishes."
 
     func replaceReadingWithSelection() {
-        guard canReplaceReading, let selection = pendingReadingSelection else { return }
+        guard pendingReadingSelection != nil else { return }
+        guard canReplaceReading, let selection = pendingReadingSelection else { status = Self.replaceWaitsForSave; return }
         applyReadingSelection(selection)
     }
 
@@ -1121,11 +1128,19 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard !rendering, !renderingAhead, !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
+        saveAudio(to: destination)
+    }
+    /// The save the person chose. Replace and Home's Read tile wait for it
+    /// rather than cancel it; only Cancel generation ends it early.
+    func saveAudio(to destination: URL) {
+        guard !rendering else { return }
         let generationID = UUID()
         readingGenerationID = generationID
+        savingAudioID = generationID
         rendering = true
         readingTask = Task {
             defer {
+                if savingAudioID == generationID { savingAudioID = nil }
                 if readingGenerationID == generationID {
                     rendering = false; readingGenerationActive = false; cloudRequestActive = false
                     readingTask = nil; readingGenerationID = nil

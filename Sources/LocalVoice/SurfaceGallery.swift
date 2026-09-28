@@ -255,8 +255,8 @@ enum SurfaceGallery {
     func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         let size = SurfaceGallery.sizes[0].size
         let window = homeWindow(size: size)
-        defer { window.contentViewController = nil; window.close(); model.dismissReadingFailure(); model.speechText = "" }
-        model.speechText = "The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget."
+        defer { window.contentViewController = nil; window.close(); model.dismissReadingFailure() }
+        model.importReading("The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget.", from: .savedText)
         model.reportReadingFailure(.audioUnreadable)
         var (rep, drawn) = try renderPage("speak", in: window)
         var shots = [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",

@@ -63,6 +63,7 @@ final class Receipt { func dismissHUD() {} }
     enum Phase { case idle, recording }
     var phase: Phase = .idle
     func cancelReading() { cancels += 1; readingGenerationActive = false; rendering = false; readingGenerationID = nil; readingTask = nil }
+    var savingAudio = false
     func listen() { listens += 1 }
     var failureClears = 0
     func clearReadingFailure() { failureClears += 1 }
@@ -88,11 +89,11 @@ __METHODS__
         model.keepCurrentReading()
         try check(model.pendingReadingSelection == nil && model.speechText == exact && model.saves == 1, "Keep current discards only the pending import")
         model.receiveReadingSelection(try ReadingSelectionImport(text: "Incoming replacement"))
-        model.rendering = true
+        model.savingAudio = true; model.rendering = true; model.readingGenerationActive = true
         model.replaceReadingWithSelection()
-        try check(model.speechText == exact && model.pendingReadingSelection != nil && model.invalidations == invalidations && model.cancels == 0,
-                  "Replace waits while Save audio writes its file, without altering its input")
-        model.readingGenerationActive = true
+        try check(model.speechText == exact && model.pendingReadingSelection != nil && model.invalidations == invalidations && model.cancels == 0
+                  && model.status.contains("Save audio"), "Replace waits for Save audio, even while it makes its audio, and says why")
+        model.savingAudio = false
         model.replaceReadingWithSelection()
         try check(model.speechText == "Incoming replacement" && model.pendingReadingSelection == nil && model.cancels == 1
                   && model.invalidations == invalidations + 1 && !model.rendering && model.listens == 0,
@@ -135,16 +136,17 @@ __METHODS__
         home.speechText = "Old draft"
         home.receiveReadingSelection(try ReadingSelectionImport(text: "Selected elsewhere"))
         home.listen(to: "Copied text")
-        try check(home.speechText == "Copied text" && home.pendingReadingSelection == nil && home.invalidations == 1 && home.listens == 1,
-                  "Home's tile replaces the draft through the owner and starts Listen at once")
+        try check(home.speechText == "Copied text" && home.pendingReadingSelection == nil && home.invalidations == 1 && home.listens == 1
+                  && home.status.contains("instead of the text waiting for review"),
+                  "Home's tile replaces the draft through the owner, says it set the review aside, and starts Listen at once")
         home.playing = true
         home.listen(to: "Copied text")
         try check(home.listens == 1 && home.invalidations == 1 && home.speechText == "Copied text", "the same text already playing carries on")
-        home.playing = false; home.rendering = true
+        home.playing = false; home.savingAudio = true
         home.listen(to: "Other copied text")
         try check(home.speechText == "Copied text" && home.listens == 1 && home.status.contains("Save audio"),
-                  "the tile waits while Save audio writes its file")
-        home.rendering = false; home.meetings.isBusy = true
+                  "the tile waits for Save audio")
+        home.savingAudio = false; home.meetings.isBusy = true
         home.listen(to: "Other copied text")
         try check(home.speechText == "Copied text" && home.listens == 1 && home.error?.contains("meeting") == true,
                   "a meeting in progress leaves the draft alone and says why")
@@ -189,13 +191,23 @@ tile = tile[:tile.index("\n    }\n")]
 assert "model.listen(to: text)" in tile and "speechText" not in tile, "Home's Read tile must replace through listen(to:)"
 assert "self?.model.receiveReadingSelection(selection)" in (ROOT / "Sources/LocalVoice/main.swift").read_text(), \
     "the Service must hand its selection to the import owner"
+# Nothing else writes the reading draft. AppModel's three writers are the saved
+# session's restore, Home's listen(to:) and the import decision's apply; the
+# Read editor's binding is the person typing. Any other write or binding fails.
+WRITE = re.compile(r"(?<!var )(?<!let )\bspeechText\s*(\+=|=(?!=))|\bspeechText\.(append|insert|remove|replace)")
+BINDING = re.compile(r"\$\w*\.?speechText\b")
+MEMBER = re.compile(r"^    (?:@\w+ )*(?:(?:private|fileprivate|public|nonisolated|override|static) )*(?:func \w+\(.*|init\(.*)$")
+ALLOWED_WRITERS = ("    init(preferences:", "    func listen(to text: String)", "    private func applyReadingSelection(")
 writes = []
-for path in sorted((ROOT / "Sources/LocalVoice").glob("*.swift")):
-    # AppModel owns the draft; checks and the offscreen gallery set up their own fixtures.
-    if path.name == "AppModel.swift" or path.name.endswith(("Checks.swift", "Check.swift")) or path.name == "SurfaceGallery.swift":
-        continue
+for path in sorted((ROOT / "Sources").rglob("*.swift")):
+    member = ""
     for number, line in enumerate(path.read_text().splitlines(), 1):
-        if re.search(r"(?<!var )(?<!let )\bspeechText\s*=(?!=)", line):
-            writes.append(f"{path.name}:{number}: {line.strip()}")
-assert not writes, "only AppModel writes the reading draft:\n" + "\n".join(writes)
-print("READ_IMPORT_DOORS_OK: 5 checks; History, Saved resources, Home and the Service use the one import owner")
+        if MEMBER.match(line):
+            member = line
+        if WRITE.search(line) and not (path.name == "AppModel.swift" and member.startswith(ALLOWED_WRITERS)):
+            writes.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()}")
+        for match in BINDING.finditer(line):
+            if not (path.name == "Views.swift" and "editor(text: $model.speechText," in line):
+                writes.append(f"{path.relative_to(ROOT)}:{number}: binds the draft outside Read's editor: {line.strip()}")
+assert not writes, "only Read's import owner, restore and editor change the reading draft:\n" + "\n".join(writes)
+print("READ_IMPORT_DOORS_OK: 5 checks; History, Saved resources, Home and the Service use the one import owner, and nothing else writes the draft")

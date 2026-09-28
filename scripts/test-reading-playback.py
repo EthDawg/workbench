@@ -34,6 +34,7 @@ methods = "\n".join([
     extract("    var canSeekReading: Bool", "\n    func listen()"),
     extract("    func cancelReading()", "\n    @Published private(set) var readingGenerationActive"),
     extract("    func listen()", "\n    func saveAudio()"),
+    extract("    func saveAudio(to destination: URL)", "\n    func stopPlayback()"),
     extract("    func stopPlayback()", "\n    nonisolated func audioRecorderEncodeErrorDidOccur"),
     # The one owner of text arriving in Read, with the step that ends the old reading.
     extract("    private func invalidateAudio()", "\n    func cancelReading()"),
@@ -91,6 +92,9 @@ enum AudioRenderer {
         sayCalls.append((text, voice, rate))
         return try silentFile(seconds: 45)
     }
+    /// Save audio's M4A export, recorded instead of running afconvert.
+    static var exports: [(source: URL, destination: URL)] = []
+    static func export(_ source: URL, to destination: URL) throws { exports.append((source, destination)) }
 }
 enum SpekoKeychain { static func read() throws -> String { "synthetic-key" } }
 enum SpekoRenderer {
@@ -256,6 +260,8 @@ final class FailingSource: ReadingAudioSource {
     var readingTask: Task<Void, Never>?
     var readingGenerationID: UUID?
     var readingGenerationActive = false
+    var savingAudioID: UUID?
+    var savingAudio: Bool { savingAudioID != nil }
     var cloudRequestActive = false
     // Read imports: the review, where the window goes and the provider's limit.
     final class Receipt { func dismissHUD() {} }
@@ -720,7 +726,56 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(online.player == nil && online.audio == nil && !online.playing && online.error == nil && SpekoRenderer.texts.count == sentBefore + 1,
                   "A late online result cannot play over the new text")
 
-        // #161's failure and #173's import are one model: an import clears a retried Retry.
+        // Save audio is a choice with a file: Replace and Home's tile wait for it
+        // instead of cancelling it, and say why.
+        let saving = ReadingHarness()
+        saving.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        let savePath = scratch.appendingPathComponent("Saved reading.m4a")
+        saving.saveAudio(to: savePath)
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let savingRender = MacSpeechRenderer.created.last!
+        try check(saving.savingAudio && saving.readingGenerationActive && !saving.canReplaceReading, "Save audio is making its audio")
+        saving.importReading(promptB, from: .savedText)
+        saving.replaceReadingWithSelection()
+        try check(!savingRender.cancelled && saving.speechText == passageA && saving.pendingReadingSelection != nil
+                  && saving.status == ReadingHarness.replaceWaitsForSave, "Replace waits for Save audio instead of cancelling it, and says why")
+        saving.listen(to: promptB)
+        try check(saving.speechText == passageA && saving.savingAudio && !savingRender.cancelled, "Home's tile waits for Save audio too")
+        try savingRender.deliver(seconds: 0.5)
+        try savingRender.complete()
+        await saving.readingTask?.value
+        try check(!saving.savingAudio && AudioRenderer.exports.last?.destination == savePath && saving.status == "Audio saved to Saved reading.m4a.",
+                  "The save finishes with A's audio")
+        saving.replaceReadingWithSelection()
+        try check(saving.speechText == promptB && saving.pendingReadingSelection == nil, "Replace goes ahead once the save is done")
+
+        let cancelSave = ReadingHarness()
+        cancelSave.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        cancelSave.saveAudio(to: savePath)
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        cancelSave.cancelReading()
+        try check(!cancelSave.savingAudio && cancelSave.canReplaceReading && !cancelSave.rendering, "Cancel generation ends a save, so it no longer holds Replace")
+
+        // Listen's generation has not begun yet: Replace still cancels it cleanly.
+        let preListen = ReadingHarness()
+        preListen.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        preListen.listen()
+        try check(preListen.rendering && !preListen.readingGenerationActive && preListen.readingTask != nil && preListen.canReplaceReading,
+                  "Listen's generation has not begun, and Replace is available")
+        let unstarted = preListen.readingTask
+        preListen.importReading(promptB, from: .transcript)
+        preListen.replaceReadingWithSelection()
+        try check(!preListen.rendering && preListen.readingTask == nil && preListen.readingGenerationID == nil && preListen.speechText == promptB,
+                  "Replace before generation begins cancels the pending Listen")
+        await unstarted?.value
+        await settle()
+        try check(MacSpeechRenderer.created.count == renders && preListen.player == nil && !preListen.playing && preListen.error == nil,
+                  "The cancelled Listen never renders or plays")
+
+        // #161's failure and #173's import are one model: Replace clears a stale Retry.
         let (retried, _) = faultyReading(from: 0)
         retried.listen(); await retried.readingTask?.value
         _ = try playUntilStopped(retried)
@@ -749,7 +804,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
                   "The same copied text already playing carries on")
 
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, pausing] {
+        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, pausing, saving, cancelSave, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")
