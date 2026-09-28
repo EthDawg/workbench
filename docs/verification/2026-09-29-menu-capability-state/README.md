@@ -39,4 +39,8 @@ This is source and synthetic render evidence. The installed Preview was not laun
 
 The stale-operation checks prove the admission guard. They do not prove a genuine held mouse-button sequence in SwiftUI. The integration owner still needs to confirm in the signed installed Preview that holding Stop, Hide or End while its operation completes, then releasing, cannot start new work. Verify the same transition from Home's Persona button, keyboard access, and that ending one live capability preserves the others. Copy build details must identify the accepted build.
 
-When combining with #211, retain its `waitingForDrawing` and timer transport facts. Dictate's own row must remain a disabled wait while Draw offers Stop drawing; the full toolbar state must retain #211's contextual drawing action.
+## Integration with the current toolbar work
+
+A temporary source combination of this implementation (`5aa24a8`), #211 at `c1d72fa`, and the hover correction #213 at `7e594ca` built successfully. Its focused suite passed **169 control checks plus the same 76 supporting checks**. Three extra assertions exercised delivery waiting on drawing: Dictate waits and is disabled, Draw offers Stop drawing, and the shared toolbar still offers its contextual Stop drawing. The standalone branch's 152 checks also passed after the final source adjustment.
+
+Source files merge automatically with the inspected #211. Two adjacent prose edits in `docs/workbench.md` and `site/guide/index.html` need both paragraphs retained: this PR's own-capability menu behavior and #211's single-host voice behavior. One check introduced by #211 assumes the old menu behavior; update that waiting-for-drawing check to assert the three outcomes above. That exact resolution was used for the combined build and checks. Keep #211's `waitingForDrawing` and timer transport facts. No changes to #211 or the installed app were made by this verification.
