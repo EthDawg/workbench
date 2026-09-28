@@ -1366,7 +1366,7 @@ enum SurfaceGallery {
                  action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
                  action("History page", "Stop task", "Stops the running task, whatever the filter shows")]
         list += appMenuEntries(surface: menu)
-        list += [action("Library page", "Resources · Add · Save clipboard as prompt, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
+        list += [action("Library page", "Resources · Add · Save clipboard as prompt…, or ⇧⌘S while Resources shows", "Opens a new prompt with the clipboard's text")]
         list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
                  action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),

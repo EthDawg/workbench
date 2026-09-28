@@ -85,7 +85,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// clears it; without one, History opens on All.
     @Published var historyDoor: HistoryDoor?
     @Published var libraryFocusToken = UUID()
-    @Published var showingPhonePhotos = false
     @Published var phase: Phase = .idle
     @Published var ready = false
     @Published var preparing = false

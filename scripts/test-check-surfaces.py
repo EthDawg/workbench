@@ -567,6 +567,32 @@ class SurfaceTests(unittest.TestCase):
         self.assertIn('Menu name drift on app menu bar: "Keyboard shortcuts…" opens Keyboard (shortcuts)', errors)
         self.assertEqual(2, errors.count('Menu name drift'), 'History… adds only the ellipsis; the others are actions')
 
+    def test_a_subpage_door_is_named_from_the_record_too(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("dictate", "Dictate", "mic")]
+          static let subpages: [(id: String, page: String, title: String)] = [("meeting", "dictate", "Transcribe meeting or call")]
+        }''')
+        main = self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() { menu.addItem(withTitle: "Transcribe a meeting or call…", action: #selector(showMeeting), keyEquivalent: "") }
+          @objc func showMeeting() { model.page = "meeting"; showWindow() }
+        }''')
+        registry, names = self.registry(), check.Tree(self.root).page_names()
+        self.assertEqual('Transcribe meeting or call', names['meeting'])
+        self.assertIn('Menu name drift on app menu bar: "Transcribe a meeting or call…" opens Transcribe meeting or call (meeting)',
+                      '\n'.join(check.compare(self.entries(), registry, names)))
+        main.write_text(main.read_text().replace('"Transcribe a meeting or call…"', '"Transcribe meeting or call…"'))
+        self.assertNotIn('Menu name drift', '\n'.join(check.compare(self.entries(), self.registry(), names)))
+
+    def test_a_hand_written_item_cannot_open_a_page_through_open_page(self):
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() { menu.addItem(pageItem("history")); menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(openPage(_:)), keyEquivalent: "") }
+          private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+            NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+          }
+        }''')
+        with self.assertRaisesRegex(ValueError, 'opens a page through openPage by hand'):
+            self.entries()
+
     def test_the_keyboard_section_is_the_catalogue_editor(self):
         self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
           private var settings: some View { KeyboardCoachView(model: keyboard); Toggle("Open Workbench at login", isOn: $x) }

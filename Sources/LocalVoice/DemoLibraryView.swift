@@ -36,7 +36,9 @@ struct DemoLibraryView: View {
                     Button("New link") { library.draft = DemoResource(kind: .link) }
                     Button("Add local file…") { library.chooseFile() }
                     Divider()
-                    Button("Save clipboard as prompt") { saveClipboard() }
+                    // Opens the prompt editor with the clipboard's text, so it asks for more (…).
+                    // The shortcut shows here and works while this menu is open.
+                    Button("Save clipboard as prompt…") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
                     Button("Save current transcript") { library.newPrompt(model.transcript) }.disabled(model.transcript.isEmpty)
                 } label: { Label("Add", systemImage: "plus") }
                     .disabled(library.savingDisabled || library.importReview != nil).fixedSize()
@@ -89,7 +91,8 @@ struct DemoLibraryView: View {
                 Menu {
                     Button("Import library…") { library.importLibrary() }.disabled(library.savingDisabled || library.draft != nil || library.importReview != nil)
                     Button("Export library…") { library.exportLibrary() }.disabled(library.resources.isEmpty)
-                } label: { Label("Library", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
+                } label: { Label("More", systemImage: "ellipsis.circle") }.fixedSize().font(.caption)
+                    .accessibilityLabel("More library actions")
             }
         }
         .onAppear { focusSearchWhenReady() }
@@ -114,15 +117,17 @@ struct DemoLibraryView: View {
             Group {
                 Button("Find resource") { searching = true }.keyboardShortcut("f")
                 Button("New prompt") { library.newPrompt() }.keyboardShortcut("n").disabled(library.savingDisabled)
-                // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S
-                // while they show; it left the Window menu (#134).
-                Button("Save clipboard as prompt") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
+                // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S while
+                // they show; it left the Window menu (#134). A closed menu's items never receive
+                // a key, so this carries ⇧⌘S until Add is opened. Both call saveClipboard(), and
+                // one press reaches only one of them.
+                Button("Save clipboard as prompt…") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
                     .disabled(library.savingDisabled || library.importReview != nil)
             }.hidden()
         }
     }
     private func performReturnAction(fromSearch: Bool) -> KeyPress.Result {
-        guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, removal == nil,
+        guard model.page == "library", library.draft == nil, removal == nil,
               let window = NSApp.keyWindow, window === NSApp.mainWindow, window.attachedSheet == nil else { return .ignored }
         let editor = window.firstResponder as? NSTextView
         let event = NSApp.currentEvent
@@ -132,12 +137,12 @@ struct DemoLibraryView: View {
         return library.performPrimaryAction() ? .handled : .ignored
     }
     private func focusSearchWhenReady() {
-        guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, library.importReview == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
+        guard model.page == "library", library.draft == nil, library.importReview == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
         // Recall can reveal a hidden editor before SwiftUI has mounted the search
         // field. Re-arm focus on the next main-loop turn, after the window is key.
         searching = false
         DispatchQueue.main.async {
-            guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, library.importReview == nil, window.isVisible, window === NSApp.keyWindow else { return }
+            guard model.page == "library", library.draft == nil, library.importReview == nil, window.isVisible, window === NSApp.keyWindow else { return }
             searching = true
         }
     }
