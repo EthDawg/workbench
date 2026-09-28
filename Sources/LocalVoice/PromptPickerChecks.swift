@@ -119,8 +119,8 @@ enum PromptPickerChecks {
         try check(inserted.isEmpty && prepared == 0 && posted == 0,
                   "Copy prompt writes nothing through Accessibility and posts no paste")
         try check(receipts.receipt?.title == "Copied" && receipts.receipt?.detail == "Paste with ⌘V."
-                  && receipts.receipt?.canSuggestPaste == true,
-                  "Copy prompt gives dictation's Copied and Paste with ⌘V. receipt")
+                  && receipts.receipt?.canSuggestPaste == true && receipts.receipt?.source == .prompt,
+                  "Copy prompt gives dictation's Copied and Paste with ⌘V. receipt, and Review leads to Saved resources")
         try check(delivery.lastAttempt?.result == TextDelivery.copiedMessage && delivery.lastAttempt?.destination == "Clipboard"
                   && delivery.lastAttempt?.result.contains("readable destination") == false,
                   "without approval Prompts says Copied, never asks for a readable field")

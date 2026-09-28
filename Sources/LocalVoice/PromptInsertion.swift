@@ -108,12 +108,12 @@ final class PromptInsertion: ObservableObject {
         let pasteboard = (system ?? .live).pasteboard
         guard let owned = TextDelivery.copy(text, to: pasteboard) else {
             receipts.record(outcome: .init(message: "Could not copy the prompt.", clipboardChangeCount: nil, wasPasted: false,
-                                           destinationName: nil, failure: .copyFailed), wordCount: TextRules.wordCount(text))
+                                           destinationName: nil, failure: .copyFailed), wordCount: TextRules.wordCount(text), source: .prompt)
             lastAttempt = PromptAttempt(prompt: title, destination: "Clipboard", result: "Could not copy the prompt. Nothing was changed.")
             return false
         }
         receipts.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: owned, wasPasted: false,
-                                       destinationName: nil), wordCount: TextRules.wordCount(text))
+                                       destinationName: nil), wordCount: TextRules.wordCount(text), source: .prompt)
         lastAttempt = PromptAttempt(prompt: title, destination: "Clipboard", result: TextDelivery.copiedMessage)
         return true
     }

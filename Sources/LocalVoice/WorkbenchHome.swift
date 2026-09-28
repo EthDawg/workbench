@@ -315,7 +315,10 @@ struct WorkbenchHomePage: View {
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     WorkbenchClipboardShelf(receipts: model.clipboardReceipt,
-                        review: { model.clipboardReceipt.dismissHUD(); model.page = "history" },
+                        review: {
+                            let prompt = model.clipboardReceipt.receipt?.source == .prompt
+                            model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
+                        },
                         showCue: { model.clipboardReceipt.revealHUD() })
                 }
             }

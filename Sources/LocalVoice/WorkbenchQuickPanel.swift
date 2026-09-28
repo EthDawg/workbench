@@ -59,7 +59,11 @@ struct WorkbenchQuickPanel: View {
                 else {
                     VStack(alignment: .leading, spacing: 5) {
                         WorkbenchClipboardShelf(receipts: receipts,
-                            review: { receipts.dismissHUD(); model.openHistory(); open("history") },
+                            review: {
+                                let prompt = receipts.receipt?.source == .prompt
+                                receipts.dismissHUD()
+                                if prompt { open("library") } else { model.openHistory(); open("history") }
+                            },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() })
                         if receipts.receipt?.isClipboardCurrent != true {
                             if !context.activitySummary.isEmpty {
