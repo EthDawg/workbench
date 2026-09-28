@@ -18,14 +18,24 @@ final class SnapModel: ObservableObject {
     @Published private(set) var items: [SnapItem] = []
     @Published private(set) var problems: [String] = []
     @Published private(set) var isCapturing = false
-    @Published var draft: SnapDraft? { didSet { onStateChange?() } }
+    @Published var draft: SnapDraft? {
+        didSet {
+            if let closed = oldValue, closed.id != draft?.id { onDraftClosed?(closed.id, closingWithCopy) }
+            onStateChange?()
+        }
+    }
     @Published var notice: String?
     @Published var search = ""
     @Published var showingArchived = false
     let store: SnapStore
     var onStateChange: (() -> Void)?
     var onHideForCapture: (() -> Void)?
-    var onRestoreAfterCapture: (() -> Void)?
+    /// Every capture request ends here, from any door, with what happened. The
+    /// host shows the editor, or the problem, on the Snap page, or puts back
+    /// what was on screen before a cancelled capture.
+    var onRestoreAfterCapture: ((SnapCaptureOutcome) -> Void)?
+    /// A draft left the editor: saved, saved and copied (true), or cancelled.
+    var onDraftClosed: ((UUID, Bool) -> Void)?
     var mayBeginCapture: (() -> String?)?
     /// Text Vision found in each image, so search finds a Snap by what it shows.
     @Published private(set) var recognizedText: [UUID: String] = [:]
@@ -43,8 +53,10 @@ final class SnapModel: ObservableObject {
     private var inboxSizes: [URL: Int] = [:]
     static let redirectKey = "workbench.snap.screenshots.redirect.v1"
     static let previousLocationKey = "workbench.snap.screenshots.previous-location.v1"
-    private let captureService = SnapCapture()
+    private let captureService: any SnapImageSource
+    private let pasteboard: NSPasteboard
     private var captureRequest: UUID?
+    private var closingWithCopy = false
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
     var isBusy: Bool { isCapturing || draft != nil }
@@ -62,7 +74,10 @@ final class SnapModel: ObservableObject {
     init(store: SnapStore? = nil, desktop: URL? = nil, screenshotLocation: (any ScreenshotLocationStore)? = nil,
          preferences: UserDefaults = .standard, screenshotInbox: URL? = nil,
          trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash,
-         applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService) {
+         applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService,
+         imageSource: (any SnapImageSource)? = nil, pasteboard: NSPasteboard = .general) {
+        self.captureService = imageSource ?? SnapCapture()
+        self.pasteboard = pasteboard
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
         self.desktop = desktop ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
         self.screenshotLocation = screenshotLocation ?? SystemScreenshotLocation()
@@ -211,20 +226,24 @@ final class SnapModel: ObservableObject {
     }
 
     func capture(_ mode: SnapCapture.Mode) async {
-        guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
+        guard !isCapturing else { notice = "Finish or cancel the current Snap first."; return }
         if let reason = mayBeginCapture?() { notice = reason; return }
+        // An open editor, even one hidden with its window, never silently
+        // blocks a capture door: the host brings it back to finish or cancel.
+        guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); return }
         let request = UUID(); captureRequest = request
         isCapturing = true; notice = mode == .screen ? "Capturing the display under the pointer…" : "Choose a \(mode.title.lowercased()). Escape cancels."
         onStateChange?(); onHideForCapture?()
-        defer { captureRequest = nil; isCapturing = false; onRestoreAfterCapture?(); onStateChange?() }
+        var outcome = SnapCaptureOutcome.cancelled
+        defer { captureRequest = nil; isCapturing = false; onRestoreAfterCapture?(outcome); onStateChange?() }
         do {
             try await Task.sleep(nanoseconds: 250_000_000)
             guard captureRequest == request else { return }
             guard let bytes = try await captureService.capture(mode) else { notice = "Capture cancelled. Nothing was added to history."; return }
             guard captureRequest == request else { return }
-            try beginDraft(bytes, source: mode.source, title: "\(mode.title) \(Date().formatted(date: .abbreviated, time: .shortened))")
+            outcome = .draft(try beginDraft(bytes, source: mode.source, title: "\(mode.title) \(Date().formatted(date: .abbreviated, time: .shortened))"))
             notice = nil
-        } catch { notice = error.localizedDescription }
+        } catch { notice = error.localizedDescription; outcome = .failed }
     }
 
     func cancelCapture() { captureRequest = nil; captureService.cancel(); notice = "Capture cancelled. Nothing was added to history." }
@@ -232,7 +251,7 @@ final class SnapModel: ObservableObject {
     func pasteImage() {
         guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
         do {
-            let board = NSPasteboard.general
+            let board = pasteboard
             guard let bytes = board.data(forType: .png) ?? board.data(forType: .tiff) else {
                 notice = "Copy an image, then choose Paste image. Clipboard text and files are not imported."; return
             }
@@ -253,9 +272,12 @@ final class SnapModel: ObservableObject {
         } catch { notice = error.localizedDescription }
     }
 
-    private func beginDraft(_ bytes: Data, source: SnapSource, title: String) throws {
+    @discardableResult
+    private func beginDraft(_ bytes: Data, source: SnapSource, title: String) throws -> UUID {
         _ = try SnapRendering.image(bytes)
-        draft = .init(originalPNG: bytes, source: source, title: title, notes: "", tags: [], edit: .init())
+        let opened = SnapDraft(originalPNG: bytes, source: source, title: title, notes: "", tags: [], edit: .init())
+        draft = opened
+        return opened.id
     }
 
     func edit(_ id: UUID) {
@@ -282,8 +304,11 @@ final class SnapModel: ObservableObject {
                 _ = try store.insert(originalPNG: draft.originalPNG, renderedPNG: rendered, width: dimensions.width,
                                         height: dimensions.height, title: title, source: draft.source, edit: draft.edit, notes: draft.notes, tags: draft.tags)
             }
-            self.draft = nil; refresh()
-            if copyAfterSaving { notice = copyBytes(rendered) ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
+            // Copied before the draft closes, so the host knows the image is ready to paste.
+            let copied = copyAfterSaving && copyBytes(rendered)
+            closingWithCopy = copied; self.draft = nil; closingWithCopy = false
+            refresh()
+            if copyAfterSaving { notice = copied ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
             else { notice = "Saved to History. Your original image is preserved." }
             return true
         } catch { notice = "Snap was not saved. \(error.localizedDescription)"; return false }
@@ -293,7 +318,7 @@ final class SnapModel: ObservableObject {
         do { let snapshot = try store.snapshot(id); notice = copyBytes(snapshot.imagePNG) ? "Image copied. Paste it where you need it." : "The image could not be copied. Try again." }
         catch { notice = error.localizedDescription }
     }
-    private func copyBytes(_ bytes: Data) -> Bool { NSPasteboard.general.clearContents(); return NSPasteboard.general.setData(bytes, forType: .png) }
+    private func copyBytes(_ bytes: Data) -> Bool { pasteboard.clearContents(); return pasteboard.setData(bytes, forType: .png) }
 
     func export(_ id: UUID) {
         do {
