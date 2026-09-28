@@ -138,6 +138,9 @@ ENTRY_POINTS = [
     # Settings, and the views it embeds (VoiceOptions) are followed.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page options', 'options'),
     ('LocalVoice/Views.swift', 'ContentView.dictateOptions', 'dictate page options', 'page'),
+    # Delivery and Text style sit in Dictate's task region beside the microphone and the
+    # result (#134); their view is followed as the options area's is.
+    ('LocalVoice/Views.swift', 'ContentView.dictateChoices', 'dictate page options', 'page'),
     # Capability pages also carry doors (rule 8: opens a place or page, wherever
     # it appears). Mode 'doors' keeps the page's own actions (editor, selection,
     # copy, save) out. A closure the host injects, such as ReadbackView's

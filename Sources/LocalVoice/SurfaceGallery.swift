@@ -294,6 +294,7 @@ enum SurfaceGallery {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
+        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += try renderDictateStates(to: output) }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) }
         // History's states render last, so the pages above show no Hand off task.
@@ -588,6 +589,32 @@ enum SurfaceGallery {
                                   file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
         }
         return shots
+    }
+
+    // MARK: Dictate states
+
+    /// The newcomer's manual copy (#134 C10, #165): Paste automatically waits for an Accessibility
+    /// approval an organisation may have to give, so the finished transcript was copied. The task
+    /// region shows the words with the copy as the result, and Set up automatic paste… beside
+    /// Delivery as an option; nothing waits on the approval. Only the model's status is set, as a
+    /// dictation leaves it; the clipboard is not touched. The pass's draft, status, delivery and
+    /// approval are restored afterwards.
+    func renderDictateStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let kept = (draft: model.transcript, raw: model.rawTranscript, status: model.status,
+                    delivery: model.preferences.delivery, granted: model.accessibilityGranted)
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer {
+            window.contentViewController = nil; window.close()
+            model.transcript = kept.draft; model.rawTranscript = kept.raw; model.status = kept.status
+            model.preferences.delivery = kept.delivery; model.accessibilityGranted = kept.granted
+        }
+        let words = SurfacePass.history[1].text
+        model.preferences.delivery = .paste; model.accessibilityGranted = false
+        model.rawTranscript = words; model.transcript = words; model.status = TextDelivery.copiedMessage
+        let (rep, drawn) = try renderPage("dictate", in: window)
+        return [try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                         detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
+                         file: "page-dictate-state-manual-copy-\(theme).png", to: output)]
     }
 
     // MARK: Home states

@@ -241,7 +241,7 @@ struct WorkbenchHome: View {
                     MeetingDetectionSettings(model: model.meetings)
                     Divider()
                     Button("Dictate options…") { model.page = "dictate" }
-                    Text("Activation, cleanup, delivery, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
+                    Text("Delivery, text style, activation, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
                     Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
                     Divider()
                     FounderIntroductionCard(model: introduction, canDismiss: false)
