@@ -128,7 +128,7 @@ public struct ToolbarRow: View {
 
     private var primary: some View {
         ToolbarPrimary(title: state.actionTitle, hint: state.actionHint, isEnabled: state.isActionEnabled,
-                       fontSize: 13 * scale, minimumTitles: ToolbarNextAction.idleVerbs, accent: accent,
+                       fontSize: 13 * scale, minimumTitles: state.minimumTitles, accent: accent,
                        action: action, drag: drag)
             .fixedSize()
     }
@@ -190,6 +190,8 @@ private struct ToolbarPrimary: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         @objc private func runAction() { run?() }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        /// Tab from the glyph reaches the action.
+        override var acceptsFirstResponder: Bool { true }
         override var intrinsicContentSize: NSSize {
             var size = super.intrinsicContentSize
             size.width = max(size.width, minimumWidth)
