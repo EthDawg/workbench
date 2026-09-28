@@ -26,7 +26,7 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 
 The internal Swift module remains `LocalVoice` to preserve App Intents type/metadata compatibility. Packaging names the installed binary `Workbench`, or `WorkbenchPreview` in Preview. StageKit is linked into it; Workbench does not launch a second StageMark process.
 
-`StageKitController` exposes views, actions, lifecycle and shortcut descriptors rather than its internal coordinator. Host callbacks route navigation, hide Home before presenting and coordinate busy state. StageKit must not create another menu-bar item or terminate the app independently.
+`StageKitController` exposes views, actions, lifecycle and shortcut descriptors rather than its internal coordinator. Host callbacks route navigation, hide Home before presenting and coordinate busy state. StageKit must not create another menu-bar item or terminate the app independently. Embedded, the shared toolbar is Workbench's one drawing control surface, so the Draw page leaves out the standalone app's floating-palette settings (Show the palette while drawing, Board palette); their stored values stay for the standalone app.
 
 The two modules still have their own internal `Workbench.swift` style helpers and share the appearance preference domain. They are not identical mirrored files. Keep their appearance consistent through the [product contract](workbench.md); do not extract a larger shared framework without a concrete need.
 

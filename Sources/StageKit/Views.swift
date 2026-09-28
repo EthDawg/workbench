@@ -178,7 +178,9 @@ struct ControlCenter: View {
                 Divider()
                 Toggle("Pressure-sensitive pen", isOn: $settings.value.penPressure)
                 Picker("Drawing indicator", selection: $settings.value.indicator) { ForEach(IndicatorStyle.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                Toggle("Show the palette while drawing", isOn: $settings.value.showDrawingPalette)
+                // Workbench's shared toolbar is the one drawing control surface, so the
+                // standalone app's floating palette and its setting stay out of it (#160).
+                if !app.embedded { Toggle("Show the palette while drawing", isOn: $settings.value.showDrawingPalette) }
             }.font(.system(size: 12)).surface()
             VStack(spacing: 16) {
                 Toggle("Auto-fade screen annotations", isOn: $settings.value.autoFade)
@@ -236,15 +238,19 @@ struct ControlCenter: View {
             }
             BoardExportButtons(app: app)
             ScreenshotHandoffButton(app: app)
-            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. The palette and pointer hide during selection.")
+            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. \(app.embedded ? "The floating toolbar" : "The palette") and pointer hide during selection.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 18) {
                 Toggle("Keep board drawings separate from the screen", isOn: $settings.value.separateBoards).disabled(!app.boards.isEmpty)
                 Text(settings.value.separateBoards ? "Your board is saved automatically on this Mac. White and black backgrounds use the same saved canvas for each display." : "The board uses your current screen annotations. Shared screen ink is temporary and is not saved when you quit.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 Divider()
-                Picker("Board palette", selection: $settings.value.boardPalette) { ForEach(PaletteMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                Text("With Auto-hide, move the mouse to reveal the palette again. Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                if !app.embedded {
+                    Picker("Board palette", selection: $settings.value.boardPalette) { ForEach(PaletteMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                    Text("With Auto-hide, move the mouse to reveal the palette again. Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                } else {
+                    Text("Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }.font(.system(size: 12)).surface()
             VStack(alignment: .leading, spacing: 8) {
                 Label("Drawing with an iPad or tablet", systemImage: "ipad.and.arrow.forward").font(.system(size: 12, weight: .semibold))
