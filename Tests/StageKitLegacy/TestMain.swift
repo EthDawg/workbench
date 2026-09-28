@@ -24,6 +24,28 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-handles-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let suite = PersonaHandleTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("persona handles sit on the visible artwork", suite.testHandlesSitOnTheVisibleArtworkNotItsTransparentRoom),
+                ("persona resize keeps shape and limits", suite.testResizeFollowsThePointerKeepsTheShapeAndStaysWithinLimits),
+                ("persona locked artwork moves and resizes from handles", suite.testLockedArtworkMovesAndResizesFromItsHandlesAndStaysLocked),
+                ("persona handles appear after a brief pause", suite.testHandlesAppearAfterABriefPauseNearTheArtwork),
+                ("persona unlocked artwork takes clicks only on its body", suite.testUnlockedArtworkTakesClicksOnlyOnItsBody),
+                ("persona handles change only their own copy", suite.testHandlesChangeOnlyTheirOwnCopy),
+                ("persona native window focus lock drag and visibility", PersonaTests().testNativeOverlayWindowAndDragLifecycle),
+                ("optional offscreen persona handle renders", suite.testOffscreenHandleRenders)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-one-card-only"] {
             // Disposable libraries only; no shortcut, preference or microphone.
             _ = NSApplication.shared
@@ -303,6 +325,7 @@ struct TestRunner {
         let personaSessions = PersonaSessionTests()
         let personaOneCard = PersonaOneCardTests()
         let personaControls = PersonaControlsTests()
+        let personaHandles = PersonaHandleTests()
         let personaControlTests: [(String, () throws -> Void)] = [
             ("persona controls: single size slider", personaControls.testSingleSizeControlIsVisibleAndRoutesAbsoluteWidth),
             ("persona controls: selected copy and empty recovery", personaControls.testSessionControlsTargetSelectedCopyAndRecoverFromEmptySet)
@@ -413,6 +436,12 @@ struct TestRunner {
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
             ("persona scene attachment transparency and missing-file recovery", personas.testSceneAttachmentTransparencyAndMissingFile),
             ("persona native window focus lock drag and visibility", personas.testNativeOverlayWindowAndDragLifecycle),
+            ("persona handles sit on the visible artwork", personaHandles.testHandlesSitOnTheVisibleArtworkNotItsTransparentRoom),
+            ("persona resize keeps shape and limits", personaHandles.testResizeFollowsThePointerKeepsTheShapeAndStaysWithinLimits),
+            ("persona locked artwork moves and resizes from handles", personaHandles.testLockedArtworkMovesAndResizesFromItsHandlesAndStaysLocked),
+            ("persona handles appear after a brief pause", personaHandles.testHandlesAppearAfterABriefPauseNearTheArtwork),
+            ("persona unlocked artwork takes clicks only on its body", personaHandles.testUnlockedArtworkTakesClicksOnlyOnItsBody),
+            ("persona handles change only their own copy", personaHandles.testHandlesChangeOnlyTheirOwnCopy),
             ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
             ("persona read-only HUD browsing and placement", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement),
             ("desktop verification waits for macOS and times out safely", scenes.testDesktopVerificationWaitsForMacOSAndStopsAtTimeout),

@@ -390,7 +390,7 @@ final class PersonaTests {
     }
 
     func testNativeOverlayWindowAndDragLifecycle() throws {
-        let controller = PersonaOverlayController()
+        let controller = PersonaOverlayController(pointer: PersonaTestPointer())
         defer { controller.shutdown() }
         guard let window = controller.window, let artwork = window.contentView,
               let screen = NSScreen.main ?? NSScreen.screens.first,
