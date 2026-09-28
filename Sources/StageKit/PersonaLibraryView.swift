@@ -458,6 +458,9 @@ final class PersonaEditorSession: ObservableObject, Identifiable {
     @Published var style: PersonaCardStyle
     /// Why the last Add could not save. The draft stays for another try.
     @Published private(set) var failure: String?
+    /// False once the saved personas cannot be read: Add is not offered again
+    /// until Workbench is reopened, though Cancel still is.
+    @Published private(set) var canRetry = true
     /// Saved, added or cancelled: the editor can close.
     private(set) var isFinished = false
 
@@ -488,6 +491,12 @@ final class PersonaEditorSession: ObservableObject, Identifiable {
             draft.card = style
             do { try library.add(draft) }
             catch PersonaError.alreadyAdded {}
+            catch PersonaError.libraryUnavailable {
+                failure = "Couldn’t add this persona: the saved personas are missing, unreadable or from a newer Workbench."
+                    + " Reopen Workbench, then add the portrait again."
+                canRetry = false
+                return false
+            }
             catch {
                 let reason = (error as? PersonaError) == .changedOnDisk
                     ? "Couldn’t add this persona: the saved personas changed on disk again while it was being added."
@@ -543,7 +552,8 @@ struct PersonaCardEditor: View {
                 Button("Cancel") { session.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(session.isNew ? "Add persona" : "Save card") { if session.commit(to: library) { dismiss() } }
-                    .keyboardShortcut(.defaultAction).disabled(library.isReadOnly || (try? session.style.validated()) == nil)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(library.isReadOnly || !session.canRetry || (try? session.style.validated()) == nil)
             }
         }.padding(24).frame(width: 420).background(Workbench.background).workbenchTheme()
             // However the sheet closes, an unfinished edit is dropped.

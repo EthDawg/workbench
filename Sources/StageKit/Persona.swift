@@ -54,7 +54,7 @@ enum PersonaGeometry {
 }
 
 enum PersonaError: LocalizedError {
-    case invalidSettings, changedOnDisk, unreadableImage, outsidePreparedGroup, alreadyAdded
+    case invalidSettings, changedOnDisk, unreadableImage, outsidePreparedGroup, alreadyAdded, libraryUnavailable
     var errorDescription: String? {
         switch self {
         case .invalidSettings: return "The saved personas contain unsupported or invalid settings. The original files are unchanged."
@@ -62,6 +62,7 @@ enum PersonaError: LocalizedError {
         case .unreadableImage: return "This persona image is missing or unreadable. Import the finished image again."
         case .outsidePreparedGroup: return "Choose a persona in the prepared group."
         case .alreadyAdded: return "This persona is already in your library."
+        case .libraryUnavailable: return "The saved personas are missing, unreadable or from a newer Workbench. Reopen Workbench before adding a persona."
         }
     }
 }
@@ -444,11 +445,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
 
     /// Reads the library file again after something else changed it, so an Add
-    /// applies to what is saved now. Nothing is written. An unreadable, missing
-    /// or newer file stays untouched and the library keeps what it had.
+    /// applies to what is saved now. Nothing is written. A missing, unreadable,
+    /// invalid or newer file stays untouched, the library keeps what it had, and
+    /// the Add fails with `.libraryUnavailable`, which trying again cannot fix.
     private func reloadArchive() throws {
-        guard let data = try PersonaStorage.read(libraryURL) else { throw PersonaError.changedOnDisk }
-        let archive = try JSONDecoder().decode(PersonaArchive.self, from: data).validated()
+        let data: Data, archive: PersonaArchive
+        do {
+            guard let read = try PersonaStorage.read(libraryURL) else { throw PersonaError.libraryUnavailable }
+            data = read
+            archive = try JSONDecoder().decode(PersonaArchive.self, from: data).validated()
+        } catch { throw PersonaError.libraryUnavailable }
         libraryData = data
         applyingArchive = true
         items = archive.items; selectedID = archive.selectedID; groups = archive.groups

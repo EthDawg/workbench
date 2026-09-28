@@ -205,25 +205,26 @@ final class PersonaCreationTests {
         XCTAssertEqual(f.library.items.first { $0.id == f.existing[1].id }?.name, "Renamed in another window", "The other change is kept")
         XCTAssertEqual(f.library.activeGroup?.personaIDs.filter { $0 == draft.id }.count, 1)
 
-        // The archive is unreadable: Add fails safely, says so and keeps the draft.
-        let retry = PersonaEditorSession(.new(try f.starters.draft(PersonaStarterLibrary.portraits[3], for: f.library)))
-        guard case .new(let second) = retry.subject else { return }
-        retry.style.label = "Kept edits"
-        let saved = try Data(contentsOf: archive)
-        let before = try snapshot(f)
-        try Data("Synthetic concurrent edit".utf8).write(to: archive)
-        XCTAssertFalse(retry.commit(to: f.library))
-        XCTAssertTrue(retry.failure?.contains("kept here") == true, "The editor says the draft is kept")
-        var failed = before.files; failed["persona-library.json"] = Data("Synthetic concurrent edit".utf8)
-        XCTAssertEqual(try snapshot(f).files, failed, "A failed Add leaves no new picture behind")
-        XCTAssertEqual(f.library.items, before.items); XCTAssertEqual(f.library.selectedID, before.selectedID)
-        XCTAssertEqual(retry.style.label, "Kept edits")
-        // Once the archive is readable again, the same Add succeeds once.
-        try saved.write(to: archive)
-        XCTAssertTrue(retry.commit(to: f.library))
-        XCTAssertTrue(retry.failure == nil)
-        XCTAssertEqual(f.library.items.filter { $0.id == second.id }.count, 1)
-        XCTAssertEqual(f.library.items.last?.card?.label, "Kept edits")
+        // The archive became unreadable, or was removed: the library cannot be read
+        // again, so Add says to reopen Workbench and is not offered as a retry.
+        for damage in ["unreadable", "missing"] {
+            let blocked = PersonaEditorSession(.new(try f.starters.draft(PersonaStarterLibrary.portraits[3], for: f.library)))
+            blocked.style.label = "Kept edits"
+            let saved = try Data(contentsOf: archive)
+            let before = try snapshot(f)
+            if damage == "missing" { try FileManager.default.removeItem(at: archive) }
+            else { try Data("Synthetic concurrent edit".utf8).write(to: archive) }
+            XCTAssertFalse(blocked.commit(to: f.library))
+            XCTAssertTrue(blocked.failure?.contains("Reopen Workbench") == true, "The \(damage) library says to reopen Workbench")
+            XCTAssertFalse(blocked.canRetry, "Add is not offered again for a \(damage) library")
+            XCTAssertFalse(blocked.isFinished, "The draft stays open")
+            XCTAssertEqual(blocked.style.label, "Kept edits")
+            var damaged = before.files
+            if damage == "missing" { damaged["persona-library.json"] = nil } else { damaged["persona-library.json"] = Data("Synthetic concurrent edit".utf8) }
+            XCTAssertEqual(try snapshot(f).files, damaged, "A failed Add leaves no new picture and does not overwrite the \(damage) file")
+            XCTAssertEqual(f.library.items, before.items); XCTAssertEqual(f.library.selectedID, before.selectedID)
+            try saved.write(to: archive)
+        }
 
         // The library folder cannot be written: Add fails before anything is saved.
         let third = PersonaEditorSession(.new(try f.starters.draft(PersonaStarterLibrary.portraits[1], for: f.library)))
