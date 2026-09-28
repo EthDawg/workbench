@@ -54,11 +54,13 @@ expressions are not compared as text.
 
 Menu names: an app menu entry that opens a page must carry the name that page
 has in the page record (WorkbenchHome navItems and sections, as registered on
-the window sidebar and page sections), with at most a trailing …; anything else
-fails as menu name drift. A page item built with pageItem("route") is named by
-the record. An item written with its own title records the page its #selector
-method opens when that method's own top-level statements route to one page, so
-a hand-written door is compared too.
+the window sidebar and page sections, and subpages, read from the record), with
+at most a trailing …; anything else fails as menu name drift. A page item built
+with pageItem("route") is named by the record, and a hand-written item whose
+action is openPage fails outright. An item written with its own title records
+the page its #selector method opens when that method's own top-level statements
+route to one page, so such a door is compared too. A route chosen inside a
+condition or a helper, and a title built at runtime, are not seen.
 
 Limits: this is a small Swift lexer with targeted extractors, not a compiler
 or a reachability analysis, so it also inventories definitions behind
@@ -875,8 +877,15 @@ class Inventory:
             if not tokens or (literal(tokens) == '' and api not in ('TextField', 'SecureField')):
                 continue
             # A menu item written with its own title records the page its action opens, so the
-            # menu name check can compare the two.
-            page = self.menu_page(swift, args) if mode == 'controls' and swift.stem == 'main' and api in ('addItem', 'NSMenuItem') else None
+            # menu name check can compare the two. openPage takes its route from the item, which
+            # only pageItem sets, so a hand-written item that uses it is refused outright.
+            page = None
+            if mode == 'controls' and swift.stem == 'main' and api in ('addItem', 'NSMenuItem'):
+                if [t.value for t in named_arg(args, 'action') or []][:4] == ['#', 'selector', '(', 'openPage'] \
+                        and 'pageItem' not in swift.context(i).split('.'):
+                    raise ValueError(f'{swift.path}: the menu item {expression(tokens)} opens a page through openPage by hand. '
+                                     'Build it with pageItem("route") so the page record names it and gives its route.')
+                page = self.menu_page(swift, args)
             record(i, api, tokens, **({'page': page} if page else {}))
 
         for i, _, args, end in swift.calls({'Text', 'setAccessibilityLabel'}):
@@ -1067,8 +1076,8 @@ def quick_panel_surface(swift, index, api):
     return 'quick panel status rows' if api == 'status' else 'quick panel footer'
 
 
-def derive(root, require_roots=True):
-    tree = Tree(root)
+def derive(root, require_roots=True, tree=None):
+    tree = tree or Tree(root)
     inventory = Inventory(tree, require_roots)
     # Proactive offers, the app raises these on its own. First, so a surface
     # that embeds an offer does not claim it.
@@ -1123,11 +1132,13 @@ def reconcile(actual, registered):
     return result
 
 
-def menu_name_drift(registered):
+def menu_name_drift(registered, page_names=None):
     """An app menu entry that opens a page must carry that page's name from the page record, as
-    the registry holds it on the window sidebar and page sections. A page's own name wins over
-    its first section's, so a door to "settings" is Settings. Only a trailing … may differ."""
-    names = {e['page']: e['label'] for e in registered if e.get('surface') == 'page sections' and e.get('page') and e.get('label')}
+    the registry holds it on the window sidebar and page sections, or as the record gives it
+    for a subpage (page_names, from Tree.page_names). A page's own name wins over its first
+    section's, so a door to "settings" is Settings. Only a trailing … may differ."""
+    names = dict(page_names or {})
+    names.update({e['page']: e['label'] for e in registered if e.get('surface') == 'page sections' and e.get('page') and e.get('label')})
     names.update({e['page']: e['label'] for e in registered if e.get('surface') == 'window sidebar' and e.get('page') and e.get('label')})
     errors = []
     for entry in registered:
@@ -1136,12 +1147,12 @@ def menu_name_drift(registered):
             continue
         if MENU_PUNCTUATION.sub('', label) != names[page]:
             errors.append(f'Menu name drift on app menu bar: {json.dumps(label, ensure_ascii=False)} opens {names[page]} ({page}) under another name. '
-                          'A menu door carries the name its page has in the page record (WorkbenchHome navItems and sections); '
+                          'A menu door carries the name its page has in the page record (WorkbenchHome navItems, sections and subpages); '
                           f'only a trailing … may differ. Build it with pageItem("{page}") in AppDelegate. [{entry["id"]}]')
     return errors
 
 
-def compare(actual, registered):
+def compare(actual, registered, page_names=None):
     errors = []
     ids = Counter(e.get('id') for e in registered)
     for key, count in sorted(ids.items(), key=lambda pair: str(pair[0])):
@@ -1176,7 +1187,7 @@ def compare(actual, registered):
             errors.append(f'Invalid aliasOf for {key}: name a Grammar id or a different registered entry.')
         if alias and not entry.get('note'):
             errors.append(f'Alias {key} needs a note explaining the intentional alternative.')
-    errors += menu_name_drift([entry for entry in registered if entry.get('id') in source])
+    errors += menu_name_drift([entry for entry in registered if entry.get('id') in source], page_names)
     labels = defaultdict(list)
     for entry in registered:
         if entry.get('label') and entry.get('id') in source:
@@ -1197,14 +1208,15 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true', help='Machine-readable actual entries and errors for review.')
     args = parser.parse_args(argv)
     try:
-        actual = derive(args.root.resolve())
+        tree = Tree(args.root.resolve())
+        actual = derive(args.root.resolve(), tree=tree)
         registered = json.loads(args.registry.read_text()) if args.registry.exists() else []
         if not isinstance(registered, list) or any(not isinstance(e, dict) for e in registered):
             raise ValueError('Registry must be a JSON array of entry objects.')
         if args.update:
             registered = reconcile(actual, registered)
             args.registry.write_text(json.dumps(registered, indent=2, ensure_ascii=False) + '\n')
-        errors = compare(actual, registered)
+        errors = compare(actual, registered, tree.page_names())
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f'Surface registry error: {error}', file=sys.stderr)
         return 2
