@@ -227,6 +227,7 @@ enum SurfaceGallery {
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
+        panels += try renderFloatingStates(to: output)
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
             let window = homeWindow(size: size)
@@ -245,6 +246,38 @@ enum SurfaceGallery {
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+    }
+
+    // MARK: Floating surface states
+
+    /// The floating surface's own moments, which no page shows: the routine cue in place of
+    /// the recording controls after a dictation that heard no speech, and a reading that
+    /// stopped because its audio could not be read. Both at the compact size they use.
+    func renderFloatingStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let controls = CaptureHUDControls(defaults: .standard)
+        model.announceForAccessibility = { _ in }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String) throws {
+            let size = CaptureHUDLayout.compact
+            let content = WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
+                                                   dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+            let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: size, styleMask: [.borderless])
+            window.contentView = host
+            defer { window.contentView = nil; window.close() }
+            settle(host)
+            shots.append(try save(try snapshot(host), id: id, title: title, detail: detail, file: "panel-\(id)-\(theme).png", to: output))
+        }
+        model.endWithoutSpeech(.tooQuiet)
+        try shot("floating-no-speech", "Floating: no speech heard",
+                 "In place of the recording controls for under two seconds, then the toolbar again. Hover holds it.")
+        model.dismissCaptureCue()
+        model.reportReadingFailure(.audioUnreadable)
+        try shot("floating-reading-stopped", "Floating: reading stopped",
+                 "A reading whose audio could not be read keeps its controls with Retry and dismiss.")
+        model.dismissReadingFailure()
+        return shots
     }
 
     // MARK: Read states

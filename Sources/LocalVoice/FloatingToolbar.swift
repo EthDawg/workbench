@@ -231,7 +231,7 @@ struct WorkbenchFloatingContent: View {
         } else if CapturePanelController.showsDictation(model) {
             RecordingOverlay(model: model, controls: controls,
                 finishDrawing: stage.isDrawing ? { stage.finishDrawing() } : nil)
-        } else if model.rendering || model.playing || model.paused {
+        } else if model.rendering || model.playing || model.paused || model.readingFailure != nil {
             ReadingControls(model: model)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
@@ -242,9 +242,37 @@ struct WorkbenchFloatingContent: View {
 
 /// Reading only needs its active transport. Editing and voice choices stay in
 /// Workbench; there is no second reading editor hidden behind this surface.
+/// A reading that stopped because its audio could not be read stays here with
+/// the reason, Retry and Dismiss until the person does one of them.
 private struct ReadingControls: View {
     @ObservedObject var model: AppModel
     var body: some View {
+        if let failure = model.readingFailure, !model.rendering, !model.playing, !model.paused {
+            stopped(failure)
+        } else {
+            transport
+        }
+    }
+
+    private func stopped(_ failure: AppModel.ReadingFailure) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Reading stopped").font(.system(size: 12, weight: .semibold))
+                Text("Its audio could not be read.").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            }.accessibilityElement(children: .combine).accessibilityLabel(failure.message).help(failure.message)
+            Spacer(minLength: 4)
+            Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
+                .accessibilityHint("Makes new audio and reads from the start")
+            Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                .accessibilityLabel("Dismiss reading error")
+        }.padding(14).frame(width: 336, height: 64)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain).accessibilityLabel("Reading controls")
+            .workbenchTheme()
+    }
+
+    private var transport: some View {
         HStack(spacing: 12) {
             Image(systemName: "speaker.wave.2").foregroundStyle(Workbench.accent)
             Text(model.rendering ? "Preparing Reading" : model.paused ? "Reading Paused" : "Reading")

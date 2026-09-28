@@ -265,6 +265,23 @@
     "belongsTo": "present"
   },
   {
+    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.retry",
+    "surface": "floating toolbar live controls",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#156, #161): a reading that stopped because its audio could not be read keeps its compact controls, where Retry makes new audio. No new entry point; the Read page has the same Retry."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-772d4201867d",
+    "surface": "floating toolbar live controls",
+    "label": null,
+    "expression": "Image ( systemName : \"xmark\" )",
+    "note": "Quality (#156, #161): dismisses a stopped reading's reason; its text and voice stay. Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "read"
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-d5d0cbd9ef56",
     "surface": "floating toolbar live controls",
     "label": null,

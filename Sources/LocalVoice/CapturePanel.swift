@@ -176,6 +176,11 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             .receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
+        // A routine cue and a stopped reading keep their surfaces until they go.
+        model.$captureCue.combineLatest(model.$readingFailure)
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
+            .store(in: &observations)
         NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.cancelDragging(); self?.controls.unfocusToolbar() }
@@ -193,7 +198,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible || stage?.isDrawing == true || stage?.isPresenting == true || stage?.hasActivePersona == true || model.promptInsertion.running,
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture(),
             dictation: Self.showsDictation(model), narration: readback?.isRecording == true,
-            reading: model.rendering || model.playing || model.paused)
+            reading: model.rendering || model.playing || model.paused || model.readingFailure != nil)
         if surface != self.surface {
             self.surface = surface
             tracking?.acceptsCrossings = false
@@ -208,7 +213,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
         let size = surface == .tools ? controls.preferredToolbarSize : surface == .reading ? CaptureHUDLayout.compact : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
-            preview: model.previewingPanel, expanded: controls.isExpanded)
+            preview: model.previewingPanel, expanded: controls.isExpanded, cue: Self.showsCue(model))
         if !window.isVisible { place(size: size, restoreSaved: true) }
         else if (motion.target?.size ?? window.frame.size) != size {
             place(size: size, restoreSaved: false, animated: surface == .tools && previousSurface == .tools && !dragging)
@@ -218,8 +223,11 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         if previousSurface != surface && surface == .tools { tracking?.settle() }
     }
 
+    /// A routine no-speech cue, unless a failure or a new capture has since taken the surface.
+    static func showsCue(_ model: AppModel) -> Bool { model.captureCue != nil && model.captureFailure == nil && model.phase == .idle }
+
     static func showsDictation(_ model: AppModel) -> Bool {
-        model.previewingPanel || model.phase != .idle || model.captureFailure != nil ||
+        model.previewingPanel || model.phase != .idle || model.captureFailure != nil || model.captureCue != nil ||
             (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil)
     }
 
@@ -434,13 +442,18 @@ struct RecordingOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private var isRecordingSurface: Bool { model.phase == .recording || model.previewingPanel }
-    private var size: NSSize { CaptureHUDLayout.size(recording: model.phase == .recording, preview: model.previewingPanel, expanded: controls.isExpanded) }
+    private var size: NSSize {
+        CaptureHUDLayout.size(recording: model.phase == .recording, preview: model.previewingPanel, expanded: controls.isExpanded,
+                              cue: CapturePanelController.showsCue(model))
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             PanelDragHandle().frame(width: 8, height: 40)
             if model.phase == .idle && !model.previewingPanel, let failure = model.captureFailure {
                 failureState(failure)
+            } else if model.phase == .idle && !model.previewingPanel, let cue = model.captureCue {
+                NoSpeechCueView(cue: cue, hold: model.holdCaptureCue)
             } else if model.phase == .idle && !model.previewingPanel {
                 CaptureReceiptView(receipts: model.clipboardReceipt, review: { model.openHistory(); model.onShowEditor?("history") }, controls: controls)
             } else if isRecordingSurface && !controls.isExpanded {
@@ -630,6 +643,35 @@ struct RecordingOverlay: View {
         if model.phase == .cancelling { return "Microphone off. Waiting for processing to stop." }
         if !model.canCancelCurrentCapture { return "Microphone off. Your original text is retained." }
         return "Microphone off. Cancel to stop processing."
+    }
+}
+
+/// The routine cue after a dictation that heard no speech: two short lines in
+/// place of the recording controls, gone by itself. Hovering it, or VoiceOver
+/// on it, holds it. It has no buttons because nothing needs a decision; a kept
+/// recording waits on the Dictate page (#156).
+struct NoSpeechCueView: View {
+    let cue: CaptureCue
+    let hold: (Bool) -> Void
+    @State private var hovering = false
+    @AccessibilityFocusState private var voiceOverFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "waveform.slash").font(.system(size: 17)).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(cue.message).font(.system(size: 13, weight: .semibold))
+                Text(cue.hint).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering = $0; hold($0 || voiceOverFocused) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(cue.message + ". " + cue.hint)
+        .accessibilityFocused($voiceOverFocused)
+        .onChange(of: voiceOverFocused) { _, focused in hold(focused || hovering) }
     }
 }
 

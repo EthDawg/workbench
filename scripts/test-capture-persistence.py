@@ -22,6 +22,7 @@ def extract(start, end):
 methods = '\n'.join([
     extract('    func resumeWaitingDelivery()', '\n    @Published var isMicrophoneQuiet'),
     extract('    func cancelShortcut(', '\n    func transcribeForShortcut'),
+    extract('    func stopRecording()', '\n    func cancelRecording()'),
     extract('    func cancelRecording()', '\n    func importAudio()'),
     extract('    func importAudio(_ url:', '\n    func retryTranscription()'),
     extract('    func retryTranscription()', '\n    private func captureSettings()'),
@@ -63,12 +64,16 @@ struct CaptureSettings {
     struct Configuration { enum Provider { case parakeet }; var provider = Provider.parakeet; var model = "Fixture" }
     var calls = 0
     var delayed = false
+    /// What recognition returns: words, nothing at all, or a failure.
+    var result = "um synthetic captured words"
+    var failure: Error?
     var continuation: CheckedContinuation<String, Never>?
     func configuration() async -> Configuration { Configuration() }
     func transcribe(_ url: URL) async throws -> String {
         calls += 1
+        if let failure { throw failure }
         if delayed { return await withCheckedContinuation { continuation = $0 } }
-        return "um synthetic captured words"
+        return result
     }
     func release() { let c = continuation; continuation = nil; c?.resume(returning: "um synthetic captured words") }
 }
@@ -76,7 +81,7 @@ struct CaptureSettings {
     struct Result { let text: String; let method: String }
     var calls = 0
     func clean(_ raw: String, style: String, configuration: String) async -> Result {
-        calls += 1; return Result(text: "Synthetic captured words.", method: "Fixture Light")
+        calls += 1; return Result(text: raw.isEmpty ? "" : "Synthetic captured words.", method: "Fixture Light")
     }
 }
 @MainActor enum TextDelivery {
@@ -124,6 +129,7 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     var destination: String? = "Original app target"
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var recorder: AVAudioRecorder?, meter: Timer?, recordingAttempt: UUID?
+    var peakPower: Float = -160, recordingSettings: CaptureSettings?
     var photoHandoffRefresh: Task<Void, Never>?, readingTask: Task<Void, Never>?
     var photoHandoffActivation: AnyCancellable?, audioURL: URL?
     var onPhaseChange: (() -> Void)?
@@ -424,6 +430,90 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(TextDelivery.calls == 2 && !quitDrawing.waitingForDrawing && !quitDrawing.drawingDelivery.isWaiting, "Quit cancels a waiting insertion without delivering or retaining its continuation")
         try check(quitDrawing.store.saved?.history.count == 1, "Quit preserves text already saved before the drawing wait")
 
+        // No speech is routine (#156): a brief cue with the same words for
+        // VoiceOver, no failure panel or error, and any recording of ours kept.
+        // Failures keep the explicit recovery panel.
+        func recording(_ model: CaptureHarness, seconds: Double, peak: Float) throws -> URL {
+            let url = try model.makeRecording(wav)
+            model.phase = .recording; model.elapsed = seconds; model.peakPower = peak
+            return url
+        }
+        var announced: [String] = []
+        let tap = CaptureHarness(directory: folder("no-speech-tap")); tap.announceForAccessibility = { announced.append($0) }
+        let tapURL = try recording(tap, seconds: 0.2, peak: -20)
+        tap.stopRecording()
+        try check(tap.captureCue?.reason == .tooShort && tap.captureFailure == nil && tap.error == nil && tap.phase == .idle
+                  && !tap.canRetry && tap.engine.calls == 0, "An accidental tap is a routine cue, not a failure")
+        try check(announced == ["No speech heard"] && tap.captureCue?.message == "No speech heard", "VoiceOver hears the cue's own words, once")
+        try check(!FileManager.default.fileExists(atPath: tapURL.path) && !tap.captureRecovery.hasRecovery, "A tap keeps nothing, as before")
+        let hush = CaptureHarness(directory: folder("no-speech-quiet")); hush.announceForAccessibility = { _ in }
+        _ = try recording(hush, seconds: 3, peak: -70)
+        hush.stopRecording()
+        try check(hush.captureCue?.reason == .tooQuiet && hush.captureFailure == nil && hush.error == nil && hush.status.contains("Sound"),
+                  "Silence is a routine cue, with the microphone hint in the status")
+
+        let nothing = CaptureHarness(directory: folder("no-speech-recognised")); nothing.announceForAccessibility = { _ in }
+        nothing.engine.result = ""
+        let nothingURL = try nothing.makeRecording(wav)
+        nothing.run(nothingURL, owned: true); await finish(nothing)
+        try check(nothing.captureCue?.reason == .nothingRecognised(keptAudio: true) && nothing.captureFailure == nil && nothing.error == nil
+                  && nothing.phase == .idle && nothing.history.isEmpty, "Sound that came back as no words is a routine cue, not a failure")
+        try check(nothing.canRetry && nothing.retryCaptureLabel == "Retry transcription" && (try Data(contentsOf: nothingURL)) == wav,
+                  "Its recording is kept exactly, with Retry on the Dictate page")
+        nothing.dismissCaptureCue()
+        try check(nothing.captureCue == nil && nothing.canRetry && FileManager.default.fileExists(atPath: nothingURL.path),
+                  "Dismissing the cue keeps the recording and its Retry")
+        nothing.engine.result = "um synthetic captured words"
+        nothing.destination = "An old paste destination"
+        TextDelivery.lastTarget = "unset"
+        nothing.retryTranscription(); await finish(nothing)
+        try check(nothing.history.count == 1 && TextDelivery.lastTarget == nil, "Retry after no speech never reuses an old paste destination")
+
+        let again = CaptureHarness(directory: folder("no-speech-again")); again.announceForAccessibility = { _ in }
+        again.engine.result = ""
+        let againURL = try again.makeRecording(wav)
+        again.run(againURL, owned: true); await finish(again)
+        let keptID = again.captureRecovery.pending!.id
+        try check(again.canRecordAgain && again.admitsCapture(), "A new capture after no speech is admitted")
+        let keptFolder = again.captureRecovery.savedRecordingsDirectory.appendingPathComponent(keptID.uuidString)
+        try check((try Data(contentsOf: keptFolder.appendingPathComponent(againURL.lastPathComponent))) == wav,
+                  "The kept recording moves to Saved recordings instead of being discarded")
+
+        let expiring = CaptureHarness(directory: folder("no-speech-expiry")); expiring.announceForAccessibility = { _ in }
+        _ = try recording(expiring, seconds: 0.1, peak: -20); expiring.stopRecording()
+        let held = CaptureHarness(directory: folder("no-speech-held")); held.announceForAccessibility = { _ in }
+        _ = try recording(held, seconds: 0.1, peak: -20); held.stopRecording()
+        held.holdCaptureCue(true)
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        try check(expiring.captureCue == nil, "The cue goes by itself within two seconds")
+        try check(held.captureCue != nil, "A hovered cue stays")
+        held.holdCaptureCue(false)
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        try check(held.captureCue == nil, "Letting go of the cue lets it go")
+
+        let replaced = CaptureHarness(directory: folder("no-speech-replaced")); replaced.announceForAccessibility = { _ in }
+        _ = try recording(replaced, seconds: 0.1, peak: -20); replaced.stopRecording()
+        replaced.run(try replaced.makeRecording(wav), owned: true)
+        try check(replaced.captureCue == nil, "A new transcription takes the surface from a cue still showing")
+        await finish(replaced)
+
+        let broken = CaptureHarness(directory: folder("engine-failed")); broken.announceForAccessibility = { _ in }
+        broken.engine.failure = FixtureFailure.write
+        let brokenURL = try broken.makeRecording(wav)
+        broken.run(brokenURL, owned: true); await finish(broken)
+        try check(broken.captureFailure?.hasPrefix("Transcription failed") == true && broken.captureCue == nil && broken.canRetry
+                  && FileManager.default.fileExists(atPath: brokenURL.path), "An engine failure keeps the explicit recovery panel with Retry")
+
+        let shortcutSilence = CaptureHarness(directory: folder("no-speech-shortcut")); shortcutSilence.announceForAccessibility = { _ in }
+        shortcutSilence.engine.result = ""
+        var silenceReplies: [String] = []
+        try shortcutSilence.shortcutRequest.begin(id: UUID()) { result in
+            if case .failure(let error) = result { silenceReplies.append(error.localizedDescription) } else { silenceReplies.append("success") }
+        }
+        shortcutSilence.run(importedURL, owned: false); await finish(shortcutSilence)
+        try check(silenceReplies == ["No speech heard."] && shortcutSilence.captureCue?.reason == .nothingRecognised(keptAudio: false)
+                  && !shortcutSilence.canRetry, "Shortcuts get one No speech heard reply; an imported file is never kept")
+
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }
 }
@@ -436,6 +526,7 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
     executable = directory / 'checks'
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(directory / 'ModuleCache'),
                     str(swift), str(PROJECT / 'Sources/LocalVoice/TextPrimitives.swift'), str(PROJECT / 'Sources/LocalVoice/CaptureRecovery.swift'), str(PROJECT / 'Sources/LocalVoice/DrawingDeliveryGate.swift'),
+                    str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
 print('AppModel.swift SHA256:', hashlib.sha256(source.encode()).hexdigest())

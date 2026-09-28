@@ -11,7 +11,11 @@ permission to preserve a bug.
 The floating toolbar is the shared live control surface for Snap & Talk, Draw,
 Present and Persona Overlay. Desktop pages own preparation and saved libraries.
 The compact menu-bar panel owns quick utilities, adjustments and shortcut editing.
-Dictate and Read expose only their compact active controls here.
+Dictate and Read expose only their compact active controls here. A dictation
+that heard no speech shows a brief "No speech heard" cue in place of its
+recording controls, then the toolbar returns by itself; a reading whose audio
+could not be read keeps its compact controls with the reason, Retry and
+dismiss. Like the live controls, both appear even when Hide toolbar is on.
 
 **The mode follows you.** A mode is one capability or named workflow: Dictate,
 Read, Snap, Snap & Talk, Draw, Present or Persona. Starting anything from any

@@ -7,8 +7,12 @@ enum CaptureHUDLayout {
     static let expanded = NSSize(width: 480, height: 192)
     static let message = NSSize(width: 480, height: 128)
 
-    static func size(recording: Bool, preview: Bool, expanded: Bool) -> NSSize {
-        recording || preview ? (expanded ? Self.expanded : compact) : message
+    /// The message layout is for receipts, processing and the explicit
+    /// recovery panel. A routine cue after a dictation that heard no speech
+    /// keeps the compact size of the recording controls it replaces (#156).
+    static func size(recording: Bool, preview: Bool, expanded: Bool, cue: Bool = false) -> NSSize {
+        if cue && !recording && !preview { return compact }
+        return recording || preview ? (expanded ? Self.expanded : compact) : message
     }
 }
 

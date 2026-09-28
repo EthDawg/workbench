@@ -450,7 +450,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
-        captureFailure = nil
+        captureFailure = nil; dismissCaptureCue()
         previewingPanel = false
         stopPlayback()
         captureUsesHoldShortcut = fromShortcut && preferences.capture == .hold
@@ -525,7 +525,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
         guard duration >= 0.35, peakPower > -55 else {
             discardRecordingRecovery()
-            fail("No clear speech was captured. Check Sound → Input. For a MacBook’s built-in microphone, open the lid."); return
+            endWithoutSpeech(duration < 0.35 ? .tooShort : .tooQuiet); return
         }
         transcribe(url, duration: duration, temporary: true, settings: recordingSettings)
         recordingSettings = nil
@@ -608,7 +608,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         let shortcutID = shortcutRequest.id
         let invocation = UUID(); transcriptionID = invocation
         clipboardReceipt.clear()
-        captureFailure = nil
+        captureFailure = nil; dismissCaptureCue()
         previewingPanel = false
         captureProcessingLabel = "Preparing transcription…"
         phase = .transcribing; status = "Turning speech into text…"; error = nil; canRetry = false; onPhaseChange?()
@@ -632,7 +632,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 guard transcriptionID == invocation else { throw CancellationError() }
                 if let shortcutID, shortcutRequest.id != shortcutID { throw CancellationError() }
                 let result = TextRules.apply(cleaned.text, replacements: settings.replacements)
-                guard !result.isEmpty else { throw VoiceError.message("No speech was recognised. Try speaking closer to the microphone.") }
+                guard !result.isEmpty else {
+                    // Silence, noise or a sound that is not speech came back as
+                    // no words. Our own recording stays for Retry on Dictate.
+                    canRetry = temporary && shortcutID == nil
+                    endWithoutSpeech(.nothingRecognised(keptAudio: temporary)); return
+                }
                 guard try commitRecognizedCapture(raw: raw, text: result, seconds: duration,
                     method: cleaned.method, ownedAudio: temporary ? url : nil, invocation: invocation) else { return }
                 accessibilityGranted = AXIsProcessTrusted()
@@ -800,7 +805,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     private func copyTextWithReceipt(_ text: String) {
         guard !text.isEmpty else { return }
-        captureFailure = nil
+        captureFailure = nil; dismissCaptureCue()
         let count = TextDelivery.copy(text)
         let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : "Copied to clipboard.", clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
         status = outcome.message
@@ -825,7 +830,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         let revision = draftRevision
         let settings = captureSettings()
         let invocation = UUID(); transcriptionID = invocation
-        clipboardReceipt.dismissHUD(); captureFailure = nil
+        clipboardReceipt.dismissHUD(); captureFailure = nil; dismissCaptureCue()
         previewingPanel = false; destination = nil
         captureProcessingLabel = "Text cleanup · on this Mac"
         phase = .cleaning; status = "Tidying your words…"; error = nil
@@ -1193,6 +1198,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func reportReadingFailure(_ failure: ReadingFailure) {
         readingFailure = failure
         error = failure.message
+        announceForAccessibility(failure.message)
     }
     /// Dismiss beside Retry: the reading stays stopped, with its text and voice.
     func dismissReadingFailure() { clearReadingFailure() }
@@ -1343,9 +1349,53 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return result
     }
     func fail(_ text: String) {
+        dismissCaptureCue()
         if phase != .idle { captureFailure = text }
         if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(text))) }
         error = text; phase = .idle; status = "Needs attention"; onPhaseChange?()
+    }
+    /// A dictation that ended without words (#156). Routine outcomes are not
+    /// failures: no recovery panel and no error, just a cue in place of the
+    /// recording controls that goes by itself, the same words for VoiceOver,
+    /// and any recording of our own kept for Retry on the Dictate page.
+    /// Failures (permission, microphone, engine or provider, saving and
+    /// recovered recordings) keep going through fail() and the explicit panel.
+    @Published private(set) var captureCue: CaptureCue?
+    private var captureCueClock: CaptureCueClock?
+    private var captureCueExpiry: Task<Void, Never>?
+    var announceForAccessibility: (String) -> Void = { CaptureCueAnnouncement.post($0) }
+    func endWithoutSpeech(_ reason: CaptureCue.Reason) {
+        if let id = shortcutRequest.id { shortcutRequest.finish(id: id, result: .failure(VoiceError.message(CaptureCue.message + "."))) }
+        captureFailure = nil
+        phase = .idle
+        let cue = CaptureCue(reason: reason)
+        captureCue = cue
+        captureCueClock = CaptureCueClock(routine: true, shownAt: Date())
+        status = cue.status
+        announceForAccessibility(cue.message)
+        scheduleCaptureCueExpiry()
+        onPhaseChange?()
+    }
+    /// Hovering the cue, or VoiceOver on it, pauses its time; letting go resumes it.
+    func holdCaptureCue(_ held: Bool) {
+        guard captureCue != nil, captureCueClock?.isHeld != held else { return }
+        captureCueClock?.hold(held, at: Date())
+        scheduleCaptureCueExpiry()
+    }
+    /// The cue goes; any kept recording stays exactly as it was.
+    func dismissCaptureCue() {
+        captureCueExpiry?.cancel(); captureCueExpiry = nil
+        captureCueClock = nil
+        if captureCue != nil { captureCue = nil; onPhaseChange?() }
+    }
+    private func scheduleCaptureCueExpiry() {
+        captureCueExpiry?.cancel(); captureCueExpiry = nil
+        guard let cue = captureCue, let deadline = captureCueClock?.deadline else { return }
+        captureCueExpiry = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, deadline.timeIntervalSinceNow) * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.captureCue?.id == cue.id else { return }
+            self.dismissCaptureCue()
+        }
     }
     func persist() {
         guard loaded else { return }
