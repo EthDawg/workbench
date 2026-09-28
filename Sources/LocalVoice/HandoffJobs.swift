@@ -241,7 +241,7 @@ enum HandoffJobStore {
     }
 
     static func prepare(sources: [HandoffSourceSnapshot], task: String, skill: ReadbackSkillPackSnapshot,
-                        root: URL, existing: [HandoffJob], review: SnapReviewContext? = nil) throws -> HandoffJob {
+                        root: URL, existing: [HandoffJob], review: SnapReviewContext? = nil, now: Date = Date()) throws -> HandoffJob {
         guard !sources.isEmpty, sources.count <= maximumItems else { throw VoiceError.message("Select between 1 and 200 items.") }
         guard Set(sources.map(\.reference)).count == sources.count else { throw VoiceError.message("The selection contains repeated items.") }
         let task = task.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -291,7 +291,7 @@ enum HandoffJobStore {
         if let found = existing.first(where: { $0.fingerprint == fingerprint }),
            (try? verify(found, root: root.appendingPathComponent(found.id.uuidString))) != nil { return found }
         try privateDirectory(root)
-        let id = UUID(), now = Date()
+        let id = UUID()
         let staging = root.appendingPathComponent(".staging-" + id.uuidString)
         let destination = root.appendingPathComponent(id.uuidString)
         try privateDirectory(staging)
@@ -404,6 +404,15 @@ enum HandoffJobStore {
     }
 }
 
+/// How a connected task reaches its provider: the installed CLI in the app.
+/// The surface gallery passes a synthetic one, so no process ever starts.
+struct HandoffRunner {
+    var discover: (SubscriptionProvider) async -> SubscriptionConnection
+    var run: (SubscriptionConnection, String, [URL], URL, @escaping @Sendable (String) -> Void) async throws -> SubscriptionCLIResult
+    static let installedCLI = HandoffRunner(discover: { await SubscriptionCLI.discover($0) },
+        run: { try await SubscriptionCLI.run($0, prompt: $1, images: $2, directory: $3, onSession: $4) })
+}
+
 @MainActor
 final class HandoffJobsModel: ObservableObject {
     @Published private(set) var jobs: [HandoffJob] = []
@@ -422,6 +431,9 @@ final class HandoffJobsModel: ObservableObject {
     private var running: Task<Void, Never>?
     private var fileStamps: [UUID: String] = [:]
     var isBusy: Bool { activeID != nil }
+    /// The installed CLI and the real clock, except in the surface gallery.
+    var runner = HandoffRunner.installedCLI
+    var clock: () -> Date = Date.init
     var onStateChange: (() -> Void)?
     var onPublishReview: ((HandoffJob, HandoffSnapshotRecord, String, Bool) throws -> String)?
     var currentReviewDigest: ((String) -> String?)?
@@ -474,7 +486,7 @@ final class HandoffJobsModel: ObservableObject {
         refreshing = true
         defer { refreshing = false }
         for provider in SubscriptionProvider.allCases where enabled(provider) {
-            let connection = await SubscriptionCLI.discover(provider)
+            let connection = await runner.discover(provider)
             if enabled(provider) { connections[provider] = connection }
         }
     }
@@ -482,7 +494,7 @@ final class HandoffJobsModel: ObservableObject {
     func prepare(sources: [HandoffSourceSnapshot], task: String, skill: ReadbackSkillPackSnapshot,
                  review: SnapReviewContext? = nil) throws -> HandoffJob {
         error = nil; notice = nil
-        let job = try HandoffJobStore.prepare(sources: sources, task: task, skill: skill, root: directory, existing: jobs, review: review)
+        let job = try HandoffJobStore.prepare(sources: sources, task: task, skill: skill, root: directory, existing: jobs, review: review, now: clock())
         if !jobs.contains(where: { $0.id == job.id }) { jobs.insert(job, at: 0) }
         return job
     }
@@ -646,8 +658,8 @@ final class HandoffJobsModel: ObservableObject {
                     endedAt: job.updatedAt, status: job.status, detail: job.detail))
             }
             job.provider = provider; job.providerSessionID = nil; job.status = .running; job.attempts += 1
-            job.attemptStartedAt = Date()
-            job.updatedAt = Date(); job.detail = "Starting " + provider.title + " with this saved selection."
+            job.attemptStartedAt = clock()
+            job.updatedAt = clock(); job.detail = "Starting " + provider.title + " with this saved selection."
             try save(job)
             activeID = job.id; error = nil; notice = nil; onStateChange?()
             let jobID = job.id
@@ -655,10 +667,10 @@ final class HandoffJobsModel: ObservableObject {
                 guard let self else { return }
                 defer { self.activeID = nil; self.running = nil; self.onStateChange?() }
                 do {
-                    let result = try await SubscriptionCLI.run(connection, prompt: prompt, images: images, directory: root) { [weak self] session in
+                    let result = try await self.runner.run(connection, prompt, images, root) { [weak self] session in
                         Task { @MainActor in
                             guard let self, self.activeID == jobID, var current = self.jobs.first(where: { $0.id == jobID }) else { return }
-                            current.providerSessionID = session; current.detail = provider.title + " accepted the task."; current.updatedAt = Date()
+                            current.providerSessionID = session; current.detail = provider.title + " accepted the task."; current.updatedAt = self.clock()
                             do { try self.save(current) } catch { self.error = "Could not save the provider receipt. " + error.localizedDescription }
                         }
                     }
@@ -669,13 +681,13 @@ final class HandoffJobsModel: ObservableObject {
                     try HandoffJobStore.write(Data(result.text.utf8), to: root.appendingPathComponent("result.md"))
                     guard var current = self.jobs.first(where: { $0.id == jobID }) else { return }
                     current.providerSessionID = result.providerSessionID ?? current.providerSessionID
-                    current.status = .completed; current.updatedAt = Date(); current.detail = "Result saved. Review it before using or sending it."
+                    current.status = .completed; current.updatedAt = self.clock(); current.detail = "Result saved. Review it before using or sending it."
                     try self.save(current)
                     self.publishReview(current)
                 } catch {
                     guard var current = self.jobs.first(where: { $0.id == jobID }) else { return }
                     current.status = Task.isCancelled || error is CancellationError ? .cancelled : .failed
-                    current.updatedAt = Date()
+                    current.updatedAt = self.clock()
                     current.detail = current.status == .cancelled ? "Stopped locally. Already submitted material may have been processed by the provider. Inputs are kept." : error.localizedDescription
                     do { try self.save(current) }
                     catch { self.error = "The task ended but its receipt could not be saved. Inputs and any result are kept." }

@@ -335,7 +335,7 @@ struct HistoryView: View {
     @ViewBuilder private var runningTask: some View {
         if jobs.isBusy {
             HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
+                Image(systemName: "hourglass").foregroundStyle(Workbench.accent).accessibilityHidden(true)
                 Text("Running · " + (jobs.jobs.first(where: { $0.id == jobs.activeID })?.title ?? "Hand off task"))
                     .font(.callout.weight(.medium)).lineLimit(1)
                 Spacer()

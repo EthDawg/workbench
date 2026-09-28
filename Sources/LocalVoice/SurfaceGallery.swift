@@ -240,8 +240,100 @@ enum SurfaceGallery {
                                                    detail: "", file: "page-\(pages[index].route)-\(name)-\(theme).png", to: output))
             }
         }
+        // History's states render last, so the pages above show no Hand off task.
+        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+    }
+
+    // MARK: History states
+
+    /// A provider that never starts a process: it accepts each task, then finishes it, fails it or
+    /// keeps it running until cancelled, by the task's request.
+    static let syntheticProvider = HandoffRunner(
+        discover: { SubscriptionConnection(provider: $0, executable: URL(fileURLWithPath: "/usr/bin/false"), version: "synthetic",
+                                           ready: true, detail: "Synthetic connection; nothing is sent.") },
+        run: { _, prompt, _, _, onSession in
+            onSession("synthetic-session")
+            if prompt.contains("Task: Plan the walkthrough.") { try await Task.sleep(nanoseconds: 3_600 * 1_000_000_000) }
+            if prompt.contains("Task: Summarize the pricing change.") { throw SubscriptionCLIError.failed("The synthetic provider stopped before it finished.") }
+            return SubscriptionCLIResult(providerSessionID: "synthetic-session", text: "# Follow-up for Sam\n\nA synthetic result.")
+        })
+
+    /// Spins the main run loop, where the model's tasks finish, until `done` or a deadline.
+    func wait(_ what: String, seconds: TimeInterval = 10, until done: () -> Bool) throws {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !done() && Date() < deadline { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02)) }
+        guard done() else { throw VoiceError.message("History state not reached: \(what).") }
+    }
+
+    /// History at the default width and a taller height: empty; transcripts, Snaps and tasks
+    /// together with two items selected; Results with running, completed, failed and Ready tasks;
+    /// and Transcripts, as Dictate's History… opens it. Tasks are prepared through the app's own
+    /// handoff model with a fixed clock and the synthetic provider above.
+    func renderHistoryStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let size = NSSize(width: 1180, height: 1_180), jobs = model.handoffJobs, library = model.historyLibrary
+        // A Snap folder that does not exist yet reads as an empty history.
+        let emptySnaps = SnapModel(store: SnapStore(root: home.appendingPathComponent("Empty Snaps", isDirectory: true)), desktop: home.appendingPathComponent("Desktop"),
+                                   trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") })
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String, snaps: SnapModel, door: HistoryDoor? = nil) throws {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.historyDoor = door; model.page = "history"
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snaps))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame, seconds: 1)
+            let rep = try snapshot(frame)
+            shots.append(try save(rep, id: "state-\(id)", title: title, detail: detail, file: "page-history-state-\(id)-\(theme).png", to: output))
+        }
+
+        model.history = []
+        try shot("empty", "History, empty", "Nothing dictated, snapped or handed off yet.", snaps: emptySnaps)
+        model.history = SurfacePass.history
+
+        // Four tasks between the synthetic captures, each through the real handoff model.
+        var now = Date(timeIntervalSince1970: 1_789_300_000)
+        jobs.clock = { now }; jobs.runner = SurfacePass.syntheticProvider
+        jobs.setEnabled(.claude, true)
+        try wait("a synthetic connection") { jobs.connections[.claude]?.ready == true }
+        let resolve: (Set<WorkbenchItemReference>) throws -> [HandoffSourceSnapshot] = { [snap] references in
+            try snap.handoffSnapshots(ids: Set(references.map(\.id))).map(\.reviewedHandoffSource)
+        }
+        func sources(_ references: [WorkbenchItemReference]) throws -> [HandoffSourceSnapshot] {
+            try AppModel.handoffSources(selected: Set(references), history: model.history, library: library, additional: resolve)
+        }
+        let transcripts = SurfacePass.history.map { WorkbenchItemReference(kind: .transcript, id: $0.id) }
+        let snaps = snap.items.map { WorkbenchItemReference(kind: .snap, id: $0.id) }
+        let skill = try TranscriptHandoffSkill.followUp.load()
+        _ = try jobs.prepare(sources: sources([transcripts[0], snaps[0]]), task: "Prepare the follow-up for Sam.", skill: skill)
+        for (time, references, request, status) in [(1_789_400_000.0, [snaps[1]], "Summarize the pricing change.", HandoffJobStatus.failed),
+                                                   (1_789_500_000.0, [transcripts[1]], "Draft the booking note.", .completed),
+                                                   (1_789_546_900.0, [transcripts[2], snaps[2]], "Plan the walkthrough.", .running)] {
+            now = Date(timeIntervalSince1970: time)
+            let job = try jobs.prepare(sources: sources(references), task: request, skill: skill)
+            jobs.start(job, provider: .claude)
+            try wait("a \(status.rawValue) task") {
+                let current = jobs.jobs.first { $0.id == job.id }
+                return current?.status == status && (status != .running || current?.providerSessionID != nil)
+            }
+        }
+        let loading = Task { await jobs.loadTaskFiles(jobs.jobs) }
+        try wait("the tasks' saved inputs") { jobs.jobs.allSatisfy { jobs.files($0) != nil } }
+        _ = loading
+        library.setSelected([transcripts[0], snaps[0]])
+
+        try shot("mixed", "History, All", "Transcripts, Snaps and Hand off tasks newest first, a task running above them and two items selected.", snaps: snap)
+        try shot("results", "History, Results", "A running task with Stop above the list, then completed, failed and Ready tasks, each with what it was made from.",
+                 snaps: snap, door: HistoryDoor(filter: .results))
+        try shot("transcripts", "History, Transcripts", "As Dictate's History… opens it.", snaps: snap, door: HistoryDoor(filter: .transcripts))
+
+        jobs.cancel()
+        try wait("the running task to stop") { !jobs.isBusy }
+        library.setSelected([])
+        return shots
     }
 
     // MARK: Fixtures
@@ -494,7 +586,7 @@ enum SurfaceGallery {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
             ["Destination"] + DeliveryMode.allCases.map { "  " + $0.rawValue } + ["Text Style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
-            + ["---", "Recent Transcripts… → history", "Dictation Settings… → dictate"])]
+            + ["---", "History… → history, on Transcripts", "Transcribe meeting or call… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
             guard let menu = panel.nativeOptions(tool) else { continue }
             let title = "\(tool.title) · \(tool == .annotate ? "Tools" : "Options")"
@@ -540,14 +632,14 @@ enum SurfaceGallery {
             switch tool {
             case .dictate:
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
-                         page(panel, "Dictate · Options · Recent Transcripts…", "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
+                         E(surface: panel, label: "Dictate · Options · History…", leads: "Page: history, on Transcripts", route: "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
                          action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings")]
             case .read:
                 list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
             case .snap:
-                list += [action(panel, "Snap", "Captures a region into Snap History"),
-                         action(panel, "Snap · Options · Region, Window or Screen", "Captures that area into Snap History"),
+                list += [action(panel, "Snap", "Captures a region, saved in History"),
+                         action(panel, "Snap · Options · Region, Window or Screen", "Captures that area, saved in History"),
                          page(panel, "Snap · Options · Open Snap…", "snap")]
             case .snapAndTalk:
                 list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
@@ -577,20 +669,28 @@ enum SurfaceGallery {
                  page("Settings page", "Your dictionary", "dictionary"), page("Settings page", "Models and local server", "models"),
                  page("Settings page", "Keyboard and practice", "shortcuts"), action("Settings page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
-                 page("Snap page", "Add to narrated session", "readback"), action("Snap page", "Hand off or organise a review", "Opens the handoff review"),
+                 page("Snap page", "Add to narrated session", "readback"),
+                 action("Snap page", "Use selected · Organise… · Hand off for synthesis…", "Opens the handoff review for a Snap review"),
                  action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
                  action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
                  action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
                  action("Read aloud page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
-                 page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "Open history", "history"),
-                 page("Handoff review", "Prepared handoff", "handoffs"), page("Remember correction", "Open Dictionary", "dictionary")]
+                 page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "History", "history"),
+                 E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
+                 page("Remember correction", "Open Dictionary", "dictionary"),
+                 page(home, "All history", "history"), page(home, "Clipboard receipt · Review text", "history"),
+                 page("History page", "Transcript · Open", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
+                 action("History page", "Connections…", "Shows provider connections over History"),
+                 action("History page", "Hand off…", "Opens the handoff review for the selected items"),
+                 action("History page", "Result · Review suggested details…", "Reviews an assistant's suggested details for the task's transcript"),
+                 action("History page", "Stop task", "Stops the running task, whatever the filter shows")]
         list += [action(menu, "Workbench › About Workbench", "Shows the About panel"), page(menu, "Workbench › Check for Updates…", "settings"),
                  action(menu, "Workbench › Copy build details", "Copies build details"), page(menu, "Workbench › Settings…", "settings"),
                  page(menu, "Workbench › Keyboard shortcuts…", "shortcuts"), action(menu, "Window › Open Workbench", "Opens Home on its current page"),
                  action(menu, "Window › Quick controls", "Opens this panel"), action(menu, "Window › Show floating toolbar", "Shows the toolbar"),
                  action(menu, "Window › Focus floating toolbar", "Moves keyboard focus to the toolbar"), action(menu, "Window › Restore menu-bar icon", "Shows the icon and the toolbar"),
                  page(menu, "Window › Saved resources", "library"), action(menu, "Window › Switch to…", "Opens the Switch to panel"),
-                 page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › Snap History", "snap"), page(menu, "Window › Persona", "personas"),
+                 page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › History", "history"), page(menu, "Window › Persona", "personas"),
                  page(menu, "Window › Transcribe meeting or call…", "meeting"), page(menu, "Window › Save clipboard as prompt…", "library"),
                  action(menu, "Help › Workbench Guide", "Opens the web guide")]
         list += [page(other, "Saved resources shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
@@ -675,7 +775,7 @@ private struct SurfaceIndex {
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
             "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",
             "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Screen Recording and Microphone access.",
-            "Handoffs shows its empty state: a prepared handoff records the time it was made. Snap shows three synthetic Snaps with fixed dates.",
+            "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
