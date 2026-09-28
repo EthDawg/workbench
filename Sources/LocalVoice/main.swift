@@ -219,23 +219,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.stage.escape(); self?.presenterPanel.hide(); self?.closeControls(); self?.window.orderOut(nil)
         }
         popover = NSPopover(); popover.behavior = .transient; popover.animates = false; popover.delegate = self
-        // Each row acts on its own next action: Present ends, Persona hides,
-        // Timer stops. None of them hands you to the toolbar.
+        // These are the panel's doors: each starts its capability. Ending,
+        // stopping and hiding go through the shared operation switch, so a row
+        // does exactly what its label says. Timer keeps both directions here
+        // because it is not a toolbar mode.
         let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
-            guard let self else { return }
-            if self.stage.isDrawing { self.stage.finishDrawing() }
-            else { self.resumeTarget { [weak self] _ in self?.stage.draw() } }
+            self?.resumeTarget { [weak self] _ in self?.stage.draw() }
         }, snap: { [weak self] in self?.toolbarSnap() }, snapCapture: { [weak self] mode in self?.toolbarSnapCapture(mode) }, present: { [weak self] in
-            guard let self else { return }
-            self.closeControls()
-            if self.stage.isPresenting { self.stage.endDeviceScene() } else { self.stage.presentSelectedScene() }
+            self?.closeControls(); self?.stage.presentSelectedScene()
         }, timer: { [weak self] in
             guard let self else { return }
             self.closeControls()
             if self.stage.hasTimerSession { self.stage.stopTimer() } else { self.stage.startTimer() }
         }, personas: { [weak self] in
-            guard let self else { return }
-            self.closeControls(); self.stage.togglePersona()
+            self?.closeControls(); self?.stage.togglePersona()
         }))
         quickController.sizingOptions = [.preferredContentSize]
         popover.contentViewController = quickController
@@ -263,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             self.finishEditing()
             var preferences = self.model.preferences
-            for id in UInt32(1)...7 { preferences.setShortcut(VoicePreferences().shortcut(id), for: id) }
+            for id in VoicePreferences.shortcutIDs { preferences.setShortcut(VoicePreferences().shortcut(id), for: id) }
             self.model.preferences = preferences
             self.stage.resetShortcuts()
         }
@@ -353,7 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         hotkeys.register(ShortcutConflict.voiceRegistrationPreferences(model.preferences, failures: conflicts))
         registeredVoiceShortcutConflicts = conflicts
         model.shortcutFailures = hotkeys.failures
-        for id in UInt32(1)...7 { if let message = conflicts["voice.\(id)"] { model.shortcutFailures[id] = message } }
+        for id in VoicePreferences.shortcutIDs { if let message = conflicts["voice.\(id)"] { model.shortcutFailures[id] = message } }
         stage.refreshShortcutRegistration()
         readback?.setShortcutFailure(model.shortcutFailures[5])
     }
@@ -372,7 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             else if shortcut.modifiers & UInt32(controlKey | optionKey) == 0 {
                 self.model.shortcutRecordingMessage = "Include Control or Option."; return nil
             }
-            if shortcut.enabled && [UInt32(1), 2, 3, 4, 5, 6, 7].contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Workbench."; return nil }
+            if shortcut.enabled && VoicePreferences.shortcutIDs.contains(where: { $0 != id && self.model.preferences.shortcut($0) == shortcut }) { self.model.shortcutRecordingMessage = "That shortcut is already assigned in Workbench."; return nil }
             var candidate = self.model.preferences
             candidate.setShortcut(shortcut, for: id)
             self.hotkeys.register(candidate)
@@ -635,8 +632,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func navigate(_ page: String) {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
+    /// The voice catalogue's titles, one per id in `VoicePreferences.shortcutIDs`.
+    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Saved resources"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
     func voiceShortcutEntries() -> [ShortcutEntry] {
-        [(UInt32(1), "Dictate"), (UInt32(2), "Quick controls"), (UInt32(3), "Saved resources"), (UInt32(4), "Switch to"), (UInt32(5), "Snap & Talk"), (UInt32(6), "Read"), (UInt32(7), "Present"), (UInt32(8), "Snap")].map { id, title in
+        Self.voiceShortcutCatalogue.map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])
         }
     }

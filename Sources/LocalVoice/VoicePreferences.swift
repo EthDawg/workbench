@@ -53,6 +53,10 @@ struct VoicePreferences: Codable, Equatable {
     static let legacyDefaults: [UInt32: VoiceShortcut] = [1: VoiceShortcut(), 2: VoiceShortcut(keyCode: UInt32(kVK_ANSI_V)),
         3: VoiceShortcut(keyCode: UInt32(kVK_ANSI_J)), 4: VoiceShortcut(keyCode: UInt32(kVK_ANSI_G)),
         5: VoiceShortcut(keyCode: UInt32(kVK_ANSI_Backslash)), 6: VoiceShortcut(enabled: false), 7: VoiceShortcut(enabled: false)]
+    /// Every voice shortcut id, in catalogue order. Loops derive from this,
+    /// never from a literal range, so a new key is registered, reset, checked
+    /// for duplicates and reported everywhere at once.
+    static let shortcutIDs: [UInt32] = Array(1...8)
     var cleanup = CleanupStyle.light
     var capture = CaptureMode.toggle
     var delivery = DeliveryMode.paste
@@ -103,7 +107,7 @@ struct VoicePreferences: Codable, Equatable {
     }
     static let shortcutRevisionKey = "voicePreferences.shortcutRevision"
     var enabledCombinations: Set<GlobalShortcutCombination> {
-        Set((UInt32(1)...8).map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
+        Set(Self.shortcutIDs.map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
     }
     private func stored(_ id: UInt32) -> VoiceShortcut? {
         switch id {
@@ -121,7 +125,7 @@ struct VoicePreferences: Codable, Equatable {
     /// longer takes (⌘3), to its presenter default. Any other chosen combination is kept, and a new
     /// default that would take one keeps its old combination.
     static func movingUntouchedShortcuts(_ preferences: VoicePreferences, reserving combinations: Set<GlobalShortcutCombination> = [], fresh: Bool = false) -> VoicePreferences {
-        let ids = Array(UInt32(1)...7)
+        let ids = shortcutIDs
         let untouched = ids.filter { id in
             guard !fresh, let saved = preferences.stored(id) else { return true }
             return saved == legacyDefaults[id] || id == 5 && saved == legacyReadbackShortcut
