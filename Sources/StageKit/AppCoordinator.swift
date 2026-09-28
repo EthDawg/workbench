@@ -653,9 +653,22 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     func performTimerTransport() {
         if timerTransport.starts { startTimer() } else { pauseResumeTimer() }
     }
+    /// Each Start or Restart begins a new countdown, so a step drawn for an earlier one is stale.
+    private(set) var timerCountdown = 0
+    /// The next transport as a control shows it, for the countdown running now (#174).
+    var timerStep: TimerStep { TimerStep(transport: timerTransport, countdown: timerCountdown) }
+    /// Performs the step a control showed only while it is still the next one for the same
+    /// countdown, and otherwise nothing (#174): a Pause shown before the countdown finished
+    /// never restarts it, a Pause shown before another control paused it never resumes it, and
+    /// a Restart only ever comes from a control drawn after the countdown finished.
+    func performTimerTransport(expected: TimerStep) {
+        guard timerStep == expected else { return }
+        performTimerTransport()
+    }
     func startTimer() {
         guard mayBeginInteraction?() != false else { return }
         onBeginActivity?()
+        timerCountdown += 1
         timerSessionStarted = true
         countdown.start(seconds: settings.value.timerMinutes * 60, now: timerClock()); timerFinished = false
         ensureCountdownTimer(); updateCountdown(); showTimer()

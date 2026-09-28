@@ -12,7 +12,7 @@ Recording, reading, processing, paused work and unresolved results retain their 
 
 | Detail | Decision and reason |
 | --- | --- |
-| Action padding | Fit the visible verb with 12 pt on each side and a 64 pt minimum. Draw now needs a 160 pt row instead of 248 pt. Longer actions retain their full wording. During one reveal the action may grow, but cannot shrink and pull nearby targets away; collapse resets it. |
+| Action padding | Fit the visible verb with 12 pt on each side and a 64 pt minimum. With main's contextual Tools accessory, Draw needs a 252 pt row instead of 340 pt; a row without an accessory starts at 160 pt instead of 248 pt. Longer actions retain their full wording. During one reveal the action may grow, but cannot shrink and pull nearby targets away; collapse resets it. |
 | Control order | Keep tool + chevron at the anchored end, then action, optional accessory, More. Mirror the row at right docks so the launcher never leaves the pointer. More describes the selected tool's options. |
 | Cog | Keep it for Settings. A tool symbol with a chevron communicates a tool choice and retains the selected identity. |
 | Closed pill | A neutral 48 × 8 handle at idle and during ordinary live work, within the existing 48 × 28 pointer target. No small Draw, Present, Persona or timer icon, and no colour code to learn. Recording, playback, processing, paused work and results retain their 48 × 20 signal capsule. The target and anchor never move. |

@@ -13,14 +13,16 @@ public enum ToolbarGallery {
     }
 
     /// Each mode at each tier, idle, docked at the default position. The label is the
-    /// mode's start verb and the hint carries its key. At rest the selected tool's
-    /// neutral symbol keeps its identity without implying that it is running.
+    /// mode's start verb and the hint carries its key, and Draw and Present show their
+    /// accessory. At rest every idle mode is the same small mark: nothing is running, so
+    /// there is nothing else to say.
     public static let modes: [ToolbarViewState] = ToolbarMode.allCases.flatMap { mode in
         ToolbarTier.allCases.map { tier in
             let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode))
             return ToolbarViewState(name: "mode-\(mode.slug)-\(tier.rawValue)", tier: tier, mode: mode,
                                     actionTitle: action.title, actionHint: action.hint(key: exampleKey(mode)),
-                                    choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: mode), key: exampleKey))
+                                    choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: mode), key: exampleKey),
+                                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false))
         }
     }
 
@@ -55,15 +57,33 @@ public enum ToolbarGallery {
     }
 
     private static func live(_ live: ToolbarLiveState, name: String, tier: ToolbarTier = .revealed,
-                             activity: ToolbarActivity? = nil) -> ToolbarViewState {
+                             activity: ToolbarActivity? = nil, personaCopy: Bool = false,
+                             accessoryDescription: String? = nil) -> ToolbarViewState {
         let action = ToolbarNextAction.resolve(live)
         return ToolbarViewState(name: name, tier: tier, mode: live.mode, actionTitle: action.title,
                                 isActionEnabled: action.isEnabled,
                                 actionHint: action.hint(key: action.operation.keyMode.flatMap(exampleKey)),
                                 choices: ToolbarNextAction.choices(for: live, key: exampleKey),
                                 isBusy: live.isLive(live.mode),
-                                status: .resolve(activity ?? Self.activity(live)))
+                                status: .resolve(activity ?? Self.activity(live)),
+                                accessory: ToolbarAccessory.offered(for: live, selectedPersonaCopy: personaCopy),
+                                accessoryDescription: accessoryDescription)
     }
+
+    /// Each tool's one accessory where it applies (#134 part B): Snap & Talk's Review once a
+    /// session is open, Draw's Tools, Present's Prompts, and Persona's Appearance for the selected
+    /// live copy, a hidden one included, which its words say. Dictate, Read and Snap have none.
+    public static let accessories: [ToolbarViewState] = [
+        live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 2), name: "accessory-snap-and-talk-review",
+             activity: ToolbarActivity(live: [.snapAndTalk])),
+        live(ToolbarLiveState(mode: .draw, drawing: true), name: "accessory-draw-tools"),
+        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-appearance", personaCopy: true,
+             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: false)),
+        live(ToolbarLiveState(mode: .persona, persona: .sessionHidden), name: "accessory-persona-appearance-hidden", personaCopy: true,
+             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: true)),
+        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-appearance-right", personaCopy: true,
+             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: false)).anchored(.right)
+    ]
 
     /// Work in progress. Input-consuming work takes the button whatever the
     /// mode; a mode's own ending takes it only in that mode, and elsewhere its
@@ -165,5 +185,5 @@ public enum ToolbarGallery {
     ]
 
     /// Everything, in a stable order.
-    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + waiting + statuses
+    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + waiting + accessories + statuses
 }
