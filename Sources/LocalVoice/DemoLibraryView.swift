@@ -36,7 +36,9 @@ struct DemoLibraryView: View {
                     Button("New link") { library.draft = DemoResource(kind: .link) }
                     Button("Add local file…") { library.chooseFile() }
                     Divider()
-                    Button("Save clipboard as prompt") { saveClipboard() }
+                    // Opens the prompt editor with the clipboard's text, so it asks for more (…).
+                    // The shortcut shows here and works while this menu is open.
+                    Button("Save clipboard as prompt…") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
                     Button("Save current transcript") { library.newPrompt(model.transcript) }.disabled(model.transcript.isEmpty)
                 } label: { Label("Add", systemImage: "plus") }
                     .disabled(library.savingDisabled || library.importReview != nil).fixedSize()
@@ -114,9 +116,11 @@ struct DemoLibraryView: View {
             Group {
                 Button("Find resource") { searching = true }.keyboardShortcut("f")
                 Button("New prompt") { library.newPrompt() }.keyboardShortcut("n").disabled(library.savingDisabled)
-                // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S
-                // while they show; it left the Window menu (#134).
-                Button("Save clipboard as prompt") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
+                // Save clipboard as prompt lives with the prompts it makes, and keeps ⇧⌘S while
+                // they show; it left the Window menu (#134). A closed menu's items never receive
+                // a key, so this carries ⇧⌘S until Add is opened. Both call saveClipboard(), and
+                // one press reaches only one of them.
+                Button("Save clipboard as prompt…") { saveClipboard() }.keyboardShortcut("s", modifiers: [.command, .shift])
                     .disabled(library.savingDisabled || library.importReview != nil)
             }.hidden()
         }
