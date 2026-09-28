@@ -81,6 +81,10 @@ probe = SwiftFile(Path('Probe.swift'), """final class Probe {
 assert receipt_clear_sites(probe) == {'direct', 'chained', 'hides', 'aliased', 'captured'}, receipt_clear_sites(probe)
 assert {'note', 'dismiss', 'transcriptRemoved', 'restore'} <= mutators, mutators
 assert undelivered_writers(probe) == {'init', 'assigns', 'passes'}, undelivered_writers(probe)
+# The scans read AppModel and its extensions, which is everything AppModel.swift declares.
+# Another declaration there would go unscanned, so it stops here until the scans read it too.
+others = [m.name for m in app_model.members if m.kind != 'import' and m.name not in ('AppModel', 'extension AppModel')]
+assert not others, f'AppModel.swift also declares {others}; scan them for receipt and undelivered changes too'
 clear_sites = receipt_clear_sites(model)
 writers = undelivered_writers(model)
 # Launch restores the undelivered result only once capture recovery has settled the draft,
