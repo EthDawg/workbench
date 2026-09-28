@@ -518,6 +518,39 @@ class SurfaceTests(unittest.TestCase):
         home.write_text(home.read_text().replace('"Snap & Talk", "x"', '"Snap & Talk sessions", "x"'))
         self.assertIn('Changed entry on app menu bar: "Snap & Talk sessions".', '\n'.join(self.errors(before)))
 
+    def test_a_menu_door_that_names_its_page_differently_is_drift(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("readback", "Snap & Talk", "x"), ("history", "History", "y"), ("settings", "Settings", "z")]
+          static let sections: [(id: String, page: String, title: String)] = [("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard")]
+        }''')
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() {
+            appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
+            appMenu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
+            appMenu.addItem(pageItem("settings", more: true, key: ","))
+            menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
+            menu.addItem(withTitle: "History…", action: #selector(showHistory), keyEquivalent: "")
+            menu.addItem(withTitle: "Draw menu", action: #selector(showAnnotationMenu), keyEquivalent: "")
+            menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+          }
+          private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+            NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+          }
+          @objc func showUpdates() { showSettings(); checkForUpdates() }
+          @objc func showSettings() { model.page = "settings"; showWindow() }
+          @objc func showShortcuts() { navigate("shortcuts") }
+          @objc func showReadback() { model.page = "readback"; showWindow() }
+          @objc func showHistory() { model.openHistory(); showWindow() }
+          @objc func showAnnotationMenu() { guard let button else { model.page = "annotate"; return }; show(button) }
+        }''')
+        pages = {e['label']: e.get('page') for e in self.entries() if e['surface'] == 'app menu bar'}
+        self.assertEqual({'Check for Updates…': None, 'Keyboard shortcuts…': 'shortcuts', 'Settings…': 'settings',
+                          'Snap & Talk sessions': 'readback', 'History…': 'history', 'Draw menu': None, 'Close Window': None}, pages)
+        errors = '\n'.join(self.errors())
+        self.assertIn('Menu name drift on app menu bar: "Snap & Talk sessions" opens Snap & Talk (readback)', errors)
+        self.assertIn('Menu name drift on app menu bar: "Keyboard shortcuts…" opens Keyboard (shortcuts)', errors)
+        self.assertEqual(2, errors.count('Menu name drift'), 'History… adds only the ellipsis; the others are actions')
+
     def test_the_keyboard_section_is_the_catalogue_editor(self):
         self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
           private var settings: some View { KeyboardCoachView(model: keyboard); Toggle("Open Workbench at login", isOn: $x) }
