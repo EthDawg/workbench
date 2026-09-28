@@ -36,7 +36,9 @@ enum VoiceError: LocalizedError {
 enum ReadingProvider: String { case mac, speko }
 final class Receipt { func dismissHUD() {} }
 @MainActor final class SelectionHarness {
-    var error: String?
+    var attention: Attention?
+    var error: String? { attention?.message }
+    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     let clipboardReceipt = Receipt()
     var speechText = "" { didSet { saves += 1 } }
     var saves = 0
@@ -125,6 +127,7 @@ __METHODS__
         doors.importReading("  \n ", from: .savedText)
         try check(doors.error == "This saved item has no text to read." && doors.speechText == "Current draft" && doors.page == "speak",
                   "an empty item explains itself and leaves the draft")
+        try check(doors.attention?.page == .read, "the import's problem is Read's, so the menu-bar panel opens Read (#134)")
         let emptyDraft = SelectionHarness()
         emptyDraft.playing = true
         emptyDraft.importReading("Saved prompt", from: .savedText)
@@ -155,6 +158,7 @@ __METHODS__
         home.listen(to: "Other copied text")
         try check(home.speechText == "Copied text" && home.listens == 2 && home.error?.contains("meeting") == true,
                   "a meeting in progress leaves the draft alone and says why")
+        try check(home.attention?.page == .read, "a reading a meeting blocked is Read's to explain (#134)")
         print("READ_SELECTION_MODEL_OK: \(count) checks; actual handoff methods, isolated draft and provider state")
     }
 }
@@ -165,7 +169,8 @@ with tempfile.TemporaryDirectory(prefix="workbench-read-selection-", dir="/priva
     fixture.write_text(harness)
     executable = directory / "Checks"
     subprocess.run(["swiftc", "-swift-version", "5", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
-                    str(ROOT / "Sources/LocalVoice/ReadSelectionService.swift"), str(fixture), "-o", str(executable)], check=True, timeout=120)
+                    str(ROOT / "Sources/LocalVoice/ReadSelectionService.swift"), str(ROOT / "Sources/LocalVoice/Attention.swift"),
+                    str(fixture), "-o", str(executable)], check=True, timeout=120)
     subprocess.run([str(executable)], check=True, timeout=30)
 
 # Every door that brings text into Read uses AppModel's one import owner. The

@@ -240,7 +240,8 @@ final class FailingSource: ReadingAudioSource {
     var audioDuration = 0.0
     var playbackTime = 0.0
     var status = "Ready"
-    var error: String? { didSet { if error != nil { errorReports += 1 } } }
+    var attention: Attention? { didSet { if attention != nil { errorReports += 1 } } }
+    var error: String? { attention?.message }
     var errorReports = 0
     var speechText = "# Notes\nHello there. Read **this** with `Sources/App/Core.swift` open."
     /// Like AppModel's, the signature follows the text; a check can pin it to force a new render.
@@ -422,18 +423,21 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         fourth.fail("The voice stopped responding. Try Listen again, or choose another voice.")
         try check(model.player == nil && !model.playing && model.audio == nil && !exists(failing)
                   && model.error?.contains("stopped responding") == true, "A failed render stops playback and reports it")
+        try check(model.attention?.page == .read, "A render that failed partway is Read's problem, so the menu-bar panel opens Read (#134)")
 
         // Guards that keep other work and other providers unchanged.
         let busy = ReadingHarness()
         busy.meetings.isBusy = true
         busy.listen()
         try check(busy.error?.contains("meeting") == true && busy.readingTask == nil, "A meeting in progress blocks reading")
+        try check(busy.attention?.page == .read, "A reading a meeting blocked is Read's to explain (#134)")
         let missing = ReadingHarness()
         missing.voiceChoice = .missing("Matilda")
         let before = MacSpeechRenderer.created.count
         missing.listen(); await missing.readingTask?.value
         try check(missing.error == "Matilda is not installed on this Mac. Choose another voice." && MacSpeechRenderer.created.count == before
                   && missing.player == nil, "A missing chosen voice is reported instead of replaced")
+        try check(missing.attention?.page == .read, "Audio that could not be made is Read's problem, so the menu-bar panel opens Read (#134)")
         let speko = ReadingHarness()
         speko.readingProvider = .speko
         speko.listen(); await speko.readingTask?.value
@@ -569,7 +573,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let (typed, _) = faultyReading(from: 0)
         typed.listen(); await typed.readingTask?.value
         _ = try playUntilStopped(typed)
-        typed.error = "Could not save the audio file."
+        typed.report("Could not save the audio file.", on: .read)
         try check(typed.canRetryReading && typed.readingFailure == .audioUnreadable, "A later, unrelated error does not hide Retry")
         typed.dismissError()
         try check(typed.error == nil && typed.canRetryReading, "Dismissing an unrelated error leaves the reading failure")
@@ -579,6 +583,19 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         typed.reportReadingFailure(.audioUnreadable)
         typed.dismissReadingFailure()
         try check(typed.error == nil && typed.readingFailure == nil, "Dismiss beside Retry clears the failure and its message")
+
+        // A paused reading whose audio cannot start again is Read's problem: the page is recorded
+        // where it is raised, so the menu-bar panel opens Read. Guessing from the words opened Dictate (#134).
+        let resuming = ReadingHarness()
+        resuming.voiceChoice = sayVoice
+        resuming.listen(); await resuming.readingTask?.value
+        resuming.listen()
+        try check(resuming.paused && resuming.player != nil, "A reading pauses before its output is lost")
+        resuming.player?.stop()
+        resuming.listen()
+        try check(resuming.attention == Attention(message: "Audio could not resume. Check your Mac's audio output.", page: .read)
+                  && resuming.player == nil && !resuming.playing && !resuming.paused,
+                  "A reading that cannot resume stops, and Read owns the problem")
 
         // A failure found just before a pause is still reported once, and ends the paused reading.
         let (pausing, pausingSource) = faultyReading(from: 16_000 * 5)
@@ -816,7 +833,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
                   "The same copied text already playing carries on")
 
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
+        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")
@@ -853,7 +870,7 @@ with tempfile.TemporaryDirectory(prefix="workbench-reading-playback-", dir="/pri
     subprocess.run([
         "swiftc", "-parse-as-library", "-swift-version", "5", "-suppress-warnings", "-module-cache-path", str(directory / "ModuleCache"),
         str(SOURCES / "ListeningText.swift"), str(SOURCES / "ReadingAudio.swift"), str(SOURCES / "ReadingVoices.swift"),
-        str(SOURCES / "ReadSelectionService.swift"),
+        str(SOURCES / "ReadSelectionService.swift"), str(SOURCES / "Attention.swift"),
         str(main), "-o", str(binary),
     ], check=True, timeout=240)
     # Synthetic audio stays inside this disposable directory.

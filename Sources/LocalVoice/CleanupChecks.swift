@@ -8,6 +8,12 @@ enum CleanupChecks {
             guard valid else { throw VoiceError.message("Cleanup check failed: \(label)") }
             passed += 1; print("PASS: \(label)")
         }
+        // The Dictate page's examples are the cleanup's own results (#134).
+        let original = CleanupStyle.original.example, light = CleanupStyle.light.example, natural = CleanupStyle.natural.example
+        try check(original.result == original.heard, "Original's example keeps the words as heard")
+        try check(DictationCleanup.light(light.heard) == light.result, "Light's example is Light's own result")
+        try check(DictationCleanup.isFaithful(natural.result, to: DictationCleanup.light(natural.heard)) && natural.result != DictationCleanup.light(natural.heard),
+                  "Natural's example changes only what its meaning check allows")
         let clean = DictationCleanup.light(example)
         try check(clean == "Hello, this is Sam. The time is 2pm and I'm looking at a rockmelon. I'd like to catch the train at 7pm. I'd like to make a grocery list:\n• Apples\n• Bananas\n• Cucumbers", "false start, corrected time, requested grocery list")
         try check(DictationCleanup.light("Meet at 2 p.m. Bring the book.") == "Meet at 2pm. Bring the book.", "time punctuation preserved")

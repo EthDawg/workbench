@@ -39,10 +39,13 @@ struct ReadbackView: View {
 
     private var recentSessions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("SNAP & TALK SESSIONS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            // The page's title above names Snap & Talk; this column is its sessions (#134).
+            WorkbenchSectionTitle("Sessions")
             newSessionStyle
+            // Neutral here: the page's one accent action is New session… in its empty state, or
+            // Capture & narrate once a session is open.
             Button { model.createSession() } label: { Label("New session…", systemImage: "folder.badge.plus") }
-                .buttonStyle(.borderedProminent).disabled(model.isRecording || model.newSessionStyleProblem != nil)
+                .buttonStyle(.bordered).disabled(model.isRecording || model.newSessionStyleProblem != nil)
             Button { model.openSession() } label: { Label("Open folder…", systemImage: "folder") }
                 .buttonStyle(.bordered).disabled(model.isRecording)
             Divider()
@@ -107,7 +110,7 @@ struct ReadbackView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("Start a Snap & Talk session", systemImage: "rectangle.and.pencil.and.ellipsis")
+            Label("Start a Snap & Talk session", systemImage: WorkbenchHome.symbol(of: "readback"))
         } description: {
             Text("Create a named Finder folder, then use one shortcut to capture the display under your pointer and narrate it.")
             if let notice = model.notice { Text(notice).foregroundStyle(.secondary) }
@@ -137,7 +140,7 @@ struct ReadbackView: View {
                             .frame(maxWidth: .infinity).padding(.vertical, 30)
                     } else {
                         HStack {
-                            Text("SECTIONS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                            WorkbenchSectionTitle("Sections")
                             Spacer()
                             Text("\(model.activeSections.count) slides").font(.caption.monospaced()).foregroundStyle(.secondary)
                         }
@@ -339,7 +342,7 @@ struct ReadbackView: View {
                 } else if section.status == .failed, section.audio != nil {
                     Button("Retry transcription") { model.retryTranscription(section.id) }.buttonStyle(.bordered)
                 } else if section.status == .needsNarration {
-                    Button("Record narration") { model.startNarration(for: section.id) }.buttonStyle(.borderedProminent)
+                    Button("Record narration") { model.startNarration(for: section.id) }.buttonStyle(.bordered)
                         .disabled(model.isRecording || model.microphonePermission != .authorized)
                 } else {
                     ProgressView().controlSize(.small)

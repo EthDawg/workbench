@@ -14,7 +14,7 @@ struct CleanupModelSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Text refinement", systemImage: "text.badge.checkmark").font(.headline)
+            Label("Text refinement", systemImage: "text.badge.checkmark").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
             Text("Speech recognition hears your words. Refinement adjusts punctuation and layout after transcription. Light cleanup works without a text model; Natural uses the choice below.")
                 .font(.callout).foregroundStyle(.secondary)
             Picker("Natural cleanup model", selection: $draft.naturalProvider) {
