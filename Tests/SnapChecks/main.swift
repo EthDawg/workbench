@@ -193,4 +193,103 @@ try MainActor.assumeIsolated {
     try rejects("archived selected capture") { _ = try model.handoffSnapshots(ids: [capture.id]) }
     try check(try canonical.snapshot(capture.id).originalPNG == png, "archiving does not change a narrated original")
 }
-print("SNAP_CHECKS_OK: \(checks) checks for rendering, revision conflicts, private storage, immutable snapshots, reversible review and portable optional narration")
+// Search text and repeats: Vision on synthetic screens, entirely on this Mac.
+func screen(_ lines: [String], clock: String, pointer: CGPoint?) -> Data {
+    let width = 1_440, height = 900
+    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    NSColor(calibratedWhite: 0.97, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: width, height: height).fill()
+    (clock as NSString).draw(at: NSPoint(x: width - 90, y: height - 22), withAttributes: [.font: NSFont.systemFont(ofSize: 14)])
+    NSColor.white.setFill(); NSRect(x: 220, y: 120, width: 1_000, height: 640).fill()
+    for (index, line) in lines.enumerated() { (line as NSString).draw(at: NSPoint(x: 260, y: 700 - index * 44), withAttributes: [.font: NSFont.systemFont(ofSize: 22)]) }
+    if let pointer { NSColor.black.setFill(); NSBezierPath(ovalIn: NSRect(x: pointer.x, y: pointer.y, width: 14, height: 14)).fill() }
+    NSGraphicsContext.restoreGraphicsState()
+    return NSBitmapImageRep(cgImage: context.makeImage()!).representation(using: .png, properties: [:])!
+}
+let settingsLines = ["Privacy & Security", "Accessibility", "Workbench Preview    On", "Allow apps to control your computer"]
+let screens = [screen(settingsLines, clock: "10:41", pointer: CGPoint(x: 700, y: 400)),
+               screen(settingsLines, clock: "10:42", pointer: CGPoint(x: 712, y: 396)),
+               screen(["Release report", "21 tests passed, 75 assertions", "6 shortcut conflicts"], clock: "10:43", pointer: nil)]
+let repeatsStore = SnapStore(root: directory.appendingPathComponent("repeats"))
+let repeatItems = try screens.enumerated().map { index, bytes in
+    try repeatsStore.insert(originalPNG: bytes, width: 1_440, height: 900, title: "Screen \(index + 1)", source: .region)
+}
+try check(repeatItems[0].imageSHA256 != repeatItems[1].imageSHA256, "the recapture fixture is not byte-identical")
+for item in repeatItems {
+    try repeatsStore.writeDerived(try SnapAnalysis.analyze(png: try repeatsStore.snapshot(item.id).imagePNG, imageSHA256: item.imageSHA256), for: item.id)
+}
+try check(repeatsStore.derived(for: repeatItems[2])?.text.contains("shortcut conflicts") == true, "Vision reads a Snap's visible text")
+let reportData = repeatsStore.derived(for: repeatItems[2])!
+try repeatsStore.writeDerived(SnapDerivedData(imageSHA256: String(repeating: "0", count: 64), text: "stale", featurePrint: nil), for: repeatItems[2].id)
+try check(repeatsStore.derived(for: repeatItems[2]) == nil, "search data made from another image is ignored")
+try repeatsStore.writeDerived(reportData, for: repeatItems[2].id)
+let repeatPlan = try SnapOrganization.prepare(store: repeatsStore, ids: Set(repeatItems.map(\.id)))
+try check(repeatPlan.duplicates.count == 1 && repeatPlan.duplicates[0].id == repeatItems[1].id
+          && repeatPlan.duplicates[0].retained.id == repeatItems[0].id && repeatPlan.duplicates[0].distance != nil,
+          "a near-identical recapture is proposed as a repeat of the earlier Snap, and a different screen is not")
+try SnapOrganization.archiveReviewed([repeatItems[1].id], plan: repeatPlan, store: repeatsStore)
+try check(try repeatsStore.read(repeatItems[1].id).archivedAt != nil && (try repeatsStore.snapshot(repeatItems[1].id).originalPNG) == screens[1],
+          "archiving a reviewed repeat keeps its original")
+try MainActor.assumeIsolated {
+    let model = SnapModel(store: repeatsStore)
+    let deadline = Date().addingTimeInterval(30)
+    while model.recognizedText.count < repeatItems.count && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    model.search = "shortcut conflicts"
+    try check(model.visibleItems.map(\.id) == [repeatItems[2].id], "search finds a Snap by the text inside its image")
+}
+// Desktop screenshots: only files macOS marked as screen captures are imported,
+// and each reaches Snap History before its file goes to the Trash.
+func markScreenCapture(_ url: URL) throws {
+    let value = try PropertyListSerialization.data(fromPropertyList: true, format: .binary, options: 0)
+    let status = value.withUnsafeBytes { setxattr(url.path, SnapScreenshots.attribute, $0.baseAddress, value.count, 0, 0) }
+    try check(status == 0, "fixture screen-capture attribute")
+}
+let shots = directory.appendingPathComponent("screenshots"), desktopFolder = shots.appendingPathComponent("Desktop"),
+    trashed = shots.appendingPathComponent("Trash")
+for folder in [desktopFolder, trashed] { try fm.createDirectory(at: folder, withIntermediateDirectories: true) }
+let olderShot = desktopFolder.appendingPathComponent("Screenshot 2026-09-01 at 9.00.00 am.png"),
+    newerShot = desktopFolder.appendingPathComponent("Bildschirmfoto 2026-09-02 um 10.00.00.png"),
+    plainImage = desktopFolder.appendingPathComponent("Holiday.png"), notes = desktopFolder.appendingPathComponent("notes.txt"),
+    hidden = desktopFolder.appendingPathComponent(".Screenshot pending.png")
+try png.write(to: olderShot); try cropped.write(to: newerShot); try png.write(to: plainImage); try Data("x".utf8).write(to: notes); try png.write(to: hidden)
+for file in [olderShot, newerShot, notes, hidden] { try markScreenCapture(file) }
+let olderDate = Date(timeIntervalSince1970: 1_756_000_000), newerDate = Date(timeIntervalSince1970: 1_756_090_000)
+try fm.setAttributes([.creationDate: newerDate], ofItemAtPath: newerShot.path)
+try fm.setAttributes([.creationDate: olderDate], ofItemAtPath: olderShot.path)
+try check(SnapScreenshots.screenCaptures(in: desktopFolder).map(\.lastPathComponent) == [olderShot, newerShot].map(\.lastPathComponent),
+          "only images macOS marked as screen captures are found, oldest first, in any language")
+let screenshotStore = SnapStore(root: directory.appendingPathComponent("screenshot-history"))
+var trashCalls: [URL] = [], failTrash = true
+let trashFixture: (URL) throws -> Void = { url in
+    if failTrash { failTrash = false; throw SnapError.message("Synthetic Trash failure") }
+    trashCalls.append(url); try fm.moveItem(at: url, to: trashed.appendingPathComponent(url.lastPathComponent))
+}
+var known = Set<String>()
+try rejects("a Trash failure is reported") { _ = try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture) }
+try check(fm.fileExists(atPath: olderShot.path) && (try screenshotStore.load().items.count) == 1, "the Snap is stored before the file would move")
+try check(try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture) == nil
+          && (try screenshotStore.load().items.count) == 1 && trashCalls == [olderShot],
+          "retrying after a failed Trash move clears the file without a duplicate Snap")
+let adopted = try SnapScreenshots.adopt(newerShot, store: screenshotStore, known: &known, trash: trashFixture)!
+try check(adopted.createdAt == newerDate && adopted.title == "Bildschirmfoto 2026-09-02 um 10.00.00"
+          && (try screenshotStore.snapshot(adopted.id)).originalPNG == cropped,
+          "an imported screenshot keeps its exact bytes, capture date and name")
+try check(fm.fileExists(atPath: plainImage.path) && fm.fileExists(atPath: notes.path) && fm.fileExists(atPath: hidden.path),
+          "ordinary images, other files and hidden files stay on the Desktop")
+try MainActor.assumeIsolated {
+    let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("import-history")), desktop: desktopFolder,
+                          trash: { url in try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png")) })
+    let importFile = desktopFolder.appendingPathComponent("Screenshot 2026-09-04 at 8.00.00 am.png")
+    try ink.write(to: importFile); try markScreenCapture(importFile)
+    var imported: [UUID]? = nil
+    Task { @MainActor in imported = await model.importDesktopScreenshots(model.desktopScreenshots() ?? []) }
+    let until = Date().addingTimeInterval(10)
+    while imported == nil && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    try check(imported?.count == 1 && model.activeCount == 1 && !fm.fileExists(atPath: importFile.path) && fm.fileExists(atPath: plainImage.path),
+              "importing moves only screenshots and returns them for selection")
+    let unreadable = SnapModel(store: SnapStore(root: directory.appendingPathComponent("unreadable-history")),
+                               desktop: shots.appendingPathComponent("Missing Desktop"), trash: { _ in })
+    try check(unreadable.desktopScreenshots() == nil && unreadable.notice?.contains("could not read the Desktop") == true,
+              "an unreadable Desktop is reported, never shown as empty")
+}
+print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")

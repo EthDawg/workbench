@@ -33,7 +33,7 @@ let package = Package(
         .target(name: "SceneSyncKit"),
         .testTarget(name: "SceneSyncKitTests", dependencies: ["SceneSyncKit"]),
         .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit"], linkerSettings: [.linkedFramework("Carbon")]),
-        .executableTarget(name: "LocalVoice", dependencies: ["PrivatePackKit", "ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources/build-snap-and-talk-deck")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon"), .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ])
+        .executableTarget(name: "LocalVoice", dependencies: ["PrivatePackKit", "ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources/build-snap-and-talk-deck"), .copy("Resources/workbench-pack")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon"), .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ])
     ],
     swiftLanguageModes: [.v5]
 )

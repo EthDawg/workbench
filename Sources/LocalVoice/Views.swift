@@ -202,17 +202,20 @@ struct ContentView: View {
                                            keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
             }
             ReadingProviderView(model: model)
-            if model.readingProvider == .mac { HStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("VOICE").font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
-                    Picker("Voice", selection: $model.voice) { ForEach(model.voices, id: \.self) { Text($0).tag($0) } }.labelsHidden().frame(width: 220)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text("PACE").tracking(1.4); Spacer(); Text("\(Int(model.rate)) words/min").monospacedDigit() }.font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                    Slider(value: $model.rate, in: 100...300, step: 10).accessibilityLabel("Reading pace")
-                }
-            }.padding(20).background(panelColor, in: RoundedRectangle(cornerRadius: 14)).disabled(model.rendering) }
-            editor(text: $model.speechText, placeholder: "Paste an article, a draft, or a thought.\nLet your Mac do the reading.", label: "Text to read").disabled(model.rendering)
+            if model.readingProvider == .mac {
+                MacVoicePanel(voices: model.macVoices, choice: model.voiceChoice, hint: model.voiceHint, rate: $model.rate,
+                              previewing: model.previewingVoice, choose: model.chooseVoice, preview: model.toggleVoicePreview,
+                              openSettings: model.openVoiceSettings)
+                    .disabled(model.rendering)
+            }
+            if let reading = model.followAlongText {
+                ReadingFollowAlongView(text: reading, highlight: model.readingHighlight)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(panelColor.opacity(0.6)))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.07)))
+                    .frame(minHeight: 150, maxHeight: .infinity)
+            } else {
+                editor(text: $model.speechText, placeholder: "Paste an article, a draft, or a thought.\nLet your Mac do the reading.", label: "Text to read").disabled(model.rendering)
+            }
             HStack {
                 Text("\(model.speechText.count.formatted()) / \(model.readingLimit.formatted()) characters").font(.system(size: 10))
                     .foregroundStyle(model.speechText.count > model.readingLimit ? Color.orange : Color.secondary.opacity(0.6))
@@ -223,21 +226,9 @@ struct ContentView: View {
                     .accessibilityLabel("Reading limit: \(limit)")
             }
             if model.playing || model.paused {
-                HStack(spacing: 12) {
-                    Button { model.skipReading(by: -15) } label: { Image(systemName: "gobackward.15") }
-                        .help("Back 15 seconds").accessibilityLabel("Back 15 seconds")
-                    Text(time(model.playbackTime)).monospacedDigit().frame(minWidth: 34, alignment: .trailing)
-                        .accessibilityLabel("Elapsed time").accessibilityValue(time(model.playbackTime))
-                    Slider(value: Binding(get: { model.playbackTime }, set: { model.seekReading(to: $0) }),
-                           in: 0...max(model.audioDuration, 0.001))
-                        .accessibilityLabel("Reading position")
-                        .accessibilityValue("\(time(model.playbackTime)) of \(time(model.audioDuration))")
-                    Text(time(model.audioDuration)).monospacedDigit().frame(minWidth: 34, alignment: .leading)
-                        .accessibilityLabel("Reading duration").accessibilityValue(time(model.audioDuration))
-                    Button { model.skipReading(by: 15) } label: { Image(systemName: "goforward.15") }
-                        .help("Forward 15 seconds").accessibilityLabel("Forward 15 seconds")
-                }
-                .font(.system(size: 11)).disabled(!model.canSeekReading)
+                ReadingPlaybackStrip(elapsed: model.playbackTime, duration: model.audioDuration, renderingAhead: model.renderingAhead,
+                                     seek: model.seekReading, skip: model.skipReading)
+                    .disabled(!model.canSeekReading)
             }
             HStack(spacing: 12) {
                 Button { model.listen() } label: { Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill") }
@@ -245,7 +236,7 @@ struct ContentView: View {
                 if model.readingGenerationActive { Button("Cancel generation") { model.cancelReading() } }
                 if model.playing || model.paused { Button("Stop") { model.stopPlayback() } }
                 Spacer()
-                Button { model.saveAudio() } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }.disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.speechText.count > model.readingLimit)
+                Button { model.saveAudio() } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }.disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.renderingAhead || model.speechText.count > model.readingLimit)
             }.controlSize(.large)
             Text("Saved audio is M4A, ready for QuickTime, Music, or sharing.")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -258,6 +249,81 @@ struct ContentView: View {
             if text.wrappedValue.isEmpty { Text(placeholder).font(.system(size: 15)).foregroundStyle(.tertiary).lineSpacing(7).padding(20).allowsHitTesting(false) }
             TextEditor(text: text).font(.system(size: 15)).lineSpacing(6).scrollContentBackground(.hidden).padding(14).accessibilityLabel(label)
         }.overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.07))).frame(minHeight: 150, maxHeight: .infinity)
+    }
+}
+
+/// Voice and pace for Mac voices. Voices show their accent and quality, a
+/// sample can be heard before choosing, and a hint appears while every voice
+/// for the person's language is compact.
+struct MacVoicePanel: View {
+    let voices: [MacVoice]
+    let choice: MacVoiceChoice?
+    let hint: MacVoiceHint?
+    @Binding var rate: Double
+    var previewing = false
+    var choose: (String) -> Void
+    var preview: () -> Void
+    var openSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("VOICE").font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Picker("Voice", selection: Binding(get: { choice?.voice?.id ?? "" }, set: choose)) {
+                            if case .missing(let name) = choice { Text("\(name) (not installed)").tag("") }
+                            ForEach(voices) { Text($0.label).tag($0.id) }
+                        }.labelsHidden().frame(width: 270, alignment: .leading)
+                        Button(action: preview) { Image(systemName: previewing ? "stop.fill" : "speaker.wave.2") }
+                            .buttonStyle(.borderless)
+                            .disabled(choice?.voice == nil || choice?.voice?.sayOnly == true)
+                            .help(previewing ? "Stop the sample" : "Hear a short sample of this voice")
+                            .accessibilityLabel(previewing ? "Stop voice sample" : "Hear voice sample")
+                    }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack { Text("PACE").tracking(1.4); Spacer(); Text("\(Int(rate)) words/min").monospacedDigit() }.font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                    Slider(value: $rate, in: 100...300, step: 10).accessibilityLabel("Reading pace")
+                }
+            }
+            if case .missing(let name) = choice {
+                Label("\(name) is not installed on this Mac. Choose another voice.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if let hint { MacVoiceHintRow(hint: hint, open: openSettings) }
+        }.padding(20).background(panelColor, in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// Position, scrubber and 15-second skips for the loaded reading. While a Mac
+/// voice is still rendering, the range covers only what exists.
+struct ReadingPlaybackStrip: View {
+    let elapsed: Double
+    let duration: Double
+    var renderingAhead = false
+    var seek: (TimeInterval) -> Void
+    var skip: (TimeInterval) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button { skip(-15) } label: { Image(systemName: "gobackward.15") }
+                .help("Back 15 seconds").accessibilityLabel("Back 15 seconds")
+            Text(time(elapsed)).monospacedDigit().frame(minWidth: 34, alignment: .trailing)
+                .accessibilityLabel("Elapsed time").accessibilityValue(time(elapsed))
+            Slider(value: Binding(get: { elapsed }, set: { seek($0) }), in: 0...max(duration, 0.001))
+                .accessibilityLabel("Reading position")
+                .accessibilityValue("\(time(elapsed)) of \(time(duration))\(renderingAhead ? ", more is being prepared" : "")")
+            HStack(spacing: 4) {
+                Text(time(duration)).monospacedDigit()
+                if renderingAhead { ProgressView().controlSize(.mini).help("Preparing the rest of the reading") }
+            }.frame(minWidth: 34, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Reading duration").accessibilityValue(time(duration) + (renderingAhead ? ", still preparing" : ""))
+            Button { skip(15) } label: { Image(systemName: "goforward.15") }
+                .help("Forward 15 seconds").accessibilityLabel("Forward 15 seconds")
+        }
+        .font(.system(size: 11))
     }
 }
 
