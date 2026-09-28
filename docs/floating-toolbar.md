@@ -212,10 +212,14 @@ prepared set only the selected copy changes. VoiceOver and the tooltip say
 live copy Persona has no accessory and More offers Open Persona… instead.
 Dictate, Read and Snap have none in this increment; their options stay in the
 menu-bar panel and on their pages. Review goes straight to the review and has no
-chevron; the others open a list and have one. An accessory that does not fit the
-display less 24 points waits in More, which already holds Review, Tools and
-Prompts, and a shown copy's Appearance; for a hidden card, whose Persona menu has
-no Appearance, More adds Appearance itself.
+chevron; the others open a list and have one. Like the launcher and More, the
+accessory takes the keyboard: Space, Return, Enter or Down opens it, a menu only
+with admission, and Escape leaves keyboard interaction. An accessory that does
+not fit the display less 24 points waits in More, which already holds Review,
+Tools and Prompts, and a shown copy's Appearance; for a hidden card, whose Persona
+menu has no Appearance, More adds Appearance itself. More finds Persona's
+Appearance by that title, so the choices under it may grow or change order
+without a second one appearing (#216).
 
 **One popover at a time.** The chooser, More, the accessory's picker and
 Position… close one another, and hover never opens any of them. Each holds the
@@ -602,7 +606,8 @@ Prompts; Tools must hold Draw's drawing choices, Persona's More must open Person
 page, and with a session open Snap & Talk's Review must open that session's review.
 Appearance needs a live persona copy, which the gallery never shows over the Mac:
 `--check-floating-toolbar` checks its menu with stand-in copies and when More must
-hold it, and the StageKit suite checks the copy it acts on and whether it is hidden.
+hold it, and the StageKit suite checks the copy it acts on, whether it is hidden,
+and which real Persona menus already hold its Appearance.
 The floating shots render the no-speech cue, the reading that stopped, the receipt
 with its ring and the coaching card. `ToolbarPlacementTests` covers the 4-point
 threshold, the 16-point snap zone, inward growth, a width change that must not move

@@ -104,11 +104,11 @@ enum ToolbarAccessoryMenus {
     }
 
     /// Whether More must hold Appearance itself: the row has no room for the accessory, a copy is
-    /// selected, and Persona's own menu, inlined in More, has no Circle, Card and Original for it.
-    /// A shown card's and a set's menus have them under Appearance; a hidden card's does not.
+    /// selected, and Persona's own menu, inlined in More, holds no Appearance for it, found by
+    /// the title the Persona menu gives it. A shown card's and a set's menus hold one; a hidden
+    /// card's does not (#216).
     static func moreNeedsAppearance(_ more: NSMenu, accessoryFits: Bool, hasCopy: Bool) -> Bool {
-        let shapes = StageKitController.PersonaShape.allCases.map(\.title)
-        return !accessoryFits && hasCopy && !more.items.contains { $0.submenu?.items.map(\.title) == shapes }
+        !accessoryFits && hasCopy && !StageKitController.personaMenuHoldsAppearance(more)
     }
 }
 
