@@ -649,14 +649,11 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
         guard let context else { return }
         close(then: {
             context.controls?.endKeyboardInteraction()
-            // Keyboard focus on the toolbar brought Workbench forward. Give the
-            // field back before typing, as the menu-bar panel's rows do.
+            // Keyboard focus on the toolbar brought Workbench forward: give the field
+            // back, as the menu-bar panel's rows do. Insertion then waits until that
+            // field is in front again (PromptFieldReturn), whichever way the picker opened.
             if NSApp.isActive, let app = context.destination?.app, app.processIdentifier != getpid() {
                 app.activate(options: [])
-                if action.mode.inserts {
-                    Task { @MainActor in try? await Task.sleep(nanoseconds: 160_000_000); action.perform(prompt) }
-                    return
-                }
             }
             action.perform(prompt)
         })

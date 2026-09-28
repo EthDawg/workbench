@@ -82,9 +82,10 @@ top one. Long names wrap to two lines or truncate and keep their full accessible
 text. It takes keyboard focus without activating Workbench, holds the row open
 as a native menu does, and closes on Escape, a click outside, a second click on
 Prompts or a choice; ↑ ↓ and Return choose. A choice acts only after the picker
-has gone, as a menu item's action runs after tracking. The picker's panel is
-sized from its content's `onGeometryChange` report, never from a background
-`GeometryReader` preference (#152).
+has gone, as a menu item's action runs after tracking, and typing waits, for about
+a second at most, until the frozen app is in front with the frozen field focused.
+The picker's panel is sized from its content's `onGeometryChange` report, never
+from a background `GeometryReader` preference (#152).
 
 The original field, value and UTF-16 selection are captured before the picker
 opens. Supported fields receive confirmed literal chunks; other readable fields

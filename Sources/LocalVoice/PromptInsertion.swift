@@ -24,6 +24,25 @@ struct PromptInsertionPlan {
     }
 }
 
+/// The picker has just closed when insertion starts, and the frozen field may take a
+/// moment to be in front again, longer when Workbench had come forward for the
+/// toolbar's keyboard focus. Typing waits for it, for about a second at most; the
+/// runner still checks the field before every write.
+enum PromptFieldReturn {
+    static let limit: TimeInterval = 1
+    static let interval: UInt64 = 20_000_000
+    /// Returns whether the field came back in time.
+    @MainActor static func wait(until returned: () -> Bool, limit: TimeInterval = limit, now: () -> Date = Date.init,
+                                pause: () async -> Void = { try? await Task.sleep(nanoseconds: interval) }) async -> Bool {
+        let deadline = now().addingTimeInterval(limit)
+        while !returned() {
+            guard now() < deadline, !Task.isCancelled else { return false }
+            await pause()
+        }
+        return true
+    }
+}
+
 @MainActor
 final class PromptInsertion: ObservableObject {
     @Published private(set) var running = false
@@ -66,6 +85,8 @@ final class PromptInsertion: ObservableObject {
                 escapeMonitors.forEach(NSEvent.removeMonitor); escapeMonitors.removeAll()
                 running = false; task = nil
             }
+            // Escape, Stop and shortcut editing end the wait as they end insertion.
+            _ = await PromptFieldReturn.wait(until: { !self.mayInsert() || TextDelivery.eligible(target) })
             let destination = PromptInsertionRunner.Snapshot(value: value, selection: selection)
             @MainActor func unchanged() -> Bool {
                 !Task.isCancelled && mayInsert() && TextDelivery.eligible(target)
