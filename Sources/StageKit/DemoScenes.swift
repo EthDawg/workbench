@@ -262,10 +262,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     }
     private var archiveURL: URL { root.appendingPathComponent("scenes.json") }
     private var snapshotURL: URL { root.appendingPathComponent("desktop-restore.json") }
-    init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true) {
+    init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true, personaVoice: PersonaVoiceAccess? = nil) {
         self.root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
         self.systemIntegrationEnabled = systemIntegrationEnabled
-        self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason)
+        self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason, voice: personaVoice)
         super.init()
         if let readOnlyReason {
             storageBlocked = true; logoLibraryBlocked = true; starterLibraryBlocked = true

@@ -48,6 +48,18 @@ jobs:
           path: test-results/toolbar
           retention-days: 7
           if-no-files-found: error
+      - name: Render the menu-bar panel and every Home page
+        run: |
+          BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"
+          "$BIN_DIR/LocalVoice" --render-surfaces test-results/surfaces
+      - name: Retain surface visual evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: surface-gallery
+          path: test-results/surfaces
+          retention-days: 7
+          if-no-files-found: error
       - name: Build and verify app package with native Shortcuts metadata
         env:
           REQUIRE_APP_INTENTS: "1"

@@ -29,6 +29,8 @@ enum PackCredentialStore {
     }
 
     static func read() throws -> PackGitHubCredential? {
+        // The surface gallery's isolated pass (`--render-surfaces-pass`) never queries Keychain.
+        guard CommandLine.arguments.dropFirst().first != "--render-surfaces-pass" else { return nil }
         var request = query
         request[kSecReturnData as String] = true
         request[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail

@@ -15,7 +15,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.2.0</string>
+	<string>2.3.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>WorkbenchGitHubClientID</key>
@@ -36,7 +36,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Workbench records your microphone only when you start dictation, narration or a meeting. Your chosen speech engine processes the recording.</string>
+	<string>Workbench records your microphone only when you start dictation, narration or a meeting, and your chosen speech engine processes the recording. A persona's voice ring, when you turn it on, measures loudness and records nothing.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Workbench captures audio from the Mac app you select only after you start meeting or call transcription.</string>
 	<key>NSPrincipalClass</key>

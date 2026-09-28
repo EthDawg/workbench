@@ -53,7 +53,10 @@ final class AnnotationMenuTests: XCTestCase {
             XCTAssertTrue(item("pen", in: menu)?.toolTip?.contains("Shortcut off") == true)
             XCTAssertEqual(item("pen", in: menu)?.keyEquivalent, "")
             XCTAssertEqual(item("pen", in: menu)?.state, .on)
-            XCTAssertEqual(item("finish", in: menu)?.isEnabled, false)
+            // Stop drawing is the toolbar's and panel's label while drawing, so
+            // the Draw menu holds only drawing choices (#143, #134 decision 3).
+            XCTAssertTrue(item("finish", in: menu) == nil, "No Finish Drawing in the Draw menu")
+            XCTAssertTrue(item("shortcuts", in: menu) == nil, "Keys live on the Keyboard page, not behind a Draw menu door")
 
             app.settings.value.shortcuts[Action.pen.rawValue] = Shortcut(keyCode: UInt32(kVK_F18), modifiers: UInt32(controlKey | optionKey | shiftKey))
             reopen(menu)
@@ -74,7 +77,7 @@ final class AnnotationMenuTests: XCTestCase {
             app.shortcutFailures[.pen] = "Synthetic registration conflict"
             reopen(menu)
             XCTAssertEqual(item("pen", in: menu)?.keyEquivalent, "")
-            XCTAssertTrue(item("pen", in: menu)?.title.contains("unavailable") == true)
+            XCTAssertEqual(item("pen", in: menu)?.title, "Pen", "The label stays the action's name; the failure is in its help")
             XCTAssertTrue(item("pen", in: menu)?.toolTip?.contains("Synthetic registration conflict") == true)
             XCTAssertTrue(item("pen", in: menu)?.isEnabled == true, "An unavailable shortcut does not remove its clickable action")
             app.shortcutFailures.removeValue(forKey: .pen)
@@ -96,7 +99,6 @@ final class AnnotationMenuTests: XCTestCase {
             reopen(menu)
             XCTAssertEqual(item("arrow", in: menu)?.state, .on)
             XCTAssertEqual(item("pen", in: menu)?.state, .off)
-            XCTAssertEqual(item("finish", in: menu)?.isEnabled, true)
 
             invoke("color4", in: menu)
             XCTAssertEqual(app.settings.value.color, .blue)
@@ -139,8 +141,8 @@ final class AnnotationMenuTests: XCTestCase {
             app.mayBeginDrawing = { false }
             reopen(menu)
             XCTAssertEqual(item("arrow", in: menu)?.isEnabled, false)
-            XCTAssertEqual(item("finish", in: menu)?.isEnabled, true)
-            invoke("finish", in: menu)
+            // The toolbar's and panel's Stop drawing reach this same owner.
+            app.stopDrawing()
             XCTAssertFalse(app.isDrawing, "Finishing remains available when admission is blocked")
             XCTAssertEqual(app.history(for: app.currentID)?.annotations, [mark])
         }
@@ -160,7 +162,7 @@ final class AnnotationMenuTests: XCTestCase {
             reopen(menu)
             XCTAssertEqual(item("whiteboard", in: menu)?.state, .on)
             XCTAssertEqual(item("blackboard", in: menu)?.state, .off)
-            invoke("finish", in: menu)
+            app.stopDrawing()
             XCTAssertFalse(app.isDrawing)
             XCTAssertEqual(app.boards[display], .white)
             XCTAssertEqual(app.history(for: display)?.annotations, [mark])
@@ -170,8 +172,8 @@ final class AnnotationMenuTests: XCTestCase {
             XCTAssertEqual(app.selectedTab, "Drawing")
             XCTAssertEqual(app.boards[display], .white)
             XCTAssertEqual(app.history(for: display)?.annotations, [mark])
-            invoke("shortcuts", in: menu)
-            XCTAssertEqual(shortcuts, 1)
+            XCTAssertTrue(item("shortcuts", in: menu) == nil, "No Keyboard Shortcuts door in the Draw menu")
+            XCTAssertEqual(shortcuts, 0)
             XCTAssertEqual(app.boards[display], .white)
             invoke("blackboard", in: menu)
             XCTAssertEqual(app.boards[display], .black)
@@ -198,7 +200,7 @@ final class AnnotationMenuTests: XCTestCase {
             app.mayBeginInteraction = { true }
             app.setShortcutsSuspended(true)
             reopen(menu)
-            for id in ["pen", "arrow", "clear", "color1", "black", "controls", "shortcuts", "whiteboard"] {
+            for id in ["pen", "arrow", "clear", "color1", "black", "controls", "whiteboard"] {
                 XCTAssertEqual(item(id, in: menu)?.isEnabled, false, "\(id) must respect keyboard practice")
             }
             invoke("pen", in: menu)

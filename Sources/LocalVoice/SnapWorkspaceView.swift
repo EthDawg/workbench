@@ -42,7 +42,9 @@ struct SnapWorkspaceView: View {
                     }.disabled(model.isBusy)
                 }
                 Spacer()
-                Text("No Desktop files").font(.caption).foregroundStyle(.secondary)
+                // A promise about Snap's own captures, true in every build. It sits
+                // beside Import Desktop screenshots, so it must not read as a Desktop check.
+                Text("Captures save to Snap History, not the Desktop").font(.caption).foregroundStyle(.secondary)
             }
             Divider()
             HStack {

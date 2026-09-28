@@ -26,7 +26,7 @@ enum InputChecks {
         guard events == ["1:true", "1:false"] else { throw VoiceError.message("Shortcut press/release or repeat handling failed: \(events)") }
         let competing = VoiceHotkeys(); competing.register(preferences)
         defer { competing.unregister() }
-        let enabled = Set((UInt32(1)...7).filter { preferences.shortcut($0).enabled })
+        let enabled = Set(VoicePreferences.shortcutIDs.filter { preferences.shortcut($0).enabled })
         guard Set(competing.failures.keys) == enabled else {
             throw VoiceError.message("Conflicts must identify every enabled shortcut: expected \(enabled.sorted()), got \(competing.failures.keys.sorted())")
         }

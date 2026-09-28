@@ -53,6 +53,10 @@ struct VoicePreferences: Codable, Equatable {
     static let legacyDefaults: [UInt32: VoiceShortcut] = [1: VoiceShortcut(), 2: VoiceShortcut(keyCode: UInt32(kVK_ANSI_V)),
         3: VoiceShortcut(keyCode: UInt32(kVK_ANSI_J)), 4: VoiceShortcut(keyCode: UInt32(kVK_ANSI_G)),
         5: VoiceShortcut(keyCode: UInt32(kVK_ANSI_Backslash)), 6: VoiceShortcut(enabled: false), 7: VoiceShortcut(enabled: false)]
+    /// Every voice shortcut id, in catalogue order. Loops derive from this,
+    /// never from a literal range, so a new key is registered, reset, checked
+    /// for duplicates and reported everywhere at once.
+    static let shortcutIDs: [UInt32] = Array(1...8)
     var cleanup = CleanupStyle.light
     var capture = CaptureMode.toggle
     var delivery = DeliveryMode.paste
@@ -66,11 +70,14 @@ struct VoicePreferences: Codable, Equatable {
     // Read is opt-in and Present defaults to its presenter key; earlier assignments remain unchanged.
     var readingShortcut: VoiceShortcut?
     var presentationShortcut: VoiceShortcut?
+    // Snap is opt-in; it has no 2.0.0 default to migrate from.
+    var snapShortcut: VoiceShortcut?
     var restoreClipboard = true
     func shortcut(_ id: UInt32) -> VoiceShortcut {
         switch id {
         case 6: readingShortcut ?? VoiceShortcut(enabled: false)
         case 7: presentationShortcut ?? Self.defaultPresentationShortcut
+        case 8: snapShortcut ?? VoiceShortcut(enabled: false)
         case 1: dictationShortcut
         case 4: presenterShortcut ?? Self.defaultPresenterShortcut
         case 3: libraryShortcut ?? Self.defaultLibraryShortcut
@@ -82,6 +89,7 @@ struct VoicePreferences: Codable, Equatable {
         switch id {
         case 6: readingShortcut = shortcut
         case 7: presentationShortcut = shortcut
+        case 8: snapShortcut = shortcut
         case 1: dictationShortcut = shortcut
         case 4: presenterShortcut = shortcut
         case 3: libraryShortcut = shortcut
@@ -99,7 +107,7 @@ struct VoicePreferences: Codable, Equatable {
     }
     static let shortcutRevisionKey = "voicePreferences.shortcutRevision"
     var enabledCombinations: Set<GlobalShortcutCombination> {
-        Set((UInt32(1)...7).map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
+        Set(Self.shortcutIDs.map { shortcut($0) }.filter { $0.enabled && GlobalShortcutRule.allows(modifiers: $0.modifiers) }.map(\.combination))
     }
     private func stored(_ id: UInt32) -> VoiceShortcut? {
         switch id {
@@ -109,6 +117,7 @@ struct VoicePreferences: Codable, Equatable {
         case 4: presenterShortcut
         case 5: readbackShortcut
         case 6: readingShortcut
+        case 8: snapShortcut
         default: presentationShortcut
         }
     }
@@ -116,7 +125,7 @@ struct VoicePreferences: Codable, Equatable {
     /// longer takes (⌘3), to its presenter default. Any other chosen combination is kept, and a new
     /// default that would take one keeps its old combination.
     static func movingUntouchedShortcuts(_ preferences: VoicePreferences, reserving combinations: Set<GlobalShortcutCombination> = [], fresh: Bool = false) -> VoicePreferences {
-        let ids = Array(UInt32(1)...7)
+        let ids = shortcutIDs
         let untouched = ids.filter { id in
             guard !fresh, let saved = preferences.stored(id) else { return true }
             return saved == legacyDefaults[id] || id == 5 && saved == legacyReadbackShortcut

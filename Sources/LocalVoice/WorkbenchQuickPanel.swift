@@ -1,24 +1,29 @@
 import AppKit
 import SwiftUI
 import StageKit
+import ToolbarCore
 
 /// One compact panel, reached from the status item and the Quick Controls key.
-/// The action rows stay above receipts and inline shortcut editing.
+/// A row per capability in moment order, each reading the same next action the
+/// floating toolbar shows and acting on it. The action rows stay above receipts
+/// and inline shortcut editing.
 struct WorkbenchQuickPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var keyboard: KeyboardCoachModel
     @ObservedObject var receipts: ClipboardReceiptModel
+    @ObservedObject var snapModel: SnapModel
     @ObservedObject private var updates = WorkbenchUpdates.shared
     var open: (String) -> Void
     var draw: () -> Void
     var snap: () -> Void
+    var snapCapture: (SnapCapture.Mode) -> Void
     var present: () -> Void
     var timer: () -> Void
     var personas: () -> Void
     @State private var editingShortcut = false
-    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
+    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
     private var hasFeedback: Bool {
         editingShortcut || receipts.receipt?.isClipboardCurrent == true ||
             !context.activitySummary.isEmpty || model.error != nil || stage.notice != nil ||
@@ -26,32 +31,20 @@ struct WorkbenchQuickPanel: View {
     }
 
     var body: some View {
+        let state = context.state
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Workbench").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Toggle("Floating Toolbar", isOn: $model.floatingToolbarVisible)
-                    .toggleStyle(.switch).controlSize(.mini).font(.system(size: 11))
-            }
+            Text("Workbench").font(.system(size: 13, weight: .semibold))
             Divider()
             VStack(spacing: 2) {
                 ForEach(WorkbenchControlTool.allCases) { tool in
-                    if tool == .snapAndTalk {
-                        Button { open("snap") } label: {
-                            Text("Snap").font(.system(size: 12, weight: .medium))
-                                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-                                .contentShape(Rectangle())
-                        }.buttonStyle(.plain).frame(height: 34)
-                            .help("Open Snap to capture, edit and review screenshots.")
-                    }
                     HStack(spacing: 8) {
                         Button { perform(tool) } label: {
-                            Text(tool.title).font(.system(size: 12, weight: .medium))
+                            Text(state.actionTitle(tool)).font(.system(size: 12, weight: .medium))
                                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                                 .contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                            .disabled(!context.state.enabled(tool) || keyboard.isInteracting)
-                            .help((tool == .present && stage.isPresenting || tool == .persona && stage.hasActivePersona ? "Show live controls" : context.state.actionTitle(tool)) + ". " + context.detail(tool))
+                            .disabled(!state.enabled(tool) || keyboard.isInteracting)
+                            .help(state.actionTitle(tool) + ". " + context.detail(tool))
                         shortcut(tool)
                         ZStack(alignment: .trailing) { options(tool) }
                             .frame(width: 64, height: 28, alignment: .trailing)
@@ -124,28 +117,29 @@ struct WorkbenchQuickPanel: View {
                 Button("Done") { keyboard.stopInteraction(); editingShortcut = false }
                     .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }
-            Text(keyboard.message ?? "Choose Change to record a shortcut.")
+            Text(keyboard.message ?? "Press your combination.")
                 .font(.caption).foregroundStyle(keyboard.hasError ? .orange : .secondary).lineLimit(3)
             HStack {
                 Button("Change") { keyboard.beginRecording() }
-                Button("Turn Off") { keyboard.disableSelected() }
+                Button("Turn off") { keyboard.disableSelected() }
                 if keyboard.isInteracting { Button("Cancel") { keyboard.stopInteraction() } }
             }.controlSize(.small)
         }
     }
 
+    /// Each row's options hold only that capability's own choices and its one
+    /// door to its page. Nothing here is information-only.
     @ViewBuilder private func options(_ tool: WorkbenchControlTool) -> some View {
         switch tool {
         case .dictate:
             Menu("Options") {
-                Text("Destination")
                 ForEach(DeliveryMode.allCases, id: \.self) { delivery in
                     Button { model.preferences.delivery = delivery } label: {
                         if model.preferences.delivery == delivery { Label(delivery.rawValue, systemImage: "checkmark") }
                         else { Text(delivery.rawValue) }
                     }.disabled(model.phase != .idle)
                 }
-                Divider(); Text("Text Style")
+                Divider()
                 ForEach(CleanupStyle.allCases, id: \.self) { style in
                     Button { model.preferences.cleanup = style } label: {
                         if model.preferences.cleanup == style { Label(style.rawValue, systemImage: "checkmark") }
@@ -155,49 +149,83 @@ struct WorkbenchQuickPanel: View {
                 Divider()
                 // Capture history belongs to Dictate, so its option opens History on Transcripts.
                 Button("History…") { model.openHistory(HistoryDoor(filter: .transcripts)); open("history") }
-                Button("Transcribe Meeting or Call…") { open("meeting") }
-                Button("Dictation Settings…") { open("dictate") }
+                Button("Transcribe meeting or call…") { open("meeting") }
+                Button("Open Dictate…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()
+                // The same 11 pt accent label the native Options controls use on every other row.
+                .font(.system(size: 11)).foregroundStyle(Workbench.accent)
         case .read:
-            if model.rendering { Button("Cancel") { model.cancelReading() }.buttonStyle(.plain).foregroundStyle(Workbench.accent) }
-            else if model.playing || model.paused { Button("Stop") { model.stopPlayback() }.buttonStyle(.plain).foregroundStyle(Workbench.accent) }
-        case .snapAndTalk:
-            Button(readback.sessionURL == nil ? "Set Up" : "\(readback.activeSections.count) · Review") { open("readback") }
-                .font(.system(size: 10)).lineLimit(1).fixedSize()
-                .buttonStyle(.plain).foregroundStyle(Workbench.accent)
-                .help("Review captures and prepare the explicit deck handoff")
-        case .annotate:
-            NativeControlMenu(title: "Tools") { stage.makeAnnotationMenu() }
-        case .present:
+            EmptyView()
+        case .snap:
             NativeControlMenu(title: "Options") {
-                let menu = stage.makePresentationMenu()
+                let menu = NSMenu(title: "Snap"); menu.autoenablesItems = false
+                for mode in SnapCapture.Mode.allCases {
+                    menu.addItem(ToolbarMenuAction(mode.title, enabled: context.state.enabled(.snap)) {
+                        model.toolbarMode = .snap; snapCapture(mode)
+                    })
+                }
                 menu.addItem(.separator())
-                menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
-                menu.addItem(ToolbarMenuAction("Saved Resources…") { open("library") })
-                menu.addItem(ToolbarMenuAction("Prepare Scenes…") { open("present") })
+                menu.addItem(ToolbarMenuAction("Open Snap…") { open("snap") })
                 return menu
             }
+        case .snapAndTalk:
+            NativeControlMenu(title: "Options") {
+                let menu = NSMenu(title: "Snap & Talk"); menu.autoenablesItems = false
+                menu.addItem(ToolbarMenuAction("Review Snap & Talk…") { open("readback") })
+                return menu
+            }
+        case .annotate:
+            NativeControlMenu(title: "Options") { nativeOptions(tool) ?? NSMenu() }
+        case .present:
+            NativeControlMenu(title: "Options") { nativeOptions(tool) ?? NSMenu() }
         case .persona:
-            NativeControlMenu(title: "Options") { stage.makePersonaMenu(includePreparation: true) }
+            NativeControlMenu(title: "Options") { nativeOptions(tool) ?? NSMenu() }
         case .timer:
-            NativeControlMenu(title: "Options") { stage.makeTimerMenu() }
+            NativeControlMenu(title: "Options") { nativeOptions(tool) ?? NSMenu() }
         }
     }
 
-    private func perform(_ tool: WorkbenchControlTool) {
+    /// Native option menus, built when clicked. The surface gallery lists these same menus.
+    func nativeOptions(_ tool: WorkbenchControlTool) -> NSMenu? {
         switch tool {
-        case .dictate:
-            if model.waitingForDrawing { model.copyWaitingDelivery() }
-            else { model.onMenuRecording?() }
-        case .read:
-            if model.rendering { model.cancelReading() }
-            else if model.playing || model.paused { model.listen() }
-            else { open("speak") }
-        case .snapAndTalk: model.controlTool = .snapAndTalk; snap()
-        case .annotate: model.controlTool = .annotate; draw()
-        case .present: model.controlTool = .present; present()
-        case .persona: model.controlTool = .persona; personas()
-        case .timer: timer()
+        case .annotate: return stage.makeAnnotationMenu(includeSettings: false)
+        case .present:
+            let menu = stage.makePresentationMenu()
+            // The page is the door when nothing is prepared; a note is not.
+            for item in menu.items where !item.isEnabled && item.submenu == nil { menu.removeItem(item) }
+            if menu.items.isEmpty == false { menu.addItem(.separator()) }
+            menu.addItem(ToolbarMenuAction("Open Present…") { open("present") })
+            return menu
+        case .persona:
+            let menu = stage.makePersonaPanelMenu()
+            if menu.items.isEmpty == false { menu.addItem(.separator()) }
+            menu.addItem(ToolbarMenuAction("Open Persona…") { open("personas") })
+            return menu
+        case .timer: return stage.makeTimerMenu(optionsOnly: true)
+        case .dictate, .read, .snap, .snapAndTalk: return nil
+        }
+    }
+
+    /// The row does exactly what its label says: the same operation, through the
+    /// same owner switch the floating toolbar uses. Only a start goes through
+    /// this surface's own door.
+    private func perform(_ tool: WorkbenchControlTool) {
+        let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
+            switch mode {
+            case .dictate: model.onMenuRecording?()
+            case .read: open("speak")
+            case .snap: snapCapture(.region)
+            case .snapAndTalk: snap()
+            case .draw: draw()
+            case .present: present()
+            case .persona: personas()
+            }
+        }
+        switch context.state.rowAction(tool) {
+        case .startTimer, .stopTimer: timer()
+        case .operation(let operation):
+            if case .start = operation {} else { model.onCloseMenu?() }
+            dispatch.perform(operation)
         }
     }
 }
