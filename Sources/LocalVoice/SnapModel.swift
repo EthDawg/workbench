@@ -13,6 +13,32 @@ struct SnapDraft: Identifiable {
     var edit: SnapEdit
 }
 
+/// A save or export that actually wrote, confirmed for four seconds beside
+/// the Snap page's and History's own controls (#134 T5).
+enum SnapConfirmation: String, Equatable {
+    case saved = "Saved to History"
+    case savedAndCopied = "Saved and copied"
+    case exported = "Image exported"
+    static let texts = [saved.rawValue, savedAndCopied.rawValue, exported.rawValue]
+}
+
+/// What the last save or export did, classified where it happened rather than
+/// read back from `notice` text. Only full successes are timed; a save whose
+/// copy failed is a partial failure, and its notice stays.
+enum SnapOutcome: Equatable {
+    case saved, savedAndCopied, exported
+    case savedButCopyFailed, failed
+
+    var confirmation: SnapConfirmation? {
+        switch self {
+        case .saved: return .saved
+        case .savedAndCopied: return .savedAndCopied
+        case .exported: return .exported
+        case .savedButCopyFailed, .failed: return nil
+        }
+    }
+}
+
 @MainActor
 final class SnapModel: ObservableObject {
     @Published private(set) var items: [SnapItem] = []
@@ -24,7 +50,19 @@ final class SnapModel: ObservableObject {
             onStateChange?()
         }
     }
-    @Published var notice: String?
+    /// Problems and partial results that stay until something replaces them.
+    /// A newer notice also ends a success confirmation still showing.
+    @Published var notice: String? { didSet { if notice != nil { clearConfirmation() } } }
+    @Published private(set) var lastOutcome: SnapOutcome?
+    /// ✓ Saved to History, Saved and copied or Image exported, gone after four
+    /// seconds. Expiry clears only this; no timer closes an editor or save panel.
+    @Published private(set) var confirmation: LocalConfirmation<SnapConfirmation>?
+    let clock: MonotonicClock
+    private let confirmationExpiry: NoticeExpiry
+    /// VoiceOver hears a success's words once, without interrupting.
+    var announce: (String) -> Void = { FeedbackAnnouncement.post($0) }
+    /// The confirmation's pending close, for checks.
+    var pendingConfirmationExpiry: UUID? { confirmationExpiry.pending?.event }
     @Published var search = ""
     @Published var showingArchived = false
     let store: SnapStore
@@ -100,7 +138,9 @@ final class SnapModel: ObservableObject {
          trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash,
          applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService,
          imageSource: (any SnapImageSource)? = nil, pasteboard: NSPasteboard = .general,
-         screenAccess: ScreenCaptureAccess = .system) {
+         screenAccess: ScreenCaptureAccess = .system, clock: @escaping MonotonicClock = Monotonic.now) {
+        self.clock = clock
+        confirmationExpiry = NoticeExpiry(clock: clock)
         self.captureService = imageSource ?? SnapCapture()
         self.pasteboard = pasteboard
         self.screenAccess = screenAccess
@@ -381,25 +421,64 @@ final class SnapModel: ObservableObject {
             let copied = copyAfterSaving && copyBytes(rendered)
             closingWithCopy = copied; self.draft = nil; closingWithCopy = false
             refresh()
-            if copyAfterSaving { notice = copied ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
-            else { notice = "Saved to History. Your original image is preserved." }
+            let outcome: SnapOutcome = copyAfterSaving ? (copied ? .savedAndCopied : .savedButCopyFailed) : .saved
+            finish(outcome, notice: outcome == .savedButCopyFailed ? "Saved to History. Copy failed; use Copy from History to try again." : nil)
             return true
-        } catch { notice = "Snap was not saved. \(error.localizedDescription)"; return false }
+        } catch { finish(.failed, notice: "Snap was not saved. \(error.localizedDescription)"); return false }
+    }
+
+    /// One place classifies each save or export: a success gets its four-second
+    /// confirmation, anything else keeps a notice that stays.
+    private func finish(_ outcome: SnapOutcome, notice: String?) {
+        lastOutcome = outcome
+        self.notice = notice
+        guard let kind = outcome.confirmation else { clearConfirmation(); return }
+        let confirmation = LocalConfirmation(kind, at: clock())
+        self.confirmation = confirmation
+        confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) }
+        // The label goes after four seconds; VoiceOver still hears what happened.
+        announce(kind.rawValue)
+    }
+
+    /// Ends the confirmation only if it is still this one and it is due.
+    func expireConfirmation(_ event: UUID) {
+        guard let confirmation, confirmation.lifetime.event == event else { return }
+        if confirmation.lifetime.isDue(at: clock()) { self.confirmation = nil }
+        else { confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) } }
+    }
+
+    private func clearConfirmation() {
+        confirmationExpiry.cancel()
+        if confirmation != nil { confirmation = nil }
     }
 
     func copy(_ id: UUID) {
         do { let snapshot = try store.snapshot(id); notice = copyBytes(snapshot.imagePNG) ? "Image copied. Paste it where you need it." : "The image could not be copied. Try again." }
         catch { notice = error.localizedDescription }
     }
-    private func copyBytes(_ bytes: Data) -> Bool { pasteboard.clearContents(); return pasteboard.setData(bytes, forType: .png) }
+    /// Checks replace the pasteboard write to exercise a failed copy; the app never sets it.
+    var copyImage: ((Data) -> Bool)?
+    private func copyBytes(_ bytes: Data) -> Bool {
+        if let copyImage { return copyImage(bytes) }
+        pasteboard.clearContents(); return pasteboard.setData(bytes, forType: .png)
+    }
 
     func export(_ id: UUID) {
         do {
             let snapshot = try store.snapshot(id), panel = NSSavePanel()
             panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = snapshot.item.title + ".png"
             guard panel.runModal() == .OK, let url = panel.url else { return }
-            try snapshot.imagePNG.write(to: url, options: .atomic); notice = "Image exported. The original remains in History."
-        } catch { notice = error.localizedDescription }
+            export(id, to: url)
+        } catch { finish(.failed, notice: error.localizedDescription) }
+    }
+
+    /// The export the person chose; confirmed only once the file is written.
+    func export(_ id: UUID, to url: URL) {
+        do {
+            let snapshot = try store.snapshot(id)
+            try snapshot.imagePNG.write(to: url, options: .atomic)
+            finish(.exported, notice: nil)
+        } catch { finish(.failed, notice: error.localizedDescription) }
     }
 
     func archive(_ ids: Set<UUID>, archived: Bool) {

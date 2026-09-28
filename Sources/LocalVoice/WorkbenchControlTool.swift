@@ -78,12 +78,17 @@ struct WorkbenchControlState {
     var overlaysPaused = false
     var timerStarted = false
     var timerRunning = false
+    /// The timer's transport, which tells a finished countdown from a paused one; `timerStarted`
+    /// stays set after "Time is up" until the timer is reset.
+    var timerTransport: TimerTransport = .idle
     var canRecordAgain = false
     var insertingPrompt = false
     var meetingRecording = false
     /// A StageKit screenshot handoff or a standalone Snap capture owns the screen.
     var screenshotting = false
     var snapBusy = false
+    /// Dictated words wait for drawing to end before they are delivered (#211 F5).
+    var waitingForDrawing = false
 
     /// Admission for new work. Existing work keeps its own ending even while
     /// another owner refuses a new start.
@@ -107,6 +112,7 @@ struct WorkbenchControlState {
         case .requesting: dictation = .requesting
         case .recording: dictation = .recording
         case .cancelling: dictation = .cancelling
+        case .delivering where waitingForDrawing: dictation = .waitingForDrawing
         case .transcribing, .cleaning, .delivering: dictation = .processing
         }
         return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: canRecordAgain,
@@ -115,9 +121,20 @@ struct WorkbenchControlState {
             pendingNarration: pendingNarration, captureCount: captureCount ?? (hasSession ? 0 : nil),
             drawing: drawing, presenting: presenting,
             persona: overlaysPaused ? .sessionHidden : overlaySession ? .session : overlays ? .shown : .none,
-            timer: timerStarted ? (timerRunning ? .running : .paused) : .none,
+            timer: Self.liveTimer(timerTransport),
             insertingPrompt: insertingPrompt, meetingRecording: meetingRecording,
             mayStart: WorkbenchControlTool(mode: mode).map(mayStart) ?? false)
+    }
+
+    /// The timer as the next action and its fixtures see it: a finished countdown is finished,
+    /// never paused (#205 review).
+    static func liveTimer(_ transport: TimerTransport) -> ToolbarLiveState.Timer {
+        switch transport {
+        case .idle: return .none
+        case .running: return .running
+        case .paused: return .paused
+        case .finished: return .finished
+        }
     }
 
     /// The row's next action, from the same function as the toolbar's label.
@@ -249,9 +266,10 @@ struct WorkbenchControlContext {
             mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
             overlays: stage.hasActivePersona, overlaySession: stage.hasActivePersonaSession,
             overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession,
-            timerRunning: stage.isTimerRunning, canRecordAgain: model.canRecordAgain,
+            timerRunning: stage.isTimerRunning, timerTransport: stage.timerTransport, canRecordAgain: model.canRecordAgain,
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
-            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true)
+            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true,
+            waitingForDrawing: model.waitingForDrawing)
     }
     /// What the owners say is going on, for the toolbar's compact rest (#134). Only each
     /// owner's structured state counts, recomputed whenever it is read and so at launch: never
@@ -282,12 +300,18 @@ struct WorkbenchControlContext {
         return ToolbarActivity(capture: capture, level: level, playback: model.playing,
             processing: dictationBusy || model.rendering || readback.isCapturing || readback.hasPendingTranscriptions
                 || model.meetings.isStarting || model.meetings.isProcessing || snap?.isCapturing == true,
-            failure: model.captureFailure != nil || model.readingFailure != nil || model.meetings.hasRecovery,
+            // A delivery that did not finish needs the person until they copy it again or set it
+            // aside, whether or not its receipt is still showing (#134 T5).
+            failure: model.captureFailure != nil || model.readingFailure != nil || model.meetings.hasRecovery || model.unresolvedDelivery != nil,
             pendingDelivery: model.waitingForDrawing
                 || (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt?.isClipboardCurrent == true),
             unsavedCapture: snap?.draft != nil,
             paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
-            live: live)
+            live: live,
+            // The last ten seconds before a dictation or narration stops at its 5-minute limit (#134 T4).
+            stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290),
+            // The dictation owner's own judgement of a microphone too quiet to use, for VoiceOver's value (#211 F7).
+            quiet: capture == .dictation && model.isMicrophoneQuiet)
     }
 
     /// The break timer's part of the compact status: a running countdown is live work and a

@@ -21,7 +21,10 @@ let package = Package(
         .target(name: "PrivatePackKit"),
         .testTarget(name: "PrivatePackKitTests", dependencies: ["PrivatePackKit"]),
         .target(name: "ToolbarCore"),
-        .target(name: "ToolbarKit", dependencies: ["ToolbarCore"]),
+        // One voice appearance for the toolbar's compact trace and the Persona outline:
+        // the shared envelope, stroke character and trace geometry.
+        .target(name: "VoiceAppearance"),
+        .target(name: "ToolbarKit", dependencies: ["ToolbarCore", "VoiceAppearance"]),
         .executableTarget(name: "ToolbarGalleryRenderer", dependencies: ["ToolbarKit", "StageKit"]),
         .testTarget(name: "ToolbarKitTests", dependencies: ["ToolbarKit", "StageKit"]),
         .testTarget(name: "ToolbarCoreTests", dependencies: ["ToolbarCore"]),
@@ -32,7 +35,7 @@ let package = Package(
         .testTarget(name: "PhotoHandoffKitTests", dependencies: ["PhotoHandoffKit"]),
         .target(name: "SceneSyncKit"),
         .testTarget(name: "SceneSyncKitTests", dependencies: ["SceneSyncKit"]),
-        .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit"], linkerSettings: [.linkedFramework("Carbon")]),
+        .target(name: "StageKit", dependencies: ["SceneSyncKit", "PhotoHandoffKit", "VoiceAppearance"], linkerSettings: [.linkedFramework("Carbon")]),
         .executableTarget(name: "LocalVoice", dependencies: ["PrivatePackKit", "ToolbarCore", "ToolbarKit", "StageKit", "PhotoHandoffKit", "PresenterKit", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "Sparkle", package: "Sparkle")], resources: [.copy("Resources/build-snap-and-talk-deck"), .copy("Resources/workbench-pack")], swiftSettings: intentSettings, linkerSettings: [.linkedFramework("Carbon"), .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ])
     ],
     swiftLanguageModes: [.v5]
