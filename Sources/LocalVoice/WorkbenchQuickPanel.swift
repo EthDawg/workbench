@@ -119,6 +119,8 @@ struct WorkbenchQuickPanel: View {
             HStack {
                 Text(keyboard.selected?.title ?? "Shortcut").font(.callout.weight(.semibold))
                 Spacer()
+                // ✓ Saved or ✓ Practice complete for four seconds, in space kept for it (#134 T5).
+                ConfirmationLabel(text: keyboard.confirmation?.kind.rawValue, reserving: ShortcutConfirmation.texts)
                 Button("Done") { editor.end() }
                     .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }

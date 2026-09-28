@@ -105,12 +105,25 @@ struct ShortcutPracticeState: Equatable {
     }
 }
 
+/// What a shortcut change or practice actually achieved, confirmed for four
+/// seconds beside it (#134 T5).
+enum ShortcutConfirmation: String, Equatable {
+    case saved = "Saved"
+    case practiceComplete = "Practice complete"
+    static let texts = [saved.rawValue, practiceComplete.rawValue]
+}
+
 @MainActor
 final class KeyboardCoachModel: ObservableObject {
     enum Interaction: Equatable { case idle, recording, practicing }
+    /// ✓ Saved or ✓ Practice complete, gone after four seconds. Its expiry
+    /// clears only itself: never the shortcut, practice, editor or panel.
+    @Published private(set) var confirmation: LocalConfirmation<ShortcutConfirmation>?
+    let clock: MonotonicClock
+    private let confirmationExpiry: NoticeExpiry
     @Published private(set) var entries: [ShortcutEntry]
     @Published var selectedID: String {
-        didSet { if selectedID != oldValue { stopInteraction(); practice = nil; message = nil } }
+        didSet { if selectedID != oldValue { stopInteraction(); practice = nil; message = nil; clearConfirmation() } }
     }
     @Published private(set) var interaction: Interaction = .idle
     @Published private(set) var message: String?
@@ -131,10 +144,32 @@ final class KeyboardCoachModel: ObservableObject {
 
     /// update must leave the previous preference intact on error. It must not resume global
     /// hotkeys: suspend(false) owns that operation after editing or practice has stopped.
-    init(entries: [ShortcutEntry], update: @escaping (String, VoiceShortcut) -> String?, suspend: @escaping (Bool) -> Void, probe: ((VoiceShortcut) -> String?)? = nil, notifications: NotificationCenter = .default) {
+    init(entries: [ShortcutEntry], update: @escaping (String, VoiceShortcut) -> String?, suspend: @escaping (Bool) -> Void, probe: ((VoiceShortcut) -> String?)? = nil, notifications: NotificationCenter = .default,
+         clock: @escaping MonotonicClock = Monotonic.now) {
         self.entries = entries; selectedID = entries.first?.id ?? ""
         self.update = update; self.suspend = suspend; self.probe = probe ?? Self.registrationFailure
         self.notifications = notifications
+        self.clock = clock
+        confirmationExpiry = NoticeExpiry(clock: clock)
+    }
+
+    private func confirm(_ kind: ShortcutConfirmation) {
+        let confirmation = LocalConfirmation(kind, at: clock())
+        self.confirmation = confirmation
+        confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) }
+    }
+
+    /// Ends the confirmation only if it is still this one and it is due.
+    func expireConfirmation(_ event: UUID) {
+        guard let confirmation, confirmation.lifetime.event == event else { return }
+        if confirmation.lifetime.isDue(at: clock()) { self.confirmation = nil }
+        else { confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) } }
+    }
+
+    /// A new interaction or selection starts without the last one's check.
+    private func clearConfirmation() {
+        confirmationExpiry.cancel()
+        if confirmation != nil { confirmation = nil }
     }
 
     func replaceEntries(_ entries: [ShortcutEntry]) {
@@ -146,13 +181,14 @@ final class KeyboardCoachModel: ObservableObject {
     func beginRecording() {
         guard selected != nil else { return }
         stopInteraction(); practice = nil; message = "Press your new combination. Escape cancels."; hasError = false
+        clearConfirmation()
         begin(.recording)
     }
 
     func beginPractice() {
         guard let shortcut = selected?.shortcut, shortcut.enabled, selected?.error == nil else { return }
         stopInteraction(); practice = ShortcutPracticeState(target: shortcut)
-        message = nil; hasError = false; begin(.practicing)
+        message = nil; hasError = false; clearConfirmation(); begin(.practicing)
     }
 
     private func begin(_ interaction: Interaction) {
@@ -185,7 +221,7 @@ final class KeyboardCoachModel: ObservableObject {
     /// over does not show an earlier visit's message. Never during an interaction.
     func clearFeedback() {
         guard !isInteracting else { return }
-        message = nil; hasError = false; practice = nil
+        message = nil; hasError = false; practice = nil; clearConfirmation()
     }
 
     func disableSelected() {
@@ -208,11 +244,14 @@ final class KeyboardCoachModel: ObservableObject {
         else if heldKey == shortcut.keyCode { heldKey = nil }
         if interaction == .recording {
             guard event.type == .keyDown, !event.isARepeat else { return nil }
-            if save(shortcut) { stopInteraction(); message = "Saved. Try it here to build the habit." }
+            if save(shortcut) { stopInteraction(); message = "Try it here to build the habit." }
         } else if interaction == .practicing {
             if event.type == .keyDown { practice?.keyDown(shortcut.keyCode, modifiers: shortcut.modifiers, isRepeat: event.isARepeat) }
             else { practice?.keyUp(shortcut.keyCode) }
-            if practice?.isComplete == true { stopInteraction(); message = "Three complete presses. Ready to use anywhere." }
+            if practice?.isComplete == true {
+                stopInteraction(); message = "Three complete presses. Ready to use anywhere."
+                confirm(.practiceComplete)
+            }
         }
         return nil
     }
@@ -221,11 +260,13 @@ final class KeyboardCoachModel: ObservableObject {
     private func save(_ candidate: VoiceShortcut) -> Bool {
         guard let index = entries.firstIndex(where: { $0.id == selectedID }) else { return false }
         if let problem = ShortcutConflict.message(for: candidate, replacing: selectedID, in: entries) ?? (candidate.enabled ? probe(candidate) : nil) {
-            message = problem; hasError = true; return false
+            message = problem; hasError = true; clearConfirmation(); return false
         }
-        if let problem = update(selectedID, candidate) { message = problem; hasError = true; return false }
+        if let problem = update(selectedID, candidate) { message = problem; hasError = true; clearConfirmation(); return false }
         entries[index].shortcut = candidate; entries[index].error = nil
-        hasError = false; message = candidate.enabled ? "Shortcut saved." : "Shortcut off. The action is still available from its button or menu."
+        hasError = false; message = candidate.enabled ? nil : "Shortcut off. The action is still available from its button or menu."
+        // Only after the owner kept the change.
+        confirm(.saved)
         return true
     }
 
@@ -271,6 +312,7 @@ struct KeyboardCoachView: View {
                                 if model.interaction == .recording { model.stopInteraction() } else { model.beginRecording() }
                             }
                             Button("Turn off") { model.disableSelected() }.disabled(!selected.shortcut.enabled || model.isInteracting)
+                            ConfirmationLabel(text: model.confirmation?.kind.rawValue, reserving: ShortcutConfirmation.texts)
                             Spacer()
                             Button(model.interaction == .practicing ? "Stop practice" : "Practice") {
                                 if model.interaction == .practicing { model.stopInteraction() } else { model.beginPractice() }

@@ -22,6 +22,7 @@ enum FeedbackChecks {
         try checkCoach(check)
         try checkHoldLesson(check)
         try checkUnresolvedDelivery(check)
+        try checkShortcutConfirmation(check)
         print("FEEDBACK_CHECKS_OK: \(count) checks; one lifetime, the coach's host seam, the hold lesson, undelivered results and Saved confirmations")
     }
 
@@ -211,5 +212,58 @@ enum FeedbackChecks {
             .flatMap { [$0.title, $0.detail] }.joined(separator: " ")
         try check(!words.contains("—") && !words.contains("–") && !words.lowercased().contains("attention") && words.contains("History")
                   && words.contains("Dictate draft"), "each says where the words are, in plain words")
+    }
+
+    // MARK: Saved and Practice complete
+
+    private static func checkShortcutConfirmation(_ check: Check) throws {
+        var clock: TimeInterval = 2_000
+        let start = VoiceShortcut(keyCode: UInt32(kVK_ANSI_1), modifiers: UInt32(optionKey))
+        var updates = 0
+        let keyboard = KeyboardCoachModel(entries: [ShortcutEntry(id: "voice.8", title: "Snap", shortcut: start)],
+                                          update: { _, _ in updates += 1; return nil }, suspend: { _ in }, probe: { _ in nil },
+                                          notifications: NotificationCenter(), clock: { clock })
+        let editor = PanelShortcutEditor(keyboard: keyboard)
+        func key(_ type: NSEvent.EventType, _ code: Int, option: Bool = true) -> NSEvent {
+            NSEvent.keyEvent(with: type, location: .zero, modifierFlags: option ? [.option] : [], timestamp: 0, windowNumber: 0,
+                             context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: UInt16(code))!
+        }
+        editor.change("voice.8")
+        _ = keyboard.handle(key(.keyDown, kVK_ANSI_2))
+        let saved = VoiceShortcut(keyCode: UInt32(kVK_ANSI_2), modifiers: UInt32(optionKey))
+        try check(updates == 1 && keyboard.selected?.shortcut == saved && keyboard.confirmation?.kind == .saved,
+                  "✓ Saved appears only after the owner kept the new shortcut")
+        let event = keyboard.confirmation!.lifetime.event
+        clock += 3.9; keyboard.expireConfirmation(event)
+        try check(keyboard.confirmation?.kind == .saved, "it lasts four seconds")
+        clock += 0.1; keyboard.expireConfirmation(event)
+        try check(keyboard.confirmation == nil && keyboard.selected?.shortcut == saved && editor.shortcutID == "voice.8"
+                  && keyboard.message == "Try it here to build the habit.", "expiry clears only the check: the shortcut, the editor and its words stay")
+        keyboard.beginRecording()
+        _ = keyboard.handle(key(.keyDown, kVK_ANSI_V, option: false))
+        try check(keyboard.confirmation == nil && keyboard.hasError, "a refused combination shows its reason and no check")
+        keyboard.stopInteraction()
+
+        keyboard.beginPractice()
+        for _ in 0..<3 { _ = keyboard.handle(key(.keyDown, kVK_ANSI_2)); _ = keyboard.handle(key(.keyUp, kVK_ANSI_2, option: false)) }
+        try check(keyboard.practice?.isComplete == true && keyboard.confirmation?.kind == .practiceComplete,
+                  "✓ Practice complete appears only after three complete presses")
+        let practiced = keyboard.confirmation!.lifetime.event
+        keyboard.beginPractice()
+        try check(keyboard.confirmation == nil && keyboard.isInteracting, "starting practice again starts without the old check")
+        clock += 10; keyboard.expireConfirmation(practiced)
+        try check(keyboard.isInteracting && keyboard.interaction == .practicing, "an old check's expiry never stops practice in progress")
+        keyboard.stopInteraction()
+        editor.end()
+        try check(keyboard.confirmation == nil, "closing the editor ends its check")
+        try check(ShortcutConfirmation.texts == ["Saved", "Practice complete"], "the two confirmations, and the space kept for them")
+
+        let refusing = KeyboardCoachModel(entries: [ShortcutEntry(id: "voice.8", title: "Snap", shortcut: start)],
+                                          update: { _, _ in "Registration changed during the save." }, suspend: { _ in }, probe: { _ in nil },
+                                          notifications: NotificationCenter(), clock: { clock })
+        refusing.beginRecording()
+        _ = refusing.handle(key(.keyDown, kVK_ANSI_3))
+        try check(refusing.confirmation == nil && refusing.hasError && refusing.selected?.shortcut == start,
+                  "✓ Saved never shows when the owner could not keep the change")
     }
 }
