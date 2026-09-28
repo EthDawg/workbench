@@ -205,7 +205,10 @@ struct WorkbenchClipboardShelf: View {
                         Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 4)
-                    if receipt.canSuggestPaste { Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary) }
+                    // One ⌘V: the key only when the receipt's words do not already say it.
+                    if receipt.canSuggestPaste && !receipt.detail.contains("⌘V") {
+                        Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary)
+                    }
                 }
                 Text(receipt.detail)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
