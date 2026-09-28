@@ -570,7 +570,10 @@ final class HandoffJobsModel: ObservableObject {
             error = "macOS could not open this task’s result. Its file was kept; Show selected files opens the task folder."
         }
     }
-    var visibleJobs: [HandoffJob] {
+    var visibleJobs: [HandoffJob] { Self.visible(jobs) }
+    /// The policy `visibleJobs` applies, for checks that build tasks without a store: the first
+    /// task for each review stands for its retries, which History shows inside it.
+    static func visible(_ jobs: [HandoffJob]) -> [HandoffJob] {
         var seen = Set<String>()
         return jobs.filter { job in job.reviewKey.map { seen.insert($0).inserted } ?? true }
     }

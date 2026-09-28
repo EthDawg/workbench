@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var correctionSeed = ""
     @State private var correctionDraft = ""
     @State private var confirmingRecoveryDiscard = false
+    /// Where Settings' Dictate options… lands: VoiceOver starts at the options it opened (#134).
+    @AccessibilityFocusState private var optionsFocused: Bool
     /// On Read, a stopped reading shows beside Listen with Retry, not in the banner as well.
     private var bannerError: String? {
         guard let error = model.error else { return nil }
@@ -85,7 +87,7 @@ struct ContentView: View {
     /// the editor takes any spare height. The microphone is the page's one accent action; Copy
     /// text and the result's other actions stay neutral.
     private var dictate: some View {
-        GeometryReader { proxy in ScrollView {
+        GeometryReader { proxy in ScrollViewReader { reader in ScrollView {
             VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
             WorkbenchPageHeader("dictate", summary: "Turn a thought into text. Record here, or use the shortcut from any app.")
             VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
@@ -177,8 +179,23 @@ struct ContentView: View {
             dictateOptions
             appleShortcutsCaption
             }.frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+        }
+        .onAppear { showRequestedSection(reader) }
+        .onChange(of: model.focusRequest) { _, _ in showRequestedSection(reader) }
         } }
     }
+
+    /// A named door's section, once: Settings' Dictate options… scrolls to Dictate's options and
+    /// moves VoiceOver there, instead of leaving the page at its top (#134).
+    private func showRequestedSection(_ reader: ScrollViewProxy) {
+        guard model.focusRequest?.target == .dictateOptions else { return }
+        DispatchQueue.main.async {
+            model.focusRequest = nil
+            withAnimation { reader.scrollTo(Self.optionsID, anchor: .top) }
+            optionsFocused = true
+        }
+    }
+    private static let optionsID = "dictate-options"
 
     /// Where the words go and how they are tidied, inside the task region. The surface check
     /// scans this as Dictate's options.
@@ -189,13 +206,14 @@ struct ContentView: View {
     /// "Dictate options…" door to here.
     private var dictateOptions: some View {
         VStack(alignment: .leading, spacing: 14) {
-            WorkbenchSectionTitle("Options")
+            WorkbenchSectionTitle("Options").accessibilityFocused($optionsFocused)
             VoiceOptions(model: model, showShortcut: false)
             HStack(spacing: 12) {
                 Button("Your dictionary") { model.page = "dictionary" }
                 Button("Position dictation panel…") { model.showPanelPreview() }.disabled(model.phase != .idle)
             }
         }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(panelColor, in: RoundedRectangle(cornerRadius: 16))
+            .id(Self.optionsID)
     }
 
     /// Audio in, text out through Apple Shortcuts: Dictate's job, so it is noted here.

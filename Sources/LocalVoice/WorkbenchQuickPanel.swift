@@ -36,7 +36,19 @@ struct WorkbenchQuickPanel: View {
     var body: some View {
         let state = context.state
         VStack(alignment: .leading, spacing: 10) {
-            Text("Workbench").font(.system(size: 13, weight: .semibold))
+            // One header: the name, and the floating toolbar's one switch at top right (#134). It is
+            // the same preference as Settings, the Window menu and the toolbar's Hide toolbar.
+            HStack(alignment: .center, spacing: 8) {
+                Text("Workbench").font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 8)
+                HStack(spacing: 6) {
+                    // The words are part of the switch's target; VoiceOver reads the switch's own label.
+                    Text("Floating toolbar").font(.system(size: 11)).foregroundStyle(.secondary)
+                        .onTapGesture { model.floatingToolbarVisible.toggle() }.accessibilityHidden(true)
+                    Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                        .accessibilityHint(WorkbenchHome.floatingToolbarHelp)
+                }.frame(minHeight: 32).contentShape(Rectangle()).help(WorkbenchHome.floatingToolbarHelp)
+            }
             Divider()
             VStack(spacing: 2) {
                 ForEach(WorkbenchControlTool.allCases) { tool in

@@ -19,12 +19,15 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
 }
 
 /// How one visit to History begins: its filter and, after Hand off, the task
-/// to reveal. Each door makes a new one, so it applies even when History is
-/// already showing.
+/// to reveal, or a transcript to show from Home's recent work (#134). Each door
+/// makes a new one, so it applies even when History is already showing. Showing
+/// a transcript scrolls to and focuses it; it never selects it or opens it in
+/// Dictate.
 struct HistoryDoor: Equatable {
     var id = UUID()
     var filter = HistoryFilter.all
     var job: UUID? = nil
+    var transcript: UUID? = nil
 }
 
 /// One row of History, read from the store that already owns it.
@@ -233,6 +236,10 @@ struct HistoryView: View {
     @State private var expandedResult: UUID?
     @State private var revealed: UUID?
     @State private var revealRequest: UUID?
+    /// A transcript a door asked to show, and the request that scrolls to it once.
+    @State private var shownTranscript: UUID?
+    @State private var transcriptRequest: UUID?
+    @AccessibilityFocusState private var voiceOverTranscript: UUID?
     @FocusState private var focusedTask: UUID?
     @AccessibilityFocusState private var voiceOverTask: UUID?
     @State private var showingConnections = false
@@ -381,6 +388,9 @@ struct HistoryView: View {
                             TranscriptHistoryRow(model: model, library: library, item: item,
                                 history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
                                 original: $original, details: $details, removal: $removal)
+                                .accessibilityFocused($voiceOverTranscript, equals: item.id)
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
                         case .snap(let item):
                             HistorySnapRow(snap: snap, library: library, item: item)
                         case .result(let job):
@@ -410,6 +420,14 @@ struct HistoryView: View {
                 try? await Task.sleep(nanoseconds: 120_000_000)
                 focusedTask = target.task
                 voiceOverTask = target.task
+            }
+            .task(id: transcriptRequest) {
+                // A transcript Home showed: scroll to it and move VoiceOver there. Nothing is selected.
+                guard transcriptRequest != nil, let id = shownTranscript else { return }
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                withAnimation { proxy.scrollTo(HistoryEntry.ID.transcript(id), anchor: .center) }
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                voiceOverTranscript = id
             }
         }
     }
@@ -451,6 +469,8 @@ struct HistoryView: View {
         query = ""; appliedQuery = ""
         revealed = door.job
         if door.job != nil { revealRequest = UUID() }
+        shownTranscript = door.transcript
+        if door.transcript != nil { transcriptRequest = UUID() }
     }
 }
 

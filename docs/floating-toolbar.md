@@ -78,8 +78,9 @@ updates the same drawing settings from either entry point. Native menus snapshot
 their content before tracking rather than rebuilding under the pointer.
 
 Hide toolbar hides the tools in every mode, including while drawing, presenting
-or showing personas. It is the same persistent choice as Settings' Show floating
-toolbar, so it survives relaunch. The work carries on: hiding never clears marks,
+or showing personas. It is the same persistent choice as the Floating toolbar
+switch in the menu-bar panel's header and in Settings › General › Appearance, and
+the Window menu's Show or Hide floating toolbar, so it survives relaunch. The work carries on: hiding never clears marks,
 ends a scene, hides persona artwork or stops a timer, and each keeps its key and
 its menu-bar panel row. Window → Show floating toolbar, Window → Focus floating
 toolbar and Settings bring the tools back with the current mode and live state.

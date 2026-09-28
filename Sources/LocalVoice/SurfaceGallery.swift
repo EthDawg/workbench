@@ -1,5 +1,6 @@
 import AppKit
 import ObjectiveC
+import PhotoHandoffKit
 import SwiftUI
 import StageKit
 import ToolbarCore
@@ -46,7 +47,9 @@ enum SurfaceGallery {
         /// The picker was still open when measured; its sizes are only compared if so.
         var settled = true }
     struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pickers: [Shot]; var pickerHost: [PickerHostCheck]
-        var pages: [Page]; var entries: [Entry]; var menus: [Listing]; var placement: [PlacementCheck] = [] }
+        var pages: [Page]; var entries: [Entry]; var menus: [Listing]; var placement: [PlacementCheck] = []
+        /// Home's review and the floating toolbar's switch, checked with the pass's own models (#134).
+        var checks: [String] = [] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -296,18 +299,21 @@ enum SurfaceGallery {
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
         if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += try renderDictateStates(to: output) }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
-        if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) }
+        if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)] }
+        let review = try checkHomeReview(to: output)
+        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        let checks = try review.checks + checkToolbarVisibility()
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
         if let snapPage = pages.firstIndex(where: { $0.route == "snap" }) { pages[snapPage].shots += try renderImagePreview(to: output) }
         let listings = menus()
-        // Screen Recording off (#112): Snap, Home's Snap card and a Snap & Talk session explain it.
+        // Screen Recording off (#112): Snap, Home's quick starts and a Snap & Talk session explain it.
         for (route, shot) in try renderScreenAccessOff(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
         }
         return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers + pickerShots, pickerHost: pickerHost,
-                                   pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement)
+                                   pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement, checks: checks)
     }
 
     // MARK: Saved Prompts picker
@@ -600,6 +606,145 @@ enum SurfaceGallery {
         return shots
     }
 
+    // MARK: Home checks
+
+    /// Home's Recent work reviews its exact item (#134 H1). Opening a transcript from Home shows it
+    /// in History and changes nothing else: Dictate's draft stays byte for byte, the shared
+    /// selection stays, and redrawing Home asks History for nothing. Throws if any of that moved.
+    func checkHomeReview(to output: URL) throws -> (checks: [String], shot: SurfaceGallery.Shot) {
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { window.contentViewController = nil; window.close() }
+        let draft = "An edited Dictate draft that must survive: " + model.transcript
+        let keptDraft = model.transcript, keptSelection = model.historyLibrary.selected
+        defer { model.transcript = keptDraft; model.historyLibrary.setSelected(keptSelection) }
+        model.transcript = draft
+        let selection: Set<WorkbenchItemReference> = [.init(kind: .transcript, id: SurfacePass.history[0].id)]
+        model.historyLibrary.setSelected(selection)
+        model.historyDoor = nil
+        _ = try renderPage("home", in: window)
+        _ = try renderPage("home", in: window)
+        guard model.historyDoor == nil, model.transcript == draft, model.historyLibrary.selected == selection else {
+            throw VoiceError.message("Drawing Home changed History's door, the Dictate draft or the selection.")
+        }
+        // The same door the row's title uses, for an older transcript.
+        let older = SurfacePass.history[2]
+        guard let door = HomeRecentWork.review(for: .transcript(older)) else { throw VoiceError.message("A recent transcript had no review.") }
+        model.openHistory(door)
+        guard model.page == "history", model.historyDoor?.transcript == older.id, model.historyDoor?.filter == .all else {
+            throw VoiceError.message("A recent transcript did not open History on it.")
+        }
+        let (history, size) = try renderPage("history", in: window)
+        guard model.transcript == draft, model.historyLibrary.selected == selection, model.historyDoor == nil else {
+            throw VoiceError.message("Opening a recent transcript changed the Dictate draft or the selection, or History kept the door.")
+        }
+        let shot = try save(history, id: "state-from-home", title: "History, showing a transcript Home opened, \(Int(size.width)) × \(Int(size.height)) pt",
+                            detail: "Home's Recent work opened the oldest synthetic transcript: History shows All, scrolled to it and outlined; the selected transcript stays selected.",
+                            file: "page-history-state-from-home-\(theme).png", to: output)
+        return (["Drawing Home twice leaves History's door unset, the Dictate draft and the shared selection as they were.",
+                 "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept."], shot)
+    }
+
+    /// Home at 1.35 times its text in the minimum window's content column. SwiftUI's text styles do
+    /// not follow a larger text size on macOS, so the page is laid out in a column 1.35 times
+    /// narrower and drawn 1.35 times larger: every title, tile and row must wrap rather than clip.
+    func renderHomeLargerText(to output: URL) throws -> SurfaceGallery.Shot {
+        let scale: CGFloat = 1.35, size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
+        model.page = "home"
+        let page = WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: FounderIntroductionModel(),
+                                     jobs: model.handoffJobs, photos: model.photoHandoff, meetings: model.meetings)
+            .frame(width: size.width / scale, height: size.height / scale).scaleEffect(scale, anchor: .topLeading)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
+        let host = NSHostingView(rootView: page)
+        let window = offscreenWindow(size: size, styleMask: [.borderless])
+        window.contentView = host
+        defer { window.contentView = nil; window.close() }
+        settle(host, seconds: 1)
+        return try save(try snapshot(host), id: "state-larger-text", title: "Home at 1.35 times the text size, minimum window's content column",
+                        detail: "The page drawn 1.35 times larger in the same column: the title, tiles and recent rows wrap and grow, and nothing clips.",
+                        file: "page-home-state-larger-text-\(theme).png", to: output)
+    }
+
+    /// Home with photos saved from iPhone days before the newest capture (#134 H1). They are
+    /// Library's, so Recent work stays History's five newest, and the quiet link under it gives
+    /// their count and the newest photo's stored date. The photos are a synthetic local library
+    /// in the pass's own folder, with no image files and no iCloud.
+    func renderHomeSavedPhotos(to output: URL) throws -> SurfaceGallery.Shot {
+        let folder = home.appendingPathComponent("Gallery Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let newestCapture = SurfacePass.history.map(\.date).max()!
+        func photo(daysBefore days: Double, _ title: String) -> [String: Any] {
+            ["id": UUID().uuidString, "title": title, "created": newestCapture.addingTimeInterval(-days * 86_400).timeIntervalSinceReferenceDate,
+             "sourceDevice": "iPhone", "disposition": "local", "digest": String(repeating: "a", count: 64), "byteCount": 1_000,
+             "width": 10, "height": 10, "hasOriginal": false]
+        }
+        let library: [String: Any] = ["version": 1, "photos": [photo(daysBefore: 5, "Whiteboard"), photo(daysBefore: 9, "Receipt")],
+                                      "enabled": false, "accounts": [Any](), "suppressed": [Any]()]
+        try JSONSerialization.data(withJSONObject: library).write(to: folder.appendingPathComponent("photos.json"))
+        let photos = PhotoHandoffModel(directory: folder, platform: "Mac", allowsCloudAccess: false)
+        guard photos.photos.count == 2 else { throw VoiceError.message("The synthetic iPhone photos did not load: \(photos.error ?? "none listed").") }
+        let size = NSSize(width: SurfaceGallery.sizes[1].size.width - 216, height: SurfaceGallery.sizes[1].size.height)
+        model.page = "home"
+        let page = WorkbenchHomePage(model: model, stage: stage, readback: readback, snap: snap, introduction: FounderIntroductionModel(),
+                                     jobs: model.handoffJobs, photos: photos, meetings: model.meetings)
+            .frame(width: size.width, height: size.height).tint(Workbench.accent).workbenchTheme()
+        let host = NSHostingView(rootView: page)
+        let window = offscreenWindow(size: size, styleMask: [.borderless])
+        window.contentView = host
+        defer { window.contentView = nil; window.close() }
+        settle(host, seconds: 1)
+        return try save(try snapshot(host), id: "state-saved-photos", title: "Home with photos saved from iPhone, minimum window's content column",
+                        detail: "Two synthetic photos saved 5 and 9 days before the newest capture: Recent work is still History's five newest, and the quiet link under it reads Saved from iPhone with the count and the newest photo's stored date.",
+                        file: "page-home-state-saved-photos-\(theme).png", to: output)
+    }
+
+    // MARK: Floating toolbar visibility
+
+    /// The floating toolbar's one switch from its doors (#134 H3): the panel's header switch,
+    /// Settings › General's switch and the Window menu read and change the one saved preference,
+    /// and each shows what the others did. The toolbar's own Hide toolbar sets the same preference;
+    /// its menu is not opened here. Which surface shows over live work is CaptureHUDChecks' (#155).
+    func checkToolbarVisibility() throws -> [String] {
+        let kept = model.floatingToolbarVisible
+        defer { model.floatingToolbarVisible = kept }
+        func switches(in view: NSView) -> [NSSwitch] { (view as? NSSwitch).map { [$0] } ?? view.subviews.flatMap(switches) }
+        let panelHost = NSHostingView(rootView: quickPanel(readback).background(Color(nsColor: .windowBackgroundColor)))
+        let panelWindow = offscreenWindow(size: panelHost.fittingSize, styleMask: [.borderless])
+        panelWindow.contentView = panelHost
+        defer { panelWindow.contentView = nil; panelWindow.close() }
+        let settingsWindow = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer { settingsWindow.contentViewController = nil; settingsWindow.close() }
+        model.page = "settings"
+        let settingsFrame = settingsWindow.contentView?.superview ?? settingsWindow.contentView!
+        let windowMenu = shell.makeMainMenu().main.items.compactMap(\.submenu).first { $0.title == "Window" }
+        guard let item = windowMenu?.items.first(where: { $0.action == #selector(AppDelegate.toggleFloatingToolbar) }) else {
+            throw VoiceError.message("The Window menu has no floating toolbar item.")
+        }
+        func agree(_ visible: Bool, after door: String) throws {
+            settle(panelHost, seconds: 0.15); settle(settingsFrame, seconds: 0.15)
+            _ = shell.validateMenuItem(item)
+            let panel = switches(in: panelHost), settings = switches(in: settingsFrame)
+            guard model.floatingToolbarVisible == visible, panel.count == 1, settings.count == 1,
+                  (panel[0].state == .on) == visible, (settings[0].state == .on) == visible,
+                  item.title == AppDelegate.floatingToolbarTitle(visible: visible) else {
+                throw VoiceError.message("After \(door), the floating toolbar's doors disagree: saved \(model.floatingToolbarVisible), "
+                    + "panel \(panel.map(\.state.rawValue)), Settings \(settings.map(\.state.rawValue)), Window \(item.title).")
+            }
+        }
+        model.floatingToolbarVisible = true
+        try agree(true, after: "turning it on")
+        switches(in: panelHost).first?.performClick(nil)
+        try agree(false, after: "the panel's switch")
+        switches(in: settingsFrame).first?.performClick(nil)
+        try agree(true, after: "Settings' switch")
+        NSApp.sendAction(item.action!, to: shell, from: item)
+        try agree(false, after: "the Window menu")
+        NSApp.sendAction(item.action!, to: shell, from: item)
+        try agree(true, after: "the Window menu again")
+        return ["The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
+                "The toolbar's More › Hide toolbar sets the same saved preference; which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+    }
+
     // MARK: Dictate states
 
     /// The newcomer's manual copy (#134 C10, #165): Paste automatically waits for an Accessibility
@@ -621,9 +766,19 @@ enum SurfaceGallery {
         model.preferences.delivery = .paste; model.accessibilityGranted = false
         model.rawTranscript = words; model.transcript = words; model.status = TextDelivery.copiedMessage
         let (rep, drawn) = try renderPage("dictate", in: window)
-        return [try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+        var shots = [try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
                          detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
                          file: "page-dictate-state-manual-copy-\(theme).png", to: output)]
+        // Settings' Dictate options… lands on the options, not the top of the page (#134 H2).
+        let narrow = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { narrow.contentViewController = nil; narrow.close() }
+        model.page = "settings"; settle(narrow.contentView?.superview ?? narrow.contentView!)
+        model.focusRequest = PageFocusRequest(target: .dictateOptions)
+        let (options, optionsSize) = try renderPage("dictate", in: narrow)
+        guard model.focusRequest == nil else { throw VoiceError.message("Dictate did not take Settings' request to show its options.") }
+        shots.append(try save(options, id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(optionsSize.width)) × \(Int(optionsSize.height)) pt",
+                              detail: "The page opens scrolled to its Options, where VoiceOver starts.", file: "page-dictate-state-options-focused-\(theme).png", to: output))
+        return shots
     }
 
     // MARK: Home states
@@ -662,6 +817,14 @@ enum SurfaceGallery {
         try shot("first-result", "First result", "Right after the first dictation: the words, their delivery controls and where they were saved.") { [self] in
             model.rawTranscript = first.text; model.transcript = first.text; model.history = [first]
         }
+        // Current work, above everything: a dictation recording, then a paused reading (#134 H1).
+        model.history = kept.history; model.transcript = kept.draft; model.rawTranscript = kept.raw
+        model.preferences.firstDictationGuide = .completed
+        let phase = model.phase
+        try shot("current-work", "Current work", "A dictation recording, then a paused reading, each with its own action; the Dictate and Read tiles step aside.") { [self] in
+            model.phase = .recording; model.elapsed = 12; model.paused = true
+        }
+        model.phase = phase; model.elapsed = 0; model.paused = false
         return shots
     }
 
@@ -847,8 +1010,8 @@ enum SurfaceGallery {
 
     // MARK: Screen Recording off
 
-    /// The pages that capture the screen, with Screen Recording off: the Snap page, Home (taller, to
-    /// reach its Snap card) and a Snap & Talk session. The Snaps and session are the same synthetic ones.
+    /// The pages that capture the screen, with Screen Recording off: the Snap page, Home (its
+    /// quick starts) and a Snap & Talk session. The Snaps and session are the same synthetic ones.
     func renderScreenAccessOff(to output: URL) throws -> [(String, SurfaceGallery.Shot)] {
         let noCapture: @MainActor () async throws -> ReadbackScreenshot = { throw ReadbackError.message("The surface gallery never captures the screen.") }
         let noSpeech: @MainActor (URL) async throws -> String = { _ in throw ReadbackError.message("The surface gallery never transcribes audio.") }
@@ -859,7 +1022,7 @@ enum SurfaceGallery {
         var shots: [(String, SurfaceGallery.Shot)] = []
         for (route, size, detail, readback) in [
             ("snap", SurfaceGallery.sizes[0].size, "Region, Window and Screen explain the missing access and offer Paste image, Import image and System Settings.", readback),
-            ("home", NSSize(width: 1180, height: 1_300), "The Snap card says Screen Recording is off before it is chosen.", readback),
+            ("home", SurfaceGallery.sizes[0].size, "Under the quick starts, a note says Screen Recording is off before Snap is chosen.", readback),
             ("readback", SurfaceGallery.sizes[0].size, "An open session explains the missing access; its screenshots and narration stay available.", sessionOff)] {
             let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
             window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
@@ -907,6 +1070,8 @@ enum SurfaceGallery {
         let model = model
         return [
             PanelState(id: "idle", title: "Idle", detail: "Speech ready, no session, nothing running.", readback: readback),
+            PanelState(id: "toolbar-off", title: "Floating toolbar off", detail: "The header's switch is off: the toolbar stays hidden between actions.", readback: readback,
+                       apply: { model.floatingToolbarVisible = false }, reset: { model.floatingToolbarVisible = true }),
             PanelState(id: "speech-not-ready", title: "Speech not ready", detail: "First run while the on-device model prepares.", readback: readback,
                        apply: { model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes" },
                        reset: { model.ready = true; model.preparing = false; model.modelMessage = "Preparing local speech…" }),
@@ -1379,7 +1544,7 @@ enum SurfaceGallery {
         func action(_ surface: String, _ label: String, _ text: String) -> E { E(surface: surface, label: label, leads: text, route: nil) }
         let panel = "Menu-bar panel", home = "Home page", menu = "App menus", other = "Keys and handoffs"
         // Rows and their Options are named by the panel's own tools, as the toolbar and sidebar are (#134).
-        var list: [E] = []
+        var list: [E] = [action(panel, "Floating toolbar switch", "Shows or hides the floating toolbar between actions, as Settings and the Window menu do")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {
@@ -1428,11 +1593,21 @@ enum SurfaceGallery {
         list += WorkbenchHome.sections.map {
             E(surface: "Section switcher", label: WorkbenchHome.name(of: $0.page) + " › " + $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true)
         }
-        list += [page("Home sidebar", "Update button, when an update is waiting", "settings"), action("Home sidebar", "Suite appearance", "Changes the appearance")]
-        list += [page(home, "Dictate card", "dictate"), page(home, "Read card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
-                 page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"),
-                 page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "photos"),
-                 page("Settings page", "Dictate options…", "dictate"), page("Settings page", "Show me a first dictation, until the first dictation", "home"),
+        list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
+        // Home (#134 H1): three quick starts that act, Recent work's reviews, a loaded session and saved photos.
+        list += [action(home, "Quick start · Dictate", "Starts dictating"), action(home, "Quick start · Read", "Reads the clipboard aloud"),
+                 action(home, "Quick start · Snap", "Captures a region, saved in History"),
+                 E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
+                 E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
+                 action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
+                 page(home, "Open History", "history"), page(home, "Continue Snap & Talk · Open session", "readback"),
+                 page(home, "Saved from iPhone, when photos are in Library", "photos"),
+                 page(home, "Current work · Open Dictate, for a kept capture without a retry", "dictate"),
+                 action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
+                 page(home, "Speech settings, while speech is not ready", "models"),
+                 E(surface: "Settings page", label: "Dictate options…", leads: "Page: dictate, scrolled to and focused on its options", route: "dictate"),
+                 page("Settings page", "Show me a first dictation, until the first dictation", "home"),
+                 action("Settings page", "Appearance · Floating toolbar switch", "Shows or hides the floating toolbar between actions"),
                  page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"),
@@ -1444,7 +1619,7 @@ enum SurfaceGallery {
                  page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "History", "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
-                 page(home, "All history", "history"), page(home, "Clipboard receipt · Review text", "history"),
+                 page(home, "Clipboard receipt · Review text", "history"),
                  page("History page", "Transcript · Open", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
@@ -1472,7 +1647,7 @@ extension SurfacePass {
         let actions = ["About Workbench": "Shows the About panel", "Check for Updates…": "Page: settings, and checks for updates",
                        "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
                        "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
-                       "Show floating toolbar": "Shows the toolbar", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
+                       "Show floating toolbar": "Shows the toolbar between actions", "Hide floating toolbar": "Hides the toolbar between actions", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
                        "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in
             menu.items.filter { !$0.isSeparatorItem && $0.submenu == nil }.map { item in
@@ -1544,6 +1719,8 @@ private struct SurfaceIndex {
         }
         html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona showing", "Timer running"].map {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
+        html += "<h2>Home and the floating toolbar's switch</h2><p>Checked with the pass's own models; the pass fails if any of these does not hold (#134).</p><ul>"
+            + light.checks.map { "<li class=\"ok\">\(esc($0))</li>" }.joined() + "</ul>"
         html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
         if light.host.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
