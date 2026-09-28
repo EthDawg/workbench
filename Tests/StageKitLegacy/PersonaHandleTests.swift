@@ -232,10 +232,14 @@ final class PersonaHandleTests {
         RunLoop.current.run(until: Date().addingTimeInterval(PersonaManipulation.revealDelay + 0.1))
         XCTAssertTrue(controller.handleWindows.isEmpty, "A pointer that passed by leaves no handles")
         pointer.move(to: near)
+        let paused = Date()
         // Wait for the reveal timer rather than a fixed slice past it: a busy CI runner can fire it late.
         let deadline = Date().addingTimeInterval(PersonaManipulation.revealDelay + 2)
         while controller.handleWindows.isEmpty && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
         XCTAssertEqual(controller.handleWindows.count, PersonaHandle.allCases.count, "A pause near the artwork shows its handles")
+        // They wait for the pause: a zero delay would show them straight away.
+        XCTAssertTrue(Date().timeIntervalSince(paused) >= PersonaManipulation.revealDelay - 0.03,
+                      "The handles appear only after the pointer has paused for the reveal delay")
         pointer.move(to: away)
         XCTAssertTrue(controller.handleWindows.isEmpty, "Leaving hides them at once")
     }
@@ -279,6 +283,90 @@ final class PersonaHandleTests {
         XCTAssertEqual(Double(window.frame.minX), Double(start.minX + 30), accuracy: 1)
         XCTAssertEqual(placements.count, 1)
         XCTAssertTrue(placements.last?.locked == false)
+    }
+
+    /// A controller released while its persona shows still removes the shared
+    /// pointer monitors, so nothing keeps following the pointer.
+    func testReleasedControllerStopsFollowingThePointer() throws {
+        guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
+        let tracker = PersonaPointerTracker()
+        var controller: PersonaOverlayController?
+        weak var released: PersonaOverlayController?
+        var window: NSWindow?
+        defer { window?.orderOut(nil) }
+        // Autorelease pools stand in for the run loop's, so the release happens here.
+        autoreleasepool {
+            controller = PersonaOverlayController(pointer: tracker, revealDelay: 0)
+            released = controller; window = controller?.window
+            _ = controller?.show(image: Self.card(), name: "Synthetic persona", state: PersonaOverlayState(x: 0.5, y: 0.5, width: 0.1, screenID: displayID(screen), locked: true))
+        }
+        XCTAssertTrue(tracker.isFollowing, "A shown persona follows the pointer")
+        autoreleasepool { controller = nil }
+        XCTAssertTrue(released == nil, "The controller was released")
+        XCTAssertFalse(tracker.isFollowing, "Released while shown, it stops following the pointer")
+    }
+
+    /// A card moved under a still pointer, as a layout restore does, takes
+    /// clicks by where the pointer is now, even if no pointer event arrived.
+    func testCardMovedUnderAStillPointerTakesClicksByWhereItIs() throws {
+        guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
+        let pointer = PersonaTestPointer()
+        let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0)
+        defer { controller.shutdown() }
+        guard let window = controller.window else { return }
+        controller.setVoiceRing(true)
+        let first = PersonaOverlayState(x: 0.3, y: 0.5, width: 0.16, screenID: displayID(screen))
+        _ = controller.show(image: Self.badge(), name: "Synthetic persona", state: first)
+        guard let visible = controller.visibleFrame else { return }
+        // The pointer rests on the badge's body; its clicks go to the artwork.
+        pointer.move(to: CGPoint(x: visible.midX, y: visible.midY))
+        XCTAssertFalse(window.ignoresMouseEvents)
+        // The card moves by a layout restore, and the pointer, still, is now in
+        // the outline's room beside it; no pointer event reports that.
+        var second = first; second.x = 0.6
+        controller.configure(image: Self.badge(), name: "Synthetic persona", state: second)
+        guard let moved = controller.visibleFrame else { return }
+        pointer.location = CGPoint(x: moved.minX - 2, y: moved.midY)
+        controller.configure(image: Self.badge(), name: "Synthetic persona", state: second)
+        XCTAssertTrue(window.frame.contains(pointer.location), "The still pointer is inside the moved window")
+        XCTAssertTrue(window.ignoresMouseEvents, "The outline's room passes the click through after the move")
+    }
+
+    /// Tall artwork is limited by the display's height, so a wider Size shows at
+    /// the same width. A resize that cannot grow it keeps its Size, instead of
+    /// the Size slider jumping lower; one that shrinks it round-trips.
+    func testTallArtworkKeepsItsSizeThroughAResize() throws {
+        guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
+        for (width, height) in [(180, 600), (60, 600)] {
+            let tall = NSImage(size: CGSize(width: width, height: height), flipped: false) { rect in
+                NSColor(srgbRed: 0.2, green: 0.4, blue: 0.5, alpha: 1).setFill(); rect.fill(); return true
+            }
+            let requested = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: 0.16), imageSize: tall.size, in: screen.visibleFrame.size)
+            guard requested.width < screen.visibleFrame.width * 0.16 - 1 else { continue } // A display tall enough never limits it.
+            let pointer = PersonaTestPointer()
+            let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0)
+            defer { controller.shutdown() }
+            var placements: [PersonaOverlayState] = []
+            controller.onPlacementChange = { placements.append($0) }
+            _ = controller.show(image: tall, name: "Synthetic persona", state: PersonaOverlayState(x: 0.5, y: 0.5, width: 0.16, screenID: displayID(screen), locked: true))
+            guard let before = controller.visibleFrame else { continue }
+            pointer.move(to: CGPoint(x: before.maxX + 8, y: before.midY))
+            guard let grow = controller.handleWindows[.bottomRight] else { XCTAssertTrue(false, "Handles show"); continue }
+            drag(grow.contentView!, from: CGPoint(x: grow.frame.midX, y: grow.frame.midY), by: [CGVector(dx: 20, dy: -20), CGVector(dx: 80, dy: -80)])
+            XCTAssertEqual(placements.last?.width ?? 0, 0.16, accuracy: 0.0001, file: #filePath, line: #line)
+            XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(before.width), accuracy: 1)
+            // Shrinking, where the artwork allows it, stores the smaller Size, which shows at the same width again.
+            let smallest = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: 0.06), imageSize: tall.size, in: screen.visibleFrame.size)
+            guard smallest.width < before.width - 4 else { continue }
+            pointer.move(to: CGPoint(x: before.maxX + 8, y: before.midY))
+            guard let shrink = controller.handleWindows[.bottomRight] else { continue }
+            drag(shrink.contentView!, from: CGPoint(x: shrink.frame.midX, y: shrink.frame.midY), by: [CGVector(dx: -10, dy: 10), CGVector(dx: -30, dy: 90)])
+            guard let smaller = controller.visibleFrame, let stored = placements.last else { continue }
+            XCTAssertTrue(smaller.width < before.width - 2, "The card shrank")
+            XCTAssertTrue(stored.width < 0.16)
+            _ = controller.show(image: tall, name: "Synthetic persona", state: stored)
+            XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(smaller.width), accuracy: 1)
+        }
     }
 
     /// Set WORKBENCH_LAYOUT_EVIDENCE to write renders of the handles around

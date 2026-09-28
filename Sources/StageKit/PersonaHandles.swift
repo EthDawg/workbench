@@ -288,6 +288,8 @@ final class PersonaPointerTracker: PersonaPointerTracking {
     private var monitors: [Any] = []
 
     var location: CGPoint { NSEvent.mouseLocation }
+    /// Whether the monitors are installed: only while a persona shows.
+    var isFollowing: Bool { !monitors.isEmpty }
 
     func add(_ client: PersonaPointerClient) {
         clients.add(client)

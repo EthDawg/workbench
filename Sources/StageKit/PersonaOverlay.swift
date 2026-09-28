@@ -46,6 +46,11 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
             }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    /// Released while shown, it still lets go of the shared pointer monitors.
+    deinit {
+        reveal?.invalidate()
+        pointer.remove(self)
+    }
 
     func show(image: NSImage, name: String, state: PersonaOverlayState, animated: Bool = false) -> PersonaOverlayState {
         let wasVisible = window?.isVisible == true
@@ -187,9 +192,14 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     func handleEnded(_ handle: PersonaHandle) {
         guard manipulation != nil else { return }
         manipulation = nil
-        if handle.resizes, let window, let screen = screenForArtwork() {
+        if handle.resizes, let window, let image = artwork.image, let screen = screenForArtwork() {
             let width = window.frame.width - artwork.artworkInsets.left - artwork.artworkInsets.right
-            state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width)))
+            // Tall artwork is limited by the display's height, so a wider Size
+            // shows at the same width. Keep the Size it had when it still shows
+            // at this width, so a resize that could not grow it leaves it alone.
+            let kept = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: state.width),
+                                            imageSize: image.size, in: screen.visibleFrame.size).width
+            if abs(kept - width) > 0.5 { state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width))) }
         }
         finishDragging()
         updateHandles()
@@ -214,6 +224,9 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         // Remember the chosen monitor for this session even before the first
         // drag, so moving the pointer to another screen cannot move the card.
         state.screenID = Self.screenID(screen)
+        // A card moved under a still pointer, as a layout restore does, takes
+        // clicks by where the pointer is now, not where it last moved.
+        if window.isVisible { pointerLocation = pointer.location }
         updateMouseAcceptance()
         if window.isVisible { updateHandles() }
     }

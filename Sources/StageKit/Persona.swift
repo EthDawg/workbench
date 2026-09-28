@@ -547,12 +547,13 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
 
     func pauseOverlaySession() {
-        if let session { session.pause() }
+        if let session { session.pause(); clearLiveNotices() }
         else { hideOverlay() }
     }
     func resumeOverlaySession() throws {
         guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
         session?.resume()
+        clearLiveNotices()
     }
     func endOverlaySession() {
         overlayGeneration = UUID()
@@ -569,6 +570,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// A failure notice goes with its card set; any other notice stays.
     private func clearCardFailure() {
         if notice != nil && notice == cardFailure { notice = nil }
+        cardFailure = nil
+    }
+    /// Hide and Show start fresh: an earlier failure or informational notice
+    /// leaves the panel. A library that cannot be saved keeps saying so.
+    private func clearLiveNotices() {
+        if notice != readOnlyReason { notice = nil }
         cardFailure = nil
     }
     func saveSessionLayout() throws {
@@ -629,7 +636,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Next and Previous count from the shown card and pass over cards that could
     /// not show while it has been up, so every press moves on when another card can.
     func stepLivePersona(_ offset: Int) {
-        guard let shown = displayedID, let target = cardDeck?.step(from: shown, by: offset) else { return }
+        guard let shown = displayedID, let deck = cardDeck else { return }
+        guard let target = deck.step(from: shown, by: offset) else {
+            // Every other card has failed while this one is up: say so, rather than nothing.
+            if deck.order.count > 1 { notice = "No other card can show right now."; cardFailure = notice }
+            return
+        }
         selectLivePersona(target)
     }
     /// Decodes the requested frozen card before it replaces the shown one. If it
@@ -691,7 +703,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Dismissed preparation views must receive the failure, because notice is
     /// otherwise visible only when Personas is opened again.
     @discardableResult func showOverlay() -> Result<Void, Error> {
-        do { try showOverlayChecked(); return .success(()) }
+        do { try showOverlayChecked(); clearLiveNotices(); return .success(()) }
         catch { reportCardFailure(error); return .failure(error) }
     }
     /// Freezes who can follow this card and how each looks, but decodes only the
@@ -727,7 +739,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         refreshHUD()
         onShow?()
     }
-    func hideOverlay() { endOverlaySession() }
+    func hideOverlay() { endOverlaySession(); clearLiveNotices() }
     func shutdown() {
         hideOverlay(); stopVoice(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects()
     }
