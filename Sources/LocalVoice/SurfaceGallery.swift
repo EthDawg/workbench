@@ -2,10 +2,13 @@ import AppKit
 import ObjectiveC
 import SwiftUI
 import StageKit
+import ToolbarCore
 
-/// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states and the top
-/// of every Home page at the default and minimum window sizes, then writes `index.html` listing
-/// each entry and where it leads. It uses synthetic fixtures only: nothing is launched, and no
+/// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states, the production
+/// floating toolbar host in every mode at rest and revealed, and the top of every Home page at the
+/// default and minimum window sizes, then writes `index.html` listing each entry and where it leads.
+/// A toolbar window that is not the size of its row fails the run; other flags are reported only.
+/// It uses synthetic fixtures only: nothing is launched, and no
 /// shortcut, microphone, screen capture, Keychain item or network request is used.
 ///
 /// Each appearance renders in a child process whose home is a new temporary folder, so every
@@ -26,7 +29,11 @@ enum SurfaceGallery {
     /// `ran` marks a destination learned from the app's own code rather than the catalogue.
     struct Entry: Codable { var surface: String; var label: String; var leads: String; var route: String?; var ran = false }
     struct Listing: Codable { var title: String; var lines: [String] }
-    struct Pass: Codable { var theme: String; var panels: [Shot]; var pickers: [Shot]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
+    /// One state of the production toolbar host: the size its window got and the size its row wanted.
+    struct HostCheck: Codable { var id, title, mode, tier: String; var window, wants, preferred: [Double]; var measured, twinMeasured: Bool; var problems: [String]; var file: String
+        /// The toolbar reached the tier this state asked for; its sizes are only compared if so.
+        var settled = true }
+    struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pickers: [Shot]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -72,7 +79,13 @@ enum SurfaceGallery {
             passes.append(try JSONDecoder().decode(Pass.self, from: data))
         }
         let flags = try SurfaceIndex(passes: passes).write(to: output)
-        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.pickers.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
+        // A toolbar window that is not the size of its row fails the run (#152), after the index
+        // has recorded it. Every other flag stays report-only.
+        let wrongSize = passes.flatMap { pass in pass.host.filter(\.hasSizeProblem).map { "\($0.title), \(pass.theme)" } }
+        if !wrongSize.isEmpty {
+            throw VoiceError.message("The floating toolbar's window is not the size of its row in \(wrongSize.count) states (\(wrongSize.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
+        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pickers.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
     }
 
@@ -227,6 +240,7 @@ enum SurfaceGallery {
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
+        let (toolbar, host) = try renderToolbarHost(to: output)
         let pickers = try renderPickerStates(to: output)
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
@@ -244,7 +258,7 @@ enum SurfaceGallery {
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
-        return SurfaceGallery.Pass(theme: theme, panels: panels, pickers: pickers, pages: pages, entries: entries() + menuEntries, menus: listings)
+        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers, pages: pages, entries: entries() + menuEntries, menus: listings)
     }
 
     // MARK: Saved Prompts picker
@@ -529,6 +543,124 @@ enum SurfaceGallery {
         return try snapshot(host)
     }
 
+    // MARK: Floating toolbar host
+
+    /// The production toolbar host, `CapturePanelController`, with this pass's models. Its panel is
+    /// ordered in with alpha zero and mouse events ignored, so it sizes exactly as the app's does
+    /// without appearing. Each mode is driven at rest and revealed through the toolbar's own events,
+    /// and the window's size is compared with what the same content wants, measured by a twin
+    /// hosting view that sizes itself and reports to its own controls. The host pins seed sizes
+    /// until the row reports (`CaptureHUDControls.reportSize`), so a row the host never heard from
+    /// draws wider than its window; the view gallery cannot see that, because it sizes its own
+    /// window to the content (#152).
+    func renderToolbarHost(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [SurfaceGallery.HostCheck]) {
+        // The host places its window on a screen; a Mac with none renders nothing rather than a false flag.
+        guard NSScreen.main != nil else { return ([], []) }
+        let defaults = try SurfaceGallery.isolatedDefaults("Toolbar", home: home)
+        let controls = CaptureHUDControls(defaults: defaults)
+        let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
+                                          dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+        guard let panel = host.window, let content = panel.contentView else { throw VoiceError.message("The toolbar host has no window.") }
+        panel.alphaValue = 0; panel.ignoresMouseEvents = true
+        panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        // The twin has its own controls, so its size reports never reach the host under test.
+        let twinControls = CaptureHUDControls(defaults: defaults)
+        twinControls.toolbar.activate()
+        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, snapModel: snap,
+                                                                     dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}))
+        let twinWindow = offscreenWindow(size: NSSize(width: 600, height: 60), styleMask: [.borderless])
+        twinWindow.contentView = twin
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible
+        defer {
+            host.close(); twinControls.suspendToolbar(); twinWindow.contentView = nil; twinWindow.close()
+            model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode
+        }
+        // Publishing the switch is what makes the host resolve its surface and show the tools.
+        model.floatingToolbarVisible = true
+        settle(content, seconds: 0.5)
+        guard controls.toolbar.isActive else { throw VoiceError.message("The toolbar host did not show its tools.") }
+        var shots: [SurfaceGallery.Shot] = [], checks: [SurfaceGallery.HostCheck] = []
+        for mode in ToolbarMode.allCases {
+            model.toolbarMode = mode
+            for tier in ToolbarTier.allCases {
+                // A keyboard hold reveals the row and keeps it up whatever the real pointer does;
+                // releasing it lets the grace timer bring the row back to rest.
+                let event: ToolbarEvent = tier == .revealed ? .holdBegan(.keyboard) : .holdEnded(.keyboard)
+                controls.toolbar.send(event); twinControls.toolbar.send(event)
+                waitForToolbar(host, controls, tier: tier, content: content)
+                settle(twin, seconds: 0.2)
+                let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+                var problems: [String] = []
+                if controls.toolbar.state.tier != tier {
+                    problems.append("the toolbar did not settle \(tier == .resting ? "at rest" : "revealed") (in a local run, a pointer inside the invisible panel can hold it)")
+                }
+                if !controls.hasMeasured(tier) {
+                    problems.append("the host never received the row's size for this tier, so its window is the seed size"
+                        + (twinControls.hasMeasured(tier) ? "" : " (a self-sizing twin of the same content received no report either, so the report path itself is silent)"))
+                }
+                if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                    problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+                }
+                if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                    problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+                }
+                let id = "\(mode.rawValue)-\(tier.rawValue)", title = "\(mode.title), \(tier == .resting ? "at rest" : "revealed")"
+                let file = "toolbar-\(id)-\(theme).png"
+                shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
+                checks.append(.init(id: id, title: title, mode: mode.title, tier: tier.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                    preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
+                                    problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
+            }
+        }
+        // A mode switch while the row is open changes its width with no reveal or collapse, so
+        // the host hears of it only through the row's own report: Present's Prompts widen the row.
+        controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
+        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.present), (.present, .dictate)] {
+            model.toolbarMode = from
+            waitForToolbar(host, controls, tier: .revealed, content: content)
+            model.toolbarMode = to
+            // The new width arrives by the row's own report, a turn or more later; a slow runner
+            // gets a full second of stillness before the window is read.
+            waitForToolbar(host, controls, tier: .revealed, content: content, stillFor: 1)
+            settle(twin, seconds: 0.2)
+            let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+            var problems: [String] = []
+            if controls.toolbar.state.tier != .revealed { problems.append("the toolbar did not stay revealed") }
+            if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+            }
+            if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+            }
+            let id = "\(from.rawValue)-to-\(to.rawValue)-revealed", title = "\(from.title) to \(to.title), revealed"
+            let file = "toolbar-\(id)-\(theme).png"
+            shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
+            checks.append(.init(id: id, title: title, mode: to.title, tier: ToolbarTier.revealed.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(.revealed), twinMeasured: twinControls.hasMeasured(.revealed),
+                                problems: problems, file: file, settled: controls.toolbar.state.tier == .revealed))
+        }
+        return (shots, checks)
+    }
+
+    /// Spins the main run loop until the toolbar reports `tier`, its frame animation has finished
+    /// and the window's size has held still for a moment (six turns of about 50 ms, or `stillFor`
+    /// seconds when given), or three seconds have passed.
+    func waitForToolbar(_ host: CapturePanelController, _ controls: CaptureHUDControls, tier: ToolbarTier, content: NSView,
+                        stillFor: TimeInterval? = nil) {
+        let deadline = Date().addingTimeInterval(3)
+        var still = 0, last = host.window?.frame.size ?? .zero, since = Date()
+        while Date() < deadline && (stillFor.map { Date().timeIntervalSince(since) < $0 } ?? (still < 6)) {
+            content.layoutSubtreeIfNeeded()
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            let size = host.window?.frame.size ?? .zero
+            still = controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && size == last ? still + 1 : 0
+            if still == 0 { since = Date() }
+            last = size
+        }
+    }
+
+    static func points(_ size: NSSize) -> String { "\(Int(ceil(size.width))) × \(Int(ceil(size.height))) pt" }
+
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
     func homeWindow(size: NSSize) -> NSWindow {
@@ -800,6 +932,14 @@ private struct SurfaceIndex {
                 flags.append("\(page.title) (\(page.route)) rendered blank: the gallery could not capture it.")
             }
         }
+        for check in light.host { for problem in check.problems { flags.append("Floating toolbar host · \(check.title): \(problem).") } }
+        // A menu door that carries a page's sidebar name plus other words is the same door under
+        // another name; the Grammar's Names rule gives a place one name on every surface.
+        for entry in light.entries where entry.surface == "App menus" {
+            guard let route = entry.route, let title = WorkbenchHome.navItems.first(where: { $0.0 == route })?.1,
+                  let label = entry.label.components(separatedBy: " › ").last?.replacingOccurrences(of: "…", with: "") else { continue }
+            if label != title && label.hasPrefix(title) { flags.append("\(entry.surface) · \(entry.label) opens \(title) under another name.") }
+        }
         var html = """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Workbench surfaces</title><style>
@@ -809,7 +949,7 @@ private struct SurfaceIndex {
         h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:15px;margin:22px 0 4px}
         p,li{color:var(--muted)}.flag{color:var(--flag)}.ok{color:var(--ok)}code{font:12px ui-monospace,monospace}
         .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}figure{margin:0}figcaption{font-size:12px;color:var(--muted)}
-        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}
+        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}.toolbar img{width:auto;max-height:72px}
         pre{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto;font-size:12px}
         table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid var(--line);padding:5px 8px;vertical-align:top}th{font-weight:600}
         .menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
@@ -827,6 +967,18 @@ private struct SurfaceIndex {
         }
         html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona Overlay showing", "Timer running"].map {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
+        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
+        if light.host.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
+        html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
+        for check in light.host {
+            html += "<tr><td>\(esc(check.title))</td><td>\(points(check.window))</td><td>\(points(check.wants))</td><td>\(check.measured ? "Yes" : "No")</td><td>\(check.twinMeasured ? "Yes" : "No")</td>"
+                + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+        }
+        html += "</table>"
+        for (index, shot) in light.toolbar.enumerated() {
+            html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
+                + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
+        }
         html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Drawn at its 420-point width on the window background from synthetic prompts; its placement near each screen edge, keyboard and choices are covered by --check-core.</p>"
         for (index, shot) in light.pickers.enumerated() {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row picker\">" + figure(shot, "Light") + figure(dark.pickers[index], "Dark") + "</div>"
@@ -850,6 +1002,7 @@ private struct SurfaceIndex {
         }
         html += "</table><h2>Limitations</h2><ul>" + [
             "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
+            "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
             "StageKit is never started, so Annotate reports Ready on 0 displays.",
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
@@ -860,11 +1013,13 @@ private struct SurfaceIndex {
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
-        let shots = passes.flatMap { pass in pass.panels + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
+        let shots = passes.flatMap { pass in pass.panels + pass.toolbar + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
         let manifest: [String: Any] = ["renders": shots, "flags": flags, "entries": light.entries.map { ["surface": $0.surface, "label": $0.label, "leads": $0.leads] }]
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("manifest.json"))
         return flags.count
     }
+
+    func points(_ size: [Double]) -> String { size.count == 2 ? "\(Int(ceil(size[0]))) × \(Int(ceil(size[1]))) pt" : "?" }
 
     func figure(_ shot: SurfaceGallery.Shot, _ theme: String) -> String {
         "<figure><a href=\"\(esc(shot.file))\"><img src=\"\(esc(shot.file))\" alt=\"\(esc(shot.title)), \(theme)\" loading=\"lazy\"></a>"
@@ -874,6 +1029,19 @@ private struct SurfaceIndex {
     func esc(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+extension SurfaceGallery.HostCheck {
+    /// The host never heard the row, the window is smaller than the row wants, or the window is
+    /// not the size the host prefers. A state that did not reach its tier is not compared: in a
+    /// local run a real pointer inside the invisible panel can hold the row revealed, and that
+    /// window is not the resting size its twin wants. Not settling is itself reported only.
+    var hasSizeProblem: Bool {
+        guard settled else { return false }
+        guard window.count == 2, wants.count == 2, preferred.count == 2 else { return true }
+        return !measured || window[0] + 0.5 < wants[0] || window[1] + 0.5 < wants[1]
+            || abs(window[0] - preferred[0]) > 0.5 || abs(window[1] - preferred[1]) > 0.5
     }
 }
 

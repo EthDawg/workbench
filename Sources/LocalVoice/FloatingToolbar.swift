@@ -83,13 +83,25 @@ struct FloatingToolbar: View {
                     button.window?.makeFirstResponder(button)
                 }
             }, escape: controls.endKeyboardInteraction, drag: controls.dragActions)
-            .background(GeometryReader { geometry in
-                Color.clear.preference(key: ToolbarMeasuredSize.self, value: ToolbarMeasurement(tier: state.tier, size: geometry.size))
-            })
-            .onPreferenceChange(ToolbarMeasuredSize.self) { measurement in controls.reportSize(measurement.size, tier: measurement.tier) }
+            // The host sizes its window from these reports (#152). A preference written
+            // from a background GeometryReader never reached onPreferenceChange once the
+            // row held conditional content, so every window kept its seed size.
+            .onGeometryChange(for: ToolbarMeasurement.self) { ToolbarMeasurement(tier: state.tier, size: $0.size) } action: { measurement in
+                // A row that opens revealed (Keep open at launch) has not drawn its resting
+                // element yet. Measure it once, unseen, so a top or bottom dock centres on it.
+                if measurement.tier == .revealed && !controls.hasMeasured(.resting) {
+                    controls.reportRestingSize(NSHostingView(rootView: ToolbarRow(state: Self.resting(state))).fittingSize)
+                }
+                controls.reportSize(measurement.size, tier: measurement.tier)
+            }
             .pinnedToDock(state.anchor)
             .help(detail)
             .tint(Workbench.accent).workbenchTheme()
+    }
+
+    private static func resting(_ state: ToolbarViewState) -> ToolbarViewState {
+        var resting = state; resting.tier = .resting
+        return resting
     }
 
     /// One Saved Prompts picker for the accessory and the glyph menu (#159). It
@@ -219,10 +231,6 @@ struct FloatingToolbar: View {
 private struct ToolbarMeasurement: Equatable {
     var tier: ToolbarTier
     var size: CGSize
-}
-private struct ToolbarMeasuredSize: PreferenceKey {
-    static var defaultValue = ToolbarMeasurement(tier: .resting, size: .zero)
-    static func reduce(value: inout ToolbarMeasurement, nextValue: () -> ToolbarMeasurement) { value = nextValue() }
 }
 
 struct WorkbenchFloatingContent: View {
