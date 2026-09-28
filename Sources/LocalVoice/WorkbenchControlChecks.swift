@@ -120,6 +120,37 @@ enum WorkbenchControlChecks {
         try check(state.actionTitle(.persona) == "Hide personas", "a prepared set's main action names the hide it performs, not an end")
         state.overlaysPaused = true
         try check(state.actionTitle(.persona) == "Show personas", "a temporarily hidden set offers to show again")
+        // Home's Persona row and tile (#134) read Persona's own action from the shared owner: a hidden
+        // prepared set, an active one, one card and an ended set, alone, beside an independent
+        // presentation and running timer, and while dictating claims the panel rows.
+        do {
+            let alongside: [(String, (inout WorkbenchControlState) -> Void)] = [
+                ("alone", { _ in }),
+                ("beside a presentation and a running timer", { $0.presenting = true; $0.timerStarted = true; $0.timerRunning = true }),
+                ("while dictating", { $0.phase = .recording })]
+            let personas: [(String, (inout WorkbenchControlState) -> Void, ToolbarLiveState.Persona, String, ToolbarOperation)] = [
+                ("a hidden prepared set", { $0.overlays = true; $0.overlaySession = true; $0.overlaysPaused = true }, .sessionHidden, "Show personas", .resumeOverlays),
+                ("an active prepared set", { $0.overlays = true; $0.overlaySession = true }, .session, "Hide personas", .pauseOverlays),
+                ("one card", { $0.overlays = true }, .shown, "Hide persona", .hidePersona),
+                ("an ended set", { _ in }, .none, "Show persona", .start(.persona))]
+            for (context, setUp) in alongside {
+                for (name, configure, persona, title, operation) in personas {
+                    var live = WorkbenchControlState(); setUp(&live); configure(&live)
+                    let home = HomePersonaControl(live)
+                    let toolbar = ToolbarNextAction.resolve(ToolbarLiveState(mode: .persona, persona: persona))
+                    try check(home.rowTitle == title && home.rowTitle == toolbar.title && home.operation == operation && home.isEnabled,
+                              "Home's Persona control reads \(title) for \(name) \(context), as the toolbar's Persona mode does")
+                }
+            }
+            var hidden = WorkbenchControlState(); hidden.overlays = true; hidden.overlaySession = true; hidden.overlaysPaused = true
+            try check(HomePersonaControl(hidden).tileVerb == "Show personas" && HomePersonaControl(hidden).help.hasPrefix("Show the set again"),
+                      "a hidden prepared set's tile and tooltip offer to show it again, never to hide it")
+            try check(HomePersonaControl(WorkbenchControlState()).tileVerb == "Show a card over your apps", "with nothing live the tile keeps its description")
+            hidden.presenting = true; hidden.timerStarted = true; hidden.timerRunning = true
+            try check(hidden.actionTitle(.persona) == "Show personas" && hidden.rowAction(.persona) == .operation(.resumeOverlays)
+                      && hidden.actionTitle(.present) == "End presentation" && hidden.actionTitle(.timer) == "Stop timer",
+                      "the panel agrees, and Present and Timer keep their own actions")
+        }
         state = WorkbenchControlState(); state.timerStarted = true
         try check(state.actionTitle(.timer) == "Stop timer", "a started timer offers to stop")
         state.timerStarted = false
