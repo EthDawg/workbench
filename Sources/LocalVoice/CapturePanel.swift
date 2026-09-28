@@ -77,8 +77,8 @@ final class CaptureHUDControls: ObservableObject {
 
     // MARK: Compact controls (#134)
 
-    /// Counts changes of the next action, so a press latched on one never acts on another.
-    var actionGeneration = ToolbarActionGeneration()
+    /// The next action's presses: each latched on what the button showed, acting only if it holds.
+    let pressGate = ToolbarPressGate()
     /// Opens the tool chooser from the launcher.
     var openChooser: ((NSView, [ToolbarToolChoice]) -> Void)?
     /// The chooser's rows changed while it may be open.

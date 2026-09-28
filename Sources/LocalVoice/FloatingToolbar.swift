@@ -107,7 +107,7 @@ struct FloatingToolbar: View {
             }
             // Each change of the next action is a new generation, so a press latched on the
             // old one cannot act on the new one (#134).
-            .onChange(of: operation, initial: true) { _, operation in controls.actionGeneration.observe(operation) }
+            .onChange(of: operation, initial: true) { _, operation in controls.pressGate.shown(operation) }
             .onChange(of: state.choices) { _, choices in controls.chooserChoicesChanged?(choices) }
             .onChange(of: state.status, initial: true) { previous, status in controls.statusChanged(from: previous, to: status) }
             .pinnedToDock(state.anchor)
@@ -117,16 +117,11 @@ struct FloatingToolbar: View {
 
     /// Latches the next action as the button goes down (#134). The click then acts only if
     /// the same operation, in the same generation, is still the next action when it comes up,
-    /// so a Stop that completes while pressed is discarded rather than becoming a Start.
-    private func pressPrimary() -> (() -> Void)? {
-        let latched = ToolbarNextAction.resolve(live)
-        guard latched.isEnabled else { return nil }
-        let latch = controls.actionGeneration.latch(latched.operation)
-        return {
-            let now = ToolbarNextAction.resolve(live)
-            guard now.isEnabled, controls.actionGeneration.admits(latch, now: now.operation) else { return }
-            perform(now.operation)
-        }
+    /// so a Stop that completes while pressed is discarded rather than becoming a Start; and a
+    /// press on a label that changed since the last redraw does nothing. Internal so the host
+    /// checks can press it through a completion.
+    func pressPrimary() -> (() -> Void)? {
+        controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: perform)
     }
 
     /// One Saved Prompts picker for the accessory and More (#159). It

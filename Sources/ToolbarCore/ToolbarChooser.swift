@@ -93,12 +93,41 @@ public struct ToolbarActionGeneration: Equatable, Sendable {
         return generation
     }
 
-    public mutating func latch(_ operation: ToolbarOperation) -> ToolbarPressLatch {
-        ToolbarPressLatch(operation: operation, generation: observe(operation))
+    /// Latches the operation as the button goes down, but only if it is what the button showed at
+    /// its last redraw. A change since then was never seen, such as a Stop that completed just
+    /// before the press, so the press does nothing rather than act on a label nobody read.
+    public func latch(_ operation: ToolbarOperation) -> ToolbarPressLatch? {
+        guard operation == self.operation else { return nil }
+        return ToolbarPressLatch(operation: operation, generation: generation)
     }
 
     /// On mouse-up, with the operation the button would perform now.
     public mutating func admits(_ latch: ToolbarPressLatch, now operation: ToolbarOperation) -> Bool {
         observe(operation) == latch.generation && operation == latch.operation
+    }
+}
+
+/// One press of the next action, from mouse-down to mouse-up (#134). The host tells it each
+/// operation the button shows as it redraws; a press latches what the button showed and acts on
+/// mouse-up only if the same operation, in the same generation, is still the next action.
+public final class ToolbarPressGate {
+    public private(set) var generation = ToolbarActionGeneration()
+    public init() {}
+
+    /// The operation the button shows at a redraw.
+    public func shown(_ operation: ToolbarOperation) { generation.observe(operation) }
+
+    /// Mouse-down: what to do if the press ends as a click, or nil when there is nothing to do.
+    /// `resolve` reads the next action from the owners each time it is called.
+    public func press(_ resolve: @escaping () -> ToolbarNextAction,
+                      perform: @escaping (ToolbarOperation) -> Void) -> (() -> Void)? {
+        let down = resolve()
+        guard down.isEnabled, let latch = generation.latch(down.operation) else { return nil }
+        return { [weak self] in
+            guard let self else { return }
+            let up = resolve()
+            guard up.isEnabled, self.generation.admits(latch, now: up.operation) else { return }
+            perform(up.operation)
+        }
     }
 }

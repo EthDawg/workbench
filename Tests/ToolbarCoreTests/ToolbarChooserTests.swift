@@ -60,41 +60,98 @@ final class ToolbarChooserTests: XCTestCase {
 }
 
 /// The primary's press latch (#134): the operation and its generation are latched on
-/// mouse-down, and the click acts only if both still hold on mouse-up.
+/// mouse-down, and the click acts only if both still hold on mouse-up. A press on a label that
+/// changed since the last redraw latches nothing.
 final class ToolbarPressLatchTests: XCTestCase {
     func testAnUnchangedPressActs() {
         var generation = ToolbarActionGeneration()
         generation.observe(.stopDictation)
         let latch = generation.latch(.stopDictation)
-        XCTAssertTrue(generation.admits(latch, now: .stopDictation))
+        XCTAssertNotNil(latch)
+        XCTAssertTrue(latch.map { generation.admits($0, now: .stopDictation) } ?? false)
     }
 
     /// Stop completes while the button is held: the label is now Dictate, and the click is discarded.
-    func testAStopThatCompletesWhilePressedNeverStarts() {
+    func testAStopThatCompletesWhilePressedNeverStarts() throws {
         var generation = ToolbarActionGeneration()
-        let latch = generation.latch(.stopDictation)
+        generation.observe(.stopDictation)
+        let latch = try XCTUnwrap(generation.latch(.stopDictation))
         generation.observe(.start(.dictate))
         XCTAssertFalse(generation.admits(latch, now: .start(.dictate)))
         // And even if nobody observed the change until the button came up.
         var unobserved = ToolbarActionGeneration()
-        let press = unobserved.latch(.stopDictation)
+        unobserved.observe(.stopDictation)
+        let press = try XCTUnwrap(unobserved.latch(.stopDictation))
         XCTAssertFalse(unobserved.admits(press, now: .start(.dictate)))
     }
 
-    /// The operation changed and came back while held: a new generation, so the press is discarded.
-    func testAnOperationThatChangedAndCameBackIsANewGeneration() {
+    /// Stop completed after the last redraw but before the press: the button still read Stop, so
+    /// a press must not latch the Start nobody saw (#205 review).
+    func testAChangeSinceTheLastRedrawLatchesNothing() {
         var generation = ToolbarActionGeneration()
-        let latch = generation.latch(.stopDictation)
+        generation.observe(.stopDictation)
+        XCTAssertNil(generation.latch(.start(.dictate)))
+        XCTAssertEqual(generation.operation, .stopDictation, "latching does not re-baseline on an unseen change")
+        XCTAssertNil(ToolbarActionGeneration().latch(.stopDictation), "a button that never drew latches nothing")
+    }
+
+    /// The operation changed and came back while held: a new generation, so the press is discarded.
+    func testAnOperationThatChangedAndCameBackIsANewGeneration() throws {
+        var generation = ToolbarActionGeneration()
+        generation.observe(.stopDictation)
+        let latch = try XCTUnwrap(generation.latch(.stopDictation))
         generation.observe(.start(.dictate))
         generation.observe(.stopDictation)
         XCTAssertFalse(generation.admits(latch, now: .stopDictation), "a new recording is not the one that was pressed")
     }
 
-    func testRepeatedObservationsOfOneOperationKeepItsGeneration() {
+    func testRepeatedObservationsOfOneOperationKeepItsGeneration() throws {
         var generation = ToolbarActionGeneration()
-        let latch = generation.latch(.endPresentation)
+        generation.observe(.endPresentation)
+        let latch = try XCTUnwrap(generation.latch(.endPresentation))
         for _ in 0..<5 { generation.observe(.endPresentation) }
         XCTAssertTrue(generation.admits(latch, now: .endPresentation))
         XCTAssertEqual(generation.generation, latch.generation)
+    }
+}
+
+/// The host's whole press, as FloatingToolbar makes it (#134, #205 review): the button's redraws
+/// tell the gate what it shows, a press latches that, and the owner acts only through `admits`.
+final class ToolbarPressGateTests: XCTestCase {
+    private func next(_ live: ToolbarLiveState) -> ToolbarNextAction { ToolbarNextAction.resolve(live) }
+
+    func testAPressActsOnceOnWhatTheButtonShowed() throws {
+        let gate = ToolbarPressGate(), recording = ToolbarLiveState(mode: .dictate, dictation: .recording)
+        var performed: [ToolbarOperation] = []
+        gate.shown(next(recording).operation)
+        let click = try XCTUnwrap(gate.press({ self.next(recording) }, perform: { performed.append($0) }))
+        click()
+        XCTAssertEqual(performed, [.stopDictation])
+    }
+
+    /// Stop is pressed, the recording completes while the button is down, and the button comes up
+    /// on Dictate: nothing is performed, least of all a new recording.
+    func testStopCompletingThroughThePressPerformsNothing() throws {
+        let gate = ToolbarPressGate()
+        var live = ToolbarLiveState(mode: .dictate, dictation: .recording)
+        var performed: [ToolbarOperation] = []
+        gate.shown(next(live).operation)
+        let click = try XCTUnwrap(gate.press({ self.next(live) }, perform: { performed.append($0) }))
+        live.dictation = .idle
+        click()
+        XCTAssertEqual(performed, [], "the completion discards the click; it never becomes Dictate")
+    }
+
+    /// The recording completed after the button last drew Stop: the press latches nothing.
+    func testAPressOnALabelNobodySawDoesNothing() {
+        let gate = ToolbarPressGate()
+        gate.shown(.stopDictation)
+        XCTAssertNil(gate.press({ self.next(ToolbarLiveState(mode: .dictate)) }, perform: { _ in XCTFail("nothing may run") }))
+    }
+
+    func testADisabledActionIsNotPressed() {
+        let gate = ToolbarPressGate(), waiting = ToolbarLiveState(mode: .dictate, dictation: .processing)
+        gate.shown(next(waiting).operation)
+        XCTAssertNil(gate.press({ self.next(waiting) }, perform: { _ in XCTFail("a wait never runs") }))
     }
 }
