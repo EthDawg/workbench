@@ -241,21 +241,29 @@ public struct ToolbarCompactMark: View {
 }
 
 /// The capture signal: the shared voice trace, a red recording dot and the recording owner's own
-/// level through the shared envelope and stroke (#134, #209), and one badge beside it: a timer in
-/// the last seconds before the limit, or else a warning for another job that needs attention. The
-/// compact mark shows it at rest and the launcher while the row is open. The trace keeps still in
-/// silence and follows Reduce Motion and Increase Contrast itself.
+/// level through the shared envelope and stroke (#134, #209), with its badges. A timer beside the
+/// trace says this recording stops at its limit within seconds; a warning on the capsule's corner
+/// says another job needs attention, like a badge on an icon. Both show when both apply (#211 F4),
+/// each about 7 points, inside the 48 × 28 target, and the words name every state
+/// (`ToolbarStatus.description`). The compact mark shows it at rest and the launcher while the row
+/// is open. The trace keeps still in silence and follows Reduce Motion and Increase Contrast.
 struct ToolbarCaptureSignal: View {
     let status: ToolbarStatus
     let accent: Color
+    /// The signal's box: the capsule's width less a 2-point margin each side, and its height.
+    static let size = CGSize(width: ToolbarLayout.markCapsule.width - 4, height: ToolbarLayout.statusHeight)
     var body: some View {
         HStack(spacing: 3) {
             VoiceTrace(level: status.level, accent: accent)
-            // One badge fits beside the trace; the words name every state (ToolbarStatus.description).
-            if status.stopsSoonBadge {
+            if status.badges.contains(.stopsSoon) {
                 Image(systemName: "timer").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
-            } else if status.attentionBadge {
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .overlay(alignment: .topTrailing) {
+            if status.badges.contains(.attention) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
+                    .offset(x: 1, y: -7)
             }
         }
     }

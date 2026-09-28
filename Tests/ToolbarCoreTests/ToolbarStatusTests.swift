@@ -103,6 +103,19 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertTrue(both.attentionBadge && both.stopsSoonBadge, "a background failure and the limit keep both signals")
     }
 
+    /// A background failure in a recording's last ten seconds shows both badges, the timer and the
+    /// warning, and the words name both states (#211 F4).
+    func testBothBadgesShowAndBothStatesAreNamed() {
+        let both = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true))
+        XCTAssertEqual(both.badges, [.stopsSoon, .attention])
+        XCTAssertTrue(both.description.contains("5-minute limit") && both.description.contains("Needs attention"), both.description)
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, stopsSoon: true)).badges, [.stopsSoon])
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, pendingDelivery: true)).badges, [.attention])
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(failure: true, stopsSoon: true)).badges, [], "no badges without a capture")
+        let failing = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true))
+        XCTAssertTrue(both.announces(after: failing), "a failure arriving in the last seconds is heard")
+    }
+
     /// Live work keeps one order, whatever order the host listed it in, and its words.
     func testLiveWorkHasOneOrderAndItsOwnWords() {
         let activity = ToolbarActivity(live: [.snapAndTalk, .timer, .drawing])

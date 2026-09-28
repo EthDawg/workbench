@@ -94,6 +94,13 @@ public struct ToolbarStatus: Equatable, Sendable {
         self.level = level; self.description = description
     }
 
+    /// The badges beside the capture signal, in their order: the time-limit timer, then the
+    /// warning for another job that needs attention. Both show when both apply (#211 F4).
+    public enum Badge: Hashable, Sendable { case stopsSoon, attention }
+    public var badges: [Badge] {
+        (stopsSoonBadge ? [.stopsSoon] : []) + (attentionBadge ? [.attention] : [])
+    }
+
     public static let idle = ToolbarStatus()
 
     /// The fixed priority: capture and playback, processing, failure, a pending result or
