@@ -37,6 +37,39 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
+    /// The compact mark's drawn capsule: 8 points high at idle and 12 while work runs, inside the
+    /// fixed 48 × 28 target, with the shared voice trace and a badge fitting inside it (#134, #209).
+    @MainActor func testTheCompactMarkIsEightHighAtIdleAndTwelveWhileWorking() throws {
+        _ = NSApplication.shared
+        func drawn(_ status: ToolbarStatus) throws -> (width: Int, height: Int, size: NSSize) {
+            let view = NSHostingView(rootView: ToolbarCompactMark(status: status).environment(\.colorScheme, .light))
+            view.frame = NSRect(origin: .zero, size: view.fittingSize)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let perPoint = CGFloat(bitmap.pixelsHigh) / view.bounds.height
+            var rows = Set<Int>(), columns = Set<Int>()
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.2 {
+                    rows.insert(y); columns.insert(x)
+                }
+            }
+            func points(_ pixels: Set<Int>) -> Int { pixels.isEmpty ? 0 : Int((CGFloat(pixels.max()! - pixels.min()! + 1) / perPoint).rounded()) }
+            return (points(columns), points(rows), view.fittingSize)
+        }
+        let idle = try drawn(.idle)
+        XCTAssertEqual(idle.size, ToolbarLayout.mark)
+        XCTAssertEqual(idle.height, 8, "the idle capsule")
+        XCTAssertEqual(idle.width, 48)
+        for activity in [ToolbarActivity(capture: .dictation, level: 0.6), ToolbarActivity(capture: .narration, level: 0.3, failure: true, stopsSoon: true),
+                         ToolbarActivity(processing: true), ToolbarActivity(live: [.timer])] {
+            let working = try drawn(.resolve(activity))
+            XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
+            XCTAssertEqual(working.height, 12, "the active capsule: \(activity)")
+            XCTAssertEqual(working.width, 48, "nothing is drawn beyond the capsule: \(activity)")
+        }
+    }
+
     /// The standard row is 248 points, 340 with its accessory, at standard text.
     @MainActor func testTheStandardRowWidths() {
         _ = NSApplication.shared

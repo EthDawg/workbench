@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import ToolbarCore
+import VoiceAppearance
 
 public struct ToolbarDragActions {
     public var begin: () -> Void
@@ -167,20 +168,24 @@ public struct ToolbarRow: View {
                         focus: focusButton, escape: escape, drag: drag)
             .frame(width: ToolbarLayout.launcherWidth, height: ToolbarLayout.rowHeight * scale)
             .overlay {
-                HStack(spacing: 2 * scale) {
-                    Image(systemName: state.mode.symbol).font(.system(size: 15 * scale, weight: .medium))
-                        .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
-                    Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(.secondary)
+                // While something records, the launcher carries the compact mark's capture signal in
+                // place of the tool's symbol and chevron, so opening the row never hides it (#134 T4).
+                // The shared trace keeps its size at every text size, so it fits the 48-point target;
+                // the launcher still opens the chooser, and its words still name the tool.
+                HStack(spacing: 2 * (state.status.indicator == .capture ? 1 : scale)) {
+                    if state.status.indicator == .capture {
+                        ToolbarCaptureSignal(status: state.status, accent: accent)
+                    } else {
+                        Image(systemName: state.mode.symbol).font(.system(size: 15 * scale, weight: .medium))
+                            .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
+                        Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(.secondary)
+                    }
                 }
                 .allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay(alignment: .bottom) {
-                // While something records, the launcher carries the capture signal the compact mark
-                // showed, so opening the row never hides it (#134 T4); otherwise one live-work dot.
-                if state.status.indicator == .capture {
-                    ToolbarCaptureSignal(status: state.status, accent: accent, scale: 0.75)
-                        .padding(.bottom, 4 * scale).allowsHitTesting(false).accessibilityHidden(true)
-                } else if state.hasLiveWork {
+                // Otherwise one dot says work is live in some tool.
+                if state.status.indicator != .capture && state.hasLiveWork {
                     Circle().fill(.tint).frame(width: 4, height: 4).padding(.bottom, 6 * scale).allowsHitTesting(false)
                 }
             }
@@ -193,7 +198,6 @@ public struct ToolbarRow: View {
 public struct ToolbarCompactMark: View {
     let status: ToolbarStatus
     let accent: Color
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(status: ToolbarStatus, accent: Color = .accentColor) { self.status = status; self.accent = accent }
@@ -236,46 +240,24 @@ public struct ToolbarCompactMark: View {
     }
 }
 
-/// The capture signal: a red dot, the recording owner's live level, and its badges, a warning
-/// for another job that needs attention and a timer in the last seconds before the limit. The
-/// compact mark shows it at rest and the launcher, smaller, while the row is open (#134).
+/// The capture signal: the shared voice trace, a red recording dot and the recording owner's own
+/// level through the shared envelope and stroke (#134, #209), and one badge beside it: a timer in
+/// the last seconds before the limit, or else a warning for another job that needs attention. The
+/// compact mark shows it at rest and the launcher while the row is open. The trace keeps still in
+/// silence and follows Reduce Motion and Increase Contrast itself.
 struct ToolbarCaptureSignal: View {
     let status: ToolbarStatus
     let accent: Color
-    var scale: CGFloat = 1
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        HStack(spacing: 3 * scale) {
-            Circle().fill(Color.red).frame(width: 6 * scale, height: 6 * scale)
-            ToolbarLevelBars(level: reduceMotion ? nil : status.level, accent: accent, scale: scale)
-            if status.attentionBadge {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(.orange)
-            }
+        HStack(spacing: 3) {
+            VoiceTrace(level: status.level, accent: accent)
+            // One badge fits beside the trace; the words name every state (ToolbarStatus.description).
             if status.stopsSoonBadge {
-                Image(systemName: "timer").font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(.orange)
+                Image(systemName: "timer").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
+            } else if status.attentionBadge {
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
             }
         }
-    }
-}
-
-/// A small live level: five bars from the recording owner's own level sample. Without a
-/// sample, in silence or with Reduce Motion, a still outline still reads as capture.
-struct ToolbarLevelBars: View {
-    let level: Double?
-    let accent: Color
-    var scale: CGFloat = 1
-    private static let shape: [CGFloat] = [0.45, 0.75, 1, 0.75, 0.45]
-    var body: some View {
-        HStack(alignment: .center, spacing: 1.5 * scale) {
-            ForEach(Self.shape.indices, id: \.self) { index in
-                if let level, level > 0.02 {
-                    Capsule().fill(accent).frame(width: 2 * scale, height: max(2, 8 * Self.shape[index] * CGFloat(level)) * scale)
-                } else {
-                    Capsule().strokeBorder(Color.secondary, lineWidth: 0.75).frame(width: 2 * scale, height: max(3, 6 * Self.shape[index]) * scale)
-                }
-            }
-        }
-        .frame(height: 8 * scale)
     }
 }
 

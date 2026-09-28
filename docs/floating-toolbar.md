@@ -193,7 +193,7 @@ toolbar still has the keyboard and that app is still running.
 **Motion.** A reveal waits for a 120 ms dwell and a collapse for a 450 ms grace;
 the frame changes in one 160 ms ease-out animation with no bounce, and the side
 the row grows toward never changes during an interaction. Reduce Motion changes
-the frame at once and stills the level waveform.
+the frame at once and holds the voice trace still.
 
 Hide toolbar hides the tools in every mode, including while drawing, presenting
 or showing personas. It is the same persistent choice as Settings' Show floating
@@ -243,7 +243,7 @@ did not finish is a failure until the person copies it again or sets it aside.
 
 | Status | The mark shows |
 | --- | --- |
-| Capture | A red dot and a small level waveform from the recording owner's own level sample; a still outline when there is no sample (a meeting), in silence or with Reduce Motion; a timer badge in the last ten seconds before the 5-minute limit. Revealed, the launcher carries the same signal |
+| Capture | The shared voice trace (#209): a red recording dot and a short trace of three shallow lobes in the voice colour, from the recording owner's own level through the shared envelope; a thin still line in silence or with no level (a meeting), and a still shape with Reduce Motion. Beside it one badge: a timer in the last ten seconds before the 5-minute limit, or else a warning for another job that needs attention. Revealed, the launcher carries the same signal in place of its symbol |
 | Playback | A speaker |
 | Processing | An ellipsis |
 | Failure | A warning triangle |
@@ -453,8 +453,9 @@ the launcher's target stays 48 points wide at every size so that centre holds. A
 rest the status glyph says what is running; revealed, the launcher's one dot says
 work is live somewhere and the chooser's labelled dots say where. Changing status
 must not substitute a different menu-bar brand icon. Reduce Transparency uses
-opaque fills. Reduce Motion removes the frame animation and stills the level
-waveform.
+opaque fills. Reduce Motion removes the frame animation and holds the voice trace
+still; the trace follows Increase Contrast itself, and its recording dot stays
+red, distinct from the voice colour.
 
 `ToolbarGallery.states` supplies both tiers at every anchor, every mode with its
 key, active work in its own mode and in another (Dictate selected, Draw busy),
