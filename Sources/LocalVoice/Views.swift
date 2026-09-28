@@ -24,6 +24,7 @@ struct ContentView: View {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                         Text(error).font(.system(size: 12)).textSelection(.enabled)
                         Spacer()
+                        if model.canRetryReading { Button("Retry") { model.retryReading() }.controlSize(.small) }
                         Button { model.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss error")
                     }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 }
