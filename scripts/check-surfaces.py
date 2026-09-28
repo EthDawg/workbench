@@ -15,10 +15,14 @@ labels, accessory and glyph menu, and the live dictation, narration and reading
 controls shown in the same window; the app menu bar and any status item menu
 built in AppDelegate; the window sidebar; every control on Home and on the
 Settings page, including views embedded in them; the global shortcut
-catalogue; and proactive offers, found as types named *Offer* or *Cue plus
-OFFER_TYPES. Headings and status lines on Home and Settings are not entries.
-Controls that act only on a page's own content are out, and so are the inline
-shortcut editors in EXCLUDED: the shortcut catalogue records those shortcuts.
+catalogue; proactive offers, found as types named *Offer* or *Cue plus
+OFFER_TYPES; a capability page's own options (mode 'options' below), since a
+setting that reaches beyond one page counts wherever it appears; and a
+capability page's doors (mode 'doors'), controls whose action leaves the page
+for a place or another page. Headings and status lines on Home and Settings are
+not entries. Controls that act only on a page's own content are out, and so are
+the inline shortcut editors in EXCLUDED: the shortcut catalogue records those
+shortcuts.
 
 Entries: an ID joins module, file, enclosing type, control API and the literal
 label, or a hash of a runtime label's source expression. Quick panel IDs also
@@ -89,6 +93,12 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
 #   controls  every labelled control and menu item, and embedded native views
 #   page      every labelled control except headings and status lines, and
 #             embedded SwiftUI and native views
+#   options   on a capability page, only a Toggle, Picker or Stepper bound to a
+#             persistent preference (the preferences model, @AppStorage or
+#             UserDefaults) and the choices under it; nothing is followed
+#   doors     on a capability page, only a Button or Link whose action changes
+#             the route (page =), opens a place (a bare open(...), ROUTES) or
+#             calls a closure the host injected into the view; nothing is followed
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar glyph menu', 'controls'),
@@ -106,7 +116,27 @@ ENTRY_POINTS = [
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),
     # The window's own controls around the pages: the sidebar column.
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.body', 'window sidebar', 'controls'),
+    # Capability pages own their options (Grammar: options live with their
+    # capability). The page body is scanned in mode 'options', so its transient
+    # controls (editor buttons, selection, the current draft) stay out while a
+    # new persistent preference on it is found. The page's options area is an
+    # ordinary page surface: its buttons are doors or setting actions, as on
+    # Settings, and the views it embeds (VoiceOptions) are followed.
+    ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page options', 'options'),
+    ('LocalVoice/Views.swift', 'ContentView.dictateOptions', 'dictate page options', 'page'),
+    # Capability pages also carry doors (rule 8: opens a place or page, wherever
+    # it appears). Mode 'doors' keeps the page's own actions (editor, selection,
+    # copy, save) out. A closure the host injects, such as ReadbackView's
+    # onOpenPacks, counts because the page cannot know where it leads.
+    ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page', 'doors'),
+    ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingWorkspaceView', 'meeting page', 'doors'),
+    ('LocalVoice/ReadbackView.swift', 'ReadbackView', 'snap & talk page', 'doors'),
+    ('LocalVoice/SnapWorkspaceView.swift', 'SnapWorkspaceView', 'snap page', 'doors'),
+    ('LocalVoice/CaptureHistoryView.swift', 'CaptureHistoryView', 'history page', 'doors'),
+    ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'library page', 'doors'),
 ]
+# Calls that change the window's route or open a place (mode 'doors').
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls'}
 # Inline shortcut editors: the global shortcut catalogue records these shortcuts.
 EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
             'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}
@@ -670,7 +700,52 @@ class Inventory:
             return any(a < i < b for a, b in ranges) and not any(a < i < b for a, b in exclude)
         loops = sorted(self.iterations(swift, inside), key=lambda loop: -loop[2][0])  # Innermost first.
 
+        # Mode 'options': a property declared with @AppStorage, or a binding into
+        # the preferences model or UserDefaults, marks a control as persistent.
+        stored = {v[j + 1] for k in range(len(v) - 1) if v[k] == 'AppStorage' and v[k + 1] == '('
+                  for j in range(swift.pairs[k + 1] + 1, min(swift.pairs[k + 1] + 4, len(v) - 1)) if v[j] == 'var'}
+        persistent_ranges = []
+
+        def persistent(i, api):
+            if api == 'choice':
+                return any(a < i < b for a, b in persistent_ranges)
+            if api not in ('Toggle', 'Picker', 'Stepper') or v[i + 1] != '(':
+                return False
+            words = v[i + 2:swift.pairs[i + 1]]
+            return 'preferences' in words or 'UserDefaults' in words or any(w[1:] in stored for w in words if w.startswith('$'))
+        if mode == 'options':
+            for i, api, _, end in swift.calls({'Toggle', 'Picker', 'Stepper'}):
+                if inside(i) and persistent(i, api):
+                    persistent_ranges.append((i, swift.pairs[end + 1] if v[end + 1:end + 2] == ['{'] else end))
+
+        # Mode 'doors': closures the host injects into the view, `var onOpenPacks: () -> Void`
+        # or `(() -> Void)?`; the type starts with ( and reaches -> before any other declaration.
+        injected = {v[k + 1] for k in range(len(v) - 4) if v[k] == 'var' and v[k + 2:k + 4] == [':', '('] and '->' in v[k + 4:k + 12]
+                    and not {'{', '=', 'var', 'let', 'func'} & set(v[k + 4:v.index('->', k + 4)])}
+
+        def door(i, api):
+            """A Button or Link whose action leaves the page: page = …, a route call,
+            a bare open(…), or an injected closure whose destination the page cannot know."""
+            if api not in ('Button', 'Link'):
+                return False
+            if v[i + 1] == '(':
+                end = swift.pairs[i + 1]
+                action = named_arg(swift.args(i + 1), 'action') or (swift.tokens[end + 2:swift.pairs[end + 1]] if v[end + 1:end + 2] == ['{'] else [])
+            elif v[i - 1] == '}':  # Button { action } label: { ... }: i is the label.
+                action = swift.tokens[swift.openers[i - 1] + 1:i - 1]
+            else:
+                return False
+            words = [t.value for t in action]
+            calls = {w for n, w in enumerate(words[:-1]) if words[n + 1] in ('(', '?')}
+            return (any(words[n:n + 2] == ['page', '='] for n in range(len(words) - 1))
+                    or bool(calls & ROUTES) or bool(set(words) & injected)
+                    or any(words[n:n + 2] == ['open', '('] and words[n - 1] != '.' for n in range(1, len(words) - 1)))
+
         def record(i, api, tokens):
+            if mode == 'options' and not persistent(i, api):
+                return  # The page's own content is not an entry point.
+            if mode == 'doors' and not door(i, api):
+                return  # A page-local action is not an entry point.
             names = swift.string_parameters(i)
             if any(t.value in names for n, t in enumerate(tokens) if n == 0 or tokens[n - 1].value != '.'):
                 return  # A helper's String parameter: its call sites are the entries.
@@ -741,9 +816,9 @@ class Inventory:
             elif mode == 'panel' and literal(args[0]) is None and not in_closure(i):
                 record(i, 'status', args[0])  # Runtime Text in the panel is a status row.
 
-        if mode != 'page':
+        if mode not in ('page', 'options', 'doors'):
             self.live_labels(swift, inside)
-        if follow or mode != 'page':
+        if follow or mode not in ('page', 'options', 'doors'):
             self.follow(swift, inside, mode, surface, swiftui=follow)
 
     def live_labels(self, swift, inside):

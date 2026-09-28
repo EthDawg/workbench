@@ -132,16 +132,6 @@ struct WorkbenchHeader: View {
         }
     }
 }
-struct WorkbenchSwitcher: View {
-    var beforeOpen: () -> Void = {}
-    var body: some View {
-        Menu {
-            Button("Voice · dictate and read") { beforeOpen(); Workbench.open("Voice") }
-            Button("Annotate · draw and present") { beforeOpen(); Workbench.open("StageMark") }
-        } label: { Label(Workbench.isPreview ? "Workbench Preview" : "Workbench", systemImage: "square.grid.2x2") }
-        .menuStyle(.borderlessButton).fixedSize().font(.system(size: 11)).accessibilityLabel("Workbench tools")
-    }
-}
 struct WorkbenchAppearancePicker: View {
     @ObservedObject private var suite = WorkbenchSettings.shared
     var body: some View {
