@@ -19,19 +19,8 @@ enum FloatingToolbarSurface: Equatable {
 }
 
 extension ToolbarMode {
-    /// The panel row that shares this mode's shortcut and admission. Snap has
-    /// no row of its own: the panel's Snap opens the workspace.
-    var controlTool: WorkbenchControlTool? {
-        switch self {
-        case .dictate: return .dictate
-        case .read: return .read
-        case .snap: return nil
-        case .snapAndTalk: return .snapAndTalk
-        case .draw: return .annotate
-        case .present: return .present
-        case .persona: return .persona
-        }
-    }
+    /// The panel row that shares this mode's shortcut, admission and detail.
+    var controlTool: WorkbenchControlTool? { WorkbenchControlTool(mode: self) }
 }
 
 /// The toolbar's mode follows the journey. This view freezes what is live into
@@ -50,35 +39,10 @@ struct FloatingToolbar: View {
     let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
-    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage) }
+    private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
 
-    var live: ToolbarLiveState {
-        let dictation: ToolbarLiveState.Dictation
-        switch model.phase {
-        case .idle: dictation = .idle
-        case .requesting: dictation = .requesting
-        case .recording: dictation = .recording
-        case .cancelling: dictation = .cancelling
-        case .transcribing, .cleaning, .delivering: dictation = .processing
-        }
-        let persona: ToolbarLiveState.Persona = stage.isPersonaSessionPaused ? .sessionHidden
-            : stage.hasActivePersonaSession ? .session : stage.hasActivePersona ? .shown : .none
-        let mode = model.toolbarMode
-        let state = context.state
-        // Snap has no panel row: it may start when nothing else owns the screen
-        // or the microphone and Snap itself is not busy (SnapModel refuses then).
-        let mayStart = mode.controlTool.map(state.enabled)
-            ?? (model.phase == .idle && !readback.isCapturing && !readback.isRecording && !stage.isTakingScreenshot && !snapModel.isBusy)
-        return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: model.canRecordAgain,
-            reading: model.rendering ? .preparing : model.playing ? .playing : model.paused ? .paused : .idle,
-            narrating: readback.isRecording,
-            capturingScreen: readback.isCapturing || stage.isTakingScreenshot || snapModel.isCapturing,
-            pendingNarration: readback.hasPendingTranscriptions,
-            captureCount: readback.sessionURL == nil ? nil : readback.activeSections.count,
-            drawing: stage.isDrawing, presenting: stage.isPresenting, persona: persona,
-            timer: stage.hasTimerSession ? (stage.isTimerRunning ? .running : .paused) : .none,
-            insertingPrompt: promptInsertion.running, meetingRecording: meetings.isRecording, mayStart: mayStart)
-    }
+    /// The same frozen value the panel's rows read, for the selected mode.
+    var live: ToolbarLiveState { context.state.live(model.toolbarMode) }
 
     /// The assigned key for a mode, or nil when it is off or failed: an
     /// unusable binding is omitted rather than shown as text nobody can use.
