@@ -72,6 +72,13 @@ final class SnapModel: ObservableObject {
     private var closingWithCopy = false
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
+    /// Reads an image's visible text and repeat fingerprint for search. A check
+    /// that does not test search replaces it before saving, so it never runs Vision.
+    var analyzeImage: @Sendable (_ png: Data, _ imageSHA256: String) throws -> SnapDerivedData = { try SnapAnalysis.analyze(png: $0, imageSHA256: $1) }
+    /// Vision reads one image at a time here, off the main thread and outside
+    /// Swift's shared pool. Its text reader waits for work it schedules on that
+    /// pool, so a pool thread blocked inside it can deadlock the pool (#181).
+    private static let analysisQueue = DispatchQueue(label: "Workbench.SnapAnalysis", qos: .utility)
     var isBusy: Bool { isCapturing || draft != nil }
     /// Capture doors (Home's card and Edit, the panel row, the toolbar) are
     /// disabled only while a capture is in flight. A pending draft keeps them
@@ -258,26 +265,28 @@ final class SnapModel: ObservableObject {
     /// an open editor, and a failure only leaves that Snap searchable by title.
     private func refreshDerivedData() {
         guard analysis == nil else { analysisRequested = true; return }
-        // A separate store instance: SnapStore keeps unsynchronised load state
-        // for editor conflict checks, which must never be touched off the main thread.
-        let store = SnapStore(root: self.store.root), items = self.items
-        analysis = Task.detached(priority: .utility) { [weak self] in
-            var texts: [UUID: String] = [:]
-            for item in items {
-                if Task.isCancelled { break }
-                if let derived = store.derived(for: item) { texts[item.id] = derived.text; continue }
-                guard let image = try? store.snapshot(item.id).imagePNG,
-                      let derived = try? SnapAnalysis.analyze(png: image, imageSHA256: item.imageSHA256) else { continue }
-                try? store.writeDerived(derived, for: item.id)
-                texts[item.id] = derived.text
+        let root = store.root, items = self.items, analyze = analyzeImage
+        analysis = Task { [weak self] in
+            let found: [UUID: String] = await withCheckedContinuation { finished in
+                Self.analysisQueue.async {
+                    // A separate store instance: SnapStore keeps unsynchronised load state
+                    // for editor conflict checks, which must never be touched off the main thread.
+                    let store = SnapStore(root: root)
+                    var texts: [UUID: String] = [:]
+                    for item in items {
+                        if let derived = store.derived(for: item) { texts[item.id] = derived.text; continue }
+                        guard let image = try? store.snapshot(item.id).imagePNG,
+                              let derived = try? analyze(image, item.imageSHA256) else { continue }
+                        try? store.writeDerived(derived, for: item.id)
+                        texts[item.id] = derived.text
+                    }
+                    finished.resume(returning: texts)
+                }
             }
-            let found = texts
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.recognizedText = found
-                self.analysis = nil
-                if self.analysisRequested { self.analysisRequested = false; self.refreshDerivedData() }
-            }
+            guard let self else { return }
+            self.recognizedText = found
+            self.analysis = nil
+            if self.analysisRequested { self.analysisRequested = false; self.refreshDerivedData() }
         }
     }
 
@@ -301,7 +310,7 @@ final class SnapModel: ObservableObject {
         var outcome = SnapCaptureOutcome.cancelled
         defer { captureRequest = nil; isCapturing = false; onRestoreAfterCapture?(outcome); onStateChange?() }
         do {
-            try await Task.sleep(nanoseconds: 250_000_000)
+            if captureService.settleDelay > 0 { try await Task.sleep(nanoseconds: captureService.settleDelay) }
             guard captureRequest == request else { return }
             guard let bytes = try await captureService.capture(mode) else { notice = "Capture cancelled. Nothing was added to history."; return }
             guard captureRequest == request else { return }
