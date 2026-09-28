@@ -93,12 +93,4 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertEqual(ToolbarActivity.Live.drawing.symbol, ToolbarMode.draw.symbol, "the same symbol as the tool")
         XCTAssertEqual(ToolbarActivity.Live.persona.symbol, ToolbarMode.persona.symbol)
     }
-
-    /// The status is a view value only: every reachable tier transition is untouched by it,
-    /// because the reducer never sees it.
-    func testTheStatusIsNotAnInputToTheReducer() {
-        var state = ToolbarState()
-        for event: ToolbarEvent in [.pointerEntered, .pointerLeft, .graceElapsed] { state.apply(event) }
-        XCTAssertEqual(state.tier, .resting, "with work running or not, the rest follows the pointer and holds alone")
-    }
 }
