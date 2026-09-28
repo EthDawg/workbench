@@ -264,10 +264,7 @@ struct WorkbenchHomePage: View {
                 if !introduction.isDismissed { FounderIntroductionCard(model: introduction) }
                 if !journey.showsGuide && !model.ready { engineBanner }
             }.padding(32)
-        }.onAppear {
-            if journey.offersSkip { stayInGuide = true }
-            saveJourney()
-        }.onChange(of: model.history.count) { saveJourney() }
+        }.onAppear { if journey.offersSkip { stayInGuide = true } }
     }
     /// What Home can count. The stage exposes no saved-scene or persona count, so
     /// someone who has only prepared scenes still sees the guide; presenting,
@@ -277,11 +274,6 @@ struct WorkbenchHomePage: View {
                     sessions: (readback.sessionURL == nil ? 0 : 1) + readback.recentSessionURLs.count,
                     handoffJobs: model.handoffJobs.jobs.count, photos: model.photoHandoff.photos.count,
                     guide: model.preferences.firstDictationGuide, isLive: isLive, stayInGuide: stayInGuide)
-    }
-    /// Records the first dictation once History holds one, so removing it later
-    /// never brings the guide back.
-    private func saveJourney() {
-        if let next = journey.guideToSave { model.preferences.firstDictationGuide = next }
     }
     /// Skip for now and Show me a first dictation, saved with the Dictate preferences.
     private func skipGuide() { stayInGuide = false; model.preferences.firstDictationGuide = .skipped }
