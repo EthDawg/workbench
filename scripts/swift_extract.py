@@ -19,8 +19,10 @@ level. A missing, ambiguous or repeated name raises ExtractError naming each
 one. Members come back in source order, whatever order they are listed in.
 
 A type's members include those of its extensions in the same file. Members
-inside `#if` cannot be extracted on their own. Top-level statements, as in
-main.swift, are kept as unnamed items; bare /regex/ literals are not read.
+inside `#if` cannot be extracted on their own. `var a = 1, b = 2` is named by
+its first binding only, and a tuple pattern such as `let (x, y)` has no name.
+Top-level statements, as in main.swift, are kept as unnamed items; bare
+/regex/ literals are not read.
 Anything this reader cannot follow, such as unbalanced delimiters, raises
 rather than guessing.
 
@@ -438,7 +440,9 @@ class SwiftFile(Scope):
             if k > end or self.tokens[k][0] != '(':
                 raise ExtractError(f'{self.display}:{self.line(self.tokens[keyword][1])}: '
                                    f'could not read the parameters of {name}')
-            return (name,), name + self.labels(k, kind == 'subscript')
+            # Subscript parameters, and all of an operator's, have no label unless given one.
+            unlabeled = 'all' if kind == 'func' and OPERATOR.fullmatch(name) else 'single' if kind == 'subscript' else ''
+            return (name,), name + self.labels(k, unlabeled)
         if kind == 'deinit':
             return ('deinit',), 'deinit'
         if kind == 'extension':
@@ -480,24 +484,28 @@ class SwiftFile(Scope):
                 break
         return k
 
-    def labels(self, k, subscript):
-        """The selector suffix, such as `(_:from:)`, for the parameter clause opening at k."""
-        close, labels, names, depth, expecting = self.pairs[k], [], [], 0, True
+    def labels(self, k, unlabeled):
+        """The selector suffix, such as `(_:from:)`, for the parameter clause opening at k.
+        Angle brackets count as generic depth in types only, never in a default value."""
+        close, labels, names, depth, expecting, default = self.pairs[k], [], [], 0, True, False
         k += 1
         while k < close:
             kind, text = self.tokens[k][0], self.text(k)
             if kind in OPEN:
                 k = self.pairs[k]
-            elif kind == 'op':
+            elif kind == 'op' and text.startswith('=') and not text.startswith('==') and depth == 0:
+                default = True
+            elif kind == 'op' and not default:
                 text = text.replace('->', '')
-                depth += text.count('<') - text.count('>')
-            elif kind == ',' and depth == 0:
-                expecting = True
+                depth = max(0, depth + text.count('<') - text.count('>'))
+            elif kind == ',' and (default or depth == 0):
+                names, expecting, default = [], True, False
             elif kind == ':' and expecting:
                 if len(names) not in (1, 2):
                     raise ExtractError(f'{self.display}:{self.line(self.tokens[k][1])}: '
                                        'could not read a parameter label')
-                labels.append(('_' if subscript and len(names) == 1 else names[0]) + ':')
+                bare = unlabeled == 'all' or unlabeled == 'single' and len(names) == 1
+                labels.append(('_' if bare else names[0]) + ':')
                 names, expecting = [], False
             elif kind == 'word' and expecting:
                 names.append(text.strip('`'))

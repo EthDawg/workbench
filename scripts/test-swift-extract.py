@@ -56,6 +56,9 @@ final class Model {
     func listen() {}
     func listen(to text: String) {}
     func generic<T: Collection>(_ items: Dictionary<String, T>, then: (Int, Int) -> Void) {}
+    func ranged(range: Range<Int> = 0..<5, then: Int) {}
+    func compared(flag: Bool = 1 < 2, shifted: Int = 1 >> 2, then: Int) {}
+    func defaulted(map: [String: Int] = Dictionary<String, Int>(), then: Int) {}
     func `default`() {}
     static func == (lhs: Model, rhs: Model) -> Bool { true }
     func wrapped(
@@ -111,7 +114,9 @@ class Declarations(unittest.TestCase):
         selectors = [m.selector or m.name for m in self.model.members]
         for expected in ['first()', 'second(_:label:)', 'limit', 'computed', 'observed', 'init(preferences:)',
                          'init(maybe:)', 'subscript(_:)', 'listen()', 'listen(to:)', 'generic(_:then:)',
-                         'default()', '==(lhs:rhs:)', 'wrapped(one:two:)', 'deinit', 'fromExtension()', 'Phase']:
+                         'default()', '==(_:_:)', 'wrapped(one:two:)', 'deinit', 'fromExtension()', 'Phase',
+                         # Angle brackets in a default value are not generic depth.
+                         'ranged(range:then:)', 'compared(flag:shifted:then:)', 'defaulted(map:then:)']:
             self.assertIn(expected, selectors)
 
     def test_attribute_on_its_own_line_belongs_to_its_member(self):
