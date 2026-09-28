@@ -18,6 +18,8 @@ struct ContentView: View {
     @State private var confirmingRecoveryDiscard = false
     /// Where Settings' Dictate options… lands: VoiceOver starts at the options it opened (#134).
     @AccessibilityFocusState private var optionsFocused: Bool
+    /// Where Options and the visible scroll area were laid out, for checks only; nil in the app.
+    @Environment(\.pageSectionFrames) private var sectionFrames
     /// On Read, a stopped reading shows beside Listen with Retry, not in the banner as well.
     private var bannerError: String? {
         guard let error = model.error else { return nil }
@@ -180,6 +182,12 @@ struct ContentView: View {
             appleShortcutsCaption
             }.frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
         }
+        // What the scroll view shows: its frame less the insets it scrolls under, such as the title bar.
+        .onGeometryChange(for: CGRect.self) { proxy in
+            let frame = proxy.frame(in: .global), insets = proxy.safeAreaInsets
+            return CGRect(x: frame.minX + insets.leading, y: frame.minY + insets.top, width: frame.width - insets.leading - insets.trailing,
+                          height: frame.height - insets.top - insets.bottom)
+        } action: { sectionFrames?("dictate.visible", $0) }
         .onAppear { showRequestedSection(reader) }
         .onChange(of: model.focusRequest) { _, _ in showRequestedSection(reader) }
         } }
@@ -214,6 +222,7 @@ struct ContentView: View {
             }
         }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(panelColor, in: RoundedRectangle(cornerRadius: 16))
             .id(Self.optionsID)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("dictate.options", $0) }
     }
 
     /// Audio in, text out through Apple Shortcuts: Dictate's job, so it is noted here.
