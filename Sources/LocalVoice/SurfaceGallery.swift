@@ -102,7 +102,11 @@ enum SurfaceGallery {
         // So does a toolbar that does not rest where it was put (#163).
         let misplaced = passes.flatMap { pass in pass.placement.filter { !$0.problems.isEmpty }.map { "\($0.title), \(pass.theme)" } }
         if !misplaced.isEmpty {
-            throw VoiceError.message("The floating toolbar did not rest where it was put in \(misplaced.count) steps (\(misplaced.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+            // Each failing step's own words, so a runner's log says what it saw once the passes' files are gone.
+            let details = passes.flatMap { pass in pass.placement.filter { !$0.problems.isEmpty }.map {
+                "\($0.title), \(pass.theme): \($0.problems.joined(separator: "; "))" } }
+            throw VoiceError.message("The floating toolbar did not rest where it was put in \(misplaced.count) steps (\(misplaced.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).\n"
+                + details.joined(separator: "\n"))
         }
         // The same for the Saved Prompts panel: a panel that is not the size of its content
         // leaves blank space or clips its status line (#159, the pattern #152 found).
@@ -1194,6 +1198,11 @@ enum SurfaceGallery {
     }
 
     static func points(_ size: NSSize) -> String { "\(Int(ceil(size.width))) × \(Int(ceil(size.height))) pt" }
+    /// A frame as x, y, width × height in points, to a tenth of a point.
+    static func rect(_ rect: NSRect) -> String {
+        func n(_ value: CGFloat) -> String { String(format: "%.1f", value) }
+        return "\(n(rect.minX)), \(n(rect.minY)), \(n(rect.width)) × \(n(rect.height))"
+    }
 
     // MARK: Floating toolbar placement
 
@@ -1242,15 +1251,26 @@ enum SurfaceGallery {
             ToolbarGeometry.launcherCentre(inWindow: host.window?.frame ?? .zero, growsLeftward: controls.rowAnchor.growsLeftward)
         }
         func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
+        /// What a failing step saw, so a failure on a runner can be read from its log alone: the
+        /// window, where the host wants it, the display, the tier and the saved position.
+        func context() -> String {
+            let window = host.window?.frame ?? .zero
+            let wants = host.window.map { _ in ToolbarGeometry.frame(size: window.size, position: host.toolsPosition, screen: screen) } ?? .zero
+            let saved = ["capturePanelAnchor.v2", "capturePanelLauncher.v1", "capturePanelFreePosition.v1", "capturePanelOrigin.v1"].map { key in
+                "\(key)=\(UserDefaults.standard.object(forKey: key).map { "\($0)".replacingOccurrences(of: "\n", with: " ") } ?? "none")"
+            }.joined(separator: ", ")
+            return "window \(Self.rect(window)), the host would place it at \(Self.rect(wants)), display \(Self.rect(screen)), "
+                + "\(controls.toolbar.state.tier.rawValue), \(host.window?.isVisible == true ? "visible" : "not visible"), saved \(saved)"
+        }
         func at(_ centre: CGPoint, _ what: String) -> String? {
             let found = launcher()
             return abs(found.x - centre.x) > 0.5 || abs(found.y - centre.y) > 0.5
-                ? "\(what): the launcher is at \(Int(found.x)), \(Int(found.y)), not \(Int(centre.x)), \(Int(centre.y))" : nil
+                ? "\(what): the launcher is at \(Int(found.x)), \(Int(found.y)), not \(Int(centre.x)), \(Int(centre.y)) (\(context()))" : nil
         }
         func free(_ centre: CGPoint) -> String? {
-            guard case .free(let free) = host.toolsPosition, controls.anchor == nil else { return "the toolbar is docked, not free" }
+            guard case .free(let free) = host.toolsPosition, controls.anchor == nil else { return "the toolbar is docked, not free (\(context()))" }
             return abs(free.centre.x - centre.x) > 0.5 || abs(free.centre.y - centre.y) > 0.5
-                ? "the toolbar is free at \(Int(free.centre.x)), \(Int(free.centre.y)), not \(Int(centre.x)), \(Int(centre.y))" : nil
+                ? "the toolbar is free at \(Int(free.centre.x)), \(Int(free.centre.y)), not \(Int(centre.x)), \(Int(centre.y)) (\(context()))" : nil
         }
         func compact(_ what: String) -> String? {
             guard controls.toolbar.state.tier == .resting, let size = host.window?.frame.size else { return nil }
@@ -1816,6 +1836,7 @@ private struct SurfaceIndex {
         }
         for check in light.host { for problem in check.problems { flags.append("Floating toolbar host · \(check.title): \(problem).") } }
         for check in light.placement { for problem in check.problems { flags.append("Floating toolbar placement · \(check.title): \(problem).") } }
+        for check in dark.placement { for problem in check.problems { flags.append("Floating toolbar placement, dark · \(check.title): \(problem).") } }
         for check in light.pickerHost { for problem in check.problems { flags.append("Saved Prompts picker host · \(check.title): \(problem).") } }
         // A menu door that carries a page's sidebar name plus other words is the same door under
         // another name; the Grammar's Names rule gives a place one name on every surface.
@@ -1861,8 +1882,13 @@ private struct SurfaceIndex {
         html += "</table>"
         html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at the launcher's centre, which the compact rest shares, and the chooser opens from three docks (#134).</p>"
         if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
-        html += "<table><tr><th>Step</th><th>Check</th></tr>" + light.placement.map { check in
-            "<tr><td>\(esc(check.title))</td>" + (check.problems.isEmpty ? "<td class=\"ok\">Rests where it was put</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+        // Both passes' tables: they run at once, so a step can fail in one theme only.
+        html += "<table><tr><th>Step</th><th>Light</th><th>Dark</th></tr>" + light.placement.enumerated().map { index, check in
+            func cell(_ check: SurfaceGallery.PlacementCheck?) -> String {
+                guard let check else { return "<td>Not run</td>" }
+                return check.problems.isEmpty ? "<td class=\"ok\">Rests where it was put</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>"
+            }
+            return "<tr><td>\(esc(check.title))</td>" + cell(check) + cell(index < dark.placement.count ? dark.placement[index] : nil) + "</tr>"
         }.joined() + "</table>"
         for (index, shot) in light.toolbar.enumerated() {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
