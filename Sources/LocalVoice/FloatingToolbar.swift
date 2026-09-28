@@ -69,7 +69,7 @@ struct FloatingToolbar: View {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
-            anchor: (controls.anchor ?? .bottom).toolbarAnchor,
+            anchor: controls.rowAnchor,
             mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
             actionHint: action.hint(key: action.operation.keyMode.flatMap(key)),
             switcher: ToolbarNextAction.switcher(for: live, key: key),
@@ -182,12 +182,9 @@ struct FloatingToolbar: View {
             menu.addItem(ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } })
         }
         menu.addItem(.separator())
-        let position = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
-        let positions = NSMenu(); positions.autoenablesItems = false
-        for anchor in FloatingControlAnchor.allCases {
-            positions.addItem(ToolbarMenuAction(anchor.title, checked: controls.anchor == anchor) { controls.choosePosition?(anchor) })
-        }
-        position.submenu = positions; menu.addItem(position)
+        // One command in place of the eight-item submenu: the named docks and a reset, for
+        // the keyboard and precise placement (#163). Dragging is the everyday way to move.
+        menu.addItem(ToolbarMenuAction("Position…") { controls.toolbar.afterMenuTracking { controls.showPosition?() } })
         menu.addItem(ToolbarMenuAction("Keep open", checked: controls.toolbar.state.keepsOpen) {
             controls.toolbar.send(.keepOpenChanged(!controls.toolbar.state.keepsOpen))
         })

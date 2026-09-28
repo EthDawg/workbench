@@ -31,7 +31,8 @@ Another mode's ending never claims the label: presenting while Draw is the mode
 reads `Draw`, the Present chip's dot says the scene is live, and the glyph menu
 offers `End presentation`. Two identical screens never read differently, and the
 label never ends anything but what it names. Click the label to do it, click or
-right-click the glyph for the menu, drag anywhere to move. Work running in the
+right-click the glyph for the menu, and drag the glyph, the label or the row's
+empty chrome to move it (see Placement). Work running in the
 selected mode is a dot on the glyph. The hover hint shows a key only for an
 operation that key performs: Present's key does not stop an insertion, Dictate's
 key does not stop a meeting, and the persona key does not pause a prepared set.
@@ -60,7 +61,7 @@ The glyph menu is the mode's own options plus four constant items: the next
 action with its key, then only the current mode's items, then cross-mode finish
 items (`Stop drawing`, `End presentation`, `Hide persona`/`Hide personas`/
 `Show personas`, `Stop transcribing`) when that work runs in another mode,
-then Position, Keep open, Hide toolbar and Settings. There is no Change tool.
+then Position…, Keep open, Hide toolbar and Settings. There is no Change tool.
 Dictate, Read and Snap are start and stop on this surface, so each carries one
 door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and
 `Open Snap…`. Snap & Talk offers its review. Draw holds the
@@ -88,6 +89,36 @@ UTF-16 selection are captured before the picker opens. Supported fields receive
 confirmed literal chunks; other readable fields get one guarded paste labelled
 as such. Escape, Stop, changed focus/selection/value and shortcut editing cancel
 insertion. No partial write is replayed and no submit key is sent.
+
+## Placement
+
+The toolbar goes where you put it (#163). A press on the glyph, the label or the
+row's empty chrome becomes a move after 4 points; below that it is a click, and
+the click does what it always does. Mode chips and the Prompts picker are ordinary
+controls and never start a move. While you drag, the eight named docks show as
+guides. The one within 16 points of the resting element is highlighted, and
+releasing there docks the toolbar. Releasing anywhere else leaves it right there,
+kept whole inside the visible display it covers most.
+
+The position is the resting element's. A docked row grows inward from its dock,
+and a free row grows toward the middle of its display, so near an edge it expands
+inward. Revealing or collapsing never moves the resting element, and nothing but a
+new placement turns the row round. The toolbar sizes to its content and has no
+resize handles.
+
+Position… in the glyph menu opens one compact control with the eight docks and
+Reset position, which docks at bottom centre. It is the keyboard and precise way
+in, beside dragging: arrow keys move between docks, Return or Space moves the
+toolbar there, and Escape closes. The control takes the keyboard without making
+Workbench the active app.
+
+The choice persists through `CapturePanelController`: a dock by name, or a free
+position as the resting element's origin. It survives collapse and reveal, every
+update and relaunch. If its display is removed, the toolbar comes back whole on
+the display in use; the saved position is kept, so it returns when that display
+does. The drag threshold, snap distance and recovery are StageKit's
+`FloatingControlPlacement`, for Persona overlays to share with their own
+per-copy state.
 
 ## The three layers
 
@@ -200,8 +231,12 @@ The core cannot be right if the host feeds it fiction.
   not animate its own size at the same time.
 - **The row grows inward from the docked edge**, so the resting element keeps
   its place on screen and a right-hand dock does not run off it.
-  `ToolbarAnchor.growsLeftward` is the whole of that geometry; `ToolbarGeometry`
-  centres the top and bottom docks on the measured resting width.
+  `ToolbarAnchor.growsLeftward` is the whole of that geometry for a dock;
+  `ToolbarGeometry` centres the top and bottom docks on the measured resting width.
+  A free position (`ToolbarPosition.free`) grows toward the middle of its display
+  and draws its row for that side (`CaptureHUDControls.rowAnchor`). An update
+  compares the window with the frame of the position the toolbar actually has, so
+  it never pulls a free toolbar back to a dock.
 - **The window is the row's size.** `FloatingToolbar` reports the row with
   `onGeometryChange`. Before sizing the tools, the host lays the row out
   (`layoutSubtreeIfNeeded`), so the report for the tier, mode and labels about to
@@ -235,9 +270,10 @@ Core transition tests, native layout tests and rendered fixtures establish only
 the behavior they exercise. They do not prove native pointer behavior. Before
 claiming a hover fix, reproduce the failure and record the native sequence. Test
 repeated entry/exit, menu dismissal, content-width changes and a stationary pointer
-during resize at all eight anchors, including screen edges and Reduce Motion.
-Explicitly report any input-tool or hardware limit. Multi-display dragging and
-meeting receiver visibility require their own evidence.
+during resize at all eight anchors and at free positions on both halves of the
+display, including screen edges and Reduce Motion. Explicitly report any
+input-tool or hardware limit. Multi-display dragging and meeting receiver
+visibility require their own evidence.
 
 When changing the interaction model, update the state table and targeted
 regressions. A passing legacy test does not justify preserving a broken experience.
@@ -274,6 +310,13 @@ A row that did not settle into its tier, which a real pointer over the invisible
 panel can cause in a local run, is reported and its sizes are not compared; the
 gallery's other flags are reported without failing it too. A Mac with no display
 renders no host states and has nothing to fail.
+
+The gallery also releases the same host at free positions on each half of the
+display and near a dock, then checks it after an update, a reveal and a collapse,
+in a new host as after a relaunch, and after Reset position. A toolbar that does
+not rest where it was put fails the run. It renders Position… in both themes.
+`ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
+inward growth, clamping and recovery.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted

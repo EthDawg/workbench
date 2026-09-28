@@ -90,6 +90,9 @@ public struct ToolbarRow: View {
         .padding(state.anchor.growsLeftward ? .leading : .trailing, 8 * scale)
         .padding(state.anchor.growsLeftward ? .trailing : .leading, 0)
         .frame(minHeight: side).fixedSize()
+        // Empty chrome is a handle too: a drag that starts beside or between the controls
+        // moves the row. The controls sit above it and keep their own clicks.
+        .background { ToolbarDragRegion(drag: drag, showsHandCursor: false) }
         .background {
             if reduceTransparency { RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor)) }
             else { RoundedRectangle(cornerRadius: 12).fill(.regularMaterial) }
@@ -374,14 +377,19 @@ private final class GlyphButton: NSButton {
 
 private struct ToolbarDragRegion: NSViewRepresentable {
     let drag: ToolbarDragActions
+    var showsHandCursor = true
     func makeNSView(context: Context) -> DragRegion { DragRegion() }
-    func updateNSView(_ view: DragRegion, context: Context) { view.drag = drag }
+    func updateNSView(_ view: DragRegion, context: Context) {
+        view.drag = drag
+        if view.showsHandCursor != showsHandCursor { view.showsHandCursor = showsHandCursor; view.window?.invalidateCursorRects(for: view) }
+    }
 }
 private final class DragRegion: NSView {
     var drag = ToolbarDragActions()
+    var showsHandCursor = true
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { trackToolbarDrag(view: self, event: event, actions: drag) }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
+    override func resetCursorRects() { if showsHandCursor { addCursorRect(bounds, cursor: .openHand) } }
 }
 
 @MainActor private func trackToolbarDrag(view: NSView, event: NSEvent, actions: ToolbarDragActions,
@@ -403,7 +411,7 @@ private final class DragRegion: NSView {
             continue
         }
         let point = window.convertPoint(toScreen: next.locationInWindow)
-        if !dragging && hypot(point.x - start.x, point.y - start.y) > 3 {
+        if !dragging && ToolbarDrag.isDrag(from: start, to: point) {
             actions.begin(); origin = window.frame.origin; dragging = true
         }
         if next.type == .leftMouseUp {

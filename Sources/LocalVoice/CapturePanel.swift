@@ -75,8 +75,12 @@ final class CaptureHUDControls: ObservableObject {
         didSet { if oldValue != isExpanded { resize?() } }
     }
     @Published var anchor: FloatingControlAnchor? = .bottom
+    /// The anchor the row is drawn for: its dock, or the side a free row grows from (#163).
+    @Published var rowAnchor: ToolbarAnchor = .bottom
     var resize: (() -> Void)?
     var choosePosition: ((FloatingControlAnchor) -> Void)?
+    /// Opens Position…, the toolbar's compact placement control.
+    var showPosition: (() -> Void)?
 }
 
 @MainActor
@@ -98,7 +102,17 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var tracking: ToolbarTrackingView?
     private let motion = ToolbarWindowMotion()
     private var measuringToolbar = false
+    /// The resting element's origin while the tools rest where they were put (#163); nil
+    /// while they are docked at `controls.anchor`. Only a person's placement changes it: a
+    /// frame recovered onto another display is shown but never saved over it.
+    private var freeOrigin: NSPoint?
+    private let positionControl = ToolbarPositionPanel()
     var isAnimatingToolbar: Bool { motion.target != nil }
+    /// Where the tools rest: a named dock, or a free origin for the resting element.
+    var toolsPosition: ToolbarPosition {
+        if controls.anchor == nil, let freeOrigin { return .free(freeOrigin) }
+        return .docked((controls.anchor ?? .bottom).toolbarAnchor)
+    }
 
     init(model: AppModel, readback: ReadbackModel, stage: StageKitController, snapModel: SnapModel,
          dictate: @escaping () -> Void, snap: @escaping () -> Void,
@@ -114,16 +128,15 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         self.readback = readback; self.stage = stage
         let savedAnchor = UserDefaults.standard.string(forKey: anchorKey).flatMap(FloatingControlAnchor.init(rawValue:))
         if let savedAnchor { controls.anchor = savedAnchor }
-        else if let origin = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString),
-                let preferred = NSScreen.main?.visibleFrame {
-            let savedSize = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString) ?? controls.toolbarSize
-            let frame = NSRect(origin: origin, size: savedSize)
-            let screen = CaptureHUDGeometry.screen(for: frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-            controls.anchor = FloatingToolbarDocking.anchor(for: frame, in: screen)
+        else if let origin = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString), origin.x.isFinite, origin.y.isFinite {
+            // A free position, where the person left it (#163).
+            controls.anchor = nil; freeOrigin = origin
         } else { controls.anchor = .bottom }
+        if let anchor = controls.anchor { controls.rowAnchor = anchor.toolbarAnchor }
         controls.toolbarSize = controls.preferredToolbarSize
         controls.resize = { [weak self, weak model] in if let model { self?.update(model: model) } }
         controls.choosePosition = { [weak self] in self?.choosePosition($0) }
+        controls.showPosition = { [weak self] in self?.showPositionControl() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         controls.promptDestination = { [weak self] in
             guard let self else { return nil }
@@ -215,7 +228,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             tracking?.acceptsCrossings = false
             motion.finish(window)
             if surface == .tools { controls.toolbar.activate() }
-            else { controls.suspendToolbar(); releaseKeyboardFocus() }
+            else { controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging()
@@ -226,8 +239,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let size = surface == .tools ? controls.preferredToolbarSize : surface == .reading ? CaptureHUDLayout.compact : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
             preview: model.previewingPanel, expanded: controls.isExpanded)
-        // The docked frame follows the row's size and, at a top or bottom dock, its
-        // resting width. A drag keeps its window until release, which re-docks it.
+        // The tools' frame follows the row's size and, at a top or bottom dock, its
+        // resting width; a free position stays where it is. A drag keeps its window
+        // until release, which places it.
         let moved = surface == .tools
             ? !dragging && toolbarFrame(size: size).map({ Self.differs($0, motion.target ?? window.frame) }) == true
             : (motion.target?.size ?? window.frame.size) != size
@@ -297,25 +311,40 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let saved = UserDefaults.standard.string(forKey: positionKey).map(NSPointFromString)
         let savedSize = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString) ?? size
         let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: savedSize) } : window.frame
-        let screen = CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: size),
-            screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        let frame = surface == .tools
-            ? toolbarFrame(size: size, screen: screen)
-            : CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
-                screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        setFrame(frame, animated: animated)
+        if surface == .tools { placeTools(previous: previous, preferred: preferred, animated: animated); return }
+        setFrame(CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
+            screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred), animated: animated)
+    }
+
+    /// Puts the tools where they rest: the row is drawn for the side it grows from and
+    /// measured, then the window goes around it (#152, #163).
+    private func placeTools(previous: NSRect?, preferred: NSRect, animated: Bool) {
+        let screen = toolsScreen(previous: previous, preferred: preferred)
+        let rowAnchor = ToolbarGeometry.rowAnchor(toolsPosition, restingSize: controls.restingSize, screen: screen)
+        if controls.rowAnchor != rowAnchor { controls.rowAnchor = rowAnchor; measureToolbar() }
+        setFrame(toolbarFrame(size: controls.preferredToolbarSize, screen: screen), animated: animated)
+    }
+
+    /// The display the tools belong on: a free position's own display, which is the preferred
+    /// one after its display was removed, or the one the docked window covers most.
+    private func toolsScreen(previous: NSRect?, preferred: NSRect) -> NSRect {
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        if case .free(let origin) = toolsPosition {
+            return FloatingControlPlacement.screen(for: NSRect(origin: origin, size: controls.restingSize), screens: screens, preferred: preferred)
+        }
+        return CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: controls.restingSize),
+            screens: screens, preferred: preferred)
     }
 
     private func toolbarFrame(size: NSSize, screen: NSRect) -> NSRect {
-        ToolbarGeometry.frame(size: size, restingWidth: controls.restingWidth,
-            anchor: (controls.anchor ?? .bottom).toolbarAnchor, screen: screen)
+        ToolbarGeometry.frame(size: size, restingSize: controls.restingSize, position: toolsPosition, screen: screen)
     }
 
-    /// Where `place` puts the tools at `size` on the window's current display.
+    /// Where `place` puts the tools at `size`: at their dock or their free position, never
+    /// pulled from a free position back to a dock.
     private func toolbarFrame(size: NSSize) -> NSRect? {
         guard let window, let preferred = preferredScreen else { return nil }
-        return toolbarFrame(size: size, screen: CaptureHUDGeometry.screen(for: motion.target ?? window.frame,
-            screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred))
+        return toolbarFrame(size: size, screen: toolsScreen(previous: motion.target ?? window.frame, preferred: preferred))
     }
 
     private static func differs(_ a: NSRect, _ b: NSRect) -> Bool {
@@ -332,7 +361,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     }
 
     private func choosePosition(_ anchor: FloatingControlAnchor) {
-        controls.anchor = anchor
+        controls.anchor = anchor; freeOrigin = nil
         guard let window else { return }
         place(size: surface == .tools ? controls.preferredToolbarSize : (motion.target?.size ?? window.frame.size),
               restoreSaved: false, animated: surface == .tools)
@@ -348,7 +377,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     }
 
     private func savePosition(_ destination: NSRect? = nil) {
-        guard let frame = destination ?? window?.frame else { return }
+        guard var frame = destination ?? window?.frame else { return }
+        // A free position saves the resting element where the person put it, whatever the
+        // window shows: a row, a dictation panel, or a frame recovered onto another display.
+        if controls.anchor == nil, let freeOrigin { frame = NSRect(origin: freeOrigin, size: controls.restingSize) }
         UserDefaults.standard.set(NSStringFromPoint(frame.origin), forKey: positionKey)
         UserDefaults.standard.set(NSStringFromSize(frame.size), forKey: sizeKey)
         if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
@@ -380,7 +412,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     override func close() {
         observations.removeAll()
-        controls.resize = nil; controls.choosePosition = nil
+        controls.resize = nil; controls.choosePosition = nil; controls.showPosition = nil
+        positionControl.close()
         controls.suspendToolbar(); cancelDragging(); releaseKeyboardFocus()
         motion.settled = nil
         if let window { motion.finish(window) }
@@ -390,25 +423,56 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
+        if surface == .tools {
+            // The resting element is what docks. A dock's guide is active only within the snap distance.
+            let resting = restingFrame(in: window.frame)
+            let screen = FloatingControlPlacement.screen(for: resting, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+            snapGuide.show(controlFrame: resting, visibleFrame: screen,
+                           activeAnchor: FloatingControlPlacement.snapAnchor(for: resting, in: screen), below: window)
+            return
+        }
         let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
         let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
-        let size = surface == .tools ? controls.preferredToolbarSize : window.frame.size
-        snapGuide.show(controlFrame: NSRect(origin: window.frame.origin, size: size), visibleFrame: screen,
-                       activeAnchor: anchor, below: window)
+        snapGuide.show(controlFrame: window.frame, visibleFrame: screen, activeAnchor: anchor, below: window)
     }
 
     func finishDragging() {
         defer { cancelDragging() }
         guard dragging, let window, let preferred = preferredScreen else { return }
+        if surface == .tools { releaseTools(at: restingFrame(in: window.frame)); return }
         let screen = CaptureHUDGeometry.screen(for: window.frame, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
         let anchor = FloatingToolbarDocking.anchor(for: window.frame, in: screen)
-        controls.anchor = anchor
-        let size = surface == .tools ? controls.preferredToolbarSize : window.frame.size
-        let frame = surface == .tools
-            ? ToolbarGeometry.frame(size: size, restingWidth: controls.restingWidth,
-                anchor: anchor.toolbarAnchor, screen: screen)
-            : FloatingControlGeometry.frame(anchor: anchor, size: size, visibleFrame: screen)
-        setFrame(frame, animated: surface == .tools)
+        controls.anchor = anchor; freeOrigin = nil
+        setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen))
+    }
+
+    /// The tools released with their resting element at `resting` (#163): within the snap
+    /// distance of a named dock they dock there; anywhere else they rest right there, kept
+    /// whole on the display they cover most. The drag's release and the gallery's check use it.
+    func releaseTools(at resting: NSRect) {
+        guard let preferred = preferredScreen else { return }
+        let screen = FloatingControlPlacement.screen(for: resting, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+        if let anchor = FloatingControlPlacement.snapAnchor(for: resting, in: screen) {
+            controls.anchor = anchor; freeOrigin = nil
+        } else {
+            controls.anchor = nil; freeOrigin = FloatingControlGeometry.clamp(resting, to: screen, inset: 0).origin
+        }
+        if surface == .tools { placeTools(previous: resting, preferred: preferred, animated: true) } else { savePosition() }
+    }
+
+    /// The resting element within a tools window: the end its row grows from.
+    private func restingFrame(in frame: NSRect) -> NSRect {
+        let size = controls.restingSize
+        return NSRect(x: controls.rowAnchor.growsLeftward ? frame.maxX - size.width : frame.minX, y: frame.minY,
+                      width: size.width, height: size.height)
+    }
+
+    /// Position…: the named docks and a reset, beside the toolbar, from the keyboard or pointer.
+    private func showPositionControl() {
+        guard let window, window.isVisible else { return }
+        positionControl.show(beside: window.frame, level: window.level, current: controls.anchor,
+            choose: { [weak self] in self?.choosePosition($0) },
+            reset: { [weak self] in self?.choosePosition(.bottom) })
     }
 }
 

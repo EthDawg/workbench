@@ -154,13 +154,6 @@
     "note": "Existing door, recorded, no change: Opens the saved text on the Read page (Option of read; #134)."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.position",
-    "surface": "floating toolbar glyph menu",
-    "label": "Position",
-    "kind": "option",
-    "belongsTo": "app"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.saved-prompts",
     "surface": "floating toolbar glyph menu",
     "label": "Saved Prompts",
@@ -208,6 +201,14 @@
     "label": "Open Snap…",
     "kind": "action",
     "belongsTo": "snap"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
+    "surface": "floating toolbar glyph menu",
+    "label": "Position…",
+    "kind": "option",
+    "belongsTo": "app",
+    "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
@@ -612,6 +613,14 @@
     "kind": "action",
     "belongsTo": "snapAndTalk",
     "note": "Existing door, recorded, no change: Sends selected Snaps to Snap & Talk and opens it (Option of snapAndTalk; #134)."
+  },
+  {
+    "id": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position",
+    "surface": "floating toolbar position control",
+    "label": "Reset position",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options already offer the same reset as Reset to bottom centre."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",

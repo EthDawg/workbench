@@ -33,7 +33,10 @@ enum SurfaceGallery {
     struct HostCheck: Codable { var id, title, mode, tier: String; var window, wants, preferred: [Double]; var measured, twinMeasured: Bool; var problems: [String]; var file: String
         /// The toolbar reached the tier this state asked for; its sizes are only compared if so.
         var settled = true }
-    struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
+    /// One step of the toolbar's placement through the production host (#163).
+    struct PlacementCheck: Codable { var title: String; var problems: [String] }
+    struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pages: [Page]; var entries: [Entry]; var menus: [Listing]
+        var placement: [PlacementCheck] = [] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -84,6 +87,11 @@ enum SurfaceGallery {
         let wrongSize = passes.flatMap { pass in pass.host.filter(\.hasSizeProblem).map { "\($0.title), \(pass.theme)" } }
         if !wrongSize.isEmpty {
             throw VoiceError.message("The floating toolbar's window is not the size of its row in \(wrongSize.count) states (\(wrongSize.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
+        // So does a toolbar that does not rest where it was put (#163).
+        let misplaced = passes.flatMap { pass in pass.placement.filter { !$0.problems.isEmpty }.map { "\($0.title), \(pass.theme)" } }
+        if !misplaced.isEmpty {
+            throw VoiceError.message("The floating toolbar did not rest where it was put in \(misplaced.count) steps (\(misplaced.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
         }
         let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
@@ -247,7 +255,9 @@ enum SurfaceGallery {
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
-        let (toolbar, host) = try renderToolbarHost(to: output)
+        let (hostShots, host) = try renderToolbarHost(to: output)
+        let toolbar = hostShots + [try renderPositionControl(to: output)]
+        let placement = try checkToolbarPlacement()
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
             let window = homeWindow(size: size)
@@ -269,7 +279,8 @@ enum SurfaceGallery {
         for (route, shot) in try renderScreenAccessOff(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
         }
-        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pages: pages, entries: entries() + menuEntries, menus: listings)
+        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pages: pages, entries: entries() + menuEntries, menus: listings,
+                                   placement: placement)
     }
 
     // MARK: Read states
@@ -652,6 +663,98 @@ enum SurfaceGallery {
 
     static func points(_ size: NSSize) -> String { "\(Int(ceil(size.width))) × \(Int(ceil(size.height))) pt" }
 
+    // MARK: Floating toolbar placement
+
+    /// Position…, the toolbar's placement control, as the glyph menu opens it with the toolbar
+    /// docked at bottom centre and the keyboard on that dock.
+    func renderPositionControl(to output: URL) throws -> SurfaceGallery.Shot {
+        let view = NSHostingView(rootView: ToolbarPositionControl(current: .bottom, choose: { _ in }, reset: {}, close: {}))
+        let window = offscreenWindow(size: view.fittingSize, styleMask: [.borderless])
+        window.isOpaque = false; window.backgroundColor = .clear
+        window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        settle(view)
+        return try save(try snapshot(view), id: "position-control", title: "Position…",
+                        detail: "The eight docks with bottom centre current and selected, and Reset position.", file: "toolbar-position-control-\(theme).png", to: output)
+    }
+
+    /// Free placement through the production host (#163), with its panel invisible. A release
+    /// away from every dock rests right there through an update, a reveal and a collapse, on
+    /// either half of the display; a release within the snap distance of a dock docks and one
+    /// just beyond stays free; a new host, as after a relaunch, restores the free position;
+    /// and Reset position docks at bottom centre. Positions are compared at the resting
+    /// element, which is where they are kept whichever tier a real pointer holds.
+    func checkToolbarPlacement() throws -> [SurfaceGallery.PlacementCheck] {
+        guard let screen = NSScreen.main?.visibleFrame else { return [] }
+        let defaults = try SurfaceGallery.isolatedDefaults("ToolbarPlacement", home: home)
+        func makeHost() -> (CapturePanelController, CaptureHUDControls) {
+            let controls = CaptureHUDControls(defaults: defaults)
+            let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
+                                              dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+            host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
+            return (host, controls)
+        }
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible
+        var (host, controls) = makeHost()
+        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode }
+        model.toolbarMode = .dictate; model.floatingToolbarVisible = true
+        host.update(model: model)
+        waitForToolbar(host, controls, tier: .resting, content: host.window?.contentView ?? NSView())
+        var checks: [SurfaceGallery.PlacementCheck] = []
+        func settle(_ tier: ToolbarTier) {
+            waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
+        }
+        func resting() -> NSRect {
+            guard let frame = host.window?.frame else { return .zero }
+            let size = controls.restingSize
+            return NSRect(x: controls.rowAnchor.growsLeftward ? frame.maxX - size.width : frame.minX, y: frame.minY, width: size.width, height: size.height)
+        }
+        func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
+        func at(_ origin: NSPoint, _ what: String) -> String? {
+            let found = resting().origin
+            return abs(found.x - origin.x) > 0.5 || abs(found.y - origin.y) > 0.5
+                ? "\(what): the resting element is at \(Int(found.x)), \(Int(found.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+        }
+        func free(_ origin: NSPoint) -> String? {
+            host.toolsPosition == .free(origin) && controls.anchor == nil ? nil : "the toolbar is not free at \(Int(origin.x)), \(Int(origin.y))"
+        }
+        let size = controls.restingSize
+        for (side, origin) in [("left", NSPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
+                               ("right", NSPoint(x: screen.maxX - screen.width * 0.3 - size.width, y: screen.minY + screen.height * 0.6))] {
+            let origin = NSPoint(x: origin.x.rounded(), y: origin.y.rounded())
+            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
+            let leftward = side == "right"
+            expect("Released free on the \(side), at rest", [free(origin), at(origin, "at rest"),
+                controls.rowAnchor.growsLeftward == leftward ? nil : "the row would grow \(leftward ? "rightward, off" : "leftward, away from") the near edge"])
+            // An update while free must not pull the toolbar back to a dock.
+            model.floatingToolbarVisible = true; host.update(model: model); settle(.resting)
+            expect("Free on the \(side), after an update", [free(origin), at(origin, "after an update")])
+            controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
+            let window = host.window?.frame ?? .zero
+            expect("Free on the \(side), revealed", [at(origin, "revealed"), screen.contains(window) ? nil : "the revealed row leaves the display",
+                abs(window.width - controls.preferredToolbarSize.width) > 0.5 ? "the window is \(Self.points(window.size)), not the row's \(Self.points(controls.preferredToolbarSize))" : nil])
+            controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
+            expect("Free on the \(side), collapsed again", [at(origin, "collapsed again")])
+        }
+        let dock = FloatingControlGeometry.frame(anchor: .bottomRight, size: size, visibleFrame: screen)
+        host.releaseTools(at: dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance - 2), dy: 0)); settle(.resting)
+        expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock", [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock.origin, "docked")])
+        let beyond = dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance + 4), dy: 0).origin
+        host.releaseTools(at: NSRect(origin: beyond, size: size)); settle(.resting)
+        expect("Released \(Int(FloatingControlPlacement.snapDistance + 4)) pt from the bottom-right dock", [free(beyond), at(beyond, "beyond the snap distance")])
+        // A new host reads the saved position, as Workbench does after a relaunch.
+        let kept = NSPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
+        host.releaseTools(at: NSRect(origin: kept, size: size)); settle(.resting)
+        host.close()
+        (host, controls) = makeHost()
+        host.update(model: model); settle(.resting)
+        expect("A new host, as after a relaunch", [free(kept), at(kept, "after a relaunch")])
+        controls.choosePosition?(.bottom); settle(.resting)
+        let bottom = FloatingControlGeometry.frame(anchor: .bottom, size: controls.restingSize, visibleFrame: screen)
+        expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom.origin, "reset")])
+        return checks
+    }
+
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
     func homeWindow(size: NSSize) -> NSWindow {
@@ -924,6 +1027,7 @@ private struct SurfaceIndex {
             }
         }
         for check in light.host { for problem in check.problems { flags.append("Floating toolbar host · \(check.title): \(problem).") } }
+        for check in light.placement { for problem in check.problems { flags.append("Floating toolbar placement · \(check.title): \(problem).") } }
         // A menu door that carries a page's sidebar name plus other words is the same door under
         // another name; the Grammar's Names rule gives a place one name on every surface.
         for entry in light.entries where entry.surface == "App menus" {
@@ -966,6 +1070,11 @@ private struct SurfaceIndex {
                 + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
         }
         html += "</table>"
+        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163).</p>"
+        if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
+        html += "<table><tr><th>Step</th><th>Check</th></tr>" + light.placement.map { check in
+            "<tr><td>\(esc(check.title))</td>" + (check.problems.isEmpty ? "<td class=\"ok\">Rests where it was put</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+        }.joined() + "</table>"
         for (index, shot) in light.toolbar.enumerated() {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
                 + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
