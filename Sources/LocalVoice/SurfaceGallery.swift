@@ -339,7 +339,7 @@ enum SurfaceGallery {
             var query = ""; var filter = PromptPickerList.Filter.all; var running = false; var attempt: PromptAttempt?; var details = false
         }
         let states = [
-            State(id: "empty", title: "No saved prompts", detail: "An empty library leads to Saved resources.", resources: [], mode: notes),
+            State(id: "empty", title: "No saved prompts", detail: "An empty picker leads to Library.", resources: [], mode: notes),
             State(id: "one", title: "One prompt", detail: "Inserting into Notes, the field in front when the picker opened.", resources: [library[0]], mode: notes),
             State(id: "grouped", title: "Favourites, then the rest", detail: "Product and Persona tags filter the one list. The last delivery went to Mail and says so.",
                   resources: library, mode: notes, attempt: stopped),

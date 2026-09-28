@@ -16,7 +16,7 @@ Make frequent Mac tasks easy to start, understand and leave. Dictate, Snap, Pers
 | Explain a browser demo | Browser owns page input; explicit Workbench overlay edit mode | Annotation and saved persona, move/size/lock/hide |
 | Hear a draft | Reading engine, not microphone capture | Read, pause, resume, stop, export |
 | Hear a selection from another Mac app | That app and macOS Services own the explicit selection | Open a review draft; keep or replace an existing reading; wait for Listen |
-| Hear a saved transcript or saved text | History and Saved resources own the item | Read aloud opens it in Read through the same review as a selection; Keep current or Replace reading; wait for Listen |
+| Hear a saved transcript or saved text | History and Library own the item | Read aloud opens it in Read through the same review as a selection; Keep current or Replace reading; wait for Listen |
 | Narrate a screen for later slides | Display under the pointer, then Mac microphone | Capture once with the pointer, retain linked audio/transcripts, order and revise sections |
 | Keep a useful screen capture | Explicit region/window/display or imported image | Crop, annotate, copy and save in canonical Snap History; retain the original and avoid Desktop clutter |
 | Transcribe a meeting or Mac-routed call | Explicit selected Mac app audio and optional current microphone | Offer only when enabled, record only after Start, retain recovery audio and save a typed transcript |

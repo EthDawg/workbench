@@ -654,12 +654,12 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-saved-resources",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
     "surface": "Saved Prompts picker",
-    "label": "Open Saved resources…",
+    "label": "Open Library…",
     "kind": "action",
     "belongsTo": "library",
-    "note": "Option of Saved resources: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159)."
+    "note": "Option of Library: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159). Quality: Open Saved resources… takes the place's Grammar name, Library (#134)."
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-14443435e8dd",
