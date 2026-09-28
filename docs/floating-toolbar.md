@@ -82,7 +82,9 @@ top one. Long names wrap to two lines or truncate and keep their full accessible
 text. It takes keyboard focus without activating Workbench, holds the row open
 as a native menu does, and closes on Escape, a click outside, a second click on
 Prompts or a choice; ↑ ↓ and Return choose. A choice acts only after the picker
-has gone, as a menu item's action runs after tracking.
+has gone, as a menu item's action runs after tracking. The picker's panel is
+sized from its content's `onGeometryChange` report, never from a background
+`GeometryReader` preference (#152).
 
 The original field, value and UTF-16 selection are captured before the picker
 opens. Supported fields receive confirmed literal chunks; other readable fields
@@ -278,6 +280,14 @@ A row that did not settle into its tier, which a real pointer over the invisible
 panel can cause in a local run, is reported and its sizes are not compared; the
 gallery's other flags are reported without failing it too. A Mac with no display
 renders no host states and has nothing to fail.
+
+The gallery opens the Saved Prompts picker's production panel,
+`PromptPickerController`, the same way: invisible, ignoring the pointer, with no
+keyboard focus and no click monitors. It narrows the list to one row, adds a status
+line and its Details, then shows every prompt again. A panel that is not the size
+its content wants within the display, or that never heard its content's size,
+fails the run, as a toolbar window does. A picker that closes during the check is
+reported only.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted

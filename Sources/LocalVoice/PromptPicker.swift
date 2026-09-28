@@ -231,11 +231,6 @@ final class PromptPickerModel: ObservableObject {
     private func highlightFirst() { highlighted = list.rows.first?.id; scrollTarget = highlighted }
 }
 
-private struct PromptPickerSize: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
-}
-
 /// One compact list: search and an optional category, favourites then the
 /// rest, and one line about the last delivery with Details for its reason.
 /// The width is fixed; long names wrap to two lines or truncate, never widen it.
@@ -262,8 +257,10 @@ struct PromptPickerView: View {
         }
         .frame(width: model.width, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .background { GeometryReader { Color.clear.preference(key: PromptPickerSize.self, value: $0.size) } }
-        .onPreferenceChange(PromptPickerSize.self) { size in
+        // The host sizes its panel from this report. A preference written from a
+        // background GeometryReader never reaches onPreferenceChange once the view
+        // holds conditional content (#152), so the panel would keep its opening size.
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
             // Everything but the list, so a long list shrinks to leave the footer on screen.
             let chrome = size.height - (model.list.rows.isEmpty ? 0 : min(model.listHeight, model.maxListHeight))
             if abs(chrome - model.chromeHeight) > 0.5 { model.chromeHeight = chrome }
@@ -319,15 +316,8 @@ struct PromptPickerView: View {
                     ForEach(others) { row($0) }
                 }
                 .padding(6 * scale)
-                // Measured inside the scroll view and handed straight to the model:
-                // a preference does not reliably leave a scroll view.
-                .background {
-                    GeometryReader { geometry in
-                        Color.clear
-                            .onAppear { model.measureList(geometry.size.height) }
-                            .onChange(of: geometry.size.height) { _, height in model.measureList(height) }
-                    }
-                }
+                // The rows' natural height, measured inside the scroll view.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { model.measureList($0) }
             }
             .frame(height: min(model.listHeight, model.maxListHeight))
             .onChange(of: model.scrollTarget) { _, target in if let target { proxy.scrollTo(target) } }
@@ -517,7 +507,8 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
     static let shared = PromptPickerController()
 
     struct Context {
-        var library: DemoLibraryModel
+        /// The library's resources when the picker was asked for; it freezes its prompts from these.
+        var resources: [DemoResource]
         var delivery: PromptInsertion
         var receipts: ClipboardReceiptModel
         /// The field in front when the picker was asked for.
@@ -539,6 +530,16 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
     private weak var searchField: NSSearchField?
 
     var isShown: Bool { model != nil }
+
+    /// The surface gallery opens the real panel invisibly to check its size: no keyboard
+    /// focus, no pointer and no click monitors, so a local run never takes anyone's input.
+    var offscreenForChecks = false
+    /// What the gallery's host check reads: the open panel, its model and placement, and
+    /// the size its content last reported.
+    var shownPanel: NSPanel? { panel }
+    var shownModel: PromptPickerModel? { model }
+    var opensAbove: Bool { above }
+    private(set) var reportedSize: CGSize?
 
     /// Anchored to the button that asked for it; a second click closes it.
     func show(from view: NSView, context: Context) {
@@ -565,7 +566,7 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
             insert: { text, title in context.delivery.insert(text, title: title, into: context.destination) },
             copy: { text, title in context.delivery.copy(text, title: title, receipts: context.receipts) })
         let room = PromptPickerLayout.room(anchor: anchor, visible: visible)
-        let model = PromptPickerModel(list: PromptPickerList(resources: context.library.resources), mode: mode,
+        let model = PromptPickerModel(list: PromptPickerList(resources: context.resources), mode: mode,
             width: PromptPickerLayout.width(in: visible), available: max(room.above, room.below),
             perform: { [weak self] prompt in self?.choose(prompt, action: action) },
             dismiss: { [weak self] in self?.close() },
@@ -593,10 +594,18 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
         panel.contentView = hosting
         self.panel = panel
 
-        let fitting = hosting.fittingSize
-        above = PromptPickerLayout.opensAbove(content: fitting.height, anchor: anchor, visible: visible)
+        // The panel's own hosting view has no sizing options, so it reports no fitting size;
+        // measure the same content once, unseen, and open at that size. After that the view's
+        // own reports size the panel.
+        func natural() -> NSSize { NSHostingView(rootView: PromptPickerView(model: model)).fittingSize }
+        above = PromptPickerLayout.opensAbove(content: natural().height, anchor: anchor, visible: visible)
         model.available = above ? room.above : room.below
-        panel.setFrame(PromptPickerLayout.frame(content: hosting.fittingSize, anchor: anchor, visible: visible, above: above), display: false)
+        panel.setFrame(PromptPickerLayout.frame(content: natural(), anchor: anchor, visible: visible, above: above), display: false)
+        if offscreenForChecks {
+            panel.alphaValue = 0; panel.ignoresMouseEvents = true
+            panel.orderFrontRegardless()
+            return
+        }
         panel.makeKeyAndOrderFront(nil)
         if let searchField { panel.makeFirstResponder(searchField) }
 
@@ -630,6 +639,7 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
 
     private func resize(_ size: CGSize) {
         guard let panel, size.width > 0, size.height > 0 else { return }
+        reportedSize = size
         let frame = PromptPickerLayout.frame(content: size, anchor: anchor, visible: visible, above: above)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
     }
@@ -654,7 +664,7 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
 
     func close(then action: (() -> Void)? = nil) {
         guard let panel, let context else { return }
-        self.panel = nil; self.context = nil; model = nil
+        self.panel = nil; self.context = nil; model = nil; reportedSize = nil
         monitors.forEach(NSEvent.removeMonitor); monitors.removeAll()
         observations.removeAll()
         panel.delegate = nil

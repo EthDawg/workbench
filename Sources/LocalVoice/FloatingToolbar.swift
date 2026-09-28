@@ -107,7 +107,7 @@ struct FloatingToolbar: View {
     /// One Saved Prompts picker for the accessory and the glyph menu (#159). It
     /// freezes the field that was in front when it was asked for.
     private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
-        let context = PromptPickerController.Context(library: model.library, delivery: promptInsertion,
+        let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
             receipts: model.clipboardReceipt, destination: destination, trusted: AXIsProcessTrusted(),
             controls: controls, openLibrary: { model.showLibrary() })
         if let anchor { PromptPickerController.shared.show(from: anchor, context: context) }
