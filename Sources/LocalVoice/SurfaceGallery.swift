@@ -159,6 +159,7 @@ enum SurfaceGallery {
     let meetings: MeetingModel
     let recordingMeetings: MeetingModel
     let keyboard: KeyboardCoachModel
+    let panelEditor: PanelShortcutEditor
     /// Supplies the app's own shortcut catalogue. It registers nothing unless launched.
     private let shell = AppDelegate()
     /// Routes passed to the panel's `open`, and other actions, while a menu item runs.
@@ -211,6 +212,7 @@ enum SurfaceGallery {
         shell.model = model; shell.stage = stage
         keyboard = KeyboardCoachModel(entries: shell.shortcutEntries(), update: { _, _ in "The surface gallery does not save shortcuts." },
                                       suspend: { _ in }, probe: { _ in nil })
+        panelEditor = PanelShortcutEditor(keyboard: keyboard)
         model.onShowPresenter = { [weak self] in self?.actions.append("Opens the Switch to panel") }
         // StageKit's page callbacks, wired to the routes AppDelegate gives them.
         stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
@@ -434,13 +436,15 @@ enum SurfaceGallery {
                        reset: { model.error = nil }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
-                       reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings })]
+                       reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings }),
+            PanelState(id: "shortcut-editor", title: "Shortcut editor", detail: "Snap's shortcut label clicked: the inline editor waits for keys. Closing the panel ends it.", readback: readback,
+                       apply: { [self] in panelEditor.change("voice.8") }, reset: { [self] in panelEditor.end() })]
     }
 
     // MARK: Rendering
 
     func quickPanel(_ readback: ReadbackModel) -> WorkbenchQuickPanel {
-        WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap,
+        WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, editor: panelEditor, receipts: model.clipboardReceipt, snapModel: snap,
                             open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {})
     }
 
