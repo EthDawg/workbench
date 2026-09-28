@@ -124,7 +124,9 @@ final class SnapModel: ObservableObject {
     /// manual location change pauses the redirect instead of fighting it.
     func importInbox() {
         guard keepsScreenshotsOffDesktop, !isBusy else { return }
-        screenshotRedirectPaused = screenshotLocation.location != screenshotInbox.path
+        // Published only when it changes, so History and the Snap page are not redrawn every tick.
+        let paused = screenshotLocation.location != screenshotInbox.path
+        if paused != screenshotRedirectPaused { screenshotRedirectPaused = paused }
         var sizes: [URL: Int] = [:], added = 0, known = Set(items.map(\.originalSHA256))
         for file in SnapScreenshots.screenCaptures(in: screenshotInbox) {
             let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
