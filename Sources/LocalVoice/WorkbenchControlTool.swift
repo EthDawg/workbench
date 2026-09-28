@@ -278,7 +278,9 @@ struct WorkbenchControlContext {
             paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
             live: live,
             // The last ten seconds before a dictation or narration stops at its 5-minute limit (#134 T4).
-            stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290))
+            stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290),
+            // The dictation owner's own judgement of a microphone too quiet to use, for VoiceOver's value (#211 F7).
+            quiet: capture == .dictation && model.isMicrophoneQuiet)
     }
 
     /// The break timer's part of the compact status: a running countdown is live work and a

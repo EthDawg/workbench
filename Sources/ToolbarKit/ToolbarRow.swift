@@ -100,7 +100,7 @@ public struct ToolbarRow: View {
     private var compact: some View {
         ToolbarCompactMark(status: state.status, accent: accent)
             .overlay {
-                ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.description,
+                ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.spokenValue,
                                   reveal: revealFromRest, options: menuOpener, drag: drag)
             }
             .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
@@ -400,7 +400,7 @@ private struct ToolbarLauncher: NSViewRepresentable {
     }
     func updateNSView(_ view: LauncherButton, context: Context) {
         view.setAccessibilityLabel("Tool: " + state.mode.title)
-        view.setAccessibilityValue(state.status.indicator == .capture ? state.launcherDescription + ". " + state.status.description
+        view.setAccessibilityValue(state.status.indicator == .capture ? state.launcherDescription + ". " + state.status.spokenValue
                                                                         : state.launcherDescription)
         view.setAccessibilityHelp("Choose a tool")
         view.setAccessibilityIdentifier("toolbar.launcher")

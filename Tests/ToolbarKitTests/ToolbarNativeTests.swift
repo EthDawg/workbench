@@ -204,7 +204,8 @@ final class ToolbarNativeTests: XCTestCase {
         func all(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(all) }
         let target = try XCTUnwrap(all(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
         XCTAssertTrue(target.isAccessibilityElement())
-        XCTAssertEqual(target.accessibilityValue() as? String, status.description)
+        XCTAssertEqual(target.accessibilityValue() as? String, status.spokenValue)
+        XCTAssertEqual(status.spokenValue, "Recording dictation. Receiving sound", "every state, then the level in words (#211 F7)")
         XCTAssertTrue(target.accessibilityPerformPress())
         XCTAssertEqual(reveals, 1); XCTAssertEqual(work, 0)
         XCTAssertTrue(buttons(view).isEmpty, "no control is reachable at rest but the target")
