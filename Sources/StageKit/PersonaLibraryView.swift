@@ -47,8 +47,11 @@ struct PersonaLibraryView: View {
     @State private var renamingGroup = false
     @State private var editingGroup: PersonaGroup?
     @State private var editingCard: SavedPersona?
+    /// A new editable portrait between choosing its picture and Add persona. It
+    /// exists only here, so Cancel or Escape at any step saves nothing.
+    @State private var creatingCard: PersonaPortraitDraft?
     @State private var choosingStarter = false
-    @State private var starterToEdit: SavedPersona?
+    @State private var starterDraft: PersonaPortraitDraft?
     @State private var preparingPresentation = false
     @State private var launchState = PersonaLibraryLaunchState()
     @State private var unsavedPresentationLayout = false
@@ -85,7 +88,7 @@ struct PersonaLibraryView: View {
                         Button("Choose a starter portrait…") { choosingStarter = true }
                         Divider()
                         Button("Import portrait for an editable card…") {
-                            library.importImage(card: PersonaCardStyle()) { editingCard = $0 }
+                            library.importPortrait { creatingCard = $0 }
                         }
                         Button("Import finished card…") { library.importImage() }
                         Button("Paste finished image") { library.pasteImage() }
@@ -246,11 +249,12 @@ struct PersonaLibraryView: View {
                 }
                 Button("Keep editing", role: .cancel) { }
             }
-            .sheet(item: $editingCard) { PersonaCardEditor(library: library, persona: $0) }
+            .sheet(item: $editingCard) { PersonaCardEditor(library: library, subject: .saved($0)) }
+            .sheet(item: $creatingCard) { PersonaCardEditor(library: library, subject: .new($0)) }
             .sheet(isPresented: $choosingStarter, onDismiss: {
-                if let persona = starterToEdit { starterToEdit = nil; editingCard = persona }
+                if let draft = starterDraft { starterDraft = nil; creatingCard = draft }
             }) {
-                PersonaStarterChooser(library: library) { starterToEdit = $0 }
+                PersonaStarterChooser(library: library) { starterDraft = $0 }
             }
             .sheet(item: $editingGroup) { PersonaGroupEditor(library: library, group: $0) }
             .alert("Rename persona", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -368,7 +372,8 @@ struct PersonaLibraryView: View {
 
 private struct PersonaStarterChooser: View {
     @ObservedObject var library: PersonaLibrary
-    let onChoose: (SavedPersona) -> Void
+    /// Receives the chosen starter as a draft; nothing is saved until Add persona.
+    let onChoose: (PersonaPortraitDraft) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedID: String?
     @State private var thumbnails: [String: NSImage] = [:]
@@ -429,7 +434,7 @@ private struct PersonaStarterChooser: View {
                 Button("Use portrait") {
                     guard let selected, !importing else { return }
                     importing = true
-                    do { let persona = try starters.add(selected, to: library); onChoose(persona); dismiss() }
+                    do { onChoose(try starters.draft(selected, for: library)); dismiss() }
                     catch { notice = error.localizedDescription; importing = false }
                 }.keyboardShortcut(.defaultAction).disabled(selected == nil || library.isReadOnly || importing)
             }
@@ -445,34 +450,67 @@ private struct PersonaStarterChooser: View {
     }
 }
 
-private struct PersonaCardEditor: View {
+/// Edits a saved card, or finishes a new editable portrait. A saved card keeps
+/// Save and Cancel. A new portrait is a draft until Add persona, which saves its
+/// picture, card, selection and group membership together; Cancel or Escape
+/// drops it without a trace, and a failed Add keeps it here to try again.
+struct PersonaCardEditor: View {
+    enum Subject { case saved(SavedPersona), new(PersonaPortraitDraft) }
     @ObservedObject var library: PersonaLibrary
-    let persona: SavedPersona
+    let subject: Subject
     @Environment(\.dismiss) private var dismiss
     @State private var style: PersonaCardStyle
-    init(library: PersonaLibrary, persona: SavedPersona) {
-        self.library = library; self.persona = persona; _style = State(initialValue: persona.card ?? PersonaCardStyle())
+    @State private var failure: String?
+    init(library: PersonaLibrary, subject: Subject) {
+        self.library = library; self.subject = subject
+        switch subject {
+        case .saved(let persona): _style = State(initialValue: persona.card ?? PersonaCardStyle())
+        case .new(let draft): _style = State(initialValue: draft.card)
+        }
     }
-    private var draft: SavedPersona { var item = persona; item.card = style; return item }
+    private var isNew: Bool { if case .new = subject { return true }; return false }
+    private var preview: NSImage? {
+        switch subject {
+        case .saved(let persona): var item = persona; item.card = style; return library.renderedImage(for: item)
+        case .new(let draft): return try? PersonaCardRenderer.image(portrait: draft.portrait, style: style)
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Edit persona card").font(.title2.bold())
+            Text(isNew ? "New persona card" : "Edit persona card").font(.title2.bold())
             TextField("Visible label", text: $style.label).textFieldStyle(.roundedBorder)
             ColorPicker("Background colour", selection: Binding(get: { Color(nsColor: style.background.nsColor) },
                 set: { style.background = InkColor(NSColor($0)) }), supportsOpacity: false)
-            if let image = library.renderedImage(for: draft) {
+            if let image = preview {
                 Image(nsImage: image).resizable().scaledToFit().frame(height: 265).frame(maxWidth: .infinity)
+                    .accessibilityLabel("Preview of the persona card")
             }
-            Text("Leave the label empty to hide it. Scenes keep their existing copy until you use the card again.")
+            Text(isNew ? "Nothing is saved until you choose Add persona. Leave the label empty to hide it."
+                       : "Leave the label empty to hide it. Scenes keep their existing copy until you use the card again.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
+            if let failure {
+                Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            } else if let notice = library.notice { Text(notice).font(.caption).foregroundStyle(.orange) }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save card") { if library.updateCard(persona.id, style: style) { dismiss() } }
+                Button(isNew ? "Add persona" : "Save card") { commit() }
                     .keyboardShortcut(.defaultAction).disabled(library.isReadOnly || (try? style.validated()) == nil)
             }
         }.padding(24).frame(width: 420).background(Workbench.background).workbenchTheme()
+    }
+    private func commit() {
+        switch subject {
+        case .saved(let persona):
+            if library.updateCard(persona.id, style: style) { dismiss() }
+        case .new(var draft):
+            draft.card = style
+            do { try library.add(draft); dismiss() }
+            catch {
+                failure = "Couldn’t add this persona. " + error.localizedDescription
+                    + " Your picture and changes are kept, so you can choose Add persona again."
+            }
+        }
     }
 }
 

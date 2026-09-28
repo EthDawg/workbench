@@ -122,7 +122,9 @@ final class WorkbenchSettings: ObservableObject {
         defaults.set(value.rawValue, forKey: "appearance"); defaults.synchronize()
         refresh(); DistributedNotificationCenter.default().postNotificationName(notification, object: nil, userInfo: nil, deliverImmediately: true)
     }
-    private func refresh() {
+    /// Rereads the saved choice. Offscreen renders call it after choosing an
+    /// appearance in the volatile argument domain, which is never saved.
+    func refresh() {
         defaults.synchronize(); UserDefaults.standard.synchronize()
         #if APP_STORE
         // Use AppKit appearance rather than reading a system-owned defaults key.

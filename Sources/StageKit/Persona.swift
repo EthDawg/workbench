@@ -54,14 +54,40 @@ enum PersonaGeometry {
 }
 
 enum PersonaError: LocalizedError {
-    case invalidSettings, changedOnDisk, unreadableImage, outsidePreparedGroup
+    case invalidSettings, changedOnDisk, unreadableImage, outsidePreparedGroup, alreadyAdded
     var errorDescription: String? {
         switch self {
         case .invalidSettings: return "The saved personas contain unsupported or invalid settings. The original files are unchanged."
         case .changedOnDisk: return "The persona files changed outside this window. Reopen Workbench before saving changes."
         case .unreadableImage: return "This persona image is missing or unreadable. Import the finished image again."
         case .outsidePreparedGroup: return "Choose a persona in the prepared group."
+        case .alreadyAdded: return "This persona is already in your library."
         }
+    }
+}
+
+/// A new editable portrait between choosing its picture and Add persona. It
+/// lives only in memory: nothing is written, selected or added to a group until
+/// `PersonaLibrary.add(_:)`, so Cancel or Escape at any step leaves the library
+/// exactly as it was, with no file behind.
+struct PersonaPortraitDraft: Identifiable {
+    /// The saved persona's identity, fixed when the picture is chosen, so a
+    /// repeated Add can never make a second copy.
+    let id: UUID
+    /// The library name: the chosen file's name, as for every import.
+    let name: String
+    /// The chosen picture, normalised to PNG like every import. Add saves these bytes.
+    let png: Data
+    /// The same picture decoded once, for the editor's preview.
+    let portrait: NSImage
+    var card: PersonaCardStyle
+
+    init(_ imported: LogoImport.Image, card: PersonaCardStyle, name: String? = nil) throws {
+        guard let portrait = NSImage(data: imported.png), portrait.size.width > 0, portrait.size.height > 0
+        else { throw PersonaError.unreadableImage }
+        let proposed = (name ?? imported.name).trimmingCharacters(in: .whitespacesAndNewlines)
+        id = UUID(); self.name = proposed.isEmpty ? "Persona" : String(proposed.prefix(160))
+        png = imported.png; self.portrait = portrait; self.card = card
     }
 }
 
@@ -361,16 +387,46 @@ final class PersonaLibrary: NSObject, ObservableObject {
         return try PersonaCardRenderer.png(image)
     }
 
-    func importImage(card: PersonaCardStyle? = nil, onSelect: ((SavedPersona) -> Void)? = nil) {
+    /// Import finished card: the image is added at once, unchanged, as its label says.
+    func importImage(onSelect: ((SavedPersona) -> Void)? = nil) {
         guard writable() else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.message = card == nil ? "Choose a finished persona image. Existing transparency is preserved." : "Choose a portrait without baked labels. Workbench keeps the original and adds editable text and colour."
+        panel.message = "Choose a finished persona image. Existing transparency is preserved."
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            do { let item = try self.addImage(url, card: card); onSelect?(item) }
+            do { let item = try self.addImage(url); onSelect?(item) }
             catch { self.reportImport(error) }
         }
+    }
+
+    /// Chooses the picture for a new editable portrait. The picture is only read
+    /// here; `add(_:)` saves it when the person chooses Add persona.
+    func importPortrait(onDraft: @escaping (PersonaPortraitDraft) -> Void) {
+        guard writable() else { return }
+        let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
+        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.message = "Choose a portrait without baked labels. Workbench keeps the original and adds editable text and colour."
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do { onDraft(try self.portraitDraft(from: url, card: PersonaCardStyle())) }
+            catch { self.reportImport(error) }
+        }
+    }
+
+    /// Reads a picture into a new portrait draft without writing anything.
+    func portraitDraft(from url: URL, card: PersonaCardStyle, name: String? = nil) throws -> PersonaPortraitDraft {
+        guard writable() else { throw PersonaError.invalidSettings }
+        return try PersonaPortraitDraft(LogoImport.read(url), card: card.validated(), name: name)
+    }
+
+    /// Add persona: saves the draft's picture and card, selects it and adds it to
+    /// the active group, together and once. A failure leaves no new file and
+    /// changes nothing, so the same draft can be added again.
+    @discardableResult func add(_ draft: PersonaPortraitDraft) throws -> SavedPersona {
+        guard writable() else { throw PersonaError.invalidSettings }
+        guard !items.contains(where: { $0.id == draft.id }) else { throw PersonaError.alreadyAdded }
+        return try add(LogoImport.Image(png: draft.png, name: draft.name), id: draft.id, card: draft.card.validated())
     }
 
     func pasteImage(onSelect: ((SavedPersona) -> Void)? = nil) {
@@ -383,9 +439,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
         try add(LogoImport.read(url), fallbackName: name, card: card)
     }
 
-    private func add(_ imported: LogoImport.Image, fallbackName: String? = nil, card: PersonaCardStyle? = nil) throws -> SavedPersona {
+    private func add(_ imported: LogoImport.Image, fallbackName: String? = nil, id: UUID = UUID(), card: PersonaCardStyle? = nil) throws -> SavedPersona {
         guard writable() else { throw PersonaError.invalidSettings }
-        let id = UUID(), file = "persona-" + UUID().uuidString + ".png"
+        let file = "persona-" + UUID().uuidString + ".png"
         let proposedName = (fallbackName ?? imported.name).trimmingCharacters(in: .whitespacesAndNewlines)
         let item = try SavedPersona(id: id, name: proposedName.isEmpty ? "Persona" : String(proposedName.prefix(160)), image: file, card: card).validated()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
