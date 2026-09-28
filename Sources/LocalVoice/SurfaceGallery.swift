@@ -1425,7 +1425,7 @@ extension SurfacePass {
     func appMenuEntries(surface: String) -> [SurfaceGallery.Entry] {
         let actions = ["About Workbench": "Shows the About panel", "Check for Updates…": "Page: settings, and checks for updates",
                        "Copy build details": "Copies build details", "Hide Workbench": "Hides Workbench", "Quit Workbench": "Quits Workbench",
-                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page", "Quick controls": "Opens this panel",
+                       "Close Window": "Closes the front window", "Open Workbench": "Opens Home on its current page",
                        "Show floating toolbar": "Shows the toolbar", "Focus floating toolbar": "Moves keyboard focus to the toolbar",
                        "Restore menu-bar icon": "Shows the icon and the toolbar", "Switch to…": "Opens the Switch to panel", "Workbench Guide": "Opens the web guide"]
         return shell.makeMainMenu().main.items.compactMap(\.submenu).filter { ["Workbench", "Window", "Help"].contains($0.title) }.flatMap { menu in

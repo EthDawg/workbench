@@ -1752,13 +1752,6 @@
     "note": "Existing contextual \"Paste\" label inside app; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.main.AppDelegate.addItem.quick-controls",
-    "surface": "app menu bar",
-    "label": "Quick controls",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
     "id": "LocalVoice.main.AppDelegate.addItem.quit-workbench",
     "surface": "app menu bar",
     "label": "Quit Workbench",
