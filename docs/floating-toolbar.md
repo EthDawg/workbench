@@ -44,8 +44,12 @@ moves the toolbar (see Placement).
 
 Revealed, the toolbar is a 40-point capsule: `[tool ▾] [next action]
 [accessory] [⋯]`, reversed on a right-hand anchor. At standard text it is 248
-points wide, or 340 with an accessory. Longer labels and larger text grow the
-row; an essential action is never shrunk or truncated. When the accessory does
+points wide, or 340 with an accessory: the launcher's 48-point target sits flush
+with the capsule's end, then 4-point gaps between a next action of at least 152
+points, the 88-point accessory and the 32-point More, and 8 points of padding at
+the far end only. Padding at the launcher's end would move the shared centre 32
+points in and grow the row toward the display's edge. Longer labels and larger
+text grow the row; an essential action is never shrunk or truncated. When the accessory does
 not fit the display less 24 points, it waits in More. The launcher and the
 compact mark share one fixed centre on screen, and the row grows inward from it.
 
@@ -93,11 +97,16 @@ beside the launcher, on the side with more room, aligned with the launcher's
 outer edge and kept 8 points inside the display; it scrolls only when the
 display is shorter than the list.
 
-**More** (`⋯`) holds the current tool's options, then an Active work section with
-the finish or resume item for work running in another tool (`Stop drawing`,
-`End presentation`, `Hide persona`/`Hide personas`/`Show personas`,
-`Stop transcribing`), worded as that tool's own label would be, then Position…,
-Keep open, Hide toolbar and Settings…. The next action is the row's own button
+**More** (`⋯`) holds the current tool's options, then an Active work section,
+then Position…, Keep open, Hide toolbar and Settings…. Active work reaches
+everything the compact mark can show from whichever tool is chosen, with existing
+commands worded as their own tool words them (`ToolbarActiveWork`): `Stop drawing`,
+`End presentation`, `Hide persona`/`Hide personas`/`Show personas` and
+`Stop transcribing` for work running in another tool; `Transcribe meeting or
+call…` for a meeting recording saved for retry, from every tool, since Dictate's
+own options hold only its page; `Open Snap…` for an unsaved Snap capture; and the
+break timer's next transport as the timer names it, `Pause timer`,
+`Resume timer` or `Restart timer`, since Timer is not a tool. The next action is the row's own button
 and is not repeated there, and there is no Change tool: the launcher is the one
 way to another tool. Dictate, Read and Snap are start and stop on this surface,
 so each carries one door to its page and nothing else, named as
@@ -202,8 +211,11 @@ A recording that goes on while another job needs attention keeps the recording
 signal and adds a small warning badge inside the same target, and its
 description names both ("Recording dictation, Needs attention"). Shape and words
 carry each state; colour never does alone. VoiceOver announces each meaningful
-change once, a new indicator or badge but never a level, and never any
-transcript or result content.
+change once: a new indicator, a badge, or new words for the state, so a failure
+or waiting result that arrives under processing or playback is heard though the
+indicator keeps its priority. Never a level, and never any transcript or result
+content. A finished break timer ("Time is up") is neither live nor paused, although
+its session stays started until it is reset.
 
 ## Placement
 
