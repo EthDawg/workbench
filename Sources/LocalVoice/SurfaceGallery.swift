@@ -304,12 +304,13 @@ enum SurfaceGallery {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
-        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += try renderDictateStates(to: output) }
+        let dictateStates = try renderDictateStates(to: output)
+        if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += dictateStates.shots }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
         if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)] }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
-        let checks = try review.checks + checkToolbarVisibility() + header.checks
+        let checks = try dictateStates.checks + review.checks + checkToolbarVisibility() + header.checks
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
@@ -980,39 +981,79 @@ enum SurfaceGallery {
     /// Delivery as an option; nothing waits on the approval. Only the model's status is set, as a
     /// dictation leaves it; the clipboard is not touched. The pass's draft, status, delivery and
     /// approval are restored afterwards.
-    func renderDictateStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+    func renderDictateStates(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [String]) {
         let kept = (draft: model.transcript, raw: model.rawTranscript, status: model.status,
                     delivery: model.preferences.delivery, granted: model.accessibilityGranted)
-        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
         defer {
-            window.contentViewController = nil; window.close()
             model.transcript = kept.draft; model.rawTranscript = kept.raw; model.status = kept.status
             model.preferences.delivery = kept.delivery; model.accessibilityGranted = kept.granted
         }
         let words = SurfacePass.history[1].text
         model.preferences.delivery = .paste; model.accessibilityGranted = false
         model.rawTranscript = words; model.transcript = words; model.status = TextDelivery.copiedMessage
-        let (rep, drawn) = try renderPage("dictate", in: window)
-        var shots = [try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                         detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
-                         file: "page-dictate-state-manual-copy-\(theme).png", to: output)]
-        // Settings' Dictate options… lands on the options, not the top of the page (#134 H2).
-        let narrow = homeWindow(size: SurfaceGallery.sizes[1].size)
-        defer { narrow.contentViewController = nil; narrow.close() }
-        model.page = "settings"; settle(narrow.contentView?.superview ?? narrow.contentView!)
+        // Its window closes before the options check, so that check's window is the only Home open.
+        func manualCopy() throws -> SurfaceGallery.Shot {
+            let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+            defer { window.contentViewController = nil; window.close() }
+            let (rep, drawn) = try renderPage("dictate", in: window)
+            return try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                            detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
+                            file: "page-dictate-state-manual-copy-\(theme).png", to: output)
+        }
+        let manual = try manualCopy()
+        let options = try renderDictateOptionsFocused(to: output)
+        return (shots: [manual, options.shot], checks: [options.check])
+    }
+
+    /// Settings' Dictate options… lands on Dictate's Options (#134 H2). The window is the only
+    /// Home open, so no other page can take the request, and its Dictate reports where Options and
+    /// the visible scroll area were laid out (`pageSectionFrames`, nil in the app). Options must
+    /// first lie outside the visible area, or a page that never scrolled would pass. Then the
+    /// request is set on Settings, and the check waits, up to a deadline, until the page has taken
+    /// it and Options lies inside the visible area.
+    func renderDictateOptionsFocused(to output: URL) throws -> (shot: SurfaceGallery.Shot, check: String) {
+        final class Frames { var byID: [String: CGRect] = [:] }
+        let frames = Frames()
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size) { id, frame in frames.byID[id] = frame }
+        defer { window.contentViewController = nil; window.close(); model.focusRequest = nil }
+        let root = window.contentView?.superview ?? window.contentView!
+        func text(_ rect: CGRect?) -> String {
+            rect.map { "\(Int($0.width)) × \(Int($0.height)) at (\(Int($0.minX)), \(Int($0.minY)))" } ?? "not laid out"
+        }
+        func state() -> String {
+            "page \(model.page), request \(model.focusRequest == nil ? "taken" : "not taken"), Options \(text(frames.byID["dictate.options"])), "
+                + "visible scroll area \(text(frames.byID["dictate.visible"]))"
+        }
+        func optionsInView() -> Bool {
+            guard let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
+            return visible.insetBy(dx: -0.5, dy: -0.5).contains(options)
+        }
+        func wait(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(3)
+            repeat { settle(root, seconds: 0.1) } while !done() && Date() < deadline
+        }
+        model.focusRequest = nil
+        model.page = "dictate"
+        wait { frames.byID["dictate.options"] != nil && frames.byID["dictate.visible"] != nil }
+        guard frames.byID["dictate.options"] != nil, frames.byID["dictate.visible"] != nil, !optionsInView() else {
+            throw VoiceError.message("Dictate's Options must start outside the visible scroll area, or the options door cannot be checked: \(state()).")
+        }
+        let before = frames.byID["dictate.options"]
+        model.page = "settings"; settle(root)
+        frames.byID = [:]
         model.focusRequest = PageFocusRequest(target: .dictateOptions)
         model.page = "dictate"
-        let optionsFrame = narrow.contentView?.superview ?? narrow.contentView!
-        // The page takes the request asynchronously. Wait for it rather than one fixed settle, which
-        // a busy runner can outlast; the check still fails if the request is never taken.
-        let taken = Date().addingTimeInterval(3)
-        repeat { settle(optionsFrame, seconds: 0.1) } while model.focusRequest != nil && Date() < taken
-        guard model.focusRequest == nil else { throw VoiceError.message("Dictate did not take Settings' request to show its options.") }
-        settle(optionsFrame)
-        let (options, optionsSize) = (try snapshot(optionsFrame), optionsFrame.bounds.size)
-        shots.append(try save(options, id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(optionsSize.width)) × \(Int(optionsSize.height)) pt",
-                              detail: "The page opens scrolled to its Options, where VoiceOver starts.", file: "page-dictate-state-options-focused-\(theme).png", to: output))
-        return shots
+        wait { model.focusRequest == nil && optionsInView() }
+        guard model.focusRequest == nil, optionsInView() else {
+            throw VoiceError.message("Settings' Dictate options… did not bring Dictate's Options into view: \(state()).")
+        }
+        settle(root)
+        let size = root.bounds.size, landed = frames.byID["dictate.options"], visible = frames.byID["dictate.visible"]
+        let shot = try save(try snapshot(root), id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(size.width)) × \(Int(size.height)) pt",
+                            detail: "The page opens scrolled so its Options lie inside the visible area, where VoiceOver starts; the check waits for that and fails otherwise.",
+                            file: "page-dictate-state-options-focused-\(theme).png", to: output)
+        return (shot, "Settings' Dictate options…, in the only Workbench window open, moved Dictate's Options from \(text(before)) to \(text(landed)), "
+                    + "inside the visible scroll area \(text(visible)) below the title bar, and the page took the request.")
     }
 
     // MARK: Home states
@@ -1974,10 +2015,13 @@ enum SurfaceGallery {
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
-    func homeWindow(size: NSSize) -> NSWindow {
+    /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
+    /// lay out their named sections (`pageSectionFrames`), and no other window's.
+    func homeWindow(size: NSSize, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
-        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap))
+        window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)
+            .environment(\.pageSectionFrames, sectionFrames))
         window.setContentSize(size)
         return window
     }
