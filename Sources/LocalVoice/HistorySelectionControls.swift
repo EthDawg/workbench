@@ -317,6 +317,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
                                 startAction(previous)
                             }
                         }.font(.caption).padding(.vertical, 4).padding(.horizontal, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(revealed == previous.id ? Workbench.accent : .clear, lineWidth: 2))
                             .id(HistoryEntry.ID.result(previous.id))
                     }
