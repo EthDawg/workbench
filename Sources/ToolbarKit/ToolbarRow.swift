@@ -183,7 +183,7 @@ public struct ToolbarRow: View {
                                 // A waiting result keeps its status on the launcher while the row is
                                 // open, the mark's glyph as a badge on the tool's symbol (#211 F1).
                                 if let glyph = ToolbarResultGlyph(state.status.indicator) {
-                                    Image(systemName: glyph.name).font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(glyph.color)
+                                    ToolbarBadge(id: "result", symbol: glyph.name, color: glyph.color, size: ToolbarLayout.badge * scale)
                                         .offset(x: 5 * scale, y: -4 * scale)
                                 }
                             }
@@ -263,6 +263,34 @@ struct ToolbarResultGlyph {
     }
 }
 
+/// A badge's glyph in a fixed square, so where it sits never depends on its symbol's metrics
+/// (#211 F4). It reports where it was laid out to checks through `toolbarBadgeFrames`.
+struct ToolbarBadge: View {
+    /// "stopsSoon", "attention" or "result": what checks find it by.
+    let id: String
+    let symbol: String
+    let color: Color
+    var size: CGFloat = ToolbarLayout.badge
+    @Environment(\.toolbarBadgeFrames) private var report
+    var body: some View {
+        Image(systemName: symbol).resizable().scaledToFit().fontWeight(.bold).foregroundStyle(color)
+            .frame(width: size, height: size)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in report?(id, frame) }
+    }
+}
+
+private struct ToolbarBadgeFramesKey: EnvironmentKey {
+    static let defaultValue: ((String, CGRect) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Checks read each badge's frame, in its hosting view, from here; nil in the app.
+    var toolbarBadgeFrames: ((String, CGRect) -> Void)? {
+        get { self[ToolbarBadgeFramesKey.self] }
+        set { self[ToolbarBadgeFramesKey.self] = newValue }
+    }
+}
+
 /// The capture signal: the shared voice trace, a red recording dot and the recording owner's own
 /// level through the shared envelope and stroke (#134, #209), with its badges. A timer beside the
 /// trace says this recording stops at its limit within seconds; a warning on the capsule's corner
@@ -279,13 +307,13 @@ struct ToolbarCaptureSignal: View {
         HStack(spacing: 3) {
             VoiceTrace(level: status.level, accent: accent)
             if status.badges.contains(.stopsSoon) {
-                Image(systemName: "timer").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
+                ToolbarBadge(id: "stopsSoon", symbol: "timer", color: .orange)
             }
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .overlay(alignment: .topTrailing) {
             if status.badges.contains(.attention) {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
+                ToolbarBadge(id: "attention", symbol: "exclamationmark.triangle.fill", color: .orange)
                     .offset(x: 1, y: -7)
             }
         }

@@ -71,42 +71,44 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
+    /// Each badge's frame in `root`'s hosting view, as the badge reports its own layout (#211 F4):
+    /// read from the layout rather than from pixels, so no backing scale, colour space or accent
+    /// colour can move it.
+    @MainActor private func badgeFrames<V: View>(_ root: V) -> (view: NSView, frames: [String: CGRect]) {
+        var frames: [String: CGRect] = [:]
+        let view = NSHostingView(rootView: root.environment(\.toolbarBadgeFrames) { frames[$0] = $1 })
+        view.frame = NSRect(origin: .zero, size: view.fittingSize)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        window.contentView = nil
+        return (view, frames)
+    }
+
     /// A background failure in a recording's last seconds shows both badges inside the 48 × 28
-    /// target (#211 F4): the timer beside the trace, and the warning on the capsule's corner like
-    /// a badge on an icon, each drawn at 7 points, neither covering the other.
+    /// target (#211 F4): the timer beside the trace and the warning on the capsule's corner, like
+    /// a badge on an icon, each a fixed 7-point square, neither covering the other, and each where
+    /// it is when it shows alone.
     @MainActor func testBothBadgesShowInsideTheMark() throws {
         _ = NSApplication.shared
-        /// Where the mark draws anything, and where it draws the badges' orange, in points.
-        func drawn(_ activity: ToolbarActivity) throws -> (orange: NSRect, all: NSRect) {
-            let view = NSHostingView(rootView: ToolbarCompactMark(status: .resolve(activity)).environment(\.colorScheme, .light))
-            view.frame = NSRect(origin: .zero, size: view.fittingSize)
-            view.layoutSubtreeIfNeeded()
-            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            let perPoint = CGFloat(bitmap.pixelsHigh) / view.bounds.height
-            var orange = NSRect.null, all = NSRect.null
-            for y in 0..<bitmap.pixelsHigh {
-                for x in 0..<bitmap.pixelsWide {
-                    guard let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), colour.alphaComponent > 0.2 else { continue }
-                    let pixel = NSRect(x: CGFloat(x) / perPoint, y: CGFloat(y) / perPoint, width: 1 / perPoint, height: 1 / perPoint)
-                    all = all.union(pixel)
-                    if colour.redComponent > 0.8, (0.3...0.75).contains(colour.greenComponent), colour.blueComponent < 0.35 { orange = orange.union(pixel) }
-                }
-            }
-            return (orange, all)
+        func badges(_ activity: ToolbarActivity) -> [String: CGRect] { badgeFrames(ToolbarCompactMark(status: .resolve(activity))).frames }
+        let timer = badges(ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true))
+        let warning = badges(ToolbarActivity(capture: .dictation, level: 0.4, failure: true))
+        let both = badges(ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true))
+        XCTAssertEqual(Set(timer.keys), ["stopsSoon"])
+        XCTAssertEqual(Set(warning.keys), ["attention"])
+        XCTAssertEqual(Set(both.keys), ["stopsSoon", "attention"], "both show together")
+        let target = CGRect(origin: .zero, size: ToolbarLayout.mark)
+        for (badge, frame) in both {
+            XCTAssertEqual(frame.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "\(badge) is a 7-point square")
+            XCTAssertTrue(target.contains(frame), "\(badge) stays inside the 48 × 28 target: \(frame)")
         }
-        let timer = try drawn(ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true))
-        let warning = try drawn(ToolbarActivity(capture: .dictation, level: 0.4, failure: true))
-        let both = try drawn(ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true))
-        let target = NSRect(origin: .zero, size: ToolbarLayout.mark)
-        for (name, found) in [("the timer", timer), ("the warning", warning), ("both", both)] {
-            XCTAssertFalse(found.orange.isNull, "\(name) draws its badge")
-            XCTAssertTrue(target.contains(found.all), "\(name) stays inside the 48 × 28 target: \(found.all)")
-        }
-        XCTAssertFalse(timer.orange.intersects(warning.orange), "neither badge covers the other: \(timer.orange), \(warning.orange)")
-        XCTAssertTrue(both.orange.contains(timer.orange.insetBy(dx: 0.5, dy: 0.5)) && both.orange.contains(warning.orange.insetBy(dx: 0.5, dy: 0.5)),
-                      "both badges show together: \(both.orange) holds \(timer.orange) and \(warning.orange)")
-        XCTAssertLessThan(warning.orange.minY, (ToolbarLayout.mark.height - ToolbarLayout.statusHeight) / 2 + 1, "the warning sits on the capsule's corner")
+        let stopsSoon = try XCTUnwrap(both["stopsSoon"]), attention = try XCTUnwrap(both["attention"])
+        XCTAssertFalse(stopsSoon.intersects(attention), "neither badge covers the other: \(stopsSoon), \(attention)")
+        XCTAssertEqual(stopsSoon, timer["stopsSoon"], "the timer keeps its place when the warning joins it")
+        XCTAssertEqual(attention, warning["attention"], "and the warning keeps its place when the timer joins it")
+        XCTAssertLessThanOrEqual(attention.maxY, (ToolbarLayout.mark.height - ToolbarLayout.statusHeight) / 2, "the warning sits on the capsule's corner")
     }
 
     /// A result waiting for the person keeps its status on the launcher while the row is open
@@ -114,33 +116,23 @@ final class ToolbarNativeTests: XCTestCase {
     /// value and the tooltip. With nothing waiting, nothing is added.
     @MainActor func testTheLauncherKeepsAWaitingResultsStatus() throws {
         _ = NSApplication.shared
-        func launcher(_ activity: ToolbarActivity) throws -> (button: NSButton, orange: Int) {
+        func launcher(_ activity: ToolbarActivity) throws -> (button: NSButton, badge: CGRect?, target: CGRect) {
             let state = ToolbarViewState(name: "waiting", tier: .revealed, mode: .dictate, status: .resolve(activity))
-            let view = NSHostingView(rootView: ToolbarRow(state: state).environment(\.colorScheme, .light))
-            view.frame = NSRect(origin: .zero, size: view.fittingSize)
-            view.layoutSubtreeIfNeeded()
+            let (view, frames) = badgeFrames(ToolbarRow(state: state))
             let button = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
-            let frame = button.convert(button.bounds, to: view)
-            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            let perPoint = CGFloat(bitmap.pixelsWide) / view.bounds.width
-            var orange = 0
-            for y in 0..<bitmap.pixelsHigh {
-                for x in 0..<bitmap.pixelsWide where (frame.minX..<frame.maxX).contains(CGFloat(x) / perPoint) {
-                    guard let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), colour.alphaComponent > 0.2 else { continue }
-                    if colour.redComponent > 0.8, (0.3...0.75).contains(colour.greenComponent), colour.blueComponent < 0.35 { orange += 1 }
-                }
-            }
-            return (button, orange)
+            return (button, frames["result"], button.convert(button.bounds, to: view))
         }
         let failure = try launcher(ToolbarActivity(failure: true))
-        XCTAssertGreaterThan(failure.orange, 0, "the warning is drawn on the launcher")
+        let badge = try XCTUnwrap(failure.badge, "the warning is laid out on the launcher")
+        XCTAssertTrue(failure.target.contains(badge), "on the launcher's own target: \(badge) in \(failure.target)")
+        XCTAssertEqual(badge.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "a 7-point square at standard text")
         XCTAssertEqual(failure.button.accessibilityValue() as? String, "Dictate. Needs attention")
         XCTAssertEqual(failure.button.toolTip, "Dictate. Needs attention. Click to choose a tool; drag to move.")
         let receipt = try launcher(ToolbarActivity(pendingDelivery: true))
+        XCTAssertNotNil(receipt.badge, "a result waiting to be delivered is badged too")
         XCTAssertEqual(receipt.button.accessibilityValue() as? String, "Dictate. Result waiting to be delivered")
         let idle = try launcher(.idle)
-        XCTAssertEqual(idle.orange, 0, "with nothing waiting, no badge")
+        XCTAssertNil(idle.badge, "with nothing waiting, no badge")
         XCTAssertEqual(idle.button.accessibilityValue() as? String, "Dictate")
     }
 
