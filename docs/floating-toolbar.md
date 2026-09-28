@@ -162,7 +162,8 @@ Draw holds the drawing menu inline. Present holds the presentation items inline,
 Saved Prompts… and Switch to Browser Tab; source, reconnect, proportions, motion,
 window placement, native-app handoff and End remain reachable there. Persona
 holds the persona menu inline: the frozen session's public labels, size,
-position, lock, add/remove, visibility, explicit layout saving and End. Mac
+position, lock, add/remove, visibility, explicit layout saving and End, and,
+while no live copy is selected, `Open Persona…`, its door to preparation. Mac
 colour selection updates the same drawing settings from either entry point.
 Native menus snapshot their content before tracking rather than rebuilding under
 the pointer.
@@ -171,10 +172,29 @@ The primary keeps the width of the widest label any tool would show for the
 current live state, so choosing another tool never moves More or the accessory
 under the pointer, idle or mid-session. The row holds no information-only text:
 the assigned key and any count are the action's hover hint. Snap & Talk keeps its
-session capture count in the label between captures and while saving. Present's
-accessory is Prompts. Disabled or unassigned shortcut combinations are omitted;
-the toolbar has no shortcut editor. Keep open is an explicit persistent
-preference.
+session capture count in the label between captures and while saving. Disabled or
+unassigned shortcut combinations are omitted; the toolbar has no shortcut editor.
+Keep open is an explicit persistent preference.
+
+**Contextual accessories** (#134 part B). A tool has at most one accessory, the
+existing adjustment it needs most often, shown only while it applies
+(`ToolbarAccessory.offered`). Snap & Talk's **Review**, while a session is open,
+opens that session's review, as More's Review Snap & Talk item does; the count
+stays with Capture next. Draw's **Tools** is the drawing choices its More holds.
+Present's **Prompts** is the one Saved Prompts picker. Persona's **Shape**, while
+a live copy is selected, a hidden one included, is Circle, Card or Original for
+exactly that copy, as its Appearance menu offers them: the copy is taken as the
+menu opens (`selectedPersonaCopy`, `personaShape(of:)`, `setPersonaShape(_:for:)`)
+and a choice never changes the saved persona, another copy or the library's
+selection (#169, #170). With a prepared set only the selected copy changes.
+VoiceOver and the tooltip say "Shape of the selected persona", adding "hidden"
+while the copy is. With no live copy Persona has no accessory and More offers
+Open Persona… instead. Dictate, Read and Snap have none in this increment; their
+options stay in the menu-bar panel and on their pages. Review goes straight to
+the review and has no chevron; the others open a list and have one. An accessory
+that does not fit the display less 24 points waits in More, which already holds
+Review, Tools and Prompts, and Shape under a shown copy's Appearance; for a hidden
+card, whose Persona menu has no Appearance, More adds Shape itself.
 
 **One popover at a time.** The chooser, More, the accessory's picker and
 Position… close one another, and hover never opens any of them. Each holds the
@@ -536,7 +556,13 @@ no-speech cue must show at the toolbar's place and give way to the mark; a Stop
 pressed through the recording's completion must start nothing; and the coaching
 card must sit 12 points above the mark, or below it at a top dock, centred on the
 launcher, with nothing of the toolbar's in the gap and the mark unmoved. Each
-fails the run. The floating shots render the no-speech cue, the reading that
+fails the run. Revealed with nothing live, only Draw and Present must show an
+accessory, Tools and Prompts; Tools must hold Draw's drawing choices, Persona's
+More must open Persona's page, and with a session open Snap & Talk's Review must
+open that session's review. Shape needs a live persona copy, which the gallery
+never shows over the Mac: `--check-floating-toolbar` checks its menu with stand-in
+copies and when More must hold it, and the StageKit suite checks the copy it acts
+on and whether it is hidden. The floating shots render the no-speech cue, the reading that
 stopped, the receipt with its ring and the coaching card.
 `ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
 inward growth, a width change that must not move the launcher or turn the row
