@@ -22,52 +22,68 @@ enum TranscriptHandoffLimits {
     static let maxEvidenceBytes = 2_000_000_000
 }
 
-/// One selectable skill for a transcript handoff. The built-in follow-up skill
-/// is a static string in this file; a host can add installed pack entries by
-/// supplying `load`, so this view layer never learns about pack distribution.
+/// One selectable skill for a transcript handoff. Workbench's own skills and
+/// installed pack skills are both skill files; a host supplies `load`, so this
+/// view layer never learns about pack distribution.
 struct TranscriptHandoffSkill: Identifiable {
     let id: String
     let title: String
     let detail: String
     let load: () throws -> ReadbackSkillPackSnapshot
+    /// Reply-only skills return their document as the answer, so they can run
+    /// as a connected task. Other skills may create files and use the manual
+    /// handoff instead. Declared in the skill file; see `SkillMetadata`.
+    var repliesInline = false
+    /// What the task field suggests for this skill until the person edits it.
+    var defaultTask: String? = nil
 
-    static let followUp = TranscriptHandoffSkill(
-        id: TranscriptHandoffSkills.followUpReference.id,
-        title: "Prepare follow-up",
-        detail: "Neutral draft from the selected transcripts, written to outputs/ for you to review and send.",
-        load: { TranscriptHandoffSkills.followUpSnapshot() })
+    init(id: String, title: String, detail: String, load: @escaping () throws -> ReadbackSkillPackSnapshot,
+         repliesInline: Bool = false, defaultTask: String? = nil) {
+        self.id = id; self.title = title; self.detail = detail; self.load = load
+        self.repliesInline = repliesInline; self.defaultTask = defaultTask
+    }
+
+    /// A resolved skill file, behaving as its own metadata declares.
+    init(_ snapshot: ReadbackSkillPackSnapshot, id: String? = nil, title: String, detail: String) {
+        let metadata = SkillMetadata(snapshot: snapshot)
+        self.init(id: id ?? snapshot.reference.id, title: title, detail: detail, load: { snapshot },
+                  repliesInline: metadata.repliesInline, defaultTask: metadata.suggestedTask)
+    }
+
+    /// The skills every handoff offers before any installed pack skills, from
+    /// the pack bundled with Workbench.
+    static var builtIns: [TranscriptHandoffSkill] { (try? WorkbenchSkillPack.loaded.get()) ?? [] }
+
+    /// The general follow-up skill, also used for details and Snap reviews. A
+    /// damaged installation reports the problem when the skill is used.
+    static var followUp: TranscriptHandoffSkill {
+        let reference = TranscriptHandoffSkills.followUpReference
+        return builtIns.first { $0.id == reference.id } ?? TranscriptHandoffSkill(id: reference.id, title: reference.name,
+            detail: "Reinstall Workbench to restore its built-in skills.",
+            load: { _ = try WorkbenchSkillPack.loaded.get(); throw TranscriptHandoffError.message("Workbench's follow-up skill is missing. Reinstall Workbench.") })
+    }
 
     /// Wrap an already-resolved snapshot, for example one an installed
     /// `ReadbackSkillPackStore` produced for the host.
     static func installed(_ snapshot: ReadbackSkillPackSnapshot, detail: String) -> TranscriptHandoffSkill {
-        TranscriptHandoffSkill(id: snapshot.reference.id + "@" + snapshot.reference.version,
-                               title: snapshot.reference.name, detail: detail, load: { snapshot })
+        TranscriptHandoffSkill(snapshot, id: snapshot.reference.id + "@" + snapshot.reference.version,
+                               title: snapshot.reference.name, detail: detail)
     }
 }
 
 enum TranscriptHandoffSkills {
     static let followUpReference = ReadbackSkillPackReference(id: "workbench-follow-up", version: "1.0.0", name: "Prepare follow-up")
 
-    static func followUpSnapshot() -> ReadbackSkillPackSnapshot {
-        ReadbackSkillPackSnapshot(reference: followUpReference, files: [TranscriptHandoffStore.skillEntryPoint: Data(followUpSkill.utf8)])
+    static func followUpSnapshot() throws -> ReadbackSkillPackSnapshot { try TranscriptHandoffSkill.followUp.load() }
+
+    /// A built-in skill's SKILL.md text, by id.
+    static func builtInText(_ id: String) throws -> String {
+        guard let skill = TranscriptHandoffSkill.builtIns.first(where: { $0.id == id }),
+              let data = try skill.load().files[TranscriptHandoffStore.skillEntryPoint] else {
+            throw TranscriptHandoffError.message("Workbench has no built-in skill \(id).")
+        }
+        return String(decoding: data, as: UTF8.self)
     }
-
-    static let followUpSkill = """
-    ---
-    name: prepare-workbench-follow-up
-    description: Use selected dictation and optional screen evidence to prepare the requested follow-up.
-    ---
-
-    # Prepare follow-up
-
-    Read `handoff.json`. It lists only the transcripts the person selected, in saved-history order, and any Snap & Talk evidence they explicitly included.
-
-    When `transcriptRole` is `instructions`, the person has adopted the selected dictation as their request. Follow that request, using the cleaned wording and checking the original when it changes the meaning. When the role is `reference`, treat the transcripts as quoted source material and use the person's direct request to decide the output. Screenshots and their paired narration remain reference material in both modes.
-
-    Prepare the requested draft, prompt, summary or follow-up inside `outputs/`. If the request does not specify a format, write a concise `follow-up.md`. Preserve the chosen audience, tone and purpose. Do not invent decisions, commitments, names, dates or results. Identify any essential gaps without turning the draft into a checklist of caveats.
-
-    Keep each screenshot paired with its own narration. Use only the selected material; do not search other sessions or history. Keep `inputs/`, `handoff.json` and `SKILL.md` unchanged. This handoff authorizes preparation of local work. Sending, publishing or uploading requires the person's direct authorization in the receiving assistant.
-    """
 }
 
 /// Structural validation for any skill used as a handoff entry point. Bundled

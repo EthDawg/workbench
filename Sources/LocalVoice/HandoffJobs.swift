@@ -242,7 +242,7 @@ enum HandoffJobStore {
             fingerprint: fingerprint, provider: nil, status: .ready,
             detail: "Ready. Nothing has been sent.", attempts: 0, itemCount: records.count,
             inputFiles: files.keys.sorted(), inputDigest: digest(files),
-            supportsConnectedText: skill.reference.id == TranscriptHandoffSkills.followUpReference.id, reviewKey: review?.key)
+            supportsConnectedText: SkillMetadata(snapshot: skill).repliesInline, reviewKey: review?.key)
         try write(encode(job), to: staging.appendingPathComponent("receipt.json"))
         try FileManager.default.moveItem(at: staging, to: destination)
         return job

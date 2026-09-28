@@ -152,7 +152,8 @@ final class SnapStore {
 
     @discardableResult
     func insert(originalPNG: Data, renderedPNG: Data? = nil, width: Int, height: Int,
-                title: String, source: SnapSource, edit: SnapEdit = .init(), notes: String = "", tags: [String] = [], id: UUID = UUID()) throws -> SnapItem {
+                title: String, source: SnapSource, edit: SnapEdit = .init(), notes: String = "", tags: [String] = [], id: UUID = UUID(),
+                createdAt: Date = Date()) throws -> SnapItem {
         guard !originalPNG.isEmpty, originalPNG.count <= Self.maximumImageBytes,
               renderedPNG.map({ !$0.isEmpty && $0.count <= Self.maximumImageBytes }) ?? true else {
             throw SnapError.message("Choose an image smaller than 100 MB.")
@@ -163,7 +164,7 @@ final class SnapStore {
         let staging = root.appendingPathComponent(".pending-\(UUID().uuidString)", isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: staging) }
-        var item = SnapItem(id: id, createdAt: Date(), updatedAt: Date(), title: title, source: source,
+        var item = SnapItem(id: id, createdAt: createdAt, updatedAt: Date(), title: title, source: source,
                             pixelWidth: width, pixelHeight: height, originalSHA256: Self.digest(originalPNG), imageSHA256: Self.digest(originalPNG), edit: edit)
         item.notes = notes; item.tags = tags
         try item.validate()
@@ -243,6 +244,22 @@ final class SnapStore {
             throw SnapError.message("This edit has too many annotation points to save. Undo or clear some marks, then try again. The original is unchanged.")
         }
         return bytes
+    }
+
+    /// Search text and a repeat fingerprint, only while they still describe the
+    /// current image. Missing, stale or unreadable data is simply rebuilt.
+    func derived(for item: SnapItem) -> SnapDerivedData? {
+        guard let directory = try? itemDirectory(item.id),
+              let data = try? readPrivateFile(directory.appendingPathComponent(SnapDerivedData.fileName), maximum: SnapDerivedData.maximumBytes),
+              let value = try? JSONDecoder().decode(SnapDerivedData.self, from: data),
+              value.version == SnapDerivedData.currentVersion, value.imageSHA256 == item.imageSHA256 else { return nil }
+        return value
+    }
+
+    func writeDerived(_ value: SnapDerivedData, for id: UUID) throws {
+        let data = try JSONEncoder().encode(value)
+        guard data.count <= SnapDerivedData.maximumBytes else { throw SnapError.message("This Snap's search data is too large to keep.") }
+        try write(data, to: try itemDirectory(id).appendingPathComponent(SnapDerivedData.fileName))
     }
 
     func organizationURL(key: String) throws -> URL {
