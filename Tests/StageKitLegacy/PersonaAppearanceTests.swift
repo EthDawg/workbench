@@ -605,10 +605,10 @@ final class PersonaAppearanceTests {
             renderIn(theme == "dark" ? "Dark" : "Light")
             try MainActor.assumeIsolated {
                 var circle = draft; circle.appearance.shape = .circle
-                try render(PersonaCardEditor(library: library, subject: .new(circle)), to: directory.appendingPathComponent("persona-editor-new-circle-\(theme).png"))
+                try render(PersonaCardEditor(library: library, session: PersonaEditorSession(.new(circle))), to: directory.appendingPathComponent("persona-editor-new-circle-\(theme).png"))
                 var card = draft; card.appearance.shape = .card
-                try render(PersonaCardEditor(library: library, subject: .new(card)), to: directory.appendingPathComponent("persona-editor-new-card-\(theme).png"))
-                try render(PersonaCardEditor(library: library, subject: .saved(finished)), to: directory.appendingPathComponent("persona-editor-saved-original-\(theme).png"))
+                try render(PersonaCardEditor(library: library, session: PersonaEditorSession(.new(card))), to: directory.appendingPathComponent("persona-editor-new-card-\(theme).png"))
+                try render(PersonaCardEditor(library: library, session: PersonaEditorSession(.saved(finished))), to: directory.appendingPathComponent("persona-editor-saved-original-\(theme).png"))
                 library.selectedID = persona.id
                 try render(PersonaLibraryView(library: library, mode: .workspace).frame(width: 834, height: 730),
                            to: directory.appendingPathComponent("persona-workspace-\(theme).png"))

@@ -76,24 +76,30 @@ final class PersonaCreationTests {
         let before = try snapshot(f)
         XCTAssertEqual(before.activeGroupID, f.group)
         XCTAssertEqual(before.selectedID, f.existing[0].id)
+        // The workspace's own editor holder and session. Cancel calls cancel() and
+        // closes the sheet, which clears the holder; Escape presses Cancel.
+        var editors = PersonaEditorHolder()
 
-        // Import portrait: choose, then edit, then Cancel or Escape.
-        var imported: PersonaPortraitDraft? = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle())
+        // Import portrait: choose, then edit, then Cancel.
+        XCTAssertTrue(editors.open(.new(try f.library.portraitDraft(from: f.source, card: PersonaCardStyle()))))
         XCTAssertEqual(try snapshot(f), before, "Choosing a picture saves nothing")
-        imported?.card.label = "Synthetic facilities lead"
-        imported?.card.background = InkColor(0.6, 0.2, 0.3)
+        editors.current?.style.label = "Synthetic facilities lead"
+        editors.current?.style.background = InkColor(0.6, 0.2, 0.3)
         XCTAssertEqual(try snapshot(f), before, "Editing the label and colour saves nothing")
-        imported = nil // Cancel and Escape both drop the editor's draft.
+        editors.current?.cancel(); editors.current = nil
         XCTAssertEqual(try snapshot(f), before, "Cancel leaves the library, selection, membership and files as they were")
 
-        // Choose a starter portrait: Use portrait, then edit, then Cancel or Escape.
+        // Choose a starter portrait: Use portrait, then edit, then Escape.
         let portrait = PersonaStarterLibrary.portraits[2]
-        var starter: PersonaPortraitDraft? = try f.starters.draft(portrait, for: f.library)
-        XCTAssertEqual(starter?.card.label, portrait.label)
+        XCTAssertTrue(editors.open(.new(try f.starters.draft(portrait, for: f.library))))
+        XCTAssertEqual(editors.current?.style.label, portrait.label)
         XCTAssertEqual(try snapshot(f), before, "Use portrait saves nothing")
-        starter?.card.label = ""
+        editors.current?.style.label = ""
         XCTAssertEqual(try snapshot(f), before)
-        starter = nil
+        let escaped = editors.current
+        escaped?.cancel(); editors.current = nil
+        XCTAssertTrue(escaped?.isFinished == true)
+        XCTAssertTrue(escaped?.commit(to: f.library) == true, "A cancelled draft can no longer be added")
         XCTAssertEqual(try snapshot(f), before)
 
         // Nothing reached the archive either.
@@ -101,7 +107,35 @@ final class PersonaCreationTests {
         XCTAssertEqual(reopened.items, before.items)
         XCTAssertEqual(reopened.selectedID, before.selectedID)
         XCTAssertEqual(reopened.groups, before.groups)
-        XCTAssertTrue(imported == nil && starter == nil)
+    }
+
+    /// A second import or starter never replaces an open draft or its edits.
+    func testASecondDraftNeverReplacesAnOpenOne() throws {
+        let f = try fixture()
+        defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
+        var editors = PersonaEditorHolder()
+        let first = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle())
+        XCTAssertTrue(editors.open(.new(first)))
+        editors.current?.style.label = "First draft's edits"
+        let second = try f.starters.draft(PersonaStarterLibrary.portraits[0], for: f.library)
+        XCTAssertFalse(editors.open(.new(second)))
+        XCTAssertFalse(editors.open(.saved(f.existing[1])))
+        XCTAssertEqual(editors.current?.style.label, "First draft's edits", "The open draft keeps its edits")
+        if case .new(let open)? = editors.current?.subject { XCTAssertEqual(open.id, first.id) }
+        else { XCTAssertTrue(false, "The first draft stays open") }
+    }
+
+    /// A new editor starts without an earlier library notice.
+    func testANewDraftClearsAnEarlierNotice() throws {
+        let f = try fixture()
+        defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
+        f.library.remove(f.existing[1].id)
+        XCTAssertNotNil(f.library.notice)
+        _ = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle())
+        XCTAssertTrue(f.library.notice == nil, "Importing a portrait starts the editor without the old notice")
+        f.library.notice = "An earlier message"
+        _ = try f.starters.draft(PersonaStarterLibrary.portraits[0], for: f.library)
+        XCTAssertTrue(f.library.notice == nil, "So does choosing a starter")
     }
 
     func testRepeatedCancelsLeaveNoDuplicatesOrFiles() throws {
@@ -110,12 +144,14 @@ final class PersonaCreationTests {
         let before = try snapshot(f)
         let temporary = try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
             .filter { $0.hasPrefix("persona-") }
+        var editors = PersonaEditorHolder()
         for round in 0..<6 {
-            var draft = try round.isMultiple(of: 2)
+            let draft = try round.isMultiple(of: 2)
                 ? f.library.portraitDraft(from: f.source, card: PersonaCardStyle())
                 : f.starters.draft(PersonaStarterLibrary.portraits[round], for: f.library)
-            draft.card.label = "Draft \(round)"
-            _ = draft // Cancel.
+            XCTAssertTrue(editors.open(.new(draft)))
+            editors.current?.style.label = "Draft \(round)"
+            editors.current?.cancel(); editors.current = nil
         }
         XCTAssertEqual(try snapshot(f), before, "Six cancelled drafts leave no item, membership or file")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
@@ -126,22 +162,26 @@ final class PersonaCreationTests {
         let f = try fixture()
         defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
         let before = try snapshot(f)
-        var draft = try f.starters.draft(PersonaStarterLibrary.portraits[0], for: f.library)
-        draft.card = PersonaCardStyle(label: "Synthetic reception lead", background: InkColor(0.2, 0.3, 0.6))
-        let added = try f.library.add(draft)
-        XCTAssertEqual(added.id, draft.id)
+        var editors = PersonaEditorHolder()
+        let draft = try f.starters.draft(PersonaStarterLibrary.portraits[0], for: f.library)
+        XCTAssertTrue(editors.open(.new(draft)))
+        guard let session = editors.current else { return }
+        session.style = PersonaCardStyle(label: "Synthetic reception lead", background: InkColor(0.2, 0.3, 0.6))
+        XCTAssertTrue(session.commit(to: f.library), "Add persona closes the editor")
         XCTAssertEqual(f.library.items.map(\.id), before.items.map(\.id) + [draft.id], "Exactly one new saved item")
         XCTAssertEqual(f.library.selectedID, draft.id, "Add selects the new persona")
         XCTAssertEqual(f.library.activeGroup?.personaIDs, [f.existing[0].id, draft.id], "One membership, in the active group only")
-        XCTAssertEqual(f.library.items.last?.card, draft.card)
-        let stored = f.store.appendingPathComponent(added.image)
-        XCTAssertEqual(try Data(contentsOf: stored), draft.png, "The chosen picture is saved as chosen")
+        XCTAssertEqual(f.library.items.last?.card, session.style)
+        guard let added = f.library.items.last else { return }
+        XCTAssertEqual(try Data(contentsOf: f.store.appendingPathComponent(added.image)), draft.png, "The chosen picture is saved as chosen")
         let after = try snapshot(f)
         XCTAssertEqual(Set(after.files.keys), Set(before.files.keys).union([added.image]), "One new picture file")
         XCTAssertEqual(after.originals, before.originals, "The chosen file and starters are unchanged")
 
-        // Add again, as a double click would: no second copy, nothing written.
+        // Add again, as a double click would: it is already saved, so the editor
+        // just closes; there is no second copy and nothing is written.
         XCTAssertThrowsError(try f.library.add(draft))
+        XCTAssertTrue(PersonaEditorSession(.new(draft)).commit(to: f.library))
         XCTAssertEqual(try snapshot(f), after)
         let reopened = PersonaLibrary(root: f.store); defer { reopened.shutdown() }
         XCTAssertEqual(reopened.items, f.library.items)
@@ -154,39 +194,52 @@ final class PersonaCreationTests {
         defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
         let archive = f.store.appendingPathComponent("persona-library.json")
 
-        // The archive changes on disk while the editor is open: Add fails safely.
-        var draft = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle(label: "Synthetic site lead"))
+        // Another window saves the library while the editor is open: Add reads it
+        // again and adds to it, once, keeping the other change.
+        let session = PersonaEditorSession(.new(try f.library.portraitDraft(from: f.source, card: PersonaCardStyle(label: "Synthetic site lead"))))
+        guard case .new(let draft) = session.subject else { return }
+        let elsewhere = PersonaLibrary(root: f.store); defer { elsewhere.shutdown() }
+        elsewhere.rename(f.existing[1].id, name: "Renamed in another window")
+        XCTAssertTrue(session.commit(to: f.library), "Add succeeds after the library changed on disk")
+        XCTAssertEqual(f.library.items.filter { $0.id == draft.id }.count, 1)
+        XCTAssertEqual(f.library.items.first { $0.id == f.existing[1].id }?.name, "Renamed in another window", "The other change is kept")
+        XCTAssertEqual(f.library.activeGroup?.personaIDs.filter { $0 == draft.id }.count, 1)
+
+        // The archive is unreadable: Add fails safely, says so and keeps the draft.
+        let retry = PersonaEditorSession(.new(try f.starters.draft(PersonaStarterLibrary.portraits[3], for: f.library)))
+        guard case .new(let second) = retry.subject else { return }
+        retry.style.label = "Kept edits"
         let saved = try Data(contentsOf: archive)
         let before = try snapshot(f)
         try Data("Synthetic concurrent edit".utf8).write(to: archive)
-        XCTAssertThrowsError(try f.library.add(draft))
+        XCTAssertFalse(retry.commit(to: f.library))
+        XCTAssertTrue(retry.failure?.contains("kept here") == true, "The editor says the draft is kept")
         var failed = before.files; failed["persona-library.json"] = Data("Synthetic concurrent edit".utf8)
         XCTAssertEqual(try snapshot(f).files, failed, "A failed Add leaves no new picture behind")
         XCTAssertEqual(f.library.items, before.items); XCTAssertEqual(f.library.selectedID, before.selectedID)
-        XCTAssertEqual(f.library.groups, before.groups)
-        // The draft is still whole; once the archive is back, the same Add succeeds once.
+        XCTAssertEqual(retry.style.label, "Kept edits")
+        // Once the archive is readable again, the same Add succeeds once.
         try saved.write(to: archive)
-        draft.card.background = InkColor(0.3, 0.3, 0.3)
-        let added = try f.library.add(draft)
-        XCTAssertEqual(f.library.items.filter { $0.id == draft.id }.count, 1)
-        XCTAssertEqual(f.library.items.count, before.items.count + 1)
-        XCTAssertEqual(f.library.activeGroup?.personaIDs.filter { $0 == added.id }.count, 1)
-        XCTAssertEqual(try Data(contentsOf: f.store.appendingPathComponent(added.image)), draft.png)
+        XCTAssertTrue(retry.commit(to: f.library))
+        XCTAssertTrue(retry.failure == nil)
+        XCTAssertEqual(f.library.items.filter { $0.id == second.id }.count, 1)
+        XCTAssertEqual(f.library.items.last?.card?.label, "Kept edits")
 
         // The library folder cannot be written: Add fails before anything is saved.
-        let second = try f.starters.draft(PersonaStarterLibrary.portraits[1], for: f.library)
+        let third = PersonaEditorSession(.new(try f.starters.draft(PersonaStarterLibrary.portraits[1], for: f.library)))
+        guard case .new(let thirdDraft) = third.subject else { return }
         let middle = try snapshot(f)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: f.store.path)
-        XCTAssertThrowsError(try f.library.add(second))
+        XCTAssertFalse(third.commit(to: f.library))
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: f.store.path)
         XCTAssertEqual(try snapshot(f), middle, "Nothing is written by an Add that could not save")
-        try f.library.add(second)
-        XCTAssertEqual(f.library.items.map(\.id), middle.items.map(\.id) + [second.id])
+        XCTAssertTrue(third.commit(to: f.library))
+        XCTAssertEqual(f.library.items.map(\.id), middle.items.map(\.id) + [thirdDraft.id])
         XCTAssertEqual(Set(try snapshot(f).files.keys).subtracting(middle.files.keys).count, 1, "Retry saves one picture")
     }
 
-    /// Editing a saved card keeps Save and Cancel: until Save, neither the saved
-    /// card nor a shown floating copy changes, and a draft made meanwhile is separate.
+    /// Editing a saved card keeps Save and Cancel: opening and editing it, then
+    /// Cancel, changes neither the saved card nor the shown floating copy.
     func testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone() throws {
         let f = try fixture()
         defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
@@ -197,13 +250,24 @@ final class PersonaCreationTests {
         XCTAssertTrue(f.library.overlayVisible)
         let shown = f.library.liveSelection?.currentID
         let before = try snapshot(f)
-        var draft = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle(label: "Unsaved"))
-        draft.card.label = "Still unsaved"
-        _ = draft
-        XCTAssertEqual(try snapshot(f), before)
-        XCTAssertTrue(f.library.overlayVisible, "A cancelled draft leaves the shown card up")
-        XCTAssertEqual(f.library.liveSelection?.currentID, shown)
+        var editors = PersonaEditorHolder()
+        XCTAssertTrue(editors.open(.saved(f.existing[1])))
+        XCTAssertEqual(editors.current?.style, PersonaCardStyle(label: "Synthetic lead"))
+        editors.current?.style.label = "Unsaved label"
+        editors.current?.style.background = InkColor(0.9, 0.1, 0.1)
+        XCTAssertEqual(try snapshot(f), before, "Editing a saved card writes nothing until Save")
+        editors.current?.cancel(); editors.current = nil
+        XCTAssertEqual(try snapshot(f), before, "Cancel leaves the saved card as it was")
         XCTAssertEqual(f.library.items.first { $0.id == f.existing[1].id }?.card, PersonaCardStyle(label: "Synthetic lead"))
+        XCTAssertTrue(f.library.overlayVisible, "Cancel leaves the shown card up")
+        XCTAssertEqual(f.library.liveSelection?.currentID, shown)
+        // Save is the counterpart: it changes the saved card, and the shown copy stays frozen.
+        XCTAssertTrue(editors.open(.saved(f.existing[1])))
+        editors.current?.style.label = "Saved label"
+        XCTAssertTrue(editors.current?.commit(to: f.library) == true)
+        XCTAssertEqual(f.library.items.first { $0.id == f.existing[1].id }?.card?.label, "Saved label")
+        XCTAssertTrue(f.library.overlayVisible)
+        XCTAssertEqual(f.library.liveSelection?.currentID, shown)
     }
 
     /// Set WORKBENCH_LAYOUT_EVIDENCE to render the new-portrait editor and the
@@ -223,9 +287,9 @@ final class PersonaCreationTests {
         for (appearance, name) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
             renderIn(name == "dark" ? "Dark" : "Light")
             try MainActor.assumeIsolated {
-                try render(PersonaCardEditor(library: f.library, subject: .new(draft)), appearance: appearance,
+                try render(PersonaCardEditor(library: f.library, session: PersonaEditorSession(.new(draft))), appearance: appearance,
                            to: directory.appendingPathComponent("persona-new-portrait-\(name).png"))
-                try render(PersonaCardEditor(library: f.library, subject: .saved(saved)), appearance: appearance,
+                try render(PersonaCardEditor(library: f.library, session: PersonaEditorSession(.saved(saved))), appearance: appearance,
                            to: directory.appendingPathComponent("persona-edit-card-\(name).png"))
             }
         }

@@ -151,6 +151,8 @@ struct TestRunner {
             let creation = PersonaCreationTests(), starters = PersonaStarterTests(), personas = PersonaTests()
             let tests: [(String, () throws -> Void)] = [
                 ("new portrait cancel at any step leaves the library", creation.testCancellingANewPortraitAtAnyStepLeavesTheLibraryUnchanged),
+                ("new portrait second draft never replaces an open one", creation.testASecondDraftNeverReplacesAnOpenOne),
+                ("new portrait draft clears an earlier notice", creation.testANewDraftClearsAnEarlierNotice),
                 ("new portrait repeated cancels leave nothing", creation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
                 ("new portrait Add saves once", creation.testAddSavesOneItemWithOneMembershipOnce),
                 ("new portrait failed Add keeps the draft", creation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
@@ -162,12 +164,18 @@ struct TestRunner {
                 ("personas: EditableCardRenderingAndSaveFailurePreserveSources", personas.testEditableCardRenderingAndSaveFailurePreserveSources),
                 ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched)
             ]
+            var skipped = 0
             for (name, test) in tests {
+                // An optional render runs only when asked for; otherwise it is reported as skipped.
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
                 let before = assertionFailures
                 do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
                 if assertionFailures == before { print("PASS \(name)") }
             }
-            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
         if args == ["--shortcut-settings-only"] {
@@ -447,6 +455,8 @@ struct TestRunner {
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
             ("persona starter: BundledPortraitsHaveReadableArtworkAndRealTransparency", personaStarters.testBundledPortraitsHaveReadableArtworkAndRealTransparency),
             ("new portrait cancel at any step leaves the library", personaCreation.testCancellingANewPortraitAtAnyStepLeavesTheLibraryUnchanged),
+            ("new portrait second draft never replaces an open one", personaCreation.testASecondDraftNeverReplacesAnOpenOne),
+            ("new portrait draft clears an earlier notice", personaCreation.testANewDraftClearsAnEarlierNotice),
             ("new portrait repeated cancels leave nothing", personaCreation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
             ("new portrait Add saves once", personaCreation.testAddSavesOneItemWithOneMembershipOnce),
             ("new portrait failed Add keeps the draft", personaCreation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),

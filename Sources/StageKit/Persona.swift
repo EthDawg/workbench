@@ -453,32 +453,60 @@ final class PersonaLibrary: NSObject, ObservableObject {
 
     /// Chooses the picture for a new editable portrait. The picture is only read
     /// here; `add(_:)` saves it when the person chooses Add persona.
-    func importPortrait(onDraft: @escaping (PersonaPortraitDraft) -> Void) {
+    /// `window` holds the chooser as a sheet, so nothing else in it can start a
+    /// second draft while it is open.
+    func importPortrait(in window: NSWindow? = nil, onDraft: @escaping (PersonaPortraitDraft) -> Void) {
         guard writable() else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.message = "Choose a portrait without baked labels. Workbench keeps the original and shows it as a circle, a labelled card or as it is."
-        panel.begin { [weak self] response in
+        let chosen: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
             do { onDraft(try self.portraitDraft(from: url, card: PersonaCardStyle())) }
             catch { self.reportImport(error) }
         }
+        if let window { panel.beginSheetModal(for: window, completionHandler: chosen) } else { panel.begin(completionHandler: chosen) }
     }
 
-    /// Reads a picture into a new portrait draft without writing anything.
+    /// Reads a picture into a new portrait draft without writing anything. An
+    /// earlier library notice is cleared, so the new editor starts clean.
     func portraitDraft(from url: URL, card: PersonaCardStyle, name: String? = nil, framing: PersonaFraming? = nil) throws -> PersonaPortraitDraft {
         guard writable() else { throw PersonaError.invalidSettings }
-        return try PersonaPortraitDraft(LogoImport.read(url), card: card.validated(), name: name, framing: framing?.validated())
+        let draft = try PersonaPortraitDraft(LogoImport.read(url), card: card.validated(), name: name, framing: framing?.validated())
+        notice = nil
+        return draft
     }
 
     /// Add persona: saves the draft's picture and card, selects it and adds it to
-    /// the active group, together and once. A failure leaves no new file and
-    /// changes nothing, so the same draft can be added again.
+    /// the active group, together and once. If the library changed on disk while
+    /// the draft was open, it is read again and the draft is added to it once.
+    /// A failure leaves no new file and changes nothing, so the same draft can
+    /// be added again.
     @discardableResult func add(_ draft: PersonaPortraitDraft) throws -> SavedPersona {
         guard writable() else { throw PersonaError.invalidSettings }
         guard !items.contains(where: { $0.id == draft.id }) else { throw PersonaError.alreadyAdded }
-        return try add(LogoImport.Image(png: draft.png, name: draft.name), id: draft.id, card: draft.card.validated(),
-                       appearance: draft.appearance.validated())
+        let picture = LogoImport.Image(png: draft.png, name: draft.name), card = try draft.card.validated()
+        let appearance = try draft.appearance.validated()
+        do { return try add(picture, id: draft.id, card: card, appearance: appearance) }
+        catch PersonaError.changedOnDisk {
+            try reloadArchive()
+            guard !items.contains(where: { $0.id == draft.id }) else { throw PersonaError.alreadyAdded }
+            return try add(picture, id: draft.id, card: card, appearance: appearance)
+        }
+    }
+
+    /// Reads the library file again after something else changed it, so an Add
+    /// applies to what is saved now. Nothing is written. An unreadable, missing
+    /// or newer file stays untouched and the library keeps what it had.
+    private func reloadArchive() throws {
+        guard let data = try PersonaStorage.read(libraryURL) else { throw PersonaError.changedOnDisk }
+        let archive = try JSONDecoder().decode(PersonaArchive.self, from: data).validated()
+        libraryData = data
+        applyingArchive = true
+        items = archive.items; selectedID = archive.selectedID; groups = archive.groups
+        activeGroupID = archive.activeGroupID; preparedGroupIDs = archive.preparedGroupIDs; archiveVersion = max(2, archive.version)
+        applyingArchive = false
+        reconcileLive()
     }
 
     func pasteImage(onSelect: ((SavedPersona) -> Void)? = nil) {
@@ -1179,6 +1207,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
         items = next.items; selectedID = next.selectedID; groups = next.groups; activeGroupID = next.activeGroupID
         preparedGroupIDs = next.preparedGroupIDs; archiveVersion = next.version
         applyingArchive = false
+        reconcileLive()
+    }
+    /// Live overlays keep only what the library still has; nothing is added.
+    private func reconcileLive() {
         session?.reconcile(availableGroups: groups, existingPersonas: Set(items.map(\.id)))
         if var session = liveSelection {
             session.reconcile(group: activeGroup, existingIDs: Set(items.map(\.id)))
