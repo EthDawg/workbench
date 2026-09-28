@@ -906,7 +906,7 @@
     "label": "Review text",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Review opens where the words are kept: History for a transcript and Saved resources for a prompt; for an undelivered result, History for a transcript's words and the Dictate page for the draft's (#134 T5)."
+    "note": "Review opens where the words are kept: History for a transcript and Library for a prompt; for an undelivered result, History for a transcript's words and the Dictate page for the draft's (#134 T5)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.show-cue",
