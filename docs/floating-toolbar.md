@@ -504,11 +504,12 @@ red, distinct from the voice colour.
 
 `ToolbarGallery.states` supplies both tiers at every anchor, every mode with its
 key, active work in its own mode and in another (Dictate selected, Draw busy),
-capture counts, active presentation/personas, prompt insertion and every compact
-status; `ToolbarGallery.choosers` supplies the chooser with and without live
-work. The renderer uses the production `ToolbarRow` and `ToolbarChooserView`,
-including the compact mark, the launcher and the Prompts button, in both themes
-and standard/larger type.
+capture counts, active presentation/personas, prompt insertion, each tool's
+accessory (Shape also hidden and at a right-hand dock) and every compact status;
+`ToolbarGallery.choosers` supplies the chooser with and without live work. The
+renderer uses the production `ToolbarRow` and `ToolbarChooserView`, including the
+compact mark, the launcher and the accessory, in both themes and standard/larger
+type.
 
 Core transition tests, native layout tests and rendered fixtures establish only
 the behavior they exercise. They do not prove native pointer behavior. Before
@@ -535,8 +536,9 @@ swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
 ```
 
 The gallery generates individual fixtures and four overview sheets. It covers
-both tiers at every anchor, each mode, active work in and out of its mode, every
-compact status and the chooser, light/dark appearance and standard/larger type. `ToolbarKitTests` checks intrinsic
+both tiers at every anchor, each mode, active work in and out of its mode, each
+tool's accessory, every compact status and the chooser, light/dark appearance and
+standard/larger type. `ToolbarKitTests` checks intrinsic
 sizes and longer labels; the committed overview sheets in
 [assets/floating-toolbar](assets/floating-toolbar) provide PR image diffs. CI
 retains the full gallery as an artifact. These are real native views, not HTML
