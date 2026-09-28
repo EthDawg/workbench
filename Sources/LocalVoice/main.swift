@@ -431,7 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
-        menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
+        // Show or Hide by the saved preference, through the same switch as the panel and Settings (#134).
+        menu.addItem(withTitle: Self.floatingToolbarTitle(visible: model.floatingToolbarVisible), action: #selector(toggleFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
@@ -483,6 +484,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         capturePanel.update(model: model)
     }
     @objc func toggleFloatingToolbar() { model.floatingToolbarVisible.toggle() }
+    /// The Window menu's toolbar item names what choosing it does now.
+    static func floatingToolbarTitle(visible: Bool) -> String { visible ? "Hide floating toolbar" : "Show floating toolbar" }
     @objc func focusFloatingToolbar() { capturePanel.focusToolbar() }
     @objc func restoreMenuBarIcon() {
         statusItem.isVisible = true
@@ -694,7 +697,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
             try PanelDestinationChecks.run()
-            try await MainActor.run { try WorkbenchPageChecks.run() }
+            try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }
@@ -861,5 +864,13 @@ if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--presenter-fi
         let delegate = AppDelegate()
         app.delegate = delegate
         app.run()
+    }
+}
+
+/// The Window menu's floating-toolbar item follows the saved preference each time it opens.
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleFloatingToolbar) { item.title = Self.floatingToolbarTitle(visible: model.floatingToolbarVisible) }
+        return true
     }
 }

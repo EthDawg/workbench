@@ -91,6 +91,26 @@ enum WorkbenchPageChecks {
             try check(landing.page == route && landing.section == section, "a StageKit notice owned by \(page) opens \(route)\(section.map { " on " + $0 } ?? "")")
         }
         try check(Set(StageNoticePage.allCases.map(\.route)).count == StageNoticePage.allCases.count, "each StageKit owner has its own page or section")
+        // The sidebar (#134 H2): the eleven pages in the record's order, Settings pinned below the
+        // scrolling list, and unnamed breaks after Home and after the tools.
+        let listed = pages.filter { $0 != WorkbenchHome.pinnedPage }
+        try check(pages.last == WorkbenchHome.pinnedPage && WorkbenchHome.pinnedPage == "settings" && listed.count == 10,
+                  "Settings is the last page and is pinned below the ten others")
+        var groups: [[String]] = [[]]
+        for page in listed {
+            groups[groups.count - 1].append(page)
+            if WorkbenchHome.sidebarBreaks.contains(page) { groups.append([]) }
+        }
+        try check(groups == [["home"], ["dictate", "speak", "snap", "readback", "annotate", "present", "personas"], ["history", "library"]],
+                  "the breaks fall after Home and after Persona: \(groups)")
+        // The floating toolbar's one switch reads the same everywhere (#134 H3).
+        try check(WorkbenchHome.floatingToolbarHelp == "Show between actions. Recording and recovery controls still appear when needed.",
+                  "the switch explains itself in the contract's words")
+        try check(AppDelegate.floatingToolbarTitle(visible: true) == "Hide floating toolbar" && AppDelegate.floatingToolbarTitle(visible: false) == "Show floating toolbar",
+                  "the Window menu names what its item will do")
+        // Named doors land on their section (#134 H2): Keyboard… on Settings › Keyboard.
+        let keyboard = WorkbenchHome.destination("shortcuts")
+        try check(keyboard.page == "settings" && keyboard.section == "shortcuts", "Keyboard… opens Settings on Keyboard")
         // The menu-bar panel's recovery says one sentence and opens the page that says the rest.
         try check(PanelRecoveryRow.headline("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.") == "Microphone access is off.",
                   "a recovery row keeps only the first sentence")
