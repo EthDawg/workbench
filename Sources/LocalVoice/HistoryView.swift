@@ -547,7 +547,7 @@ private struct HistoryInputChip: View {
         switch item.reference.kind {
         case .transcript: "mic"
         case .snap: "photo"
-        case .snapAndTalk: "rectangle.and.pencil.and.ellipsis"
+        case .snapAndTalk: WorkbenchHome.symbol(of: "readback")
         }
     }
 

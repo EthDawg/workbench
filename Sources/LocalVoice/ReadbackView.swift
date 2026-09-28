@@ -110,7 +110,7 @@ struct ReadbackView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("Start a Snap & Talk session", systemImage: "rectangle.and.pencil.and.ellipsis")
+            Label("Start a Snap & Talk session", systemImage: WorkbenchHome.symbol(of: "readback"))
         } description: {
             Text("Create a named Finder folder, then use one shortcut to capture the display under your pointer and narrate it.")
             if let notice = model.notice { Text(notice).foregroundStyle(.secondary) }

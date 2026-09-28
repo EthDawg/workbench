@@ -22,11 +22,12 @@ struct WorkbenchHome: View {
     /// The page record: every surface that names or opens a window page reads it here, so a
     /// page has one name wherever it appears (#134). The sidebar lists `navItems`, Library and
     /// Settings switch between their `sections`, and `subpages` have no sidebar item of their
-    /// own. The surface gallery renders each route.
+    /// own. A capability page's name and symbol are the toolbar's (`ToolbarMode`) and the panel's
+    /// (`WorkbenchControlTool`), checked by --check-core. The surface gallery renders each route.
     static let navItems: [(id: String, title: String, symbol: String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
-        ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Draw", "pencil.tip"),
-        ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.circle"),
+        ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.dashed.badge.record"), ("annotate", "Draw", "pencil.tip"),
+        ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.rectangle"),
         ("history", "History", "clock"), ("library", "Library", "square.stack"), ("settings", "Settings", "slider.horizontal.3")]
     /// A page's sections, in switcher order. Each opens from its own route, and the page's own
     /// route opens the first; Keyboard, Models and Packs keep the routes their sidebar items had.
@@ -56,6 +57,11 @@ struct WorkbenchHome: View {
     static func name(of route: String) -> String {
         navItems.first { $0.id == route }?.title ?? sections.first { $0.id == route }?.title
             ?? subpages.first { $0.id == route }?.title ?? route
+    }
+    /// The symbol of the page a route lands on, as its sidebar item shows it.
+    static func symbol(of route: String) -> String {
+        let page = destination(route).page
+        return navItems.first { $0.id == page }?.symbol ?? "questionmark"
     }
     init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel) {
         self.model = model; self.stage = stage; self.keyboard = keyboard; self.readback = readback

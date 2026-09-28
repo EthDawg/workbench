@@ -1,4 +1,5 @@
 import Foundation
+import ToolbarCore
 
 /// The page record and its one route normaliser (#134): the sidebar is the eleven pages under
 /// their Grammar names, every route that ever opened a page still lands on a highlighted sidebar
@@ -63,11 +64,27 @@ enum WorkbenchPageChecks {
         try check(WorkbenchHome.name(of: "shortcuts") == "Keyboard" && WorkbenchHome.name(of: "models") == "Models" && WorkbenchHome.name(of: "packs") == "Packs",
                   "sections are named by the record")
         try check(WorkbenchHome.name(of: "meeting") == "Transcribe meeting or call", "the meeting page keeps its Grammar workflow name")
+        // One identity on all three surfaces (#134 C10): each capability's page in the sidebar, its
+        // toolbar mode and its menu-bar panel row carry the same name and symbol, and the mode's
+        // page door opens that page. Timer is a panel row and a Present option, never a page.
+        for mode in ToolbarMode.allCases {
+            let item = WorkbenchHome.navItems.first { $0.id == mode.page }
+            try check(item?.title == mode.title && item?.symbol == mode.symbol, "\(mode.title)'s sidebar page has the toolbar's name and symbol")
+            let row = WorkbenchControlTool(mode: mode)
+            try check(row?.title == mode.title && row?.symbol == mode.symbol, "\(mode.title)'s panel row has the toolbar's name and symbol")
+            try check(WorkbenchHome.destination(mode.page).page == mode.page, "\(mode.title)'s page door opens its highlighted page")
+            try check(WorkbenchHome.symbol(of: mode.page) == mode.symbol, "\(mode.title)'s page shows the toolbar's symbol wherever the record is read")
+        }
+        try check(WorkbenchHome.symbol(of: "dictionary") == WorkbenchHome.symbol(of: "dictate") && WorkbenchHome.symbol(of: "packs") == WorkbenchHome.symbol(of: "library"),
+                  "a subpage or section shows its page's symbol")
         // The menu-bar panel's recovery says one sentence and opens the page that says the rest.
         try check(PanelRecoveryRow.headline("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.") == "Microphone access is off.",
                   "a recovery row keeps only the first sentence")
         try check(PanelRecoveryRow.headline("Preparing speech · first setup may take a few minutes") == "Preparing speech · first setup may take a few minutes",
                   "a one-sentence message is shown whole")
-        print("WORKBENCH_PAGE_CHECKS_OK: \(passed) checks; \(pages.count) sidebar pages, \(WorkbenchHome.sections.count) sections and every older route")
+        try check(WorkbenchControlTool.allCases.compactMap(\.mode) == ToolbarMode.allCases, "the panel's rows follow the toolbar's modes in moment order")
+        try check(WorkbenchControlTool.timer.mode == nil && !WorkbenchHome.navItems.contains { $0.title == WorkbenchControlTool.timer.title },
+                  "Timer is a panel row, not a page")
+        print("WORKBENCH_PAGE_CHECKS_OK: \(passed) checks; \(pages.count) sidebar pages, \(WorkbenchHome.sections.count) sections, every older route and one name and symbol per capability")
     }
 }
