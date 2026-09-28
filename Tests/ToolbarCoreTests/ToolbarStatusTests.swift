@@ -60,7 +60,7 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(level: 0.5, playback: true)).level)
     }
 
-    /// VoiceOver hears a new indicator or badge once, never a level or a repeated state.
+    /// VoiceOver hears a new indicator, badge or state in words once, never a level or a repeated state.
     func testOnlyMeaningfulChangesAreAnnounced() {
         let quiet = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.1))
         let loud = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.9))
@@ -70,6 +70,19 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertTrue(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, failure: true)).announces(after: quiet), "the badge is news")
         let processing = ToolbarStatus.resolve(ToolbarActivity(processing: true))
         XCTAssertFalse(ToolbarStatus.resolve(ToolbarActivity(processing: true)).announces(after: processing), "no repeated processing chatter")
+    }
+
+    /// A job that needs the person, arriving under a higher-priority indicator, changes the words
+    /// but not the indicator, and is still heard once (#205 review).
+    func testAResultArrivingUnderProcessingOrPlaybackIsHeard() {
+        for (base, added) in [(ToolbarActivity(processing: true), ToolbarActivity(processing: true, failure: true)),
+                              (ToolbarActivity(processing: true), ToolbarActivity(processing: true, pendingDelivery: true)),
+                              (ToolbarActivity(playback: true), ToolbarActivity(playback: true, unsavedCapture: true))] {
+            let before = ToolbarStatus.resolve(base), after = ToolbarStatus.resolve(added)
+            XCTAssertEqual(after.indicator, before.indicator, "the indicator keeps its priority")
+            XCTAssertTrue(after.announces(after: before), "\(after.description) is heard")
+            XCTAssertFalse(after.announces(after: after), "once")
+        }
     }
 
     /// Live work keeps one order, whatever order the host listed it in, and its words.

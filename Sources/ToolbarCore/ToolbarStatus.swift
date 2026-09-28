@@ -128,8 +128,10 @@ public struct ToolbarStatus: Equatable, Sendable {
         return parts.isEmpty ? "Nothing running" : parts.joined(separator: ", ")
     }
 
-    /// Whether VoiceOver should hear about a change: a new indicator or badge, never a level.
+    /// Whether VoiceOver should hear about a change: a new indicator, badge or state in words,
+    /// never a level, which the words leave out. So a failure, a pending result or an unsaved
+    /// capture arriving under processing or playback is heard, though the indicator stays.
     public func announces(after previous: ToolbarStatus) -> Bool {
-        indicator != previous.indicator || attentionBadge != previous.attentionBadge
+        indicator != previous.indicator || attentionBadge != previous.attentionBadge || description != previous.description
     }
 }
