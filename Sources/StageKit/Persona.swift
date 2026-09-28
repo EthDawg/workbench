@@ -266,8 +266,17 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private var displayedID: UUID?
     private var displayedImage: NSImage?
     private var displayedLabel: String?
-    private var liveImages: [UUID: NSImage] = [:]
-    private var liveLabels: [UUID: String] = [:]
+    /// The frozen candidates behind the floating card, and the few decoded images it keeps.
+    private(set) var cardDeck: PersonaCardDeck?
+    /// The floating card on screen: its copy identity and the frozen source it shows.
+    @Published private(set) var shownCard: PersonaShownCard?
+    /// Decoded images the floating card may keep, counting a pending replacement.
+    /// The same 256 MB as a prepared session; checks lower it.
+    var cardImageBudget = PersonaSessionController.maximumImageBytes
+    /// The last card that could not show, so a later successful card clears only that notice.
+    private var cardFailure: String?
+    private var liveImages: [UUID: NSImage] { cardDeck?.images ?? [:] }
+    private var liveLabels: [UUID: String] { cardDeck?.labels ?? [:] }
     private var session: PersonaSessionController?
     private var overlayGeneration = UUID()
     private let sessionPanelFactory: (() -> any PersonaSessionDisplaying)?
@@ -547,7 +556,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         sessionFeedback = nil
         sessionState = PersonaSessionViewState(); overlayVisible = false; hud?.hide()
         overlay?.hide(); liveSelection = nil; displayedID = nil
-        displayedImage = nil; displayedLabel = nil; liveImages.removeAll(); liveLabels.removeAll()
+        displayedImage = nil; displayedLabel = nil; cardDeck = nil; shownCard = nil
     }
     func saveSessionLayout() throws {
         guard let session, let source = session.currentSource else { throw PersonaSessionError.missingGroup }
@@ -606,17 +615,28 @@ final class PersonaLibrary: NSObject, ObservableObject {
 
     func stepLivePersona(_ offset: Int) {
         guard var next = liveSelection else { return }
+        // Step from the last requested card, so one that cannot show is passed over.
+        if let cursor = cardDeck?.cursor { next.select(cursor) }
         next.step(offset)
         if let id = next.currentID { selectLivePersona(id) }
     }
+    /// Decodes the requested frozen card before it replaces the shown one. If it
+    /// cannot show, the shown card stays up and the notice names the card.
     func selectLivePersona(_ id: UUID) {
-        guard var session = liveSelection, session.candidateIDs.contains(id),
-              let image = liveImages[id] else { return }
+        guard var session = liveSelection, session.candidateIDs.contains(id), let deck = cardDeck else { return }
+        deck.cursor = id
+        let image: NSImage
+        do { image = try deck.image(for: id, shown: displayedID, render: { renderedImage(for: $0) }) }
+        catch { notice = error.localizedDescription; cardFailure = notice; return }
         if !isReadOnly {
             do { try commit(items, selection: id) }
             catch { notice = error.localizedDescription; return }
         }
+        if notice != nil && notice == cardFailure { notice = nil }
+        cardFailure = nil
         session.select(id); liveSelection = session; displayedID = id
+        deck.didShow(id)
+        if let source = deck.sources[id] { shownCard = PersonaShownCard(copyID: shownCard?.copyID ?? UUID(), source: source) }
         displayedImage = image; displayedLabel = liveLabels[id]; refreshOverlay()
     }
     func focusOverlayControls() {
@@ -664,30 +684,27 @@ final class PersonaLibrary: NSObject, ObservableObject {
         do { try showOverlayChecked(); return .success(()) }
         catch { notice = error.localizedDescription; return .failure(error) }
     }
+    /// Freezes who can follow this card and how each looks, but decodes only the
+    /// requested card: unrelated missing, large or numerous saved items cannot
+    /// block it. It replaces any shown overlay only once it has decoded.
     private func showOverlayChecked() throws {
         guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
         let candidateIDs = activeGroup?.personaIDs ?? items.map(\.id)
-        guard let initialID = selectedID.flatMap({ candidateIDs.contains($0) ? $0 : nil }) ?? candidateIDs.first,
-              let selected = items.first(where: { $0.id == initialID }),
-              let image = renderedImage(for: selected) else { throw PersonaError.unreadableImage }
-        guard candidateIDs.count <= PersonaSessionController.maximumCandidates else { throw PersonaSessionError.tooManyCandidates }
-
-        var frozenImages: [UUID: NSImage] = [:], frozenLabels: [UUID: String] = [:], bytes = 0
-        for id in candidateIDs {
-            guard let item = items.first(where: { $0.id == id }), let rendered = renderedImage(for: item),
-                  let cg = rendered.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                throw PersonaSessionError.missingArtwork
-            }
-            bytes += cg.bytesPerRow * cg.height
-            guard bytes <= PersonaSessionController.maximumImageBytes else { throw PersonaSessionError.tooManyCandidates }
-            frozenImages[id] = NSImage(cgImage: cg, size: rendered.size); frozenLabels[id] = publicLabel(for: item)
-        }
+        guard let initialID = selectedID.flatMap({ candidateIDs.contains($0) ? $0 : nil }) ?? candidateIDs.first
+        else { throw PersonaError.unreadableImage }
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        let deck = PersonaCardDeck(candidates: candidateIDs.compactMap { byID[$0] }, root: root,
+                                   budget: cardImageBudget, label: publicLabel(for:))
+        let image = try deck.image(for: initialID, shown: nil, render: { renderedImage(for: $0) })
+        if notice != nil && notice == cardFailure { notice = nil }
+        cardFailure = nil
         endOverlaySession()
-        liveSelection = activeGroup.map { PersonaLiveSelection(group: $0, selectedID: selected.id) }
-            ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: selected.id)
-        displayedID = selected.id
-        liveImages = frozenImages; liveLabels = frozenLabels
-        displayedImage = liveImages[selected.id] ?? image; displayedLabel = publicLabel(for: selected)
+        liveSelection = activeGroup.map { PersonaLiveSelection(group: $0, selectedID: initialID) }
+            ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: initialID)
+        cardDeck = deck; deck.didShow(initialID)
+        shownCard = deck.sources[initialID].map { PersonaShownCard(copyID: UUID(), source: $0) }
+        displayedID = initialID
+        displayedImage = image; displayedLabel = deck.labels[initialID]
         if overlay == nil {
             overlay = PersonaOverlayController()
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
@@ -957,6 +974,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         if var session = liveSelection {
             session.reconcile(group: activeGroup, existingIDs: Set(items.map(\.id)))
             liveSelection = session
+            cardDeck?.keepOnly(session.candidateIDs)
             if session.currentID == nil { hideOverlay() }
         }
         if let displayedID, !items.contains(where: { $0.id == displayedID }) { hideOverlay() }
