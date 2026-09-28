@@ -227,12 +227,13 @@ struct QuickControlsView: View {
             }
             TextField("Break message", text: $settings.value.timerMessage).textFieldStyle(.roundedBorder)
             HStack(spacing: 8) {
-                // Start and Restart show the timer, so these controls step aside first.
-                let transport = app.timerTransport
+                // Start and Restart show the timer, so these controls step aside first. The button
+                // performs the step it shows, and only that (#174).
+                let transport = TimerTransportAction(app)
                 Button {
-                    if transport.starts { app.hideQuickControls() }
-                    app.performTimerTransport()
-                } label: { Label(transport.title, systemImage: transport.symbol).frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
+                    if transport.transport.starts { app.hideQuickControls() }
+                    transport()
+                } label: { Label(transport.transport.title, systemImage: transport.transport.symbol).frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
                 Button("Reset") { app.resetTimer() }
             }
             Divider()

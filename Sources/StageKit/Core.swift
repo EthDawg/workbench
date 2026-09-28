@@ -257,3 +257,23 @@ public enum TimerTransport: Equatable, Sendable {
     /// Start and Restart begin a new countdown through the normal start path.
     var starts: Bool { self == .idle || self == .finished }
 }
+
+/// The timer's next transport as a control shows it, tied to the countdown it belongs to
+/// (#174). A control keeps the step it drew and performs only that: a Pause or Resume on screen
+/// never becomes a Start or a Restart, and a new countdown's step of the same name is not it.
+public struct TimerStep: Equatable, Sendable {
+    public let transport: TimerTransport
+    /// Each Start or Restart begins a new countdown.
+    let countdown: Int
+}
+
+/// A timer control's transport, taken when the control is drawn and performed only while it is
+/// still the timer's next step for the same countdown (#174). The quick controls, the Draw
+/// page, the timer's own window and the Timer menu each keep one.
+@MainActor struct TimerTransportAction {
+    let step: TimerStep
+    private weak var app: AppCoordinator?
+    init(_ app: AppCoordinator) { self.app = app; step = app.timerStep }
+    var transport: TimerTransport { step.transport }
+    func callAsFunction() { app?.performTimerTransport(expected: step) }
+}
