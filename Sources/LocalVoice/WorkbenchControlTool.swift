@@ -32,7 +32,7 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
         case .timer: return "timer"
         }
     }
-    /// The toolbar mode this row shares a next action with. Timer has none:
+    /// The toolbar mode for this capability. Timer has none:
     /// it is a panel row and a Present option, never a toolbar mode.
     var mode: ToolbarMode? {
         switch self {
@@ -58,6 +58,8 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
 struct WorkbenchControlState {
     var phase: AppModel.Phase = .idle
     var ready = true
+    /// Meeting capture and processing keep the shared audio admission closed.
+    var meetingBusy = false
     var rendering = false
     var narrating = false
     var capturing = false
@@ -88,18 +90,17 @@ struct WorkbenchControlState {
     /// Dictated words wait for drawing to end before they are delivered (#211 F5).
     var waitingForDrawing = false
 
-    func enabled(_ tool: WorkbenchControlTool) -> Bool {
+    /// Admission for new work. Existing work keeps its own ending even while
+    /// another owner refuses a new start.
+    private func mayStart(_ tool: WorkbenchControlTool) -> Bool {
         switch tool {
         case .dictate:
-            return phase == .requesting || phase == .recording ||
-                (phase == .idle && ready && !rendering && !narrating && !capturing && !pendingNarration)
+            return phase == .idle && ready && !rendering && !narrating && !capturing && !pendingNarration && !meetingBusy
         case .read: return true
         case .snap: return phase == .idle && !capturing && !narrating && !screenshotting && !snapBusy
-        case .snapAndTalk: return narrating || (phase == .idle && !rendering && !capturing)
-        case .annotate: return drawing || mayDraw
-        case .present: return presenting || mayPresent
-        case .persona: return overlays || mayPresent
-        case .timer: return timerStarted || mayPresent
+        case .snapAndTalk: return phase == .idle && !rendering && !capturing && !screenshotting && !meetingBusy
+        case .annotate: return mayDraw
+        case .present, .persona, .timer: return mayPresent
         }
     }
 
@@ -122,7 +123,7 @@ struct WorkbenchControlState {
             persona: overlaysPaused ? .sessionHidden : overlaySession ? .session : overlays ? .shown : .none,
             timer: Self.liveTimer(timerTransport),
             insertingPrompt: insertingPrompt, meetingRecording: meetingRecording,
-            mayStart: WorkbenchControlTool(mode: mode).map(enabled) ?? false)
+            mayStart: WorkbenchControlTool(mode: mode).map(mayStart) ?? false)
     }
 
     /// The timer as the next action and its fixtures see it: a finished countdown is finished,
@@ -138,61 +139,88 @@ struct WorkbenchControlState {
 
     /// The row's next action, from the same function as the toolbar's label.
     func nextAction(_ tool: WorkbenchControlTool) -> ToolbarNextAction? {
-        tool.mode.map { ToolbarNextAction.resolve(live($0)) }
+        guard let mode = tool.mode else { return nil }
+        let own = ownLive(mode)
+        var action = ToolbarNextAction.resolve(own)
+        if action.operation == .pauseReading || action.operation == .resumeReading {
+            action.operation = .stopReading
+            action.title = ToolbarNextAction.title(.stopReading, live: own)
+        }
+        if action.operation == .captureNext || action.operation == .resumeOverlays { action.isEnabled = own.mayStart }
+        return action
     }
 
-    /// Persona's own next action, in the words the toolbar's Persona mode uses:
-    /// Hide persona for one card, Hide personas for a prepared set, Show personas
-    /// while that set is hidden, and Show persona when nothing is live. Home's
-    /// Persona row and tile take their label and click from here (#134). They
-    /// name Persona itself, so work in another capability never claims them.
-    var personaAction: ToolbarNextAction {
-        let own = live(.persona)
-        return ToolbarNextAction.resolve(ToolbarLiveState(mode: .persona, persona: own.persona, mayStart: own.mayStart))
+    func enabled(_ tool: WorkbenchControlTool) -> Bool {
+        if tool == .timer { return timerStarted || mayStart(tool) }
+        return nextAction(tool)?.isEnabled == true
     }
+
+    /// The symbol stays with its row; the accent identifies its own live work.
+    func active(_ tool: WorkbenchControlTool) -> Bool {
+        if tool == .timer { return timerStarted }
+        return tool.mode.map { ownLive($0).isLive($0) } ?? false
+    }
+
+    /// Home's Persona controls use the same own-capability projection as the
+    /// menu: another input operation cannot claim its Hide or Show action.
+    var personaAction: ToolbarNextAction { nextAction(.persona)! }
 
     /// What the Persona action does, for its tooltip. It follows the same
     /// action, so a hidden set is never described as being hidden again.
     var personaDetail: String {
         switch personaAction.operation {
         case .pauseOverlays: return "Hide the set without ending it."
-        case .resumeOverlays: return "Show the set again, as you arranged it."
+        case .resumeOverlays: return mayPresent ? "Show the set again, as you arranged it." : "Finish the current input operation before showing the set again."
         case .hidePersona: return "Hide the persona without ending the scene."
         default: return "Show a prepared persona. Organise cards in Workbench."
         }
     }
 
-    /// What a click on the row does: the same operation its label names, so
-    /// input-consuming work claims every row's click as it claims its label.
-    /// Read stops rather than pausing here (pause and resume live on the Read
-    /// page). Timer is not a mode: once nothing global claims the row it keeps
-    /// its own start and stop.
+    /// Each row acts only on the capability it names. Timer keeps its own
+    /// transport because it is not a toolbar mode.
     func rowAction(_ tool: WorkbenchControlTool) -> WorkbenchRowAction {
-        switch tool {
-        case .timer:
-            // Snap has no ending of its own, so its next action is exactly the
-            // global claim, or a start once nothing is consuming input.
-            let global = ToolbarNextAction.resolve(live(.snap)).operation
-            if case .start = global { return timerStarted ? .stopTimer : .startTimer }
-            return .operation(global)
-        case .read:
-            switch ToolbarNextAction.resolve(live(.read)).operation {
-            case .pauseReading, .resumeReading: return .operation(.stopReading)
-            case let operation: return .operation(operation)
-            }
-        default:
-            return .operation(ToolbarNextAction.resolve(live(tool.mode ?? .snap)).operation)
-        }
+        if tool == .timer { return timerStarted ? .stopTimer : .startTimer }
+        return .operation(nextAction(tool)!.operation)
     }
 
-    /// What the row says: its capability's name when the click starts it, and
-    /// otherwise the words for exactly the operation the click performs.
+    /// Only this capability's state enters a menu row. The toolbar still sees
+    /// all live work and retains its global next-action priority. Admission
+    /// still includes the other owners, so an incompatible start stays disabled.
+    private func ownLive(_ mode: ToolbarMode) -> ToolbarLiveState {
+        let all = live(mode)
+        var own = ToolbarLiveState(mode: mode, mayStart: all.mayStart)
+        switch mode {
+        case .dictate:
+            // Delivery may be waiting for another owner (such as drawing). The
+            // Dictate row waits; only that owner's own row offers its ending.
+            own.dictation = phase == .delivering ? .processing : all.dictation
+            own.meetingRecording = all.meetingRecording
+            own.canRecordAgain = all.canRecordAgain
+        case .read: own.reading = all.reading
+        case .snap: break
+        case .snapAndTalk:
+            own.narrating = all.narrating; own.capturingScreen = capturing
+            own.pendingNarration = all.pendingNarration; own.captureCount = all.captureCount
+        case .draw: own.drawing = all.drawing
+        case .present: own.presenting = all.presenting
+        case .persona: own.persona = all.persona
+        }
+        return own
+    }
+
+    /// Re-read the owners when a rendered button commits. A completed Stop,
+    /// Hide or End must never resolve again into a fresh start.
+    func admits(_ rendered: WorkbenchRowAction, for tool: WorkbenchControlTool) -> Bool {
+        enabled(tool) && rowAction(tool) == rendered
+    }
+
+    /// Idle rows keep their capability name; active rows name their own action.
     func actionTitle(_ tool: WorkbenchControlTool) -> String {
         switch rowAction(tool) {
         case .startTimer: return "Timer"
         case .stopTimer: return "Stop timer"
         case .operation(.start): return tool.title
-        case .operation(let operation): return ToolbarNextAction.title(operation, live: live(tool.mode ?? .snap))
+        case .operation: return nextAction(tool)!.title
         }
     }
 }
@@ -211,6 +239,9 @@ struct HomePersonaControl {
     var tileVerb: String { action.operation == .start(.persona) ? "Show a card over your apps" : action.title }
     var operation: ToolbarOperation { action.operation }
     var isEnabled: Bool { action.isEnabled }
+    func isAdmitted(in state: WorkbenchControlState) -> Bool {
+        isEnabled && state.admits(.operation(operation), for: .persona)
+    }
 }
 
 enum WorkbenchDrawingAdmission {
@@ -226,7 +257,7 @@ struct WorkbenchControlContext {
     let stage: StageKitController
     var snap: SnapModel? = nil
     var state: WorkbenchControlState {
-        WorkbenchControlState(phase: model.phase, ready: model.ready, rendering: model.rendering,
+        WorkbenchControlState(phase: model.phase, ready: model.ready, meetingBusy: model.meetings.isBusy, rendering: model.rendering,
             narrating: readback.isRecording, capturing: readback.isCapturing,
             pendingNarration: readback.hasPendingTranscriptions, hasSession: readback.sessionURL != nil,
             captureCount: readback.sessionURL == nil ? nil : readback.activeSections.count,
@@ -327,19 +358,33 @@ struct WorkbenchControlContext {
     func voiceShortcut(_ id: UInt32) -> String {
         FloatingToolbar.shortcutLabel(model.preferences.shortcut(id), failure: model.shortcutFailures[id])
     }
-    func detail(_ tool: WorkbenchControlTool) -> String {
+    func detail(_ tool: WorkbenchControlTool, state: WorkbenchControlState? = nil) -> String {
+        let state = state ?? self.state
+        switch state.rowAction(tool) {
+        case .operation(.cancelDictationRequest): return "Cancel the pending microphone request."
+        case .operation(.stopDictation): return "Stop recording and keep the captured speech."
+        case .operation(.stopMeetingTranscription): return "Stop the meeting recording and keep its captured audio."
+        case .operation(.cancelReading): return "Cancel audio generation and keep the source text."
+        case .operation(.stopReading): return "Stop this reading and keep the source text."
+        case .operation(.finishNarration): return "Stop narration and keep this capture."
+        case .operation(.wait):
+            return tool == .dictate ? "Wait for the current dictation to finish." : "Wait for this screen capture to finish."
+        default: break
+        }
         // Without Screen Recording the Snap row still opens Snap, which explains and offers Paste and Import (#112).
         if tool == .snap, snap?.isBusy != true, snap?.screenAccessGranted == false {
             return "Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have."
         }
         switch tool {
         case .dictate:
+            if state.meetingBusy { return "Finish the meeting recording or transcription before dictating." }
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
             if !model.ready { return "Prepare speech in Workbench." }
             return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .clipboard ? "Copy text"
                 : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until automatic paste is approved")
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
         case .snapAndTalk:
+            if !state.enabled(tool) { return "Finish the current dictation, reading, meeting or screen capture before capturing again." }
             if readback.isCapturing { return "Capturing the display under the pointer…" }
             if !readback.screenPermissionGranted && !readback.isRecording {
                 return "Screen Recording is off for Workbench. Saved sessions and narration stay available; Snap & Talk shows how to allow it."
@@ -347,10 +392,10 @@ struct WorkbenchControlContext {
             let count = readback.activeSections.count
             let captured = "\(count) " + (count == 1 ? "capture" : "captures")
             return readback.hasPendingTranscriptions ? captured + " · transcribing narration…" : readback.sessionURL == nil ? "Capture a screen, then explain it." : captured + " in this session"
-        case .annotate: return stage.isDrawing ? stage.drawingToolTitle + " · Stop keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
-        case .present: return stage.isPresenting ? "End the scene; it stays saved." : "Present your selected device scene."
+        case .annotate: return state.drawing ? stage.drawingToolTitle + " · Stop keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
+        case .present: return state.presenting ? "End the scene; it stays saved." : "Present your selected device scene."
         case .persona: return state.personaDetail
-        case .timer: return stage.hasTimerSession ? stage.timerText : "Start your saved timer."
+        case .timer: return state.timerStarted ? stage.timerText : "Start your saved timer."
         case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }
     }
