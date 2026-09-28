@@ -767,7 +767,7 @@ struct RecordingOverlay: View {
             } else if model.phase == .idle && !model.previewingPanel, let cue = model.captureCue {
                 NoSpeechCueView(cue: cue, hold: model.holdCaptureCue)
             } else if model.phase == .idle && !model.previewingPanel {
-                // A copied prompt is kept in Saved resources; a transcript in History.
+                // A copied prompt is kept in Library; a transcript in History.
                 CaptureReceiptView(receipts: model.clipboardReceipt, review: {
                     if model.clipboardReceipt.receipt?.source == .prompt { model.showLibrary() }
                     else { model.openHistory(); model.onShowEditor?("history") }
@@ -1021,7 +1021,7 @@ private struct CaptureReceiptView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 VStack(spacing: 3) {
                     Button { receipts.dismissHUD(); review() } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Saved resources" : "Open History")
+                        .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
                     HStack(spacing: 2) {
                         if receipt.isClipboardCurrent {
                             Button { receipts.keepVisible.toggle() } label: {
