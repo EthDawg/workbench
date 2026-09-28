@@ -22,7 +22,7 @@ public struct ToolbarLiveState: Hashable, Sendable {
     public var drawing: Bool
     public var presenting: Bool
     public var persona: Persona
-    /// Recorded for the chip dot only. The timer never claims the label.
+    /// Recorded for the chooser's live dot only. The timer never claims the label.
     public var timer: Timer
     public var insertingPrompt: Bool
     public var meetingRecording: Bool
