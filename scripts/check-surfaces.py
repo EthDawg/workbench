@@ -691,7 +691,25 @@ class Inventory:
             yield i, collection, body, var + ['$0'], bound
 
     def use_enum(self, found, member):
-        self.enums.setdefault(found[0].type_context(found[1] + 1), (found, member or 'title'))
+        # An enum that shows another enum's words case for case records that enum's choices,
+        # so the words are registered once, where they are defined.
+        found, member = self.bridged(found, member or 'title') or (found, member or 'title')
+        self.enums.setdefault(found[0].type_context(found[1] + 1), (found, member))
+
+    def bridged(self, found, member):
+        """(enum, member) whose words `found` shows unchanged, when every case's `member` is
+        Other(rawValue: rawValue)?.m ?? rawValue and Other has every one of its raw values:
+        StageKitController.PersonaShape shows PersonaAppearance.Shape's titles. Otherwise None,
+        and the labels stay runtime."""
+        swift, start, end = found
+        forms = {expr for _, expr in choice_labels(swift, start, end, member).values()}
+        match = len(forms) == 1 and re.fullmatch(r'((?:\w+ \. )*\w+) \( rawValue : rawValue \) \? \. (\w+) \?\? rawValue', next(iter(forms)) or '')
+        other = self.find_enum(swift, match[1].replace(' . ', '.')) if match else None
+        if not other or other[0].type_context(other[1] + 1) == swift.type_context(start + 1):
+            return None
+        mine = {raw for _, raw in enum_cases(swift, start, end).values()}
+        theirs = {raw for _, raw in enum_cases(*other).values()}
+        return (other, match[2]) if mine <= theirs else None
 
     def element(self, swift, element, position, member, hint):
         """(label, identity) of one literal list element, or None if it is not literal."""
