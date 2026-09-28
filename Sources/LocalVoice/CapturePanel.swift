@@ -92,6 +92,17 @@ final class CaptureHUDControls: ObservableObject {
     }
     /// The result was resolved, dismissed or expired: the open row goes back to the launcher row.
     func resultEnded() { if revealsResult { revealsResult = false } }
+    /// The tools came back, after a capture, Hide toolbar or a cue, and the host has not yet found
+    /// the pointer: a kept-open row keeps its launcher until it has (#211 F8). The host's own
+    /// update runs again from inside the return, before it has looked.
+    private(set) var awaitingPointer = false
+    /// Brings the tools back. A kept-open row reveals at once; a waiting result waits for the pointer.
+    func activateToolbar() {
+        if !toolbar.isActive { awaitingPointer = true }
+        toolbar.activate()
+    }
+    /// The host has found the pointer again since the tools came back.
+    func pointerSettled() { awaitingPointer = false }
     /// Where each action of a shown result is, by name, in its window's content with the origin
     /// at the top left: the gallery checks that none sits over the mark at a right-hand dock
     /// (#211 F3). SwiftUI keeps no accessibility tree to read while no assistive app asks for one.
@@ -104,8 +115,8 @@ final class CaptureHUDControls: ObservableObject {
     /// or moves the anchor: the host sizes the window from the same centre.
     func showResultIfKeptOpen() {
         let state = toolbar.state
-        guard !revealsResult, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside, state.holds.isEmpty,
-              resultPending() else { return }
+        guard !revealsResult, !awaitingPointer, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside,
+              state.holds.isEmpty, resultPending() else { return }
         revealsResult = true
     }
 
@@ -356,7 +367,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             self.surface = surface
             tracking?.acceptsCrossings = false
             motion.finish(window)
-            if surface == .tools { controls.toolbar.activate() }
+            if surface == .tools { controls.activateToolbar() }
             else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
         // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
@@ -377,7 +388,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
         window.orderFrontRegardless()
         tracking?.acceptsCrossings = surface == .tools && !dragging && motion.target == nil
-        if previousSurface != surface && surface == .tools { tracking?.settle() }
+        if previousSurface != surface && surface == .tools { tracking?.settle(); controls.pointerSettled() }
         // In a row kept open by Keep open alone, a waiting result takes the row's place once nothing
         // is using it: after the pointer is found again above, so a row that comes back under the
         // pointer keeps its launcher until the pointer leaves (#211 F8).

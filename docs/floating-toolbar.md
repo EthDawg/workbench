@@ -56,40 +56,40 @@ capture signal and VoiceOver hears it once. The Dictate page keeps the recording
 details.
 
 A result keeps its own view: the dictation that needs attention with its reason,
-Retry, Record again or Open Workbench and dismiss; the reading that stopped with
-its reason, Retry and dismiss; and the clipboard receipt with Review, its pin and
-the × whose ring counts its own eight seconds (four after a confirmed paste),
-held by the pointer or the pin. At rest a result is only the mark's warning or
-clipboard status. The pointer's reveal, a dwell or a click on the mark, shows the
-result's view in place of the row, grown inward from the same centre; a result
-that arrives while the row is open waits for the next reveal rather than replacing
-the row under the pointer. Keyboard entry, Window › Focus floating toolbar,
-reveals the launcher row instead, with the launcher focused and keeping the
-result's status, the mark's glyph as a badge on the tool's symbol and its words in
-VoiceOver's value, and More opens with the result's own section: its title, a
-failure's reason, and Copy again, Retry, Record again, Open Workbench, Review and
-Dismiss as its view offers them (#211). A
-result's view takes the keyboard on its first command when the keyboard comes to
-it, and Escape leaves from it as from the row. At a right-hand dock a result grows
-leftward from the mark, so each result is mirrored there: its words, and a
-dictation result's drag handle, sit over the mark the pointer came from, and its
-commands and Position at the far end, while VoiceOver reads it in the same order.
-Revealing, collapsing or choosing a tool never acknowledges, dismisses or retries it. This is the chosen reading of the contract, which prefers recovery commands
-in More and warns against squeezing an editor into the row: a failure's reason
-and a receipt's text are content, not only commands, and the receipt's ring
-needs its view.
+Retry, Record again or Open Workbench and dismiss; the reading that stopped with its
+reason, Retry and dismiss; and the clipboard receipt with Review, its pin and the ×
+whose ring counts its own eight seconds (four after a confirmed paste), held by the
+pointer or the pin. At rest a result is only the mark's warning or clipboard status.
+The pointer's reveal, a dwell or a click on the mark, shows the result's view in
+place of the row, grown inward from the same centre; a result that arrives while the
+row is open waits for the next reveal rather than replacing the row under the
+pointer. Keyboard entry, Window › Focus floating toolbar, reveals the launcher row
+instead, with the launcher focused and keeping the result's status, the mark's glyph
+as a badge on the tool's symbol and its words in VoiceOver's value, and More opens
+with the result's own section: its title, a failure's reason, and Copy again, Retry,
+Record again, Open Workbench, Review and Dismiss as its view offers them (#211). A
+result's view takes the keyboard on its first command when the keyboard comes to it,
+and Escape leaves from it as from the row. At a right-hand dock a result grows
+leftward from the mark, so each result is mirrored there: its words, and a dictation
+result's drag handle, sit over the mark the pointer came from, and its commands and
+Position at the far end, while VoiceOver reads it in the same order. Revealing,
+collapsing or choosing a tool never acknowledges, dismisses or retries it. This is
+the chosen reading of the contract, which prefers recovery commands in More and
+warns against squeezing an editor into the row: a failure's reason and a receipt's
+text are content, not only commands, and the receipt's ring needs its view.
 
-One exception, also chosen: a row held open by Keep open alone shows a new result
-in its place, as the dictation panel did, because Keep open is the person's choice
-of persistent controls and there is no rest to show the status on. It does so only
-while no pointer is on the toolbar and nothing holds it, no menu, chooser,
-keyboard or Position… included; until then the result waits as a status. A kept-open
-row that comes back after a capture or Hide toolbar makes the same checks once the
-pointer has been found again, and Position… closing hands the keyboard back before
-anything is swapped (#211). It never activates Workbench, takes the keyboard or
-moves the anchor, and it grows from the same centre. A delivery that did not finish stays after its receipt has gone
-(#134 T5): the mark keeps its warning, and More opens with the result's own title,
-Copy again where it cannot lead to a second insertion, and Dismiss.
+One exception, also chosen: a row held open by Keep open alone shows a new result in
+its place, as the dictation panel did, because Keep open is the person's choice of
+persistent controls and there is no rest to show the status on. It does so only
+while no pointer is on the toolbar and nothing holds it, no menu, chooser, keyboard
+or Position… included; until then the result waits as a status. A kept-open row that
+comes back after a capture or Hide toolbar makes the same checks once the pointer
+has been found again, and Position… closing hands the keyboard back before anything
+is swapped (#211). It never activates Workbench, takes the keyboard or moves the
+anchor, and it grows from the same centre. A delivery that did not finish stays
+after its receipt has gone (#134 T5): the mark keeps its warning, and More opens
+with the result's own title, Copy again where it cannot lead to a second insertion,
+and Dismiss.
 
 The routine no-speech cue keeps its own view at the toolbar's place for under two
 seconds, held by hover or VoiceOver, then the mark again (#156).

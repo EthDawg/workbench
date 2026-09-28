@@ -183,10 +183,15 @@ enum WorkbenchControlChecks {
             try check(pointer.revealsResult, "and the keyboard taken after it, by the click on the mark, keeps them")
             let kept = toolbar()
             kept.toolbar.send(.keepOpenChanged(true))
-            kept.suspendToolbar(); kept.toolbar.activate()
+            kept.suspendToolbar()
+            // The host's resize runs its update again from inside the return, before it has looked
+            // for the pointer; that update tries the kept-open swap too.
+            kept.resize = { [weak kept] in kept?.showResultIfKeptOpen() }
+            kept.activateToolbar()
+            kept.resize = nil
             try check(kept.toolbar.state.tier == .revealed && !kept.revealsResult,
-                      "a kept-open row that comes back keeps its launcher until the host has found the pointer")
-            kept.toolbar.send(.pointerEntered); kept.showResultIfKeptOpen()
+                      "a kept-open row that comes back keeps its launcher until the host has found the pointer, even from the host's update inside the return")
+            kept.toolbar.send(.pointerEntered); kept.pointerSettled(); kept.showResultIfKeptOpen()
             try check(!kept.revealsResult, "and while the pointer is on it the result waits")
             kept.focusToolbar(); kept.toolbar.send(.pointerLeft); kept.showResultIfKeptOpen()
             try check(!kept.revealsResult, "as it does while the keyboard holds the row")
