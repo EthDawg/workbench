@@ -106,7 +106,7 @@ struct MeetingProcessor {
             try check()
         }
         guard manifest.seconds > 0, !manifest.tracks.isEmpty else {
-            throw MeetingError.message("No readable audio was recorded. Nothing was added to Recent transcripts; the session folder was kept.")
+            throw MeetingError.message("No readable audio was recorded. Nothing was added to History; the session folder was kept.")
         }
         if manifest.segments.isEmpty {
             let tracks = manifest.tracks

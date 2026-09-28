@@ -213,7 +213,7 @@ final class PackLibraryModel: ObservableObject {
                 if definition.inputKinds?.contains(.snapAndTalk) == true {
                     readback.selectSkill(id); app.page = "readback"
                 } else if definition.inputKinds?.contains(.transcripts) == true {
-                    preferredTranscriptSkillID = id; app.page = "history"
+                    preferredTranscriptSkillID = id; app.openHistory()
                 } else { throw VoiceError.message("This skill does not declare a supported input. Ask its contributor to update the pack.") }
                 return
             }

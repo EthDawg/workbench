@@ -440,6 +440,11 @@ enum TranscriptHandoffStore {
         guard TranscriptHandoffSkillCheck.isSafeRelativePath(relative) else {
             throw TranscriptHandoffError.message("The handoff folder cannot use the path \(relative). Nothing was created.")
         }
+        // The folder itself is checked as well as each step below it: a folder
+        // replaced by a symbolic link would otherwise lead every path elsewhere.
+        guard HandoffJobStore.isRealFolder(root) else {
+            throw TranscriptHandoffError.message("The handoff folder is missing or was replaced outside Workbench. Nothing was read or created.")
+        }
         var candidate = root.standardizedFileURL
         for component in relative.split(separator: "/") {
             candidate.appendPathComponent(String(component))
@@ -457,7 +462,7 @@ enum TranscriptHandoffStore {
         return """
         # \(manifest.title)
 
-        This is a portable Workbench handoff folder, created from transcripts you selected in Recent transcriptions.
+        This is a portable Workbench handoff folder, created from transcripts you selected in Workbench History.
 
         - `\(manifest.skillEntryPoint)` is the single task entry point: the \(manifest.skill.name) skill, pack \(manifest.skill.id) version \(manifest.skill.version).
         - `\(TranscriptHandoffStore.manifestName)` is the authoritative typed record of this handoff: the selected transcripts with their original Workbench ids and capture times, both wordings, the skill and any included evidence.

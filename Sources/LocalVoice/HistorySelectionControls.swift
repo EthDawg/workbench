@@ -192,7 +192,7 @@ struct SubscriptionSettingsView: View {
                 }
             }
             Button("Check connections") { Task { await jobs.refresh() } }.disabled(jobs.refreshing || jobs.isBusy)
-            Text("Workbench does not store provider credentials. Managed account policies and provider usage limits still apply. Tasks return here; they don’t continue an existing desktop chat.")
+            Text("Workbench does not store provider credentials. Managed account policies and provider usage limits still apply. Tasks return to History; they don’t continue an existing desktop chat.")
                 .font(.caption).foregroundStyle(.secondary)
         }.task { await jobs.refresh() }
     }
@@ -212,99 +212,146 @@ struct HandoffConnectionsSheet: View {
     }
 }
 
-struct HandoffJobsView: View {
+/// One Hand off task with every control the former Handoffs page gave it: its
+/// state and warnings, attempts, Retry, the tasks grouped under one review and
+/// its result. History shows each visible task with this card and places what
+/// the task was made from in `madeFrom`. `revealed` names the task a door asked
+/// to show, which can be this task or one grouped under it.
+struct HandoffJobCard<MadeFrom: View>: View {
     @ObservedObject var jobs: HandoffJobsModel
+    let job: HandoffJob
+    @Binding var expanded: UUID?
+    var revealed: UUID?
+    var focus: FocusState<UUID?>.Binding
+    var voiceOverFocus: AccessibilityFocusState<UUID?>.Binding
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
-    @State private var expanded: UUID?
-    @State private var showingConnections = false
+    @ViewBuilder var madeFrom: MadeFrom
+    @State private var showingOthers = false
+    @State private var loadedResult: (id: UUID, text: String?)?
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let files = jobs.files(job)
+        // Unknown until the folder has been read; a known unreadable result
+        // disables its actions and says so.
+        let resultReady = job.status == .completed && files?.resultReadable != false
+        let context = Self.context(job)
+        let others = jobs.otherReviewJobs(job)
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Handoffs").font(.title2.weight(.semibold))
+                Image(systemName: "arrow.up.forward.app").foregroundStyle(Workbench.accent)
+                Text(job.title).font(.headline)
                 Spacer()
-                Button("Connections…") { showingConnections = true }
-                if jobs.isBusy { Button("Stop task", role: .destructive) { jobs.cancel() } }
+                Text(job.status.title).font(.caption.weight(.medium))
+            }.accessibilityElement(children: .ignore)
+                .accessibilityLabel("Result, \(job.title), \(job.status.title)")
+                .focusable(revealed == job.id).focused(focus, equals: job.id)
+                .accessibilityFocused(voiceOverFocus, equals: job.id)
+            Text((job.itemCount == 1 ? "1 item" : "\(job.itemCount) items") + " · " + job.createdAt.formatted(date: .abbreviated, time: .shortened))
+                .font(.caption).foregroundStyle(.secondary)
+            madeFrom
+            Text(job.detail).font(.callout)
+            if job.status == .completed && files?.resultReadable == false {
+                Label("The saved result is missing or can’t be read. The task folder was kept; Show selected files opens it.",
+                      systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
             }
-            if let notice = jobs.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-            if let error = jobs.error { Text(error).font(.caption).foregroundStyle(.red) }
-            if jobs.jobs.isEmpty { Text("Your selected work and its results stay here.").foregroundStyle(.secondary) }
-            ForEach(jobs.visibleJobs) { job in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(job.title).font(.headline)
-                        Spacer()
-                        Text(job.status.title).font(.caption.weight(.medium))
+            if let key = job.reviewKey, jobs.currentReviewDigest?(key) != nil {
+                HStack {
+                    Button("Open current review") { jobs.onOpenReview?(key) }
+                        .accessibilityLabel("Open current review, " + context)
+                    if let current = jobs.currentPublishedJob(key: key) {
+                        Text("Current result · " + current.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else { Text("Current document includes local edits or an overview.").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            HStack {
+                Button("Copy instructions") { jobs.copy(job) }.accessibilityLabel("Copy instructions, " + context)
+                Button("Show selected files") { jobs.showInputs(job) }.accessibilityLabel("Show selected files, " + context)
+                if job.status == .completed {
+                    Button(expanded == job.id ? "Hide result" : "Read result") { expanded = expanded == job.id ? nil : job.id }
+                        .disabled(!resultReady && expanded != job.id)
+                        .accessibilityLabel((expanded == job.id ? "Hide result, " : "Read result, ") + context)
+                    Button("Open result") { jobs.showResult(job) }.disabled(!resultReady)
+                        .accessibilityLabel("Open result, " + context)
+                    if job.reviewKey != nil {
+                        Button("Use as current review") { jobs.publishReview(job, replacingChanges: true) }.disabled(jobs.isBusy || !resultReady)
+                            .accessibilityLabel("Use as current review, " + context)
                     }
-                    Text("\(job.itemCount) items · \(job.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(job.detail).font(.callout)
-                    if let key = job.reviewKey, jobs.currentReviewDigest?(key) != nil {
-                        HStack {
-                            Button("Open current review") { jobs.onOpenReview?(key) }
-                            if let current = jobs.currentPublishedJob(key: key) {
-                                Text("Current result · " + current.updatedAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            } else { Text("Current document includes local edits or an overview.").font(.caption).foregroundStyle(.secondary) }
-                        }
+                }
+                startAction(job)
+            }.buttonStyle(.borderless).font(.caption)
+            if let session = job.providerSessionID {
+                Text("Provider receipt: \(session)").textSelection(.enabled).font(.caption2).foregroundStyle(.secondary)
+            }
+            if !job.previousAttempts.isEmpty {
+                DisclosureGroup("Previous attempts") {
+                    ForEach(job.previousAttempts, id: \.number) { attempt in
+                        Text("Attempt \(attempt.number) · \(attempt.provider.title) · \(attempt.status.title)\n"
+                             + attempt.detail + (attempt.providerSessionID.map { "\nProvider receipt: " + $0 } ?? ""))
+                            .font(.caption).textSelection(.enabled)
                     }
-                    HStack {
-                        Button("Copy instructions") { jobs.copy(job) }
-                        Button("Show selected files") { jobs.showInputs(job) }
-                        if job.status == .completed {
-                            Button(expanded == job.id ? "Hide result" : "Read result") { expanded = expanded == job.id ? nil : job.id }
-                            Button("Open result") { jobs.showResult(job) }
-                            if job.reviewKey != nil {
-                                Button("Use as current review") { jobs.publishReview(job, replacingChanges: true) }.disabled(jobs.isBusy)
+                }.font(.caption)
+            }
+            if !others.isEmpty {
+                DisclosureGroup("Other tasks for this review (\(others.count))", isExpanded: $showingOthers) {
+                    ForEach(others) { previous in
+                        let previousContext = Self.context(previous)
+                        let readable = previous.status == .completed && jobs.files(previous)?.resultReadable != false
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(previous.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + previous.status.title)
+                                .accessibilityLabel("Earlier task, \(previous.title), \(previous.status.title), "
+                                                    + previous.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .focusable(revealed == previous.id).focused(focus, equals: previous.id)
+                                .accessibilityFocused(voiceOverFocus, equals: previous.id)
+                            Text(previous.detail).foregroundStyle(.secondary)
+                            HStack {
+                                Button("Show selected files") { jobs.showInputs(previous) }
+                                    .accessibilityLabel("Show selected files, " + previousContext)
+                                if previous.status == .completed {
+                                    Button("Open saved result") { jobs.showResult(previous) }.disabled(!readable)
+                                        .accessibilityLabel("Open saved result, " + previousContext)
+                                    Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }
+                                        .disabled(jobs.isBusy || !readable)
+                                        .accessibilityLabel("Use as current review, " + previousContext)
+                                }
+                                startAction(previous)
                             }
-                        }
-                        startAction(job)
-                    }.buttonStyle(.borderless).font(.caption)
-                    if let session = job.providerSessionID {
-                        Text("Provider receipt: \(session)").textSelection(.enabled).font(.caption2).foregroundStyle(.secondary)
+                        }.font(.caption).padding(.vertical, 4).padding(.horizontal, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(revealed == previous.id ? Workbench.accent : .clear, lineWidth: 2))
+                            .id(HistoryEntry.ID.result(previous.id))
                     }
-                    if !job.previousAttempts.isEmpty {
-                        DisclosureGroup("Previous attempts") {
-                            ForEach(job.previousAttempts, id: \.number) { attempt in
-                                Text("Attempt \(attempt.number) · \(attempt.provider.title) · \(attempt.status.title)\n"
-                                     + attempt.detail + (attempt.providerSessionID.map { "\nProvider receipt: " + $0 } ?? ""))
-                                    .font(.caption).textSelection(.enabled)
-                            }
-                        }.font(.caption)
-                    }
-                    let others = jobs.otherReviewJobs(job)
-                    if !others.isEmpty {
-                        DisclosureGroup("Other tasks for this review (\(others.count))") {
-                            ForEach(others) { previous in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(previous.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + previous.status.title)
-                                    Text(previous.detail).foregroundStyle(.secondary)
-                                    HStack {
-                                        Button("Show selected files") { jobs.showInputs(previous) }
-                                        if previous.status == .completed {
-                                            Button("Open saved result") { jobs.showResult(previous) }
-                                            Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }.disabled(jobs.isBusy)
-                                        }
-                                        startAction(previous)
-                                    }
-                                }.font(.caption).padding(.vertical, 4)
-                            }
-                        }
-                    }
-                    if expanded == job.id, let result = jobs.result(job) {
+                }
+            }
+            if expanded == job.id {
+                if let loaded = loadedResult, loaded.id == job.id {
+                    if let result = loaded.text {
                         Text(result).textSelection(.enabled).font(.system(.body, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
                         if let applySuggestedMetadata, jobs.isMetadataSuggestion(job) {
                             Button("Review suggested details…") { applySuggestedMetadata(job, result) }
                         }
+                    } else {
+                        Text("The saved result could not be read. Show selected files opens the task folder.").font(.caption).foregroundStyle(.orange)
                     }
-                }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+                } else { ProgressView().controlSize(.small) }
             }
-        }.task { await jobs.refresh() }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in jobs.objectWillChange.send() }
-            .sheet(isPresented: $showingConnections) {
-                HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to Handoffs") { showingConnections = false }
-            }
+        }
+        // A grouped task that a door reveals opens its group.
+        .onChange(of: revealed, initial: true) {
+            if let revealed, revealed != job.id, others.contains(where: { $0.id == revealed }) { showingOthers = true }
+        }
+        .task(id: expanded == job.id ? job.updatedAt : nil) {
+            guard expanded == job.id else { loadedResult = nil; return }
+            loadedResult = (job.id, await jobs.loadResult(job))
+        }
     }
+
+    /// Names the task an action belongs to, since every card repeats its buttons.
+    static func context(_ job: HandoffJob) -> String {
+        job.title + ", " + job.createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
+
     @ViewBuilder private func startAction(_ job: HandoffJob) -> some View {
         if job.status == .ready || [.failed, .cancelled, .interrupted].contains(job.status) {
             Menu(job.status == .ready ? "Start task…" : "Retry…") {
@@ -313,7 +360,7 @@ struct HandoffJobsView: View {
                         jobs.start(job, provider: provider, retry: job.status != .ready)
                     }.disabled(jobs.isBusy || !jobs.canRun(job, with: provider))
                 }
-            }.fixedSize()
+            }.fixedSize().accessibilityLabel((job.status == .ready ? "Start task, " : "Retry, ") + Self.context(job))
         }
     }
 }
@@ -328,7 +375,9 @@ struct HandoffReviewView: View {
     var initialEvidenceURL: URL? = nil
     var resolveReviewContext: (() throws -> SnapReviewContext?)? = nil
     var resolveSources: () throws -> [HandoffSourceSnapshot]
-    var onPrepared: () -> Void = {}
+    /// Receives the task this review actually prepared or reused, so the host
+    /// can reveal that task instead of assuming a new one.
+    var onPrepared: (UUID) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var task = ""
     @State private var sources: [HandoffSourceSnapshot] = []
@@ -413,7 +462,7 @@ struct HandoffReviewView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     if sources.contains(where: { !$0.images.isEmpty }) {
-                        Text("Codex: up to 64 images, 10 MiB each and 128 MiB together. Claude Code: up to 20 images, 3.75 MiB each and 16 MiB together, with a 24 MiB encoded request limit. Edited Snaps share the visible crop and annotations; originals stay in Snap History. Copy instructions keeps the complete selection.")
+                        Text("Codex: up to 64 images, 10 MiB each and 128 MiB together. Claude Code: up to 20 images, 3.75 MiB each and 16 MiB together, with a 24 MiB encoded request limit. Edited Snaps share the visible crop and annotations; originals stay in History. Copy instructions keeps the complete selection.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -456,7 +505,7 @@ struct HandoffReviewView: View {
             .sheet(isPresented: $showingPreviousReview) {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Previous review · reference material").font(.title2)
-                    Text("Assistant proposals have not been applied to your Snaps. Current names and archive choices come from Snap History.").font(.caption).foregroundStyle(.secondary)
+                    Text("Assistant proposals have not been applied to your Snaps. Current names and archive choices come from History.").font(.caption).foregroundStyle(.secondary)
                     ScrollView { Text(reviewContext?.previousDocument ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     HStack { Spacer(); Button("Back to handoff") { showingPreviousReview = false }.keyboardShortcut(.defaultAction) }
                 }.padding(24).frame(width: 660, height: 550)
@@ -473,9 +522,10 @@ struct HandoffReviewView: View {
             }
             if !includePreviousReview { latestReview?.previousDocument = nil }
             for index in latest.indices { latest[index].role = roles[latest[index].reference] ?? latest[index].role }
-            let job = try jobs.prepare(sources: latest, task: task, skill: skill.load(), review: latestReview)
-            if let provider { jobs.start(job, provider: provider, retry: [.failed, .cancelled, .interrupted].contains(job.status)) } else { jobs.copy(job) }
-            if jobs.error == nil { onPrepared(); dismiss() } else { problem = jobs.error }
+            try jobs.handOff(sources: latest, task: task, skill: skill.load(), review: latestReview, provider: provider) { id in
+                onPrepared(id); dismiss()
+            }
+            if let error = jobs.error { problem = error }
         } catch { problem = error.localizedDescription }
     }
     private func supports(_ provider: SubscriptionProvider) -> Bool {

@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         readback = ReadbackModel(engine: model.engine)
         snap = SnapModel()
         readback.onSaveCapturedSnap = { [weak snap] bytes, name in
-            guard let snap else { throw VoiceError.message("Snap History is unavailable.") }
+            guard let snap else { throw VoiceError.message("History is unavailable.") }
             return try snap.saveNarratedCapture(bytes, displayName: name)
         }
         model.resolveAdditionalHandoffItems = { [weak snap] references in
@@ -416,7 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
-        menu.addItem(withTitle: "Snap History", action: #selector(showSnap), keyEquivalent: "")
+        menu.addItem(withTitle: "History", action: #selector(showHistory), keyEquivalent: "")
         menu.addItem(withTitle: "Persona", action: #selector(showPersonas), keyEquivalent: "")
         menu.addItem(withTitle: "Transcribe meeting or call…", action: #selector(showMeeting), keyEquivalent: "")
         let savePrompt = menu.addItem(withTitle: "Save clipboard as prompt…", action: #selector(saveClipboardPrompt), keyEquivalent: "s")
@@ -576,9 +576,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
-    @objc func showHistory() { model.page = "history"; showWindow() }
+    @objc func showHistory() { model.openHistory(); showWindow() }
     @objc func showReadback() { model.page = "readback"; showWindow() }
-    @objc func showSnap() { model.page = "snap"; showWindow() }
     @objc func showPersonas() { model.page = "personas"; showWindow() }
     @objc func showMeeting() { model.page = "meeting"; showWindow() }
     @objc func showLibrary() { model.showLibrary() }
@@ -666,7 +665,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
 func runCLI(_ args: [String]) async -> Int32 {
     do {
-        let engine = RecognitionEngine()
+        // Only the modes that recognise speech create an engine: creating one
+        // reads the saved model choice, which other checks never need.
+        var recognition: RecognitionEngine?
+        func engine() -> RecognitionEngine {
+            if let recognition { return recognition }
+            let created = RecognitionEngine(); recognition = created; return created
+        }
         switch args.first {
         case "--check-presenter":
             try await PresenterChecks.run()
@@ -766,10 +771,19 @@ func runCLI(_ args: [String]) async -> Int32 {
             try ReadbackChecks.runPackagedResources()
         case "--check-transcript-handoff":
             try await MainActor.run { try TranscriptHandoffChecks.runAll() }
+        // These write receipt.json and summary.txt to a new folder (optional
+        // for the first two), since a run through the signed app has no stdout.
         case "--check-history-library":
-            try await MainActor.run { try WorkbenchHistoryChecks.run() }
+            try await CheckReceipt.run(mode: args[0], folder: args.dropFirst().first) { _ in
+                [try await MainActor.run { try WorkbenchHistoryChecks.run() }] + (try await HistoryChecks.run())
+            }
         case "--check-handoff-jobs":
-            try await MainActor.run { try HandoffJobsChecks.run() }
+            try await CheckReceipt.run(mode: args[0], folder: args.dropFirst().first) { _ in try await HandoffJobsChecks.run() }
+        case "--check-history-journey":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --check-history-journey NEW_OUTPUT_FOLDER") }
+            try await CheckReceipt.run(mode: args[0], folder: args[1]) { folder in
+                try await HistoryJourneyCheck.run(stores: folder!.appendingPathComponent("stores"))
+            }
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
         case "--check-readback-ordering-ui":
@@ -786,16 +800,16 @@ func runCLI(_ args: [String]) async -> Int32 {
             let result = await CleanupEngine().clean(text, style: args.count > 2 ? (CleanupStyle(rawValue: args[2]) ?? .light) : .light)
             print(result.text)
         case "--prepare-model":
-            try await engine.prepare(); print("MODEL_READY: \(await engine.statusDescription())")
+            try await engine().prepare(); print("MODEL_READY: \(await engine().statusDescription())")
         case "--transcribe":
             guard args.count == 2 else { throw VoiceError.message("Usage: LocalVoice --transcribe AUDIO_FILE") }
-            print(try await engine.transcribe(URL(fileURLWithPath: args[1])))
+            print(try await engine().transcribe(URL(fileURLWithPath: args[1])))
         case "--self-test":
             try CoreChecks.run()
             let phrase = "The quick brown fox jumps over the lazy dog. Please bring the blue notebook to the meeting tomorrow morning."
             let audio = try AudioRenderer.render(text: phrase, voice: "Karen", rate: 165)
             defer { AudioRenderer.remove(audio) }
-            let output = try await engine.transcribe(audio)
+            let output = try await engine().transcribe(audio)
             let lower = output.lowercased()
             guard lower.contains("brown fox"), lower.contains("blue notebook"), lower.contains("tomorrow") else { throw VoiceError.message("Speech round-trip failed: \(output)") }
             print("ROUND_TRIP_OK: \(output)")
@@ -805,7 +819,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             let file = try AVAudioFile(forReading: m4a)
             guard file.length > 0 else { throw VoiceError.message("M4A export was empty") }
             print("AUDIO_EXPORT_OK: \(Double(file.length) / file.processingFormat.sampleRate) seconds")
-            let second = try await engine.transcribe(m4a)
+            let second = try await engine().transcribe(m4a)
             guard second.lowercased().contains("blue notebook") else { throw VoiceError.message("M4A recognition failed: \(second)") }
             print("M4A_TRANSCRIPTION_OK")
         default: throw VoiceError.message("Usage: LocalVoice [--prepare-model | --transcribe AUDIO_FILE | --check-core | --check-readback | --check-speko | --check-reading-cancellation | --check-library | --check-quick-look-panel FILE… | --check-reading-service | --check-reading-service-native | --render-reading-service-fixture OUTPUT.png | --render-surfaces OUTPUT_DIRECTORY | --self-test]")

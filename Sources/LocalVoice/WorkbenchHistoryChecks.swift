@@ -6,7 +6,7 @@ import Foundation
 /// no live user data is read or replaced.
 enum WorkbenchHistoryChecks {
     @MainActor
-    static func run() throws {
+    static func run() throws -> String {
         var passed = 0
         func check(_ condition: @autoclosure () throws -> Bool, _ name: String) throws {
             guard try condition() else { throw VoiceError.message("WORKBENCH_HISTORY_CHECK_FAILED: \(name)") }
@@ -340,6 +340,6 @@ enum WorkbenchHistoryChecks {
         try check(kept.purpose == .note && kept.person == "Sam" && kept.company == "Acme Health"
                   && kept.tags == ["Data sharing", "mine", "pilot schedule"], "suggestions never replace typed details or duplicate tags")
         try check((try? kept.validated()) != nil, "merged suggestions pass the saved-detail limits")
-        print("WORKBENCH_HISTORY_CHECKS_OK: \(passed) checks")
+        return "WORKBENCH_HISTORY_CHECKS_OK: \(passed) checks"
     }
 }

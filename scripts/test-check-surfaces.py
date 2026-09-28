@@ -262,6 +262,17 @@ class SurfaceTests(unittest.TestCase):
         self.assertIn('Unregistered entry on dictate page: "Show in History".', failure)
         self.assertIn('docs/workbench.md#grammar', failure)
 
+    def test_history_routes_are_doors_and_bound_page_state_is_not(self):
+        self.write('LocalVoice/CaptureHistoryView.swift', '''struct TranscriptHistoryRow: View {
+          @Binding var details: Transcript?
+          var body: some View {
+            Button("Open") { model.openTranscript(item) }; Button("Details…") { details = item }
+            Button("Show in History") { model.openHistory(HistoryDoor(filter: .transcripts)) }
+          }
+        }''')
+        doors = sorted(e['label'] for e in self.entries() if e['surface'] == 'history page')
+        self.assertEqual(['Open', 'Show in History'], doors)
+
     def test_page_local_actions_are_not_doors(self):
         page = self.write('LocalVoice/Views.swift', 'struct ContentView: View { private var dictate: some View { Button("Transcribe a meeting or call…") { model.page = "meeting" } } }')
         before = self.registry()

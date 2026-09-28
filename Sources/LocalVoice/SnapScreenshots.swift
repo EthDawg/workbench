@@ -57,7 +57,7 @@ enum SnapScreenshots {
                                     title: String(file.deletingPathExtension().lastPathComponent.prefix(240)),
                                     source: .imported, createdAt: created(file) == .distantPast ? Date() : created(file))
         guard (try? store.snapshot(item.id))?.originalPNG == png else {
-            throw SnapError.message("\(file.lastPathComponent) could not be confirmed in Snap History, so it was left in place.")
+            throw SnapError.message("\(file.lastPathComponent) could not be confirmed in History, so it was left in place.")
         }
         known.insert(digest)
         try trash(file)

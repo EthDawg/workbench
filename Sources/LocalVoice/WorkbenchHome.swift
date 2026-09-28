@@ -24,7 +24,7 @@ struct WorkbenchHome: View {
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
         ("speak", "Read aloud", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
         ("present", "Present a device", "iphone"), ("personas", "Persona", "person.crop.circle"),
-        ("history", "Recent transcripts", "clock"), ("handoffs", "Handoffs", "arrow.up.forward.app"),
+        ("history", "History", "clock"),
         ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
         ("packs", "Packs", "shippingbox"), ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
     init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel) {
@@ -43,7 +43,11 @@ struct WorkbenchHome: View {
                     .padding(.vertical, 20)
                 ScrollView {
                 VStack(spacing: 4) { ForEach(Self.navItems, id: \.0) { page, title, symbol in
-                    Button { keyboard.stopInteraction(); model.page = page } label: {
+                    Button {
+                        keyboard.stopInteraction()
+                        // Every door opens History on All, even from History itself.
+                        if page == "history" { model.openHistory() } else { model.page = page }
+                    } label: {
                         Label(title, systemImage: symbol).font(.system(size: 13, weight: model.page == page ? .semibold : .regular))
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 9)
                             .foregroundStyle(model.page == page ? Workbench.accent : .primary)
@@ -71,9 +75,7 @@ struct WorkbenchHome: View {
                     Set(history.selected.filter { $0.kind == .snap }.map(\.id))
                 }, set: { ids in
                     history.setSelected(Set(history.selected.filter { $0.kind != .snap }).union(ids.map { .init(kind: .snap, id: $0) }))
-                }), savedSelectionID: history.activeSelectionID,
-                    selectionControls: AnyView(HistorySelectionControls(history: history) { handoffReview = HandoffReviewRequest() }),
-                    onHandOff: { handoffReview = HandoffReviewRequest() },
+                }), savedSelectionID: history.activeSelectionID, selectionProblem: history.error,
                     onAddToNarratedSession: { ids in
                         do {
                             let snapshots = try snap.handoffSnapshots(ids: Set(ids))
@@ -83,17 +85,11 @@ struct WorkbenchHome: View {
                         handoffReview = HandoffReviewRequest(task: task, snapReview: true, savedSelectionID: history.activeSelectionID)
                     })
                 case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
-                case "history": VStack(alignment: .leading, spacing: 20) {
-                    Text("Pick up a thought.").font(.largeTitle.weight(.semibold))
-                    CaptureHistoryView(model: model)
-                }.padding(32)
-                case "handoffs": ScrollView {
-                    HandoffJobsView(jobs: model.handoffJobs, applySuggestedMetadata: { job, result in
-                        do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
-                        catch { model.handoffJobs.error = error.localizedDescription }
-                    }).padding(32)
-                }
-                case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.page = "history" })
+                case "history": HistoryView(model: model, snap: snap, applySuggestedMetadata: { job, result in
+                    do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
+                    catch { model.handoffJobs.error = error.localizedDescription }
+                })
+                case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.openHistory() })
                 case "annotate": stage.controlsView
                 case "present": stage.scenesView
                 case "personas": stage.personasView
@@ -148,7 +144,7 @@ struct WorkbenchHome: View {
                             for index in sources.indices { sources[index].role = .reference }
                         }
                         return sources
-                    }, onPrepared: { model.page = "handoffs" })
+                    }, onPrepared: { id in model.openHistory(HistoryDoor(job: id)) })
             }
             .sheet(item: $suggestionReview) { suggestion in
                 MetadataSuggestionView(review: suggestion, library: model.historyLibrary)

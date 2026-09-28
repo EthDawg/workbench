@@ -32,25 +32,113 @@ final class SnapModel: ObservableObject {
     @Published private(set) var importingScreenshots = false
     let desktop: URL
     private let trash: (URL) throws -> Void
+    /// Set when new screenshots are redirected into History but macOS now
+    /// saves them somewhere else, for example after a change in the Screenshot app.
+    @Published private(set) var screenshotRedirectPaused = false
+    let screenshotLocation: any ScreenshotLocationStore
+    let screenshotInbox: URL
+    private let preferences: UserDefaults
+    private let applyScreenshotLocation: () -> Void
+    private var inboxTimer: Timer?
+    private var inboxSizes: [URL: Int] = [:]
+    static let redirectKey = "workbench.snap.screenshots.redirect.v1"
+    static let previousLocationKey = "workbench.snap.screenshots.previous-location.v1"
     private let captureService = SnapCapture()
     private var captureRequest: UUID?
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
     var isBusy: Bool { isCapturing || draft != nil }
-    var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0) } }
+    var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0, query: search) } }
 
-    private func matches(_ item: SnapItem) -> Bool {
-        guard let text = recognizedText[item.id], !text.isEmpty else { return item.matches(search) }
+    /// Snap search: title, notes, source type, tags and the text Vision read in
+    /// the image. Every term must match. History searches Snaps through this too.
+    func matches(_ item: SnapItem, query: String) -> Bool {
+        guard let text = recognizedText[item.id], !text.isEmpty else { return item.matches(query) }
         let searchable = item.searchableText + "\n" + text
-        return search.split(whereSeparator: \.isWhitespace).allSatisfy { searchable.localizedStandardContains(String($0)) }
+        return query.split(whereSeparator: \.isWhitespace).allSatisfy { searchable.localizedStandardContains(String($0)) }
     }
     var activeCount: Int { items.filter { $0.archivedAt == nil }.count }
 
-    init(store: SnapStore? = nil, desktop: URL? = nil, trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash) {
+    init(store: SnapStore? = nil, desktop: URL? = nil, screenshotLocation: (any ScreenshotLocationStore)? = nil,
+         preferences: UserDefaults = .standard, screenshotInbox: URL? = nil,
+         trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash,
+         applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService) {
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
         self.desktop = desktop ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+        self.screenshotLocation = screenshotLocation ?? SystemScreenshotLocation()
+        self.preferences = preferences
+        self.screenshotInbox = screenshotInbox ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Pictures/Workbench Screenshots", isDirectory: true)
         self.trash = trash
+        self.applyScreenshotLocation = applyScreenshotLocation
         refresh()
+        if keepsScreenshotsOffDesktop { startInbox() }
+    }
+
+    // MARK: New screenshots off the Desktop
+
+    var keepsScreenshotsOffDesktop: Bool { preferences.bool(forKey: Self.redirectKey) }
+
+    /// Explicit and reversible. Turning it on points macOS screenshots at a
+    /// Workbench folder that is imported while Workbench runs; turning it off
+    /// restores the previous location unless the person has changed it since.
+    func setKeepsScreenshotsOffDesktop(_ enabled: Bool) {
+        let inboxPath = screenshotInbox.path
+        if enabled {
+            do {
+                try FileManager.default.createDirectory(at: screenshotInbox, withIntermediateDirectories: true)
+                let current = screenshotLocation.location
+                if current != inboxPath {
+                    preferences.set(current ?? "", forKey: Self.previousLocationKey)
+                    screenshotLocation.location = inboxPath
+                    applyScreenshotLocation()
+                }
+                preferences.set(true, forKey: Self.redirectKey)
+                startInbox()
+                notice = "New screenshots now go straight to History; the menu bar refreshed once to apply it. Turn this off to restore your previous screenshot location."
+            } catch { notice = "Screenshots were not redirected. \(error.localizedDescription)" }
+        } else {
+            if screenshotLocation.location == inboxPath {
+                let previous = preferences.string(forKey: Self.previousLocationKey) ?? ""
+                screenshotLocation.location = previous.isEmpty ? nil : previous
+                applyScreenshotLocation()
+            }
+            preferences.set(false, forKey: Self.redirectKey)
+            stopInbox()
+            notice = screenshotRedirectPaused ? "Screenshots stay where macOS now saves them." : "Screenshots save where they did before."
+            screenshotRedirectPaused = false
+        }
+        objectWillChange.send()
+    }
+
+    private func startInbox() {
+        stopInbox()
+        importInbox()
+        inboxTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.importInbox() }
+        }
+    }
+    private func stopInbox() { inboxTimer?.invalidate(); inboxTimer = nil; inboxSizes.removeAll() }
+
+    /// Imports screenshots whose size has settled since the last check. A later
+    /// manual location change pauses the redirect instead of fighting it.
+    func importInbox() {
+        guard keepsScreenshotsOffDesktop, !isBusy else { return }
+        // Published only when it changes, so History and the Snap page are not redrawn every tick.
+        let paused = screenshotLocation.location != screenshotInbox.path
+        if paused != screenshotRedirectPaused { screenshotRedirectPaused = paused }
+        var sizes: [URL: Int] = [:], added = 0, known = Set(items.map(\.originalSHA256))
+        for file in SnapScreenshots.screenCaptures(in: screenshotInbox) {
+            let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            sizes[file] = size
+            guard inboxSizes[file] == size else { continue }
+            do {
+                if try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) != nil { added += 1 }
+                sizes[file] = nil
+            } catch { /* Left in the folder; an identical retry only clears it. */ }
+        }
+        inboxSizes = sizes
+        if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
     }
 
     // MARK: Desktop screenshots
@@ -82,7 +170,7 @@ final class SnapModel: ObservableObject {
             await Task.yield()
         }
         refresh()
-        notice = "Imported \(moved) Desktop screenshot\(moved == 1 ? "" : "s") into Snap History. The originals are in the Trash."
+        notice = "Imported \(moved) Desktop screenshot\(moved == 1 ? "" : "s") into History. The originals are in the Trash."
             + (added.isEmpty ? "" : " They are selected, so Use selected, then Organise…, can find repeats and themes.")
             + (kept.isEmpty ? "" : " \(kept.count) could not be imported and stayed on the Desktop.")
         return added
@@ -195,8 +283,8 @@ final class SnapModel: ObservableObject {
                                         height: dimensions.height, title: title, source: draft.source, edit: draft.edit, notes: draft.notes, tags: draft.tags)
             }
             self.draft = nil; refresh()
-            if copyAfterSaving { notice = copyBytes(rendered) ? "Saved to Snap History and copied. Paste it where you need it." : "Saved to Snap History. Copy failed; use Copy from history to try again." }
-            else { notice = "Saved to Snap History. Your original image is preserved." }
+            if copyAfterSaving { notice = copyBytes(rendered) ? "Saved to History and copied. Paste it where you need it." : "Saved to History. Copy failed; use Copy from History to try again." }
+            else { notice = "Saved to History. Your original image is preserved." }
             return true
         } catch { notice = "Snap was not saved. \(error.localizedDescription)"; return false }
     }
@@ -212,13 +300,13 @@ final class SnapModel: ObservableObject {
             let snapshot = try store.snapshot(id), panel = NSSavePanel()
             panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = snapshot.item.title + ".png"
             guard panel.runModal() == .OK, let url = panel.url else { return }
-            try snapshot.imagePNG.write(to: url, options: .atomic); notice = "Image exported. The original remains in Snap History."
+            try snapshot.imagePNG.write(to: url, options: .atomic); notice = "Image exported. The original remains in History."
         } catch { notice = error.localizedDescription }
     }
 
     func archive(_ ids: Set<UUID>, archived: Bool) {
         guard !isBusy else { notice = "Finish the current edit before changing history."; return }
-        do { try store.setArchived(archived, ids: Array(ids)); notice = archived ? "Archived. Restore these Snaps from Archived at any time." : "Restored to Snap History." }
+        do { try store.setArchived(archived, ids: Array(ids)); notice = archived ? "Archived. Restore these Snaps from Archived at any time." : "Restored to History." }
         catch { notice = "Some Snaps could not be updated. \(error.localizedDescription)" }
         refresh()
     }
