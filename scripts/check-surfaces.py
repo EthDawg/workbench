@@ -102,6 +102,8 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar glyph menu', 'controls'),
+    # Position… in that menu opens the toolbar's placement control (#163).
+    ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
     # The same window's live dictation, narration and reading controls.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('StageKit/AnnotationMenu.swift', 'AnnotationMenu', 'Draw menu', 'controls'),

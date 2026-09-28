@@ -17,8 +17,9 @@ extension FloatingControlAnchor {
     }
 }
 
-/// The shared geometry still allows free placement for other utilities. This
-/// toolbar always chooses one of the named destinations, even from mid-screen.
+/// The dictation panel always docks at one of the named destinations, even from
+/// mid-screen. The toolbar's tools rest wherever they are released instead, and
+/// dock only near a destination (`FloatingControlPlacement`, #163).
 enum FloatingToolbarDocking {
     static func anchor(for frame: NSRect, in screen: NSRect) -> FloatingControlAnchor {
         FloatingControlGeometry.nearestAnchor(to: frame, in: screen, threshold: .greatestFiniteMagnitude) ?? .bottom
