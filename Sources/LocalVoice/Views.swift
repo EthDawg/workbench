@@ -302,7 +302,7 @@ struct MacVoicePanel: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("VOICE").font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                    Text("Voice").font(Workbench.sectionTitle)
                     HStack(spacing: 6) {
                         Picker("Voice", selection: Binding(get: { choice?.voice?.id ?? "" }, set: choose)) {
                             if case .missing(let name) = choice { Text("\(name) (not installed)").tag("") }
@@ -316,7 +316,11 @@ struct MacVoicePanel: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack { Text("PACE").tracking(1.4); Spacer(); Text("\(Int(rate)) words/min").monospacedDigit() }.font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Pace").font(Workbench.sectionTitle)
+                        Spacer()
+                        Text("\(Int(rate)) words/min").monospacedDigit().font(.caption).foregroundStyle(.secondary)
+                    }
                     Slider(value: $rate, in: 100...300, step: 10).accessibilityLabel("Reading pace")
                 }
             }
@@ -377,9 +381,9 @@ struct DictionaryView: View {
             WorkbenchPageHeader("dictionary", summary: "Correct names and specialist terms after transcription. Matches whole words and phrases, ignoring case.")
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) { Text("HEARD").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. git hub", text: $heard).accessibilityLabel("Heard") }
+                    VStack(alignment: .leading, spacing: 8) { Text("Heard").font(Workbench.sectionTitle); TextField("e.g. git hub", text: $heard).accessibilityLabel("Heard") }
                     Image(systemName: "arrow.right").padding(.bottom, 7).foregroundStyle(mint)
-                    VStack(alignment: .leading, spacing: 8) { Text("WRITE INSTEAD").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. GitHub", text: $written).accessibilityLabel("Write instead") }
+                    VStack(alignment: .leading, spacing: 8) { Text("Write instead").font(Workbench.sectionTitle); TextField("e.g. GitHub", text: $written).accessibilityLabel("Write instead") }
                     Button(pending?.updatesExisting == true ? "Update" : "Add") { save(pending) }
                         .disabled(pending == nil || pending?.isAlreadySaved == true)
                 }

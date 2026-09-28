@@ -22,7 +22,7 @@ struct ReadingProviderView: View {
                     Link("Speko account ↗", destination: URL(string: "https://platform.speko.ai")!)
                 }.font(.caption).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("VOICE").font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                    Text("Voice").font(Workbench.sectionTitle)
                     HStack {
                         Picker("Speko voice", selection: Binding<String?>(
                             get: { model.selectedSpekoVoice?.id },
