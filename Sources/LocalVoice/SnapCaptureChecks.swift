@@ -126,6 +126,8 @@ enum SnapCaptureChecks {
             SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
             await snap.capture(.screen)
             let first = snap.draft?.id
+            try check(snap.isBusy && !snap.disablesCaptureDoors,
+                      "a pending draft keeps the capture doors open, so they can bring its editor back")
             desktop.windowOnScreen = false; desktop.inFront = mail; desktop.log.removeAll()
             await snap.capture(.region)
             try check(first != nil && snap.draft?.id == first && source.requests == [.screen] && desktop.log == ["open snap"]

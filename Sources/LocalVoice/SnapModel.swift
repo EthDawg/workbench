@@ -62,6 +62,10 @@ final class SnapModel: ObservableObject {
     private var analysis: Task<Void, Never>?
     private var analysisRequested = false
     var isBusy: Bool { isCapturing || draft != nil }
+    /// Capture doors (Home's card and Edit, the panel row, the toolbar) are
+    /// disabled only while a capture is in flight. A pending draft keeps them
+    /// open: `capture` brings its editor back instead of starting another (#151).
+    var disablesCaptureDoors: Bool { isCapturing }
     var visibleItems: [SnapItem] { items.filter { ($0.archivedAt != nil) == showingArchived && matches($0, query: search) } }
 
     /// Snap search: title, notes, source type, tags and the text Vision read in

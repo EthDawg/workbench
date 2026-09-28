@@ -183,7 +183,7 @@ struct WorkbenchControlContext {
             overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession,
             timerRunning: stage.isTimerRunning, canRecordAgain: model.canRecordAgain,
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
-            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.isBusy == true)
+            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true)
     }
     func shortcut(_ tool: WorkbenchControlTool) -> String? {
         switch tool {
