@@ -733,14 +733,19 @@ func runCLI(_ args: [String]) async -> Int32 {
             try ReadbackChecks.runPackagedResources()
         case "--check-transcript-handoff":
             try await MainActor.run { try TranscriptHandoffChecks.runAll() }
-        // These take an optional new folder for receipt.json and
-        // summary.txt, since a run through the signed app has no stdout.
+        // These write receipt.json and summary.txt to a new folder (optional
+        // for the first two), since a run through the signed app has no stdout.
         case "--check-history-library":
             try await CheckReceipt.run(mode: args[0], folder: args.dropFirst().first) { _ in
                 [try await MainActor.run { try WorkbenchHistoryChecks.run() }] + (try await HistoryChecks.run())
             }
         case "--check-handoff-jobs":
             try await CheckReceipt.run(mode: args[0], folder: args.dropFirst().first) { _ in try await HandoffJobsChecks.run() }
+        case "--check-history-journey":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --check-history-journey NEW_OUTPUT_FOLDER") }
+            try await CheckReceipt.run(mode: args[0], folder: args[1]) { folder in
+                try await HistoryJourneyCheck.run(stores: folder!.appendingPathComponent("stores"))
+            }
         case "--check-readback-pack":
             try await MainActor.run { try ReadbackPackChecks.run() }
         case "--check-readback-ordering-ui":

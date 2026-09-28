@@ -1193,7 +1193,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         onPhaseChange?()
     }
     func selectedHandoffSources(references: Set<WorkbenchItemReference>? = nil) throws -> [HandoffSourceSnapshot] {
-        let selected = references ?? historyLibrary.selected
+        try Self.handoffSources(selected: references ?? historyLibrary.selected, history: history,
+                                library: historyLibrary, additional: resolveAdditionalHandoffItems)
+    }
+    /// Frozen sources for a selection: transcripts from `history` with their
+    /// details, and other kinds (Snaps in the app) through `additional`.
+    static func handoffSources(selected: Set<WorkbenchItemReference>, history: [Transcript], library historyLibrary: WorkbenchHistoryModel,
+                               additional resolveAdditionalHandoffItems: ((Set<WorkbenchItemReference>) throws -> [HandoffSourceSnapshot])?) throws -> [HandoffSourceSnapshot] {
         let ids = Set(selected.filter { $0.kind == .transcript }.map(\.id))
         let items = history.filter { ids.contains($0.id) }
         guard items.count == ids.count else {
