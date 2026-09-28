@@ -805,11 +805,11 @@ enum SurfaceGallery {
     // MARK: Floating toolbar visibility
 
     /// The floating toolbar's one switch from its doors (#134 H3): the panel's header switch,
-    /// Settings › General's switch and the Window menu read and change the one saved preference,
-    /// and each shows what the others did. The panel header's whole 32 point row is the switch's
-    /// target, and the switch is its one accessibility element. The toolbar's own Hide toolbar
-    /// sets the same preference; its menu is not opened here. Which surface shows over live work
-    /// is CaptureHUDChecks' (#155).
+    /// Settings › General's switch, the Window menu and the toolbar's own More › Hide toolbar
+    /// read and change the one saved preference, and each shows what the others did. More's item
+    /// is read from the menu the toolbar builds when More opens, and chosen as a menu chooses it.
+    /// The panel header's whole 32 point row is the switch's target, and the switch is its one
+    /// accessibility element. Which surface shows over live work is CaptureHUDChecks' (#155).
     func checkToolbarVisibility() throws -> [String] {
         let kept = model.floatingToolbarVisible
         defer { model.floatingToolbarVisible = kept }
@@ -847,6 +847,19 @@ enum SurfaceGallery {
         try agree(false, after: "the Window menu")
         NSApp.sendAction(item.action!, to: shell, from: item)
         try agree(true, after: "the Window menu again")
+        // The fourth door, the toolbar's own More › Hide toolbar (#134 T4, H3): the item as More
+        // builds it for a toolbar that is showing, chosen as a menu chooses it.
+        let controls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarVisibility", home: home))
+        let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
+                                      meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
+                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+        guard let hide = toolbar.moreMenu().items.first(where: { $0.title == "Hide toolbar" }), let action = hide.action else {
+            throw VoiceError.message("The toolbar's More has no Hide toolbar.")
+        }
+        NSApp.sendAction(action, to: hide.target, from: hide)
+        try agree(false, after: "the toolbar's More › Hide toolbar")
+        switches(in: panelHost).first?.performClick(nil)
+        try agree(true, after: "the panel's switch, after More › Hide toolbar")
 
         // The header's whole switch row is one control (#134 review): a click on the words, beside
         // them, above or below them or on the switch toggles once, and a click just outside the
@@ -895,7 +908,7 @@ enum SurfaceGallery {
         return ["The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
-                "The toolbar's More › Hide toolbar sets the same saved preference; which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+                "The toolbar's own More › Hide toolbar, as More builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
     }
 
     /// The panel header's switch rows under `view`.
