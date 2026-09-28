@@ -534,7 +534,13 @@ final class PersonaAppearanceTests {
             XCTAssertTrue(stage.personaShape(of: copyA) == nil, "The captured copy is not live in this set")
             stage.setPersonaShape(.original, for: copyA)
             XCTAssertEqual(library.sessionState.instances.first { $0.id == other.id }?.shape, .card, "Another set's copy is left alone")
+            // A set's copy is gone once its set ends, not hidden, even when the set was hidden (#216).
+            library.performOverlayAction(.selectInstance(other.id))
+            guard let copyB = stage.selectedPersonaCopy else { XCTAssertTrue(false, "The second set's copy is named"); return }
+            library.performOverlayAction(.pauseResume)
+            XCTAssertTrue(stage.isPersonaCopyHidden(copyB), "Hidden with its set")
             library.endOverlaySession()
+            XCTAssertFalse(stage.isPersonaCopyHidden(copyB), "An ended set's copy is gone, not hidden")
         }
     }
 
