@@ -992,14 +992,6 @@
     "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Last Hand off job, completed."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.paste",
-    "surface": "window home",
-    "label": "Paste",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Pastes the latest transcript where you were."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.prepare",
     "surface": "window home",
     "label": "Prepare…",
