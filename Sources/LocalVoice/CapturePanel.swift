@@ -749,10 +749,19 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             reset: { [weak self] in self?.choosePosition(.bottom) },
             closed: { [weak self] reason in
                 onClose?()
-                if let self, let model = self.model { self.update(model: model) }
-                guard reason.returnsKeyboard(openedFromKeyboard: fromKeyboard) else { return }
-                self?.returnKeyboardToToolbar(target: target)
+                self?.positionClosed(returnsKeyboard: reason.returnsKeyboard(openedFromKeyboard: fromKeyboard)) {
+                    self?.returnKeyboardToToolbar(target: target)
+                }
             })
+    }
+
+    /// After Position… closes (#211 F2): the keyboard goes back first, when it should, and only then
+    /// does the host update, so a result waiting on a kept-open row finds the keyboard's hold and
+    /// stays behind the launcher row instead of taking the keyboard's place. The gallery passes
+    /// the keyboard's hold alone as `returnKeyboard`, so it never takes the person's keyboard.
+    func positionClosed(returnsKeyboard: Bool, returnKeyboard: () -> Void) {
+        if returnsKeyboard { returnKeyboard() }
+        if let model { update(model: model) }
     }
 
     /// The tool chooser (#134), from a click, Space or Return on the launcher. It holds the row

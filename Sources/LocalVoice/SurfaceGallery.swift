@@ -1553,7 +1553,8 @@ enum SurfaceGallery {
     /// gallery never takes the person's keyboard: the toolbar's keyboard hold stands in for it.
     /// Keyboard entry onto a waiting receipt must keep the launcher row, whose launcher takes the
     /// focus, and Escape must leave without dismissing the receipt; Escape must leave a result's
-    /// own controls too (F1).
+    /// own controls too (F1). Position… closing onto a receipt waiting on a kept-open row must
+    /// hand the keyboard back before the host updates, so the launcher row stays (F2).
     func checkResultsInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
                                expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
@@ -1597,6 +1598,22 @@ enum SurfaceGallery {
         expect("Escape from a waiting receipt's own controls", [pointerShowed ? nil : "the pointer's reveal did not show the receipt",
             released ? nil : "Escape left the keyboard's hold in place", model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
         model.clipboardReceipt.clear(); settle(.resting)
+        // Position… holds a kept-open row's result back while it is open (a menu's hold stands in
+        // for it here); closing it hands the keyboard back first, and only then does the host update.
+        controls.toolbar.send(.keepOpenChanged(true)); settle(.revealed)
+        controls.toolbar.send(.holdBegan(.menu))
+        receipt(); settle(.revealed)
+        let waited = !controls.revealsResult
+        controls.toolbar.send(.holdEnded(.menu))
+        host.positionClosed(returnsKeyboard: true) { controls.focusToolbar() }
+        let keptRow = !controls.revealsResult, keyboard = controls.toolbar.state.holds.contains(.keyboard)
+        settle(.revealed)
+        expect("Position… closing onto a receipt waiting on a kept-open row", [
+            waited ? nil : "the receipt took the row while Position… was open",
+            keptRow && !controls.revealsResult ? nil : "the receipt took the place of the row the keyboard came back to",
+            keyboard ? nil : "the keyboard did not come back"])
+        model.clipboardReceipt.clear(); controls.endKeyboardInteraction()
+        controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
     }
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
