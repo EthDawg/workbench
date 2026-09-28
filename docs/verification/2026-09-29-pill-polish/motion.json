@@ -58,24 +58,24 @@
       },
       {
         "frame" : 9,
-        "height" : 32,
+        "height" : 33,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 85
+        "width" : 95
       },
       {
         "frame" : 10,
-        "height" : 36,
+        "height" : 37,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 115
+        "width" : 123
       },
       {
         "frame" : 11,
         "height" : 39,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 149
+        "width" : 145
       },
       {
         "frame" : 12,
@@ -271,28 +271,28 @@
         "height" : 36,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 118
+        "width" : 116
       },
       {
         "frame" : 40,
         "height" : 33,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 89
+        "width" : 87
       },
       {
         "frame" : 41,
         "height" : 30,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 66
+        "width" : 65
       },
       {
         "frame" : 42,
         "height" : 29,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 49
+        "width" : 51
       },
       {
         "frame" : 43,
@@ -494,24 +494,24 @@
       },
       {
         "frame" : 9,
-        "height" : 33,
+        "height" : 32,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 152
+        "width" : 133
       },
       {
         "frame" : 10,
-        "height" : 36,
+        "height" : 37,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 222
+        "width" : 238
       },
       {
         "frame" : 11,
         "height" : 39,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 277
+        "width" : 288
       },
       {
         "frame" : 12,
@@ -714,7 +714,7 @@
         "height" : 33,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 140
+        "width" : 141
       },
       {
         "frame" : 41,

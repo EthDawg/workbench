@@ -51,4 +51,13 @@ Initial implementation evidence (before the resting-identity revision): source `
 - 115 synthetic control checks passed, plus the existing prompt insertion, delivery, accessibility and picker checks.
 - 300 production-view fixtures rendered; both native motion sequences passed every sampled anchor check.
 
+### Quiet resting handle: current evidence
+
+The GIFs and galleries above now show the quieter revision, source `68ec3615c24d1b603df31a30bc20582f4947face`.
+
+- 151 isolated ToolbarCore/ToolbarKit tests passed, including quiet live work's complete accessible status and reveal action.
+- 300 production-view fixtures rendered. Idle and every ordinary live-work state retain a 48 × 28 target with an 8-point visible handle; recording, transport and results retain their 20-point capsule.
+- Both native motion sequences captured 66 frames and nine distinct window widths. Every sampled launcher stayed 24 points from its anchored edge, including the thinner handle's opening and closing.
+- The capture warning and voice trace remain visible. The owning toolbar contract, product specification and guide now describe the same policy.
+
 Final CI and surface-gallery results are recorded in the PR. This is source and synthetic native evidence. It does not claim installed Preview acceptance, physical hover, VoiceOver traversal or multi-display hardware acceptance. The installed QA owner retains the shared Preview and desktop input.
