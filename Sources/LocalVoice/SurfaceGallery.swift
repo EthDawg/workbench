@@ -7,6 +7,7 @@ import ToolbarCore
 /// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states, the production
 /// floating toolbar host in every mode at rest and revealed, and the top of every Home page at the
 /// default and minimum window sizes, then writes `index.html` listing each entry and where it leads.
+/// A toolbar window that is not the size of its row fails the run; other flags are reported only.
 /// It uses synthetic fixtures only: nothing is launched, and no
 /// shortcut, microphone, screen capture, Keychain item or network request is used.
 ///
@@ -76,6 +77,12 @@ enum SurfaceGallery {
             passes.append(try JSONDecoder().decode(Pass.self, from: data))
         }
         let flags = try SurfaceIndex(passes: passes).write(to: output)
+        // A toolbar window that is not the size of its row fails the run (#152), after the index
+        // has recorded it. Every other flag stays report-only.
+        let wrongSize = passes.flatMap { pass in pass.host.filter(\.hasSizeProblem).map { "\($0.title), \(pass.theme)" } }
+        if !wrongSize.isEmpty {
+            throw VoiceError.message("The floating toolbar's window is not the size of its row in \(wrongSize.count) states (\(wrongSize.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
         let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
     }
@@ -910,6 +917,17 @@ private struct SurfaceIndex {
     func esc(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+extension SurfaceGallery.HostCheck {
+    /// The host never heard the row, the window is smaller than the row wants, or the window is
+    /// not the size the host prefers. Not settling is left out: in a local run a real pointer
+    /// inside the invisible panel can hold the row revealed.
+    var hasSizeProblem: Bool {
+        guard window.count == 2, wants.count == 2, preferred.count == 2 else { return true }
+        return !measured || window[0] + 0.5 < wants[0] || window[1] + 0.5 < wants[1]
+            || abs(window[0] - preferred[0]) > 0.5 || abs(window[1] - preferred[1]) > 0.5
     }
 }
 

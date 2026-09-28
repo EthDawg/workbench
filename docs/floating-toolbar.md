@@ -256,6 +256,11 @@ and flags a window smaller than its row, the check the renderer above cannot mak
 because it sizes its own window to the row. The host pins seed sizes until the row
 reports (`CaptureHUDControls.reportSize`), so a report that never arrives leaves the
 row and its corners clipped (#152). The flags appear in the gallery's index and log.
+A size problem fails the run once the index is written: a row the host never heard,
+a window smaller than its row, or a window that is not the size the host prefers.
+A row that did not settle, which a real pointer over the invisible panel can cause
+in a local run, and the gallery's other flags are reported without failing it. A
+Mac with no display renders no host states and has nothing to fail.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted
