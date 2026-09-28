@@ -165,6 +165,7 @@ enum SurfaceGallery {
     let meetings: MeetingModel
     let recordingMeetings: MeetingModel
     let keyboard: KeyboardCoachModel
+    let panelEditor: PanelShortcutEditor
     /// Supplies the app's own shortcut catalogue. It registers nothing unless launched.
     private let shell = AppDelegate()
     /// Routes passed to the panel's `open`, and other actions, while a menu item runs.
@@ -217,6 +218,7 @@ enum SurfaceGallery {
         shell.model = model; shell.stage = stage
         keyboard = KeyboardCoachModel(entries: shell.shortcutEntries(), update: { _, _ in "The surface gallery does not save shortcuts." },
                                       suspend: { _ in }, probe: { _ in nil })
+        panelEditor = PanelShortcutEditor(keyboard: keyboard)
         model.onShowPresenter = { [weak self] in self?.actions.append("Opens the Switch to panel") }
         // StageKit's page callbacks, wired to the routes AppDelegate gives them.
         stage.onOpenControls = { [weak self] in self?.opened.append("annotate") }
@@ -249,6 +251,7 @@ enum SurfaceGallery {
         for (route, shots) in try renderFoldedStates(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots += shots }
         }
+        if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
@@ -288,6 +291,22 @@ enum SurfaceGallery {
         let modelsShot = try save(models, id: "state-dictating", title: "Models while a dictation records, minimum window, \(Int(modelsSize.width)) × \(Int(modelsSize.height)) pt",
                                   detail: "A recording holds the speech model: the controls wait until it finishes.", file: "page-models-state-dictating-\(theme).png", to: output)
         return [("library", [libraryShot]), ("models", [modelsShot])]
+    }
+
+    // MARK: Read states
+
+    /// Read after a reading stopped because its audio could not be read: one error with Retry,
+    /// and the text back in the editor.
+    func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let size = SurfaceGallery.sizes[0].size
+        let window = homeWindow(size: size)
+        defer { window.contentViewController = nil; window.close(); model.error = nil; model.speechText = "" }
+        model.speechText = "The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget."
+        model.error = AppModel.readingAudioUnreadable
+        let (rep, drawn) = try renderPage("speak", in: window)
+        return [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                         detail: "The reading stopped; the text is editable again and Retry makes new audio.",
+                         file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
     }
 
     // MARK: History states
@@ -476,15 +495,19 @@ enum SurfaceGallery {
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
                        apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
                        reset: { model.error = nil }),
+            PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
+                       apply: { model.error = AppModel.readingAudioUnreadable }, reset: { model.error = nil }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
-                       reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings })]
+                       reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings }),
+            PanelState(id: "shortcut-editor", title: "Shortcut editor", detail: "Snap's shortcut label clicked: the inline editor waits for keys. Closing the panel ends it.", readback: readback,
+                       apply: { [self] in panelEditor.change("voice.8") }, reset: { [self] in panelEditor.end() })]
     }
 
     // MARK: Rendering
 
     func quickPanel(_ readback: ReadbackModel) -> WorkbenchQuickPanel {
-        WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap,
+        WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, editor: panelEditor, receipts: model.clipboardReceipt, snapModel: snap,
                             open: { [weak self] route in self?.opened.append(route) }, draw: {}, snap: {}, snapCapture: { _ in }, present: {}, timer: {}, personas: {})
     }
 
@@ -629,7 +652,9 @@ enum SurfaceGallery {
     func menus() -> [SurfaceGallery.Listing] {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
-            ["Destination"] + DeliveryMode.allCases.map { "  " + $0.rawValue } + ["Text Style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
+            ["Destination"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
+            + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
+            + ["Text Style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
             + ["---", "History… → history, on Transcripts", "Transcribe meeting or call… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
             guard let menu = panel.nativeOptions(tool) else { continue }
@@ -678,7 +703,8 @@ enum SurfaceGallery {
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
                          E(surface: panel, label: "Dictate · Options · History…", leads: "Page: history, on Transcripts", route: "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
-                         action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings")]
+                         action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings"),
+                         action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
             case .read:
                 list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
             case .snap:

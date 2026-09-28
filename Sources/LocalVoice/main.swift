@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var menuTarget = PanelDestination<TextDelivery.Target>()
     var stage: StageKitController!
     var keyboard: KeyboardCoachModel!
+    /// The panel's inline shortcut editor, ended on every open and close (#153).
+    var panelEditor: PanelShortcutEditor!
+    /// Closes the panel on a click in another app or when Workbench gives up focus.
+    let panelLeave = PanelLeaveWatch()
     var presenterPanel: PresenterPanelController!
     var readback: ReadbackModel!
     var snap: SnapModel!
@@ -166,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if suspended { self.model.promptInsertion.cancel(); self.hotkeys.unregister(); self.stage.escape(); self.stage.setShortcutsSuspended(true) }
             else { self.stage.setShortcutsSuspended(false); self.registerShortcuts(); self.keyboard.replaceEntries(self.shortcutEntries()) }
         })
+        panelEditor = PanelShortcutEditor(keyboard: keyboard)
         let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)))
         homeWindow.onHide = { [weak self] in self?.model.library.closePreview() }
         window = homeWindow
@@ -224,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // stopping and hiding go through the shared operation switch, so a row
         // does exactly what its label says. Timer keeps both directions here
         // because it is not a toolbar mode.
-        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, receipts: model.clipboardReceipt, snapModel: snap, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
+        let quickController = NSHostingController(rootView: WorkbenchQuickPanel(model: model, stage: stage, readback: readback, keyboard: keyboard, editor: panelEditor, receipts: model.clipboardReceipt, snapModel: snap, open: { [weak self] page in self?.navigate(page) }, draw: { [weak self] in
             self?.resumeTarget { [weak self] _ in self?.stage.draw() }
         }, snap: { [weak self] in self?.toolbarSnap() }, snapCapture: { [weak self] mode in self?.toolbarSnapCapture(mode) }, present: { [weak self] in
             self?.closeControls(); self?.stage.presentSelectedScene()
@@ -489,12 +494,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             showFloatingToolbar(); return
         }
         menuTarget.opened(capturing: TextDelivery.capture())
-        model.refreshPermissions(); keyboard.stopInteraction(); keyboard.replaceEntries(shortcutEntries()); NSApp.activate(ignoringOtherApps: true)
+        // Each visit starts in the normal state, whatever the last one left.
+        model.refreshPermissions(); panelEditor.end(); keyboard.replaceEntries(shortcutEntries()); NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
+        panelLeave.watch { [weak self] in self?.closeControls() }
     }
     func closeControls() { popover.performClose(nil); finishEditing() }
-    func popoverDidClose(_ notification: Notification) { menuTarget.closed(); finishEditing(); keyboard?.stopInteraction() }
+    /// Every way the panel closes ends here: the editor and its recorder end
+    /// and global actions resume.
+    func popoverDidClose(_ notification: Notification) { menuTarget.closed(); panelLeave.stop(); panelEditor?.end(); finishEditing(); keyboard?.stopInteraction() }
     func resumeTarget(_ action: @escaping (TextDelivery.Target?) -> Void) {
         let target = menuTarget.current
         closeControls()

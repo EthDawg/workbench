@@ -140,6 +140,9 @@ enum WorkbenchControlChecks {
         do { _ = try await cancel.value; throw VoiceError.message("Cancelled delivery resumed") }
         catch is CancellationError { try check(!gate.isWaiting, "cancellation releases its continuation") }
         try await PromptInsertionChecks.run()
+        // Prompts and dictation share TextDelivery's copy and paste.
+        try await TextDeliveryChecks.run()
+        try AccessibilitySetupChecks.run()
         print("WORKBENCH_CONTROL_CHECKS_OK: \(count) checks passed")
     }
 }

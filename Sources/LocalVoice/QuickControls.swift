@@ -79,8 +79,13 @@ struct VoiceOptions: View {
                 if model.accessibilityGranted {
                     Label("Automatic paste ready", systemImage: "checkmark.circle").foregroundStyle(Workbench.accent).font(.caption)
                 } else {
-                    Button("Enable automatic paste…") { model.requestAccessibility() }
-                    Text("Allow Accessibility once. Until then, your transcript is copied.").font(.caption).foregroundStyle(.secondary)
+                    // The preference is kept for later approval; copying works now.
+                    Text("Automatic paste needs Accessibility approval. Until then, transcripts are copied for ⌘V.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("Set up automatic paste…") { model.requestAccessibility() }
+                        Text("Your organisation may need to approve this.").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
         }.disabled(model.phase != .idle)

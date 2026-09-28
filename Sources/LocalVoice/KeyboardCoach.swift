@@ -124,14 +124,17 @@ final class KeyboardCoachModel: ObservableObject {
     private let update: (String, VoiceShortcut) -> String?
     private let suspend: (Bool) -> Void
     private let probe: (VoiceShortcut) -> String?
+    private let notifications: NotificationCenter
     private var eventMonitor: Any?
+    private var leaveObservers: [NSObjectProtocol] = []
     private var suspended = false
 
     /// update must leave the previous preference intact on error. It must not resume global
     /// hotkeys: suspend(false) owns that operation after editing or practice has stopped.
-    init(entries: [ShortcutEntry], update: @escaping (String, VoiceShortcut) -> String?, suspend: @escaping (Bool) -> Void, probe: ((VoiceShortcut) -> String?)? = nil) {
+    init(entries: [ShortcutEntry], update: @escaping (String, VoiceShortcut) -> String?, suspend: @escaping (Bool) -> Void, probe: ((VoiceShortcut) -> String?)? = nil, notifications: NotificationCenter = .default) {
         self.entries = entries; selectedID = entries.first?.id ?? ""
         self.update = update; self.suspend = suspend; self.probe = probe ?? Self.registrationFailure
+        self.notifications = notifications
     }
 
     func replaceEntries(_ entries: [ShortcutEntry]) {
@@ -159,14 +162,30 @@ final class KeyboardCoachModel: ObservableObject {
             guard let self else { return event }
             return self.handle(event)
         }
+        // Leaving ends recording or practice, whichever surface started it:
+        // Workbench giving up focus, or a menu taking the keyboard. Neither can
+        // then capture later typing or keep global actions paused.
+        for name in [NSApplication.willResignActiveNotification, NSMenu.didBeginTrackingNotification] {
+            leaveObservers.append(notifications.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated { self?.stopInteraction() }
+            })
+        }
     }
 
     func stopInteraction() {
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor); self.eventMonitor = nil }
+        leaveObservers.forEach(notifications.removeObserver); leaveObservers = []
         let wasInteracting = isInteracting
         interaction = .idle; heldModifiers = 0; heldKey = nil
         if suspended { suspended = false; suspend(false) }
         if wasInteracting, practice?.isComplete != true { message = "Stopped. Your shortcuts are active again."; hasError = false }
+    }
+
+    /// Forgets the last recording or practice result, so a surface that starts
+    /// over does not show an earlier visit's message. Never during an interaction.
+    func clearFeedback() {
+        guard !isInteracting else { return }
+        message = nil; hasError = false; practice = nil
     }
 
     func disableSelected() {
@@ -221,6 +240,7 @@ final class KeyboardCoachModel: ObservableObject {
 
     deinit {
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+        leaveObservers.forEach(notifications.removeObserver)
         if suspended { suspend(false) }
     }
 }
