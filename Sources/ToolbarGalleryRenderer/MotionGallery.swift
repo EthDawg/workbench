@@ -19,7 +19,8 @@ extension ToolbarGalleryRenderer {
             var state = ToolbarViewState(name: "motion", tier: .resting, anchor: anchor,
                 mode: live ? .present : .draw, actionTitle: live ? "End presentation" : "Draw",
                 actionHint: live ? "⌥Q" : "⌥D", isBusy: live,
-                status: live ? .resolve(ToolbarActivity(live: [.presenting])) : .idle)
+                status: live ? .resolve(ToolbarActivity(live: [.presenting])) : .idle,
+                accessory: live ? .prompts : .tools)
             func content() -> AnyView {
                 AnyView(ToolbarRow(state: state, accent: WorkbenchPalette.accent)
                     .pinnedToDock(anchor).environment(\.colorScheme, .light))

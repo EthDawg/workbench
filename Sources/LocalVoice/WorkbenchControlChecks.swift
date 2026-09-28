@@ -248,19 +248,20 @@ enum WorkbenchControlChecks {
             try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
                       "the row's own reading action is not repeated there, and no reading offers nothing")
         }
-        // Words waiting for drawing to end lead with Stop drawing, which delivers them; Copy now
-        // is in More (#211 F5).
+        // Words waiting for drawing to end lead the toolbar with Stop drawing, which delivers them;
+        // Copy now is in More (#211 F5). The menu's rows stay with their own capability (#214):
+        // Dictate waits and Draw's own row offers Stop drawing.
         do {
             var waiting = WorkbenchControlState(); waiting.phase = .delivering; waiting.waitingForDrawing = true; waiting.drawing = true
-            try check(waiting.live(.dictate).dictation == .waitingForDrawing
-                      && ToolbarNextAction.resolve(waiting.live(.dictate)).operation == .finishDrawing,
-                      "the shared toolbar offers Stop drawing to deliver the waiting words")
-            try check(waiting.actionTitle(.dictate) == "Processing…" && !waiting.enabled(.dictate),
-                      "Dictate waits for drawing without claiming another capability's ending")
-            try check(waiting.actionTitle(.annotate) == "Stop drawing" && waiting.rowAction(.annotate) == .operation(.finishDrawing),
-                      "Draw keeps its own ending while dictation waits")
+            try check(waiting.live(.dictate).dictation == .waitingForDrawing && ToolbarNextAction.resolve(waiting.live(.dictate)).operation == .finishDrawing,
+                      "the toolbar leads words waiting for drawing with Stop drawing, not a disabled Processing…")
+            try check(waiting.rowAction(.dictate) == .operation(.wait) && !waiting.enabled(.dictate) && waiting.actionTitle(.dictate) == "Processing…",
+                      "the menu's Dictate row waits for them, disabled")
+            try check(waiting.rowAction(.annotate) == .operation(.finishDrawing) && waiting.enabled(.annotate) && waiting.actionTitle(.annotate) == "Stop drawing",
+                      "and Draw's own row offers Stop drawing")
             waiting.drawing = false
-            try check(waiting.actionTitle(.dictate) == "Processing…", "once drawing has ended they are a moment's processing")
+            try check(ToolbarNextAction.resolve(waiting.live(.dictate)).title == "Processing…" && waiting.actionTitle(.dictate) == "Processing…",
+                      "once drawing has ended they are a moment's processing")
         }
         // Keyboard entry keeps the launcher row: only the pointer's own reveal shows a waiting
         // result's controls, and a row that Keep open brings back waits for the pointer and holds
@@ -301,6 +302,47 @@ enum WorkbenchControlChecks {
             kept.unfocusToolbar(); kept.showResultIfKeptOpen()
             try check(kept.revealsResult, "once nothing is on it, the result takes the kept-open row's place")
             kept.toolbar.send(.keepOpenChanged(false))
+        }
+        // Persona's Appearance (#134 part B): Circle, Card and Original for the copy taken as the menu
+        // opens, its current look checked; a choice changes that copy and no other.
+        do {
+            var looks: [Int: StageKitController.PersonaShape] = [1: .card, 2: .circle]
+            let menu = ToolbarAccessoryMenus.appearance(copy: 1, current: { looks[$0] }, choose: { looks[$1] = $0 })
+            try check(menu.items.map(\.title) == ["Circle", "Card", "Original"] && menu.items.map(\.state) == [.off, .on, .off],
+                      "Appearance lists Circle, Card and Original with the copy's current look checked")
+            let original = menu.items[2]
+            _ = (original.target as AnyObject?)?.perform(original.action, with: original)
+            try check(looks == [1: .original, 2: .circle], "an Appearance choice changes the copy its menu opened for, and no other")
+            try check(ToolbarAccessoryMenus.appearance(copy: Int?.none, current: { _ in nil }, choose: { _, _ in }).items.isEmpty,
+                      "with no copy, Appearance has nothing to change")
+            // When the row has no room for Appearance it waits in More, unless Persona's own menu there
+            // already holds the choice, as a shown card's and a set's Appearance do. The StageKit suite
+            // checks the real Persona menus; these stand-ins check the rule around them (#216).
+            func personaMenu(_ titles: [String], appearance choices: [String]?) -> NSMenu {
+                let menu = NSMenu()
+                titles.forEach { menu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                if let choices {
+                    let item = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: ""), submenu = NSMenu()
+                    choices.forEach { submenu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                    item.submenu = submenu; menu.addItem(item)
+                }
+                return menu
+            }
+            let hiddenCard = personaMenu(["Show Again", "End Overlay"], appearance: nil)
+            let shownCard = personaMenu(["Choose Persona", "End Overlay"], appearance: ["Circle", "Card", "Original"])
+            // Choices that grow or change order under Persona's Appearance never bring a second one.
+            for grown in [["Card", "Circle", "Original"], ["Circle", "Card", "Original", "Outline"]] {
+                try check(!ToolbarAccessoryMenus.moreNeedsAppearance(personaMenu(["Choose Persona"], appearance: grown),
+                                                                      accessoryFits: false, hasCopy: true),
+                          "Persona's Appearance is found by its title, whatever choices it holds: \(grown)")
+            }
+            try check(ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: false, hasCopy: true),
+                      "a hidden card's Appearance waits in More when the row has no room for it")
+            try check(!ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: true, hasCopy: true),
+                      "while it fits, Appearance stays on the row and More does not repeat it")
+            try check(!ToolbarAccessoryMenus.moreNeedsAppearance(shownCard, accessoryFits: false, hasCopy: true),
+                      "a shown copy's Appearance in More already holds Circle, Card and Original")
+            try check(!ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: false, hasCopy: false), "with no copy, More has no Appearance")
         }
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.

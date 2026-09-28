@@ -391,7 +391,8 @@ struct TestRunner {
                 ("timer idle and reset start without a hidden countdown", timerTransport.testIdleAndResetOfferStartAndNeverResumeAHiddenCountdown),
                 ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
                 ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
-                ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone)
+                ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
+                ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms)
             ]
             for (name, test) in tests {
                 let before = assertionFailures
@@ -554,6 +555,7 @@ struct TestRunner {
             ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
             ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
             ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
+            ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),

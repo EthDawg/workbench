@@ -78,6 +78,83 @@ final class TimerTransportTests {
         }
     }
 
+    /// Chooses a menu item as a menu does.
+    private func choose(_ item: NSMenuItem) {
+        guard let action = item.action else { return }
+        _ = (item.target as AnyObject?)?.perform(action, with: item)
+    }
+
+    /// A transport a control showed is the one it performs, and only while it still applies
+    /// (#174). Drawn while the countdown runs, More's Pause timer, the Timer menu's Pause Timer and
+    /// the timer's own Pause button do nothing once it has finished: none restarts it. Restart
+    /// comes only from a control drawn after it finished. A Pause shown before another control
+    /// paused the countdown never resumes it, and a step shown for one countdown does nothing to
+    /// the next, though it has the same name.
+    func testAShownTransportIsTheOnlyOneItPerforms() throws {
+        try withTimer { app, settings, clock in
+            MainActor.assumeIsolated {
+                settings.value.timerMinutes = 1
+                var starts = 0
+                app.onBeginActivity = { starts += 1 }
+                let stage = StageKitController(coordinator: app)
+                app.startTimer()
+                XCTAssertEqual(starts, 1)
+                // Drawn while it runs: More's item keeps the step More showed, the Timer menu its item,
+                // and the timer's window, the quick controls and the Draw page their button's action.
+                let more = stage.timerStep
+                guard let menu = stage.makeTimerMenu().items.first(where: { $0.title == "Pause Timer" }) else {
+                    XCTAssertTrue(false, "The Timer menu offers Pause Timer while it runs"); return
+                }
+                let button = TimerTransportAction(app)
+                XCTAssertEqual(more.transport, .running)
+                XCTAssertEqual(button.transport, .running)
+                clock.now += 61
+                settle { app.timerFinished }
+                XCTAssertEqual(app.timerTransport, .finished)
+                // Each on its own, so one cannot undo what another did.
+                stage.performTimerTransport(expected: more)
+                XCTAssertEqual(app.timerTransport, .finished, "More's Pause timer shown while it ran never restarts a finished timer")
+                choose(menu)
+                XCTAssertEqual(app.timerTransport, .finished, "nor does the Timer menu's Pause Timer")
+                button()
+                XCTAssertEqual(app.timerTransport, .finished, "nor the timer's own Pause button")
+                XCTAssertEqual(starts, 1, "and none begins a new countdown")
+                XCTAssertEqual(app.timerText, "00:00")
+                // Drawn after it finished, Restart restarts.
+                let restart = stage.timerStep
+                XCTAssertEqual(restart.transport, .finished)
+                stage.performTimerTransport(expected: restart)
+                XCTAssertEqual(app.timerTransport, .running, "a Restart drawn after the end restarts")
+                XCTAssertEqual(starts, 2)
+                // A Pause shown before another control paused the countdown does not resume it.
+                let shownPause = stage.timerStep
+                guard let shownMenu = stage.makeTimerMenu().items.first(where: { $0.title == "Pause Timer" }) else {
+                    XCTAssertTrue(false, "The Timer menu offers Pause Timer after the restart"); return
+                }
+                let shownButton = TimerTransportAction(app)
+                app.pauseResumeTimer()
+                XCTAssertEqual(app.timerTransport, .paused)
+                stage.performTimerTransport(expected: shownPause)
+                XCTAssertEqual(app.timerTransport, .paused, "More's Pause timer shown before the pause never resumes")
+                choose(shownMenu)
+                XCTAssertEqual(app.timerTransport, .paused, "nor does the Timer menu's Pause Timer")
+                shownButton()
+                XCTAssertEqual(app.timerTransport, .paused, "nor the timer's own Pause button")
+                // A step shown for one countdown does nothing to the next, the same step by name.
+                let oldResume = stage.timerStep
+                XCTAssertEqual(oldResume.transport, .paused)
+                app.resetTimer(); app.startTimer(); app.pauseResumeTimer()
+                XCTAssertEqual(app.timerTransport, .paused)
+                XCTAssertEqual(starts, 3)
+                stage.performTimerTransport(expected: oldResume)
+                XCTAssertEqual(app.timerTransport, .paused, "the last countdown's Resume leaves the new one paused")
+                stage.performTimerTransport(expected: stage.timerStep)
+                XCTAssertEqual(app.timerTransport, .running, "the new countdown's own Resume resumes it")
+                app.resetTimer(); app.hideTimer()
+            }
+        }
+    }
+
     func testFinishedOffersRestartThroughTheNormalStartPath() throws {
         try withTimer { app, settings, clock in
             settings.value.timerMinutes = 1

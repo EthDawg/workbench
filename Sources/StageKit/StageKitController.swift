@@ -153,6 +153,18 @@ public final class StageKitController: ObservableObject {
     public func personaShape(of copy: PersonaCopy) -> PersonaShape? {
         coordinator.demoScenes.personas.liveShape(of: copy.copy).flatMap { PersonaShape(rawValue: $0.rawValue) }
     }
+    /// Whether that copy is hidden now: the one floating card kept for Show again,
+    /// or a set's copy while the set or the copy is hidden. False once it is gone.
+    public func isPersonaCopyHidden(_ copy: PersonaCopy) -> Bool {
+        coordinator.demoScenes.personas.liveCopyHidden(copy.copy) == true
+    }
+    /// Whether this menu holds a live copy's Appearance: an item with that title and a submenu, as
+    /// the Persona menu names it for a shown card and for a set's selected copy, never for a hidden
+    /// card. Found by its title, so choices added under it or reordered never make the floating
+    /// toolbar's More add a second Appearance beside it (#134 part B, #216).
+    public static func personaMenuHoldsAppearance(_ menu: NSMenu) -> Bool {
+        menu.items.contains { $0.title == "Appearance" && $0.hasSubmenu }
+    }
     /// Changes exactly that live copy's look, as its Appearance menu does. The
     /// saved persona, other copies and the layout's saved state are unchanged.
     public func setPersonaShape(_ shape: PersonaShape, for copy: PersonaCopy) {
@@ -188,8 +200,10 @@ public final class StageKitController: ObservableObject {
         let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
         if !optionsOnly {
             menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
-            let transport = app.timerTransport
-            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: transport == .running || transport == .paused) { [weak app] in app?.pauseResumeTimer() })
+            // Pause or Resume as shown now, and only that (#174).
+            let transport = TimerTransportAction(app)
+            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer",
+                                         enabled: transport.transport == .running || transport.transport == .paused) { transport() })
             menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
             menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
         }
@@ -267,9 +281,13 @@ public final class StageKitController: ObservableObject {
     /// The timer's next transport: Start, Pause, Resume or Restart. A finished timer is
     /// `.finished`, never paused, although its session stays started until it is reset.
     public var timerTransport: TimerTransport { coordinator.timerTransport }
-    /// Performs that transport: Start and Restart take the normal start path; Pause and
-    /// Resume keep the timer's window as it is.
-    public func performTimerTransport() { coordinator.performTimerTransport() }
+    /// The timer's next transport as a control shows it now, tied to its countdown (#174).
+    public var timerStep: TimerStep { coordinator.timerStep }
+    /// Performs `expected`, a step a control showed, only while it is still the timer's next one
+    /// for the same countdown; otherwise nothing. Start and Restart take the normal start path;
+    /// Pause and Resume keep the timer's window as it is. A shown Pause or Resume never becomes a
+    /// Start or a Restart (#174).
+    public func performTimerTransport(expected: TimerStep) { coordinator.performTimerTransport(expected: expected) }
     /// Every current notice with its page, most urgent first. The drawing and settings stores
     /// record their notice's page where it is raised; a persona or scene notice belongs to its own
     /// page. A card that could not show is live, so it comes before an older scene notice.

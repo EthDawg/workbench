@@ -191,9 +191,10 @@ public struct ToolbarRow: View {
     }
 
     @ViewBuilder private var accessory: some View {
-        if let accessoryTitle = state.shownAccessory {
-            ToolbarAccessory(title: accessoryTitle, fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
-                             began: menuBegan, ended: menuEnded)
+        if let accessory = state.accessory, state.shownAccessory != nil {
+            ToolbarAccessoryButton(title: accessory.title, opensList: accessory.opensList, description: state.accessoryDescription,
+                                   fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
+                                   began: menuBegan, ended: menuEnded, escape: escape)
                 .frame(width: ToolbarLayout.accessoryWidth * scale, height: ToolbarLayout.controlHeight * scale)
                 .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
         }
@@ -598,17 +599,28 @@ final class MoreButton: NSButton {
     }
 }
 
-private struct ToolbarAccessory: NSViewRepresentable {
+/// The chosen tool's one accessory (#134 part B). One that opens a list, a menu or the picker
+/// carries a chevron; Review goes straight to the session's review and carries none. VoiceOver
+/// hears its title without the chevron, or its description when it has one ("Appearance of the
+/// selected persona, hidden"), which the tooltip shows too. It answers the keyboard as the
+/// launcher and More do: Space, Return, Enter or Down opens it, a menu only with admission, and
+/// Escape leaves keyboard interaction.
+private struct ToolbarAccessoryButton: NSViewRepresentable {
     let title: String
+    let opensList: Bool
+    let description: String?
     let fontSize: CGFloat
     let makeMenu: () -> NSMenu
     let openPanel: ((NSView) -> Void)?
     let began: (NSMenu) -> Bool
     let ended: () -> Void
+    let escape: () -> Void
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
     func updateNSView(_ view: AccessoryButton, context: Context) {
-        view.title = title + " ⌄"; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
-        view.setAccessibilityLabel(title); view.setAccessibilityIdentifier("toolbar.accessory")
+        view.title = opensList ? title + " ⌄" : title; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
+        view.setAccessibilityLabel(description ?? title); view.setAccessibilityIdentifier("toolbar.accessory")
+        view.toolTip = description
+        view.escape = escape
         view.open = { [weak view] in
             guard let view else { return }
             if let openPanel { openPanel(view); return }
@@ -619,10 +631,17 @@ private struct ToolbarAccessory: NSViewRepresentable {
     }
     final class AccessoryButton: NSButton {
         var open: (() -> Void)?
+        var escape: (() -> Void)?
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(openMenu) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override var acceptsFirstResponder: Bool { true }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         @objc private func openMenu() { open?() }
+        override func keyDown(with event: NSEvent) {
+            if event.keyCode == 53 { escape?() }
+            else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
+            else { super.keyDown(with: event) }
+        }
     }
 }
 
