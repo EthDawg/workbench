@@ -75,6 +75,19 @@ One capability has one name on every surface, menu and shortcut. Action labels m
 8. **The surface map is checked.** CI compares every entry point against [the surface registry](surfaces.json). An entry point starts a capability, opens a place or page, or changes a setting that reaches beyond one page, wherever it appears: the panel and its menus, the toolbar, app menus, sidebar and Home, shortcuts, Settings and offers. Controls that act only on a page's own content are out of scope. A new or renamed entry point needs a deliberate registry change classified by these rules; the registry's kinds describe what an entry is, while the classification above describes a change. The check finds changes; people decide taste.
 9. **Engines are chosen once, by job.** Recognition, writing and speech engines are set in Models, not per capability; a recipe may override them where it is edited. Each run shows where it happens, on this Mac or the named service, and work never moves from this Mac to a cloud service without an explicit choice.
 
+### Fit
+
+Six rules for how a surface feels, each with the check that holds it. They come from the 28 September installed-app audit (#164) and apply to every visible change.
+
+1. **Gestures own movement.** A floating surface moves by drag with a four-point threshold, snaps within sixteen points of a dock behind a visible guide, keeps a free position otherwise and stays inside the display. Its menu keeps Reset position and one Position… command that opens a compact keyboard-accessible placement control, never a tree of anchors. Direct resizing belongs to Persona artwork; the toolbar sizes to its content. Gesture semantics are shared; each surface keeps its own state.
+2. **The result appears where you acted.** An editor, a receipt or a failure shows at the origin, in place, with the reason and the next useful action. A routine outcome returns to normal controls quickly; a decision about recoverable audio, a permission or something destructive keeps a reachable explanation. "Needs attention" is not a label.
+3. **A picture opens as a picture.** Clicking a thumbnail shows it, Space previews it, the editor is one more click, and inspecting never replaces.
+4. **Content fits its window.** Rows and labels size to content at standard and larger text, and a host window matches its row's measured size in every tier. The surface gallery drives the production toolbar host and flags a window smaller than its row.
+5. **A transient surface leaves when you do.** The panel, menus, sheets and the shortcut recorder close on a click outside and on Escape in every state. A persistent surface (a toolbar kept open, the recording controls, a live overlay) collapses or hides only on an explicit action and keeps Stop reachable while recording.
+6. **Every door gives the same result, under the same name.** Each capability has one host-level start that presents its editor or state, and Home, a panel row, the toolbar, a shortcut and a menu all resolve to it. A menu door carries the sidebar's name for the same page; whether a page has a menu door is a registry decision.
+
+The surface gallery holds rule 4 and the names in rule 6, the registry holds rules 1 and 6, the toolbar's reducer tests hold its own machine, and a pointer pass on the disposable QA copy holds what only a pointer can show (rules 1, 2, 3 and 5), recorded with the PR like the renders in rule 6 above.
+
 ## Scope
 
 | Primitive | Workbench's responsibility | Boundary |
