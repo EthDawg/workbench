@@ -13,7 +13,7 @@
     "label": "Read aloud",
     "kind": "action",
     "belongsTo": "read",
-    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137)."
+    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
@@ -151,7 +151,7 @@
     "label": "Read aloud",
     "kind": "action",
     "belongsTo": "read",
-    "note": "Existing door, recorded, no change: Opens the saved text on the Read page (Option of read; #134)."
+    "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.position",

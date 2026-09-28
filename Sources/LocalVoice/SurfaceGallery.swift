@@ -249,18 +249,31 @@ enum SurfaceGallery {
 
     // MARK: Read states
 
-    /// Read after a reading stopped because its audio could not be read: one error with Retry,
-    /// and the text back in the editor.
+    /// Read after a reading stopped because its audio could not be read (one error with Retry,
+    /// and the text back in the editor), and with a History transcript waiting for Replace
+    /// reading or Keep current over a different draft.
     func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         let size = SurfaceGallery.sizes[0].size
         let window = homeWindow(size: size)
-        defer { window.contentViewController = nil; window.close(); model.error = nil; model.speechText = "" }
+        defer { window.contentViewController = nil; window.close(); model.dismissReadingFailure(); model.speechText = "" }
         model.speechText = "The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget."
-        model.error = AppModel.readingAudioUnreadable
-        let (rep, drawn) = try renderPage("speak", in: window)
-        return [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                         detail: "The reading stopped; the text is editable again and Retry makes new audio.",
-                         file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
+        model.reportReadingFailure(.audioUnreadable)
+        var (rep, drawn) = try renderPage("speak", in: window)
+        var shots = [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                              detail: "The reading stopped; the text is editable again and Retry makes new audio.",
+                              file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
+        model.dismissReadingFailure()
+        model.importReading(SurfacePass.history[0].text, from: .transcript)
+        defer { model.keepCurrentReading() }
+        for (name, size) in SurfaceGallery.sizes {
+            let sized = name == "default" ? window : homeWindow(size: size)
+            defer { if sized !== window { sized.contentViewController = nil; sized.close() } }
+            (rep, drawn) = try renderPage("speak", in: sized)
+            shots.append(try save(rep, id: "state-import-review-\(name)", title: "Read, a transcript to review, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                                  detail: "Read aloud on a History transcript while a different draft is in Read: nothing changes until Replace reading or Keep current.",
+                                  file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
+        }
+        return shots
     }
 
     // MARK: History states
@@ -450,7 +463,7 @@ enum SurfaceGallery {
                        apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
                        reset: { model.error = nil }),
             PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
-                       apply: { model.error = AppModel.readingAudioUnreadable }, reset: { model.error = nil }),
+                       apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
                        reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings })]

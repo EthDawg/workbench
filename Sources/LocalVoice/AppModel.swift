@@ -208,6 +208,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var audioDuration = 0.0
     @Published var playbackTime = 0.0
     @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
+    @Published private(set) var readingFailure: ReadingFailure?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
     var retryCaptureLabel: String { captureRecovery.pending?.capture == nil ? "Retry transcription" : "Retry saving" }
@@ -334,44 +335,101 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         preparing = false
     }
 
+    /// The one owner of text arriving in Read: the macOS Service, History and
+    /// Saved resources all come here. An empty draft or the same text needs no
+    /// choice; a different draft waits behind Replace reading / Keep current,
+    /// with the current reading untouched. Nothing here starts audio or sends
+    /// text online.
     func receiveReadingSelection(_ selection: ReadingSelectionImport) {
         error = nil
         clipboardReceipt.dismissHUD()
         if ReadingSelectionImport.needsReview(current: speechText, incoming: selection.text) {
             pendingReadingSelection = selection
-            status = "Selected text is ready. Choose Replace reading or Keep current."
+            status = "\(selection.origin.name) is ready. Choose Replace reading or Keep current."
         } else {
             pendingReadingSelection = nil
             if speechText != selection.text { applyReadingSelection(selection) }
-            else { status = "The selected text already matches this reading draft." }
+            else { status = "\(selection.origin.name) already matches this reading draft." }
         }
         page = "speak"
         onShowEditor?("speak")
     }
 
-    func replaceReadingWithSelection() {
-        guard !rendering, let selection = pendingReadingSelection else { return }
-        applyReadingSelection(selection)
+    /// Read aloud in History and Saved resources.
+    func importReading(_ text: String, from origin: ReadingSelectionImport.Origin) {
+        do { receiveReadingSelection(try ReadingSelectionImport(text: text, origin: origin)) }
+        catch {
+            page = "speak"; onShowEditor?("speak")
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Home's Read tile: the click is the choice. Different text replaces the
+    /// reading through the same step as Replace reading, then Listen starts.
+    /// The same text is not restarted: paused resumes, playing carries on.
+    func listen(to text: String) {
+        // Only replace the draft when the reading can start, so it never waits unheard.
+        guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
+        guard phase == .idle else { return }
+        guard canReplaceReading else { status = "Save audio is still writing its file. Try again in a moment."; return }
         pendingReadingSelection = nil
+        if text != speechText {
+            let note = endReadingForNewText()
+            speechText = text
+            if let note { status = note }
+        }
+        guard !playing else { return }
+        listen()
+    }
+
+    /// Replace waits only while Save audio writes its file. A reading that is
+    /// generating, playing or paused is ended by it instead.
+    var canReplaceReading: Bool { !rendering || readingGenerationActive }
+
+    func replaceReadingWithSelection() {
+        guard canReplaceReading, let selection = pendingReadingSelection else { return }
+        applyReadingSelection(selection)
     }
 
     func keepCurrentReading() {
-        guard pendingReadingSelection != nil else { return }
+        guard let selection = pendingReadingSelection else { return }
         pendingReadingSelection = nil
-        status = "Current reading kept. The imported selection was not saved or sent."
+        status = "Current reading kept. " + selection.origin.keptNote
     }
 
     func readingLimitMessage(for text: String) -> String? {
         guard text.count > readingLimit else { return nil }
         let provider = readingProvider == .speko ? "Speko" : "Mac reading"
-        return "This selection has \(text.count.formatted()) characters. \(provider) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
+        return "This text has \(text.count.formatted()) characters. \(provider) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
     }
 
     private func applyReadingSelection(_ selection: ReadingSelectionImport) {
-        invalidateAudio()
+        let note = endReadingForNewText()
+        pendingReadingSelection = nil
         speechText = selection.text
-        status = readingLimitMessage(for: selection.text)
-            ?? "Selected text imported for review. Choose Listen when you are ready."
+        status = [readingLimitMessage(for: selection.text) ?? "\(selection.origin.name) is ready. Choose Listen to hear it.", note]
+            .compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// New text ends everything the old text started, so nothing from it can
+    /// land later over the new text: its generation, through the same
+    /// cancellation as Cancel generation (which also stops a `say` process),
+    /// then playback, progress and reusable audio. A late result from the old
+    /// generation fails its generation check and is dropped. Returns Speko's
+    /// billing note when an online generation stopped.
+    private func endReadingForNewText() -> String? {
+        clearReadingFailure()
+        var note: String?
+        if readingGenerationActive {
+            if readingProvider == .speko { note = "Speko may still bill text already accepted." }
+            cancelReading()
+        } else if let task = readingTask {
+            // A Listen whose generation has not begun yet.
+            readingGenerationID = nil; readingTask = nil; rendering = false
+            task.cancel()
+        }
+        invalidateAudio()
+        return note
     }
 
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {
@@ -914,6 +972,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard !meetings.isBusy else { error = "Finish the meeting recording or transcription before playing a reading."; return }
         guard !rendering, phase == .idle else { return }
         stopVoicePreview()
+        clearReadingFailure()
         if playing {
             player?.pause(); playbackTime = player?.currentTime ?? 0
             playing = false; paused = true; status = "Reading paused."; return
@@ -1102,13 +1161,33 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         playingTrack = nil; renderingAhead = false
         if wasActive { status = "Reading stopped." }
     }
-    /// Shown when the playing audio cannot be read. Retry beside it makes new audio.
-    static let readingAudioUnreadable = "The reading stopped because its audio could not be read. Try again to make new audio."
-    var canRetryReading: Bool { error == Self.readingAudioUnreadable && phase == .idle && !rendering && !playing && !paused }
+    /// Why a reading stopped early. Read shows it beside Listen with Retry, and
+    /// the panel and other pages show its message, until Listen, Retry, a
+    /// replaced draft or Dismiss clears it. A later, unrelated error does not.
+    enum ReadingFailure: Equatable {
+        case audioUnreadable
+        var message: String { "The reading stopped because its audio could not be read. Try again to make new audio." }
+    }
+    var canRetryReading: Bool { readingFailure != nil && phase == .idle && !rendering && !playing && !paused }
     func retryReading() {
         guard canRetryReading else { return }
-        error = nil
         listen()
+    }
+    func reportReadingFailure(_ failure: ReadingFailure) {
+        readingFailure = failure
+        error = failure.message
+    }
+    /// Dismiss beside Retry: the reading stays stopped, with its text and voice.
+    func dismissReadingFailure() { clearReadingFailure() }
+    /// The error banner's dismiss, which also dismisses a reading failure it shows.
+    func dismissError() {
+        if let failure = readingFailure, error == failure.message { readingFailure = nil }
+        error = nil
+    }
+    private func clearReadingFailure() {
+        guard let failure = readingFailure else { return }
+        if error == failure.message { error = nil }
+        readingFailure = nil
     }
     func readingPlayerDidFinish(_ finished: ReadingPlayer, successfully flag: Bool) {
         guard self.player === finished else { return }
@@ -1118,7 +1197,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             // Audio that could not be read is not reused: Retry or Listen makes
             // it again. The text, voice and pace stay as they were.
             if let track, audio === track { track.discard(); audio = nil }
-            error = Self.readingAudioUnreadable
+            reportReadingFailure(.audioUnreadable)
             return
         }
         status = flag ? "Finished reading." : "Playback interrupted."
