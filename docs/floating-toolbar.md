@@ -64,7 +64,7 @@ then Position, Keep open, Hide toolbar and Settings. There is no Change tool.
 Dictate, Read and Snap are start and stop on this surface, so each carries one
 door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and
 `Open Snap…`. Snap & Talk offers its review. Draw holds the
-drawing menu inline. Present holds the presentation items inline, Saved Prompts
+drawing menu inline. Present holds the presentation items inline, Saved Prompts…
 and Switch to Browser Tab; source, reconnect, proportions, motion, window
 placement, native-app handoff and End remain reachable there. Persona holds the
 persona menu inline: the frozen session's public labels, size, position, lock,
@@ -73,10 +73,24 @@ updates the same drawing settings from either entry point. Native menus snapshot
 their content before tracking rather than rebuilding under the pointer.
 
 Saved Prompts reads the existing Saved Resources library. Favourite, Product and
-Persona groupings do not create another store. The original field, value and
-UTF-16 selection are captured before the picker opens. Supported fields receive
-confirmed literal chunks; other readable fields get one guarded paste labelled
-as such. Escape, Stop, changed focus/selection/value and shortcut editing cancel
+Persona groupings do not create another store. The Prompts accessory and the
+glyph menu's Saved Prompts… open one picker: a search field, favourites and then
+every other prompt once, and one optional Product or Persona filter that narrows
+the list without a submenu. It is a transient panel of at most 420 points, kept
+16 points inside the display near either edge, above a bottom dock and below a
+top one. Long names wrap to two lines or truncate and keep their full accessible
+text. It takes keyboard focus without activating Workbench, holds the row open
+as a native menu does, and closes on Escape, a click outside, a second click on
+Prompts or a choice; ↑ ↓ and Return choose. A choice acts only after the picker
+has gone, as a menu item's action runs after tracking.
+
+The original field, value and UTF-16 selection are captured before the picker
+opens. Supported fields receive confirmed literal chunks; other readable fields
+get one guarded paste labelled as such. Without Accessibility approval, or with
+no readable field, the action is Copy prompt: one copy of the exact text and the
+Copied, Paste with ⌘V. receipt, with no paste or Accessibility write. The last
+delivery is one line naming its destination, with Details for the full reason.
+Escape, Stop, changed focus/selection/value and shortcut editing cancel
 insertion. No partial write is replayed and no submit key is sent.
 
 ## The three layers
