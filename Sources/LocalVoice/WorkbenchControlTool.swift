@@ -241,7 +241,8 @@ struct WorkbenchControlContext {
         if stage.isDrawing { live.append(.drawing) }
         if stage.isPresenting { live.append(.presenting) }
         if stage.hasActivePersona && !stage.isPersonaSessionPaused { live.append(.persona) }
-        if stage.hasTimerSession && stage.isTimerRunning { live.append(.timer) }
+        let timer = Self.timerActivity(stage.timerTransport)
+        if timer.live { live.append(.timer) }
         if model.promptInsertion.running { live.append(.inserting) }
         // A sequence started in this launch; a session restored at launch alone is idle.
         if let snapAndTalkSequence, readback.sessionURL?.standardizedFileURL == snapAndTalkSequence.standardizedFileURL {
@@ -254,8 +255,19 @@ struct WorkbenchControlContext {
             pendingDelivery: model.waitingForDrawing
                 || (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt?.isClipboardCurrent == true),
             unsavedCapture: snap?.draft != nil,
-            paused: model.paused || (stage.hasTimerSession && !stage.isTimerRunning) || stage.isPersonaSessionPaused,
+            paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
             live: live)
+    }
+
+    /// The break timer's part of the compact status: a running countdown is live work and a
+    /// paused one is paused work. A finished one ("Time is up") is neither, although its
+    /// session stays started until it is reset, so it never reads as paused.
+    static func timerActivity(_ transport: TimerTransport) -> (live: Bool, paused: Bool) {
+        switch transport {
+        case .running: return (true, false)
+        case .paused: return (false, true)
+        case .idle, .finished: return (false, false)
+        }
     }
 
     func shortcut(_ tool: WorkbenchControlTool) -> String? {

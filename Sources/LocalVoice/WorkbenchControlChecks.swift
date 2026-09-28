@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import ToolbarCore
 import ToolbarKit
+import StageKit
 
 @MainActor
 enum WorkbenchControlChecks {
@@ -102,6 +103,12 @@ enum WorkbenchControlChecks {
         try check(closes.map { $0.returnsKeyboard(openedFromKeyboard: true) } == [true, true, true, false]
                   && !closes.contains { $0.returnsKeyboard(openedFromKeyboard: false) },
                   "Position… gives the keyboard back to the toolbar after a choice, Reset or Escape, only when opened from the keyboard")
+        // The break timer on the compact mark (#205 review): running is live work, paused is paused
+        // work, and a finished timer ("Time is up") is neither, though its session stays started.
+        try check(WorkbenchControlContext.timerActivity(.running) == (true, false) && WorkbenchControlContext.timerActivity(.paused) == (false, true),
+                  "a running timer is live work and a paused one is paused")
+        try check(WorkbenchControlContext.timerActivity(.finished) == (false, false) && WorkbenchControlContext.timerActivity(.idle) == (false, false),
+                  "a finished timer never reads as paused on the mark, and an idle one shows nothing")
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.
         try check([ToolbarChooserClose.chose, .escape, .dismissed].map(\.returnsKeyboardToLauncher) == [true, true, false],

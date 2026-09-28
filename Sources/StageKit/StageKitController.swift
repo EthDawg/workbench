@@ -233,6 +233,12 @@ public final class StageKitController: ObservableObject {
     public var isTimerRunning: Bool { coordinator.timerRunning }
     public var hasTimerSession: Bool { coordinator.timerSessionStarted }
     public var hasActiveTimer: Bool { coordinator.hasActiveTimer }
+    /// The timer's next transport: Start, Pause, Resume or Restart. A finished timer is
+    /// `.finished`, never paused, although its session stays started until it is reset.
+    public var timerTransport: TimerTransport { coordinator.timerTransport }
+    /// Performs that transport: Start and Restart take the normal start path; Pause and
+    /// Resume keep the timer's window as it is.
+    public func performTimerTransport() { coordinator.performTimerTransport() }
     /// A card that could not show is live, so it comes before an older scene notice.
     public var notice: String? {
         let personas = coordinator.demoScenes.personas
