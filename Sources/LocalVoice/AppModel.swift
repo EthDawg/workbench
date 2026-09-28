@@ -339,7 +339,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
 
     /// The one owner of text arriving in Read: the macOS Service, History and
-    /// Library all come here. An empty draft or the same text needs no
+    /// Library items all come here. An empty draft or the same text needs no
     /// choice; a different draft waits behind Replace reading / Keep current,
     /// with the current reading untouched. Nothing here starts audio or sends
     /// text online.
