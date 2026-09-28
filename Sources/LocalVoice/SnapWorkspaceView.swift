@@ -42,9 +42,19 @@ struct SnapWorkspaceView: View {
                     }.disabled(model.isBusy)
                 }
                 Spacer()
-                // A promise about Snap's own captures, true in every build. It sits
-                // beside Import Desktop screenshots, so it must not read as a Desktop check.
+                #if APP_STORE
+                // A promise about Snap's own captures, true in every build.
                 Text("Captures save to Snap History, not the Desktop").font(.caption).foregroundStyle(.secondary)
+                #else
+                Toggle("Keep new screenshots off the Desktop", isOn: Binding(get: { model.keepsScreenshotsOffDesktop },
+                                                                           set: { model.setKeepsScreenshotsOffDesktop($0) }))
+                    .toggleStyle(.checkbox).font(.caption).fixedSize().disabled(model.isBusy)
+                    .help("Snap never saves to the Desktop. This also sends screenshots taken with the macOS shortcuts to Snap History, by changing where macOS saves them. The menu bar refreshes once to apply it; turning it off restores your previous location.")
+                #endif
+            }
+            if model.screenshotRedirectPaused {
+                Text("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             Divider()
             HStack {

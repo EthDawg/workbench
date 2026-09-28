@@ -292,4 +292,45 @@ try MainActor.assumeIsolated {
     try check(unreadable.desktopScreenshots() == nil && unreadable.notice?.contains("could not read the Desktop") == true,
               "an unreadable Desktop is reported, never shown as empty")
 }
-print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
+// New screenshots off the Desktop: an explicit, reversible change of the macOS
+// save location, restored unless the person changed it since.
+final class FakeScreenshotLocation: ScreenshotLocationStore { var location: String? }
+let inboxFolder = shots.appendingPathComponent("Inbox")
+try fm.createDirectory(at: inboxFolder, withIntermediateDirectories: true)
+try MainActor.assumeIsolated {
+    // An absolute suite path keeps the preferences file in this run's temporary
+    // folder, never in the contributor's ~/Library/Preferences (#128).
+    let location = FakeScreenshotLocation(), suite = directory.appendingPathComponent("SnapScreenshots-" + UUID().uuidString).path,
+        preferences = UserDefaults(suiteName: suite)!
+    defer { preferences.removePersistentDomain(forName: suite) }
+    var applied = 0
+    let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("inbox-history")), screenshotLocation: location,
+                          preferences: preferences, screenshotInbox: inboxFolder,
+                          trash: { url in try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png")) },
+                          applyScreenshotLocation: { applied += 1 })
+    try check(!model.keepsScreenshotsOffDesktop && location.location == nil && applied == 0, "nothing changes until the person turns it on")
+    model.setKeepsScreenshotsOffDesktop(true)
+    try check(location.location == inboxFolder.path && model.keepsScreenshotsOffDesktop && applied == 1,
+              "new screenshots are pointed at the Workbench folder and macOS is asked to apply it")
+    let incoming = inboxFolder.appendingPathComponent("Screenshot 2026-09-03 at 11.00.00 am.png"),
+        ordinary = inboxFolder.appendingPathComponent("Holiday.png")
+    try png.write(to: incoming); try markScreenCapture(incoming); try png.write(to: ordinary)
+    model.importInbox()
+    try check(model.activeCount == 0 && fm.fileExists(atPath: incoming.path), "a screenshot still being written waits for its size to settle")
+    model.importInbox()
+    try check(model.activeCount == 1 && !fm.fileExists(atPath: incoming.path) && fm.fileExists(atPath: ordinary.path),
+              "a settled screenshot moves into Snap History and other images stay")
+    model.setKeepsScreenshotsOffDesktop(false)
+    try check(location.location == nil && !model.keepsScreenshotsOffDesktop, "turning it off restores the macOS default location")
+    location.location = "/Users/example/Screens"
+    model.setKeepsScreenshotsOffDesktop(true); location.location = "/Users/example/Elsewhere"
+    model.importInbox()
+    try check(model.screenshotRedirectPaused, "a later manual location change pauses collecting instead of fighting it")
+    model.setKeepsScreenshotsOffDesktop(false)
+    let appliedBeforeManual = applied
+    try check(location.location == "/Users/example/Elsewhere", "turning it off never overrides the person's later choice")
+    model.setKeepsScreenshotsOffDesktop(true); model.setKeepsScreenshotsOffDesktop(false)
+    try check(location.location == "/Users/example/Elsewhere", "a previous custom location is restored")
+    try check(appliedBeforeManual == 3 && applied == 5, "macOS is asked to apply only real location changes, never a kept manual choice")
+}
+print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
