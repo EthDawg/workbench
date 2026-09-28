@@ -98,6 +98,9 @@ enum TextRules {
     func persist() { persistenceCalls += 1 }
     func captureSettings() -> FixtureSettings { FixtureSettings() }
     func cancelRecording() { preconditionFailure("This harness must exercise cleanup, not microphone capture") }
+    /// Starting cleanup replaces any no-speech cue still on the floating surface.
+    var cueDismissals = 0
+    func dismissCaptureCue() { cueDismissals += 1 }
     __EXACT_METHODS__
 }
 

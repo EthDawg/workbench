@@ -185,7 +185,8 @@ public final class StageKitController: ObservableObject {
         let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
         if !optionsOnly {
             menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
-            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: app.timerSessionStarted && !app.timerFinished) { [weak app] in app?.pauseResumeTimer() })
+            let transport = app.timerTransport
+            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer", enabled: transport == .running || transport == .paused) { [weak app] in app?.pauseResumeTimer() })
             menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
             menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
         }

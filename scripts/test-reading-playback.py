@@ -30,10 +30,15 @@ def extract(start: str, end: str) -> str:
 
 
 methods = "\n".join([
+    extract("    var followAlongText: String?", "\n    func makeReadingPlayer("),
     extract("    var canSeekReading: Bool", "\n    func listen()"),
     extract("    func cancelReading()", "\n    @Published private(set) var readingGenerationActive"),
     extract("    func listen()", "\n    func saveAudio()"),
+    extract("    func saveAudio(to destination: URL)", "\n    func stopPlayback()"),
     extract("    func stopPlayback()", "\n    nonisolated func audioRecorderEncodeErrorDidOccur"),
+    # The one owner of text arriving in Read, with the step that ends the old reading.
+    extract("    private func invalidateAudio()", "\n    func cancelReading()"),
+    extract("    func receiveReadingSelection(", "\n    func toggleRecording("),
 ])
 # The checks drive the private playback step directly instead of waiting for timers.
 exposed = methods.replace("    private func ", "    func ")
@@ -87,6 +92,9 @@ enum AudioRenderer {
         sayCalls.append((text, voice, rate))
         return try silentFile(seconds: 45)
     }
+    /// Save audio's M4A export, recorded instead of running afconvert.
+    static var exports: [(source: URL, destination: URL)] = []
+    static func exportBounded(_ source: URL, to destination: URL) async throws { exports.append((source, destination)) }
 }
 enum SpekoKeychain { static func read() throws -> String { "synthetic-key" } }
 enum SpekoRenderer {
@@ -235,7 +243,12 @@ final class FailingSource: ReadingAudioSource {
     var error: String? { didSet { if error != nil { errorReports += 1 } } }
     var errorReports = 0
     var speechText = "# Notes\nHello there. Read **this** with `Sources/App/Core.swift` open."
-    var signature = "mac|karen|180|synthetic"
+    /// Like AppModel's, the signature follows the text; a check can pin it to force a new render.
+    var signatureOverride: String?
+    var signature: String {
+        get { signatureOverride ?? "mac|karen|180|synthetic|" + speechText }
+        set { signatureOverride = newValue }
+    }
     var rate = 180.0
     var readingProvider = ReadingProvider.mac
     var selectedSpekoVoice: SpekoVoice?
@@ -247,7 +260,19 @@ final class FailingSource: ReadingAudioSource {
     var readingTask: Task<Void, Never>?
     var readingGenerationID: UUID?
     var readingGenerationActive = false
+    var savingAudioID: UUID?
+    var savingAudio: Bool { savingAudioID != nil }
     var cloudRequestActive = false
+    // Read imports: the review, where the window goes and the provider's limit.
+    final class Receipt { func dismissHUD() {} }
+    let clipboardReceipt = Receipt()
+    var pendingReadingSelection: ReadingSelectionImport?
+    var readingFailure: ReadingFailure?
+    var announcements: [String] = []
+    lazy var announceForAccessibility: (String) -> Void = { [unowned self] in self.announcements.append($0) }
+    var page = "home"
+    var onShowEditor: ((String) -> Void)?
+    var readingLimit: Int { readingProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000 }
     var previewStops = 0
     func stopVoicePreview() { previewStops += 1 }
     /// A check can wrap the audio the player reads, to inject a read failure.
@@ -510,7 +535,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         _ = try playUntilStopped(early)
         try check(early.player == nil && !early.playing && !early.paused && !early.rendering && early.playTimer == nil,
                   "A source that fails before its first frame ends the reading")
-        try check(early.errorReports == 1 && early.error == ReadingHarness.readingAudioUnreadable,
+        try check(early.errorReports == 1 && early.readingFailure == .audioUnreadable && early.error == ReadingHarness.ReadingFailure.audioUnreadable.message,
                   "The failure shows one error: \(early.errorReports) reports, \(early.error ?? "none")")
         try check(early.speechText == earlyText && early.voiceChoice == sayVoice && early.rate == 180, "The text, voice and pace survive a failed reading")
         try check(earlyURL != nil && early.audio == nil && !exists(earlyURL), "Unreadable audio is discarded so Retry makes it again")
@@ -531,12 +556,42 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let (lateFrames, lateTime) = try playUntilStopped(late)
         try check(lateFrames > 16_000 && lateTime > 0.5, "Audio before the failure plays (\(lateFrames) frames, \(lateTime) s)")
         try check(late.player == nil && !late.playing && !late.paused && late.errorReports == 1
-                  && late.error == ReadingHarness.readingAudioUnreadable && lateSource()?.failures == 1 && late.audio == nil,
+                  && late.readingFailure == .audioUnreadable && lateSource()?.failures == 1 && late.audio == nil,
                   "A source that fails after buffered audio ends the reading with one error")
         late.sourceFault = nil
         late.listen(); await late.readingTask?.value
-        try check(late.playing && late.error == nil && !late.canRetryReading, "Listen after a failure also makes new audio, and Retry goes")
+        try check(late.playing && late.error == nil && late.readingFailure == nil && !late.canRetryReading,
+                  "Listen after a failure also makes new audio, and Retry goes")
         late.stopPlayback()
+
+        // Retry is a typed state, not the banner's text: a later error leaves it,
+        // Dismiss clears it and the message with it.
+        let (typed, _) = faultyReading(from: 0)
+        typed.listen(); await typed.readingTask?.value
+        _ = try playUntilStopped(typed)
+        typed.error = "Could not save the audio file."
+        try check(typed.canRetryReading && typed.readingFailure == .audioUnreadable, "A later, unrelated error does not hide Retry")
+        typed.dismissError()
+        try check(typed.error == nil && typed.canRetryReading, "Dismissing an unrelated error leaves the reading failure")
+        typed.reportReadingFailure(.audioUnreadable)
+        typed.dismissError()
+        try check(typed.error == nil && typed.readingFailure == nil && !typed.canRetryReading, "Dismissing the failure's own message clears it")
+        typed.reportReadingFailure(.audioUnreadable)
+        typed.dismissReadingFailure()
+        try check(typed.error == nil && typed.readingFailure == nil, "Dismiss beside Retry clears the failure and its message")
+
+        // A failure found just before a pause is still reported once, and ends the paused reading.
+        let (pausing, pausingSource) = faultyReading(from: 16_000 * 5)
+        pausing.listen(); await pausing.readingTask?.value
+        var pausingPlayer = pausing.player
+        while let player = pausingPlayer, player.readFailure == nil {
+            _ = try player.renderOffline(4_096); pausing.followPlayback(player); pausingPlayer = pausing.player
+        }
+        pausing.listen()
+        try check(pausing.paused && !pausing.playing && pausing.player != nil, "The reading pauses after its source failed, before the next tick")
+        if let pausingPlayer { pausing.followPlayback(pausingPlayer); pausing.followPlayback(pausingPlayer) }
+        try check(pausing.player == nil && !pausing.paused && !pausing.playing && pausing.readingFailure == .audioUnreadable
+                  && pausing.errorReports == 1 && pausingSource()?.failures == 1, "A paused reading whose source failed ends once, with one error")
 
         // Audio a Mac voice has not rendered yet is not a failure: playback waits, then continues.
         let waiting = ReadingHarness()
@@ -555,8 +610,213 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         _ = try playUntilStopped(waiting)
         try check(waiting.status == "Finished reading." && waiting.error == nil, "A reading that waited for rendering finishes normally")
 
+        // Text from History or Saved resources goes through the one import
+        // decision (#173). Keep current leaves the reading exactly as it was;
+        // Replace ends it, shows the new text and waits for Listen; nothing late
+        // from the old reading lands over the new text.
+        func pausedReading(_ text: String) async throws -> ReadingHarness {
+            let harness = ReadingHarness()
+            harness.speechText = text
+            let before = MacSpeechRenderer.created.count
+            harness.listen()
+            await settle { MacSpeechRenderer.created.count == before + 1 }
+            let render = MacSpeechRenderer.created.last!
+            try render.deliver(seconds: 3)
+            try render.complete()
+            await settle { harness.playing }
+            harness.seekReading(to: 1.5)
+            harness.listen()
+            return harness
+        }
+        let passageA = "Passage A is being read aloud. It keeps going for a while."
+        let promptB = "Prompt B, a different passage."
+
+        let kept = try await pausedReading(passageA)
+        let keptPlayer = kept.player, keptTime = kept.playbackTime
+        try check(kept.paused && keptTime == 1.5 && kept.followAlongText == passageA, "A paused reading of A at 0:01")
+        kept.importReading(promptB, from: .savedText)
+        try check(kept.pendingReadingSelection?.origin == .savedText && kept.speechText == passageA && kept.page == "speak"
+                  && kept.player === keptPlayer && kept.paused && kept.playbackTime == keptTime && kept.followAlongText == passageA,
+                  "A different import waits for review; the paused reading, its position and its text are untouched")
+        kept.keepCurrentReading()
+        try check(kept.pendingReadingSelection == nil && kept.speechText == passageA && kept.player === keptPlayer && kept.paused
+                  && kept.playbackTime == keptTime && kept.audio != nil, "Keep current keeps the exact draft, player and position")
+        kept.listen()
+        try check(kept.playing && kept.player === keptPlayer && abs(kept.player!.currentTime - keptTime) < 0.001,
+                  "Resume after Keep current continues from the same position")
+        kept.stopPlayback()
+
+        let replaced = try await pausedReading(passageA)
+        let replacedURL = replaced.audio?.url
+        replaced.importReading(promptB, from: .transcript)
+        replaced.replaceReadingWithSelection()
+        try check(replaced.speechText == promptB && replaced.player == nil && !replaced.playing && !replaced.paused && replaced.playbackTime == 0
+                  && replaced.audioDuration == 0 && replaced.readingHighlight == nil && replaced.followAlongText == nil && replaced.pendingReadingSelection == nil,
+                  "Replace stops the paused reading, so text, count, progress and the next action all agree on B")
+        try check(replacedURL != nil && replaced.audio == nil && !exists(replacedURL), "Replace discards A's audio so it cannot be reused for B")
+        try check(replaced.status == "The transcript is ready. Choose Listen to hear it.", "Replace says what to do next: \(replaced.status)")
+        let rendersBeforeListen = MacSpeechRenderer.created.count
+        await settle()
+        try check(replaced.player == nil && MacSpeechRenderer.created.count == rendersBeforeListen, "Nothing plays or renders until Listen")
+        replaced.listen()
+        await settle { MacSpeechRenderer.created.count == rendersBeforeListen + 1 }
+        try check(MacSpeechRenderer.created.last!.text.spoken == promptB, "Listen after Replace reads the new text")
+        replaced.stopPlayback()
+
+        let playingA = try await pausedReading(passageA)
+        playingA.listen()
+        let playingPlayer = playingA.player
+        playingA.importReading(passageA, from: .transcript)
+        try check(playingA.playing && playingA.player === playingPlayer && playingA.pendingReadingSelection == nil,
+                  "The same text does not restart a reading that is playing")
+        playingA.importReading(promptB, from: .savedText)
+        playingA.replaceReadingWithSelection()
+        try check(playingA.player == nil && !playingA.playing && playingA.speechText == promptB, "Replace stops a playing reading too")
+
+        // During generation: Keep current lets it finish; Replace cancels it and drops anything late.
+        let generating = ReadingHarness()
+        generating.speechText = passageA
+        var renders = MacSpeechRenderer.created.count
+        generating.listen()
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let keptRender = MacSpeechRenderer.created.last!
+        generating.importReading(promptB, from: .savedText)
+        try check(generating.rendering && generating.readingGenerationActive && !keptRender.cancelled && generating.pendingReadingSelection != nil
+                  && generating.canReplaceReading, "An import during generation leaves it running until a choice, and Replace is available")
+        generating.keepCurrentReading()
+        try keptRender.deliver(seconds: 0.5)
+        await settle { generating.playing }
+        try check(generating.playing && generating.speechText == passageA && generating.followAlongText == passageA,
+                  "Keep current preserves the generation, which then plays A")
+        generating.stopPlayback()
+
+        let cancelling = ReadingHarness()
+        cancelling.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        cancelling.listen()
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let cancelledRender = MacSpeechRenderer.created.last!
+        let cancelledTask = cancelling.readingTask
+        cancelling.importReading(promptB, from: .transcript)
+        cancelling.replaceReadingWithSelection()
+        try check(cancelledRender.cancelled && !exists(cancelledRender.folder) && !cancelling.rendering && !cancelling.readingGenerationActive
+                  && cancelling.readingTask == nil && cancelling.speechText == promptB && cancelling.player == nil,
+                  "Replace during generation cancels it before installing the new text")
+        await cancelledTask?.value
+        try cancelledRender.deliver(seconds: 1, force: true)
+        try cancelledRender.complete(force: true)
+        cancelledRender.fail("A late failure", force: true)
+        await settle()
+        try check(cancelling.player == nil && cancelling.audio == nil && !cancelling.playing && cancelling.error == nil
+                  && cancelling.status == "The transcript is ready. Choose Listen to hear it.",
+                  "Late audio, completion or errors from the cancelled generation change nothing")
+
+        let online = ReadingHarness()
+        online.readingProvider = .speko
+        let sentBefore = SpekoRenderer.texts.count
+        SpekoRenderer.holdNext = true
+        online.listen()
+        await settle { SpekoRenderer.held != nil }
+        let onlineTask = online.readingTask
+        online.importReading(promptB, from: .savedText)
+        try check(SpekoRenderer.texts.count == sentBefore + 1, "An import sends nothing online")
+        online.replaceReadingWithSelection()
+        try check(online.speechText == promptB && !online.rendering && online.status.hasSuffix("Speko may still bill text already accepted."),
+                  "Replacing an online generation keeps its billing note: \(online.status)")
+        SpekoRenderer.held?.resume(); SpekoRenderer.held = nil
+        await onlineTask?.value
+        try check(online.player == nil && online.audio == nil && !online.playing && online.error == nil && SpekoRenderer.texts.count == sentBefore + 1,
+                  "A late online result cannot play over the new text")
+
+        // Save audio is a choice with a file: Replace and Home's tile wait for it
+        // instead of cancelling it, and say why.
+        let saving = ReadingHarness()
+        saving.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        let savePath = scratch.appendingPathComponent("Saved reading.m4a")
+        saving.saveAudio(to: savePath)
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let savingRender = MacSpeechRenderer.created.last!
+        try check(saving.savingAudio && saving.readingGenerationActive && !saving.canReplaceReading, "Save audio is making its audio")
+        saving.importReading(promptB, from: .savedText)
+        saving.replaceReadingWithSelection()
+        try check(!savingRender.cancelled && saving.speechText == passageA && saving.pendingReadingSelection != nil
+                  && saving.status == ReadingHarness.replaceWaitsForSave, "Replace waits for Save audio instead of cancelling it, and says why")
+        saving.listen(to: promptB)
+        try check(saving.speechText == passageA && saving.savingAudio && !savingRender.cancelled, "Home's tile waits for Save audio too")
+        try savingRender.deliver(seconds: 0.5)
+        try savingRender.complete()
+        await saving.readingTask?.value
+        try check(!saving.savingAudio && AudioRenderer.exports.last?.destination == savePath && saving.status == "Audio saved to Saved reading.m4a.",
+                  "The save finishes with A's audio")
+        saving.replaceReadingWithSelection()
+        try check(saving.speechText == promptB && saving.pendingReadingSelection == nil, "Replace goes ahead once the save is done")
+
+        // Save audio's preconditions are the same whether the panel or a check starts it.
+        let unsaved = ReadingHarness()
+        unsaved.speechText = "  \n "
+        unsaved.saveAudio(to: savePath)
+        let aheadSave = ReadingHarness()
+        aheadSave.renderingAhead = true
+        aheadSave.saveAudio(to: savePath)
+        try check(!unsaved.savingAudio && !unsaved.rendering && !aheadSave.savingAudio && !aheadSave.rendering,
+                  "Save audio does not start for an empty draft or while a reading is still being prepared")
+
+        let cancelSave = ReadingHarness()
+        cancelSave.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        cancelSave.saveAudio(to: savePath)
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        cancelSave.cancelReading()
+        try check(!cancelSave.savingAudio && cancelSave.canReplaceReading && !cancelSave.rendering, "Cancel generation ends a save, so it no longer holds Replace")
+
+        // Listen's generation has not begun yet: Replace still cancels it cleanly.
+        let preListen = ReadingHarness()
+        preListen.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        preListen.listen()
+        try check(preListen.rendering && !preListen.readingGenerationActive && preListen.readingTask != nil && preListen.canReplaceReading,
+                  "Listen's generation has not begun, and Replace is available")
+        let unstarted = preListen.readingTask
+        preListen.importReading(promptB, from: .transcript)
+        preListen.replaceReadingWithSelection()
+        try check(!preListen.rendering && preListen.readingTask == nil && preListen.readingGenerationID == nil && preListen.speechText == promptB,
+                  "Replace before generation begins cancels the pending Listen")
+        await unstarted?.value
+        await settle()
+        try check(MacSpeechRenderer.created.count == renders && preListen.player == nil && !preListen.playing && preListen.error == nil,
+                  "The cancelled Listen never renders or plays")
+
+        // #161's failure and #173's import are one model: Replace clears a stale Retry.
+        let (retried, _) = faultyReading(from: 0)
+        retried.listen(); await retried.readingTask?.value
+        _ = try playUntilStopped(retried)
+        try check(retried.canRetryReading, "A failed reading offers Retry")
+        retried.importReading(promptB, from: .transcript)
+        try check(retried.canRetryReading && retried.pendingReadingSelection?.text == promptB,
+                  "An import under review leaves A's failure and Retry, because A is still the draft")
+        retried.replaceReadingWithSelection()
+        try check(retried.readingFailure == nil && !retried.canRetryReading && retried.error == nil && retried.speechText == promptB,
+                  "Replace clears the failed reading's Retry with the rest of A")
+
+        // Home's Read tile: the click is the choice, through the same replace step, then Listen.
+        let tile = try await pausedReading(passageA)
+        let tileURL = tile.audio?.url
+        renders = MacSpeechRenderer.created.count
+        tile.listen(to: promptB)
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let tileRender = MacSpeechRenderer.created.last!
+        try check(tile.speechText == promptB && tileRender.text.spoken == promptB && !exists(tileURL),
+                  "Home's tile ends A through the replace step and reads the copied text")
+        try tileRender.deliver(seconds: 0.5)
+        await settle { tile.playing }
+        let tilePlayer = tile.player
+        tile.listen(to: promptB)
+        try check(tile.playing && tile.player === tilePlayer && MacSpeechRenderer.created.count == renders + 1,
+                  "The same copied text already playing carries on")
+
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting] {
+        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")
@@ -593,6 +853,7 @@ with tempfile.TemporaryDirectory(prefix="workbench-reading-playback-", dir="/pri
     subprocess.run([
         "swiftc", "-parse-as-library", "-swift-version", "5", "-suppress-warnings", "-module-cache-path", str(directory / "ModuleCache"),
         str(SOURCES / "ListeningText.swift"), str(SOURCES / "ReadingAudio.swift"), str(SOURCES / "ReadingVoices.swift"),
+        str(SOURCES / "ReadSelectionService.swift"),
         str(main), "-o", str(binary),
     ], check=True, timeout=240)
     # Synthetic audio stays inside this disposable directory.

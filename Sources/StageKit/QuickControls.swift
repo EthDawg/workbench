@@ -227,9 +227,12 @@ struct QuickControlsView: View {
             }
             TextField("Break message", text: $settings.value.timerMessage).textFieldStyle(.roundedBorder)
             HStack(spacing: 8) {
-                Button { app.hideQuickControls(); app.startTimer() } label: { Label("Start", systemImage: "play.fill").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
-                Button(app.timerRunning ? "Pause" : "Resume") { app.pauseResumeTimer() }
-                    .disabled(!app.timerSessionStarted || app.timerFinished)
+                // Start and Restart show the timer, so these controls step aside first.
+                let transport = app.timerTransport
+                Button {
+                    if transport.starts { app.hideQuickControls() }
+                    app.performTimerTransport()
+                } label: { Label(transport.title, systemImage: transport.symbol).frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
                 Button("Reset") { app.resetTimer() }
             }
             Divider()

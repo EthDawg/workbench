@@ -151,14 +151,38 @@ enum AudioRenderer {
             return output
         } catch { try? FileManager.default.removeItem(at: folder); throw error }
     }
+    // Normalize the sample rate: compact macOS voices often emit 22.05 kHz,
+    // whose AAC encoder cannot accept common music-oriented bitrates.
+    private static func exportArguments(_ source: URL, _ staged: URL) -> [String] {
+        ["-f", "m4af", "-d", "aac@44100", "-b", "96000", source.path, staged.path]
+    }
     static func export(_ source: URL, to destination: URL) throws {
         let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
         defer { try? FileManager.default.removeItem(at: staged) }
-        // Normalize the sample rate: compact macOS voices often emit 22.05 kHz,
-        // whose AAC encoder cannot accept common music-oriented bitrates.
-        try run("/usr/bin/afconvert", ["-f", "m4af", "-d", "aac@44100", "-b", "96000", source.path, staged.path])
+        try run("/usr/bin/afconvert", exportArguments(source, staged))
         // Atomic write preserves an existing file if conversion fails.
         try Data(contentsOf: staged).write(to: destination, options: .atomic)
+    }
+    /// Save audio's export. A conversion still running after a minute plus a
+    /// tenth of the reading's length is stopped, so a hung afconvert cannot
+    /// hold Save audio, and Replace reading behind it, until relaunch.
+    static func exportBounded(_ source: URL, to destination: URL) async throws {
+        let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+        defer { try? FileManager.default.removeItem(at: staged) }
+        let seconds = (try? AVAudioFile(forReading: source)).map { Double($0.length) / $0.processingFormat.sampleRate } ?? 0
+        do { try await runBounded("/usr/bin/afconvert", exportArguments(source, staged), timeout: 60 + seconds / 10) }
+        catch is ToolTimeout { throw VoiceError.message("Saving the audio took too long, so it was stopped. Nothing was saved. Choose Save audio to try again.") }
+        try Data(contentsOf: staged).write(to: destination, options: .atomic)
+    }
+    struct ToolTimeout: Error {}
+    /// Runs a tool that must finish within `timeout` seconds, stopping it if not.
+    static func runBounded(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws {
+        try await withThrowingTaskGroup(of: Bool.self) { group in
+            group.addTask { try await runCancellable(executable, arguments); return true }
+            group.addTask { try await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000)); return false }
+            defer { group.cancelAll() }
+            guard try await group.next() == true else { throw ToolTimeout() }
+        }
     }
     static func run(_ executable: String, _ arguments: [String]) throws {
         let process = Process()

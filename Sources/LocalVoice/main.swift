@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var presenterPanel: PresenterPanelController!
     var readback: ReadbackModel!
     var snap: SnapModel!
+    var snapCapture: SnapCaptureHost!
     var toolbarModeFollower: ToolbarModeFollower?
     var shortcutsSuspended = false
     var navigationObserver: NSObjectProtocol?
@@ -75,10 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return self.readback.isCapturing || self.shortcutsSuspended || self.stage?.isTakingScreenshot == true
                 ? "Finish the current screen capture or shortcut edit first." : nil
         }
-        snap.onHideForCapture = { [weak self] in
-            self?.closeControls(); self?.capturePanel?.window?.orderOut(nil); self?.window?.orderOut(nil)
+        // One completion path for every Snap door: the editor opens on the Snap
+        // page, a problem shows there, and a cancelled selector puts things back.
+        snapCapture = SnapCaptureHost(desktop: AppKitSnapCaptureDesktop(window: { [weak self] in self?.window },
+                                                                      openSnapPage: { [weak self] in self?.navigate("snap") }))
+        snapCapture.attach(to: snap) { [weak self] in
+            self?.closeControls(); self?.capturePanel?.window?.orderOut(nil)
         }
-        snap.onRestoreAfterCapture = { [weak self] in self?.showWindow() }
         snap.onStateChange = { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.onStateChange = { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.currentReviewDigest = { [weak snap] key in
@@ -506,9 +510,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
     /// used mode, so the toolbar captures a region.
     func toolbarSnapCapture(_ mode: SnapCapture.Mode = .region) {
+        // From the panel, a cancelled capture returns to the app it was opened
+        // over. Read before closing: closing the panel expires its field.
+        let origin = menuTarget.current?.app.processIdentifier
         model.toolbarMode = .snap
         closeControls()
-        Task { await snap.capture(mode) }
+        Task { await snap.capture(mode, origin: origin) }
     }
     func toolbarSnap() {
         if readback.isRecording { readback.stopNarration(); return }
@@ -700,6 +707,8 @@ func runCLI(_ args: [String]) async -> Int32 {
         case "--check-library":
             try DemoLibraryChecks.run()
             try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
+        case "--check-capture-preview":
+            try await CaptureImagePreviewChecks.run()
         case "--check-quick-look-panel":
             let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
             try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }
@@ -759,6 +768,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try ReadbackOrderingChecks.run() }
         case "--check-readback-resources":
             try ReadbackChecks.runPackagedResources()
+        case "--check-snap-capture":
+            try await SnapCaptureChecks.run()
         case "--check-transcript-handoff":
             try await MainActor.run { try TranscriptHandoffChecks.runAll() }
         // These write receipt.json and summary.txt to a new folder (optional

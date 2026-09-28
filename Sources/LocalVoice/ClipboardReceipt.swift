@@ -14,6 +14,10 @@ struct ClipboardReceipt: Identifiable, Equatable {
     /// Only show a Command-V suggestion when this action has not already tried
     /// to paste. An uncertain destination must not encourage duplicate insertion.
     var canSuggestPaste: Bool
+    /// What was copied, so Review opens where it is kept: History for a
+    /// transcript, Saved resources for a prompt.
+    var source: Source = .transcript
+    enum Source: Equatable { case transcript, prompt }
 }
 
 @MainActor
@@ -46,7 +50,7 @@ final class ClipboardReceiptModel: ObservableObject {
 
     deinit { timer?.invalidate() }
 
-    func record(outcome: TextDelivery.Outcome, wordCount: Int) {
+    func record(outcome: TextDelivery.Outcome, wordCount: Int, source: ClipboardReceipt.Source = .transcript) {
         clear()
         let current = clipboardChangeCount()
         let ownsClipboard = outcome.failure != .copyFailed && (outcome.clipboardChangeCount.map { $0 == current } ?? false)
@@ -79,7 +83,7 @@ final class ClipboardReceiptModel: ObservableObject {
                                    clipboardChangeCount: ownsClipboard ? outcome.clipboardChangeCount : nil,
                                    wasPasted: outcome.wasPasted,
                                    canSuggestPaste: ownsClipboard && !outcome.wasPasted && !outcome.pasteWasAttempted
-                                       && outcome.failure != .pasteUnconfirmed)
+                                       && outcome.failure != .pasteUnconfirmed, source: source)
         observedCount = current
         hideAt = now().addingTimeInterval(outcome.wasPasted ? 4 : 8)
         isHUDVisible = true
