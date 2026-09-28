@@ -533,7 +533,26 @@ enum SurfaceGallery {
         try shot("floating-reading-stopped", "Floating: reading stopped",
                  "Revealed from the compact mark's warning: a reading whose audio could not be read keeps Retry and dismiss.",
                  result: .readingFailure)
+        /// A result as it shows at a right-hand dock: mirrored, its words over the mark the pointer
+        /// came from and its commands at the far end (#211 F3).
+        func mirrored(_ id: String, _ title: String, _ result: FloatingResult, size: NSSize) throws {
+            controls.rowAnchor = .right
+            defer { controls.rowAnchor = .bottom }
+            let host = NSHostingView(rootView: FloatingResultView(result: result, model: model, controls: controls)
+                .frame(width: size.width, height: size.height).background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: size, styleMask: [.borderless])
+            window.contentView = host
+            defer { window.contentView = nil; window.close() }
+            settle(host)
+            shots.append(try save(try snapshot(host), id: id, title: title,
+                                  detail: "At a right-hand dock it grows leftward from the mark, so it is mirrored: the words sit over the mark the pointer came from, the commands at the far end.",
+                                  file: "panel-\(id)-\(theme).png", to: output))
+        }
+        try mirrored("floating-reading-stopped-right", "Floating: reading stopped, right-hand dock", .readingFailure, size: CaptureHUDLayout.compact)
         model.dismissReadingFailure()
+        model.captureFailure = "The speech engine stopped before it finished."
+        try mirrored("floating-dictation-failure-right", "Floating: dictation failure, right-hand dock", .dictationFailure, size: CaptureHUDLayout.message)
+        model.dismissCaptureFailure()
 
         // The receipt's own countdown ring (#134 T5), frozen by a pointer hold so the render repeats.
         model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
@@ -553,6 +572,7 @@ enum SurfaceGallery {
                                   detail: "Its ring counts the receipt's own eight seconds; the pointer or a pin holds it.",
                                   file: "panel-floating-receipt-\(theme).png", to: output))
         }
+        try mirrored("floating-receipt-right", "Floating: copied receipt, right-hand dock", .receipt, size: CaptureHUDLayout.message)
         model.clipboardReceipt.holdHUD(false)
         model.clipboardReceipt.clear()
 
@@ -1549,12 +1569,13 @@ enum SurfaceGallery {
         controls.choosePosition?(.bottom); settle(.resting)
     }
 
-    /// A waiting result from the keyboard (#211), in the same host. The
+    /// A waiting result from the keyboard and at a right-hand dock (#211), in the same host. The
     /// gallery never takes the person's keyboard: the toolbar's keyboard hold stands in for it.
     /// Keyboard entry onto a waiting receipt must keep the launcher row, whose launcher takes the
     /// focus, and Escape must leave without dismissing the receipt; Escape must leave a result's
     /// own controls too (F1). Position… closing onto a receipt waiting on a kept-open row must
-    /// hand the keyboard back before the host updates, so the launcher row stays (F2).
+    /// hand the keyboard back before the host updates, so the launcher row stays (F2). And at the
+    /// right-hand dock each result's actions must sit clear of the mark the pointer came from (F3).
     func checkResultsInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
                                expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
@@ -1614,6 +1635,32 @@ enum SurfaceGallery {
             keyboard ? nil : "the keyboard did not come back"])
         model.clipboardReceipt.clear(); controls.endKeyboardInteraction()
         controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
+        // At the right-hand dock each result grows leftward from the launcher's centre: its actions
+        // must sit clear of the mark the pointer came from, never Retry, Dismiss or the like there.
+        controls.choosePosition?(.right); settle(.resting)
+        let mark = host.window?.frame ?? .zero
+        let failure = "The speech engine stopped before it finished."
+        let results: [(String, () -> Void, () -> Void)] = [
+            ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() }),
+            ("The clipboard receipt", receipt, { self.model.clipboardReceipt.clear() }),
+            ("A stopped reading", { self.model.reportReadingFailure(.audioUnreadable) }, { self.model.dismissReadingFailure() })]
+        for (name, show, clear) in results {
+            show(); settle(.resting)
+            let pending = FloatingResult.pending(model)
+            controls.resultActionFrames = [:]
+            reveal(); settle(.revealed)
+            let window = host.window?.frame ?? .zero
+            let actions = controls.resultActionFrames.map { name, frame in
+                (name, NSRect(x: window.minX + frame.minX, y: window.maxY - frame.maxY, width: frame.width, height: frame.height))
+            }
+            let over = actions.filter { $0.1.intersects(mark.insetBy(dx: 0.5, dy: 0.5)) }.map { "\($0.0) at \(Self.rect($0.1))" }.sorted()
+            expect("\(name) at the right-hand dock", [
+                controls.revealsResult ? nil : "the pointer's reveal did not show it (waiting: \(pending.map { "\($0)" } ?? "nothing"), \(controls.toolbar.state.tier.rawValue))",
+                actions.isEmpty ? "no action was found to measure" : nil,
+                over.isEmpty ? nil : "\(over.joined(separator: "; ")) sit over the mark the pointer came from at \(Self.rect(mark)), in a window at \(Self.rect(window))"])
+            collapse(); clear(); settle(.resting)
+        }
+        controls.choosePosition?(.bottom); settle(.resting)
     }
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it

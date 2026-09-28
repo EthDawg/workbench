@@ -92,6 +92,10 @@ final class CaptureHUDControls: ObservableObject {
     }
     /// The result was resolved, dismissed or expired: the open row goes back to the launcher row.
     func resultEnded() { if revealsResult { revealsResult = false } }
+    /// Where each action of a shown result is, by name, in its window's content with the origin
+    /// at the top left: the gallery checks that none sits over the mark at a right-hand dock
+    /// (#211 F3). SwiftUI keeps no accessibility tree to read while no assistive app asks for one.
+    var resultActionFrames: [String: CGRect] = [:]
     /// A row kept open by Keep open alone shows a new result in its place, as the dictation
     /// panel did: Keep open is the person's choice of persistent controls, and there is no rest to
     /// show the status on. Only while no pointer is on it and nothing holds it, a menu, the chooser
@@ -874,15 +878,21 @@ struct DictationResultView: View {
     }
 
     var body: some View {
+        // It grows from the launcher's centre like the row, so at a right-hand dock it is mirrored:
+        // the drag handle and the words sit over the mark the pointer came from, and the commands
+        // and Position at the far end (#211 F3). VoiceOver reads it in the same order either way.
+        let mirrored = controls.rowAnchor.growsLeftward
         HStack(spacing: 8) {
-            PanelDragHandle().frame(width: 8, height: 40)
+            if !mirrored { PanelDragHandle().frame(width: 8, height: 40) }
             if let failure = model.captureFailure {
-                failureState(failure)
+                failureState(failure, mirrored: mirrored)
                     .defaultFocus($focused, firstAction)
                     .onAppear { ResultKeyboard.appeared(controls) { focused = firstAction } }
             } else {
-                CaptureReceiptView(receipts: model.clipboardReceipt, review: { Self.review($0, model: model) }, controls: controls)
+                CaptureReceiptView(receipts: model.clipboardReceipt, review: { Self.review($0, model: model) }, controls: controls,
+                                   mirrored: mirrored)
             }
+            if mirrored { PanelDragHandle().frame(width: 8, height: 40) }
         }.padding(.horizontal, 12)
             .frame(width: CaptureHUDLayout.message.width, height: CaptureHUDLayout.message.height)
             .background {
@@ -901,35 +911,36 @@ struct DictationResultView: View {
         else { model.openHistory(); model.onShowEditor?("history") }
     }
 
-    private func failureState(_ failure: String) -> some View {
-        HStack(spacing: 9) {
-            VStack(alignment: .leading, spacing: 7) {
-                Label("Dictation needs attention", systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
-                Text(failure).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true).help(failure)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 4) {
-                if model.canRetry {
-                    Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
-                        .focused($focused, equals: .retry)
-                }
-                if model.canRecordAgain {
-                    Button("Record again") { model.toggleRecording() }
-                        .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
-                        .focused($focused, equals: .recordAgain)
-                } else if !model.canRetry || model.hasCaptureRecovery {
-                    Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
-                        Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
-                    }.buttonStyle(.bordered)
-                        .focused($focused, equals: .openWorkbench)
-                }
-                Button { model.dismissCaptureFailure() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
-                    .buttonStyle(.plain).accessibilityLabel("Dismiss dictation error")
-                    .focused($focused, equals: .dismiss)
-            }.controlSize(.small)
-            CapturePositionMenu(controls: controls)
+    private func failureState(_ failure: String, mirrored: Bool) -> some View {
+        let message = VStack(alignment: .leading, spacing: 7) {
+            Label("Dictation needs attention", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
+            Text(failure).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true).help(failure)
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilitySortPriority(3)
+        let commands = VStack(spacing: 4) {
+            if model.canRetry {
+                Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
+                    .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
+                    .focused($focused, equals: .retry).resultAction("Retry", controls)
+            }
+            if model.canRecordAgain {
+                Button("Record again") { model.toggleRecording() }
+                    .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
+                    .focused($focused, equals: .recordAgain).resultAction("Record again", controls)
+            } else if !model.canRetry || model.hasCaptureRecovery {
+                Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
+                    Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
+                }.buttonStyle(.bordered)
+                    .focused($focused, equals: .openWorkbench).resultAction("Open Workbench", controls)
+            }
+            Button { model.dismissCaptureFailure() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                .buttonStyle(.plain).accessibilityLabel("Dismiss dictation error")
+                .focused($focused, equals: .dismiss).resultAction("Dismiss", controls)
+        }.controlSize(.small).accessibilityElement(children: .contain).accessibilitySortPriority(2)
+        let position = CapturePositionMenu(controls: controls).accessibilitySortPriority(1)
+        return HStack(spacing: 9) {
+            if mirrored { position; commands; message } else { message; commands; position }
         }
     }
 
@@ -991,39 +1002,42 @@ private struct CaptureReceiptView: View {
     /// dismissing a receipt whose words have left the clipboard clears it.
     let review: (ClipboardReceipt) -> Void
     @ObservedObject var controls: CaptureHUDControls
+    /// At a right-hand dock the commands and Position sit at the far end (#211 F3).
+    var mirrored = false
     /// Review, the receipt's first command, takes the keyboard's focus (#211 F1).
     @FocusState private var reviewFocused: Bool
     var body: some View {
         if let receipt = receipts.receipt {
-            HStack(spacing: 9) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 7) {
-                        Image(systemName: receipt.symbolName).foregroundStyle(Workbench.accent)
-                        Text(receipt.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                        if receipt.wordCount > 0 { Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.system(size: 12)).foregroundStyle(.secondary) }
-                    }
-                    Text(receipt.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                VStack(spacing: 3) {
-                    Button { receipts.dismissHUD(); review(receipt) } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
-                        .focused($reviewFocused)
-                    HStack(spacing: 2) {
-                        if receipt.isClipboardCurrent {
-                            Button { receipts.keepVisible.toggle() } label: {
-                                Image(systemName: receipts.keepVisible ? "pin.fill" : "pin").frame(width: 28, height: 28)
-                            }.buttonStyle(.plain)
-                                .accessibilityLabel(receipts.keepVisible ? "Unpin receipt" : "Keep receipt visible")
-                                .help("Keep visible while this text is on the clipboard")
-                        }
-                        // The ring reads the receipt's own lifetime: eight seconds for a copy, four for a paste (#134 T5).
-                        Button { receipts.dismissHUD() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
-                            .buttonStyle(.plain).accessibilityLabel("Dismiss dictation receipt")
-                            .overlay { LiveCountdownRing(lifetime: receipts.lifetime, clock: receipts.now).allowsHitTesting(false) }
-                    }
+            let words = VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    Image(systemName: receipt.symbolName).foregroundStyle(Workbench.accent)
+                    Text(receipt.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    if receipt.wordCount > 0 { Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.system(size: 12)).foregroundStyle(.secondary) }
                 }
-                CapturePositionMenu(controls: controls)
+                Text(receipt.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading).accessibilitySortPriority(3)
+            let commands = VStack(spacing: 3) {
+                Button { receipts.dismissHUD(); review(receipt) } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
+                    .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
+                    .focused($reviewFocused).resultAction("Review", controls)
+                HStack(spacing: 2) {
+                    if receipt.isClipboardCurrent {
+                        Button { receipts.keepVisible.toggle() } label: {
+                            Image(systemName: receipts.keepVisible ? "pin.fill" : "pin").frame(width: 28, height: 28)
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel(receipts.keepVisible ? "Unpin receipt" : "Keep receipt visible")
+                            .help("Keep visible while this text is on the clipboard").resultAction("Pin", controls)
+                    }
+                    // The ring reads the receipt's own lifetime: eight seconds for a copy, four for a paste (#134 T5).
+                    Button { receipts.dismissHUD() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                        .buttonStyle(.plain).accessibilityLabel("Dismiss dictation receipt").resultAction("Dismiss", controls)
+                        .overlay { LiveCountdownRing(lifetime: receipts.lifetime, clock: receipts.now).allowsHitTesting(false) }
+                }
+            }.accessibilityElement(children: .contain).accessibilitySortPriority(2)
+            let position = CapturePositionMenu(controls: controls).accessibilitySortPriority(1)
+            HStack(spacing: 9) {
+                if mirrored { position; commands; words } else { words; commands; position }
             }
             // The pointer holds its time, including one resting where it appears (#134 T5).
             .background(PointerPresence { receipts.holdHUD($0) })
@@ -1038,6 +1052,13 @@ private struct CaptureReceiptView: View {
 /// click on the mark or Window › Focus floating toolbar, lands on the result's first command,
 /// and Escape leaves as it does from the launcher row (`.onExitCommand` on each result, and
 /// `CapturePanel.escape` for a key nothing inside handled).
+extension View {
+    /// Reports this result action's frame for the gallery's right-hand dock check (#211 F3).
+    func resultAction(_ name: String, _ controls: CaptureHUDControls) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { controls.resultActionFrames[name] = $0 }
+    }
+}
+
 @MainActor enum ResultKeyboard {
     static func appeared(_ controls: CaptureHUDControls, focusFirst: @escaping () -> Void) {
         controls.focusFirstControl = focusFirst

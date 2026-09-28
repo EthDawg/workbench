@@ -403,6 +403,9 @@ struct FloatingResultView: View {
 /// A reading that stopped because its audio could not be read keeps the reason, Retry and
 /// Dismiss until the person does one of them. Pausing, resuming and stopping a live reading
 /// are the toolbar row's next action and More (#134 T4); editing and voices stay in Workbench.
+/// It grows from the launcher's centre like the row, so at a right-hand dock it is mirrored:
+/// the reason sits over the mark the pointer came from, and Retry and Dismiss away from it
+/// (#211 F3).
 private struct ReadingStoppedView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
@@ -415,19 +418,24 @@ private struct ReadingStoppedView: View {
     private var firstAction: Action { model.canRetryReading ? .retry : .dismiss }
 
     private func stopped(_ failure: AppModel.ReadingFailure) -> some View {
-        HStack(spacing: 10) {
+        let mirrored = controls.rowAnchor.growsLeftward
+        let reason = HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Reading stopped").font(.system(size: 12, weight: .semibold))
                 Text("Its audio could not be read.").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }.accessibilityElement(children: .combine).accessibilityLabel(failure.message).help(failure.message)
-            Spacer(minLength: 4)
-            Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
-                .accessibilityHint("Makes new audio and reads from the start")
-                .focused($focused, equals: .retry)
-            Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-                .accessibilityLabel("Dismiss reading error")
-                .focused($focused, equals: .dismiss)
+        }.accessibilitySortPriority(3)
+        // Mirrored or not, VoiceOver reads the reason, then Retry, then Dismiss.
+        let retry = Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
+            .accessibilityHint("Makes new audio and reads from the start")
+            .focused($focused, equals: .retry).accessibilitySortPriority(2).resultAction("Retry", controls)
+        let dismiss = Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+            .accessibilityLabel("Dismiss reading error")
+            .focused($focused, equals: .dismiss).accessibilitySortPriority(1).resultAction("Dismiss", controls)
+        return HStack(spacing: 10) {
+            if mirrored { dismiss; retry; Spacer(minLength: 4); reason }
+            else { reason; Spacer(minLength: 4); retry; dismiss }
         }.padding(14).frame(width: 336, height: 64)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain).accessibilityLabel("Reading controls")
