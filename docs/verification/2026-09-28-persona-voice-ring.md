@@ -79,3 +79,7 @@ Words that open on "sh" or "f" light at their vowel, within 133 ms of it and 217
 With `WORKBENCH_VOICE_SAY=1` the same harness also measures 32 sentences from four Mac voices, written by `say -o` to a temporary folder and never played. At usual and soft levels: onset median 17 ms, 95th percentile 117 ms, worst 217 ms (sentences opening on "sh", "f" or "h"); from the first voiced frame, worst 17 ms usual and 117 ms soft; back to rest median 283 ms, worst 400 ms.
 
 Known limits: a steady 120 Hz tone present when the outline turns on shows for about 0.7 s before it is learned (mains hum at 50 or 60 Hz does not); a loud hiss concentrated above 4 kHz reads as an "s"; whispered speech lights only at its "s" sounds.
+
+### Native measurement
+
+`--check-persona-voice-native FOLDER --speak` now records every frame's arrival (`frames`) and every visible change (`shown`) on one clock, and reports `latency.normal`, `latency.soft`, `latency.continuous` and `latency.immediate` with `onsetMs`, `releaseMs` and the share of speech the outline stayed lit, against the 150 ms and 500 ms targets. `inputLatency` reports the buffer length and macOS's hand-over separately. It has not been run on this change yet; its receipt belongs here when it is.

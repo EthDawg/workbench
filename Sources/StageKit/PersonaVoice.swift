@@ -330,10 +330,23 @@ struct PersonaVoiceAccess {
     }
 }
 
+/// When one microphone buffer was heard and handed over, in seconds on the
+/// `CACurrentMediaTime` clock. For measurement receipts only.
+struct PersonaVoiceTiming {
+    /// The buffer's first sample reached the input, when macOS reports it.
+    var captured: Double?
+    /// The buffer reached the analyser.
+    var tapped: Double
+    /// Length of the buffer.
+    var seconds: Double
+}
+
 final class PersonaMicrophoneLevel: PersonaVoiceSource {
     var onFrames: (([PersonaVoiceFrame]) -> Void)?
     var onUnavailable: ((String) -> Void)?
     var onDevice: ((String?) -> Void)?
+    /// Measurement only: called on the main thread before the frames each buffer made.
+    var onTiming: ((PersonaVoiceTiming) -> Void)?
     private(set) var deviceName: String?
     private let engine = AVAudioEngine()
     private var running = false
@@ -349,8 +362,10 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
         }
         // The analyzer belongs to this tap's thread; a restart makes a new one.
         let analyzer = PersonaVoiceAnalyzer(sampleRate: format.sampleRate)
-        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(analyzer.chunk), format: format) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(analyzer.chunk), format: format) { [weak self] buffer, when in
             guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return }
+            let timing = PersonaVoiceTiming(captured: when.isHostTimeValid ? AVAudioTime.seconds(forHostTime: when.hostTime) : nil,
+                                            tapped: CACurrentMediaTime(), seconds: Double(buffer.frameLength) / buffer.format.sampleRate)
             let count = Int(buffer.frameLength), channelCount = Int(buffer.format.channelCount)
             let frames: [PersonaVoiceFrame]
             if channelCount == 1 {
@@ -370,6 +385,7 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
             guard !frames.isEmpty else { return }
             DispatchQueue.main.async {
                 guard let self, self.running else { return }
+                self.onTiming?(timing)
                 self.onFrames?(frames)
             }
         }
