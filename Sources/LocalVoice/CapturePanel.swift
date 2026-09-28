@@ -25,6 +25,7 @@ final class CaptureHUDControls: ObservableObject {
     /// The resting element, `[glyph][next action]`, seeded until measured.
     private(set) var restingSize = NSSize(width: 132, height: 36)
     private var restingMeasured = false
+    private var rowMeasured = false
     private var observation: AnyCancellable?
     var releaseKeyboardFocus: (() -> Void)?
     var promptDestination: (() -> TextDelivery.Target?)?
@@ -34,6 +35,9 @@ final class CaptureHUDControls: ObservableObject {
     var menuDidClose: (() -> Void)?
     var preferredToolbarSize: NSSize { toolbar.state.tier == .resting ? restingSize : measuredRowSize }
     var restingWidth: CGFloat { restingSize.width }
+    /// Whether the row has reported its size for `tier`. Until it has, the seed size above is what
+    /// the window gets, which is how a host can sit under a row that draws wider than it.
+    func hasMeasured(_ tier: ToolbarTier) -> Bool { tier == .resting ? restingMeasured : rowMeasured }
 
     init(defaults: UserDefaults = .standard) {
         toolbar = ToolbarSession(defaults: defaults)
@@ -49,8 +53,16 @@ final class CaptureHUDControls: ObservableObject {
         // element itself has been measured; afterwards the two sizes must not
         // trade places on every reveal.
         if tier == .resting { restingSize = size; restingMeasured = true }
-        else { measuredRowSize = size; if !restingMeasured { restingSize.height = size.height } }
+        else { measuredRowSize = size; rowMeasured = true; if !restingMeasured { restingSize.height = size.height } }
         if previous != preferredToolbarSize { resize?() }
+    }
+    /// The resting element of a row that opened revealed, measured once off screen
+    /// so a top or bottom dock centres on it (#152). The row's own report follows and
+    /// places the window. Afterwards only the resting element's own report changes
+    /// it, so an open row is never re-centred under the pointer.
+    func reportRestingSize(_ size: NSSize) {
+        guard !restingMeasured, toolbar.state.tier == .revealed, size.width > 0, size.height > 0 else { return }
+        restingSize = NSSize(width: ceil(size.width), height: ceil(size.height)); restingMeasured = true
     }
     func focusToolbar() { toolbar.send(.holdBegan(.keyboard)) }
     func unfocusToolbar() { toolbar.send(.holdEnded(.keyboard)) }
@@ -85,6 +97,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var keyboardTarget: TextDelivery.Target?
     private var tracking: ToolbarTrackingView?
     private let motion = ToolbarWindowMotion()
+    private var measuringToolbar = false
     var isAnimatingToolbar: Bool { motion.target != nil }
 
     init(model: AppModel, readback: ReadbackModel, stage: StageKitController, snapModel: SnapModel,
@@ -188,7 +201,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(model: AppModel) {
-        guard let window else { return }
+        // A size report delivered while the row is being measured below is read
+        // by that same call once the measurement returns.
+        guard let window, !measuringToolbar else { return }
         let previousSurface = self.surface
         let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible || stage?.isDrawing == true || stage?.isPresenting == true || stage?.hasActivePersona == true || model.promptInsertion.running,
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture(),
@@ -206,11 +221,17 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             controls.isExpanded = false
             return
         }
+        if surface == .tools { measureToolbar() }
         let size = surface == .tools ? controls.preferredToolbarSize : surface == .reading ? CaptureHUDLayout.compact : CaptureHUDLayout.size(
             recording: surface == .narration || model.phase == .recording,
             preview: model.previewingPanel, expanded: controls.isExpanded)
+        // The docked frame follows the row's size and, at a top or bottom dock, its
+        // resting width. A drag keeps its window until release, which re-docks it.
+        let moved = surface == .tools
+            ? !dragging && toolbarFrame(size: size).map({ Self.differs($0, motion.target ?? window.frame) }) == true
+            : (motion.target?.size ?? window.frame.size) != size
         if !window.isVisible { place(size: size, restoreSaved: true) }
-        else if (motion.target?.size ?? window.frame.size) != size {
+        else if moved {
             place(size: size, restoreSaved: false, animated: surface == .tools && previousSurface == .tools && !dragging)
         }
         window.orderFrontRegardless()
@@ -278,11 +299,35 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let screen = CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: size),
             screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
         let frame = surface == .tools
-            ? ToolbarGeometry.frame(size: size, restingWidth: controls.restingWidth,
-                anchor: (controls.anchor ?? .bottom).toolbarAnchor, screen: screen)
+            ? toolbarFrame(size: size, screen: screen)
             : CaptureHUDGeometry.frame(size: size, anchor: controls.anchor, previous: previous,
                 screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
         setFrame(frame, animated: animated)
+    }
+
+    private func toolbarFrame(size: NSSize, screen: NSRect) -> NSRect {
+        ToolbarGeometry.frame(size: size, restingWidth: controls.restingWidth,
+            anchor: (controls.anchor ?? .bottom).toolbarAnchor, screen: screen)
+    }
+
+    /// Where `place` puts the tools at `size` on the window's current display.
+    private func toolbarFrame(size: NSSize) -> NSRect? {
+        guard let window, let preferred = preferredScreen else { return nil }
+        return toolbarFrame(size: size, screen: CaptureHUDGeometry.screen(for: motion.target ?? window.frame,
+            screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred))
+    }
+
+    private static func differs(_ a: NSRect, _ b: NSRect) -> Bool {
+        abs(a.minX - b.minX) > 0.5 || abs(a.minY - b.minY) > 0.5 || abs(a.width - b.width) > 0.5 || abs(a.height - b.height) > 0.5
+    }
+
+    /// Brings the row's size reports up to date before the tools are placed. SwiftUI
+    /// lays the row out now, for the tier and labels about to show, so the window is
+    /// sized around the row as it will draw rather than the last one it reported.
+    private func measureToolbar() {
+        measuringToolbar = true
+        defer { measuringToolbar = false }
+        tracking?.layoutSubtreeIfNeeded()
     }
 
     private func choosePosition(_ anchor: FloatingControlAnchor) {

@@ -192,6 +192,17 @@ The core cannot be right if the host feeds it fiction.
   its place on screen and a right-hand dock does not run off it.
   `ToolbarAnchor.growsLeftward` is the whole of that geometry; `ToolbarGeometry`
   centres the top and bottom docks on the measured resting width.
+- **The window is the row's size.** `FloatingToolbar` reports the row with
+  `onGeometryChange`. Before sizing the tools, the host lays the row out
+  (`layoutSubtreeIfNeeded`), so the report for the tier, mode and labels about to
+  show arrives first. A reveal, a count crossing 9→10 or a mode switch goes
+  straight to the right frame, and a drag keeps its window until release. A row
+  that opens revealed (Keep open at launch) measures its resting element once,
+  off screen, so a top or bottom dock centres on it. After that, only the resting
+  element's own report changes the width, so an open row is never re-centred under
+  the pointer. Do not measure with a preference written from a background
+  `GeometryReader`: once the row held conditional content, that report never
+  arrived, and every window kept a seed size (#152).
 - **Effects are instructions, not suggestions.** The host never reads the state
   to decide what to do.
 
@@ -238,6 +249,21 @@ sizes and longer labels; the committed overview sheets in
 [assets/floating-toolbar](assets/floating-toolbar) provide PR image diffs. CI
 retains the full gallery as an artifact. These are real native views, not HTML
 approximations. Visual acceptance still requires inspecting the images.
+
+The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
+production `CapturePanelController` offscreen for every mode at rest and revealed,
+then switches between Dictate and Present with the row open, a width change that
+reaches the host only through the row's own report. It flags a window smaller than
+its row, the check the renderer above cannot make because it sizes its own window
+to the row. The host pins seed sizes until the row
+reports (`CaptureHUDControls.reportSize`), so a report that never arrives leaves the
+row and its corners clipped (#152). The flags appear in the gallery's index and log.
+A size problem fails the run once the index is written: a row the host never heard,
+a window smaller than its row, or a window that is not the size the host prefers.
+A row that did not settle into its tier, which a real pointer over the invisible
+panel can cause in a local run, is reported and its sizes are not compared; the
+gallery's other flags are reported without failing it too. A Mac with no display
+renders no host states and has nothing to fail.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted
