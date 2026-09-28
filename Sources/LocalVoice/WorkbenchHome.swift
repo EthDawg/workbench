@@ -196,14 +196,18 @@ struct WorkbenchClipboardShelf: View {
     let showCue: () -> Void
     var body: some View {
         if let receipt = receipts.receipt, receipt.isClipboardCurrent {
+            // The same words as the floating receipt, so the panel, Home and Dictate agree.
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Label(receipt.canSuggestPaste ? "Ready to paste" : receipt.title, systemImage: receipt.symbolName)
+                    Label(receipt.title, systemImage: receipt.symbolName)
                         .font(.callout.weight(.semibold)).lineLimit(1)
+                    if receipt.wordCount > 0 {
+                        Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    }
                     Spacer(minLength: 4)
                     if receipt.canSuggestPaste { Text("⌘V").font(.callout.monospaced()).foregroundStyle(.secondary) }
                 }
-                Text(receipt.canSuggestPaste ? "\(receipt.wordCount) words from Workbench. Paste where you need them." : receipt.detail)
+                Text(receipt.detail)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 HStack {
                     Button("Review text", action: review)

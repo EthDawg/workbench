@@ -73,6 +73,9 @@ struct VoicePreferences: Codable, Equatable {
     // Snap is opt-in; it has no 2.0.0 default to migrate from.
     var snapShortcut: VoiceShortcut?
     var restoreClipboard = true
+    /// Workbench has asked macOS for Accessibility approval, which macOS shows
+    /// once; later setup opens System Settings. Optional decoding keeps earlier preferences.
+    var accessibilityRequested: Bool?
     func shortcut(_ id: UInt32) -> VoiceShortcut {
         switch id {
         case 6: readingShortcut ?? VoiceShortcut(enabled: false)

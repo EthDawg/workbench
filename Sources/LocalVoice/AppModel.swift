@@ -787,9 +787,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         transcript = item.text; rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"; page = "dictate"; persist()
     }
     func useOriginal() { rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"; status = "Original transcript restored."; persist() }
+    /// Set up automatic paste: the first click may show macOS's request; later
+    /// clicks open Privacy & Security › Accessibility, so none is a dead end.
     func requestAccessibility() {
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        accessibilityGranted = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+        var asked = preferences.accessibilityRequested
+        let step = AccessibilitySetup.live.run(asked: &asked) { [weak self] in
+            self?.error = "System Settings could not be opened. Open Privacy & Security › Accessibility and allow Workbench there."
+        }
+        if asked != preferences.accessibilityRequested { preferences.accessibilityRequested = asked }
+        accessibilityGranted = step == .approved || AXIsProcessTrusted()
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
     func openMicrophoneSettings() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
