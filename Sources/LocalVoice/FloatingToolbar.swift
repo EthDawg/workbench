@@ -200,7 +200,9 @@ struct FloatingToolbar: View {
     /// toolbar's own items. The next action is the row's primary, not repeated here. Dictate,
     /// Read and Snap are start and stop on the row: their preparation stays in Workbench, one
     /// door away. A right-click on the launcher or the compact rest opens the same menu.
-    private func moreMenu() -> NSMenu {
+    /// Internal so the host checks can read its items, such as Hide toolbar, the fourth door to the
+    /// one visibility switch.
+    func moreMenu() -> NSMenu {
         let menu = NSMenu(title: "More"); menu.autoenablesItems = false
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
