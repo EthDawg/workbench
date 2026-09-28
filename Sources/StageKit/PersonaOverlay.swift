@@ -124,7 +124,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
 }
 
 private final class PersonaArtworkView: NSView {
-    var image: NSImage? { didSet { artworkChanged() } }
+    var image: NSImage? { didSet { if image !== oldValue { analysis = nil }; artworkChanged() } }
     var onFinishDragging: (() -> Void)?
     var onSelection: (() -> Void)?
     /// Off leaves the artwork exactly as it was: no room, layer or microphone.

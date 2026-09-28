@@ -324,7 +324,12 @@ struct PersonaVoiceRingGeometry {
 /// Motion keeps the bars away and lets the line brighten instead.
 final class PersonaVoiceRingLayer: CALayer {
     var tint = PersonaVoiceOutline.fallbackTint { didSet { applyStyle() } }
-    var geometry: PersonaVoiceRingGeometry? { didSet { applyStyle(); render() } }
+    var geometry: PersonaVoiceRingGeometry? {
+        didSet {
+            guard geometry != nil else { for layer in [lineEdge, lineLayer, barEdge, bars] { layer.path = nil }; return }
+            applyStyle(); render()
+        }
+    }
     var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { didSet { render() } }
     var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast { didSet { applyStyle() } }
     private let lineEdge = CAShapeLayer(), lineLayer = CAShapeLayer()
