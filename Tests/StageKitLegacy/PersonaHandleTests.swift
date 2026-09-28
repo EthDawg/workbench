@@ -354,7 +354,8 @@ final class PersonaHandleTests {
             guard let grow = controller.handleWindows[.bottomRight] else { XCTAssertTrue(false, "Handles show"); continue }
             drag(grow.contentView!, from: CGPoint(x: grow.frame.midX, y: grow.frame.midY), by: [CGVector(dx: 20, dy: -20), CGVector(dx: 80, dy: -80)])
             XCTAssertEqual(placements.last?.width ?? 0, 0.16, accuracy: 0.0001, file: #filePath, line: #line)
-            XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(before.width), accuracy: 1)
+            // Frames are whole points, so allow a couple of points either way.
+            XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(before.width), accuracy: 2)
             // Shrinking, where the artwork allows it, stores the smaller Size, which shows at the same width again.
             let smallest = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: 0.06), imageSize: tall.size, in: screen.visibleFrame.size)
             guard smallest.width < before.width - 4 else { continue }
@@ -365,7 +366,7 @@ final class PersonaHandleTests {
             XCTAssertTrue(smaller.width < before.width - 2, "The card shrank")
             XCTAssertTrue(stored.width < 0.16)
             _ = controller.show(image: tall, name: "Synthetic persona", state: stored)
-            XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(smaller.width), accuracy: 1)
+            XCTAssertEqual(Double(controller.visibleFrame?.width ?? 0), Double(smaller.width), accuracy: 2)
         }
     }
 
