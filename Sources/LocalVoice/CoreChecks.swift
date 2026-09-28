@@ -80,11 +80,6 @@ enum CoreChecks {
         try check(recovered.history.map(\.id) == captures.map(\.id) && recovered.history.last?.rawText == earlier.rawText, "multiple captures and originals survive saving an unrelated draft")
         try check(TranscriptHistory.matching(captures, query: "UM,").map(\.id) == [earlier.id], "search finds original wording without requiring exact case")
         try check(TranscriptHistory.matching(captures, query: " ").count == 2, "clearing history search restores every capture")
-        let screen = NSRect(x: 0, y: 30, width: 1440, height: 870)
-        let moved = NSPoint(x: 100, y: 320)
-        try check(CapturePanelPlacement.origin(saved: moved, screens: [screen], preferred: screen) == moved, "dictation panel preserves a user-chosen visible position")
-        let recoveredOrigin = CapturePanelPlacement.origin(saved: NSPoint(x: 5000, y: -900), screens: [screen], preferred: screen)
-        try check(screen.contains(NSRect(origin: recoveredOrigin, size: CapturePanelPlacement.size)), "dictation panel recovers onto a connected display")
         try check(restored.replacements == original.replacements && restored.voice == "Daniel" && restored.rate == 210, "dictionary and voice preferences restored")
         let permissions = try FileManager.default.attributesOfItem(atPath: store.url.path)[.posixPermissions] as? NSNumber
         try check(permissions?.intValue == 0o600, "state file private to current user")

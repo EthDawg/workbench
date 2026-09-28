@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreAudio
+import VoiceAppearance
 
 /// React to my voice on this Mac's real microphone, for maintainers. Launch the
 /// signed app through LaunchServices so macOS applies its own microphone
@@ -84,7 +85,7 @@ public enum PersonaVoiceNativeCheck {
         var summary: [String] = []
         var failures: [String] = []
         /// What the outline showed and when it changed: `targetTimestamp` of the frame that shows it.
-        var shown: [(time: CFTimeInterval, state: PersonaVoiceRingState.Visible)] = []
+        var shown: [(time: CFTimeInterval, state: VoiceEnvelope.Visible)] = []
         /// dBFS a frame must reach to count as synthetic speech, set from the room.
         var speechThreshold: Float = -45
 
@@ -124,7 +125,7 @@ public enum PersonaVoiceNativeCheck {
             NSApp.windows.first { $0.title == "Workbench persona" && $0.isVisible }?
                 .contentView?.layer?.sublayers?.compactMap { $0 as? PersonaVoiceRingLayer }.first
         }
-        func state(at time: CFTimeInterval) -> PersonaVoiceRingState.Visible { shown.last { $0.time <= time }?.state ?? .quiet }
+        func state(at time: CFTimeInterval) -> VoiceEnvelope.Visible { shown.last { $0.time <= time }?.state ?? .quiet }
 
         /// Onset and return to quiet for synthetic speech heard between `from`
         /// and `to`, measured from the frames' arrival: a speech frame is one at

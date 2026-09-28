@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import VoiceAppearance
 
 private final class PersonaPanel: NSPanel {
     override var canBecomeKey: Bool { false }
@@ -325,7 +326,7 @@ private final class PersonaArtworkView: NSView {
     var outline: PersonaArtworkOutline? { didSet { if outline != oldValue { needsLayout = true } } }
     private let artworkLayer = CALayer()
     private let ring = PersonaVoiceRingLayer()
-    private var analysis: (image: ObjectIdentifier, outline: PersonaArtworkOutline, tint: NSColor)?
+    private var analysis: (image: ObjectIdentifier, outline: PersonaArtworkOutline)?
     private var ringLink: CADisplayLink?
     private var displayOptions: NSObjectProtocol?
 
@@ -358,7 +359,6 @@ private final class PersonaArtworkView: NSView {
         artworkLayer.frame = rect
         ring.frame = bounds
         if ringOn, let analysis = analyzed() {
-            ring.tint = analysis.tint
             ring.geometry = PersonaVoiceRingGeometry(outline: outline ?? analysis.outline, artwork: rect)
         }
         CATransaction.commit()
@@ -366,6 +366,11 @@ private final class PersonaArtworkView: NSView {
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         artworkChanged()
+    }
+    /// The voice colour follows Workbench's appearance, light or dark.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        if ringOn { applyDisplayOptions() }
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -410,14 +415,13 @@ private final class PersonaArtworkView: NSView {
         ring.contentsScale = scale; ring.setNeedsLayout()
         needsLayout = true
     }
-    /// Measured once per artwork: the edge to follow and the colour to use.
-    private func analyzed() -> (image: ObjectIdentifier, outline: PersonaArtworkOutline, tint: NSColor)? {
+    /// Measured once per artwork: the edge to follow.
+    private func analyzed() -> (image: ObjectIdentifier, outline: PersonaArtworkOutline)? {
         guard let image else { return nil }
         let key = ObjectIdentifier(image)
         if let analysis, analysis.image == key { return analysis }
         guard let bitmap = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let result = PersonaArtworkOutline.analyze(bitmap)
-        analysis = (key, result.outline, result.tint)
+        analysis = (key, PersonaArtworkOutline.analyze(bitmap))
         return analysis
     }
     private func ringChanged() {
@@ -441,9 +445,12 @@ private final class PersonaArtworkView: NSView {
         needsLayout = true
     }
 
+    /// Reduce Motion, Increase Contrast and the voice colour: Workbench's accent
+    /// in this persona's appearance, the same colour as every voice surface.
     private func applyDisplayOptions() {
         ring.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         ring.increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        ring.colors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: effectiveAppearance)
     }
 
     /// The display link runs only while the outline is lit or easing.

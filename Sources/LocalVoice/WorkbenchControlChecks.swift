@@ -83,20 +83,25 @@ enum WorkbenchControlChecks {
         try check(ToolbarModeFollower.modeToSelect(previous: [], current: [.draw, .persona, .present]) == .present, "several starts in one tick: Present before Persona before the rest")
         try check(ToolbarModeFollower.modeToSelect(previous: [.present], current: [.present, .persona, .dictate]) == .persona, "Persona outranks the rest once Present is already live")
         try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
-        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading, "active reading has compact controls even with idle toolbar disabled")
+        try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools, "active reading keeps the shared host even with the idle toolbar disabled (#134 T4)")
         try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
         // Hide toolbar is authoritative for the tools over live Draw, Present and Persona (#155).
         func surface(shown: Bool = false, drawing: Bool = false, presenting: Bool = false, persona: Bool = false, inserting: Bool = false,
-                     dictation: Bool = false, narration: Bool = false, reading: Bool = false) -> FloatingToolbarSurface {
+                     dictation: Bool = false, narration: Bool = false, reading: Bool = false, cue: Bool = false,
+                     capturing: Bool = false) -> FloatingToolbarSurface {
             .resolve(shown: shown, drawing: drawing, presenting: presenting, persona: persona, inserting: inserting,
-                     capturingScreen: false, dictation: dictation, narration: narration, reading: reading)
+                     capturingScreen: capturing, dictation: dictation, narration: narration, reading: reading, cue: cue)
         }
         try check(surface() == .hidden && surface(drawing: true) == .hidden && surface(presenting: true) == .hidden && surface(persona: true) == .hidden
                   && surface(drawing: true, presenting: true, persona: true) == .hidden, "Hide toolbar hides the tools while drawing, presenting or showing a persona")
         try check(surface(shown: true) == .tools && surface(shown: true, drawing: true, presenting: true, persona: true) == .tools,
                   "Show floating toolbar brings the tools back over live work")
-        try check(surface(drawing: true, dictation: true) == .dictation && surface(presenting: true, narration: true) == .narration
-                  && surface(persona: true, reading: true) == .reading, "a live recording, narration or reading keeps its own controls while the tools are hidden")
+        // Recording, narration, reading and their results share the tools' host (#134 T4): it stays
+        // up while they run even with the tools hidden, and only the no-speech cue has its own view.
+        try check(surface(drawing: true, dictation: true) == .tools && surface(presenting: true, narration: true) == .tools
+                  && surface(persona: true, reading: true) == .tools, "a live recording, narration or reading keeps the shared host while the tools are hidden")
+        try check(surface(dictation: true, cue: true) == .cue && surface(shown: true, cue: true) == .cue
+                  && surface(dictation: true, cue: true, capturing: true) == .hidden, "the no-speech cue has its own view, and screen capture hides it too")
         try check(surface(inserting: true) == .tools, "a prompt insertion keeps its Stop on the tools until it ends")
         // Position… opened from the toolbar's keyboard focus hands the keyboard back (#197 review).
         let closes: [ToolbarPositionClose] = [.chose, .reset, .escape, .dismissed]
@@ -109,6 +114,9 @@ enum WorkbenchControlChecks {
                   "a running timer is live work and a paused one is paused")
         try check(WorkbenchControlContext.timerActivity(.finished) == (false, false) && WorkbenchControlContext.timerActivity(.idle) == (false, false),
                   "a finished timer never reads as paused on the mark, and an idle one shows nothing")
+        try check(WorkbenchControlState.liveTimer(.finished) == .finished && WorkbenchControlState.liveTimer(.paused) == .paused
+                  && WorkbenchControlState.liveTimer(.running) == .running && WorkbenchControlState.liveTimer(.idle) == .none,
+                  "the next action's live state tells a finished timer from a paused one")
         // More's Active work reaches everything the mark can show from any other tool (#205 review).
         do {
             func items(_ mode: ToolbarMode, _ edit: (inout ToolbarActiveWork.Facts) -> Void) -> [ToolbarActiveWork] {
@@ -130,6 +138,66 @@ enum WorkbenchControlChecks {
                           == [.stopDrawing, .persona("Show personas"), .stopTranscribing]
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
+        }
+        // Reading keeps its own commands in More while another job holds the primary (#211 F6).
+        do {
+            func reading(_ primary: ToolbarOperation, _ state: ToolbarLiveState.Reading) -> [ToolbarOperation] {
+                ToolbarReadingCommands.operations(primary: primary, reading: state)
+            }
+            try check(reading(.finishDrawing, .playing) == [.pauseReading, .stopReading] && reading(.stopInserting, .paused) == [.resumeReading, .stopReading],
+                      "while drawing or an insertion holds the primary, More offers Pause reading or Resume reading, and Stop reading")
+            try check(reading(.finishDrawing, .preparing) == [.cancelReading], "and Cancel while the reading is still preparing")
+            try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
+                      "the row's own reading action is not repeated there, and no reading offers nothing")
+        }
+        // Words waiting for drawing to end lead with Stop drawing, which delivers them; Copy now
+        // is in More (#211 F5).
+        do {
+            var waiting = WorkbenchControlState(); waiting.phase = .delivering; waiting.waitingForDrawing = true; waiting.drawing = true
+            try check(waiting.live(.dictate).dictation == .waitingForDrawing && waiting.actionTitle(.dictate) == "Stop drawing"
+                      && waiting.rowAction(.dictate) == .operation(.finishDrawing), "words waiting for drawing lead with Stop drawing, not a disabled Processing…")
+            waiting.drawing = false
+            try check(waiting.actionTitle(.dictate) == "Processing…", "once drawing has ended they are a moment's processing")
+        }
+        // Keyboard entry keeps the launcher row: only the pointer's own reveal shows a waiting
+        // result's controls, and a row that Keep open brings back waits for the pointer and holds
+        // as the kept-open swap does (#211 F1, F8).
+        do {
+            let suite = "Workbench.ToolbarResultChecks." + UUID().uuidString
+            guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            func toolbar() -> CaptureHUDControls {
+                let controls = CaptureHUDControls(defaults: defaults)
+                controls.resultPending = { true }
+                controls.toolbar.activate()
+                return controls
+            }
+            let keyboard = toolbar()
+            keyboard.focusToolbar()
+            try check(keyboard.toolbar.state.tier == .revealed && !keyboard.revealsResult,
+                      "keyboard entry onto a waiting result reveals the launcher row, not the result's controls")
+            let pointer = toolbar()
+            pointer.toolbar.send(.pointerEntered)
+            try check(pointer.revealsResult, "the pointer's own reveal shows the waiting result's controls")
+            pointer.focusToolbar()
+            try check(pointer.revealsResult, "and the keyboard taken after it, by the click on the mark, keeps them")
+            let kept = toolbar()
+            kept.toolbar.send(.keepOpenChanged(true))
+            kept.suspendToolbar()
+            // The host's resize runs its update again from inside the return, before it has looked
+            // for the pointer; that update tries the kept-open swap too.
+            kept.resize = { [weak kept] in kept?.showResultIfKeptOpen() }
+            kept.activateToolbar()
+            kept.resize = nil
+            try check(kept.toolbar.state.tier == .revealed && !kept.revealsResult,
+                      "a kept-open row that comes back keeps its launcher until the host has found the pointer, even from the host's update inside the return")
+            kept.toolbar.send(.pointerEntered); kept.pointerSettled(); kept.showResultIfKeptOpen()
+            try check(!kept.revealsResult, "and while the pointer is on it the result waits")
+            kept.focusToolbar(); kept.toolbar.send(.pointerLeft); kept.showResultIfKeptOpen()
+            try check(!kept.revealsResult, "as it does while the keyboard holds the row")
+            kept.unfocusToolbar(); kept.showResultIfKeptOpen()
+            try check(kept.revealsResult, "once nothing is on it, the result takes the kept-open row's place")
+            kept.toolbar.send(.keepOpenChanged(false))
         }
         // The tool chooser (#134): a choice or Escape gives the keyboard back to the launcher, so a
         // second Escape leaves the toolbar; a click elsewhere leaves it where the person went.

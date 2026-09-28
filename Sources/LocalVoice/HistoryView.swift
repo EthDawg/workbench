@@ -330,6 +330,7 @@ struct HistoryView: View {
     /// History so a Ready or failed task can be started without leaving it.
     private var header: some View {
         WorkbenchPageHeader("history", summary: "What you dictated, snapped and handed off, newest first.") {
+            ConfirmationLabel(text: snap.confirmation?.kind.rawValue, reserving: SnapConfirmation.texts)
             Button("Connections…") { showingConnections = true }
         }
     }

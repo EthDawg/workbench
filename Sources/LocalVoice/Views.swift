@@ -210,7 +210,7 @@ struct ContentView: View {
             VoiceOptions(model: model, showShortcut: false)
             HStack(spacing: 12) {
                 Button("Your dictionary") { model.page = "dictionary" }
-                Button("Position dictation panel…") { model.showPanelPreview() }.disabled(model.phase != .idle)
+                Button("Position floating toolbar…") { model.showPanelPreview() }.disabled(model.phase != .idle)
             }
         }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(panelColor, in: RoundedRectangle(cornerRadius: 16))
             .id(Self.optionsID)

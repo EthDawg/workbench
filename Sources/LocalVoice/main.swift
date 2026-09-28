@@ -273,9 +273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.stage.resetShortcuts()
         }
         model.onResetPanel = { [weak self] in self?.capturePanel.position(reset: true) }
-        hotkeys.onKey = { [weak self] id, down in
+        hotkeys.onKey = { [weak self] id, down, time in
             guard let self else { return }
-            if id == 1 { self.model.shortcutChanged(down: down) }
+            if id == 1 { self.model.shortcutChanged(down: down, at: time) }
             else if down, id == 3 { self.model.showLibrary() }
             else if down, id == 4 { self.showPresenter() }
             else if down, id == 6 {
@@ -700,7 +700,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
-            try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }
+            try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try FeedbackChecks.run(); try ReadingChecks.run() }
+        case "--check-feedback":
+            // Brief feedback alone (#134 T5): no check here writes preferences outside its own temporary folder.
+            try await MainActor.run { try ClipboardReceiptChecks.run(); try FeedbackChecks.run() }
         case "--check-floating-toolbar":
             try await WorkbenchControlChecks.run()
         case "--check-reading-cancellation":
