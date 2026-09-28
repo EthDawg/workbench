@@ -11,6 +11,7 @@ struct SnapWorkspaceView: View {
     var onAddToNarratedSession: ([UUID]) -> Void = { _ in }
     var onOrganiseHandOff: (String) -> Void = { _ in }
     @State private var reviewingOrganization = false
+    @State private var importCandidates: [URL] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -24,7 +25,15 @@ struct SnapWorkspaceView: View {
                 Menu {
                     Button("Paste image") { model.pasteImage() }
                     Button("Import image…") { model.importImage() }
-                } label: { Label("Add image", systemImage: "plus") }.disabled(model.isBusy)
+                    #if !APP_STORE
+                    Divider()
+                    Button("Import Desktop screenshots…") {
+                        if let found = model.desktopScreenshots() {
+                            if found.isEmpty { model.notice = "There are no screenshots on the Desktop." } else { importCandidates = found }
+                        }
+                    }
+                    #endif
+                } label: { Label("Add image", systemImage: "plus") }.disabled(model.isBusy || model.importingScreenshots)
             }
             HStack(spacing: 10) {
                 ForEach(SnapCapture.Mode.allCases) { mode in
@@ -71,6 +80,19 @@ struct SnapWorkspaceView: View {
             }
         }.padding(24)
             .sheet(item: $model.draft) { draft in SnapEditorView(model: model, draft: draft) }
+            .confirmationDialog("Import \(importCandidates.count) Desktop screenshot\(importCandidates.count == 1 ? "" : "s") into Snap History?",
+                                isPresented: Binding(get: { !importCandidates.isEmpty }, set: { if !$0 { importCandidates = [] } })) {
+                Button("Import and Move Originals to Trash") {
+                    let files = importCandidates; importCandidates = []
+                    Task {
+                        let added = await model.importDesktopScreenshots(files)
+                        if !added.isEmpty { selectedIDs = Set(added) }
+                    }
+                }
+                Button("Cancel", role: .cancel) { importCandidates = [] }
+            } message: {
+                Text("Only files macOS marked as screenshots are included. Each is saved in Snap History with its original date before its file moves to the Trash, where you can restore it.")
+            }
             .sheet(isPresented: $reviewingOrganization) {
                 SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID,
                     onHandOff: onOrganiseHandOff, onExclude: { ids in selectedIDs.subtract(ids) })
