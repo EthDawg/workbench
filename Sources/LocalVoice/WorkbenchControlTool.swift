@@ -76,6 +76,9 @@ struct WorkbenchControlState {
     var overlaysPaused = false
     var timerStarted = false
     var timerRunning = false
+    /// The timer's transport, which tells a finished countdown from a paused one; `timerStarted`
+    /// stays set after "Time is up" until the timer is reset.
+    var timerTransport: TimerTransport = .idle
     var canRecordAgain = false
     var insertingPrompt = false
     var meetingRecording = false
@@ -114,9 +117,20 @@ struct WorkbenchControlState {
             pendingNarration: pendingNarration, captureCount: captureCount ?? (hasSession ? 0 : nil),
             drawing: drawing, presenting: presenting,
             persona: overlaysPaused ? .sessionHidden : overlaySession ? .session : overlays ? .shown : .none,
-            timer: timerStarted ? (timerRunning ? .running : .paused) : .none,
+            timer: Self.liveTimer(timerTransport),
             insertingPrompt: insertingPrompt, meetingRecording: meetingRecording,
             mayStart: WorkbenchControlTool(mode: mode).map(enabled) ?? false)
+    }
+
+    /// The timer as the next action and its fixtures see it: a finished countdown is finished,
+    /// never paused (#205 review).
+    static func liveTimer(_ transport: TimerTransport) -> ToolbarLiveState.Timer {
+        switch transport {
+        case .idle: return .none
+        case .running: return .running
+        case .paused: return .paused
+        case .finished: return .finished
+        }
     }
 
     /// The row's next action, from the same function as the toolbar's label.
@@ -218,7 +232,7 @@ struct WorkbenchControlContext {
             mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
             overlays: stage.hasActivePersona, overlaySession: stage.hasActivePersonaSession,
             overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession,
-            timerRunning: stage.isTimerRunning, canRecordAgain: model.canRecordAgain,
+            timerRunning: stage.isTimerRunning, timerTransport: stage.timerTransport, canRecordAgain: model.canRecordAgain,
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
             screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true)
     }

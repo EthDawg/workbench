@@ -114,6 +114,14 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertTrue(ToolbarGallery.statuses.allSatisfy { $0.tier == .resting })
     }
 
+    /// A finished break timer rests as nothing running: it is neither live work nor paused (#205 review).
+    func testAFinishedTimerRestsAsNothingRunning() throws {
+        let finished = try XCTUnwrap(ToolbarGallery.states.first { $0.name == "idle-timer-finished-resting" })
+        XCTAssertEqual(finished.status.indicator, .idle, finished.status.description)
+        XCTAssertEqual(ToolbarGallery.activity(ToolbarLiveState(mode: .dictate, timer: .paused)).paused, true)
+        XCTAssertEqual(ToolbarGallery.activity(ToolbarLiveState(mode: .dictate, timer: .running)).live, [.timer])
+    }
+
     /// Dictation, narration and reading are the row's own work now (#134 T4): revealed, the row's
     /// next action stops, pauses or resumes them, and at rest they are the compact mark.
     func testRecordingAndReadingRenderInTheSameRow() {

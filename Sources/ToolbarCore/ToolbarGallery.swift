@@ -94,6 +94,8 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 3), name: "idle-session-open-resting", tier: .resting,
              activity: ToolbarActivity(live: [.snapAndTalk])),
         live(ToolbarLiveState(mode: .dictate, mayStart: false), name: "idle-speech-preparing"),
+        // A break timer whose countdown finished ("Time is up") is neither running nor paused.
+        live(ToolbarLiveState(mode: .dictate, timer: .finished), name: "idle-timer-finished-resting", tier: .resting),
         live(ToolbarLiveState(mode: .dictate, canRecordAgain: true), name: "idle-record-again")
     ]
 

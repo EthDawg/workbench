@@ -114,6 +114,9 @@ enum WorkbenchControlChecks {
                   "a running timer is live work and a paused one is paused")
         try check(WorkbenchControlContext.timerActivity(.finished) == (false, false) && WorkbenchControlContext.timerActivity(.idle) == (false, false),
                   "a finished timer never reads as paused on the mark, and an idle one shows nothing")
+        try check(WorkbenchControlState.liveTimer(.finished) == .finished && WorkbenchControlState.liveTimer(.paused) == .paused
+                  && WorkbenchControlState.liveTimer(.running) == .running && WorkbenchControlState.liveTimer(.idle) == .none,
+                  "the next action's live state tells a finished timer from a paused one")
         // More's Active work reaches everything the mark can show from any other tool (#205 review).
         do {
             func items(_ mode: ToolbarMode, _ edit: (inout ToolbarActiveWork.Facts) -> Void) -> [ToolbarActiveWork] {
