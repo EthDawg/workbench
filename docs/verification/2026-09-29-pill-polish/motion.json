@@ -58,241 +58,241 @@
       },
       {
         "frame" : 9,
-        "height" : 33,
+        "height" : 32,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 95
+        "width" : 116
       },
       {
         "frame" : 10,
         "height" : 37,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 123
+        "width" : 194
       },
       {
         "frame" : 11,
         "height" : 39,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 145
+        "width" : 231
       },
       {
         "frame" : 12,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 251
       },
       {
         "frame" : 13,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 14,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 15,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 16,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 17,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 18,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 19,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 20,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 21,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 22,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 23,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 24,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 25,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 26,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 27,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 28,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 29,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 30,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 31,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 32,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 33,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 34,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 35,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 36,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 37,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 38,
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 160
+        "width" : 252
       },
       {
         "frame" : 39,
         "height" : 36,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 116
+        "width" : 182
       },
       {
         "frame" : 40,
-        "height" : 33,
+        "height" : 32,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 87
+        "width" : 105
       },
       {
         "frame" : 41,
         "height" : 30,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 65
+        "width" : 68
       },
       {
         "frame" : 42,
         "height" : 29,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 51
+        "width" : 49
       },
       {
         "frame" : 43,
@@ -433,7 +433,7 @@
         "width" : 48
       }
     ],
-    "uniqueWindowWidths" : 9
+    "uniqueWindowWidths" : 10
   },
   {
     "file" : "motion-right.gif",
@@ -497,14 +497,14 @@
         "height" : 32,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 133
+        "width" : 132
       },
       {
         "frame" : 10,
         "height" : 37,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 238
+        "width" : 237
       },
       {
         "frame" : 11,
@@ -518,7 +518,7 @@
         "height" : 40,
         "launcherInset" : 24,
         "tier" : "revealed",
-        "width" : 318
+        "width" : 316
       },
       {
         "frame" : 13,
@@ -707,28 +707,28 @@
         "height" : 36,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 210
+        "width" : 215
       },
       {
         "frame" : 40,
         "height" : 33,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 141
+        "width" : 145
       },
       {
         "frame" : 41,
-        "height" : 30,
+        "height" : 29,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 87
+        "width" : 69
       },
       {
         "frame" : 42,
         "height" : 29,
         "launcherInset" : 24,
         "tier" : "resting",
-        "width" : 54
+        "width" : 49
       },
       {
         "frame" : 43,
@@ -869,6 +869,6 @@
         "width" : 48
       }
     ],
-    "uniqueWindowWidths" : 9
+    "uniqueWindowWidths" : 10
   }
 ]
