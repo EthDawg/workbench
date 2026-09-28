@@ -17,21 +17,9 @@ struct DemoLibraryView: View {
     @FocusState private var searching: Bool
     @State private var removal: DemoResource?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Picker("Library", selection: $model.showingPhonePhotos) {
-                Text("Resources").tag(false)
-                Text("From iPhone").tag(true)
-            }.pickerStyle(.segmented).frame(maxWidth: 340)
-                .accessibilityIdentifier("saved.collection")
-            if model.showingPhonePhotos {
-                PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
-            } else {
-                resources
-            }
-        }
-        .onChange(of: model.libraryFocusToken) { _, _ in model.showingPhonePhotos = false }
-    }
+    /// Library's Resources section. Library's switcher, in WorkbenchHome, shows Packs and
+    /// From iPhone beside it.
+    var body: some View { resources }
 
     private var resources: some View {
         VStack(alignment: .leading, spacing: 16) {

@@ -37,7 +37,7 @@ Closing the desktop window leaves Workbench available. Quit Workbench stops the 
 
 The [product guide](https://workbench-mac.vercel.app/guide/) explains dictation, reading, Snap & Talk, drawing, device presentation, personas and saved resources. Device presentation is video-only; Apple's QuickTime and iPhone Mirroring remain separate apps. A connected iPhone used as a Mac presentation source does not imply an active Workbench iOS release.
 
-**Team packs (2.2+):** open **Packs**, connect GitHub and add the private repository link your team shares. Choose a compatible skill or import your own scene/persona copy. New sessions carry the complete versioned skill and resources for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and pack link with colleagues. Ordinary Workbench tools remain account-free; existing sessions keep their own files.
+**Team packs (2.2+):** open **Library → Packs**, connect GitHub and add the private repository link your team shares. Choose a compatible skill or import your own scene/persona copy. New sessions carry the complete versioned skill and resources for the existing **Hand off** flow. Share the [installation guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and pack link with colleagues. Ordinary Workbench tools remain account-free; existing sessions keep their own files.
 
 ## Build and install Preview
 

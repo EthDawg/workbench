@@ -20,18 +20,18 @@ struct WorkbenchHome: View {
     @State private var handoffReview: HandoffReviewRequest?
     @State private var suggestionReview: MetadataSuggestionReview?
     /// The page record: every surface that names or opens a window page reads it here, so a
-    /// page has one name wherever it appears (#134). The sidebar lists `navItems`, Settings
-    /// switches between its `sections`, and `subpages` have no sidebar item of their own. The
-    /// surface gallery renders each route.
+    /// page has one name wherever it appears (#134). The sidebar lists `navItems`, Library and
+    /// Settings switch between their `sections`, and `subpages` have no sidebar item of their
+    /// own. The surface gallery renders each route.
     static let navItems: [(id: String, title: String, symbol: String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
         ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Draw", "pencil.tip"),
         ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.circle"),
-        ("history", "History", "clock"), ("library", "Library", "square.stack"),
-        ("packs", "Packs", "shippingbox"), ("settings", "Settings", "slider.horizontal.3")]
+        ("history", "History", "clock"), ("library", "Library", "square.stack"), ("settings", "Settings", "slider.horizontal.3")]
     /// A page's sections, in switcher order. Each opens from its own route, and the page's own
-    /// route opens the first; Keyboard and Models keep the routes their sidebar items had.
+    /// route opens the first; Keyboard, Models and Packs keep the routes their sidebar items had.
     static let sections: [(id: String, page: String, title: String)] = [
+        ("library", "library", "Resources"), ("packs", "library", "Packs"), ("photos", "library", "From iPhone"),
         ("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard"),
         ("models", "settings", "Models"), ("connections", "settings", "Connections")]
     /// Pages reached from another page. A door to one keeps that page highlighted, so the
@@ -113,7 +113,6 @@ struct WorkbenchHome: View {
                     }, onOrganiseHandOff: { task in
                         handoffReview = HandoffReviewRequest(task: task, snapReview: true, savedSelectionID: history.activeSelectionID)
                     })
-                case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
                 case "history": HistoryView(model: model, snap: snap, applySuggestedMetadata: { job, result in
                     do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                     catch { model.handoffJobs.error = error.localizedDescription }
@@ -122,6 +121,7 @@ struct WorkbenchHome: View {
                 case "annotate": stage.controlsView
                 case "present": stage.scenesView
                 case "personas": stage.personasView
+                case _ where Self.destination(model.page).page == "library": library
                 case _ where Self.destination(model.page).page == "settings": settings
                 default: ContentView(model: model, embedded: true)
                 }
@@ -175,6 +175,26 @@ struct WorkbenchHome: View {
         WorkbenchHomePage(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap,
                           introduction: introduction, handoffReview: $handoffReview)
     }
+    /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
+    /// at the top (#134). From iPhone also opens from Home's arrival cue, through the flag the
+    /// Resources view has always read; choosing Resources, or the Library shortcut, clears it.
+    private var library: some View {
+        let section = model.page == "library" && model.showingPhonePhotos ? "photos" : Self.destination(model.page).section ?? "library"
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionSwitcher("library", selection: section) { route in
+                if route == "library" { model.showingPhonePhotos = false }
+                model.page = route
+            }
+            switch section {
+            case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
+            case "photos":
+                PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
+                    .padding(32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            default: ContentView(model: model, embedded: true)
+            }
+        }.onChange(of: model.libraryFocusToken) { _, _ in model.showingPhonePhotos = false }
+    }
+
     /// Settings holds General, Keyboard, Models and Connections as sections of one page, with
     /// its switcher at the top (#134). Each section shows what its old page or place showed.
     private var settings: some View {

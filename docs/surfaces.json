@@ -898,6 +898,15 @@
     "note": "Quality: Settings' assistant connections and photo handoff move into its Connections section, opened by the route connections (#134). History's Connections… shows the same settings over History."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.library",
+    "surface": "page sections",
+    "label": "Resources",
+    "page": "library",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Quality: Library opens on Resources, the saved prompts, links and files it showed before its fold, now named by its switcher (#134)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.models",
     "surface": "page sections",
     "label": "Models",
@@ -905,6 +914,24 @@
     "kind": "option",
     "belongsTo": "settings",
     "note": "Quality: the Models sidebar item becomes the Models section of Settings, on the same route, models (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.packs",
+    "surface": "page sections",
+    "label": "Packs",
+    "page": "packs",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Quality: the Packs sidebar item becomes the Packs section of Library, on the same route, packs, so pack links and Snap & Talk's Manage packs… land there (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.photos",
+    "surface": "page sections",
+    "label": "From iPhone",
+    "page": "photos",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's arrival cue still opens it."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",
@@ -966,14 +993,6 @@
     "kind": "place",
     "belongsTo": "library",
     "note": "Quality: Saved resources takes its Grammar place name, Library, in the same place. The alias it needed is gone (#134)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.packs",
-    "surface": "window sidebar",
-    "label": "Packs",
-    "page": "packs",
-    "kind": "option",
-    "belongsTo": "library"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.personas",

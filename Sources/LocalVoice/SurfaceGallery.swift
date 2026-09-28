@@ -675,7 +675,7 @@ enum SurfaceGallery {
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings"), action("Home sidebar", "Suite appearance", "Changes the appearance")]
         list += [page(home, "Dictate card", "dictate"), page(home, "Read card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
                  page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"),
-                 page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "library"),
+                 page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "photos"),
                  page("Settings page", "Dictate options…", "dictate"),
                  page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position dictation panel…", "Shows the dictation panel preview"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),

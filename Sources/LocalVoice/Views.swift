@@ -42,7 +42,8 @@ struct ContentView: View {
                 }
             }.padding(32).background(ink)
         }
-        .frame(minWidth: 650, minHeight: 680)
+        // Embedded, a page takes the height its window gives it, below Library's switcher too.
+        .frame(minWidth: 650, minHeight: embedded ? nil : 680)
         .tint(mint).workbenchTheme()
         .sheet(isPresented: $showOriginal) {
             VStack(alignment: .leading, spacing: 16) {
