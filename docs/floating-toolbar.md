@@ -27,8 +27,10 @@ every app with only the microphone. The choice persists across relaunch under
 
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle, or
 drawing, presenting, a persona, a timer, a meeting recording or a Snap & Talk
-session. It is a 48 × 8 capsule in a fixed 48 × 28 target; while work runs it is
-12 points high and carries one 12-point status glyph (see Status at rest). The
+session. It is a 48 × 20 capsule in a fixed 48 × 28 target. At idle it remembers
+the selected tool with that tool's neutral SF Symbol; live work, processing and
+attention take priority (see Status at rest). Colour identifies actual activity:
+a selected Present icon stays neutral until a presentation runs. The
 resting window is exactly that target, and everything outside it passes clicks
 through. Work never holds the row open. Keep open is the one explicit way to keep
 it up. Dictation, narration and reading still replace the tools with their own
@@ -43,11 +45,12 @@ stop work either. A right-click opens the current tool's options, and a drag
 moves the toolbar (see Placement).
 
 Revealed, the toolbar is a 40-point capsule: `[tool ▾] [next action]
-[accessory] [⋯]`, reversed on a right-hand anchor. At standard text it is 248
-points wide, or 340 with an accessory: the launcher's 48-point target sits flush
-with the capsule's end, then 4-point gaps between a next action of at least 152
-points, the 88-point accessory and the 32-point More, and 8 points of padding at
-the far end only. Padding at the launcher's end would move the shared centre 32
+[accessory] [⋯]`, reversed on a right-hand anchor. At standard text its minimum
+width is 160 points, or 252 with an accessory. The launcher's 48-point target sits
+flush with the capsule's end, then 4-point gaps between the next action, the
+88-point accessory and the 32-point More, and 8 points of padding at the far end
+only. The action fits its current wording with 12 points of horizontal inset on
+each side and a 64-point minimum target; it keeps its 32-point height. Padding at the launcher's end would move the shared centre 32
 points in and grow the row toward the display's edge. Longer labels and larger
 text grow the row; an essential action is never shrunk or truncated. When the accessory does
 not fit the display less 24 points, it waits in More. The launcher and the
@@ -67,16 +70,24 @@ and acts when it comes up only if both still hold: a Stop that completes while
 it is pressed is discarded, never turned into a new start. The hover hint shows
 a key only for an operation that key performs: Present's key does not stop an
 insertion, Dictate's key does not stop a meeting, and the persona key does not
-pause a prepared set. A hint names the key that starts the capability; that same
-key also stops it only in toggle activation (the pen key ends drawing only when
-the pen is the active tool and Draw is set to toggle).
+pause a prepared set. Native hover text and VoiceOver help name the visible action
+followed by its usable shortcut, for example `Draw · Hold ⌥D` or
+`Stop · Release ⌥Space`. Hold and Release reflect the actual capture or drawing
+session. A mouse-latched hold drawing, another drawing tool, or an unprepared
+Snap & Talk session omits a key that would perform a different action. Disabled
+and failed bindings are omitted. There is no competing whole-row tooltip.
 
 `ToolbarModeFollower` in the host watches every owner and makes a capability
 the mode the moment it goes from not live to live, whichever door started it;
 if several start in one tick, Present wins, then Persona. The launch snapshot is
 not a start, so a restored Snap & Talk session does not move the mode.
 
-**The launcher** shows the current tool's symbol with a chevron. A click, Space,
+**The launcher** shows the current tool's symbol with a chevron. The symbol is
+shared with the menu bar, desktop navigation and chooser; no separate icon asset
+set is introduced. Its centre stays fixed through reveal, and the chevron appears
+beside it. A cog is reserved for Settings: the tool and chevron make choosing a
+tool visible here. More stays at the inward end, with the hint `Options for Draw`
+(or the selected tool's name). A click, Space,
 Return or Down opens the chooser. When work is live in any tool, the launcher
 carries one small dot, and its accessible description names the current tool
 and any other running work ("Dictate. Also running: Draw").
@@ -120,9 +131,11 @@ colour selection updates the same drawing settings from either entry point.
 Native menus snapshot their content before tracking rather than rebuilding under
 the pointer.
 
-The primary keeps the width of the widest label any tool would show for the
-current live state, so choosing another tool never moves More or the accessory
-under the pointer, idle or mid-session. The row holds no information-only text:
+The primary starts at the width its current action needs. During one open
+interaction it may grow for a longer action, but never shrinks when a shorter
+label replaces it. Collapse resets that width floor. This avoids empty space
+reserved for unrelated tools while keeping nearby targets steady after a Stop
+becomes a start verb. The row holds no information-only text:
 the assigned key and any count are the action's hover hint. Snap & Talk keeps its
 session capture count in the label between captures and while saving. Present's
 accessory is Prompts. Disabled or unassigned shortcut combinations are omitted;
@@ -145,8 +158,13 @@ toolbar still has the keyboard and that app is still running.
 
 **Motion.** A reveal waits for a 120 ms dwell and a collapse for a 450 ms grace;
 the frame changes in one 160 ms ease-out animation with no bounce, and the side
-the row grows toward never changes during an interaction. Reduce Motion changes
-the frame at once and stills the level waveform.
+the row grows toward never changes during an interaction. The visible capsule,
+mask and content read the host's current layout bounds during that animation;
+there is no second animation clock or asynchronous size observer. The tool symbol
+keeps its centre while the capsule opens around it. Controls fade in only after
+their entire labels fit, and fade away before closing can cut through them. The
+launcher remains anchored even while the host is smaller than its content.
+Reduce Motion changes the frame and content at once and stills the level waveform.
 
 Hide toolbar hides the tools in every mode, including while drawing, presenting
 or showing personas. It is the same persistent choice as the Floating toolbar
@@ -206,7 +224,7 @@ now those show their own controls while they run (see Role and content).
 | Unsaved capture | A pencil |
 | Paused | Pause bars |
 | Other live work | That work's capability symbol |
-| Idle | The 48 × 8 capsule alone |
+| Idle | The selected tool's neutral SF Symbol inside the 48 × 20 capsule |
 
 A recording that goes on while another job needs attention keeps the recording
 signal and adds a small warning badge inside the same target, and its

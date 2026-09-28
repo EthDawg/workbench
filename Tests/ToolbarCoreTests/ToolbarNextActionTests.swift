@@ -238,19 +238,7 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(presenting.filter(\.isLive).map(\.mode), [.present])
     }
 
-    /// The width floor follows the live state, so choosing another tool mid-session
-    /// never moves More either.
-    func testTitlesAcrossModesNameEveryModesLabelForThisLiveState() {
-        let live = ToolbarLiveState(mode: .dictate, captureCount: 3, presenting: true)
-        let titles = ToolbarNextAction.titles(across: live)
-        XCTAssertEqual(titles.count, ToolbarMode.allCases.count)
-        XCTAssertTrue(titles.contains("Capture next · 3"))
-        XCTAssertTrue(titles.contains("End presentation"))
-        XCTAssertTrue(titles.contains("Dictate"))
-        for (mode, title) in zip(ToolbarMode.allCases, titles) {
-            var other = live; other.mode = mode
-            XCTAssertEqual(title, ToolbarNextAction.resolve(other).title)
-        }
+    func testIdleVerbsStayWithinTheTitleBudget() {
         XCTAssertEqual(ToolbarNextAction.idleVerbs.count, ToolbarMode.allCases.count + 2)
         for verb in ToolbarNextAction.idleVerbs { XCTAssertLessThanOrEqual(verb.count, ToolbarNextAction.titleBudget) }
     }

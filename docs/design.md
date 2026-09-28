@@ -6,7 +6,7 @@ Workbench 2 combines the existing Voice and StageMark capabilities into one nati
 
 | Owner | Responsibility | Entry points |
 | --- | --- | --- |
-| `ToolbarKit` library target | Native toolbar session, production row and compact mark, tool chooser view, pointer tracking, content placement and window animation | `ToolbarSession.swift`, `ToolbarRow.swift`, `ToolbarChooserView.swift`, `ToolbarTrackingView.swift`, `ToolbarGeometry.swift`, `ToolbarWindowMotion.swift` |
+| `ToolbarKit` library target | Native toolbar session, production row and compact mark, tool chooser view, pointer tracking, content placement and window animation | `ToolbarSession.swift`, `ToolbarRow.swift`, `ToolbarChooserView.swift`, `ToolbarTrackingView.swift`, `ToolbarGeometry.swift`, `ToolbarWindowMotion.swift`, `ToolbarViewport.swift` |
 | `ToolbarCore` library target | When the floating toolbar shows what, the remembered open/closed choice, the next action, the compact status, the chooser's keyboard and the press latch. No AppKit, no clock, no window | `ToolbarMachine.swift`, `ToolbarNextAction.swift`, `ToolbarStatus.swift`, `ToolbarChooser.swift`; the behaviour is owned by [floating-toolbar.md](floating-toolbar.md) |
 | `LocalVoice` executable target | App shell plus existing voice workflows, reading, cleanup, delivery and resources | `main.swift`, `WorkbenchHome.swift`, `AppModel.swift` |
 | `StageKit` library target | Drawing, boards, timer, scene library and device video preview | Public `StageKitController`; internal `AppCoordinator` |

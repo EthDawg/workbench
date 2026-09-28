@@ -13,8 +13,8 @@ public enum ToolbarGallery {
     }
 
     /// Each mode at each tier, idle, docked at the default position. The label is the
-    /// mode's start verb and the hint carries its key. At rest every idle mode is the same
-    /// small mark: nothing is running, so there is nothing else to say.
+    /// mode's start verb and the hint carries its key. At rest the selected tool's
+    /// neutral symbol keeps its identity without implying that it is running.
     public static let modes: [ToolbarViewState] = ToolbarMode.allCases.flatMap { mode in
         ToolbarTier.allCases.map { tier in
             let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode))
@@ -60,7 +60,6 @@ public enum ToolbarGallery {
                                 isActionEnabled: action.isEnabled,
                                 actionHint: action.hint(key: action.operation.keyMode.flatMap(exampleKey)),
                                 choices: ToolbarNextAction.choices(for: live, key: exampleKey),
-                                minimumTitles: ToolbarNextAction.titles(across: live),
                                 isBusy: live.isLive(live.mode),
                                 status: .resolve(activity ?? Self.activity(live)))
     }

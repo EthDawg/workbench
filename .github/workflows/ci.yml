@@ -40,7 +40,9 @@ jobs:
       - name: Run regression checks
         run: bash scripts/test.sh
       - name: Render the production toolbar gallery
-        run: swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
+        run: |
+          swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
+          swift run --disable-sandbox ToolbarGalleryRenderer --motion test-results/toolbar/motion
       - name: Retain toolbar visual evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

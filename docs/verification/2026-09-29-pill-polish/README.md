@@ -1,0 +1,41 @@
+# Floating pill refinement — 29 September 2026
+
+## Decisions
+
+The goal is a smaller, legible pill whose identity survives closing, with one predictable way to choose a tool and one way to act.
+
+| Detail | Decision and reason |
+| --- | --- |
+| Action padding | Fit the visible verb with 12 pt on each side and a 64 pt minimum. Draw now needs a 160 pt row instead of 248 pt. Longer actions retain their full wording. During one reveal the action may grow, but cannot shrink and pull nearby targets away; collapse resets it. |
+| Control order | Keep tool + chevron at the anchored end, then action, optional accessory, More. Mirror the row at right docks so the launcher never leaves the pointer. More describes the selected tool's options. |
+| Cog | Keep it for Settings. A tool symbol with a chevron communicates a tool choice and retains the selected identity. |
+| Closed pill | A 48 × 20 capsule within the existing 48 × 28 pointer target carries the selected SF Symbol. Idle is neutral; the mint Present icon means a presentation is actually running. Existing capture, processing, result and attention priorities override idle identity. |
+| Icon creation | Reuse `ToolbarMode.symbol`, the same SF Symbols used by the menu bar and desktop. The symbol remains centred while opening; the chevron appears alongside it. No additional bitmap artwork or competing icon vocabulary. |
+| Hover text | The action's native tooltip and VoiceOver help name the action and its usable key. Hold and Release are explicit where required. Omit a key if it would perform a different action, or is off/unavailable. Remove the competing whole-row tooltip. |
+| Motion | Keep 120 ms hover dwell, 450 ms leave grace and one 160 ms ease-out native window animation. Chrome, masking and control visibility follow the current window layout. A control appears only after its full label fits. The same path reverses on closing; Reduce Motion is immediate. |
+| Interruptions | Keep the pending-hover cancellation and stale-callback protections from the first part of this PR. No second timer, saved preference or toolbar state owner. |
+
+The first intermediate render exposed a launcher shift in windows narrower than the row, an asynchronous background lag and a doubled tool symbol. The final implementation supplies the actual viewport through synchronous layout, accepts small window proposals, and shares the symbol centre. Regression checks cover all eight anchors with both undersized and oversized hosts.
+
+![Draw: opening and closing](motion-left.gif)
+
+![Present: right dock opening and closing](motion-right.gif)
+
+[Light gallery](overview-light-standard.png) · [Dark, larger text](overview-dark-large.png)
+
+## Research
+
+The earlier local Superwhisper and Wispr Flow study supplies reference observations, not a measured timing specification. Their recording-first compact controls are useful references for continuity; Workbench must also retain a selected tool across Draw, Present, Persona and capture workflows.
+
+- [Apple: SF Symbols](https://developer.apple.com/design/human-interface-guidelines/sf-symbols) supports one familiar symbol system, aligned with text and platform semantics.
+- [Apple: Motion](https://developer.apple.com/design/human-interface-guidelines/motion) supports brief, purposeful and interruptible transitions, with reduced-motion alternatives.
+- [Superwhisper changelog](https://superwhisper.com/changelog) records mini-pill animation/tooltip polish and fixes for hover dismissal and focus. These reinforce testing transitions and interruptions, not just static appearance.
+- [Wispr Flow updates](https://wisprflow.ai/whats-new) and the local study inform the compact-control comparison. No competitor assets or private screenshots are included here.
+
+## Verification
+
+`ToolbarGalleryRenderer --motion DIR` records the production row inside a real, offscreen, nonactivating NSPanel using `ToolbarWindowMotion`. The GIFs use sampled native frames, not a separate animation mockup. Every sampled launcher must remain 24 pt from its anchored edge. `motion.json` records the actual dimensions and anchor checks.
+
+The ordinary renderer covers idle/live modes, all docks, dark/light, larger text and accessibility variants. The native tests cover content fit, width retention/reset, tooltip/accessibility parity, anchor stability and interrupted hover/animation handling. The complete Mac app is compiled separately so the actual shortcut-owner projections are checked too.
+
+Exact source, final check counts and CI links are recorded in the PR. This is source and synthetic native evidence. It does not claim installed Preview acceptance, physical hover, VoiceOver traversal or multi-display hardware acceptance. The installed QA owner retains the shared Preview and desktop input.

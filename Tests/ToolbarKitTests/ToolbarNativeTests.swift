@@ -37,17 +37,17 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    /// The standard row is 248 points, 340 with its accessory, at standard text.
+    /// A short verb needs no space reserved for another mode. Accessories keep their own target.
     @MainActor func testTheStandardRowWidths() {
         _ = NSApplication.shared
-        let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .dictate))).fittingSize
-        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present))).fittingSize
+        let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .draw))).fittingSize
         XCTAssertEqual(plain, NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight))
-        XCTAssertEqual(accessory, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight))
+        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present))).fittingSize
         var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present)
         waiting.showsAccessory = false
-        XCTAssertEqual(NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width, ToolbarLayout.standardWidth,
-                       "an accessory that does not fit waits in More and takes no room")
+        let without = NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width
+        XCTAssertEqual(accessory.width - without, ToolbarLayout.accessoryWidth + ToolbarLayout.gap, accuracy: 0.5)
+        XCTAssertLessThan(without, 200, "short verbs should not carry a 152-point action floor")
     }
 
     /// The launcher sits exactly where the compact mark does: 24 points from the growth edge,
@@ -232,7 +232,7 @@ final class ToolbarNativeTests: XCTestCase {
             let state = ToolbarViewState(name: "jump", tier: .revealed, anchor: anchor, mode: .draw)
             let exact = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize.width
             let settled = try inset(state, width: exact, pinned: true)
-            for stale in [exact + 60, max(400, exact + 1)] {
+            for stale in [48, 72, exact - 30, exact + 60, max(400, exact + 1)] {
                 XCTAssertEqual(try inset(state, width: stale, pinned: true), settled, accuracy: 0.5,
                                "\(anchor.rawValue): the launcher moved in a \(Int(stale))-point window")
             }
@@ -263,14 +263,49 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(width("Capture next · 10"), width("Capture next · 99"), accuracy: 0.5)
     }
 
-    /// Choosing another idle tool changes only the verb. The primary keeps the width of the
-    /// widest label, so More never moves under a pointer on its way there.
-    @MainActor func testChoosingAnotherIdleToolNeverMovesMore() {
-        _ = NSApplication.shared
-        let widths = ToolbarGallery.modes.filter { $0.tier == .revealed && $0.accessoryTitle == nil }
-            .map { NSHostingView(rootView: ToolbarRow(state: $0)).fittingSize.width }
-        XCTAssertGreaterThan(widths.count, 1)
-        for width in widths { XCTAssertEqual(width, widths[0], accuracy: 0.5, "\(widths)") }
+    /// Dynamic width belongs to one open interaction. It can grow, but only a
+    /// collapse permits shrinking, so a changing Stop/Start cannot pull More away.
+    @MainActor func testActionWidthFitsTheVerbAndOnlyShrinksAfterCollapse() {
+        var state = ToolbarViewState(name: "width", tier: .revealed, mode: .draw, actionTitle: "Draw")
+        let view = laidOut(ToolbarRow(state: state))
+        let short = view.fittingSize.width
+        state.actionTitle = "End presentation"
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        let long = view.fittingSize.width
+        XCTAssertGreaterThan(long, short + 25)
+        state.actionTitle = "Draw"
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.fittingSize.width, long, accuracy: 0.5)
+        state.tier = .resting
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.fittingSize, ToolbarLayout.mark)
+        state.tier = .revealed
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.fittingSize.width, short, accuracy: 0.5)
+    }
+
+    @MainActor func testActionAndMoreHintsNameTheirActualControl() throws {
+        let state = ToolbarViewState(name: "hint", tier: .revealed, mode: .draw, actionTitle: "Draw", actionHint: "Hold ⌥D")
+        let view = laidOut(ToolbarRow(state: state))
+        let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" })
+        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" })
+        XCTAssertEqual(primary.toolTip, "Draw · Hold ⌥D")
+        XCTAssertEqual(primary.accessibilityHelp(), primary.toolTip)
+        XCTAssertEqual(more.toolTip, "Options for Draw")
+        var noKey = state; noKey.actionHint = nil
+        view.rootView = ToolbarRow(state: noKey); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(primary.toolTip, "Draw")
+    }
+
+    func testRevealChromeFollowsTheWindowWithNoSecondClock() {
+        for scale in [CGFloat(1), 1.35] {
+            let row = ToolbarLayout.rowHeight * scale
+            XCTAssertEqual(ToolbarRevealVisuals.progress(viewportHeight: 28, rowHeight: row), 0)
+            XCTAssertEqual(ToolbarRevealVisuals.progress(viewportHeight: row, rowHeight: row), 1)
+            let halfway = ToolbarRevealVisuals.progress(viewportHeight: (28 + row) / 2, rowHeight: row)
+            XCTAssertEqual(halfway, 0.5, accuracy: 0.001)
+            XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: halfway, rowHeight: row), (20 + row) / 2)
+        }
     }
 
     @MainActor func testImmediateRetargetSettlesSynchronouslyAtRequestedDestination() {

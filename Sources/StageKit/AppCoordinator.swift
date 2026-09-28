@@ -258,6 +258,16 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         stopDrawing(); boards.removeAll(); palette?.orderOut(nil)
         refreshWindows(); refreshEffects(); updateStatus()
     }
+    /// What the Pen key would do now, for the floating action's hint. The
+    /// current tool and the actual held session matter, not just a preference.
+    var penShortcutGesture: StageKitController.ShortcutGesture? {
+        let toggles = settings.value.activation == .toggle || !boards.isEmpty
+        if !isDrawing { return toggles ? .press : .hold }
+        guard tool == .pen else { return nil }
+        if toggles { return .press }
+        return heldAction == .pen && !latched ? .release : nil
+    }
+
     func handleHotkey(_ action: Action, down: Bool) {
         guard !screenshotHandoffActive else { return }
         if action.isOverlayAction { if down { perform(action) }; return }
