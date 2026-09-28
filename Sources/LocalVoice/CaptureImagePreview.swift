@@ -89,6 +89,8 @@ enum CaptureImageLoader {
 
     static func image(_ source: CaptureImagePreviewItem.Source, maximumPixelSize: Int,
                       cancellation: CapturePreviewCancellation = CapturePreviewCancellation()) throws -> CapturePreviewImage {
+        // A preview closed while this waited in the queue reads nothing, not even up to 100 MB of file.
+        if cancellation.isCancelled { throw CancellationError() }
         let data: Data
         switch source {
         case .file(let url, let missing):
@@ -124,10 +126,13 @@ enum CaptureImageLoader {
 enum CaptureImageZoom {
     static let step: CGFloat = 1.25
     static let largest: CGFloat = 8
-    /// Fit never enlarges a small image past its actual size.
+    /// Fit never enlarges a small image past its actual size. An exact ratio can round to an
+    /// image a hair larger than the window, and a scroll bar that is always shown would then
+    /// appear and crop it, so a fit stays just inside (#188).
     static func fit(image: CGSize, in viewport: CGSize) -> CGFloat {
         guard image.width > 0, image.height > 0, viewport.width > 0, viewport.height > 0 else { return 1 }
-        return min(1, viewport.width / image.width, viewport.height / image.height)
+        let ratio = min(viewport.width / image.width, viewport.height / image.height)
+        return ratio < 1 ? ratio * (1 - 1e-9) : 1
     }
     static func smallest(fit: CGFloat) -> CGFloat { min(fit, 0.1) }
     static func clamp(_ magnification: CGFloat, fit: CGFloat) -> CGFloat { min(largest, max(smallest(fit: fit), magnification)) }
@@ -425,7 +430,8 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
 enum ReadbackItemNames {
     static func view(sectionNumber: Int) -> String { "View screenshot for section \(sectionNumber)" }
     static func viewDeleted(_ section: ReadbackSection) -> String { "View screenshot captured \(captured(section)), recently deleted" }
-    static func captured(_ section: ReadbackSection) -> String { section.capturedAt.formatted(date: .abbreviated, time: .shortened) }
+    /// With seconds, so two sections captured in the same minute still have different names.
+    static func captured(_ section: ReadbackSection) -> String { section.capturedAt.formatted(date: .abbreviated, time: .standard) }
 }
 
 /// A capture thumbnail that opens the read-only preview on click, and on
