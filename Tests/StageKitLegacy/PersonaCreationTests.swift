@@ -85,7 +85,9 @@ final class PersonaCreationTests {
         XCTAssertEqual(try snapshot(f), before, "Choosing a picture saves nothing")
         editors.current?.style.label = "Synthetic facilities lead"
         editors.current?.style.background = InkColor(0.6, 0.2, 0.3)
-        XCTAssertEqual(try snapshot(f), before, "Editing the label and colour saves nothing")
+        editors.current?.appearance.shape = .card
+        editors.current?.appearance.framing = PersonaFraming(x: 0.4, y: 0.6, zoom: 1.5)
+        XCTAssertEqual(try snapshot(f), before, "Editing the label, colour, shape and framing saves nothing")
         editors.current?.cancel(); editors.current = nil
         XCTAssertEqual(try snapshot(f), before, "Cancel leaves the library, selection, membership and files as they were")
 
