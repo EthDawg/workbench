@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import StageKit
+import ToolbarCore
 
 /// One compact panel, reached from the status item and the Quick Controls key.
 /// The action rows stay above receipts and inline shortcut editing.
@@ -202,10 +203,10 @@ struct WorkbenchQuickPanel: View {
             if model.rendering { model.cancelReading() }
             else if model.playing || model.paused { model.listen() }
             else { open("speak") }
-        case .snapAndTalk: model.controlTool = .snapAndTalk; snap()
-        case .annotate: model.controlTool = .annotate; draw()
-        case .present: model.controlTool = .present; present()
-        case .persona: model.controlTool = .persona; personas()
+        case .snapAndTalk: model.toolbarMode = .snapAndTalk; snap()
+        case .annotate: model.toolbarMode = .draw; draw()
+        case .present: model.toolbarMode = .present; present()
+        case .persona: model.toolbarMode = .persona; personas()
         case .timer: timer()
         }
     }

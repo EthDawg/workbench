@@ -162,41 +162,11 @@
     "note": "Existing door, recorded, no change: Opens the saved text on the Read page (Option of read; #134)."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.change-tool",
-    "surface": "floating toolbar glyph menu",
-    "label": "Change tool",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.draw",
-    "surface": "floating toolbar glyph menu",
-    "label": "Draw",
-    "kind": "action",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.persona-overlay",
-    "surface": "floating toolbar glyph menu",
-    "label": "Persona Overlay",
-    "kind": "action",
-    "belongsTo": "persona",
-    "aliasOf": "persona",
-    "note": "unify under Grammar Names"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.position",
     "surface": "floating toolbar glyph menu",
     "label": "Position",
     "kind": "option",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.present",
-    "surface": "floating toolbar glyph menu",
-    "label": "Present",
-    "kind": "action",
-    "belongsTo": "present"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.saved-prompts",
@@ -206,23 +176,9 @@
     "belongsTo": "present"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.annotate",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
     "surface": "floating toolbar glyph menu",
-    "label": "Draw",
-    "kind": "capability",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.done-drawing-keep-marks",
-    "surface": "floating toolbar glyph menu",
-    "label": "Done drawing · keep marks",
-    "kind": "action",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-device-scene",
-    "surface": "floating toolbar glyph menu",
-    "label": "End device scene",
+    "label": "End presentation",
     "kind": "action",
     "belongsTo": "present"
   },
@@ -241,29 +197,34 @@
     "belongsTo": "app"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.persona",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
     "surface": "floating toolbar glyph menu",
-    "label": "Persona Overlay",
-    "kind": "capability",
-    "belongsTo": "persona",
-    "aliasOf": "persona",
-    "note": "unify under Grammar Names"
+    "label": "Open Dictate…",
+    "kind": "action",
+    "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.present",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
     "surface": "floating toolbar glyph menu",
-    "label": "Present",
-    "kind": "capability",
-    "belongsTo": "present"
+    "label": "Open Read…",
+    "kind": "action",
+    "belongsTo": "read"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-3f14675974be",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap",
+    "surface": "floating toolbar glyph menu",
+    "label": "Open Snap…",
+    "kind": "action",
+    "belongsTo": "snap"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-56b7525fd9aa",
     "surface": "floating toolbar glyph menu",
     "label": null,
-    "expression": "viewState . actionTitle",
+    "expression": "personaFinish",
+    "note": "Runtime label from personaFinish; no rendered text assumed.",
     "kind": "action",
-    "belongsTo": "app",
-    "note": "Runtime label from viewState . actionTitle; no rendered text assumed."
+    "belongsTo": "persona"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-894c4cc35124",
@@ -275,6 +236,15 @@
     "note": "Runtime label from \"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"; no rendered text assumed."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-90b2ee8a5505",
+    "surface": "floating toolbar glyph menu",
+    "label": null,
+    "expression": "action . title",
+    "note": "Runtime label from action . title; no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.settings",
     "surface": "floating toolbar glyph menu",
     "label": "Settings…",
@@ -282,18 +252,18 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.snapAndTalk",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-drawing",
     "surface": "floating toolbar glyph menu",
-    "label": "Snap & Talk",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk"
+    "label": "Stop drawing",
+    "kind": "action",
+    "belongsTo": "draw"
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-reading",
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-transcribing",
     "surface": "floating toolbar glyph menu",
-    "label": "Stop reading",
+    "label": "Stop transcribing",
     "kind": "action",
-    "belongsTo": "read"
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.switch-to-browser-tab",
@@ -301,52 +271,6 @@
     "label": "Switch to Browser Tab…",
     "kind": "action",
     "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.draw",
-    "surface": "floating toolbar hover action",
-    "label": "Draw",
-    "kind": "action",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.present",
-    "surface": "floating toolbar hover action",
-    "label": "Present",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.read-aloud",
-    "surface": "floating toolbar hover action",
-    "label": "Read aloud",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "unify under Grammar Names"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.runtime-b0b99910fc5a",
-    "surface": "floating toolbar hover action",
-    "label": null,
-    "expression": "model . canRecordAgain ? \"Record again\" : \"Dictate\"",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from model . canRecordAgain ? \"Record again\" : \"Dictate\"; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.stop-inserting",
-    "surface": "floating toolbar hover action",
-    "label": "Stop Inserting",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.hover-title.stop-reading",
-    "surface": "floating toolbar hover action",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingControls.Button.runtime-d5d0cbd9ef56",
@@ -2215,71 +2139,231 @@
     "note": "Existing contextual \"Position\" label inside timer; shared wording, not a separate capability."
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.annotate",
-    "surface": "floating toolbar tools",
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelDictationRequest",
+    "surface": "floating toolbar next action",
+    "label": "Cancel request",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelReading",
+    "surface": "floating toolbar next action",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "read",
+    "aliasOf": "read",
+    "note": "Existing contextual \"Cancel\" label inside read; shared wording, not a separate capability."
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.captureNext",
+    "surface": "floating toolbar next action",
+    "label": null,
+    "expression": "\"Capture next · \\(live.captureCount ?? 0)\"",
+    "note": "Runtime label from \"Capture next · \\(live.captureCount ?? 0)\"; no rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "snapAndTalk"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.dictate",
+    "surface": "floating toolbar next action",
+    "label": null,
+    "expression": "live . canRecordAgain ? \"Record again\" : \"Dictate\"",
+    "note": "Runtime label from live . canRecordAgain ? \"Record again\" : \"Dictate\"; no rendered text assumed.",
+    "kind": "capability",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.draw",
+    "surface": "floating toolbar next action",
     "label": "Draw",
-    "case": "annotate",
     "kind": "capability",
     "belongsTo": "draw"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.dictate",
-    "surface": "floating toolbar tools",
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.endPresentation",
+    "surface": "floating toolbar next action",
+    "label": "End presentation",
+    "kind": "action",
+    "belongsTo": "present"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.finishDrawing",
+    "surface": "floating toolbar next action",
+    "label": "Stop drawing",
+    "kind": "action",
+    "belongsTo": "draw"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.finishNarration",
+    "surface": "floating toolbar next action",
+    "label": "Stop narration",
+    "kind": "action",
+    "belongsTo": "snapAndTalk"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.hidePersona",
+    "surface": "floating toolbar next action",
+    "label": "Hide persona",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.pauseOverlays",
+    "surface": "floating toolbar next action",
+    "label": "Hide personas",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.pauseReading",
+    "surface": "floating toolbar next action",
+    "label": "Pause reading",
+    "kind": "action",
+    "belongsTo": "read"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.persona",
+    "surface": "floating toolbar next action",
+    "label": "Show persona",
+    "kind": "capability",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.present",
+    "surface": "floating toolbar next action",
+    "label": "Present",
+    "kind": "capability",
+    "belongsTo": "present"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.read",
+    "surface": "floating toolbar next action",
+    "label": "Read",
+    "kind": "capability",
+    "belongsTo": "read"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.resumeOverlays",
+    "surface": "floating toolbar next action",
+    "label": "Show personas",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.resumeReading",
+    "surface": "floating toolbar next action",
+    "label": "Resume reading",
+    "kind": "action",
+    "belongsTo": "read"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.snap",
+    "surface": "floating toolbar next action",
+    "label": "Snap",
+    "kind": "capability",
+    "belongsTo": "snap"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.snapAndTalk",
+    "surface": "floating toolbar next action",
+    "label": "Capture",
+    "kind": "workflow",
+    "belongsTo": "snapAndTalk"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopDictation",
+    "surface": "floating toolbar next action",
+    "label": "Stop",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopInserting",
+    "surface": "floating toolbar next action",
+    "label": "Stop inserting",
+    "kind": "action",
+    "belongsTo": "present"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopMeetingTranscription",
+    "surface": "floating toolbar next action",
+    "label": "Stop transcribing",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.wait",
+    "surface": "floating toolbar next action",
+    "label": null,
+    "expression": "live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing ? \"Processing…\" : \"Capturing…\"",
+    "note": "Runtime label from live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing ? \"Processing…\" : \"Capturing…\"; no rendered text assumed.",
+    "kind": "status",
+    "belongsTo": "app"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.dictate",
+    "surface": "floating toolbar modes",
     "label": "Dictate",
     "case": "dictate",
     "kind": "capability",
     "belongsTo": "dictate"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.persona",
-    "surface": "floating toolbar tools",
-    "label": "Persona Overlay",
-    "case": "persona",
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.draw",
+    "surface": "floating toolbar modes",
+    "label": "Draw",
+    "case": "draw",
     "kind": "capability",
-    "belongsTo": "persona",
-    "aliasOf": "persona",
-    "note": "unify under Grammar Names"
+    "belongsTo": "draw"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.present",
-    "surface": "floating toolbar tools",
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.persona",
+    "surface": "floating toolbar modes",
+    "label": "Persona",
+    "case": "persona",
+    "kind": "capability",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.present",
+    "surface": "floating toolbar modes",
     "label": "Present",
     "case": "present",
     "kind": "capability",
     "belongsTo": "present"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.read",
-    "surface": "floating toolbar tools",
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.read",
+    "surface": "floating toolbar modes",
     "label": "Read",
     "case": "read",
     "kind": "capability",
     "belongsTo": "read"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.snapAndTalk",
-    "surface": "floating toolbar tools",
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.snap",
+    "surface": "floating toolbar modes",
+    "label": "Snap",
+    "case": "snap",
+    "kind": "capability",
+    "belongsTo": "snap"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.snapAndTalk",
+    "surface": "floating toolbar modes",
     "label": "Snap & Talk",
     "case": "snapAndTalk",
     "kind": "workflow",
     "belongsTo": "snapAndTalk"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarTool.title.timer",
-    "surface": "floating toolbar tools",
-    "label": "Timer",
-    "case": "timer",
-    "kind": "capability",
-    "belongsTo": "timer"
-  },
-  {
     "id": "ToolbarCore.ToolbarViewState.ToolbarViewState.accessory-title.present-prompts",
     "surface": "floating toolbar accessory",
     "label": null,
-    "expression": "tool == . present ? \"Prompts\" : nil",
+    "expression": "mode == . present ? \"Prompts\" : nil",
+    "note": "Runtime label from mode == . present ? \"Prompts\" : nil; no rendered text assumed.",
     "kind": "option",
-    "belongsTo": "present",
-    "note": "Runtime label from tool == . present ? \"Prompts\" : nil; no rendered text assumed."
+    "belongsTo": "present"
   },
   {
     "id": "choices.CaptureMode.hold",

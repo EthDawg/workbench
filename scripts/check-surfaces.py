@@ -10,9 +10,9 @@ Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
 views embedded in it); the Draw, Present, Persona, Timer and Saved Prompts
 menus that the rows, the floating toolbar and the app menu bar open, with any
-native views embedded in them; the floating toolbar's tools, action and hover
-labels, accessory and glyph menu, and the live dictation, narration and reading
-controls shown in the same window; the app menu bar and any status item menu
+native views embedded in them; the floating toolbar's modes, next action and
+hover labels, accessory and glyph menu, and the live dictation, narration and
+reading controls shown in the same window; the app menu bar and any status item menu
 built in AppDelegate; the window sidebar; every control on Home and on the
 Settings page, including views embedded in them; the global shortcut
 catalogue; proactive offers, found as types named *Offer* or *Cue plus
@@ -143,11 +143,13 @@ EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortc
 # Catalogue owners that must exist; their extractors are below.
 CATALOGUES = [
     ('LocalVoice/WorkbenchControlTool.swift', 'WorkbenchControlState.actionTitle'),
-    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarTool'),
+    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarMode'),
     ('ToolbarCore/ToolbarViewState.swift', 'ToolbarViewState'),
     ('StageKit/Settings.swift', 'Action'),
     ('LocalVoice/main.swift', 'AppDelegate.voiceShortcutEntries'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome'),
+    # The floating toolbar's next action, one title per operation and start verb.
+    ('ToolbarCore/ToolbarNextAction.swift', 'ToolbarNextAction.title'),
 ]
 OFFER_NAME = re.compile(r'\b(?:struct|class)\s+(\w*Offer\w*|\w+Cue)\b')
 OFFER_TYPES = ['FounderIntroductionCard']
@@ -863,17 +865,19 @@ class Inventory:
     def catalogues(self):
         def labelled(label, expr):
             return [Token(json.dumps(label), 0, 0)] if label is not None else lex(expr)
-        # Floating toolbar action titles for each tool and state.
-        swift, ranges = self.owner(*CATALOGUES[0], kinds=('func',))
-        for start, end in ranges:
-            for case, tokens in case_returns(swift, start, end).items():
-                if tokens and tokens[0].value != 'switch':  # Nested state switches are recorded below it.
-                    self.add(swift, start + 1, 'hover-title', tokens, 'floating toolbar hover action', identity=case)
-        # Floating toolbar tool names and its accessory.
+        # Panel row action titles for each tool and state, and the floating
+        # toolbar's next action for each operation and start verb.
+        for catalogue, surface in ((CATALOGUES[0], 'floating toolbar hover action'), (CATALOGUES[6], 'floating toolbar next action')):
+            swift, ranges = self.owner(*catalogue, kinds=('func',))
+            for start, end in ranges:
+                for case, tokens in case_returns(swift, start, end).items():
+                    if tokens and tokens[0].value != 'switch':  # Nested state switches are recorded below it.
+                        self.add(swift, start + 1, 'hover-title', tokens, surface, identity=case)
+        # Floating toolbar modes (the resting glyph and the strip) and its accessory.
         swift, ranges = self.owner(*CATALOGUES[1], kinds=('enum',))
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
-                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar tools', identity=case, case=case)
+                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar modes', identity=case, case=case)
         swift, ranges = self.owner(*CATALOGUES[2], kinds=('struct',))
         for start, end in ranges:
             for i in range(start, end - 3):

@@ -2,13 +2,30 @@ import AppKit
 import ToolbarCore
 
 /// A single native tracking area around the content; no global event monitors.
+///
+/// Entry into a resting toolbar is debounced: a pointer passing across the
+/// resting element on its way somewhere else must not spring the row open. The
+/// entry is delivered after `revealDelay` only if the pointer is still inside.
+/// An exit before then cancels it and delivers nothing, because the core never
+/// learned of the entry. Entries into an already revealed row, every exit and
+/// `settle()` stay immediate. The reducer is untouched: it still sees one
+/// crossing, just a slightly later one.
 @MainActor public final class ToolbarTrackingView: NSView {
     public var event: ((ToolbarEvent) -> Void)?
     public var acceptsCrossings = false
+    /// True while the window shows the resting element rather than the row.
+    public var isRestingSized: () -> Bool = { false }
+    /// The one reveal delay, in seconds, for measured tuning.
+    public static let revealDelay: TimeInterval = 0.12
     private var area: NSTrackingArea?
     private var gate = ToolbarPointerGate(point: NSEvent.mouseLocation)
+    private let clock: ToolbarGraceClock
+    private var entryPending = false
+    /// Where the pointer is on screen. Tests inject it; production asks AppKit.
+    var locatePointer: () -> NSPoint = { NSEvent.mouseLocation }
 
-    public init(content: NSView) {
+    public init(content: NSView, clock: ToolbarGraceClock? = nil) {
+        self.clock = clock ?? ToolbarTaskClock(delay: Self.revealDelay)
         super.init(frame: content.frame)
         content.autoresizingMask = [.width, .height]
         addSubview(content)
@@ -26,12 +43,13 @@ import ToolbarCore
 
     public var pointerInside: Bool {
         guard let window, window.isVisible else { return false }
-        return bounds.contains(convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil))
+        return bounds.contains(convert(window.convertPoint(fromScreen: locatePointer()), from: nil))
     }
 
     public func settle() {
+        cancelPendingEntry()
         let inside = pointerInside
-        gate.settled(at: NSEvent.mouseLocation, inside: inside)
+        gate.settled(at: locatePointer(), inside: inside)
         event?(inside ? .pointerEntered : .pointerLeft)
     }
 
@@ -43,8 +61,32 @@ import ToolbarCore
         cross(event, inside: pointerInside)
     }
     private func cross(_ event: NSEvent, inside: Bool) {
-        guard acceptsCrossings, let window else { return }
-        let point = window.convertPoint(toScreen: event.locationInWindow)
-        if let next = gate.crossing(at: point, inside: inside) { self.event?(next) }
+        guard let window else { return }
+        cross(at: window.convertPoint(toScreen: event.locationInWindow), inside: inside)
+    }
+
+    /// One crossing at a screen point. The gate drops the synthetic ones.
+    func cross(at point: NSPoint, inside: Bool) {
+        guard acceptsCrossings, window != nil else { return }
+        guard let next = gate.crossing(at: point, inside: inside) else { return }
+        switch next {
+        case .pointerEntered where isRestingSized():
+            entryPending = true
+            clock.start { [weak self] in
+                guard let self, self.entryPending else { return }
+                self.entryPending = false
+                if self.pointerInside { self.event?(.pointerEntered) }
+            }
+        case .pointerLeft where entryPending:
+            cancelPendingEntry()
+        default:
+            event?(next)
+        }
+    }
+
+    private func cancelPendingEntry() {
+        guard entryPending else { return }
+        entryPending = false
+        clock.cancel()
     }
 }
