@@ -138,6 +138,83 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertTrue(buttons(view).isEmpty, "no control is reachable at rest but the target")
     }
 
+    /// A real window with the row in it, invisible and taking no pointer, for pressing its
+    /// controls through their own mouse handling.
+    @MainActor private func shown<V: View>(_ root: V) -> (NSPanel, NSHostingView<V>) {
+        _ = NSApplication.shared
+        let view = NSHostingView(rootView: root)
+        let panel = NSPanel(contentRect: NSRect(origin: NSPoint(x: 200, y: 200), size: view.fittingSize),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false; panel.alphaValue = 0; panel.ignoresMouseEvents = true
+        panel.contentView = view
+        panel.orderFrontRegardless()
+        view.layoutSubtreeIfNeeded()
+        return (panel, view)
+    }
+    /// Presses `control` through its own `mouseDown`, with the mouse-up already queued behind it,
+    /// as a click arrives. Whatever the press leaves in the queue is left there for the caller.
+    /// The queued mouse-up names no window: AppKit re-maps a posted event's window location
+    /// through global coordinates, and one with no window keeps the point it was given.
+    @MainActor private func click(_ control: NSView, in window: NSWindow, clickCount: Int = 1) {
+        let point = control.convert(NSPoint(x: control.bounds.midX, y: control.bounds.midY), to: nil)
+        func event(_ type: NSEvent.EventType, window number: Int) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: number, context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1)!
+        }
+        NSApp.postEvent(event(.leftMouseUp, window: 0), atStart: false)
+        control.mouseDown(with: event(.leftMouseDown, window: window.windowNumber))
+    }
+    @MainActor private func queuedMouseUp(dequeue: Bool = false) -> Bool {
+        NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .eventTracking, dequeue: dequeue) != nil
+    }
+
+    /// The next action is latched as the button goes down, before its mouse-up is read, and the
+    /// click then does what was latched (#134).
+    @MainActor func testTheNextActionIsLatchedWhileTheButtonIsStillDown() throws {
+        var upStillQueued: Bool?, actions = 0
+        let (window, view) = shown(ToolbarRow(state: ToolbarViewState(name: "latch", tier: .revealed), press: { [self] in
+            upStillQueued = queuedMouseUp()
+            return { actions += 1 }
+        }))
+        defer { window.close() }
+        let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" })
+        click(primary, in: window)
+        XCTAssertEqual(upStillQueued, true, "the operation must be latched on mouse-down, not resolved when the button comes up")
+        XCTAssertEqual(actions, 1)
+        XCTAssertFalse(queuedMouseUp(), "the click took its own mouse-up")
+    }
+
+    /// The second click of a double-click does nothing on the next action or the launcher, so a
+    /// double-click that begins on the compact rest never reaches work (#134).
+    @MainActor func testTheSecondClickOfADoubleClickDoesNothing() throws {
+        var presses = 0, opens = 0
+        let (window, view) = shown(ToolbarRow(state: ToolbarViewState(name: "double", tier: .revealed),
+                                              press: { presses += 1; return {} }, openChooser: { _ in opens += 1 }))
+        defer { window.close() }
+        for id in ["toolbar.primary", "toolbar.launcher"] {
+            let control = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == id })
+            click(control, in: window, clickCount: 2)
+            while queuedMouseUp(dequeue: true) {}
+        }
+        XCTAssertEqual(presses, 0, "a second click latched the next action")
+        XCTAssertEqual(opens, 0, "a second click opened the chooser")
+    }
+
+    /// A click on the compact rest reveals, never works, and takes the whole click: the row that
+    /// appears under the pointer never receives its mouse-up (#134).
+    @MainActor func testAClickOnTheCompactRestOnlyRevealsAndTakesTheWholeClick() throws {
+        var reveals = 0, work = 0
+        let status = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.5))
+        let (window, view) = shown(ToolbarRow(state: ToolbarViewState(name: "rest-click", tier: .resting, status: status),
+                                              action: { work += 1 }, revealFromRest: { reveals += 1 }))
+        defer { window.close() }
+        func all(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(all) }
+        let target = try XCTUnwrap(all(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
+        click(target, in: window)
+        XCTAssertEqual(reveals, 1); XCTAssertEqual(work, 0)
+        XCTAssertFalse(queuedMouseUp(), "the mouse-up was the compact rest's")
+    }
+
     /// The launcher holds its place while the window is briefly the wrong size, at every anchor,
     /// because the content is pinned to the growth edge the launcher sits on.
     @MainActor func testTheLauncherHoldsItsPlaceWhileTheWindowIsTheWrongSize() throws {
