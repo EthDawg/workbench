@@ -177,14 +177,7 @@ struct HistoryView: View {
             filter: filter, query: query, matchTranscripts: { library.matching($0, query: $1) },
             matchSnap: { snap.matches($0, query: $1) }, resultText: { jobs.inputs($0).task })
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("History").font(.largeTitle.weight(.semibold))
-                    Text("What you dictated, snapped and handed off, newest first.").foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Connections…") { showingConnections = true }
-            }
+            header
             runningTask
             notices
             if model.history.isEmpty && snap.items.isEmpty && jobs.jobs.isEmpty {
@@ -224,6 +217,19 @@ struct HistoryView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 snap.refresh(); jobs.objectWillChange.send()
             }
+    }
+
+    /// The title and Connections, which opens the provider settings over
+    /// History so a Ready or failed task can be started without leaving it.
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("History").font(.largeTitle.weight(.semibold))
+                Text("What you dictated, snapped and handed off, newest first.").foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Connections…") { showingConnections = true }
+        }
     }
 
     /// Stop stays reachable whatever the filter or search hides.
@@ -274,9 +280,7 @@ struct HistoryView: View {
                         case .transcript(let item):
                             TranscriptHistoryRow(model: model, library: library, item: item,
                                 history: sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
-                                showsCheckbox: true, showsKind: true,
-                                onDetails: { details = item }, onOriginal: { original = item },
-                                onRemove: { removal = TranscriptRemoval(transcript: item, includesRecording: model.meetings.hasRecording(for: item.id)) })
+                                original: $original, details: $details, removal: $removal)
                         case .snap(let item):
                             HistorySnapRow(snap: snap, library: library, item: item)
                         case .result(let job):

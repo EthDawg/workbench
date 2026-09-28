@@ -1,27 +1,19 @@
 [
   {
-    "id": "LocalVoice.CaptureHistoryView.CaptureHistoryView.Button.open",
+    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.open",
     "surface": "history page",
     "label": "Open",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Existing door, recorded, no change: Opens the transcript on the Dictate page (Option of dictate; #134)."
+    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Dictate page (Option of dictate; #134, #137)."
   },
   {
-    "id": "LocalVoice.CaptureHistoryView.CaptureHistoryView.Button.open-full-history",
-    "surface": "history page",
-    "label": "Open full history…",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Existing door, recorded, no change: Opens the full History page (Option of history; #134)."
-  },
-  {
-    "id": "LocalVoice.CaptureHistoryView.CaptureHistoryView.Button.read-aloud",
+    "id": "LocalVoice.CaptureHistoryView.TranscriptHistoryRow.Button.read-aloud",
     "surface": "history page",
     "label": "Read aloud",
     "kind": "action",
     "belongsTo": "read",
-    "note": "Existing door, recorded, no change: Opens the transcript on the Read page (Option of read; #134)."
+    "note": "Existing door, moved with the transcript row into History: opens the transcript on the Read page (Option of read; #134, #137)."
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.reset-to-bottom-centre",
@@ -406,6 +398,22 @@
     "note": "Existing contextual \"Copy\" label inside app; shared wording, not a separate capability."
   },
   {
+    "id": "LocalVoice.HistorySelectionControls.HandoffJobCard.Button.review-suggested-details",
+    "surface": "history page",
+    "label": "Review suggested details…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Existing control moved from the Handoffs page onto History's task card: reviews an assistant's suggested details for the task's transcript over History. The host presents the review, so the doors check counts it (#137)."
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.HistorySelectionControls.Button.hand-off",
+    "surface": "history page",
+    "label": "Hand off…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "History's only Hand off: an action on selected History items that opens the Hand off review (Grammar). It replaces the Snap page's Use selected, Hand off… (#137)."
+  },
+  {
     "id": "LocalVoice.HistorySelectionControls.SubscriptionSettingsView.Button.check-connections",
     "surface": "settings page",
     "label": "Check connections",
@@ -443,6 +451,22 @@
     "case": "codex",
     "kind": "setting",
     "belongsTo": "settings"
+  },
+  {
+    "id": "LocalVoice.HistorySelectionControls.TranscriptMetadataEditor.Button.ask-an-assistant",
+    "surface": "history page",
+    "label": "Ask an assistant…",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Existing control in a transcript's Details sheet: opens the Hand off review to suggest that transcript's details, an action on a History item (#137)."
+  },
+  {
+    "id": "LocalVoice.HistoryView.HistoryView.Button.connections",
+    "surface": "history page",
+    "label": "Connections…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Option of Settings: opens the Connections settings over History, moved from the removed Handoffs page so a Ready or failed task can connect a provider without leaving History (#137)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingDetectionSettings.Toggle.detect-meetings-calls",
@@ -507,12 +531,12 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.recent-transcripts",
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.history",
     "surface": "meeting page",
-    "label": "Recent transcripts",
+    "label": "History",
     "kind": "action",
     "belongsTo": "history",
-    "note": "Existing door, recorded, no change: Opens History from the meeting page (Option of history; #134)."
+    "note": "Quality: the meeting page's existing door to History takes the place's name (was Recent transcripts; #137)."
   },
   {
     "id": "LocalVoice.PhotoHandoffView.PhotoHandoffArrivalCue.Button.from-iphone",
@@ -664,14 +688,6 @@
     "kind": "action",
     "belongsTo": "snapAndTalk",
     "note": "Existing door, recorded, no change: Sends selected Snaps to Snap & Talk and opens it (Option of snapAndTalk; #134)."
-  },
-  {
-    "id": "LocalVoice.SnapWorkspaceView.SnapWorkspaceView.Button.hand-off",
-    "surface": "snap page",
-    "label": "Hand off…",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Existing door, recorded, no change: Opens the Hand off review, an action on History items (Option of history; #134)."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",

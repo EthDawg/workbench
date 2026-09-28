@@ -132,11 +132,26 @@ ENTRY_POINTS = [
     ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingWorkspaceView', 'meeting page', 'doors'),
     ('LocalVoice/ReadbackView.swift', 'ReadbackView', 'snap & talk page', 'doors'),
     ('LocalVoice/SnapWorkspaceView.swift', 'SnapWorkspaceView', 'snap page', 'doors'),
-    ('LocalVoice/CaptureHistoryView.swift', 'CaptureHistoryView', 'history page', 'doors'),
+    # History is one page made of several views: its header, the transcript,
+    # Snap and task rows, a task's frozen inputs, the shared selection footer
+    # and the details sheet a transcript opens. Connections in the header opens
+    # the provider settings over History, so the header is an ordinary page
+    # surface and its button is recorded.
+    ('LocalVoice/HistoryView.swift', 'HistoryView', 'history page', 'doors'),
+    ('LocalVoice/HistoryView.swift', 'HistoryView.header', 'history page', 'page'),
+    ('LocalVoice/HistoryView.swift', 'HistorySnapRow', 'history page', 'doors'),
+    ('LocalVoice/HistoryView.swift', 'HistoryMadeFrom', 'history page', 'doors'),
+    ('LocalVoice/HistoryView.swift', 'HistoryInputChip', 'history page', 'doors'),
+    ('LocalVoice/CaptureHistoryView.swift', 'TranscriptHistoryRow', 'history page', 'doors'),
+    ('LocalVoice/HistorySelectionControls.swift', 'HandoffJobCard', 'history page', 'doors'),
+    ('LocalVoice/HistorySelectionControls.swift', 'HistorySelectionControls', 'history page', 'doors'),
+    ('LocalVoice/HistorySelectionControls.swift', 'TranscriptMetadataEditor', 'history page', 'doors'),
     ('LocalVoice/DemoLibraryView.swift', 'DemoLibraryView', 'library page', 'doors'),
 ]
 # Calls that change the window's route or open a place (mode 'doors').
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls'}
+# openHistory opens History with a door's starting view; openTranscript opens
+# a transcript on the Dictate page.
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript'}
 # Inline shortcut editors: the global shortcut catalogue records these shortcuts.
 EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
             'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}

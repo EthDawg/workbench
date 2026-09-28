@@ -16,68 +16,6 @@ enum CaptureHistoryAccessibility {
     static func label(_ action: String, context: String) -> String { "\(action), \(context)" }
 }
 
-struct CaptureHistoryView: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject private var library: WorkbenchHistoryModel
-    var compact: Bool
-    @State private var query = ""
-    @State private var original: Transcript?
-    @State private var removal: TranscriptRemoval?
-    @State private var details: Transcript?
-    @State private var selecting = false
-
-    init(model: AppModel, compact: Bool = false) {
-        self.model = model; self.library = model.historyLibrary; self.compact = compact
-    }
-    private var matches: [Transcript] { library.matching(model.history, query: query) }
-    private var selectedIDs: Set<UUID> { Set(library.selected.filter { $0.kind == .transcript }.map(\.id)) }
-    private var missingIDs: Set<UUID> { selectedIDs.subtracting(Set(model.history.map(\.id))) }
-    private var hiddenCount: Int { selectedIDs.subtracting(Set(matches.map(\.id))).count - missingIDs.count }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("\(model.history.count) saved on this Mac").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                if !compact {
-                    Button(selecting ? "Done selecting" : "Select…") { selecting.toggle() }
-                        .buttonStyle(.borderless).font(.caption)
-                        .accessibilityLabel(selecting ? "Stop selecting transcripts" : "Select transcripts for a handoff")
-                }
-            }
-            TextField("Search words, people, companies or tags", text: $query).textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Search transcripts")
-            if matches.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "clock").font(.title2)
-                    Text(model.history.isEmpty ? "Your recordings will appear here." : "No matching transcripts.")
-                    Text("Search checks your original words and saved details.").font(.caption).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView { LazyVStack(alignment: .leading, spacing: 10) { ForEach(matches) { item in
-                    TranscriptHistoryRow(model: model, library: library, item: item, history: model.history, compact: compact,
-                        showsCheckbox: !compact && (selecting || selectedIDs.contains(item.id)),
-                        onDetails: { details = item }, onOriginal: { original = item },
-                        onRemove: { removal = TranscriptRemoval(transcript: item, includesRecording: model.meetings.hasRecording(for: item.id)) })
-                } } }
-            }
-            if !compact {
-                if hiddenCount > 0 { Text("\(hiddenCount) selected transcripts are hidden by this search.").font(.caption).foregroundStyle(.secondary) }
-                if !missingIDs.isEmpty {
-                    HStack {
-                        Text("\(missingIDs.count) selected transcripts are no longer available.").font(.caption).foregroundStyle(.orange)
-                        Button("Remove missing references") { library.removeReferences(kind: .transcript, ids: missingIDs) }.font(.caption)
-                    }
-                }
-                HistorySelectionControls(history: library) { model.onHandOffSelection?(nil) }
-            } else {
-                Button("Open full history…") { model.onShowEditor?("history") }.buttonStyle(.link)
-            }
-        }
-        .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal))
-    }
-}
-
 struct TranscriptRemoval {
     let transcript: Transcript
     let includesRecording: Bool
@@ -119,7 +57,9 @@ struct TranscriptHistoryDialogs: ViewModifier {
     }
 }
 
-/// One saved transcript with its actions, as History and the compact list show it.
+/// One saved transcript as History lists it, with the actions it has always
+/// had. Its sheets belong to the page (see `TranscriptHistoryDialogs`), so the
+/// row only names which transcript they show.
 struct TranscriptHistoryRow: View {
     @ObservedObject var model: AppModel
     /// Observed here, so a row's checkbox follows the shared selection.
@@ -128,69 +68,55 @@ struct TranscriptHistoryRow: View {
     /// The captures to tell identical times apart among. Passing only those in
     /// the same second keeps a long history from being scanned for every row.
     var history: [Transcript]
-    var compact = false
-    var showsCheckbox: Bool
-    /// History names the kind of each row, since transcripts sit among Snaps and results.
-    var showsKind = false
-    var onDetails: () -> Void = {}
-    var onOriginal: () -> Void = {}
-    var onRemove: () -> Void = {}
+    @Binding var original: Transcript?
+    @Binding var details: Transcript?
+    @Binding var removal: TranscriptRemoval?
 
     var body: some View {
         let context = CaptureHistoryAccessibility.context(for: item, history: history)
         let metadata = library.metadata(for: item.id)
         let ref = WorkbenchItemReference(kind: .transcript, id: item.id)
         HStack(alignment: .top, spacing: 12) {
-            if showsCheckbox {
-                Toggle("", isOn: Binding(get: { library.selected.contains(ref) }, set: { include in
-                    var refs = library.selected
-                    if include { refs.insert(ref) } else { refs.remove(ref) }
-                    library.setSelected(refs)
-                })).toggleStyle(.checkbox).labelsHidden()
-                    .accessibilityLabel(showsKind ? CaptureHistoryAccessibility.label("Select transcript, " + metadata.purpose.title, context: context)
-                                        : CaptureHistoryAccessibility.label("Include in handoff", context: context))
-            }
+            Toggle("", isOn: Binding(get: { library.selected.contains(ref) }, set: { include in
+                var refs = library.selected
+                if include { refs.insert(ref) } else { refs.remove(ref) }
+                library.setSelected(refs)
+            })).toggleStyle(.checkbox).labelsHidden()
+                .accessibilityLabel(CaptureHistoryAccessibility.label("Select transcript, " + metadata.purpose.title, context: context))
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    if showsKind { Image(systemName: "mic").foregroundStyle(Workbench.accent).accessibilityHidden(true) }
+                    Image(systemName: "mic").foregroundStyle(Workbench.accent).accessibilityHidden(true)
                     Text(item.date, format: .dateTime.month(.abbreviated).day().hour().minute())
                     Text(metadata.purpose.title).fontWeight(.medium)
                     Spacer(); Text("\(TextRules.wordCount(item.text)) words")
-                }.font(.system(size: compact ? 10 : 11)).foregroundStyle(.secondary)
-                if !compact {
-                    let fields = [metadata.person, metadata.company] + metadata.tags.map { "#" + $0 }
-                    if fields.contains(where: { !$0.isEmpty }) { Text(fields.filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
-                }
-                Text(item.text).font(.system(size: compact ? 12 : 14)).lineLimit(compact ? 5 : 8)
+                }.font(.system(size: 11)).foregroundStyle(.secondary)
+                let fields = [metadata.person, metadata.company] + metadata.tags.map { "#" + $0 }
+                if fields.contains(where: { !$0.isEmpty }) { Text(fields.filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
+                Text(item.text).font(.system(size: 14)).lineLimit(8)
                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 if !metadata.captureNotes.isEmpty {
                     Label(metadata.captureNotes.joined(separator: " "), systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.orange).lineLimit(compact ? 2 : nil)
+                        .font(.caption).foregroundStyle(.orange)
                 }
                 HStack(spacing: 12) {
                     Button("Copy") { model.copyCapture(item) }.accessibilityLabel(CaptureHistoryAccessibility.label("Copy", context: context))
-                    Button("Open") { model.openTranscript(item); if compact { model.onShowEditor?("dictate") } }
+                    Button("Open") { model.openTranscript(item) }
                         .accessibilityLabel(CaptureHistoryAccessibility.label("Open", context: context))
-                    if compact {
-                        Button("Paste") { model.onPasteTranscript?(item.text) }.disabled(model.phase != .idle)
-                            .accessibilityLabel(CaptureHistoryAccessibility.label("Paste", context: context))
-                    } else {
-                        Button("Details…", action: onDetails).accessibilityLabel(CaptureHistoryAccessibility.label("Edit details", context: context))
-                        Button("Original", action: onOriginal).accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
-                        Menu("More…") {
-                            Button("Read aloud") { model.speechText = item.text; model.page = "speak" }
-                            Button("Save prompt") { model.savePrompt(item.text) }
-                            Button("Export cleaned text…") { model.exportCapture(item, version: .cleaned) }
-                            Button("Export original wording…") { model.exportCapture(item, version: .original) }
-                        }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(CaptureHistoryAccessibility.label("More transcript actions", context: context))
-                    }
+                    Button("Details…") { details = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Edit details", context: context))
+                    Button("Original") { original = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
+                    Menu("More…") {
+                        Button("Read aloud") { model.speechText = item.text; model.page = "speak" }
+                        Button("Save prompt") { model.savePrompt(item.text) }
+                        Button("Export cleaned text…") { model.exportCapture(item, version: .cleaned) }
+                        Button("Export original wording…") { model.exportCapture(item, version: .original) }
+                    }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(CaptureHistoryAccessibility.label("More transcript actions", context: context))
                     Spacer()
-                    if !compact {
-                        Button(action: onRemove) { Image(systemName: "trash") }
-                            .accessibilityLabel(CaptureHistoryAccessibility.label("Remove transcript", context: context))
-                    }
+                    Button {
+                        removal = TranscriptRemoval(transcript: item, includesRecording: model.meetings.hasRecording(for: item.id))
+                    } label: { Image(systemName: "trash") }
+                        .accessibilityLabel(CaptureHistoryAccessibility.label("Remove transcript", context: context))
                 }.buttonStyle(.borderless).font(.system(size: 11))
             }
-        }.padding(compact ? 12 : 18).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+        }.padding(18).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
     }
 }
