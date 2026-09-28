@@ -121,6 +121,8 @@ ENTRY_POINTS = [
     # toolbar reveals in place of its row (#134 T4). Recording, narration and reading are the row's.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingResultView', 'floating toolbar live controls', 'page'),
+    # Persona's Shape accessory opens its own menu for the selected live copy (#134 part B).
+    ('LocalVoice/FloatingToolbarState.swift', 'ToolbarAccessoryMenus', 'floating toolbar accessory', 'controls'),
     ('StageKit/AnnotationMenu.swift', 'AnnotationMenu', 'Draw menu', 'controls'),
     ('StageKit/DemoScenes.swift', 'DemoScenes.makeControlsMenu', 'Present menu', 'controls'),
     ('StageKit/DemoPresentation.swift', 'DemoPresentation.makeControlsMenu', 'Present menu', 'controls'),
@@ -187,7 +189,8 @@ EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortc
 CATALOGUES = [
     ('LocalVoice/WorkbenchControlTool.swift', 'WorkbenchControlState.actionTitle'),
     ('ToolbarCore/ToolbarViewState.swift', 'ToolbarMode'),
-    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarViewState'),
+    # Each tool's one accessory (#134 part B), titled as the row shows it.
+    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarAccessory'),
     ('StageKit/Settings.swift', 'Action'),
     ('LocalVoice/main.swift', 'AppDelegate.voiceShortcutEntries'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome'),
@@ -1045,14 +1048,10 @@ class Inventory:
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
                 self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar modes', identity=case, case=case)
-        swift, ranges = self.owner(*CATALOGUES[2], kinds=('struct',))
-        for start, end in ranges:
-            for i in range(start, end - 3):
-                if swift.v[i:i + 4] == ['self', '.', 'accessoryTitle', '=']:
-                    k = i + 5
-                    while k < end and '\n' not in swift.source[swift.tokens[k - 1].end:swift.tokens[k].start]:
-                        k += 1
-                    self.add(swift, i, 'accessory-title', swift.tokens[i + 4:k], 'floating toolbar accessory', identity='present-prompts')
+        swift, ranges = self.owner(*CATALOGUES[2], kinds=('enum',))
+        for start, end in ranges[:1]:
+            for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
+                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar accessory', identity=case, case=case)
         # Stage shortcuts: every Action case, titled as the shortcut list shows it.
         swift, ranges = self.owner(*CATALOGUES[3], kinds=('enum',))
         for start, end in ranges[:1]:

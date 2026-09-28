@@ -114,6 +114,53 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
     }
 }
 
+/// The one contextual accessory beside the next action (#134 part B): what the chosen tool offers
+/// most often, when it applies. Dictate, Read and Snap have none in this increment; their options
+/// stay in the menu-bar panel and on their pages.
+public enum ToolbarAccessory: String, CaseIterable, Sendable {
+    /// Snap & Talk: the open session's review. The count stays with Capture next.
+    case review
+    /// Draw: the drawing choices.
+    case tools
+    /// Present: Saved Prompts.
+    case prompts
+    /// Persona: the selected live copy's shape, Circle, Card or Original.
+    case shape
+
+    public var title: String {
+        switch self {
+        case .review: return "Review"
+        case .tools: return "Tools"
+        case .prompts: return "Prompts"
+        case .shape: return "Shape"
+        }
+    }
+    /// The tool it belongs to.
+    public var mode: ToolbarMode {
+        switch self {
+        case .review: return .snapAndTalk
+        case .tools: return .draw
+        case .prompts: return .present
+        case .shape: return .persona
+        }
+    }
+    /// Opens a list, a menu or the picker, rather than going somewhere at once.
+    public var opensList: Bool { self != .review }
+
+    /// What the chosen tool offers now: Snap & Talk's Review once a session is open, Draw's Tools,
+    /// Present's Prompts, and Persona's Shape while a live copy is selected, a hidden one included.
+    /// With no live copy, Persona's preparation is a door in More instead.
+    public static func offered(for live: ToolbarLiveState, selectedPersonaCopy: Bool) -> ToolbarAccessory? {
+        switch live.mode {
+        case .snapAndTalk: return live.captureCount != nil ? .review : nil
+        case .draw: return .tools
+        case .present: return .prompts
+        case .persona: return selectedPersonaCopy ? .shape : nil
+        case .dictate, .read, .snap: return nil
+        }
+    }
+}
+
 public struct ToolbarViewState: Equatable, Sendable {
     /// Stable across runs: the gallery label, and the snapshot filename.
     public var name: String
@@ -134,7 +181,13 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// Every label another tool would show right now. The action keeps the widest of them,
     /// so choosing another tool never moves More or the accessory.
     public var minimumTitles: [String]
-    public var accessoryTitle: String?
+    /// The chosen tool's one accessory, when it applies (#134 part B). None unless given: the
+    /// host decides it from the live state, with `ToolbarAccessory.offered(for:selectedPersonaCopy:)`.
+    public var accessory: ToolbarAccessory?
+    /// What VoiceOver and the tooltip say for it in place of its title, when the title alone
+    /// would not be the whole truth: the persona copy it would shape is hidden.
+    public var accessoryDescription: String?
+    public var accessoryTitle: String? { accessory?.title }
     /// The accessory fits on this display. When it does not, it waits in More instead.
     public var showsAccessory: Bool
     /// The selected tool's work is running.
@@ -146,7 +199,8 @@ public struct ToolbarViewState: Equatable, Sendable {
                 mode: ToolbarMode = .dictate, actionTitle: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
                 choices: [ToolbarToolChoice]? = nil, minimumTitles: [String]? = nil, isBusy: Bool = false,
-                status: ToolbarStatus = .idle, showsAccessory: Bool = true) {
+                status: ToolbarStatus = .idle, showsAccessory: Bool = true, accessory: ToolbarAccessory? = nil,
+                accessoryDescription: String? = nil) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
@@ -156,10 +210,16 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.actionHint = actionHint
         self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }
         self.minimumTitles = minimumTitles ?? ToolbarNextAction.idleVerbs
-        self.accessoryTitle = mode == .present ? "Prompts" : nil
+        self.accessory = accessory
+        self.accessoryDescription = accessoryDescription
         self.showsAccessory = showsAccessory
         self.isBusy = isBusy
         self.status = status
+    }
+
+    /// The same state at another dock, for fixtures.
+    public func anchored(_ anchor: ToolbarAnchor) -> ToolbarViewState {
+        var state = self; state.anchor = anchor; return state
     }
 
     /// The accessory as the revealed row shows it: nil when there is none or it waits in More.

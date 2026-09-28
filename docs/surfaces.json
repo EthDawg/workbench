@@ -222,6 +222,14 @@
     "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.shape",
+    "surface": "floating toolbar More menu",
+    "label": "Shape",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Persona's Shape accessory waiting in More when the row has no room for it (#134 part B), for a hidden card, whose Persona menu has no Appearance; a shown card's or a set's Appearance above already holds the same Circle, Card and Original."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel",
     "surface": "floating toolbar More menu",
     "label": "Cancel",
@@ -290,6 +298,14 @@
     "label": "Open Dictate…",
     "kind": "action",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-persona",
+    "surface": "floating toolbar More menu",
+    "label": "Open Persona…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Persona's door to its preparation while no live copy is selected (#134 part B), as Open Dictate…, Open Read… and Open Snap… are for theirs. The same door as the quick panel's Persona options, to the same page."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
@@ -2576,6 +2592,43 @@
     "belongsTo": "app"
   },
   {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.prompts",
+    "surface": "floating toolbar accessory",
+    "label": "Prompts",
+    "case": "prompts",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Present's one accessory (#134, #159): the one Saved Prompts picker, which More's Saved Prompts… also opens."
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.review",
+    "surface": "floating toolbar accessory",
+    "label": "Review",
+    "case": "review",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Snap & Talk's one accessory while a session is open (#134 part B): opens that session's review, as More's Review Snap & Talk item does; the count stays with Capture next. The same verb as Dictate's receipt and meeting offer Review: look at what was just made."
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.shape",
+    "surface": "floating toolbar accessory",
+    "label": "Shape",
+    "case": "shape",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Persona's one accessory while a live copy is selected, a hidden one included (#134 part B): Circle, Card or Original for that copy only, the choice its Appearance menu holds (#169, #170). VoiceOver hears whose shape it is, and that the copy is hidden when it is."
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.tools",
+    "surface": "floating toolbar accessory",
+    "label": "Tools",
+    "case": "tools",
+    "kind": "option",
+    "belongsTo": "draw",
+    "note": "Draw's one accessory (#134 part B): the drawing choices, the same menu Draw's More holds."
+  },
+  {
     "id": "ToolbarCore.ToolbarViewState.ToolbarMode.title.dictate",
     "surface": "floating toolbar modes",
     "label": "Dictate",
@@ -2630,15 +2683,6 @@
     "case": "snapAndTalk",
     "kind": "workflow",
     "belongsTo": "snapAndTalk"
-  },
-  {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarViewState.accessory-title.present-prompts",
-    "surface": "floating toolbar accessory",
-    "label": null,
-    "expression": "mode == . present ? \"Prompts\" : nil",
-    "note": "Runtime label from mode == . present ? \"Prompts\" : nil; no rendered text assumed.",
-    "kind": "option",
-    "belongsTo": "present"
   },
   {
     "id": "choices.CaptureMode.hold",

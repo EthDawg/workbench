@@ -74,13 +74,54 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testTheStandardRowWidths() {
         _ = NSApplication.shared
         let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .dictate))).fittingSize
-        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present))).fittingSize
+        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present, accessory: .prompts))).fittingSize
         XCTAssertEqual(plain, NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight))
         XCTAssertEqual(accessory, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight))
-        var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present)
+        var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present, accessory: .prompts)
         waiting.showsAccessory = false
         XCTAssertEqual(NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width, ToolbarLayout.standardWidth,
                        "an accessory that does not fit waits in More and takes no room")
+    }
+
+    /// Each accessory takes the one accessory slot, 340 points with it at standard text, and says
+    /// what it is: a chevron only on those that open a list, VoiceOver hearing the title without it,
+    /// or the description when there is one, which the tooltip shows too (#134 part B).
+    @MainActor func testEachAccessoryTakesItsSlotAndSaysWhatItIs() throws {
+        _ = NSApplication.shared
+        for accessory in ToolbarAccessory.allCases {
+            for description in [nil, "Shape of the selected persona, hidden"] {
+                let state = ToolbarViewState(name: "accessory", tier: .revealed, mode: accessory.mode, accessory: accessory, accessoryDescription: description)
+                let view = laidOut(ToolbarRow(state: state))
+                XCTAssertEqual(view.fittingSize, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight), "\(accessory)")
+                let found = buttons(view).filter { $0.accessibilityIdentifier() == "toolbar.accessory" }
+                let button = try XCTUnwrap(found.first, "\(accessory)")
+                XCTAssertEqual(found.count, 1, "one accessory: \(accessory)")
+                XCTAssertEqual(button.title, accessory.opensList ? accessory.title + " ⌄" : accessory.title)
+                XCTAssertEqual(button.accessibilityLabel(), description ?? accessory.title)
+                XCTAssertEqual(button.toolTip, description)
+            }
+        }
+        var none = ToolbarViewState(name: "none", tier: .revealed, mode: .draw)
+        XCTAssertTrue(buttons(laidOut(ToolbarRow(state: none))).allSatisfy { $0.accessibilityIdentifier() != "toolbar.accessory" }, "no accessory unless given")
+        none.accessory = .tools; none.showsAccessory = false
+        XCTAssertTrue(buttons(laidOut(ToolbarRow(state: none))).allSatisfy { $0.accessibilityIdentifier() != "toolbar.accessory" }, "one that waits in More is not drawn")
+    }
+
+    /// Review goes straight to the review; an accessory that opens a list pops up its menu only
+    /// with admission, as More does.
+    @MainActor func testReviewOpensAtOnceAndAListAccessoryAsksFirst() throws {
+        _ = NSApplication.shared
+        var opened: [NSView] = [], menus = 0, admissions = 0
+        let review = laidOut(ToolbarRow(state: ToolbarViewState(name: "review", tier: .revealed, mode: .snapAndTalk, accessory: .review),
+                                        makeAccessoryMenu: { menus += 1; return NSMenu() }, openAccessory: { opened.append($0) }))
+        let reviewButton = try XCTUnwrap(buttons(review).first { $0.accessibilityIdentifier() == "toolbar.accessory" })
+        reviewButton.performClick(nil)
+        XCTAssertTrue(opened.count == 1 && opened.first === reviewButton && menus == 0, "Review opens the review from its own button")
+        let tools = laidOut(ToolbarRow(state: ToolbarViewState(name: "tools", tier: .revealed, mode: .draw, accessory: .tools),
+                                       makeAccessoryMenu: { menus += 1; return NSMenu() }, menuBegan: { _ in admissions += 1; return false }))
+        try XCTUnwrap(buttons(tools).first { $0.accessibilityIdentifier() == "toolbar.accessory" }).performClick(nil)
+        XCTAssertEqual(menus, 1, "Tools builds its menu as it opens, for what is live then")
+        XCTAssertEqual(admissions, 1, "and asks before it pops up")
     }
 
     /// The launcher sits exactly where the compact mark does: 24 points from the growth edge,
@@ -89,7 +130,7 @@ final class ToolbarNativeTests: XCTestCase {
         _ = NSApplication.shared
         for scale in [CGFloat(1), 1.35] {
             for anchor in ToolbarAnchor.allCases {
-                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .present), textScale: scale))
+                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts), textScale: scale))
                 let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
                 let frame = launcher.convert(launcher.bounds, to: view)
                 XCTAssertEqual(frame.width, ToolbarLayout.launcherWidth, "\(anchor) at \(scale)")
@@ -104,7 +145,7 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testARightHandRowReversesItsSlots() {
         _ = NSApplication.shared
         func order(_ anchor: ToolbarAnchor) -> [String] {
-            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .present)))
+            let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "order", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts)))
             return buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.") }
                 .sorted { $0.convert($0.bounds, to: view).minX < $1.convert($1.bounds, to: view).minX }
                 .map { $0.accessibilityIdentifier() }

@@ -61,6 +61,38 @@ enum ToolbarActiveWork: Equatable {
     }
 }
 
+/// The accessories' own menus (#134 part B).
+@MainActor
+enum ToolbarAccessoryMenus {
+    /// Circle, Card or Original for exactly the live copy selected as the menu opens, a hidden one
+    /// included, as that copy's Appearance menu offers them. Choosing changes only that copy's look:
+    /// never the saved persona, another copy or the library's selection (#169, #170).
+    static func shape(_ stage: StageKitController) -> NSMenu {
+        shape(copy: stage.selectedPersonaCopy, current: stage.personaShape(of:), choose: { stage.setPersonaShape($0, for: $1) })
+    }
+
+    /// The same for any copy. `copy` is taken when the menu opens, so a selection that changes
+    /// while it is open never redirects the choice, and no copy means an empty menu.
+    static func shape<Copy>(copy: Copy?, current: (Copy) -> StageKitController.PersonaShape?,
+                            choose: @escaping (StageKitController.PersonaShape, Copy) -> Void) -> NSMenu {
+        let menu = NSMenu(title: "Shape"); menu.autoenablesItems = false
+        guard let copy else { return menu }
+        let now = current(copy)
+        for shape in StageKitController.PersonaShape.allCases {
+            menu.addItem(ToolbarMenuAction(shape.title, checked: shape == now) { choose(shape, copy) })
+        }
+        return menu
+    }
+
+    /// Whether More must hold Shape itself: the row has no room for the accessory, a copy is
+    /// selected, and Persona's own menu, inlined in More, has no Circle, Card and Original for it.
+    /// A shown card's and a set's menus have them under Appearance; a hidden card's does not.
+    static func moreNeedsShape(_ more: NSMenu, accessoryFits: Bool, hasCopy: Bool) -> Bool {
+        let shapes = StageKitController.PersonaShape.allCases.map(\.title)
+        return !accessoryFits && hasCopy && !more.items.contains { $0.submenu?.items.map(\.title) == shapes }
+    }
+}
+
 /// Each item retains its action for the duration of native menu tracking.
 final class ToolbarMenuAction: NSMenuItem {
     private let run: () -> Void
