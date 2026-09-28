@@ -574,7 +574,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 } else {
                     phase = .delivering; status = "Delivering text…"; onPhaseChange?()
                     var delivery = settings.preferences.delivery
-                    if delivery == .paste, destination != nil, shouldDeferDelivery?() == true {
+                    // Without Accessibility approval the text is copied, so there is no paste to wait for.
+                    if delivery == .paste, destination != nil, accessibilityGranted, shouldDeferDelivery?() == true {
                         waitingForDrawing = true
                         captureProcessingLabel = "Finish drawing to paste, or copy now."
                         status = "Text ready. Finish drawing to return to your Mac text field."
@@ -734,7 +735,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard !text.isEmpty else { return }
         captureFailure = nil
         let count = TextDelivery.copy(text)
-        let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : "Copied to clipboard.", clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
+        let outcome = TextDelivery.Outcome(message: count == nil ? "Could not copy the transcript." : TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil, failure: count == nil ? .copyFailed : nil)
         status = outcome.message
         clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
     }
@@ -786,9 +787,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         transcript = item.text; rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"; page = "dictate"; persist()
     }
     func useOriginal() { rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"; status = "Original transcript restored."; persist() }
+    /// Set up automatic paste: the first click may show macOS's request; later
+    /// clicks open Privacy & Security › Accessibility, so none is a dead end.
     func requestAccessibility() {
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        accessibilityGranted = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+        var asked = preferences.accessibilityRequested
+        let step = AccessibilitySetup.live.run(asked: &asked) { [weak self] in
+            self?.error = "System Settings could not be opened. Open Privacy & Security › Accessibility and allow Workbench there."
+        }
+        if asked != preferences.accessibilityRequested { preferences.accessibilityRequested = asked }
+        accessibilityGranted = step == .approved || AXIsProcessTrusted()
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
     func openMicrophoneSettings() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }

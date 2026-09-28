@@ -162,7 +162,9 @@ struct ContentView: View {
                 Button("Saved recordings…") { model.showSavedRecordings() }
                     .font(.caption).help("Previous audio is kept here. Use Import audio to transcribe a recording again.")
             }
-            Text(model.preferences.delivery == .paste ? "Automatic paste returns to your starting text field. Up to 5 minutes per recording." : "Finished transcripts are copied. Paste with ⌘V. Up to 5 minutes per recording.")
+            Text(model.preferences.delivery == .clipboard ? "Finished transcripts are copied. Paste with ⌘V. Up to 5 minutes per recording."
+                 : model.accessibilityGranted ? "Automatic paste returns to your starting text field. Up to 5 minutes per recording."
+                 : "Transcripts are copied for ⌘V until automatic paste is approved. Up to 5 minutes per recording.")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
             dictateOptions
             appleShortcutsCaption
