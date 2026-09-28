@@ -52,18 +52,20 @@ final class SnapCaptureHost {
     /// keeps this host. `closeControls` puts away the panel and toolbar, which
     /// never appear in a capture.
     func attach(to snap: SnapModel, closeControls: @escaping () -> Void) {
-        snap.onHideForCapture = { self.begin(); closeControls() }
+        snap.onHideForCapture = { origin in self.begin(origin: origin); closeControls() }
         snap.onRestoreAfterCapture = { outcome in self.finish(outcome) }
         snap.onDraftClosed = { id, copied in self.draftClosed(id, copied: copied) }
     }
 
     /// Before acquisition: remember what was on screen, then hide the window.
-    /// A minimised window is off screen already and stays in the Dock.
-    func begin() {
+    /// A minimised window is off screen already and stays in the Dock. A door
+    /// that knows the app the person was in passes it: the panel activates
+    /// Workbench, so the frontmost app no longer says where they were.
+    func begin(origin known: pid_t? = nil) {
         let onScreen = desktop.windowOnScreen
         // Workbench in front with its window away means the person reached the
         // panel or toolbar from another app: that app is where they were.
-        let origin = desktop.appInFront ?? (onScreen ? nil : desktop.lastOtherApp)
+        let origin = known ?? desktop.appInFront ?? (onScreen ? nil : desktop.lastOtherApp)
         scene = Scene(windowOnScreen: onScreen, origin: origin)
         if onScreen { desktop.hideWindow() }
     }

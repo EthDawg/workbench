@@ -89,16 +89,18 @@ enum SnapCaptureChecks {
 
         // Escape in the selector adds nothing, shows no Workbench window it did not
         // show before, and returns to the app you were in.
-        let cancels: [(name: String, windowOnScreen: Bool, inFront: pid_t?, lastOther: pid_t?, expected: [String])] = [
-            ("from the panel with the window closed", false, nil, safari, ["close controls", "activate \(safari)"]),
-            ("from the toolbar over another app, window behind it", true, safari, mail, ["hide", "close controls", "show", "activate \(safari)"]),
-            ("from the Snap page", true, nil, safari, ["hide", "close controls", "show and activate Workbench"]),
-            ("from the shortcut with the window minimised", false, mail, safari, ["close controls", "activate \(mail)"])]
+        // `origin` is what the door knows: the panel passes the app its visit was opened over.
+        let cancels: [(name: String, windowOnScreen: Bool, inFront: pid_t?, lastOther: pid_t?, origin: pid_t?, expected: [String])] = [
+            ("from the panel with the window closed", false, nil, safari, nil, ["close controls", "activate \(safari)"]),
+            ("from the panel over another app, window behind it", true, nil, mail, safari, ["hide", "close controls", "show", "activate \(safari)"]),
+            ("from the toolbar over another app, window behind it", true, safari, mail, nil, ["hide", "close controls", "show", "activate \(safari)"]),
+            ("from the Snap page", true, nil, safari, nil, ["hide", "close controls", "show and activate Workbench"]),
+            ("from the shortcut with the window minimised", false, mail, safari, nil, ["close controls", "activate \(mail)"])]
         for (index, cancel) in cancels.enumerated() {
             let snap = snapModel("cancel-\(index)", source: SyntheticImageSource(next: .success(nil)))
             let desktop = RecordingDesktop(page: "history", windowOnScreen: cancel.windowOnScreen, inFront: cancel.inFront, lastOther: cancel.lastOther)
             SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
-            await snap.capture(.region)
+            await snap.capture(.region, origin: cancel.origin)
             try check(desktop.log == cancel.expected && desktop.page == "history" && desktop.windowOnScreen == cancel.windowOnScreen,
                       "a cancelled selector \(cancel.name) restores the window and the app in front: \(desktop.log)")
             try check(snap.draft == nil && snap.items.isEmpty && !snap.isBusy && snap.notice == "Capture cancelled. Nothing was added to history.",

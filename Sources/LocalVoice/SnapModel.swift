@@ -29,7 +29,9 @@ final class SnapModel: ObservableObject {
     @Published var showingArchived = false
     let store: SnapStore
     var onStateChange: (() -> Void)?
-    var onHideForCapture: (() -> Void)?
+    /// Before acquisition, with the app the capture was started over when the
+    /// door knows it better than the frontmost app (the menu-bar panel's visit).
+    var onHideForCapture: ((pid_t?) -> Void)?
     /// Every capture request ends here, from any door, with what happened. The
     /// host shows the editor, or the problem, on the Snap page, or puts back
     /// what was on screen before a cancelled capture.
@@ -230,7 +232,7 @@ final class SnapModel: ObservableObject {
         }
     }
 
-    func capture(_ mode: SnapCapture.Mode) async {
+    func capture(_ mode: SnapCapture.Mode, origin: pid_t? = nil) async {
         guard !isCapturing else { notice = "Finish or cancel the current Snap first."; return }
         if let reason = mayBeginCapture?() { notice = reason; return }
         // An open editor, even one hidden with its window, never silently
@@ -238,7 +240,7 @@ final class SnapModel: ObservableObject {
         guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); return }
         let request = UUID(); captureRequest = request
         isCapturing = true; notice = mode == .screen ? "Capturing the display under the pointer…" : "Choose a \(mode.title.lowercased()). Escape cancels."
-        onStateChange?(); onHideForCapture?()
+        onStateChange?(); onHideForCapture?(origin)
         var outcome = SnapCaptureOutcome.cancelled
         defer { captureRequest = nil; isCapturing = false; onRestoreAfterCapture?(outcome); onStateChange?() }
         do {

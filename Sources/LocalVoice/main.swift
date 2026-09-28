@@ -501,9 +501,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
     /// used mode, so the toolbar captures a region.
     func toolbarSnapCapture(_ mode: SnapCapture.Mode = .region) {
+        // From the panel, a cancelled capture returns to the app it was opened
+        // over. Read before closing: closing the panel expires its field.
+        let origin = menuTarget.current?.app.processIdentifier
         model.toolbarMode = .snap
         closeControls()
-        Task { await snap.capture(mode) }
+        Task { await snap.capture(mode, origin: origin) }
     }
     func toolbarSnap() {
         if readback.isRecording { readback.stopNarration(); return }
