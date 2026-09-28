@@ -245,6 +245,20 @@ struct ReadbackView: View {
                     }.buttonStyle(.borderedProminent).disabled(!model.permissionsReady || model.isCapturing)
                 }
             }
+            // Without access the capture stops here, in plain words; what is saved still works (#112).
+            if !model.isRecording, let problem = model.permissionsProblem {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Label(problem, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Open System Settings…") {
+                        if model.screenPermissionGranted { model.openMicrophoneSettings() } else { model.openScreenRecordingSettings() }
+                    }.help("Privacy & Security. Workbench changes no setting itself; a managed Mac may keep this off.")
+                }
+                if model.suggestsReopenForScreenAccess && !model.screenPermissionGranted {
+                    Text(ScreenCaptureAccess.reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
             if let onChooseSnaps, !model.isRecording {
                 HStack {
                     Button("Add from Snap History…", action: onChooseSnaps).disabled(model.isCapturing)
@@ -258,7 +272,7 @@ struct ReadbackView: View {
                 Spacer()
                 Text("Original audio and transcript are kept locally.").font(.caption).foregroundStyle(.secondary)
             }
-            if let notice = model.notice {
+            if let notice = model.notice, notice != model.permissionsProblem {
                 Label(notice, systemImage: "info.circle").font(.caption).foregroundStyle(notice.localizedCaseInsensitiveContains("failed") || notice.localizedCaseInsensitiveContains("off") ? .orange : .secondary)
                     .textSelection(.enabled)
             }

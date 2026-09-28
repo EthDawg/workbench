@@ -45,11 +45,12 @@ enum SnapCaptureChecks {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
         let image = try syntheticScreen()
-        func snapModel(_ name: String, source: SyntheticImageSource) -> SnapModel {
+        // Screen Recording is a fixed answer here: the Mac's own is never read or requested.
+        func snapModel(_ name: String, source: SyntheticImageSource, screenAccess: ScreenCaptureAccess = .fixed(true)) -> SnapModel {
             let snap = SnapModel(store: SnapStore(root: root.appendingPathComponent(name, isDirectory: true)), desktop: root.appendingPathComponent("Desktop"),
                                  screenshotLocation: FixedScreenshotLocation(), preferences: preferences, screenshotInbox: root.appendingPathComponent("Inbox"),
                                  trash: { _ in throw SnapError.message("This check never moves a file to the Trash.") },
-                                 applyScreenshotLocation: {}, imageSource: source, pasteboard: pasteboard)
+                                 applyScreenshotLocation: {}, imageSource: source, pasteboard: pasteboard, screenAccess: screenAccess)
             // Search is not what this check tests: saved Snaps get empty search data, never Vision (#181).
             snap.analyzeImage = { _, digest in SnapDerivedData(imageSHA256: digest, text: "", featurePrint: nil) }
             return snap
@@ -159,12 +160,114 @@ enum SnapCaptureChecks {
             try check(snap.draft != nil && snap.draft?.id != first && source.requests == [.screen, .region], "cancelling it lets the next capture start")
         }
 
+        // Screen Recording off (#112): each door explains on the Snap page instead of
+        // capturing, asks macOS once per attempt through the seam, hides nothing, and
+        // saved Snaps and an image the person already has keep working.
+        var savedSnapshots: [SnapHandoffSnapshot] = []
+        watchdog.step("Snap with Screen Recording off")
+        do {
+            var granted = false, requests = 0, settingsOpened = 0
+            let access = ScreenCaptureAccess(isGranted: { granted }, request: { requests += 1; return false }, openSettings: { settingsOpened += 1 })
+            let source = SyntheticImageSource(next: .success(image))
+            let snap = snapModel("screen-access-off", source: source, screenAccess: access)
+            let saved = try snap.store.insert(originalPNG: image, width: 640, height: 400, title: "Saved before access changed", source: .region)
+            snap.refresh()
+            try check(!snap.screenAccessGranted && snap.items.count == 1, "the Snap owner knows Screen Recording is off")
+            for door in doors {
+                let desktop = RecordingDesktop(page: door.page, windowOnScreen: door.windowOnScreen, inFront: door.inFront, lastOther: door.lastOther)
+                SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
+                await snap.capture(.region)
+                try check(desktop.log == ["open snap"] && desktop.page == "snap" && source.requests.isEmpty && snap.draft == nil && !snap.isBusy
+                          && snap.notice == SnapModel.screenAccessOff,
+                          "without Screen Recording, Snap from \(door.name) explains on the Snap page, hiding and capturing nothing: \(desktop.log)")
+            }
+            try check(requests == doors.count, "each attempt asks macOS through the seam, which lists Workbench in System Settings")
+            snap.copy(saved.id)
+            try check(pasteboard.data(forType: .png) == (try snap.store.snapshot(saved.id)).imagePNG, "a saved Snap still copies")
+            pasteboard.clearContents(); pasteboard.setData(image, forType: .png)
+            snap.pasteImage()
+            if let pasted = snap.draft {
+                try check(pasted.source == .clipboard && snap.saveDraft(pasted, copyAfterSaving: false) && snap.items.count == 2,
+                          "Paste image still brings in an image the person already has")
+            } else { try check(false, "Paste image still brings in an image the person already has") }
+            savedSnapshots = try snap.handoffSnapshots(ids: [saved.id])
+            try check(savedSnapshots.count == 1, "saved Snaps can still be handed off")
+            // A grant can need a relaunch: after Snap opened Screen Recording settings,
+            // a return with access still off suggests quitting and reopening, never before.
+            func returnToWorkbench() async throws {
+                NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApplication.shared)
+                try await settle(for: 0.3)
+            }
+            try await returnToWorkbench()
+            try check(!snap.suggestsReopenForScreenAccess, "no quit-and-reopen hint before Settings has been opened")
+            snap.openScreenRecordingSettings()
+            try check(settingsOpened == 1 && !snap.suggestsReopenForScreenAccess, "Open System Settings… asks the seam, and the hint waits for the return")
+            try await returnToWorkbench()
+            try check(snap.suggestsReopenForScreenAccess && !snap.screenAccessGranted,
+                      "back from Settings with access still off, Snap suggests quitting and reopening")
+            granted = true
+            try await returnToWorkbench()
+            try check(!snap.suggestsReopenForScreenAccess && snap.screenAccessGranted, "once access reads as allowed, the hint goes away")
+            let desktop = RecordingDesktop(page: "home", windowOnScreen: true, inFront: nil, lastOther: safari)
+            SnapCaptureHost(desktop: desktop).attach(to: snap) { desktop.log.append("close controls") }
+            await snap.capture(.window)
+            try check(snap.screenAccessGranted && snap.draft?.source == .window && source.requests == [.window] && requests == doors.count,
+                      "once access is allowed, the next capture works without asking again")
+            snap.draft = nil
+        }
+        watchdog.step("Snap & Talk with Screen Recording off")
+        try await checkSnapTalkWithoutScreenAccess(root: root, snapshots: savedSnapshots, check: check)
+
         try await checkEditorExposure(makeSnap: { snapModel($0, source: SyntheticImageSource(next: .success(image))) }, watchdog: watchdog, check: check)
-        print("SNAP_CAPTURE_CHECKS_OK: \(count) checks for every door's editor, Save & Copy, cancelled selectors, problems and hidden drafts, in "
+        print("SNAP_CAPTURE_CHECKS_OK: \(count) checks for every door's editor, Save & Copy, cancelled selectors, problems, hidden drafts and Screen Recording off, in "
               + String(format: "%.1f s", Date().timeIntervalSince(started)) + " at \(priority) priority")
         // Written now, so a slow exit cannot hide the result; the watchdog still covers the exit.
         fflush(stdout)
         watchdog.expectExit(within: 30)
+    }
+
+    /// Snap & Talk with Screen Recording off: a new capture stops with a plain
+    /// explanation before the screen is touched, and the session's screenshots,
+    /// narration and saved Snaps stay usable.
+    private static func checkSnapTalkWithoutScreenAccess(root: URL, snapshots: [SnapHandoffSnapshot],
+                                                         check: (Bool, String) throws -> Void) async throws {
+        let suite = root.appendingPathComponent("SnapTalkPreferences").path
+        guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not isolate the check's preferences.") }
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let session = root.appendingPathComponent("Synthetic session", isDirectory: true)
+        var manifest = try ReadbackStore.create(at: session, title: "Synthetic session")
+        let id = UUID(), directory = "items/\(id.uuidString.lowercased())"
+        try ReadbackStore.createPrivateDirectory(session.appendingPathComponent(directory))
+        let screenshot = try syntheticScreen()
+        try ReadbackStore.writePrivate(screenshot, to: session.appendingPathComponent(directory + "/screen.png"))
+        try ReadbackStore.writePrivate(Data("Synthetic narration".utf8), to: session.appendingPathComponent(directory + "/narration.txt"))
+        manifest.sections = [ReadbackSection(id: id, capturedAt: Date(timeIntervalSince1970: 1_789_546_320), displayName: "Synthetic display",
+            directory: directory, screenshot: directory + "/screen.png", audio: nil, originalTranscript: nil, transcript: directory + "/narration.txt",
+            status: .ready, failure: nil, deletedAt: nil)]
+        try ReadbackStore.save(manifest, at: session)
+        defaults.set([session.path], forKey: "readback.recentSessionPaths.v1")
+        var captures = 0
+        let readback = ReadbackModel(engine: RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults)), defaults: defaults,
+            captureDisplay: { captures += 1; throw ReadbackError.message("This check never captures the screen.") },
+            transcribeAudio: { _ in throw ReadbackError.message("This check never transcribes audio.") },
+            skillPacks: ReadbackSkillPackStore(root: root.appendingPathComponent("SnapTalkSkillPacks", isDirectory: true)), screenAccess: .fixed(false))
+        try check(readback.sessionURL?.standardizedFileURL == session.standardizedFileURL && readback.activeSections.count == 1 && !readback.screenPermissionGranted,
+                  "the session opens with Screen Recording off")
+        await readback.captureNewSection(fromEditor: true)
+        try check(captures == 0 && readback.notice == readback.permissionsProblem && readback.notice?.contains("Screen Recording is off for Workbench") == true
+                  && readback.activeSections.count == 1 && !readback.isCapturing, "Snap & Talk explains the missing access before touching the screen")
+        try check(try Data(contentsOf: session.appendingPathComponent(directory + "/screen.png")) == screenshot, "the section's screenshot is kept")
+        readback.updateTranscript("Edited narration", for: id)
+        try check(ReadbackStore.readText(root: session, relative: directory + "/narration.txt") == "Edited narration", "narration stays editable")
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApplication.shared)
+        try await settle(for: 0.3)
+        try check(!readback.suggestsReopenForScreenAccess, "Snap & Talk shows no quit-and-reopen hint before Settings has been opened")
+        readback.openScreenRecordingSettings()
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApplication.shared)
+        try await settle(for: 0.3) { readback.suggestsReopenForScreenAccess }
+        try check(readback.suggestsReopenForScreenAccess, "back from Settings with access still off, Snap & Talk suggests quitting and reopening")
+        readback.importSnapSnapshots(snapshots)
+        try check(readback.activeSections.count == 2, "saved Snaps can still be added to the session")
     }
 
     /// The Snap page the host opens presents the editor for the captured draft,
