@@ -8,13 +8,21 @@ struct SavedPersona: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
     var image: String
+    /// The label and colour Card draws. Circle and Original keep them unused.
     var card: PersonaCardStyle? = nil
+    /// Circle, Card or Original, with Circle's framing. Personas saved before the
+    /// choice existed have none and keep their look: Card with a card, else Original.
+    var appearance: PersonaAppearance? = nil
+
+    /// The look this persona is shown, placed and exported in.
+    var effectiveAppearance: PersonaAppearance { appearance ?? PersonaAppearance(shape: card == nil ? .original : .card) }
 
     func validated() throws -> SavedPersona {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               name.count <= 160 else { throw PersonaError.invalidSettings }
         _ = try PersonaPlacement(image: image).validated()
         _ = try card?.validated()
+        _ = try appearance?.validated()
         return self
     }
 }
@@ -81,14 +89,21 @@ struct PersonaPortraitDraft: Identifiable {
     /// The same picture decoded once, for the editor's preview.
     let portrait: NSImage
     var card: PersonaCardStyle
+    /// A new profile portrait starts as a Circle: centred for an imported
+    /// picture, or with a bundled starter's curated framing.
+    var appearance: PersonaAppearance
 
-    init(_ imported: LogoImport.Image, card: PersonaCardStyle, name: String? = nil) throws {
+    init(_ imported: LogoImport.Image, card: PersonaCardStyle, name: String? = nil, framing: PersonaFraming? = nil) throws {
         guard let portrait = NSImage(data: imported.png), portrait.size.width > 0, portrait.size.height > 0
         else { throw PersonaError.unreadableImage }
         let proposed = (name ?? imported.name).trimmingCharacters(in: .whitespacesAndNewlines)
         id = UUID(); self.name = proposed.isEmpty ? "Persona" : String(proposed.prefix(160))
         png = imported.png; self.portrait = portrait; self.card = card
+        appearance = PersonaAppearance(shape: .circle, automaticFraming: framing)
     }
+
+    /// How the draft looks now, for the editor's preview.
+    func image() throws -> NSImage { try appearance.image(portrait: portrait, card: card) }
 }
 
 struct PersonaGroup: Codable, Identifiable, Equatable {
@@ -167,7 +182,7 @@ struct PersonaArchive: Codable {
               Set(groups.map(\.id)).count == groups.count,
               selectedID == nil || items.contains(where: { $0.id == selectedID }),
               activeGroupID == nil || groups.contains(where: { $0.id == activeGroupID }),
-              version != 1 || (groups.isEmpty && activeGroupID == nil && items.allSatisfy { $0.card == nil }),
+              version != 1 || (groups.isEmpty && activeGroupID == nil && items.allSatisfy { $0.card == nil && $0.appearance == nil }),
               version == 3 || (preparedGroupIDs.isEmpty && groups.allSatisfy { $0.overlays == nil && $0.publicLabel == nil }),
               preparedGroupIDs.count <= PersonaSessionController.maximumGroups,
               Set(preparedGroupIDs).count == preparedGroupIDs.count,
@@ -375,25 +390,48 @@ final class PersonaLibrary: NSObject, ObservableObject {
         return image
     }
 
+    /// The persona drawn in its appearance: Original is the saved image itself;
+    /// Card and Circle are drawn from it and cached, never saved over it.
     func renderedImage(for persona: SavedPersona) -> NSImage? {
         guard (try? persona.validated()) != nil, let image = image(named: persona.image) else { return nil }
-        guard let card = persona.card else { return image }
+        let look = persona.effectiveAppearance
         // Include the file revision: NSCache may evict a portrait and AppKit can
         // later reuse its object address for a different image.
         let attributes = try? FileManager.default.attributesOfItem(atPath: root.appendingPathComponent(persona.image).path)
         let revision = (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         let bytes = (attributes?[.size] as? NSNumber)?.intValue ?? 0
-        let key = "card|\(persona.image)|\(revision)|\(bytes)|\(card.label)|\(card.background.r)|\(card.background.g)|\(card.background.b)" as NSString
+        let key: NSString
+        switch look.shape {
+        case .original: return image
+        case .card:
+            let card = persona.card ?? PersonaCardStyle()
+            key = "card|\(persona.image)|\(revision)|\(bytes)|\(card.label)|\(card.background.r)|\(card.background.g)|\(card.background.b)" as NSString
+        case .circle:
+            let framing = look.currentFraming
+            key = "circle|\(persona.image)|\(revision)|\(bytes)|\(framing.x)|\(framing.y)|\(framing.zoom)" as NSString
+        }
         if let rendered = imageCache.object(forKey: key) { return rendered }
-        guard let rendered = try? PersonaCardRenderer.image(portrait: image, style: card) else { return nil }
-        imageCache.setObject(rendered, forKey: key, cost: 480 * 600 * 4)
+        guard let rendered = try? look.image(portrait: image, card: persona.card),
+              let bitmap = rendered.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        imageCache.setObject(rendered, forKey: key, cost: bitmap.bytesPerRow * bitmap.height)
         return rendered
+    }
+    /// A frozen source drawn in another shape for one shown copy: its saved record
+    /// as it was frozen, from its image only if the file is unchanged since then.
+    func draw(_ source: PersonaSourceSnapshot, as shape: PersonaAppearance.Shape) throws -> NSImage {
+        guard let revision = source.revision, PersonaStorage.isImageName(source.persona.image),
+              PersonaImageRevision(fileAt: root.appendingPathComponent(source.persona.image)) == revision
+        else { throw PersonaSessionError.missingArtwork }
+        var persona = source.persona, look = persona.effectiveAppearance
+        look.shape = shape; persona.appearance = look
+        guard let image = renderedImage(for: persona) else { throw PersonaSessionError.missingArtwork }
+        return image
     }
     /// The caller owns any scene/export copy. This never changes the portrait or a scene.
     func renderedPNG(for persona: SavedPersona) throws -> Data {
         _ = try persona.validated()
         guard let image = renderedImage(for: persona) else { throw PersonaError.unreadableImage }
-        if persona.card == nil {
+        if persona.effectiveAppearance.shape == .original {
             guard let data = try PersonaStorage.read(root.appendingPathComponent(persona.image), maximumBytes: LogoImport.maximumBytes) else { throw PersonaError.unreadableImage }
             return data
         }
@@ -419,7 +457,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard writable() else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.message = "Choose a portrait without baked labels. Workbench keeps the original and adds editable text and colour."
+        panel.message = "Choose a portrait without baked labels. Workbench keeps the original and shows it as a circle, a labelled card or as it is."
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
             do { onDraft(try self.portraitDraft(from: url, card: PersonaCardStyle())) }
@@ -428,9 +466,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
 
     /// Reads a picture into a new portrait draft without writing anything.
-    func portraitDraft(from url: URL, card: PersonaCardStyle, name: String? = nil) throws -> PersonaPortraitDraft {
+    func portraitDraft(from url: URL, card: PersonaCardStyle, name: String? = nil, framing: PersonaFraming? = nil) throws -> PersonaPortraitDraft {
         guard writable() else { throw PersonaError.invalidSettings }
-        return try PersonaPortraitDraft(LogoImport.read(url), card: card.validated(), name: name)
+        return try PersonaPortraitDraft(LogoImport.read(url), card: card.validated(), name: name, framing: framing?.validated())
     }
 
     /// Add persona: saves the draft's picture and card, selects it and adds it to
@@ -439,7 +477,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
     @discardableResult func add(_ draft: PersonaPortraitDraft) throws -> SavedPersona {
         guard writable() else { throw PersonaError.invalidSettings }
         guard !items.contains(where: { $0.id == draft.id }) else { throw PersonaError.alreadyAdded }
-        return try add(LogoImport.Image(png: draft.png, name: draft.name), id: draft.id, card: draft.card.validated())
+        return try add(LogoImport.Image(png: draft.png, name: draft.name), id: draft.id, card: draft.card.validated(),
+                       appearance: draft.appearance.validated())
     }
 
     func pasteImage(onSelect: ((SavedPersona) -> Void)? = nil) {
@@ -452,11 +491,13 @@ final class PersonaLibrary: NSObject, ObservableObject {
         try add(LogoImport.read(url), fallbackName: name, card: card)
     }
 
-    private func add(_ imported: LogoImport.Image, fallbackName: String? = nil, id: UUID = UUID(), card: PersonaCardStyle? = nil) throws -> SavedPersona {
+    private func add(_ imported: LogoImport.Image, fallbackName: String? = nil, id: UUID = UUID(), card: PersonaCardStyle? = nil,
+                     appearance: PersonaAppearance? = nil) throws -> SavedPersona {
         guard writable() else { throw PersonaError.invalidSettings }
         let file = "persona-" + UUID().uuidString + ".png"
         let proposedName = (fallbackName ?? imported.name).trimmingCharacters(in: .whitespacesAndNewlines)
-        let item = try SavedPersona(id: id, name: proposedName.isEmpty ? "Persona" : String(proposedName.prefix(160)), image: file, card: card).validated()
+        let item = try SavedPersona(id: id, name: proposedName.isEmpty ? "Persona" : String(proposedName.prefix(160)), image: file,
+                                    card: card, appearance: appearance).validated()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let destination = root.appendingPathComponent(file)
         try imported.png.write(to: destination, options: .atomic)
@@ -493,9 +534,27 @@ final class PersonaLibrary: NSObject, ObservableObject {
     }
 
     @discardableResult func updateCard(_ id: UUID, style: PersonaCardStyle?) -> Bool {
+        guard let persona = items.first(where: { $0.id == id }) else { return false }
+        // Keep the look as it is: adding a label to finished artwork must not turn it into a card.
+        return updateAppearance(id, appearance: persona.effectiveAppearance, card: style)
+    }
+    /// The workspace's quick Circle, Card or Original choice for a saved persona.
+    /// It is the look used the next time the persona is shown or placed; a card
+    /// already shown keeps its own until Update shown card.
+    @discardableResult func setShape(_ shape: PersonaAppearance.Shape, for id: UUID) -> Bool {
+        guard let persona = items.first(where: { $0.id == id }) else { return false }
+        var appearance = persona.effectiveAppearance
+        guard appearance.shape != shape else { return true }
+        appearance.shape = shape
+        return updateAppearance(id, appearance: appearance, card: persona.card)
+    }
+    /// Saves an appearance with its label and colour together, as the editor's Save does.
+    @discardableResult func updateAppearance(_ id: UUID, appearance: PersonaAppearance, card: PersonaCardStyle?) -> Bool {
         guard writable(), let index = items.firstIndex(where: { $0.id == id }) else { return false }
         do {
-            var next = archive; next.items[index].card = try style?.validated()
+            var next = archive
+            next.items[index].card = try card?.validated()
+            next.items[index].appearance = try appearance.validated()
             try commit(next); notice = nil; return true
         } catch { notice = error.localizedDescription; return false }
     }
@@ -573,26 +632,33 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
         let allowed = Set(chosen.flatMap(\.personaIDs))
         guard allowed.count <= PersonaSessionController.maximumCandidates else { throw PersonaSessionError.tooManyCandidates }
-        var frozen: [UUID: NSImage] = [:], cost = 0
+        var frozen: [UUID: NSImage] = [:], sources: [UUID: PersonaSourceSnapshot] = [:], cost = 0
         for id in allowed {
             guard let item = items.first(where: { $0.id == id }), let image = renderedImage(for: item),
                   let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { throw PersonaSessionError.missingArtwork }
             cost += cg.bytesPerRow * cg.height
             guard cost <= PersonaSessionController.maximumImageBytes else { throw PersonaSessionError.tooManyCandidates }
             frozen[id] = NSImage(cgImage: cg, size: image.size)
+            // The record and image revision, so a copy's other look is drawn from these same ingredients.
+            sources[id] = PersonaSourceSnapshot(persona: item, revision: PersonaImageRevision(fileAt: root.appendingPathComponent(item.image)))
         }
         let snapshots = try chosen.enumerated().map { index, group -> PersonaPreparedSessionGroup in
             let candidates = try group.personaIDs.enumerated().map { ordinal, id -> PersonaSessionCandidate in
                 guard let item = items.first(where: { $0.id == id }), let image = frozen[id] else { throw PersonaSessionError.missingArtwork }
                 let label = try PersonaSessionLabels.validated(item.card?.label) ?? "Persona \(ordinal + 1)"
-                return PersonaSessionCandidate(id: id, label: label, image: image)
+                return PersonaSessionCandidate(id: id, label: label, image: image, shape: item.effectiveAppearance.shape, source: sources[id])
             }
             return PersonaPreparedSessionGroup(source: group,
                 label: try PersonaSessionLabels.validated(group.publicLabel) ?? "Set \(index + 1)",
                 candidates: candidates, overlays: group.overlays ?? [])
         }
         let proposed = try PersonaSessionController(groups: snapshots, initialGroupID: initialGroupID,
-            canSave: !isReadOnly, softReveal: softReveal, makePanel: sessionPanelFactory ?? { PersonaOverlayController() })
+            canSave: !isReadOnly, softReveal: softReveal, imageBytes: cost, draw: { [weak self] source, shape in
+                guard let self else { throw PersonaSessionError.missingArtwork }
+                return try self.draw(source, as: shape)
+            }, makePanel: sessionPanelFactory ?? { PersonaOverlayController() })
+        // A layout saved with a copy's own look is drawn now, within the budget, or Start fails here.
+        try proposed.prepareSavedLooks()
         hideOverlay()
         session = proposed
         proposed.onChange = { [weak self] in self?.refreshSessionState() }
@@ -654,6 +720,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             case .locked(let id, let value): session.setLocked(value, for: id)
             case .width(let id, let value): session.setWidth(value, for: id)
             case .position(let id, let x, let y): session.setPosition(x: x, y: y, for: id)
+            case .shape(let id, let shape): try session.setShape(shape, for: id)
             case .pauseResume: if session.phase == .paused { try resumeOverlaySession() } else { pauseOverlaySession() }
             case .saveLayout: try saveSessionLayout(); sessionFeedback = "Layout saved for next time."
             case .dismissFeedback: break
@@ -692,8 +759,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// cannot show, the shown card stays up and the notice names the card.
     func selectLivePersona(_ id: UUID) {
         guard var session = liveSelection, session.candidateIDs.contains(id), let deck = cardDeck else { return }
+        // A shape chosen live for this copy stays with it through Next and Previous.
+        let copyShape = shownCard?.shape
         let image: NSImage
-        do { image = try deck.image(for: id, shown: displayedID, render: { renderedImage(for: $0) }) }
+        do { image = try deck.image(for: id, shown: displayedID, shape: copyShape, render: { renderedImage(for: $0) }) }
         catch { reportCardFailure(error); return }
         if !isReadOnly {
             do { try commit(items, selection: id) }
@@ -701,9 +770,66 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
         clearCardFailure()
         session.select(id); liveSelection = session; displayedID = id
-        deck.didShow(id)
-        if let source = deck.sources[id] { shownCard = PersonaShownCard(copyID: shownCard?.copyID ?? UUID(), source: source) }
-        displayedImage = image; displayedLabel = liveLabels[id]; refreshOverlay()
+        deck.didShow(id, shape: copyShape)
+        if let source = deck.sources[id] {
+            shownCard = PersonaShownCard(copyID: shownCard?.copyID ?? UUID(), source: source, shape: copyShape)
+        }
+        displayedImage = image; displayedLabel = liveLabels[id]
+        overlay?.setOutline(shownCard?.appearance.outline)
+        refreshOverlay()
+    }
+    /// The live copy Persona's Options act on now: the selected copy of a
+    /// prepared set, or else the one floating card. nil when nothing is live.
+    var selectedLiveCopy: PersonaLiveCopy? {
+        if let session { return session.selectedInstanceID.map { .overlay($0, group: session.currentGroupID) } }
+        return shownCard.map { .card($0.copyID) }
+    }
+    /// The look an explicit live copy shows now; nil once that copy is gone.
+    func liveShape(of copy: PersonaLiveCopy) -> PersonaAppearance.Shape? {
+        switch copy {
+        case .card(let id):
+            return session == nil && shownCard?.copyID == id ? shownCard?.appearance : nil
+        case .overlay(let id, let group):
+            guard sessionState.currentGroupID == group else { return nil }
+            return sessionState.instances.first { $0.id == id }?.shape
+        }
+    }
+    /// Circle, Card or Original for exactly one live copy, from its Options or the
+    /// toolbar. A copy that is no longer live is left alone; no other copy and no
+    /// saved persona changes.
+    func setLiveShape(_ shape: PersonaAppearance.Shape, for copy: PersonaLiveCopy) {
+        switch copy {
+        case .card(let id):
+            guard session == nil, shownCard?.copyID == id else { return }
+            setShownShape(shape)
+        case .overlay(let id, let group):
+            guard session != nil, sessionState.currentGroupID == group else { return }
+            performOverlayAction(.shape(id, shape))
+        }
+    }
+    /// Circle, Card or Original for the one floating card only. It is drawn from
+    /// the copy's frozen source, never from later library edits, and it keeps the
+    /// artwork's width and centre, moving it only to stay on screen. The lock, the
+    /// voice outline and every other copy are unchanged; the saved persona keeps
+    /// its own appearance. A hidden card shows the new look when shown again.
+    private func setShownShape(_ shape: PersonaAppearance.Shape) {
+        guard var card = shownCard, let deck = cardDeck, let id = displayedID, card.appearance != shape else { return }
+        let image: NSImage
+        do { image = try deck.image(for: id, shown: id, shape: shape, render: { renderedImage(for: $0) }) }
+        catch {
+            let name = deck.name(of: id)
+            notice = "“\(name)” stays as it is: it couldn’t be drawn as \(shape.title). " + ((error as? PersonaCardUnavailable)?.reason == .changed
+                ? "Its image changed after you showed this card." : "Its image is missing, unreadable or too large.")
+            cardFailure = notice
+            return
+        }
+        clearCardFailure()
+        card.shape = shape; shownCard = card
+        deck.didShow(id, shape: shape)
+        displayedImage = image
+        guard let overlay else { return }
+        let kept = overlay.reshape(image: image, outline: shape.outline, name: displayedLabel ?? "Floating persona", state: overlayState)
+        updateOverlay(kept)
     }
     func focusOverlayControls() {
         guard mayBeginInteraction?() != false else { notice = PersonaSessionInteractionError.busy.localizedDescription; return }
@@ -777,6 +903,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
         }
         overlay?.setVoiceRing(voiceRing && voiceAccess != nil)
+        overlay?.setOutline(shownCard?.appearance.outline)
         let placed = overlay?.show(image: displayedImage ?? image, name: displayedLabel ?? "Floating persona", state: overlayState)
         overlayVisible = true
         if let placed { updateOverlay(placed) }
@@ -964,6 +1091,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 menu.addSubmenu("Position Artwork", items: FloatingControlAnchor.allCases.map { anchor in
                     action(anchor.title, .position(selected.id, anchor.unitPoint.x, anchor.unitPoint.y))
                 })
+                // One choice for the selected copy; the current look is checked.
+                menu.addSubmenu("Appearance", items: PersonaAppearance.Shape.allCases.map { shape in
+                    action(shape.title, .shape(selected.id, shape), checked: shape == selected.shape)
+                })
                 menu.addSubmenu("Replace Selected", items: state.candidates.map { action($0.label, .replace(instanceID: selected.id, personaID: $0.id), checked: $0.id == selected.personaID) })
                 menu.addItem(action(selected.visible ? "Hide Selected" : "Show Selected", .visible(selected.id, !selected.visible)))
                 menu.addItem(action("Bring Forward", .move(selected.id, 1)))
@@ -997,6 +1128,15 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     self.setOverlayPosition(x: anchor.unitPoint.x, y: anchor.unitPoint.y)
                 }
             })
+            // This shown copy only, drawn from its frozen source; the current look is checked.
+            if let copy = shownCard.map({ PersonaLiveCopy.card($0.copyID) }) {
+                menu.addSubmenu("Appearance", items: PersonaAppearance.Shape.allCases.map { shape in
+                    StageMenuAction(shape.title, checked: shape == self.liveShape(of: copy)) { [weak self] in
+                        guard let self, self.overlayGeneration == generation else { return }
+                        self.setLiveShape(shape, for: copy)
+                    }
+                })
+            }
             if let item = voiceSwitch() { menu.addItem(item) }
             menu.addItem(StageMenuAction("End Overlay") { [weak self] in
                 guard let self, self.overlayGeneration == generation else { return }; self.hideOverlay()

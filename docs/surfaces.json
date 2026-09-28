@@ -1936,6 +1936,23 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance",
+    "surface": "Persona menu",
+    "label": "Appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona (#169): Circle, Card or Original for the selected live copy only, drawn from its frozen ingredients. One choice with the current look checked, like Position Artwork; no new capability or style system."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance.2",
+    "surface": "Persona menu",
+    "label": "Appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The same Appearance choice for the one floating card; its Options offer it as they offer the selected copy's (#169)."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.addSubmenu.choose-overlay",
     "surface": "Persona menu",
     "label": "Choose Overlay",
@@ -2503,6 +2520,34 @@
     "case": "topRight",
     "kind": "option",
     "belongsTo": "app"
+  },
+  {
+    "id": "choices.PersonaAppearance.Shape.card",
+    "surface": "choices PersonaAppearance.Shape",
+    "label": "Card",
+    "case": "card",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. The existing labelled portrait card."
+  },
+  {
+    "id": "choices.PersonaAppearance.Shape.circle",
+    "surface": "choices PersonaAppearance.Shape",
+    "label": "Circle",
+    "case": "circle",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. The default for a new profile portrait."
+  },
+  {
+    "id": "choices.PersonaAppearance.Shape.original",
+    "surface": "choices PersonaAppearance.Shape",
+    "label": "Original",
+    "case": "original",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. Shows the image unchanged, the same sense of the word as Dictate's Original text style: the source kept as it is."
   },
   {
     "id": "choices.SnapCapture.Mode.region",

@@ -552,7 +552,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
             try MainActor.assumeIsolated {
                 guard let adapter = sceneSync else { throw SceneError.storageBlocked }
                 var authored: SceneCardStyle?
-                if let style = persona.card {
+                // Only Card is re-drawable from its label and colour; Circle and
+                // Original place their pixels as shown, without card values.
+                if persona.effectiveAppearance.shape == .card {
+                    let style = persona.card ?? PersonaCardStyle()
                     guard let source = try PersonaStorage.read(root.appendingPathComponent(persona.image), maximumBytes: SceneAsset.maximumBytes)
                     else { throw SceneDocumentError.missingAsset }
                     let portrait = try adapter.library.importAsset(source)

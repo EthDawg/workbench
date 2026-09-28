@@ -77,7 +77,7 @@ final class PersonaCreationTests {
         XCTAssertEqual(before.activeGroupID, f.group)
         XCTAssertEqual(before.selectedID, f.existing[0].id)
 
-        // Import portrait for an editable card: choose, then edit, then Cancel or Escape.
+        // Import portrait: choose, then edit, then Cancel or Escape.
         var imported: PersonaPortraitDraft? = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle())
         XCTAssertEqual(try snapshot(f), before, "Choosing a picture saves nothing")
         imported?.card.label = "Synthetic facilities lead"

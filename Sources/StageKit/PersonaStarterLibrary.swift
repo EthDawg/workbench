@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct PersonaStarter: Identifiable, Equatable {
     let id: String
     let label: String
+    /// Circle's curated framing: head and shoulders, with room above the hair.
+    var framing = PersonaFraming(x: 0.5, y: 0.57, zoom: 1.28)
     var filename: String { id + ".png" }
 }
 
@@ -60,7 +62,7 @@ struct PersonaStarterLibrary {
         guard let url = source(for: portrait), thumbnail(for: portrait) != nil else {
             throw PersonaStarterError.unavailable
         }
-        return try library.portraitDraft(from: url, card: PersonaCardStyle(label: portrait.label))
+        return try library.portraitDraft(from: url, card: PersonaCardStyle(label: portrait.label), framing: portrait.framing)
     }
 }
 

@@ -96,6 +96,35 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         artwork.outline = outline
         if window?.isVisible == true { position() }
     }
+    /// Another look for this copy, such as Circle instead of Card: the artwork
+    /// keeps its width and its centre on screen, moving only as far as it must to
+    /// stay on the display. The voice outline and handles follow the new edge, and
+    /// the lock is unchanged. Returns the placement that does this.
+    func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
+        guard let window, window.isVisible, let screen = screenForArtwork() else {
+            setOutline(outline); configure(image: image, name: name, state: state); return self.state
+        }
+        let before = CGRect(x: window.frame.minX + artwork.artworkInsets.left, y: window.frame.minY + artwork.artworkInsets.bottom,
+                            width: window.frame.width - artwork.artworkInsets.left - artwork.artworkInsets.right,
+                            height: window.frame.height - artwork.artworkInsets.top - artwork.artworkInsets.bottom)
+        artwork.cancelDragging(); manipulation = nil
+        artwork.outline = outline
+        artwork.image = image
+        artwork.setAccessibilityLabel(name)
+        var next = state
+        next.screenID = Self.screenID(screen)
+        let available = screen.visibleFrame
+        let placed = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: next.width), imageSize: image.size, in: available.size)
+        let insets = artwork.ringInsets(for: placed.size)
+        let size = CGSize(width: placed.width + insets.left + insets.right, height: placed.height + insets.top + insets.bottom)
+        let origin = CGPoint(x: before.midX - placed.width / 2 - insets.left, y: before.midY - placed.height / 2 - insets.bottom)
+        let travelX = max(0, available.width - size.width), travelY = max(0, available.height - size.height)
+        next.x = travelX > 0 ? min(1, max(0, (origin.x - available.minX) / travelX)) : 0
+        next.y = travelY > 0 ? min(1, max(0, (origin.y - available.minY) / travelY)) : 0
+        self.state = next
+        position()
+        return self.state
+    }
     func shutdown() { hide(); handles.shutdown(); artwork.ringOn = false; screenChanges = nil; onPlacementChange = nil; onSelection = nil }
 
     // MARK: Pointer, click-through and handles

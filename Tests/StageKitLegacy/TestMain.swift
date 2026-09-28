@@ -114,6 +114,36 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-appearance-only"] {
+            // Disposable libraries and synthetic artwork only; a fake microphone; no shortcut or preference.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let appearance = PersonaAppearanceTests(), creation = PersonaCreationTests(), personas = PersonaTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("appearance: new portrait is a Circle and switching keeps everything", appearance.testNewPortraitStartsAsCircleAndSwitchingShapesKeepsEverything),
+                ("appearance: existing personas keep their look", appearance.testExistingPersonasKeepTheirLookAfterUpgrade),
+                ("appearance: shown copy reshapes keeping width, centre, lock and outline", appearance.testShownCopyReshapesKeepingWidthCentreLockAndOutline),
+                ("appearance: live shape uses frozen ingredients for that copy only", appearance.testLiveShapeUsesFrozenIngredientsAndChangesOnlyThatCopy),
+                ("appearance: prepared copy changes alone and saves only when asked", appearance.testPreparedCopyChangesShapeAloneAndSavesOnlyWhenAsked),
+                ("appearance: one keyboard-reachable choice", appearance.testAppearanceChoiceIsOneKeyboardReachableSelection),
+                ("appearance: the toolbar changes exactly the captured copy", appearance.testToolbarChangesExactlyTheCapturedCopy),
+                ("appearance: tall, wide, small and transparent artwork", appearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
+                ("appearance: deck keeps the shown look until the new one is ready", appearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
+                ("appearance: scene placement uses the chosen look", appearance.testScenePlacementUsesTheChosenLook),
+                ("new portrait Add saves once", creation.testAddSavesOneItemWithOneMembershipOnce),
+                ("personas: EditableCardRenderingAndSaveFailurePreserveSources", personas.testEditableCardRenderingAndSaveFailurePreserveSources),
+                ("persona scene attachment transparency and missing-file recovery", personas.testSceneAttachmentTransparencyAndMissingFile),
+                ("optional offscreen appearance renders", appearance.testOffscreenAppearanceRenders)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-creation-only"] {
             // Disposable libraries and synthetic portraits only; no shortcut, preference or microphone.
             _ = NSApplication.shared
@@ -325,6 +355,7 @@ struct TestRunner {
         let personaVoiceLatency = PersonaVoiceLatencyTests()
         let personaStarters = PersonaStarterTests()
         let personaCreation = PersonaCreationTests()
+        let personaAppearance = PersonaAppearanceTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
@@ -421,6 +452,16 @@ struct TestRunner {
             ("new portrait failed Add keeps the draft", personaCreation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
             ("saved card edit cancel and shown card", personaCreation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
             ("read-only library makes no draft", personaCreation.testReadOnlyLibraryMakesNoDraft),
+            ("appearance: new portrait is a Circle and switching keeps everything", personaAppearance.testNewPortraitStartsAsCircleAndSwitchingShapesKeepsEverything),
+            ("appearance: existing personas keep their look", personaAppearance.testExistingPersonasKeepTheirLookAfterUpgrade),
+            ("appearance: shown copy reshapes keeping width, centre, lock and outline", personaAppearance.testShownCopyReshapesKeepingWidthCentreLockAndOutline),
+            ("appearance: live shape uses frozen ingredients for that copy only", personaAppearance.testLiveShapeUsesFrozenIngredientsAndChangesOnlyThatCopy),
+            ("appearance: prepared copy changes alone and saves only when asked", personaAppearance.testPreparedCopyChangesShapeAloneAndSavesOnlyWhenAsked),
+            ("appearance: one keyboard-reachable choice", personaAppearance.testAppearanceChoiceIsOneKeyboardReachableSelection),
+            ("appearance: the toolbar changes exactly the captured copy", personaAppearance.testToolbarChangesExactlyTheCapturedCopy),
+            ("appearance: tall, wide, small and transparent artwork", personaAppearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
+            ("appearance: deck keeps the shown look until the new one is ready", personaAppearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
+            ("appearance: scene placement uses the chosen look", personaAppearance.testScenePlacementUsesTheChosenLook),
             ("persona geometry and strict validation", personas.testGeometryBoundsAndValidation),
             ("persona durable image and separate desktop placement", personas.testDurableImportSeparatePlacementAndRemoval),
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
