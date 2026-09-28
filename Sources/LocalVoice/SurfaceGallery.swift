@@ -585,7 +585,9 @@ enum SurfaceGallery {
     func menus() -> [SurfaceGallery.Listing] {
         let panel = quickPanel(readback)
         var listings = [SurfaceGallery.Listing(title: "Dictate · Options (SwiftUI menu, listed from its source)", lines:
-            ["Destination"] + DeliveryMode.allCases.map { "  " + $0.rawValue } + ["Text Style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
+            ["Destination"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
+            + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
+            + ["Text Style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
             + ["---", "History… → history, on Transcripts", "Transcribe meeting or call… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
             guard let menu = panel.nativeOptions(tool) else { continue }
@@ -634,7 +636,8 @@ enum SurfaceGallery {
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
                          E(surface: panel, label: "Dictate · Options · History…", leads: "Page: history, on Transcripts", route: "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
-                         action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings")]
+                         action(panel, "Dictate · Options · Destination and Text Style", "Changes the saved dictation settings"),
+                         action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
             case .read:
                 list += [page(panel, "Read, when nothing is playing", "speak"), action(panel, "Read, while reading", "Pauses, resumes or cancels the reading from the row itself")]
             case .snap:

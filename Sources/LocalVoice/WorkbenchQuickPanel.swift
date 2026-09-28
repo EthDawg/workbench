@@ -139,6 +139,12 @@ struct WorkbenchQuickPanel: View {
                         else { Text(delivery.rawValue) }
                     }.disabled(model.phase != .idle)
                 }
+                // The choice is kept while it waits for approval; say what happens until then.
+                if model.preferences.delivery == .paste && !model.accessibilityGranted {
+                    Section("Copies for ⌘V until automatic paste is approved") {
+                        Button("Set up automatic paste…") { model.onCloseMenu?(); model.requestAccessibility() }
+                    }
+                }
                 Divider()
                 ForEach(CleanupStyle.allCases, id: \.self) { style in
                     Button { model.preferences.cleanup = style } label: {
