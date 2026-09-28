@@ -444,7 +444,7 @@ private struct ReadingStoppedView: View {
         return HStack(spacing: 10) {
             if mirrored { dismiss; retry; Spacer(minLength: 4); reason }
             else { reason; Spacer(minLength: 4); retry; dismiss }
-        }.padding(14).frame(width: 336, height: 64)
+        }.padding(14).frame(width: CaptureHUDLayout.compact.width, height: CaptureHUDLayout.compact.height)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain).accessibilityLabel("Reading controls")
             .defaultFocus($focused, firstAction)

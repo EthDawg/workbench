@@ -808,7 +808,7 @@ protocol FloatingHUDDragController: AnyObject {
 }
 
 struct PanelDragHandle: NSViewRepresentable {
-    var accessibilityLabel = "Drag dictation panel; named positions are also available in options"
+    var accessibilityLabel = "Drag toolbar; named positions are also in Toolbar position"
     var showsGrip = false
     func makeNSView(context: Context) -> DragHandleView { DragHandleView(accessibilityLabel: accessibilityLabel, showsGrip: showsGrip) }
     func updateNSView(_ nsView: DragHandleView, context: Context) {}
@@ -1066,10 +1066,10 @@ extension View {
     }
 }
 
+/// A result's own placement menu: the named docks and Reset position. It sits at the result's
+/// far end from the mark, with its other commands, when the result is mirrored (#211 F3).
 struct CapturePositionMenu: View {
     @ObservedObject var controls: CaptureHUDControls
-    var settings: (() -> Void)? = nil
-    var accessibilityName = "Dictation panel options"
     var body: some View {
         Menu {
             Section("Position") {
@@ -1081,13 +1081,9 @@ struct CapturePositionMenu: View {
                 }
                 Button("Reset position") { controls.choosePosition?(.bottom) }
             }
-            if let settings {
-                Divider()
-                Button("Settings for next capture", action: settings)
-            }
         } label: {
             Image(systemName: "ellipsis").frame(width: 28, height: 32)
         }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .accessibilityLabel(accessibilityName).help("Position and options")
+            .accessibilityLabel("Toolbar position").help("Position")
     }
 }

@@ -25,13 +25,6 @@
     "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
   },
   {
-    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.settings-for-next-capture",
-    "surface": "floating toolbar live controls",
-    "label": "Settings for next capture",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Menu.runtime-e93c1d1636eb",
     "surface": "floating toolbar live controls",
     "label": null,
