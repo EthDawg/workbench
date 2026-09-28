@@ -15,7 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let hotkeys = VoiceHotkeys()
     var popover: NSPopover!
     var recorderMonitor: Any?
-    var menuTarget: TextDelivery.Target?
+    /// The field the menu-bar panel was opened over, for actions started from that visit only.
+    var menuTarget = PanelDestination<TextDelivery.Target>()
     var stage: StageKitController!
     var keyboard: KeyboardCoachModel!
     var presenterPanel: PresenterPanelController!
@@ -253,8 +254,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onShowAnnotationMenu = { [weak self] in self?.showAnnotationMenu() }
         model.onMenuRecording = { [weak self] in self?.menuRecording() }
         model.onCloseMenu = { [weak self] in self?.closeControls() }
-        model.onPasteLast = { [weak self] in self?.pasteLast() }
-        model.onPasteTranscript = { [weak self] text in self?.paste(text) }
         model.onCancelShortcut = { [weak self] in self?.finishEditing() }
         model.onResetShortcuts = { [weak self] in
             guard let self else { return }
@@ -467,15 +466,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button, button.window?.isVisible == true else {
             showFloatingToolbar(); return
         }
-        menuTarget = TextDelivery.capture()
+        menuTarget.opened(capturing: TextDelivery.capture())
         model.refreshPermissions(); keyboard.stopInteraction(); keyboard.replaceEntries(shortcutEntries()); NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
     func closeControls() { popover.performClose(nil); finishEditing() }
-    func popoverDidClose(_ notification: Notification) { finishEditing(); keyboard?.stopInteraction() }
+    func popoverDidClose(_ notification: Notification) { menuTarget.closed(); finishEditing(); keyboard?.stopInteraction() }
     func resumeTarget(_ action: @escaping (TextDelivery.Target?) -> Void) {
-        let target = menuTarget
+        let target = menuTarget.current
         closeControls()
         // Restore only the app from which controls were opened. Delivery checks the
         // exact focused element again after processing; it never presses Return.
@@ -511,25 +510,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         closeControls(); window.orderOut(nil)
         Task { await readback.toggleCapture() }
-    }
-    func pasteLast() {
-        paste(model.history.first?.text ?? model.transcript)
-    }
-    func paste(_ text: String) {
-        guard !text.isEmpty, model.phase == .idle else { return }
-        resumeTarget { [weak self] target in
-            guard let self else { return }
-            guard self.model.phase == .idle else { return }
-            self.model.clipboardReceipt.clear(); self.model.dismissCaptureFailure()
-            self.model.phase = .delivering; self.model.onPhaseChange?()
-            Task {
-                // Manual history paste cannot insert into an annotation editor.
-                let outcome = await TextDelivery.deliver(text, target: target, mode: self.stage.isDrawing ? .clipboard : .paste, restoreClipboard: self.model.preferences.restoreClipboard)
-                self.model.status = outcome.message
-                self.model.clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
-                self.model.phase = .idle; self.model.onPhaseChange?()
-            }
-        }
     }
     func updateRecordingUI() {
         let receipt = model.clipboardReceipt.receipt
@@ -686,6 +666,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await WorkbenchControlChecks.run()
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
+            try PanelDestinationChecks.run()
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }

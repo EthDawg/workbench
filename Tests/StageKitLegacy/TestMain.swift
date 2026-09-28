@@ -46,6 +46,40 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-one-card-only"] {
+            // Disposable libraries only; no shortcut, preference or microphone.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let oneCard = PersonaOneCardTests(), sessions = PersonaSessionTests(), personas = PersonaTests(), workspace = PersonaWorkspaceTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("one card despite many, missing or large saved items", oneCard.testOneCardShowsDespiteManyMissingOrLargeUnrelatedItems),
+                ("one card unavailable request keeps the shown card", oneCard.testUnavailableRequestedCardKeepsTheShownCardAndCyclingContinues),
+                ("one card bad replacement keeps the shown card", oneCard.testReplacingTheShownCardWithABadOneKeepsIt),
+                ("one card oversized request stays within the budget", oneCard.testOversizedRequestedCardKeepsTheShownCardWithinTheBudget),
+                ("one card decoding drops neighbours before refusing", oneCard.testDecodingDropsNeighboursOnceMoreBeforeRefusing),
+                ("one card frozen sources and bounded decoding", oneCard.testFrozenSourcesKeepAppearanceAndDecodingStaysBounded),
+                ("one card failed Next in live menu and panel notice", oneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+                ("prepared sessions keep their limits and preflight", oneCard.testPreparedSessionsKeepTheirLimitsAndPreflight),
+                ("persona sessions: bounded replacement preflight", sessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
+                ("persona: visible single-card launch failure", sessions.testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput),
+                ("persona sessions: frozen artwork and failed start", sessions.testFrozenArtworkSurvivesLibraryEditsAndFailedReplacementStart),
+                ("shared persona menu frozen target and session generation", sessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions),
+                ("persona sessions: read-only and busy state", sessions.testReadOnlySessionsAndInteractionGuardsNeverWriteOrTrapOverlays),
+                ("personas: LiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames", personas.testLiveCandidatesRemainScopedAndHUDLabelsExcludePrivateNames),
+                ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona read-only HUD browsing and placement", personas.testReadOnlyUngroupedHUDDoesNotPersistBrowsingOrPlacement),
+                ("persona workspace single card immediate show and stop", workspace.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
+                ("persona workspace failure preserves active session", workspace.testWorkspaceFailureIsImmediateAndDoesNotReplaceSession)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-voice-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -253,6 +287,7 @@ struct TestRunner {
         let sceneMedia = SceneMediaTests()
         let personas = PersonaTests()
         let personaSessions = PersonaSessionTests()
+        let personaOneCard = PersonaOneCardTests()
         let personaControls = PersonaControlsTests()
         let personaHandles = PersonaHandleTests()
         let personaControlTests: [(String, () throws -> Void)] = [
@@ -311,6 +346,14 @@ struct TestRunner {
             ("persona sessions: invalid and future archive preservation", personaSessions.testInvalidLayoutsAndFutureArchivePreserveOriginalBytes),
             ("persona sessions: bounded replacement preflight", personaSessions.testBoundedPreflightAlsoProtectsLegacyShowAndCurrentSession),
             ("persona: visible single-card launch failure", personaSessions.testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput),
+            ("one card despite many, missing or large saved items", personaOneCard.testOneCardShowsDespiteManyMissingOrLargeUnrelatedItems),
+            ("one card unavailable request keeps the shown card", personaOneCard.testUnavailableRequestedCardKeepsTheShownCardAndCyclingContinues),
+            ("one card bad replacement keeps the shown card", personaOneCard.testReplacingTheShownCardWithABadOneKeepsIt),
+            ("one card oversized request stays within the budget", personaOneCard.testOversizedRequestedCardKeepsTheShownCardWithinTheBudget),
+            ("one card decoding drops neighbours before refusing", personaOneCard.testDecodingDropsNeighboursOnceMoreBeforeRefusing),
+            ("one card frozen sources and bounded decoding", personaOneCard.testFrozenSourcesKeepAppearanceAndDecodingStaysBounded),
+            ("one card failed Next in live menu and panel notice", personaOneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+            ("prepared sessions keep their limits and preflight", personaOneCard.testPreparedSessionsKeepTheirLimitsAndPreflight),
             ("floating: AllTargetsAreDistinctFiniteAndBounded", floating.testAllTargetsAreDistinctFiniteAndBounded),
             ("floating: GuideLayoutPreservesTargetsAndFlipsDisplayCoordinates", floating.testGuideLayoutPreservesTargetsAndFlipsDisplayCoordinates),
             ("floating: GuideStateClearsWhenDragOrDisplayEnds", floating.testGuideStateClearsWhenDragOrDisplayEnds),

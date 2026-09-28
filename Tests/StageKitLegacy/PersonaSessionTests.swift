@@ -344,25 +344,27 @@ final class PersonaSessionTests {
         try f.library.saveGroupLayout(large, overlays: [PersonaOverlayItem(personaID: ids[0])], publicLabel: nil)
         XCTAssertThrowsError(try f.library.startOverlaySession(groupIDs: [large], initialGroupID: large))
         XCTAssertEqual(f.library.sessionState.currentGroupID, f.group)
-        let launch = f.library.showOverlay() // Fail before creating a native panel.
-        XCTAssertThrowsError(try launch.get())
-        if case .failure(let error) = launch {
-            XCTAssertEqual(error.localizedDescription, PersonaSessionError.tooManyCandidates.localizedDescription)
-        }
-        XCTAssertEqual(f.library.sessionState.currentGroupID, f.group)
         XCTAssertTrue(panels.allSatisfy { $0.visible && !$0.closed })
-        XCTAssertTrue(f.library.notice?.contains("32") == true)
         let saved = try archive(f.root)
         XCTAssertThrowsError(try f.library.savePreparedGroups([f.group, f.other] + (0..<7).map { _ in UUID() }))
         XCTAssertEqual(try archive(f.root), saved)
         XCTAssertThrowsError(try f.library.startOverlaySession(groupIDs: [f.group, f.group], initialGroupID: f.group))
         XCTAssertEqual(f.displays.visible.count, 2)
+        // One card needs only its own artwork (#171): the 33-member group's selected
+        // card shows, replacing the prepared overlays only once it has decoded.
+        try f.library.showOverlay().get()
+        XCTAssertEqual(f.library.liveSelection?.candidateIDs, ids)
+        XCTAssertEqual(f.library.sessionState.phase, .idle)
+        XCTAssertTrue(panels.allSatisfy(\.closed))
+        XCTAssertTrue(f.library.overlayVisible)
     }
 
     func testSingleCardLaunchFailureReturnsErrorAndPreservesExistingOutput() throws {
         let f = try fixture(); defer { cleanup(f) }
         try f.library.startOverlaySession(groupIDs: [f.group], initialGroupID: f.group)
-        f.library.prepareGroup(f.group); f.library.selectedID = f.first.id
+        // The requested card itself is missing. An unrelated missing card no longer
+        // blocks one card (#171); see PersonaOneCardTests.
+        f.library.prepareGroup(f.group); f.library.selectedID = f.second.id
         let panels = f.displays.current
         let oldImages = panels.map(\.image), oldLabels = panels.map(\.label), oldStates = panels.map(\.state)
         var didShow = false
@@ -371,11 +373,11 @@ final class PersonaSessionTests {
         let missingBytes = try Data(contentsOf: missingURL)
         try FileManager.default.removeItem(at: missingURL)
         let before = try files(f.root)
-        XCTAssertTrue(f.library.renderedImage(for: f.first) != nil, "The chosen card is valid; another frozen candidate is unavailable")
+        XCTAssertTrue(f.library.renderedImage(for: f.second) == nil, "The chosen card is unavailable")
         let missing = f.library.showOverlay()
         XCTAssertThrowsError(try missing.get())
         if case .failure(let error) = missing {
-            XCTAssertEqual(error.localizedDescription, PersonaSessionError.missingArtwork.localizedDescription)
+            XCTAssertEqual(error as? PersonaCardUnavailable, PersonaCardUnavailable(label: "Persona 2", reason: .unreadable, keepsShownCard: false))
             XCTAssertEqual(f.library.notice, error.localizedDescription)
         }
         XCTAssertEqual(try files(f.root), before)
