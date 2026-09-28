@@ -334,17 +334,33 @@ struct DictionaryView: View {
     @ObservedObject var model: AppModel
     @State private var heard = ""
     @State private var written = ""
+    @State private var saveError: String?
+    /// What saving the fields would do, decided by the same rule as Remember correction.
+    private var change: Result<CorrectionRuleChange, Error>? {
+        guard !heard.isEmpty, !written.isEmpty else { return nil }
+        return Result { try CorrectionRule.change(heard: heard, written: written, replacements: model.replacements) }
+    }
     var body: some View {
+        let change = self.change
+        let pending = try? change?.get()
         VStack(alignment: .leading, spacing: 24) {
             Text("Your words, your way.").font(.system(size: 34, weight: .semibold)).tracking(-1)
             Text("Correct names and specialist terms after transcription. Matches whole words and phrases, ignoring case.")
                 .font(.system(size: 13)).foregroundStyle(.secondary)
-            HStack(alignment: .bottom, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) { Text("WHEN IT HEARS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. git hub", text: $heard) }
-                Image(systemName: "arrow.right").padding(.bottom, 7).foregroundStyle(mint)
-                VStack(alignment: .leading, spacing: 8) { Text("WRITE THIS").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. GitHub", text: $written) }
-                Button("Add") { model.addReplacement(heard: heard, written: written); heard = ""; written = "" }.disabled(heard.trimmingCharacters(in: .whitespaces).isEmpty || written.trimmingCharacters(in: .whitespaces).isEmpty)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) { Text("HEARD").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. git hub", text: $heard).accessibilityLabel("Heard") }
+                    Image(systemName: "arrow.right").padding(.bottom, 7).foregroundStyle(mint)
+                    VStack(alignment: .leading, spacing: 8) { Text("WRITE INSTEAD").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary); TextField("e.g. GitHub", text: $written).accessibilityLabel("Write instead") }
+                    Button(pending?.updatesExisting == true ? "Update" : "Add") { save(pending) }
+                        .disabled(pending == nil || pending?.isAlreadySaved == true)
+                }
+                if let note = note(for: change) {
+                    Text(note.text).font(.system(size: 12)).foregroundStyle(note.warning ? Color.orange : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }.textFieldStyle(.roundedBorder).controlSize(.large).padding(20).background(panelColor, in: RoundedRectangle(cornerRadius: 12))
+            ForEach(CorrectionRule.conflicts(in: model.replacements), id: \.[0].id) { rules in conflict(rules) }
             if model.replacements.isEmpty {
                 Text("No corrections yet. Add a name or phrase above when you need one.").font(.system(size: 12)).foregroundStyle(.secondary)
             }
@@ -357,6 +373,58 @@ struct DictionaryView: View {
                 }
             }
         }
+        .onChange(of: heard) { _, _ in saveError = nil }
+        .onChange(of: written) { _, _ in saveError = nil }
+    }
+
+    private func save(_ change: CorrectionRuleChange?) {
+        guard let change else { return }
+        do {
+            if change.updatesExisting { try model.updateReplacement(heard: heard, written: written) }
+            else { try model.addReplacement(heard: heard, written: written) }
+            heard = ""; written = ""; saveError = nil
+        } catch { saveError = error.localizedDescription }
+    }
+
+    /// The saved value before Update, a validation problem, or nothing for a new phrase.
+    private func note(for change: Result<CorrectionRuleChange, Error>?) -> (text: String, warning: Bool)? {
+        if let saveError { return (saveError, true) }
+        switch change {
+        case .none: return nil
+        case .failure(CorrectionRuleError.duplicateRules(let heard, let count)):
+            return ("“\(heard)” has \(count) rules. Choose the spelling to keep below.", true)
+        case .failure(let error): return (error.localizedDescription, true)
+        case .success(let change):
+            if change.isAlreadySaved { return ("Already in your dictionary.", false) }
+            guard let previous = change.previousRule else { return nil }
+            return ("“\(previous.heard)” currently writes “\(previous.written)”. Update changes future dictations only.", false)
+        }
+    }
+
+    /// Rules saved by earlier versions can share a phrase. The card names what
+    /// dictation writes for it today, from every rule in order, shows every
+    /// value and lets one explicit choice settle it.
+    private func conflict(_ rules: [Replacement]) -> some View {
+        let spellings = rules.map(\.written).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(spellings.count > 1
+                  ? "“\(rules[0].heard)” has \(rules.count) rules. Dictation writes “\(CorrectionRule.currentOutput(for: rules[0].heard, in: model.replacements))”."
+                  : "“\(rules[0].heard)” is saved \(rules.count) times.", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 13, weight: .medium))
+            Text("Keep one spelling. Only this phrase’s other rules are removed.")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(spellings, id: \.self) { spelling in
+                    Button(spellings.count > 1 ? "Keep “\(spelling)”" : "Keep one") {
+                        guard let chosen = rules.first(where: { $0.written == spelling }) else { return }
+                        do { try model.resolveReplacementConflict(keeping: chosen) }
+                        catch { model.error = error.localizedDescription }
+                    }.accessibilityLabel("Keep \(spelling) for \(rules[0].heard)")
+                }
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

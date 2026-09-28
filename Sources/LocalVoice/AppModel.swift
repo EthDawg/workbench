@@ -1136,11 +1136,37 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             self.captureFailure = message; self.fail(message)
         }
     }
-    func addReplacement(heard: String, written: String) {
-        let heard = heard.trimmingCharacters(in: .whitespacesAndNewlines), written = written.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !heard.isEmpty, !written.isEmpty else { return }
+    // Dictionary saves through the same validation and phrase identity as Remember
+    // correction. Add never saves a phrase twice, and a new output for a saved
+    // phrase needs the explicit Update. Neither rewrites the current draft.
+    func addReplacement(heard: String, written: String) throws {
+        let change = try CorrectionRule.change(heard: heard, written: written, replacements: replacements)
+        guard !change.isAlreadySaved else { return }
+        guard change.isNew else {
+            throw VoiceError.message("“\(change.rule.heard)” is already in your dictionary as “\(change.previousRule?.written ?? "")”. Choose Update to change it.")
+        }
         rememberedCorrection = nil
-        replacements.append(Replacement(heard: heard, written: written)); persist()
+        replacements = change.updatedRules; persist()
+        status = "Added “\(change.rule.heard)” to your dictionary."
+    }
+    /// Keeps the saved rule's identity and place, so unrelated rules keep their order.
+    func updateReplacement(heard: String, written: String) throws {
+        let change = try CorrectionRule.change(heard: heard, written: written, replacements: replacements)
+        guard !change.isAlreadySaved else { return }
+        guard change.updatesExisting else {
+            throw VoiceError.message("“\(change.rule.heard)” is not in your dictionary yet. Choose Add to save it.")
+        }
+        rememberedCorrection = nil
+        replacements = change.updatedRules; persist()
+        status = "Updated “\(change.rule.heard)”. Future dictations write “\(change.rule.written)”."
+    }
+    /// Resolves one phrase's conflicting rules with the chosen output. Only that
+    /// phrase's other rules are removed.
+    func resolveReplacementConflict(keeping chosen: Replacement) throws {
+        let resolved = try CorrectionRule.resolvingConflict(keeping: chosen, in: replacements)
+        rememberedCorrection = nil
+        replacements = resolved; persist()
+        status = "Kept “\(chosen.written)”. The other rules for that phrase were removed."
     }
     func removeReplacement(_ item: Replacement) { rememberedCorrection = nil; replacements.removeAll { $0.id == item.id }; persist() }
 

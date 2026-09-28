@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Exercise the exact correction transactions with production rules and value types.
 
-Only StateStore is replaced: an in-memory fixture can fail before saving. No
-AppModel initialization, user state, clipboard, models or UI are accessed.
+This covers Remember correction and Dictionary's Add, Update and conflict
+resolution through the actual AppModel methods. Only StateStore is replaced: an
+in-memory fixture can fail before saving. No AppModel initialization, user
+state, clipboard, models or UI are accessed.
 """
 
 import hashlib
@@ -23,7 +25,7 @@ def extract(start: str, end: str) -> str:
 
 
 methods = "\n".join([
-    extract("    func rememberCorrection(", "\n    func removeTranscript("),
+    extract("    func addReplacement(", "\n    func removeTranscript("),
     extract("    func persist()", "\n    func shutdown()"),
 ])
 names = ["rawTranscript", "cleanupMethod", "phase", "status", "error", "transcript",
@@ -243,6 +245,94 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let absentBefore = try Snapshot(absent)
         try absent.undoRememberedCorrection()
         try check(try Snapshot(absent) == absentBefore && absent.store.attempts == 0, "Undo without a receipt must be a no-op")
+        func rejectsRule(_ expected: CorrectionRuleError, _ name: String, _ action: () throws -> Void) throws {
+            do { try action() } catch let error as CorrectionRuleError { try check(error == expected, name); return }
+            throw CheckFailure(description: name)
+        }
+
+        // Dictionary's Add and Update: the actual mutation route, with Remember
+        // correction's validation and phrase identity.
+        let unrelatedRules = [Replacement(heard: "alpha", written: "A"), Replacement(heard: "omega", written: "Z")]
+        let dictionary = AppModelCorrectionHarness(draft: "Draft mentions git hub", rules: unrelatedRules)
+        let untouchedDraft = dictionary.transcript, untouchedRevision = dictionary.draftRevision
+        try dictionary.addReplacement(heard: " git hub ", written: " Github ")
+        try check(dictionary.replacements.count == 3 && dictionary.replacements[2].heard == "git hub" && dictionary.replacements[2].written == "Github"
+                  && Array(dictionary.replacements.prefix(2)) == unrelatedRules, "Add saves one trimmed rule after the unrelated rules")
+        try check(dictionary.persistWork != nil, "Add schedules the ordinary session save")
+        let added = dictionary.replacements[2]
+        let afterAdd = try Snapshot(dictionary)
+        for (heard, written) in [("git hub", "Github"), ("GIT HUB", "Github"), ("Git Hub", " Github ")] {
+            try dictionary.addReplacement(heard: heard, written: written)
+            try check(try Snapshot(dictionary) == afterAdd, "An exact re-add or a Heard casing change must not add a rule: \(heard)")
+        }
+        try rejects("Add must not replace a saved phrase's output") { try dictionary.addReplacement(heard: "git hub", written: "GitHub") }
+        try check(try Snapshot(dictionary) == afterAdd, "A refused Add leaves the dictionary unchanged")
+        try dictionary.updateReplacement(heard: "Git Hub", written: "GitHub")
+        try check(dictionary.replacements.map(\.id) == unrelatedRules.map(\.id) + [added.id] && dictionary.replacements[2].written == "GitHub",
+                  "Update keeps the rule's identity, its place and the exact chosen output, including a casing change")
+        try check(dictionary.transcript == untouchedDraft && dictionary.draftRevision == untouchedRevision,
+                  "Update never replays dictionary rules into the current draft")
+        try check(TextRules.apply("Next GIT HUB capture", replacements: dictionary.replacements) == "Next GitHub capture",
+                  "Future TextRules output uses the updated spelling")
+        dictionary.saveNow()
+        try check(dictionary.store.saved?.replacements == dictionary.replacements && dictionary.store.saved?.draft == untouchedDraft,
+                  "The saved session holds the updated rule and the untouched draft")
+        let afterUpdate = try Snapshot(dictionary)
+        try dictionary.updateReplacement(heard: "git hub", written: "GitHub")
+        try check(try Snapshot(dictionary) == afterUpdate, "Repeating an Update is a no-op")
+        try rejects("Update needs a saved phrase") { try dictionary.updateReplacement(heard: "stage mark", written: "StageMark") }
+        try check(try Snapshot(dictionary) == afterUpdate, "A refused Update leaves the dictionary unchanged")
+        let receipt = AppModelCorrectionHarness()
+        try remember(receipt)
+        try check(receipt.rememberedCorrection != nil, "Remember correction leaves an undo receipt")
+        try receipt.updateReplacement(heard: "git hub", written: "GitHUB")
+        try check(receipt.rememberedCorrection == nil && receipt.replacements.count == 1 && receipt.replacements[0].written == "GitHUB",
+                  "A Dictionary update retires the stale Remember correction undo")
+
+        // Dictionary and Remember correction reject the same input the same way.
+        let invalid: [(String, String, CorrectionRuleError)] = [
+            ("   ", "GitHub", .emptyField("Heard")), ("git hub", "", .emptyField("Write instead")),
+            ("git\nhub", "GitHub", .unsupportedCharacters("Heard")), ("git hub", "Git\u{0}Hub", .unsupportedCharacters("Write instead")),
+            ("git\u{2028}hub", "GitHub", .unsupportedCharacters("Heard")),
+            (String(repeating: "a", count: 121), "b", .tooLong("Heard")), ("a", String(repeating: "b", count: 121), .tooLong("Write instead")),
+            (" GitHub ", "GitHub", .noChange)]
+        for (heard, written, expected) in invalid {
+            let model = AppModelCorrectionHarness(draft: "git hub", rules: unrelatedRules)
+            let before = try Snapshot(model)
+            try rejectsRule(expected, "Add rejects \(expected) as Remember correction does") { try model.addReplacement(heard: heard, written: written) }
+            try rejectsRule(expected, "Update rejects \(expected) as Remember correction does") { try model.updateReplacement(heard: heard, written: written) }
+            try rejectsRule(expected, "Remember correction rejects \(expected)") { try model.rememberCorrection(heard: heard, written: written, expectedDraft: model.transcript) }
+            try check(try Snapshot(model) == before && model.store.attempts == 0 && model.persistWork == nil, "Rejected input changes and saves nothing")
+        }
+
+        // Contradictory rules saved by earlier versions stay intact until one output
+        // is chosen explicitly; only that phrase's other rules are removed.
+        let one = Replacement(heard: "qa velcor 928", written: "VelcorOne928"), two = Replacement(heard: "QA VELCOR 928", written: "VelcorTwo928")
+        let legacy = AppModelCorrectionHarness(draft: "Please ask qa velcor 928 tomorrow.", rules: [unrelatedRules[0], one, unrelatedRules[1], two])
+        let legacyBefore = try Snapshot(legacy)
+        try check(TextRules.apply(legacy.transcript, replacements: legacy.replacements) == "Please ask VelcorOne928 tomorrow.",
+                  "In the ticket's case the earlier conflicting rule's spelling is what dictation writes")
+        try rejectsRule(.duplicateRules(heard: "qa velcor 928", count: 2), "Add refuses to guess between conflicting rules") {
+            try legacy.addReplacement(heard: "qa velcor 928", written: "VelcorTwo928")
+        }
+        try rejectsRule(.duplicateRules(heard: "qa velcor 928", count: 2), "Update refuses to guess between conflicting rules") {
+            try legacy.updateReplacement(heard: "qa velcor 928", written: "VelcorTwo928")
+        }
+        try rejectsRule(.duplicateRules(heard: "Qa Velcor 928", count: 2), "Remember correction refuses to guess too") {
+            try legacy.rememberCorrection(heard: "Qa Velcor 928", written: "VelcorTwo928", expectedDraft: legacy.transcript)
+        }
+        try check(try Snapshot(legacy) == legacyBefore && legacy.persistWork == nil, "Conflicting rules stay intact until resolved")
+        try legacy.resolveReplacementConflict(keeping: two)
+        try check(legacy.replacements.map(\.id) == [unrelatedRules[0].id, one.id, unrelatedRules[1].id]
+                  && legacy.replacements[1].heard == one.heard && legacy.replacements[1].written == "VelcorTwo928",
+                  "Resolution keeps the chosen output in the first rule's place and removes only that phrase's other rule")
+        try check(legacy.transcript == "Please ask qa velcor 928 tomorrow." && legacy.persistWork != nil,
+                  "Resolution saves the dictionary without rewriting the current draft")
+        try check(TextRules.apply(legacy.transcript, replacements: legacy.replacements) == "Please ask VelcorTwo928 tomorrow.",
+                  "Future dictations use the chosen spelling")
+        let resolved = try Snapshot(legacy)
+        try rejectsRule(.conflictChanged(heard: "QA VELCOR 928"), "A stale conflict choice is refused") { try legacy.resolveReplacementConflict(keeping: two) }
+        try check(try Snapshot(legacy) == resolved, "A stale conflict choice changes nothing")
         print(String(format: "REMEMBER_CORRECTION_CHECKS_OK: %d checks in %.3fs", count, Date().timeIntervalSince(start)))
     }
 }

@@ -167,7 +167,7 @@ The seven linked-task studies and three follow-up boards are illustrations, not 
 
 ## Deliberate dictionary corrections
 
-The app-window review flow follows the [dictation comparison and correction contract](dictation-comparison.md). Remember correction connects the existing dictionary to the current draft, with explicit before/after fields, preview, transactional saving and scoped Undo. It does not add a live recording or presentation control.
+The app-window review flow follows the [dictation comparison and correction contract](dictation-comparison.md). Remember correction connects the existing dictionary to the current draft, with explicit before/after fields, preview, transactional saving and scoped Undo. It does not add a live recording or presentation control. Dictionary's Add uses the same validation and phrase identity: a saved phrase is never added twice, a new spelling for it needs an explicit Update, and conflicting rules saved by earlier versions stay visible with each value until one is kept.
 
 ## Everyday utility increment
 
