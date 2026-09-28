@@ -576,6 +576,19 @@ class SurfaceTests(unittest.TestCase):
         }''')
         with self.assertRaisesRegex(ValueError, 'opens a page through openPage by hand'):
             self.entries()
+        # A qualified or bare selector names the same method.
+        for selector in ('AppDelegate.openPage(_:)', 'self.openPage', 'openPage'):
+            self.write('LocalVoice/main.swift', f'''class AppDelegate {{
+              func makeMainMenu() {{ menu.addItem(withTitle: "History", action: #selector({selector}), keyEquivalent: "") }}
+            }}''')
+            with self.assertRaisesRegex(ValueError, 'opens a page through openPage by hand', msg=selector):
+                self.entries()
+
+    def test_selector_names_its_method_however_it_is_written(self):
+        for text, name in [('#selector(openPage(_:))', 'openPage'), ('#selector(AppDelegate.openPage(_:))', 'openPage'),
+                           ('#selector(self.openPage)', 'openPage'), ('#selector(NSApplication.hide(_:))', 'hide'),
+                           ('#selector(showSettings)', 'showSettings'), ('nil', None)]:
+            self.assertEqual(name, check.selector_name(check.lex(text)), text)
 
     def test_the_keyboard_section_is_the_catalogue_editor(self):
         self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {

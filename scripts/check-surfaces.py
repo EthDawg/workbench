@@ -505,6 +505,19 @@ def choice_labels(swift, start, end, member):
     return result
 
 
+def selector_name(action):
+    """The method a #selector(...) names: the last identifier before any argument labels, so
+    openPage, self.openPage, AppDelegate.openPage(_:) and openPage(_:) all name openPage."""
+    words = [t.value for t in action or []]
+    if words[:3] != ['#', 'selector', '('] or words[-1:] != [')']:
+        return None
+    inner = words[3:-1]
+    if inner[-1:] == [')'] and '(' in inner:
+        inner = inner[:len(inner) - 1 - inner[::-1].index('(')]
+    names = [w for w in inner if re.fullmatch(IDENT, w)]
+    return names[-1] if names else None
+
+
 def record_items(swift, start, end, name, required=False):
     """(index, parts) for each all-literal tuple in `let name = [(...), ...]` between start and
     end: a list of the page record in WorkbenchHome."""
@@ -881,8 +894,7 @@ class Inventory:
             # only pageItem sets, so a hand-written item that uses it is refused outright.
             page = None
             if mode == 'controls' and swift.stem == 'main' and api in ('addItem', 'NSMenuItem'):
-                if [t.value for t in named_arg(args, 'action') or []][:4] == ['#', 'selector', '(', 'openPage'] \
-                        and 'pageItem' not in swift.context(i).split('.'):
+                if selector_name(named_arg(args, 'action')) == 'openPage' and 'pageItem' not in swift.context(i).split('.'):
                     raise ValueError(f'{swift.path}: the menu item {expression(tokens)} opens a page through openPage by hand. '
                                      'Build it with pageItem("route") so the page record names it and gives its route.')
                 page = self.menu_page(swift, args)
@@ -911,12 +923,8 @@ class Inventory:
         top-level statements route to one page: page = "x", navigate("x"), onShowEditor("x"),
         openHistory() or showLibrary(). A route inside a guard, branch or closure, or behind
         another method, is not one: that item is an action that may show a page on the way."""
-        words = [t.value for t in named_arg(args, 'action') or []]
-        if words[:3] != ['#', 'selector', '(']:
-            return None
-        inner = words[3:-1]
-        methods = [w for n, w in enumerate(inner) if re.fullmatch(IDENT, w) and (n + 1 == len(inner) or inner[n + 1] == '(')]
-        bodies = [s for s in swift.scopes if s[2] == 'func' and methods and s[3] == methods[0]]
+        method = selector_name(named_arg(args, 'action'))
+        bodies = [s for s in swift.scopes if s[2] == 'func' and method and s[3] == method]
         if len(bodies) != 1:
             return None
         v, (start, end) = swift.v, bodies[0][:2]
