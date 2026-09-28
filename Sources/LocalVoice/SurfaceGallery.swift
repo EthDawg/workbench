@@ -240,10 +240,51 @@ enum SurfaceGallery {
                                                    detail: "", file: "page-\(pages[index].route)-\(name)-\(theme).png", to: output))
             }
         }
+        // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
+        if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) }
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+    }
+
+    // MARK: Home states
+
+    /// The first-dictation journey (#15): the guide beside earlier Snaps, the
+    /// ordinary Home after Skip for now with its way back, and the guide's result
+    /// right after a first dictation. Synthetic history only; the pass's own
+    /// history, draft and guide choice are restored afterwards.
+    func renderHomeStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let size = NSSize(width: 1180, height: 1_000)
+        let kept = (history: model.history, draft: model.transcript, raw: model.rawTranscript, guide: model.preferences.firstDictationGuide)
+        defer {
+            model.history = kept.history; model.transcript = kept.draft; model.rawTranscript = kept.raw
+            model.preferences.firstDictationGuide = kept.guide
+        }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String, then change: (() -> Void)? = nil) throws {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.page = "home"
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame, seconds: 1)
+            if let change { change(); settle(frame, seconds: 1) }
+            shots.append(try save(try snapshot(frame), id: "state-\(id)", title: title, detail: detail, file: "page-home-state-\(id)-\(theme).png", to: output))
+        }
+        model.history = []; model.transcript = ""; model.rawTranscript = ""
+        model.preferences.firstDictationGuide = nil
+        try shot("first-dictation", "First dictation, beside earlier Snaps", "Nothing dictated yet but Snaps saved: the guide stays, with Skip for now, and recent work below it.")
+        model.preferences.firstDictationGuide = .skipped
+        try shot("guide-skipped", "Guide skipped", "After Skip for now: the ordinary Home, with Show me a first dictation until someone dictates.")
+        model.preferences.firstDictationGuide = .offered
+        let first = SurfacePass.history[1]
+        try shot("first-result", "First result", "Right after the first dictation: the words, their delivery controls and where they were saved.") { [self] in
+            model.rawTranscript = first.text; model.transcript = first.text; model.history = [first]
+        }
+        return shots
     }
 
     // MARK: History states
