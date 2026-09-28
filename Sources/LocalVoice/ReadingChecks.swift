@@ -41,6 +41,7 @@ enum ReadingChecks {
         try checkMarks(check)
         try checkAudioFile(check)
         try checkPlayer(check)
+        try checkSourceFailure(check)
         print("READING_CHECKS_OK: \(count) checks passed")
     }
 
@@ -204,7 +205,7 @@ enum ReadingChecks {
 
     // MARK: Growing audio file
 
-    private static func ramp(from start: Int, count: Int, sampleRate: Double = 22_050) -> AVAudioPCMBuffer {
+    nonisolated private static func ramp(from start: Int, count: Int, sampleRate: Double = 22_050) -> AVAudioPCMBuffer {
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))!
         buffer.frameLength = AVAudioFrameCount(count)
@@ -212,7 +213,7 @@ enum ReadingChecks {
         return buffer
     }
     /// Exactly representable in 16 bits, so round trips compare equal.
-    private static func rampValue(_ frame: Int) -> Float { Float(frame % 20_000 - 10_000) / 32_768 }
+    nonisolated private static func rampValue(_ frame: Int) -> Float { Float(frame % 20_000 - 10_000) / 32_768 }
     private static func matchesRamp(_ buffer: AVAudioPCMBuffer, from start: Int, count: Int? = nil) -> Bool {
         let frames = count ?? Int(buffer.frameLength)
         guard Int(buffer.frameLength) >= frames, let channel = buffer.floatChannelData?[0] else { return false }
@@ -288,6 +289,101 @@ enum ReadingChecks {
         output = try replay.renderOffline(512)
         try check(matchesRamp(output, from: 22_050), "a finished file seeks exactly")
         replay.stop()
+    }
+
+    /// Ramp audio held in memory that throws once a read reaches `failFrom`,
+    /// like a reading whose file became unreadable. `streaming` lists only what
+    /// has been "rendered" so far; a read beyond that is not ready yet, which is
+    /// not a failure. `emptyFrom` returns nothing instead of throwing, like a
+    /// finished file shorter than it claims. It counts every read and throw.
+    private final class FaultySource: ReadingAudioSource {
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 22_050, channels: 1, interleaved: false)!
+        var availableFrames: AVAudioFramePosition
+        var isComplete: Bool
+        let failFrom: AVAudioFramePosition?
+        let emptyFrom: AVAudioFramePosition?
+        private(set) var reads = 0
+        private(set) var failures = 0
+
+        init(frames: AVAudioFramePosition, complete: Bool = true, failFrom: AVAudioFramePosition? = nil, emptyFrom: AVAudioFramePosition? = nil) {
+            availableFrames = frames
+            isComplete = complete
+            self.failFrom = failFrom
+            self.emptyFrom = emptyFrom
+        }
+
+        func read(from frame: AVAudioFramePosition, count: AVAudioFrameCount) throws -> AVAudioPCMBuffer? {
+            reads += 1
+            let frames = min(AVAudioFramePosition(count), availableFrames - frame)
+            guard frames > 0 else { return nil }
+            if let failFrom, frame + frames > failFrom {
+                failures += 1
+                throw VoiceError.message("Synthetic read failure.")
+            }
+            if let emptyFrom, frame + frames > emptyFrom { return nil }
+            return ReadingChecks.ramp(from: Int(frame), count: Int(frames))
+        }
+    }
+
+    /// A source that throws ends the reading once, whether it fails before the
+    /// first frame or after audio has played. A source that is only not ready
+    /// yet keeps waiting and then continues.
+    private static func checkSourceFailure(_ check: (@autoclosure () throws -> Bool, String) throws -> Void) throws {
+        func play(_ source: FaultySource) throws -> (player: ReadingPlayer, finishes: () -> [Bool]) {
+            let player = try ReadingPlayer(source: source, output: .offline)
+            var reports: [Bool] = []
+            player.onFinish = { _, success in reports.append(success) }
+            return (player, { reports })
+        }
+
+        // Fails before the first frame: nothing can be scheduled.
+        let early = FaultySource(frames: 44_100, failFrom: 0)
+        let (first, firstReports) = try play(early)
+        _ = first.play()
+        for _ in 0..<10 { _ = try first.renderOffline(1_024); first.tick() }
+        try check(firstReports() == [false] && first.isFinished && !first.isPlaying && !first.isWaitingForAudio,
+                  "a source that fails before its first frame ends the reading once, as a failure")
+        try check(early.failures == 1, "a failed source is read no more: \(early.failures) failures in \(early.reads) reads")
+        try check(!first.play() && firstReports() == [false], "a failed reading cannot restart or report again")
+
+        // Fails after some audio has played, beyond the first lookahead.
+        let late = FaultySource(frames: 22_050 * 10, failFrom: 22_050 * 5)
+        let (second, secondReports) = try play(late)
+        _ = second.play()
+        var played = 0, heard = true
+        while secondReports().isEmpty && played < 22_050 * 10 {
+            let output = try second.renderOffline(4_096)
+            if played < 22_050 { heard = heard && matchesRamp(output, from: played) }
+            played += 4_096
+            second.tick()
+        }
+        try check(heard && played > 22_050, "audio before a failure plays exactly (\(played) frames)")
+        try check(secondReports() == [false] && second.isFinished && !second.isPlaying,
+                  "a source that fails after buffered audio ends the reading once, as a failure")
+        for _ in 0..<10 { second.tick() }
+        try check(late.failures == 1 && secondReports() == [false], "no retry loop or repeated error after a failure")
+
+        // A finished source that has nothing where it claims audio cannot catch up.
+        let short = FaultySource(frames: 44_100, emptyFrom: 11_025)
+        let (third, thirdReports) = try play(short)
+        _ = third.play()
+        for _ in 0..<10 { _ = try third.renderOffline(4_096); third.tick() }
+        try check(thirdReports() == [false] && third.isFinished, "a finished source that returns no audio inside its length ends as a failure")
+
+        // Not rendered yet is not a failure: the reading waits, then continues.
+        let streaming = FaultySource(frames: 0, complete: false)
+        let (fourth, fourthReports) = try play(streaming)
+        try check(fourth.play() && fourth.isWaitingForAudio, "a reading with no audio yet waits for it")
+        for _ in 0..<10 { _ = try fourth.renderOffline(1_024); fourth.tick() }
+        try check(fourth.isWaitingForAudio && !fourth.isFinished && fourthReports().isEmpty && streaming.failures == 0,
+                  "audio that is not rendered yet keeps the reading waiting, with no failure")
+        streaming.availableFrames = 22_050
+        fourth.tick()
+        let output = try fourth.renderOffline(1_024)
+        try check(matchesRamp(output, from: 0) && !fourth.isWaitingForAudio, "the reading continues once audio exists")
+        streaming.isComplete = true
+        for _ in 0..<10 { _ = try fourth.renderOffline(4_096); fourth.tick() }
+        try check(fourthReports() == [true], "a reading that waited finishes normally")
     }
 
     // MARK: Rendering with an installed voice

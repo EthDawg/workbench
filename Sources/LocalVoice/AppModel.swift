@@ -1100,9 +1100,26 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         playingTrack = nil; renderingAhead = false
         if wasActive { status = "Reading stopped." }
     }
+    /// Shown when the playing audio cannot be read. Retry beside it makes new audio.
+    static let readingAudioUnreadable = "The reading stopped because its audio could not be read. Try again to make new audio."
+    var canRetryReading: Bool { error == Self.readingAudioUnreadable && phase == .idle && !rendering && !playing && !paused }
+    func retryReading() {
+        guard canRetryReading else { return }
+        error = nil
+        listen()
+    }
     func readingPlayerDidFinish(_ finished: ReadingPlayer, successfully flag: Bool) {
         guard self.player === finished else { return }
-        stopPlayback(); status = flag ? "Finished reading." : "Playback interrupted."
+        let track = playingTrack
+        stopPlayback()
+        guard finished.readFailure == nil else {
+            // Audio that could not be read is not reused: Retry or Listen makes
+            // it again. The text, voice and pace stay as they were.
+            if let track, audio === track { track.discard(); audio = nil }
+            error = Self.readingAudioUnreadable
+            return
+        }
+        status = flag ? "Finished reading." : "Playback interrupted."
     }
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         Task { @MainActor in
