@@ -82,6 +82,19 @@ enum WorkbenchControlChecks {
         try check(ToolbarModeFollower.liveModes(dictating: false, reading: false, narrating: false, drawing: false, presenting: false, persona: false, snapping: false).isEmpty, "a restored session at launch is not a start")
         try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .reading, "active reading has compact controls even with idle toolbar disabled")
         try check(FloatingToolbarSurface.resolve(enabled: true, capturingScreen: true, dictation: false, narration: false, reading: true) == .hidden, "capture hides reading controls too")
+        // Hide toolbar is authoritative for the tools over live Draw, Present and Persona (#155).
+        func surface(shown: Bool = false, drawing: Bool = false, presenting: Bool = false, persona: Bool = false, inserting: Bool = false,
+                     dictation: Bool = false, narration: Bool = false, reading: Bool = false) -> FloatingToolbarSurface {
+            .resolve(shown: shown, drawing: drawing, presenting: presenting, persona: persona, inserting: inserting,
+                     capturingScreen: false, dictation: dictation, narration: narration, reading: reading)
+        }
+        try check(surface() == .hidden && surface(drawing: true) == .hidden && surface(presenting: true) == .hidden && surface(persona: true) == .hidden
+                  && surface(drawing: true, presenting: true, persona: true) == .hidden, "Hide toolbar hides the tools while drawing, presenting or showing a persona")
+        try check(surface(shown: true) == .tools && surface(shown: true, drawing: true, presenting: true, persona: true) == .tools,
+                  "Show floating toolbar brings the tools back over live work")
+        try check(surface(drawing: true, dictation: true) == .dictation && surface(presenting: true, narration: true) == .narration
+                  && surface(persona: true, reading: true) == .reading, "a live recording, narration or reading keeps its own controls while the tools are hidden")
+        try check(surface(inserting: true) == .tools, "a prompt insertion keeps its Stop on the tools until it ends")
         var state = WorkbenchControlState()
         state.presenting = true; state.drawing = true; state.phase = .recording
         try check(state.enabled(.dictate) && state.enabled(.annotate) && state.enabled(.present),

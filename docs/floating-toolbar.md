@@ -72,6 +72,16 @@ add/remove, visibility, explicit layout saving and End. Mac colour selection
 updates the same drawing settings from either entry point. Native menus snapshot
 their content before tracking rather than rebuilding under the pointer.
 
+Hide toolbar hides the tools in every mode, including while drawing, presenting
+or showing personas. It is the same persistent choice as Settings' Show floating
+toolbar, so it survives relaunch. The work carries on: hiding never clears marks,
+ends a scene, hides persona artwork or stops a timer, and each keeps its key and
+its menu-bar panel row. Window → Show floating toolbar, Window → Focus floating
+toolbar and Settings bring the tools back with the current mode and live state.
+A prompt insertion keeps the tools until it ends, because its Stop is there.
+Recording, processing, narration and reading keep their own controls whatever the
+choice (`FloatingToolbarSurface.resolve`, checked by `--check-floating-toolbar`).
+
 Saved Prompts reads the existing Saved Resources library. Favourite, Product and
 Persona groupings do not create another store. The original field, value and
 UTF-16 selection are captured before the picker opens. Supported fields receive
