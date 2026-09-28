@@ -87,7 +87,7 @@ struct TestRunner {
         if args == ["--persona-voice-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
-            let suite = PersonaVoiceTests(), latency = PersonaVoiceLatencyTests()
+            let suite = PersonaVoiceTests(), latency = PersonaVoiceLatencyTests(), appearance = VoiceAppearanceTests()
             let tests: [(String, () throws -> Void)] = [
                 ("persona voice ring listens only while on and showing", suite.testVoiceRingListensOnlyWhileOnAndItsPersonaShows),
                 ("persona voice ring asks while preparing and stops when unavailable", suite.testVoiceRingAsksWhilePreparingAndStopsWhenTheMicrophoneIsUnavailable),
@@ -108,7 +108,13 @@ struct TestRunner {
                 ("persona voice outline lit through a held vowel", latency.testHeldVowelKeepsTheOutlineLit),
                 ("persona voice outline: chimes, beeps and music settle", latency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
                 ("optional Mac voices through the voice outline", latency.testSpokenSentencesFromSay),
-                ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders)
+                ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders),
+                ("voice appearance: both surfaces share one envelope and stroke", appearance.testBothSurfacesShareOneEnvelopeAndStroke),
+                ("voice appearance: trace fits the compact mark and never travels", appearance.testTraceFitsTheCompactMarkAndNeverTravels),
+                ("voice appearance: trace rests when still, fixed with Reduce Motion", appearance.testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion),
+                ("voice appearance: recorder level meets the targets", appearance.testRecorderLevelMeetsTheTargets),
+                ("voice appearance: SwiftUI trace drops into a toolbar row", appearance.testSwiftUITraceDropsIntoAToolbarRow),
+                ("optional voice appearance gallery and motion", appearance.testOffscreenVoiceAppearanceGallery)
             ]
             for (name, test) in tests {
                 let before = assertionFailures
@@ -442,6 +448,7 @@ struct TestRunner {
         let personaWorkspace = PersonaWorkspaceTests()
         let personaVoice = PersonaVoiceTests()
         let personaVoiceLatency = PersonaVoiceLatencyTests()
+        let voiceAppearance = VoiceAppearanceTests()
         let personaStarters = PersonaStarterTests()
         let personaCreation = PersonaCreationTests()
         let personaAppearance = PersonaAppearanceTests()
@@ -686,7 +693,12 @@ struct TestRunner {
             ("persona voice outline state eases and settles", personaVoiceLatency.testOutlineStateEasesAndSettlesWithoutFrames),
             ("persona voice outline lit through a held vowel", personaVoiceLatency.testHeldVowelKeepsTheOutlineLit),
             ("persona voice outline: chimes, beeps and music settle", personaVoiceLatency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
-            ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders)
+            ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders),
+            ("voice appearance: both surfaces share one envelope and stroke", voiceAppearance.testBothSurfacesShareOneEnvelopeAndStroke),
+            ("voice appearance: trace fits the compact mark and never travels", voiceAppearance.testTraceFitsTheCompactMarkAndNeverTravels),
+            ("voice appearance: trace rests when still, fixed with Reduce Motion", voiceAppearance.testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion),
+            ("voice appearance: recorder level meets the targets", voiceAppearance.testRecorderLevelMeetsTheTargets),
+            ("voice appearance: SwiftUI trace drops into a toolbar row", voiceAppearance.testSwiftUITraceDropsIntoAToolbarRow)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))
         if personaControlsOnly {

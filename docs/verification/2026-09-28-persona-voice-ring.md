@@ -85,3 +85,19 @@ Known limits: a steady 120 Hz tone present when the outline turns on shows for a
 ### Native measurement
 
 `--check-persona-voice-native FOLDER --speak` now records every frame's arrival (`frames`) and every visible change (`shown`) on one clock, and reports `latency.normal`, `latency.soft`, `latency.continuous` and `latency.immediate` with `onsetMs`, `releaseMs` and the share of speech the outline stayed lit, against the 150 ms and 500 ms targets. `inputLatency` reports the buffer length and macOS's hand-over separately. It has not been run on this change yet; its receipt belongs here when it is.
+
+## One voice appearance · #134
+
+The [decided treatment](https://github.com/EthDawg/workbench/issues/134#issuecomment-5869651899) gives the toolbar's compact recording trace and this outline one appearance. The `VoiceAppearance` target holds it: `VoiceEnvelope` (moved unchanged from the outline's state, with its onset, eased loudness, return to rest and targets), `VoiceStyle` (the stroke's brightness, weight and bounded glow from the envelope's intensity, and the colour roles) and `VoiceTrace` (the trace's geometry and a view for the toolbar to place in its compact mark). StageKit and ToolbarKit both depend on it; neither module can import the other. The outline now uses `WorkbenchPalette`'s accent instead of a colour from the artwork, with a rim of the accent's other shade for contrast over content Workbench does not own. No microphone, analysis, setting or app-wide animation loop was added: the Persona analyser's frames and the recorder's own 0–1 level each become `VoiceSample`s, and each surface updates the display only while its voice is moving.
+
+Checks in `scripts/test-stage.sh --persona-voice-only`:
+
+- **One envelope, two geometries.** Quiet, soft, usual and raised speech, each for a second, then a pause, went through the outline and the trace together: 277 display frames, with no difference in intensity, visible state, brightness, weight share or lobe reach. Soft speech showed 0.55 intensity and read as lit; usual 0.75; raised 1.0 and read as loud. Both returned to rest within 200 ms of the pause.
+- **The trace.** A 4-point red dot, a 4-point gap and a 24 × 10 trace, 32 × 10 in all, inside the compact mark's 48 × 28 target and 12-point active height. Its three lobes stay in place: a shallow dip, a 3-point rise and a shallow dip. The stroke is 1.5 points at rest and 1.9 at its heaviest, and the tallest lobe with the heaviest stroke stays inside the box. Silence draws a straight line, a missing level never moves it, and it takes no clicks or focus. With Reduce Motion the lobes hold at half their reach and only brightness changes.
+- **The recorder's level.** Readings every 80 ms, as Dictate publishes them, with dips between syllables: lit within 33 ms of the first voiced reading, back to rest within 277 ms of the last, steady through the dips, and never lit by the room.
+- **In SwiftUI.** The trace keeps its 32 × 10 size in a hosting view, resolves the accent for Light and Dark, takes Reduce Motion and Increase Contrast from the environment, and draws in the toolbar galleries' capture.
+- **Persona.** The latency harness and every Persona voice check still pass against the same 150 ms and 500 ms targets.
+
+With `WORKBENCH_LAYOUT_EVIDENCE` the suite also writes the gallery: each state at native size, with a small Circle, a large Card and the trace in a compact mark, over light, dark and busy content, in both appearances, crossed with the other appearance's content, with Reduce Motion and with Increase Contrast, plus a motion recording of the shared sequence. The integration and review agents judge its look.
+
+The toolbar adopts the trace in its own change (T4). The real-microphone check stays separate hardware evidence.
