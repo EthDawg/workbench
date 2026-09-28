@@ -360,7 +360,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var recordingThumbnail: NSImage?
     @Published private(set) var recordingScreenFrame: CGRect?
     @Published private(set) var pendingTranscriptionCount = 0
-    @Published private(set) var screenPermissionGranted = CGPreflightScreenCaptureAccess()
+    @Published private(set) var screenPermissionGranted = false
     @Published private(set) var microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
     @Published private(set) var shortcutFailure: String?
     @Published var notice: String?
@@ -383,9 +383,25 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var hasPendingTranscriptions: Bool { pendingTranscriptionCount > 0 }
     var blocksDictation: Bool { isCapturing || isRecording || hasPendingTranscriptions }
     var permissionsReady: Bool { screenPermissionGranted && microphonePermission == .authorized }
+    /// What stops a new capture, in plain words, and what still works (#112).
+    var permissionsProblem: String? {
+        if !screenPermissionGranted {
+            return "Screen Recording is off for Workbench, so Snap & Talk can't capture the screen. Your sessions, screenshots and narration stay available, and you can add Snaps you already have."
+        }
+        if microphonePermission != .authorized {
+            return "Microphone access isn't on for Workbench, so Snap & Talk can't record narration. Your sessions and screenshots stay available, and you can type notes."
+        }
+        return nil
+    }
     var shortcutLabel: String { VoicePreferences.load().shortcut(5).label }
 
     private let transcribeAudio: @MainActor (URL) async throws -> String
+    private let screenAccess: ScreenCaptureAccess
+    /// Back from Screen Recording settings with access still off: macOS may
+    /// need Workbench to reopen before a grant applies.
+    @Published private(set) var suggestsReopenForScreenAccess = false
+    private var openedScreenAccessSettings = false
+    nonisolated(unsafe) private var activationObserver: NSObjectProtocol?
     private let defaults: UserDefaults
     private let skillPacks: ReadbackSkillPackStore
     private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
@@ -402,12 +418,17 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     init(engine: RecognitionEngine, defaults: UserDefaults = .standard,
          captureDisplay: @escaping @MainActor () async throws -> ReadbackScreenshot = { try await ReadbackScreenCapture.currentDisplay() },
          transcribeAudio: (@MainActor (URL) async throws -> String)? = nil,
-         skillPacks: ReadbackSkillPackStore? = nil) {
+         skillPacks: ReadbackSkillPackStore? = nil, screenAccess: ScreenCaptureAccess = .system) {
+        self.screenAccess = screenAccess
         self.transcribeAudio = transcribeAudio ?? { try await engine.transcribe($0) }
         self.defaults = defaults
         self.skillPacks = skillPacks ?? ReadbackSkillPackStore(root: Workbench.supportDirectory(component: "SnapTalkSkillPacks"))
         self.captureDisplay = captureDisplay
         super.init()
+        screenPermissionGranted = screenAccess.isGranted()
+        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.returnedToWorkbench() }
+        }
         newSessionSkillID = defaults.string(forKey: "readback.newSessionSkillID.v1")
         newSessionStyle = defaults.string(forKey: Self.styleKey).flatMap(ReadbackDeckStyle.init(rawValue:)) ?? .neutral
         refreshSkillPacks()
@@ -483,10 +504,21 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         } catch { notice = "The session could not be located. \(error.localizedDescription)"; return false }
     }
 
+    deinit { if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) } }
+
+    /// Workbench is active again, perhaps back from System Settings. Only a
+    /// return after Snap & Talk opened Screen Recording settings suggests reopening.
+    func returnedToWorkbench() {
+        let granted = screenAccess.isGranted()
+        if granted != screenPermissionGranted { screenPermissionGranted = granted }
+        let suggests = openedScreenAccessSettings && !granted
+        if suggests != suggestsReopenForScreenAccess { suggestsReopenForScreenAccess = suggests; stateChanged() }
+    }
+
     func refreshPermissionState() {
         refreshSessionAvailability()
         refreshSkillPacks()
-        screenPermissionGranted = CGPreflightScreenCaptureAccess()
+        screenPermissionGranted = screenAccess.isGranted()
         microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         stateChanged()
     }
@@ -636,20 +668,21 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func preflightPermissions() async {
-        screenPermissionGranted = CGPreflightScreenCaptureAccess()
-        if !screenPermissionGranted { screenPermissionGranted = CGRequestScreenCaptureAccess() }
+        screenPermissionGranted = screenAccess.isGranted()
+        if !screenPermissionGranted { screenPermissionGranted = screenAccess.request() }
         microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         if microphonePermission == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .audio)
             microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         }
         if permissionsReady { notice = "Snap & Talk is ready. Move the pointer to the display you want and use \(shortcutLabel)." }
-        else { notice = "Allow Screen Recording and Microphone access before using the Snap & Talk shortcut." }
+        else { notice = permissionsProblem }
         stateChanged()
     }
 
     func openScreenRecordingSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+        openedScreenAccessSettings = true
+        screenAccess.openSettings()
     }
 
     func openMicrophoneSettings() {
@@ -667,7 +700,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard let root = sessionURL, manifest != nil else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
         refreshSessionAvailability()
         guard currentSessionProblem == nil else { notice = "Locate this session folder before capturing another section."; return }
-        guard permissionsReady else { notice = "Snap & Talk needs Screen Recording and Microphone access first."; stateChanged(); return }
+        guard permissionsReady else { notice = permissionsProblem; stateChanged(); return }
         isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
         var retainedInSnapHistory = false
         do {

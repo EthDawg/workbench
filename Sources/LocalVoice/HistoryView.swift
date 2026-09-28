@@ -470,8 +470,10 @@ struct HistorySnapRow: View {
                 library.setSelected(references)
             })).toggleStyle(.checkbox).labelsHidden()
                 .accessibilityLabel("Select Snap, \(item.title), \(item.source.title), \(time)" + (archived ? ", archived" : ""))
-            SnapThumbnail(model: snap, item: item).frame(width: 120, height: 76)
-                .onTapGesture { if !archived { snap.edit(item.id) } }.accessibilityHidden(true)
+            // The image opens read-only, archived or not; Edit… is its own action.
+            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: snap.store) }) {
+                SnapThumbnail(model: snap, item: item).frame(width: 120, height: 76)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Image(systemName: "photo").foregroundStyle(Workbench.accent).accessibilityHidden(true)
@@ -491,6 +493,7 @@ struct HistorySnapRow: View {
                 }.buttonStyle(.borderless).font(.system(size: 11))
             }
         }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+            .contextMenu { Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: snap.store)) } }
     }
 }
 
@@ -589,8 +592,9 @@ private struct HistoryInputChip: View {
                     }
                     ForEach(Array(item.images.enumerated()), id: \.offset) { _, path in
                         if let url = jobs.files(job)?.imageURLs[path] {
-                            FrozenThumbnail(url: url, maximumPixels: 720).frame(maxWidth: 380, maxHeight: 240)
-                                .accessibilityLabel("Saved image for " + item.title)
+                            CapturePreviewButton("View saved image for " + item.title, item: { .savedCopy(title: item.title, url: url) }) {
+                                FrozenThumbnail(url: url, maximumPixels: 720).frame(maxWidth: 380, maxHeight: 240)
+                            }
                         } else {
                             Label("This saved image is missing from the task’s folder.", systemImage: "exclamationmark.triangle")
                                 .font(.caption).foregroundStyle(.orange)

@@ -28,7 +28,8 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: macos-26
-    timeout-minutes: 25
+    # Single PRs take 16 to 18 minutes here; an integration batch runs every new check at once.
+    timeout-minutes: 35
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

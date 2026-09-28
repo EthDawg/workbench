@@ -178,7 +178,9 @@ struct ControlCenter: View {
                 Divider()
                 Toggle("Pressure-sensitive pen", isOn: $settings.value.penPressure)
                 Picker("Drawing indicator", selection: $settings.value.indicator) { ForEach(IndicatorStyle.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                Toggle("Show the palette while drawing", isOn: $settings.value.showDrawingPalette)
+                // Workbench's shared toolbar is the one drawing control surface, so the
+                // standalone app's floating palette and its setting stay out of it (#160).
+                if !app.embedded { Toggle("Show the palette while drawing", isOn: $settings.value.showDrawingPalette) }
             }.font(.system(size: 12)).surface()
             VStack(spacing: 16) {
                 Toggle("Auto-fade screen annotations", isOn: $settings.value.autoFade)
@@ -236,15 +238,19 @@ struct ControlCenter: View {
             }
             BoardExportButtons(app: app)
             ScreenshotHandoffButton(app: app)
-            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. The palette and pointer hide during selection.")
+            Text("Board image includes only the board and ink. Use a region or display capture to include visible screen annotations; a single-window capture may omit Workbench’s separate layer. \(app.embedded ? "The floating toolbar" : "The palette") and pointer hide during selection.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 18) {
                 Toggle("Keep board drawings separate from the screen", isOn: $settings.value.separateBoards).disabled(!app.boards.isEmpty)
                 Text(settings.value.separateBoards ? "Your board is saved automatically on this Mac. White and black backgrounds use the same saved canvas for each display." : "The board uses your current screen annotations. Shared screen ink is temporary and is not saved when you quit.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 Divider()
-                Picker("Board palette", selection: $settings.value.boardPalette) { ForEach(PaletteMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                Text("With Auto-hide, move the mouse to reveal the palette again. Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                if !app.embedded {
+                    Picker("Board palette", selection: $settings.value.boardPalette) { ForEach(PaletteMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                    Text("With Auto-hide, move the mouse to reveal the palette again. Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                } else {
+                    Text("Escape closes the board and returns to your presentation.").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }.font(.system(size: 12)).surface()
             VStack(alignment: .leading, spacing: 8) {
                 Label("Drawing with an iPad or tablet", systemImage: "ipad.and.arrow.forward").font(.system(size: 12, weight: .semibold))
@@ -280,8 +286,9 @@ struct ControlCenter: View {
                 Toggle("Play a chime when time is up", isOn: $settings.value.timerChime)
             }.font(.system(size: 12)).surface()
             HStack {
-                Button { app.startTimer() } label: { Label("Start break", systemImage: "play.fill") }.buttonStyle(.borderedProminent).controlSize(.large)
-                Button(app.timerRunning ? "Pause" : "Resume") { app.pauseResumeTimer() }.controlSize(.large)
+                // One transport action for the current state: Start, Pause, Resume or Restart.
+                let transport = app.timerTransport
+                Button { app.performTimerTransport() } label: { Label(transport == .idle ? "Start break" : transport.title, systemImage: transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
                 Button("Reset") { app.resetTimer() }.controlSize(.large)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .timer).label)
             }
@@ -475,7 +482,7 @@ struct BreakTimerView: View {
                     .accessibilityLabel("Time remaining \(app.timerText)")
                 Capsule().fill(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.12)).frame(height: 3)
                     .overlay(alignment: .leading) { GeometryReader { bar in Capsule().fill(inkAccent).frame(width: bar.size.width * app.timerProgress) } }.frame(maxWidth: 300)
-                Text(app.timerFinished ? "Ready to continue" : app.timerRunning ? "" : "Paused")
+                Text(app.timerTransport == .finished ? "Ready to continue" : app.timerTransport == .paused ? "Paused" : "")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.65))
                 if let notice = app.timerPlacementNotice {
                     Text(notice).font(.system(size: 10)).foregroundStyle(.orange).multilineTextAlignment(.center)
@@ -483,7 +490,7 @@ struct BreakTimerView: View {
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 18) {
-                    Button { if app.timerFinished { app.startTimer() } else { app.pauseResumeTimer() } } label: { Label(app.timerFinished ? "Restart" : app.timerRunning ? "Pause" : "Resume", systemImage: app.timerRunning ? "pause.fill" : "play.fill") }
+                    Button { app.performTimerTransport() } label: { Label(app.timerTransport.title, systemImage: app.timerTransport.symbol) }
                     Button("Reset") { app.resetTimer() }
                     Menu {
                         ForEach(FloatingControlAnchor.allCases) { anchor in

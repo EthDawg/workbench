@@ -200,7 +200,12 @@ struct DemoLibraryView: View {
                 HStack {
                     primaryActionButton(item)
                     if item.kind == .link { Button("Copy link") { library.copy(item) } }
-                    else { Button("Read aloud") { model.speechText = item.content; model.page = "speak" } }
+                    else { Button("Read aloud") { model.importReading(item.content, from: .savedText) } }
+                }
+                // How the toolbar's Prompts delivers, kept here with the prompts rather than in the picker (#159).
+                if item.kind == .prompt {
+                    Text("While presenting, the toolbar's Prompts types this into the field you clicked, or pastes it once where typing isn't supported. It never submits. Without Accessibility approval, it copies the prompt for ⌘V.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             if !item.notes.isEmpty {
