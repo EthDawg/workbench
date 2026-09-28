@@ -77,31 +77,56 @@ enum HistoryInputAvailability: Equatable {
 /// synthetic stores. Each kind keeps its own search.
 @MainActor
 enum HistoryList {
-    /// One newest-first list. Transcripts use their existing matcher, Snaps
-    /// SnapModel's search (which includes the text read from each image) and
-    /// results their title and task text. Every term must match.
+    /// Every row once, newest first. Sorting happens here, when a store's rows
+    /// change, and never while a search is typed.
+    static func merged(transcripts: [Transcript], snaps: [SnapItem], results: [HandoffJob]) -> [HistoryEntry] {
+        (transcripts.map(HistoryEntry.transcript) + snaps.map(HistoryEntry.snap) + results.map(HistoryEntry.result))
+            .sorted { $0.date != $1.date ? $0.date > $1.date : $0.tieBreak < $1.tieBreak }
+    }
+
+    /// The rows a filter and search show, in merged order, in one pass.
+    /// Transcripts use their existing matcher, Snaps SnapModel's search (which
+    /// includes the text read from each image) and results their title and
+    /// request. Every term must match.
+    static func shown(_ merged: [HistoryEntry], filter: HistoryFilter, query: String,
+                      matchTranscripts: ([Transcript], String) -> [Transcript],
+                      matchSnap: (SnapItem, String) -> Bool,
+                      resultText: (HandoffJob) -> String) -> [HistoryEntry] {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        let showsTranscripts = filter == .all || filter == .transcripts
+        var matchingTranscripts: Set<UUID>?
+        if showsTranscripts && !terms.isEmpty {
+            let transcripts = merged.compactMap { entry -> Transcript? in
+                if case .transcript(let item) = entry { return item }
+                return nil
+            }
+            matchingTranscripts = Set(matchTranscripts(transcripts, query).map(\.id))
+        }
+        return merged.filter { entry in
+            switch entry {
+            case .transcript(let item):
+                return showsTranscripts && matchingTranscripts?.contains(item.id) != false
+            case .snap(let item):
+                guard filter == .all || filter == .snaps || filter == .archived,
+                      (item.archivedAt != nil) == (filter == .archived) else { return false }
+                return terms.isEmpty || matchSnap(item, query)
+            case .result(let job):
+                guard filter == .all || filter == .results else { return false }
+                guard !terms.isEmpty else { return true }
+                let text = job.title + "\n" + resultText(job)
+                return terms.allSatisfy { text.localizedCaseInsensitiveContains($0) }
+            }
+        }
+    }
+
+    /// Both steps together, for callers without a cache.
     static func entries(transcripts: [Transcript], snaps: [SnapItem], results: [HandoffJob],
                         filter: HistoryFilter, query: String,
                         matchTranscripts: ([Transcript], String) -> [Transcript],
                         matchSnap: (SnapItem, String) -> Bool,
                         resultText: (HandoffJob) -> String) -> [HistoryEntry] {
-        var found: [HistoryEntry] = []
-        if filter == .all || filter == .transcripts {
-            found += matchTranscripts(transcripts, query).map(HistoryEntry.transcript)
-        }
-        if filter == .all || filter == .snaps || filter == .archived {
-            let archived = filter == .archived
-            found += snaps.filter { ($0.archivedAt != nil) == archived && matchSnap($0, query) }.map(HistoryEntry.snap)
-        }
-        if filter == .all || filter == .results {
-            let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
-            found += results.filter { job in
-                guard !terms.isEmpty else { return true }
-                let text = job.title + "\n" + resultText(job)
-                return terms.allSatisfy { text.localizedCaseInsensitiveContains($0) }
-            }.map(HistoryEntry.result)
-        }
-        return found.sorted { $0.date != $1.date ? $0.date > $1.date : $0.tieBreak < $1.tieBreak }
+        shown(merged(transcripts: transcripts, snaps: snaps, results: results), filter: filter, query: query,
+              matchTranscripts: matchTranscripts, matchSnap: matchSnap, resultText: resultText)
     }
 
     static func availability(of reference: WorkbenchItemReference, transcripts: Set<UUID>,
@@ -113,6 +138,15 @@ enum HistoryList {
             return item.archivedAt == nil ? .inHistory : .archived
         case .snapAndTalk: return .notInHistory
         }
+    }
+
+    /// The card a revealed task shows in, and the task itself: a task grouped
+    /// under a newer task for the same review is shown inside that task's card.
+    static func revealTarget(_ task: UUID, jobs: [HandoffJob], visible: [HandoffJob]) -> (card: UUID, task: UUID)? {
+        if visible.contains(where: { $0.id == task }) { return (task, task) }
+        guard let key = jobs.first(where: { $0.id == task })?.reviewKey,
+              let card = visible.first(where: { $0.reviewKey == key }) else { return nil }
+        return (card.id, task)
     }
 
     /// Selected items this view does not show, each with the reason a person
@@ -144,6 +178,40 @@ enum HistoryList {
     }
 }
 
+/// History's rows kept between redraws, so an unrelated change (a level meter,
+/// a status line) costs nothing. The merged, sorted list and its lookups are
+/// rebuilt when a store's rows change; a filter or search then keeps that
+/// order in one pass.
+@MainActor
+final class HistoryRowsCache {
+    struct Stores {
+        var merged: [HistoryEntry] = []
+        var transcripts: Set<UUID> = []
+        var snaps: [UUID: SnapItem] = [:]
+        /// Transcripts by whole second, to tell identical spoken times apart.
+        var sameSecond: [Int: [Transcript]] = [:]
+    }
+    struct ShownKey: Equatable {
+        var stores: Int
+        var search: Int
+        var filter: HistoryFilter
+        var query: String
+    }
+    private var storesRevision: Int?
+    private var cachedStores = Stores()
+    private var shownKey: ShownKey?
+    private var cachedShown: [HistoryEntry] = []
+
+    func stores(revision: Int, build: () -> Stores) -> Stores {
+        if storesRevision != revision { cachedStores = build(); storesRevision = revision }
+        return cachedStores
+    }
+    func shown(_ key: ShownKey, build: () -> [HistoryEntry]) -> [HistoryEntry] {
+        if shownKey != key { cachedShown = build(); shownKey = key }
+        return cachedShown
+    }
+}
+
 /// History: transcripts, Snaps and Hand off results in one newest-first list,
 /// with one search, kind filters and the shared selection footer that holds
 /// the page's only Hand off. It reads the existing stores and owns none.
@@ -155,9 +223,18 @@ struct HistoryView: View {
     var applySuggestedMetadata: (HandoffJob, String) -> Void
     @State private var filter: HistoryFilter
     @State private var query = ""
+    /// The search the list shows, applied once typing pauses.
+    @State private var appliedQuery = ""
+    /// Bumped when a store's rows change, so the list is merged and sorted again.
+    @State private var storesRevision = 0
+    /// Bumped when what a search reads changes: details, image text, task files.
+    @State private var searchRevision = 0
+    @State private var rows = HistoryRowsCache()
     @State private var expandedResult: UUID?
     @State private var revealed: UUID?
     @State private var revealRequest: UUID?
+    @FocusState private var focusedTask: UUID?
+    @AccessibilityFocusState private var voiceOverTask: UUID?
     @State private var showingConnections = false
     @State private var original: Transcript?
     @State private var details: Transcript?
@@ -170,12 +247,20 @@ struct HistoryView: View {
         _filter = State(initialValue: model.historyDoor?.filter ?? .all)
     }
 
+    private struct JobStamp: Equatable { var id: UUID; var updated: Date }
+
     var body: some View {
-        let transcriptIDs = Set(model.history.map(\.id))
-        let snapsByID = Dictionary(snap.items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let entries = HistoryList.entries(transcripts: model.history, snaps: snap.items, results: jobs.visibleJobs,
-            filter: filter, query: query, matchTranscripts: { library.matching($0, query: $1) },
-            matchSnap: { snap.matches($0, query: $1) }, resultText: { jobs.inputs($0).task })
+        let stores = rows.stores(revision: storesRevision) {
+            HistoryRowsCache.Stores(merged: HistoryList.merged(transcripts: model.history, snaps: snap.items, results: jobs.visibleJobs),
+                transcripts: Set(model.history.map(\.id)),
+                snaps: Dictionary(snap.items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
+                sameSecond: Dictionary(grouping: model.history) { Int($0.date.timeIntervalSince1970.rounded(.down)) })
+        }
+        let entries = rows.shown(.init(stores: storesRevision, search: searchRevision, filter: filter, query: appliedQuery)) {
+            HistoryList.shown(stores.merged, filter: filter, query: appliedQuery,
+                matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
+                resultText: { jobs.files($0)?.inputs.task ?? "" })
+        }
         VStack(alignment: .leading, spacing: 14) {
             header
             runningTask
@@ -196,15 +281,15 @@ struct HistoryView: View {
                 }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("Show in History")
                 if entries.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: query.isEmpty ? "tray" : "magnifyingglass").font(.title2).foregroundStyle(.secondary)
-                        Text(query.isEmpty ? emptyFilterTitle : "Nothing matches this search").font(.headline)
+                        Image(systemName: appliedQuery.isEmpty ? "tray" : "magnifyingglass").font(.title2).foregroundStyle(.secondary)
+                        Text(appliedQuery.isEmpty ? emptyFilterTitle : "Nothing matches this search").font(.headline)
                         Text("Your selection is kept.").font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    list(entries, transcripts: transcriptIDs, snaps: snapsByID)
+                    list(entries, stores: stores)
                 }
             }
-            footer(shown: Set(entries.map(\.id)), transcripts: transcriptIDs, snaps: snapsByID)
+            footer(shown: Set(entries.map(\.id)), stores: stores)
         }.padding(32)
             .sheet(item: $snap.draft) { draft in SnapEditorView(model: snap, draft: draft) }
             .sheet(isPresented: $showingConnections) {
@@ -213,9 +298,23 @@ struct HistoryView: View {
             .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal))
             .onAppear { snap.refresh(); applyDoor() }
             .onChange(of: model.historyDoor) { applyDoor() }
+            .task(id: query) {
+                // Search runs once typing pauses; clearing it applies at once.
+                guard !query.isEmpty else { appliedQuery = ""; return }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if !Task.isCancelled { appliedQuery = query }
+            }
+            .task(id: jobs.jobs.map { JobStamp(id: $0.id, updated: $0.updatedAt) }) { await jobs.loadTaskFiles(jobs.jobs) }
             .task { await jobs.refresh() }
+            .onReceive(model.$history.dropFirst()) { _ in storesRevision &+= 1 }
+            .onReceive(snap.$items.dropFirst()) { _ in storesRevision &+= 1 }
+            .onReceive(jobs.$jobs.dropFirst()) { _ in storesRevision &+= 1 }
+            .onReceive(library.objectWillChange) { _ in searchRevision &+= 1 }
+            .onReceive(snap.$recognizedText.dropFirst()) { _ in searchRevision &+= 1 }
+            .onReceive(jobs.$taskFiles.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                snap.refresh(); jobs.objectWillChange.send()
+                snap.refresh()
+                Task { await jobs.loadTaskFiles(jobs.jobs) }
             }
     }
 
@@ -267,11 +366,8 @@ struct HistoryView: View {
         }
     }
 
-    private func list(_ entries: [HistoryEntry], transcripts: Set<UUID>, snaps: [UUID: SnapItem]) -> some View {
-        // Only captures in the same second can share a spoken time, so each
-        // row compares itself with those instead of the whole history.
-        let sameSecond = Dictionary(grouping: model.history) { Int($0.date.timeIntervalSince1970.rounded(.down)) }
-        let target = revealTarget
+    private func list(_ entries: [HistoryEntry], stores: HistoryRowsCache.Stores) -> some View {
+        let target = revealed.flatMap { HistoryList.revealTarget($0, jobs: jobs.jobs, visible: jobs.visibleJobs) }
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
@@ -279,33 +375,44 @@ struct HistoryView: View {
                         switch entry {
                         case .transcript(let item):
                             TranscriptHistoryRow(model: model, library: library, item: item,
-                                history: sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
+                                history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
                                 original: $original, details: $details, removal: $removal)
                         case .snap(let item):
                             HistorySnapRow(snap: snap, library: library, item: item)
                         case .result(let job):
-                            HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, applySuggestedMetadata: applySuggestedMetadata) {
-                                HistoryMadeFrom(jobs: jobs, job: job) { HistoryList.availability(of: $0, transcripts: transcripts, snaps: snaps) }
+                            HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, revealed: target?.task,
+                                           focus: $focusedTask, voiceOverFocus: $voiceOverTask,
+                                           applySuggestedMetadata: applySuggestedMetadata) {
+                                HistoryMadeFrom(jobs: jobs, job: job) {
+                                    HistoryList.availability(of: $0, transcripts: stores.transcripts, snaps: stores.snaps)
+                                }
                             }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
-                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(target == job.id ? Workbench.accent : .clear, lineWidth: 2))
+                                .overlay(RoundedRectangle(cornerRadius: 10)
+                                    .strokeBorder(target?.card == job.id && target?.task == job.id ? Workbench.accent : .clear, lineWidth: 2))
                         }
                     }
                 }.padding(.vertical, 2)
             }
             .task(id: revealRequest) {
-                guard revealRequest != nil, let target = revealTarget else { return }
-                try? await Task.sleep(nanoseconds: 60_000_000)
-                withAnimation { proxy.scrollTo(HistoryEntry.ID.result(target), anchor: .top) }
-                if let job = jobs.jobs.first(where: { $0.id == target }) {
-                    AccessibilityNotification.Announcement("Result shown in History: \(job.title), \(job.status.title)").post()
+                // Scroll to the card, then to a grouped task once its group has
+                // opened, and move keyboard and VoiceOver focus to that task.
+                guard revealRequest != nil, let target else { return }
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                withAnimation { proxy.scrollTo(HistoryEntry.ID.result(target.card), anchor: .top) }
+                if target.task != target.card {
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    withAnimation { proxy.scrollTo(HistoryEntry.ID.result(target.task), anchor: .center) }
                 }
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                focusedTask = target.task
+                voiceOverTask = target.task
             }
         }
     }
 
-    @ViewBuilder private func footer(shown: Set<HistoryEntry.ID>, transcripts: Set<UUID>, snaps: [UUID: SnapItem]) -> some View {
+    @ViewBuilder private func footer(shown: Set<HistoryEntry.ID>, stores: HistoryRowsCache.Stores) -> some View {
         if !library.selected.isEmpty || !library.savedSelections.isEmpty || library.error != nil {
-            let notes = HistoryList.selectionNotes(selected: library.selected, shown: shown, transcripts: transcripts, snaps: snaps)
+            let notes = HistoryList.selectionNotes(selected: library.selected, shown: shown, transcripts: stores.transcripts, snaps: stores.snaps)
             Divider()
             VStack(alignment: .leading, spacing: 4) {
                 if notes.hidden > 0 {
@@ -333,20 +440,11 @@ struct HistoryView: View {
         }
     }
 
-    /// The visible card for the task a door asked to reveal. A task grouped
-    /// under a review shows through that review's card.
-    private var revealTarget: UUID? {
-        guard let revealed else { return nil }
-        if jobs.visibleJobs.contains(where: { $0.id == revealed }) { return revealed }
-        guard let key = jobs.jobs.first(where: { $0.id == revealed })?.reviewKey else { return nil }
-        return jobs.visibleJobs.first(where: { $0.reviewKey == key })?.id
-    }
-
     private func applyDoor() {
         guard let door = model.historyDoor else { return }
         model.historyDoor = nil
         filter = door.filter
-        query = ""
+        query = ""; appliedQuery = ""
         revealed = door.job
         if door.job != nil { revealRequest = UUID() }
     }
@@ -401,7 +499,14 @@ struct HistoryMadeFrom: View {
     let availability: (WorkbenchItemReference) -> HistoryInputAvailability
     @State private var showingAll = false
     var body: some View {
-        let inputs = jobs.inputs(job)
+        if let inputs = jobs.files(job)?.inputs {
+            madeFrom(inputs)
+        } else {
+            Text("Reading what this task was made from…").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private func madeFrom(_ inputs: HandoffJobInputs) -> some View {
         if let problem = inputs.problem {
             Label(problem, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
         } else if !inputs.items.isEmpty {
@@ -447,7 +552,7 @@ private struct HistoryInputChip: View {
     var body: some View {
         Button { showingCopy = true } label: {
             HStack(spacing: 8) {
-                if let path = item.images.first, let url = jobs.inputImageURL(job, path: path) {
+                if let path = item.images.first, let url = jobs.files(job)?.imageURLs[path] {
                     FrozenThumbnail(url: url, maximumPixels: 96).frame(width: 34, height: 24)
                 } else {
                     Image(systemName: symbol).foregroundStyle(Workbench.accent).frame(width: 34, height: 24)
@@ -479,7 +584,7 @@ private struct HistoryInputChip: View {
                         Text(String(item.text.prefix(4_000))).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     ForEach(Array(item.images.enumerated()), id: \.offset) { _, path in
-                        if let url = jobs.inputImageURL(job, path: path) {
+                        if let url = jobs.files(job)?.imageURLs[path] {
                             FrozenThumbnail(url: url, maximumPixels: 720).frame(maxWidth: 380, maxHeight: 240)
                                 .accessibilityLabel("Saved image for " + item.title)
                         } else {

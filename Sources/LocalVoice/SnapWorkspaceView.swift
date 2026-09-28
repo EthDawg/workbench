@@ -177,11 +177,16 @@ struct SnapThumbnail: View {
             if let image { Image(nsImage: image).resizable().scaledToFit() }
             else { Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) }
         }.task(id: item.revision) {
-            guard let url = try? model.store.imageURL(item.id),
-                  let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                  let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 512, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { image = nil; return }
-            image = NSImage(cgImage: cgImage, size: .zero)
+            // Read and decode away from the main thread, through a store of its
+            // own: SnapStore's load state belongs to the main thread's owner.
+            let root = model.store.root, id = item.id
+            image = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard let url = try? SnapStore(root: root).imageURL(id),
+                      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 512, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+                return NSImage(cgImage: cgImage, size: .zero)
+            }.value
         }
     }
 }

@@ -110,7 +110,7 @@ enum HandoffJobsChecks {
         print("HANDOFF_VISUAL_FIXTURE_RETURNED: 45 sources preserved; compare result to ground truth outside the provider job. Folder: " + model.folder(complete).path)
     }
 
-    @MainActor static func run() throws {
+    @MainActor static func run() async throws -> [String] {
         var passed = 0
         func check(_ value: @autoclosure () throws -> Bool, _ message: String) throws {
             guard try value() else { throw VoiceError.message("HANDOFF_JOBS_CHECK_FAILED: " + message) }
@@ -394,15 +394,13 @@ enum HandoffJobsChecks {
                   "Workbench keys count only inside the frontmatter's metadata map")
 
         // History: Hand off names the task it actually used, and each task lists
-        // what it was made from by reading its own frozen selection.json. An
-        // isolated pasteboard and preferences keep the person's clipboard and
-        // settings out of it.
-        let suite = "Workbench.synthetic.history." + UUID().uuidString
-        guard let isolated = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
-        defer { isolated.removePersistentDomain(forName: suite) }
+        // what it was made from, read off the main thread from its own folder.
+        // Its own switches and pasteboard keep the person's preferences and
+        // clipboard out of it.
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let doors = HandoffJobsModel(directory: root.appendingPathComponent("history-door"), defaults: isolated, pasteboard: pasteboard)
+        let doors = HandoffJobsModel(directory: root.appendingPathComponent("history-door"),
+                                     switches: ({ _ in false }, { _, _ in }), pasteboard: pasteboard)
         let madeFrom = try doors.prepare(sources: sources, task: "Summarize the decision.", skill: skill)
         let newer = try doors.prepare(sources: sources, task: "A newer, different request.", skill: skill)
         try check(doors.jobs.first?.id == newer.id && newer.id != madeFrom.id, "a different request is a newer task at the top")
@@ -419,11 +417,18 @@ enum HandoffJobsChecks {
         try check(reported.count == 2 && doors.error != nil, "a task that could not start reports nothing to reveal")
         doors.error = nil
 
-        let inputs = doors.inputs(madeFrom)
+        try check(doors.files(madeFrom) == nil, "nothing is read from a task folder on the main thread before it is asked for")
+        await doors.loadTaskFiles(doors.jobs)
+        let inputs = try doors.files(madeFrom).map(\.inputs) ?? { throw VoiceError.message("HANDOFF_JOBS_CHECK_FAILED: task files not loaded") }()
         try check(inputs.problem == nil && inputs.task == "Summarize the decision." && inputs.items.map(\.reference) == sources.map(\.reference)
                   && inputs.items.map(\.title) == ["Synthetic meeting", "Synthetic Snap"] && inputs.items[0].originalText == "um " + phrase,
                   "a task lists its frozen inputs and request from its own selection.json")
-        try check(doors.inputs(madeFrom) == inputs, "the listing is kept while selection.json is unchanged")
+        try check(doors.files(madeFrom)?.imageBytes == [image.count] && doors.files(madeFrom)?.imageURLs.count == 1
+                  && doors.files(madeFrom)?.resultReadable == false,
+                  "a task's image sizes and missing result are known without reading them again")
+        let loaded = doors.taskFiles
+        await doors.loadTaskFiles(doors.jobs)
+        try check(doors.taskFiles == loaded, "unchanged task folders are not read again")
         let frozenImage = inputs.items[1].images[0]
         try check(try doors.inputImageURL(madeFrom, path: frozenImage).map { try Data(contentsOf: $0) } == image,
                   "a frozen input image opens from the task's own folder")
@@ -432,22 +437,76 @@ enum HandoffJobsChecks {
                   "only safe image paths the task recorded are opened")
         let selectionURL = doors.folder(madeFrom).appendingPathComponent("selection.json")
         let frozenSelection = try Data(contentsOf: selectionURL)
+        func reloaded() async -> HandoffJobInputs? { await doors.loadTaskFiles([madeFrom]); return doors.files(madeFrom)?.inputs }
         try HandoffJobStore.write(Data("{broken".utf8), to: selectionURL)
-        try check(doors.inputs(madeFrom).problem == HandoffJobInputs.damaged && doors.inputs(madeFrom).items.isEmpty,
+        let damagedRecord = await reloaded()
+        try check(damagedRecord == HandoffJobInputs(problem: HandoffJobInputs.damaged),
                   "a damaged selection.json is reported instead of guessed at, once it changes on disk")
         try check(try Data(contentsOf: selectionURL) == Data("{broken".utf8), "reading a damaged selection never rewrites it")
         try FileManager.default.removeItem(at: selectionURL)
-        try check(doors.inputs(madeFrom).problem == HandoffJobInputs.missing, "a missing selection.json is reported as missing")
+        let missingRecord = await reloaded()
+        try check(missingRecord == HandoffJobInputs(problem: HandoffJobInputs.missing), "a missing selection.json is reported as missing")
         try HandoffJobStore.write(try Data(contentsOf: doors.folder(newer).appendingPathComponent("selection.json")), to: selectionURL)
-        try check(doors.inputs(madeFrom).problem == HandoffJobInputs.foreign, "another task's selection is not shown as this task's inputs")
+        let foreignRecord = await reloaded()
+        try check(foreignRecord == HandoffJobInputs(problem: HandoffJobInputs.foreign), "another task's selection is not shown as this task's inputs")
         try HandoffJobStore.write(frozenSelection, to: selectionURL)
-        try check(doors.inputs(madeFrom) == inputs, "the restored selection lists the same inputs again")
+        let restoredRecord = await reloaded()
+        try check(restoredRecord == inputs, "the restored selection lists the same inputs again")
+
+        // A task folder, or the whole Handoffs folder, replaced by a symbolic
+        // link to a copy elsewhere is not followed, even though the copy is valid.
+        let fm = FileManager.default
+        let newerFolder = doors.folder(newer), aside = root.appendingPathComponent("aside-" + newer.id.uuidString)
+        try HandoffJobStore.write(Data("Result kept aside.".utf8), to: newerFolder.appendingPathComponent("result.md"))
+        await doors.loadTaskFiles([newer])
+        try check(doors.files(newer)?.resultReadable == true && doors.result(newer) == "Result kept aside.", "a saved result is offered")
+        try fm.moveItem(at: newerFolder, to: aside)
+        try fm.createSymbolicLink(at: newerFolder, withDestinationURL: aside)
+        await doors.loadTaskFiles([newer])
+        try check(doors.files(newer) == HandoffTaskFiles(inputs: .init(problem: HandoffJobInputs.replaced), imageBytes: nil, imageURLs: [:], resultReadable: false),
+                  "a task folder replaced by a symbolic link is reported, and nothing in it is read")
+        try check(doors.inputImageURL(newer, path: frozenImage) == nil && doors.result(newer) == nil,
+                  "images and results are not read through a replaced task folder")
+        try rejects("a replaced task folder fails verification before anything is sent") { try HandoffJobStore.verify(newer, root: newerFolder) }
+        let clipboard = pasteboard.changeCount
+        doors.copy(newer)
+        try check(doors.error != nil && pasteboard.changeCount == clipboard, "Copy instructions refuses a replaced task folder and copies nothing")
+        doors.showResult(newer)
+        try check(doors.error?.hasPrefix("This task’s result can’t be opened") == true, "Open result says why it cannot open a replaced folder's result")
+        doors.error = nil
+        try fm.removeItem(at: newerFolder)
+        try fm.moveItem(at: aside, to: newerFolder)
+        let handoffs = doors.directory, handoffsAside = root.appendingPathComponent("history-door-aside")
+        try fm.moveItem(at: handoffs, to: handoffsAside)
+        try fm.createSymbolicLink(at: handoffs, withDestinationURL: handoffsAside)
+        await doors.loadTaskFiles(doors.jobs)
+        try check(doors.jobs.allSatisfy { doors.files($0)?.inputs.problem == HandoffJobInputs.replaced } && doors.inputImageURL(madeFrom, path: frozenImage) == nil,
+                  "a Handoffs folder replaced by a symbolic link is not followed")
+        try fm.removeItem(at: handoffs)
+        try fm.moveItem(at: handoffsAside, to: handoffs)
+        await doors.loadTaskFiles(doors.jobs)
+        try check(doors.files(madeFrom)?.inputs == inputs, "the restored folders are read again")
+
+        // A result that exists but cannot be read, or is not text, says so.
+        let resultURL = doors.folder(madeFrom).appendingPathComponent("result.md")
+        try HandoffJobStore.write(Data([0xFF, 0xFE, 0xFD]), to: resultURL)
+        await doors.loadTaskFiles([madeFrom])
+        try check(doors.files(madeFrom)?.resultReadable == true && doors.result(madeFrom) == nil, "a result that is not UTF-8 text is not shown as text")
+        doors.showResult(madeFrom)
+        try check(doors.error?.hasPrefix("This task’s result can’t be opened") == true, "Open result reports a result that is not text instead of doing nothing")
+        doors.error = nil
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: resultURL.path)
+        await doors.loadTaskFiles([madeFrom])
+        try check(doors.files(madeFrom)?.resultReadable == false, "a result this Mac account cannot read is marked unreadable")
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: resultURL.path)
+        try HandoffJobStore.write(Data("A synthetic result.".utf8), to: resultURL)
+        let text = await doors.loadResult(madeFrom)
+        try check(text == "A synthetic result.", "a saved result is read off the main thread")
         try FileManager.default.removeItem(at: doors.folder(madeFrom).appendingPathComponent(frozenImage))
-        try check(doors.inputImageURL(madeFrom, path: frozenImage) == nil && doors.inputs(madeFrom).items[1].images == [frozenImage],
+        await doors.loadTaskFiles([madeFrom])
+        try check(doors.inputImageURL(madeFrom, path: frozenImage) == nil && doors.files(madeFrom)?.inputs.items[1].images == [frozenImage]
+                  && doors.files(madeFrom)?.imageBytes == nil && doors.files(madeFrom)?.imageURLs.isEmpty == true,
                   "a missing frozen image is unavailable while its input stays listed")
-        try check(!doors.resultAvailable(madeFrom), "a task without result.md offers no result to read or open")
-        try HandoffJobStore.write(Data("A synthetic result.".utf8), to: doors.folder(madeFrom).appendingPathComponent("result.md"))
-        try check(doors.resultAvailable(madeFrom) && doors.result(madeFrom) == "A synthetic result.", "a saved result is offered")
-        print("HANDOFF_JOBS_CHECKS_OK: \(passed) checks")
+        return ["HANDOFF_JOBS_CHECKS_OK: \(passed) checks"]
     }
 }

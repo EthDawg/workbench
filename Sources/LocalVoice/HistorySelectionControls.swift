@@ -215,15 +215,27 @@ struct HandoffConnectionsSheet: View {
 /// One Hand off task with every control the former Handoffs page gave it: its
 /// state and warnings, attempts, Retry, the tasks grouped under one review and
 /// its result. History shows each visible task with this card and places what
-/// the task was made from in `madeFrom`.
+/// the task was made from in `madeFrom`. `revealed` names the task a door asked
+/// to show, which can be this task or one grouped under it.
 struct HandoffJobCard<MadeFrom: View>: View {
     @ObservedObject var jobs: HandoffJobsModel
     let job: HandoffJob
     @Binding var expanded: UUID?
+    var revealed: UUID?
+    var focus: FocusState<UUID?>.Binding
+    var voiceOverFocus: AccessibilityFocusState<UUID?>.Binding
     var applySuggestedMetadata: ((HandoffJob, String) -> Void)?
     @ViewBuilder var madeFrom: MadeFrom
+    @State private var showingOthers = false
+    @State private var loadedResult: (id: UUID, text: String?)?
+
     var body: some View {
-        let resultReady = job.status == .completed && jobs.resultAvailable(job)
+        let files = jobs.files(job)
+        // Unknown until the folder has been read; a known unreadable result
+        // disables its actions and says so.
+        let resultReady = job.status == .completed && files?.resultReadable != false
+        let context = Self.context(job)
+        let others = jobs.otherReviewJobs(job)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "arrow.up.forward.app").foregroundStyle(Workbench.accent)
@@ -232,17 +244,20 @@ struct HandoffJobCard<MadeFrom: View>: View {
                 Text(job.status.title).font(.caption.weight(.medium))
             }.accessibilityElement(children: .ignore)
                 .accessibilityLabel("Result, \(job.title), \(job.status.title)")
+                .focusable(revealed == job.id).focused(focus, equals: job.id)
+                .accessibilityFocused(voiceOverFocus, equals: job.id)
             Text((job.itemCount == 1 ? "1 item" : "\(job.itemCount) items") + " · " + job.createdAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.caption).foregroundStyle(.secondary)
             madeFrom
             Text(job.detail).font(.callout)
-            if job.status == .completed && !resultReady {
+            if job.status == .completed && files?.resultReadable == false {
                 Label("The saved result is missing or can’t be read. The task folder was kept; Show selected files opens it.",
                       systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
             }
             if let key = job.reviewKey, jobs.currentReviewDigest?(key) != nil {
                 HStack {
                     Button("Open current review") { jobs.onOpenReview?(key) }
+                        .accessibilityLabel("Open current review, " + context)
                     if let current = jobs.currentPublishedJob(key: key) {
                         Text("Current result · " + current.updatedAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption).foregroundStyle(.secondary)
@@ -250,14 +265,17 @@ struct HandoffJobCard<MadeFrom: View>: View {
                 }
             }
             HStack {
-                Button("Copy instructions") { jobs.copy(job) }
-                Button("Show selected files") { jobs.showInputs(job) }
+                Button("Copy instructions") { jobs.copy(job) }.accessibilityLabel("Copy instructions, " + context)
+                Button("Show selected files") { jobs.showInputs(job) }.accessibilityLabel("Show selected files, " + context)
                 if job.status == .completed {
                     Button(expanded == job.id ? "Hide result" : "Read result") { expanded = expanded == job.id ? nil : job.id }
                         .disabled(!resultReady && expanded != job.id)
+                        .accessibilityLabel((expanded == job.id ? "Hide result, " : "Read result, ") + context)
                     Button("Open result") { jobs.showResult(job) }.disabled(!resultReady)
+                        .accessibilityLabel("Open result, " + context)
                     if job.reviewKey != nil {
                         Button("Use as current review") { jobs.publishReview(job, replacingChanges: true) }.disabled(jobs.isBusy || !resultReady)
+                            .accessibilityLabel("Use as current review, " + context)
                     }
                 }
                 startAction(job)
@@ -274,39 +292,65 @@ struct HandoffJobCard<MadeFrom: View>: View {
                     }
                 }.font(.caption)
             }
-            let others = jobs.otherReviewJobs(job)
             if !others.isEmpty {
-                DisclosureGroup("Other tasks for this review (\(others.count))") {
+                DisclosureGroup("Other tasks for this review (\(others.count))", isExpanded: $showingOthers) {
                     ForEach(others) { previous in
+                        let previousContext = Self.context(previous)
+                        let readable = previous.status == .completed && jobs.files(previous)?.resultReadable != false
                         VStack(alignment: .leading, spacing: 6) {
                             Text(previous.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + previous.status.title)
+                                .accessibilityLabel("Earlier task, \(previous.title), \(previous.status.title), "
+                                                    + previous.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .focusable(revealed == previous.id).focused(focus, equals: previous.id)
+                                .accessibilityFocused(voiceOverFocus, equals: previous.id)
                             Text(previous.detail).foregroundStyle(.secondary)
                             HStack {
                                 Button("Show selected files") { jobs.showInputs(previous) }
+                                    .accessibilityLabel("Show selected files, " + previousContext)
                                 if previous.status == .completed {
-                                    Button("Open saved result") { jobs.showResult(previous) }.disabled(!jobs.resultAvailable(previous))
+                                    Button("Open saved result") { jobs.showResult(previous) }.disabled(!readable)
+                                        .accessibilityLabel("Open saved result, " + previousContext)
                                     Button("Use as current review") { jobs.publishReview(previous, replacingChanges: true) }
-                                        .disabled(jobs.isBusy || !jobs.resultAvailable(previous))
+                                        .disabled(jobs.isBusy || !readable)
+                                        .accessibilityLabel("Use as current review, " + previousContext)
                                 }
                                 startAction(previous)
                             }
-                        }.font(.caption).padding(.vertical, 4)
+                        }.font(.caption).padding(.vertical, 4).padding(.horizontal, 6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(revealed == previous.id ? Workbench.accent : .clear, lineWidth: 2))
+                            .id(HistoryEntry.ID.result(previous.id))
                     }
                 }
             }
             if expanded == job.id {
-                if let result = jobs.result(job) {
-                    Text(result).textSelection(.enabled).font(.system(.body, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
-                    if let applySuggestedMetadata, jobs.isMetadataSuggestion(job) {
-                        Button("Review suggested details…") { applySuggestedMetadata(job, result) }
+                if let loaded = loadedResult, loaded.id == job.id {
+                    if let result = loaded.text {
+                        Text(result).textSelection(.enabled).font(.system(.body, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Workbench.background)
+                        if let applySuggestedMetadata, jobs.isMetadataSuggestion(job) {
+                            Button("Review suggested details…") { applySuggestedMetadata(job, result) }
+                        }
+                    } else {
+                        Text("The saved result could not be read. Show selected files opens the task folder.").font(.caption).foregroundStyle(.orange)
                     }
-                } else {
-                    Text("The saved result could not be read. Show selected files opens the task folder.").font(.caption).foregroundStyle(.orange)
-                }
+                } else { ProgressView().controlSize(.small) }
             }
         }
+        // A grouped task that a door reveals opens its group.
+        .onChange(of: revealed, initial: true) {
+            if let revealed, revealed != job.id, others.contains(where: { $0.id == revealed }) { showingOthers = true }
+        }
+        .task(id: expanded == job.id ? job.updatedAt : nil) {
+            guard expanded == job.id else { loadedResult = nil; return }
+            loadedResult = (job.id, await jobs.loadResult(job))
+        }
     }
+
+    /// Names the task an action belongs to, since every card repeats its buttons.
+    static func context(_ job: HandoffJob) -> String {
+        job.title + ", " + job.createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
+
     @ViewBuilder private func startAction(_ job: HandoffJob) -> some View {
         if job.status == .ready || [.failed, .cancelled, .interrupted].contains(job.status) {
             Menu(job.status == .ready ? "Start task…" : "Retry…") {
@@ -315,7 +359,7 @@ struct HandoffJobCard<MadeFrom: View>: View {
                         jobs.start(job, provider: provider, retry: job.status != .ready)
                     }.disabled(jobs.isBusy || !jobs.canRun(job, with: provider))
                 }
-            }.fixedSize()
+            }.fixedSize().accessibilityLabel((job.status == .ready ? "Start task, " : "Retry, ") + Self.context(job))
         }
     }
 }

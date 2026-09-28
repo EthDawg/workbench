@@ -440,6 +440,11 @@ enum TranscriptHandoffStore {
         guard TranscriptHandoffSkillCheck.isSafeRelativePath(relative) else {
             throw TranscriptHandoffError.message("The handoff folder cannot use the path \(relative). Nothing was created.")
         }
+        // The folder itself is checked as well as each step below it: a folder
+        // replaced by a symbolic link would otherwise lead every path elsewhere.
+        guard HandoffJobStore.isRealFolder(root) else {
+            throw TranscriptHandoffError.message("The handoff folder is missing or was replaced outside Workbench. Nothing was read or created.")
+        }
         var candidate = root.standardizedFileURL
         for component in relative.split(separator: "/") {
             candidate.appendPathComponent(String(component))

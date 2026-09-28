@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import ImageIO
 
 /// Synthetic checks for the History page's list: the merge, kind filters and
 /// search over transcripts, Snaps and Hand off tasks, the selection notes and
@@ -6,7 +8,7 @@ import Foundation
 /// folder; no saved history, preference, clipboard, Vision pass or provider is used.
 enum HistoryChecks {
     @MainActor
-    static func run() async throws {
+    static func run() async throws -> [String] {
         var passed = 0
         func check(_ condition: @autoclosure () throws -> Bool, _ name: String) throws {
             guard try condition() else { throw VoiceError.message("HISTORY_CHECK_FAILED: \(name)") }
@@ -16,9 +18,6 @@ enum HistoryChecks {
         let root = fm.temporaryDirectory.appendingPathComponent("Workbench-history-page-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? fm.removeItem(at: root) }
-        let suite = "Workbench.synthetic.history-page." + UUID().uuidString
-        guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
-        defer { defaults.removePersistentDomain(forName: suite) }
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         func at(_ minutes: Double) -> Date { base.addingTimeInterval(minutes * 60) }
 
@@ -49,7 +48,8 @@ enum HistoryChecks {
         try check(snap.recognizedText.count == 3 && snap.items.count == 3, "each Snap's saved image text is loaded for search")
 
         // A Hand off task made from the prompt and the error Snap.
-        let jobs = HandoffJobsModel(directory: root.appendingPathComponent("Handoffs"), defaults: defaults)
+        let noSwitches: (read: (SubscriptionProvider) -> Bool, write: (SubscriptionProvider, Bool) -> Void) = ({ _ in false }, { _, _ in })
+        let jobs = HandoffJobsModel(directory: root.appendingPathComponent("Handoffs"), switches: noSwitches)
         let skill = try TranscriptHandoffSkills.followUpSnapshot()
         let sources = [
             HandoffSourceSnapshot(reference: .init(kind: .transcript, id: prompt.id), title: "Prompt · sign-in", capturedAt: prompt.date,
@@ -58,11 +58,12 @@ enum HistoryChecks {
                 text: "", originalText: "", role: .reference, images: [png])
         ]
         let task = try jobs.prepare(sources: sources, task: "Draft a follow-up for Matt about the staging outage.", skill: skill)
+        await jobs.loadTaskFiles(jobs.jobs)
 
         func list(_ filter: HistoryFilter, _ query: String = "") -> [HistoryEntry.ID] {
             HistoryList.entries(transcripts: transcripts, snaps: snap.items, results: jobs.visibleJobs, filter: filter, query: query,
                 matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
-                resultText: { jobs.inputs($0).task }).map(\.id)
+                resultText: { jobs.files($0)?.inputs.task ?? "" }).map(\.id)
         }
         try check(list(.all) == [.result(task.id), .snap(errorPage.id), .transcript(prompt.id), .snap(dashboard.id), .transcript(meeting.id)],
                   "All merges results, active Snaps and transcripts newest first and leaves archived Snaps out")
@@ -114,7 +115,7 @@ enum HistoryChecks {
         try check(library.selected == selected && library.error == nil, "filters and searches never change the selection")
 
         // A task keeps labelled frozen copies after its items leave History.
-        let frozen = jobs.inputs(task)
+        let frozen = jobs.files(task)?.inputs ?? HandoffJobInputs(problem: "not loaded")
         try check(frozen.problem == nil && frozen.items.map(\.title) == ["Prompt · sign-in", "Staging screen"],
                   "a task is made from its frozen inputs")
         func labels() -> [HistoryInputAvailability] {
@@ -125,7 +126,8 @@ enum HistoryChecks {
         snap.archive([errorPage.id], archived: true)
         transcripts.removeAll { $0.id == prompt.id }
         try check(labels() == [.removed, .archived], "a removed transcript and an archived Snap are labelled as such")
-        try check(jobs.inputs(task) == frozen && jobs.inputImageURL(task, path: frozen.items[1].images[0]) != nil,
+        await jobs.loadTaskFiles(jobs.jobs)
+        try check(jobs.files(task)?.inputs == frozen && jobs.inputImageURL(task, path: frozen.items[1].images[0]) != nil,
                   "their frozen copies stay readable")
         try check(HistoryList.availability(of: .init(kind: .snap, id: UUID()), transcripts: [], snaps: [:]) == .missing
                   && HistoryList.availability(of: .init(kind: .snapAndTalk, id: UUID()), transcripts: [], snaps: [:]) == .notInHistory,
@@ -143,24 +145,78 @@ enum HistoryChecks {
         let secondReview = try jobs.prepare(sources: [changed], task: SnapOrganization.assistantInstruction, skill: skill, review: context)
         try check(firstReview.id != secondReview.id && list(.results) == [.result(secondReview.id), .result(task.id)],
                   "tasks for one review are listed once, newest first")
+        try check(HistoryList.revealTarget(firstReview.id, jobs: jobs.jobs, visible: jobs.visibleJobs).map { [$0.card, $0.task] }
+                    == [secondReview.id, firstReview.id]
+                  && HistoryList.revealTarget(secondReview.id, jobs: jobs.jobs, visible: jobs.visibleJobs).map { [$0.card, $0.task] }
+                    == [secondReview.id, secondReview.id]
+                  && HistoryList.revealTarget(UUID(), jobs: jobs.jobs, visible: jobs.visibleJobs) == nil,
+                  "revealing an earlier grouped task targets that task inside its review's card, not the newer task")
 
-        // A large synthetic library: the list is rebuilt as a search is typed.
+        // A large synthetic library. The merged list is sorted once when a
+        // store changes; each search is one pass over it after typing pauses.
+        // Task folders are read cold off the main thread.
         let many = (0..<5_000).map { Transcript(date: base.addingTimeInterval(Double($0)), text: "Synthetic capture \($0) about release \($0 % 40)", seconds: 2) }
         let manySnaps = (0..<1_500).map { index in
             SnapItem(id: UUID(), createdAt: base.addingTimeInterval(Double(index) * 3), updatedAt: base, title: "Screen \(index)",
                      tags: ["release"], source: .region, pixelWidth: 1, pixelHeight: 1,
                      originalSHA256: String(repeating: "a", count: 64), imageSHA256: String(repeating: "a", count: 64))
         }
-        let started = Date()
-        var shown = 0
-        for query in ["", "r", "re", "release", "release 7", "screen 99"] {
-            shown += HistoryList.entries(transcripts: many, snaps: manySnaps, results: jobs.visibleJobs, filter: .all, query: query,
-                matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
-                resultText: { jobs.inputs($0).task }).count
+        let bulk = HandoffJobsModel(directory: root.appendingPathComponent("ManyTasks"), switches: noSwitches)
+        let screenshot = try syntheticScreenshot()
+        for index in 0..<250 {
+            let source = HandoffSourceSnapshot(reference: .init(kind: .snap, id: UUID()), title: "Release screen \(index)", capturedAt: base,
+                text: "Release note \(index)", originalText: "Release note \(index)", role: .reference, images: [screenshot])
+            _ = try bulk.prepare(sources: [source], task: "Summarize release \(index % 40).", skill: skill)
         }
-        let average = Date().timeIntervalSince(started) / 6
-        try check(shown > 0 && average < 0.5, "6,500 items are merged, filtered and searched in under half a second per keystroke")
-        print("HISTORY_LIST_TIMING: \(Int((average * 1_000).rounded())) ms per rebuild of 5,000 transcripts, 1,500 Snaps and \(jobs.visibleJobs.count) tasks")
-        print("HISTORY_PAGE_CHECKS_OK: \(passed) checks")
+        var started = Date()
+        await bulk.loadTaskFiles(bulk.jobs)
+        let coldFiles = Date().timeIntervalSince(started)
+        try check(bulk.jobs.count == 250 && bulk.jobs.allSatisfy { bulk.files($0)?.inputs.items.count == 1 },
+                  "250 task folders are read cold off the main thread")
+        started = Date()
+        await bulk.loadTaskFiles(bulk.jobs)
+        let warmFiles = Date().timeIntervalSince(started)
+        started = Date()
+        let images = bulk.jobs.compactMap { job in bulk.files(job)?.inputs.items.first?.images.first.flatMap { bulk.inputImageURL(job, path: $0) } }
+        let decoded = await Task.detached(priority: .utility) { () -> Int in
+            images.filter { url in
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 96] as CFDictionary) != nil
+            }.count
+        }.value
+        let thumbnails = Date().timeIntervalSince(started)
+        try check(decoded == 250, "every frozen image decodes into a thumbnail off the main thread")
+        started = Date()
+        let merged = HistoryList.merged(transcripts: many, snaps: manySnaps, results: bulk.visibleJobs)
+        let mergeTime = Date().timeIntervalSince(started)
+        started = Date()
+        var shown = 0
+        let queries = ["", "r", "re", "release", "release 7", "screen 99"]
+        for query in queries {
+            shown += HistoryList.shown(merged, filter: .all, query: query,
+                matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
+                resultText: { bulk.files($0)?.inputs.task ?? "" }).count
+        }
+        let perSearch = Date().timeIntervalSince(started) / Double(queries.count)
+        try check(merged.count == 6_750 && shown > 0 && perSearch < 0.25 && mergeTime < 1,
+                  "6,750 rows are sorted once and each search is one pass over them, reading no task folder")
+        func ms(_ seconds: TimeInterval) -> Int { Int((seconds * 1_000).rounded()) }
+        return ["HISTORY_LIST_TIMING: sort \(ms(mergeTime)) ms once; search \(ms(perSearch)) ms per applied search over 5,000 transcripts, 1,500 Snaps and 250 tasks; "
+                + "off the main thread: 250 task folders \(ms(coldFiles)) ms cold, \(ms(warmFiles)) ms unchanged, 250 thumbnails \(ms(thumbnails)) ms",
+                "HISTORY_PAGE_CHECKS_OK: \(passed) checks"]
+    }
+
+    /// A screen-sized synthetic PNG, so thumbnails decode real pixels.
+    private static func syntheticScreenshot() throws -> Data {
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1_440, pixelsHigh: 900, bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
+            throw VoiceError.message("HISTORY_CHECK_FAILED: could not make a synthetic screenshot")
+        }
+        for y in stride(from: 0, to: 900, by: 30) { for x in stride(from: 0, to: 1_440, by: 30) {
+            rep.setColor(NSColor(calibratedRed: CGFloat(x) / 1_440, green: CGFloat(y) / 900, blue: 0.5, alpha: 1), atX: x, y: y)
+        } }
+        guard let png = rep.representation(using: .png, properties: [:]) else { throw VoiceError.message("HISTORY_CHECK_FAILED: PNG encoding") }
+        return png
     }
 }
