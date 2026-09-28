@@ -8,12 +8,15 @@ enum PersonaLibraryMode { case sheet, workspace }
 struct PersonaLibraryLaunchState {
     enum Request {
         case oneCard
+        /// The hidden floating card, as it was.
+        case showAgain
         case prepared(groupIDs: [UUID], softReveal: Bool)
         case resume
         var isResume: Bool { if case .resume = self { return true }; return false }
         func perform(in library: PersonaLibrary) -> Result<Void, Error> {
             switch self {
             case .oneCard: return library.showOverlay()
+            case .showAgain: return library.showAgain()
             case .prepared(let groupIDs, let softReveal):
                 return Result {
                     guard let first = groupIDs.first else { throw PersonaSessionError.missingGroup }
@@ -102,7 +105,7 @@ struct PersonaLibraryView: View {
             if !preparingPresentation {
                 Text(onChoose == nil ? "Show a persona card over your apps, or arrange several cards together." : "Choose a persona card to place in this scene.")
                     .font(.callout).foregroundStyle(.secondary)
-                if onChoose == nil { overlayActions }
+                if onChoose == nil { overlayActions; shownPanel }
                 ViewThatFits(in: .horizontal) {
                     HStack { groupPicker; groupActions }
                     VStack(alignment: .leading, spacing: 8) { groupPicker; groupActions }
@@ -142,7 +145,9 @@ struct PersonaLibraryView: View {
                         if let selected = library.selected {
                             thumbnail(selected, width: 265, height: 155)
                                 .frame(maxWidth: .infinity)
-                            Text(selected.name).font(.headline).lineLimit(2)
+                            // Selected is what you browse and prepare; Shown, above, is what is live.
+                            Text("Selected: " + selected.name).font(.headline).lineLimit(2)
+                                .accessibilityLabel("Selected persona: " + selected.name)
                             // One quick choice; it is the look used the next time this persona is shown or placed.
                             Picker("Appearance", selection: Binding(get: { selected.effectiveAppearance.shape },
                                                                     set: { library.setShape($0, for: selected.id) })) {
@@ -161,31 +166,6 @@ struct PersonaLibraryView: View {
                                     Button("Use in scene") { onChoose(selected); dismiss() }
                                         .disabled(library.renderedImage(for: selected) == nil)
                                 }
-                            }
-                            if onChoose == nil && library.sessionState.phase == .idle {
-                                Toggle("Lock artwork · clicks pass through", isOn: Binding(
-                                    get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
-                                HStack(spacing: 8) {
-                                    Text("Size \(Int((library.overlayWidth * 100).rounded()))%")
-                                        .font(.caption.monospacedDigit()).frame(width: 58, alignment: .leading)
-                                    Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
-                                        .accessibilityLabel("Floating persona size")
-                                        .help("Width as a percentage of the display; changes the floating card immediately")
-                                    Menu("Position") {
-                                        Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
-                                        Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
-                                        Button("Top right") { library.setOverlayPosition(x: 0.98, y: 0.98) }
-                                        Divider()
-                                        Button("Left centre") { library.setOverlayPosition(x: 0.02, y: 0.5) }
-                                        Button("Right centre") { library.setOverlayPosition(x: 0.98, y: 0.5) }
-                                        Divider()
-                                        Button("Bottom left") { library.setOverlayPosition(x: 0.02, y: 0.02) }
-                                        Button("Bottom centre") { library.setOverlayPosition(x: 0.5, y: 0.02) }
-                                        Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
-                                    }.fixedSize()
-                                }
-                                Text("Drag Size toward the left for a smaller card. Hide removes it from the screen, not your saved personas." + (library.shortcutHint.map { " " + $0 } ?? ""))
-                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             }
                             if let group = library.activeGroup, let index = group.personaIDs.firstIndex(of: selected.id) {
                                 HStack {
@@ -303,13 +283,19 @@ struct PersonaLibraryView: View {
     private var overlayActions: some View {
         HStack(spacing: 10) {
             if library.sessionState.phase == .idle {
-                Button(library.overlayVisible ? "Hide floating persona" : "Show one card") {
-                    if library.overlayVisible { library.hideOverlay() }
-                    else { requestLaunch(.oneCard) }
-                }.buttonStyle(.borderedProminent)
-                    .disabled(!library.overlayVisible && library.selected.flatMap { library.renderedImage(for: $0) } == nil)
-                Text(library.overlayVisible ? "Shown over your apps" : "Separate from Present")
-                    .font(.caption).foregroundStyle(.secondary)
+                if library.overlayVisible {
+                    Button("Hide floating persona") { library.hideOverlay() }.buttonStyle(.borderedProminent)
+                        .help("Hide keeps this card for Show again")
+                    Button("End overlay") { library.endOverlaySession() }
+                } else if library.hasHiddenCard {
+                    Button("Show again") { requestLaunch(.showAgain) }.buttonStyle(.borderedProminent)
+                        .help("Shows the hidden card as it was, whatever is selected")
+                    Button("End overlay") { library.endOverlaySession() }
+                } else {
+                    Button("Show selected") { requestLaunch(.oneCard) }.buttonStyle(.borderedProminent)
+                        .disabled(library.selected.flatMap { library.renderedImage(for: $0) } == nil)
+                    Text("Separate from Present").font(.caption).foregroundStyle(.secondary)
+                }
             } else {
                 if library.sessionState.phase == .paused {
                     Button("Resume overlays") { requestLaunch(.resume) }.buttonStyle(.borderedProminent)
@@ -331,6 +317,74 @@ struct PersonaLibraryView: View {
                 }
                 .help("A quiet outline around the shown persona brightens as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures loudness and records nothing. In a prepared set, the outline follows the selected overlay.")
             }
+        }
+    }
+    /// Shown: the live copy, beside its size, lock and position, with Replace
+    /// shown and Update shown card when they apply. Browsing Selected below never
+    /// changes it.
+    @ViewBuilder private var shownPanel: some View {
+        if let shown = library.shownIdentity {
+            VStack(alignment: .leading, spacing: 10) {
+                // Narrow windows put the actions under the name.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 12) { shownName(shown); Spacer(minLength: 8); shownActions(shown) }
+                    VStack(alignment: .leading, spacing: 8) { shownName(shown); HStack { shownActions(shown) } }
+                }
+                HStack(spacing: 8) {
+                    Text("Size \(Int((library.overlayWidth * 100).rounded()))%")
+                        .font(.caption.monospacedDigit()).frame(width: 58, alignment: .leading)
+                    Slider(value: Binding(get: { library.overlayWidth }, set: { library.setOverlayWidth($0) }), in: 0.06...0.40)
+                        .accessibilityLabel("Size of the shown card, " + shown.name)
+                        .help("Width as a percentage of the display; changes the shown card immediately")
+                    Menu("Position") {
+                        Button("Top left") { library.setOverlayPosition(x: 0.02, y: 0.98) }
+                        Button("Top centre") { library.setOverlayPosition(x: 0.5, y: 0.98) }
+                        Button("Top right") { library.setOverlayPosition(x: 0.98, y: 0.98) }
+                        Divider()
+                        Button("Left centre") { library.setOverlayPosition(x: 0.02, y: 0.5) }
+                        Button("Right centre") { library.setOverlayPosition(x: 0.98, y: 0.5) }
+                        Divider()
+                        Button("Bottom left") { library.setOverlayPosition(x: 0.02, y: 0.02) }
+                        Button("Bottom centre") { library.setOverlayPosition(x: 0.5, y: 0.02) }
+                        Button("Bottom right") { library.setOverlayPosition(x: 0.98, y: 0.02) }
+                    }.fixedSize().accessibilityLabel("Position of the shown card, " + shown.name)
+                }
+                Toggle("Lock artwork · clicks pass through", isOn: Binding(
+                    get: { library.overlayLocked }, set: { library.setOverlayLocked($0) }))
+                    .accessibilityLabel("Lock the shown card, " + shown.name + ", so clicks pass through")
+                Text("Size, position and lock change this card only. Hide keeps it for Show again; End releases it. Your saved personas stay as they are." + (library.shortcutHint.map { " " + $0 } ?? ""))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel((shown.hidden ? "Hidden card: " : "Shown card: ") + shown.name)
+        }
+    }
+    private func shownName(_ shown: PersonaShownIdentity) -> some View {
+        HStack(spacing: 12) {
+            Group {
+                if let image = shown.image {
+                    Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
+                } else { Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary) }
+            }.frame(width: 54, height: 54).opacity(shown.hidden ? 0.5 : 1).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text((shown.hidden ? "Hidden: " : "Shown: ") + shown.name).font(.headline).lineLimit(1)
+                    .accessibilityLabel((shown.hidden ? "Hidden persona: " : "Shown persona: ") + shown.name)
+                Text(shown.place ?? (shown.hidden ? "Kept for Show again" : "Floating over your apps"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+    @ViewBuilder private func shownActions(_ shown: PersonaShownIdentity) -> some View {
+        if let replacement = library.replacementForShown {
+            Button("Replace shown with \(replacement.name)") { library.replaceShownWithSelected() }
+                .lineLimit(1)
+                .help("Shows \(replacement.name) in this card's place, keeping its size, position and lock")
+        }
+        if library.shownCardHasNewerLook {
+            Button("Update shown card") { library.updateShownCard() }
+                .help("Shows \(shown.name) as it is saved now, in this card only")
         }
     }
     private func requestLaunch(_ request: PersonaLibraryLaunchState.Request) {

@@ -74,7 +74,7 @@ enum PersonaSessionAction {
     case selectGroup(UUID), stepGroup(Int), selectInstance(UUID), add(UUID)
     case replace(instanceID: UUID, personaID: UUID)
     case remove(UUID), move(UUID, Int), visible(UUID, Bool), locked(UUID, Bool)
-    case width(UUID, Double), position(UUID, Double, Double), shape(UUID, PersonaAppearance.Shape)
+    case width(UUID, Double), position(UUID, Double, Double), shape(UUID, PersonaAppearance.Shape), update(UUID)
     case pauseResume, saveLayout, dismissFeedback, end
 }
 struct PersonaSessionHUDModel {
@@ -160,7 +160,15 @@ final class PersonaSessionController {
     private let startBytes: Int
     /// Other looks drawn for copies, counted with the Start images in the same budget.
     private var looks: [LookKey: (image: NSImage, bytes: Int)] = [:]
-    private struct LookKey: Hashable { let personaID: UUID; let shape: PersonaAppearance.Shape }
+    /// A look is one persona's source, frozen at Start (token 0) or updated for
+    /// one copy (its own token), drawn in one shape.
+    private struct LookKey: Hashable { let personaID: UUID; let token: Int; let shape: PersonaAppearance.Shape }
+    /// Copies updated to their persona's newer saved look, each with its own
+    /// source; every other copy keeps the candidate frozen at Start.
+    private var updatedSources: [CopyKey: (source: PersonaSourceSnapshot, token: Int)] = [:]
+    /// One copy in one set: the same overlay identity can appear in two sets.
+    private struct CopyKey: Hashable { let group: UUID; let instance: UUID }
+    private var nextToken = 1
     var imageBytes: Int { startBytes + looks.values.reduce(0) { $0 + $1.bytes } }
 
     init(groups: [PersonaPreparedSessionGroup], initialGroupID: UUID, canSave: Bool, softReveal: Bool = false,
@@ -201,9 +209,10 @@ final class PersonaSessionController {
         let group = groups[index]
         let instances = group.overlays.enumerated().compactMap { ordinal, item -> PersonaSessionInstance? in
             guard let candidate = group.candidates.first(where: { $0.id == item.personaID }) else { return nil }
-            let shape = item.shape ?? candidate.shape
-            let image = shape == candidate.shape ? candidate.image
-                : looks[LookKey(personaID: candidate.id, shape: shape)]?.image ?? candidate.image
+            let copy = origin(of: item, in: group, candidate: candidate)
+            let shape = item.shape ?? copy.shape
+            let image = copy.token == 0 && shape == candidate.shape ? candidate.image
+                : looks[LookKey(personaID: candidate.id, token: copy.token, shape: shape)]?.image ?? candidate.image
             return PersonaSessionInstance(id: item.id, personaID: item.personaID,
                 label: item.publicLabel ?? (candidate.label.isEmpty ? "Overlay \(ordinal + 1)" : candidate.label),
                 image: image, visible: item.visible, placement: item.placement,
@@ -248,7 +257,36 @@ final class PersonaSessionController {
     /// The replacement shows as it was prepared, in the copy's place.
     func replace(_ id: UUID, personaID: UUID) throws {
         guard let index = groupIndex, groups[index].candidates.contains(where: { $0.id == personaID }) else { throw PersonaError.invalidSettings }
+        updatedSources[CopyKey(group: currentGroupID, instance: id)] = nil
         update(id) { $0.personaID = personaID; $0.shape = nil }
+        releaseUnusedLooks()
+    }
+    /// The frozen source a copy in the current set shows: its update, if it has
+    /// one, else its candidate's, frozen at Start.
+    func source(of id: UUID) -> PersonaSourceSnapshot? {
+        guard let groupIndex, let item = groups[groupIndex].overlays.first(where: { $0.id == id }),
+              let candidate = groups[groupIndex].candidates.first(where: { $0.id == item.personaID }) else { return nil }
+        return origin(of: item, in: groups[groupIndex], candidate: candidate).source
+    }
+    /// Update: one copy shows its persona as it is saved now, drawn within the
+    /// budget before anything changes. It keeps its width, centre and lock; every
+    /// other copy, even of the same persona, keeps its frozen look. Replace or the
+    /// end of the session forgets the update; saving the layout never saves pixels.
+    func update(_ id: UUID, to source: PersonaSourceSnapshot) throws {
+        guard phase != .idle, let groupIndex, let item = groups[groupIndex].overlays.first(where: { $0.id == id }),
+              item.personaID == source.id,
+              let candidate = groups[groupIndex].candidates.first(where: { $0.id == item.personaID }) else { return }
+        let token = nextToken; nextToken += 1
+        let shape = source.persona.effectiveAppearance.shape
+        let image = try look(of: candidate, token: token, source: source, in: shape)
+        var placement = item.placement
+        // Shown, paused or hidden, the copy keeps its centre.
+        if let panel = panels[id], let label = state.instances.first(where: { $0.id == id })?.label {
+            placement = panel.reshape(image: image, outline: shape.outline, name: label, state: item.placement)
+            placement.locked = item.placement.locked
+        }
+        updatedSources[CopyKey(group: currentGroupID, instance: id)] = (source, token)
+        update(id) { $0.shape = nil; $0.placement = placement }
         releaseUnusedLooks()
     }
     /// Circle, Card or Original for one copy, drawn from its frozen candidate. The
@@ -257,16 +295,17 @@ final class PersonaSessionController {
     func setShape(_ shape: PersonaAppearance.Shape, for id: UUID) throws {
         guard phase != .idle, let groupIndex, let index = groups[groupIndex].overlays.firstIndex(where: { $0.id == id }) else { return }
         let item = groups[groupIndex].overlays[index]
-        guard let candidate = groups[groupIndex].candidates.first(where: { $0.id == item.personaID }),
-              (item.shape ?? candidate.shape) != shape else { return }
-        let image = try look(of: candidate, in: shape)
+        guard let candidate = groups[groupIndex].candidates.first(where: { $0.id == item.personaID }) else { return }
+        let copy = origin(of: item, in: groups[groupIndex], candidate: candidate)
+        guard (item.shape ?? copy.shape) != shape else { return }
+        let image = try look(of: candidate, token: copy.token, source: copy.source, in: shape)
         var placement = item.placement
         // Shown, paused or hidden, the copy keeps its centre: a paused set comes back in place.
         if let panel = panels[id], let label = state.instances.first(where: { $0.id == id })?.label {
             placement = panel.reshape(image: image, outline: shape.outline, name: label, state: item.placement)
             placement.locked = item.placement.locked
         }
-        update(id) { $0.shape = shape == candidate.shape ? nil : shape; $0.placement = placement }
+        update(id) { $0.shape = shape == copy.shape ? nil : shape; $0.placement = placement }
         releaseUnusedLooks()
     }
     /// Draws every look saved in these layouts before Start replaces anything,
@@ -275,15 +314,24 @@ final class PersonaSessionController {
         for group in groups {
             for item in group.overlays {
                 guard let shape = item.shape, let candidate = group.candidates.first(where: { $0.id == item.personaID }) else { continue }
-                _ = try look(of: candidate, in: shape)
+                _ = try look(of: candidate, token: 0, source: candidate.source, in: shape)
             }
         }
     }
-    private func look(of candidate: PersonaSessionCandidate, in shape: PersonaAppearance.Shape) throws -> NSImage {
-        if shape == candidate.shape { return candidate.image }
-        let key = LookKey(personaID: candidate.id, shape: shape)
+    /// Where a copy's look comes from: its update, or the candidate frozen at Start.
+    private func origin(of item: PersonaOverlayItem, in group: PersonaPreparedSessionGroup,
+                        candidate: PersonaSessionCandidate) -> (token: Int, shape: PersonaAppearance.Shape, source: PersonaSourceSnapshot?) {
+        if let updated = updatedSources[CopyKey(group: group.source.id, instance: item.id)], updated.source.id == item.personaID {
+            return (updated.token, updated.source.persona.effectiveAppearance.shape, updated.source)
+        }
+        return (0, candidate.shape, candidate.source)
+    }
+    private func look(of candidate: PersonaSessionCandidate, token: Int, source: PersonaSourceSnapshot?,
+                      in shape: PersonaAppearance.Shape) throws -> NSImage {
+        if token == 0 && shape == candidate.shape { return candidate.image }
+        let key = LookKey(personaID: candidate.id, token: token, shape: shape)
         if let kept = looks[key] { return kept.image }
-        guard let draw, let source = candidate.source else { throw PersonaSessionError.missingArtwork }
+        guard let draw, let source else { throw PersonaSessionError.missingArtwork }
         let drawn = try draw(source, shape)
         guard let bitmap = drawn.cgImage(forProposedRect: nil, context: nil, hints: nil) else { throw PersonaSessionError.missingArtwork }
         let bytes = bitmap.bytesPerRow * bitmap.height
@@ -293,13 +341,20 @@ final class PersonaSessionController {
         looks[key] = (image, bytes)
         return image
     }
-    /// Looks no copy shows any more are released.
+    /// Looks and updates no copy shows any more are released.
     private func releaseUnusedLooks() {
-        var used = Set<LookKey>()
+        var used = Set<LookKey>(), copies = Set<CopyKey>()
         for group in groups {
-            for item in group.overlays { if let shape = item.shape { used.insert(LookKey(personaID: item.personaID, shape: shape)) } }
+            for item in group.overlays {
+                guard let candidate = group.candidates.first(where: { $0.id == item.personaID }) else { continue }
+                let copy = origin(of: item, in: group, candidate: candidate)
+                if copy.token != 0 { copies.insert(CopyKey(group: group.source.id, instance: item.id)) }
+                let shape = item.shape ?? copy.shape
+                if copy.token != 0 || shape != candidate.shape { used.insert(LookKey(personaID: candidate.id, token: copy.token, shape: shape)) }
+            }
         }
         looks = looks.filter { used.contains($0.key) }
+        updatedSources = updatedSources.filter { copies.contains($0.key) }
     }
     func removeOverlay(_ id: UUID) {
         guard let index = groupIndex else { return }
@@ -325,7 +380,10 @@ final class PersonaSessionController {
     func setVoiceRing(_ on: Bool) { guard voiceRing != on else { return }; voiceRing = on; applyVoiceRing() }
     func showVoice(_ frames: [PersonaVoiceFrame]) { if let id = voiceTargetID { panels[id]?.showVoice(frames) } }
     func resume() { guard phase == .paused else { return }; phase = .active; render(animated: false); onChange?() }
-    func end() { closePanels(); phase = .idle; selectedInstanceID = nil; groups.removeAll(); savedLayouts.removeAll(); looks.removeAll(); onChange?() }
+    func end() {
+        closePanels(); phase = .idle; selectedInstanceID = nil; groups.removeAll(); savedLayouts.removeAll()
+        looks.removeAll(); updatedSources.removeAll(); onChange?()
+    }
     func markSaved(_ group: PersonaGroup) {
         guard let index = groups.firstIndex(where: { $0.source.id == group.id }) else { return }
         // Advance only the save baseline. A newly edited public label/candidate

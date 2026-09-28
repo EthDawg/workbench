@@ -120,7 +120,9 @@ public final class StageKitController: ObservableObject {
         let library = coordinator.demoScenes.personas
         if library.sessionState.phase == .paused { return "Hidden" }
         if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
-        return library.overlayVisible ? "Shown" : ""
+        if library.overlayVisible { return "Shown" }
+        // A hidden card is kept for Show again, like a paused set.
+        return library.hasHiddenCard ? "Hidden" : ""
     }
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }

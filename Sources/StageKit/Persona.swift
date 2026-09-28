@@ -261,6 +261,18 @@ enum PersonaStorage {
     }
 }
 
+/// What the Persona workspace names as Shown: the saved persona a live copy
+/// shows, its frozen image, and whether it is hidden. The name is the private
+/// library name, for preparation only; floating controls use public labels.
+struct PersonaShownIdentity {
+    let personaID: UUID
+    let name: String
+    let image: NSImage?
+    let hidden: Bool
+    /// Which copy, for a prepared set: "Copy 2 of 3 in Set 1".
+    let place: String?
+}
+
 /// Like DemoScenes, this UI model is owned and called by StageKit's main-thread
 /// coordinator. Keep storage and scene rendering on that same synchronous path.
 final class PersonaLibrary: NSObject, ObservableObject {
@@ -306,9 +318,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private var overlayState = PersonaOverlayState()
     private var overlay: PersonaOverlayController?
     private var hud: PersonaHUDController?
-    private var displayedID: UUID?
-    private var displayedImage: NSImage?
-    private var displayedLabel: String?
+    /// The one floating card's persona, derived from its frozen source so there is
+    /// one owner of what is shown, never a second record of it.
+    private var displayedID: UUID? { shownCard?.source.id }
+    /// Its decoded image and public label, which the deck keeps with the card.
+    private var displayedImage: NSImage? { displayedID.flatMap { cardDeck?.images[$0] } }
+    private var displayedLabel: String? { displayedID.flatMap { cardDeck?.labels[$0] } }
     /// The frozen candidates behind the floating card, and the few decoded images it keeps.
     private(set) var cardDeck: PersonaCardDeck?
     /// The floating card on screen: its copy identity and the frozen source it shows.
@@ -596,7 +611,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard writable() else { throw PersonaError.invalidSettings }
         let group = PersonaGroup(name: name.trimmingCharacters(in: .whitespacesAndNewlines), personaIDs: members)
         var next = archive; next.groups.append(group); next.activeGroupID = group.id; next.selectedID = members.first
-        try commit(next); if session == nil { hideOverlay() }; notice = nil; return group.id
+        try commit(next); notice = nil; return group.id
     }
     func renameGroup(_ id: UUID, name: String) {
         guard writable(), let index = groups.firstIndex(where: { $0.id == id }) else { return }
@@ -615,7 +630,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard writable(), id == nil || groups.contains(where: { $0.id == id }) else { return }
         var next = archive; next.activeGroupID = id
         next.selectedID = id.flatMap { target in groups.first { $0.id == target }?.personaIDs.first }
-        do { try commit(next); if session == nil { hideOverlay() }; notice = nil } catch { notice = error.localizedDescription }
+        do { try commit(next); notice = nil } catch { notice = error.localizedDescription }
     }
     func setGroupMembers(_ members: [UUID], in id: UUID) {
         guard writable(), let index = groups.firstIndex(where: { $0.id == id }) else { return }
@@ -693,7 +708,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             }, makePanel: sessionPanelFactory ?? { PersonaOverlayController() })
         // A layout saved with a copy's own look is drawn now, within the budget, or Start fails here.
         try proposed.prepareSavedLooks()
-        hideOverlay()
+        endOverlaySession()
         session = proposed
         proposed.onChange = { [weak self] in self?.refreshSessionState() }
         proposed.setVoiceRing(voiceRing && voiceAccess != nil)
@@ -715,8 +730,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         session?.onChange = nil; session?.end(); session = nil
         sessionFeedback = nil
         sessionState = PersonaSessionViewState(); overlayVisible = false; hud?.hide()
-        overlay?.hide(); liveSelection = nil; displayedID = nil
-        displayedImage = nil; displayedLabel = nil; cardDeck = nil; shownCard = nil
+        overlay?.hide(); liveSelection = nil; cardDeck = nil; shownCard = nil
         clearCardFailure()
     }
     private func reportCardFailure(_ error: Error) {
@@ -755,6 +769,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
             case .width(let id, let value): session.setWidth(value, for: id)
             case .position(let id, let x, let y): session.setPosition(x: x, y: y, for: id)
             case .shape(let id, let shape): try session.setShape(shape, for: id)
+            case .update(let id):
+                guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
+                guard let personaID = session.state.instances.first(where: { $0.id == id })?.personaID,
+                      let saved = items.first(where: { $0.id == personaID }) else { break }
+                try session.update(id, to: PersonaSourceSnapshot(persona: saved,
+                    revision: PersonaImageRevision(fileAt: root.appendingPathComponent(saved.image))))
             case .pauseResume: if session.phase == .paused { try resumeOverlaySession() } else { pauseOverlaySession() }
             case .saveLayout: try saveSessionLayout(); sessionFeedback = "Layout saved for next time."
             case .dismissFeedback: break
@@ -795,20 +815,18 @@ final class PersonaLibrary: NSObject, ObservableObject {
         guard var session = liveSelection, session.candidateIDs.contains(id), let deck = cardDeck else { return }
         // A shape chosen live for this copy stays with it through Next and Previous.
         let copyShape = shownCard?.shape
-        let image: NSImage
-        do { image = try deck.image(for: id, shown: displayedID, shape: copyShape, render: { renderedImage(for: $0) }) }
+        do { _ = try deck.image(for: id, shown: displayedID, shape: copyShape, render: { renderedImage(for: $0) }) }
         catch { reportCardFailure(error); return }
         if !isReadOnly {
             do { try commit(items, selection: id) }
             catch { notice = error.localizedDescription; return }
         }
         clearCardFailure()
-        session.select(id); liveSelection = session; displayedID = id
+        session.select(id); liveSelection = session
         deck.didShow(id, shape: copyShape)
         if let source = deck.sources[id] {
             shownCard = PersonaShownCard(copyID: shownCard?.copyID ?? UUID(), source: source, shape: copyShape)
         }
-        displayedImage = image; displayedLabel = liveLabels[id]
         overlay?.setOutline(shownCard?.appearance.outline)
         refreshOverlay()
     }
@@ -860,7 +878,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         clearCardFailure()
         card.shape = shape; shownCard = card
         deck.didShow(id, shape: shape)
-        displayedImage = image
+        // Shown or hidden, the card keeps its centre; a hidden one comes back there.
         guard let overlay else { return }
         let kept = overlay.reshape(image: image, outline: shape.outline, name: displayedLabel ?? "Floating persona", state: overlayState)
         updateOverlay(kept)
@@ -883,7 +901,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             catch { notice = error.localizedDescription; return .failure(error) }
         case .idle:
             if overlayVisible { hideOverlay(); return .success(()) }
-            return showOverlay()
+            return hasHiddenCard ? showAgain() : showOverlay()
         }
     }
 
@@ -892,7 +910,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             notice = "End the prepared overlay session before showing one floating persona."
             return
         }
-        if overlayVisible { hideOverlay() } else { showOverlay() }
+        if overlayVisible { hideOverlay() } else if hasHiddenCard { showAgain() } else { showOverlay() }
     }
 
     func stepQuickPersona(_ offset: Int) {
@@ -900,7 +918,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             notice = "Use Previous or Next prepared overlay set during a multi-overlay presentation."
             return
         }
-        guard overlayVisible else { showOverlay(); return }
+        guard overlayVisible else { if hasHiddenCard { showAgain() } else { showOverlay() }; return }
         stepLivePersona(offset)
     }
 
@@ -915,6 +933,9 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// block it. It replaces any shown overlay only once it has decoded.
     private func showOverlayChecked() throws {
         guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
+        // Show selected makes a new card. A hidden card is not on screen, so it is
+        // released first rather than kept beside the new one; Show again is its route.
+        if hasHiddenCard { endOverlaySession() }
         let candidateIDs = activeGroup?.personaIDs ?? items.map(\.id)
         guard let initialID = selectedID.flatMap({ candidateIDs.contains($0) ? $0 : nil }) ?? candidateIDs.first
         else { throw PersonaError.unreadableImage }
@@ -930,23 +951,151 @@ final class PersonaLibrary: NSObject, ObservableObject {
             ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: initialID)
         cardDeck = deck; deck.didShow(initialID)
         shownCard = deck.sources[initialID].map { PersonaShownCard(copyID: UUID(), source: $0) }
-        displayedID = initialID
-        displayedImage = image; displayedLabel = deck.labels[initialID]
+        present(image)
+    }
+    /// Puts the card on screen with its voice outline, edge and placement.
+    private func present(_ image: NSImage) {
         if overlay == nil {
             overlay = PersonaOverlayController()
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
         }
         overlay?.setVoiceRing(voiceRing && voiceAccess != nil)
         overlay?.setOutline(shownCard?.appearance.outline)
-        let placed = overlay?.show(image: displayedImage ?? image, name: displayedLabel ?? "Floating persona", state: overlayState)
+        let placed = overlay?.show(image: image, name: displayedLabel ?? "Floating persona", state: overlayState)
         overlayVisible = true
         if let placed { updateOverlay(placed) }
         refreshHUD()
         onShow?()
     }
-    func hideOverlay() { endOverlaySession() }
+    /// Hide. A prepared set ends, as before. The one floating card leaves the
+    /// screen but stays this session's card, so Show again brings back the same
+    /// card, look, size and place, whatever preparation selects meanwhile. Its
+    /// microphone stops while it is hidden. End overlay or Quit releases it.
+    func hideOverlay() {
+        guard session == nil else { endOverlaySession(); return }
+        guard overlayVisible else { return }
+        overlay?.hide(); hud?.hide()
+        overlayVisible = false
+        clearCardFailure()
+    }
+    /// A floating card hidden with Hide, kept for Show again.
+    var hasHiddenCard: Bool { session == nil && !overlayVisible && shownCard != nil }
+    /// Show again: the hidden card exactly as it was, not the preparation selection.
+    @discardableResult func showAgain() -> Result<Void, Error> {
+        guard hasHiddenCard else { return showOverlay() }
+        guard mayBeginInteraction?() != false else {
+            let error = PersonaSessionInteractionError.busy
+            notice = error.localizedDescription; return .failure(error)
+        }
+        guard let image = displayedImage else { endOverlaySession(); return showOverlay() }
+        present(image)
+        return .success(())
+    }
     func shutdown() {
-        hideOverlay(); stopVoice(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects()
+        endOverlaySession(); stopVoice(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects()
+    }
+
+    /// The live copy the workspace labels Shown, beside its live controls: the one
+    /// floating card, shown or hidden, or a prepared set's selected copy.
+    var shownIdentity: PersonaShownIdentity? {
+        if session != nil {
+            guard let instance = sessionState.selectedInstance else { return nil }
+            let name = items.first { $0.id == instance.personaID }?.name ?? instance.label
+            let index = (sessionState.instances.firstIndex { $0.id == instance.id } ?? 0) + 1
+            let set = sessionState.groups.first { $0.id == sessionState.currentGroupID }?.label ?? "this set"
+            return PersonaShownIdentity(personaID: instance.personaID, name: name, image: instance.image,
+                                        hidden: sessionState.phase == .paused || !instance.visible,
+                                        place: "Copy \(index) of \(sessionState.instances.count) in \(set)")
+        }
+        guard let card = shownCard else { return nil }
+        let name = items.first { $0.id == card.source.id }?.name ?? card.source.persona.name
+        return PersonaShownIdentity(personaID: card.source.id, name: name, image: displayedImage, hidden: !overlayVisible, place: nil)
+    }
+    /// The persona Replace shown would bring in: the preparation selection, when
+    /// it is not already the shown card. For a prepared set, only a persona that
+    /// set can show, for its selected copy.
+    var replacementForShown: SavedPersona? {
+        guard let selected else { return nil }
+        if session != nil {
+            guard let instance = sessionState.selectedInstance, instance.personaID != selected.id,
+                  sessionState.candidates.contains(where: { $0.id == selected.id }) else { return nil }
+            return selected
+        }
+        guard let shown = displayedID, shown != selected.id else { return nil }
+        return selected
+    }
+    /// Replace shown with the selected persona. The same copy, with its size,
+    /// place and lock, shows the selected persona as it is saved; for the one
+    /// floating card, Next and Previous then follow that persona's group, or all
+    /// saved personas. A hidden card stays hidden until Show again. If the new
+    /// persona cannot show, the shown card stays as it was and the notice says why.
+    @discardableResult func replaceShownWithSelected() -> Result<Void, Error> {
+        guard let replacement = replacementForShown else { return .success(()) }
+        if session != nil, let instance = sessionState.selectedInstance {
+            performOverlayAction(.replace(instanceID: instance.id, personaID: replacement.id))
+            return .success(())
+        }
+        do { try replaceCard(with: replacement); return .success(()) }
+        catch { reportCardFailure(error); return .failure(error) }
+    }
+    private func replaceCard(with replacement: SavedPersona) throws {
+        guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
+        guard let card = shownCard else { return }
+        let groupIDs = activeGroup?.personaIDs ?? items.map(\.id)
+        let candidateIDs = groupIDs.contains(replacement.id) ? groupIDs : [replacement.id]
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        let deck = PersonaCardDeck(candidates: candidateIDs.compactMap { byID[$0] }, root: root,
+                                   budget: cardImageBudget, label: publicLabel(for:))
+        // The shown card stays decoded, and counted, until the replacement is ready.
+        cardDeck?.release(keeping: card.source.id)
+        let image = try deck.image(for: replacement.id, shown: nil, reserved: cardDeck?.retainedBytes ?? 0,
+                                   render: { renderedImage(for: $0) })
+        guard let source = deck.sources[replacement.id] else { return }
+        clearCardFailure()
+        liveSelection = activeGroup.flatMap { groupIDs.contains(replacement.id) ? PersonaLiveSelection(group: $0, selectedID: replacement.id) : nil }
+            ?? PersonaLiveSelection(personaIDs: candidateIDs, selectedID: replacement.id)
+        cardDeck = deck; deck.didShow(replacement.id)
+        shownCard = PersonaShownCard(copyID: card.copyID, source: source)
+        showInPlace(image)
+    }
+    /// Whether the shown card's persona was saved with another look since it was
+    /// shown: another shape, framing, label, colour or picture. For a prepared
+    /// set, the selected copy's persona.
+    var shownCardHasNewerLook: Bool {
+        let frozen: SavedPersona?
+        if session != nil {
+            frozen = sessionState.selectedInstance.flatMap { session?.source(of: $0.id)?.persona }
+        } else { frozen = shownCard?.source.persona }
+        guard let frozen, let saved = items.first(where: { $0.id == frozen.id }) else { return false }
+        return frozen.image != saved.image || frozen.card != saved.card || frozen.effectiveAppearance != saved.effectiveAppearance
+    }
+    /// Update shown card: the shown copy shows its persona as it is saved now,
+    /// keeping its size, place and lock. Only that copy changes, and a hidden card
+    /// stays hidden. If the saved look cannot show, the copy stays as it was.
+    @discardableResult func updateShownCard() -> Result<Void, Error> {
+        guard shownCardHasNewerLook else { return .success(()) }
+        if session != nil, let instance = sessionState.selectedInstance {
+            performOverlayAction(.update(instance.id)); return .success(())
+        }
+        guard let card = shownCard, let deck = cardDeck, let saved = items.first(where: { $0.id == card.source.id }) else { return .success(()) }
+        do {
+            guard mayBeginInteraction?() != false else { throw PersonaSessionInteractionError.busy }
+            let image = try deck.refresh(saved, label: publicLabel(for: saved), shown: saved.id, render: { renderedImage(for: $0) })
+            guard let source = deck.sources[saved.id] else { return .success(()) }
+            clearCardFailure()
+            shownCard = PersonaShownCard(copyID: card.copyID, source: source)
+            deck.didShow(saved.id)
+            showInPlace(image)
+            return .success(())
+        } catch { reportCardFailure(error); return .failure(error) }
+    }
+    /// New artwork for the same copy, keeping its width and centre; a hidden card
+    /// comes back there with Show again.
+    private func showInPlace(_ image: NSImage) {
+        guard let overlay else { return }
+        let kept = overlay.reshape(image: image, outline: shownCard?.appearance.outline,
+                                   name: displayedLabel ?? "Floating persona", state: overlayState)
+        updateOverlay(kept)
     }
 
     /// Remembered for next time. Turning it on asks macOS for the microphone
@@ -1050,7 +1199,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private func refreshOverlay() {
         if session != nil { return }
         guard overlayVisible else { return }
-        guard items.contains(where: { $0.id == displayedID }), let image = displayedImage else { hideOverlay(); return }
+        guard items.contains(where: { $0.id == displayedID }), let image = displayedImage else { endOverlaySession(); return }
         overlay?.configure(image: image, name: displayedLabel ?? "Floating persona", state: overlayState)
         refreshHUD()
     }
@@ -1109,6 +1258,35 @@ final class PersonaLibrary: NSObject, ObservableObject {
             if #available(macOS 14.4, *), let status = voiceStatus { item.subtitle = status }
             return item
         }
+        // The one floating card, shown or hidden: replace it with the preparation
+        // selection, or bring it up to its persona's newer saved look. Public
+        // labels only; the card keeps its size, place and lock.
+        func cardChanges() -> [NSMenuItem] {
+            guard let card = shownCard else { return [] }
+            var items: [NSMenuItem] = []
+            if let replacement = replacementForShown {
+                let label = publicLabel(for: replacement)
+                let name = label == "Floating persona" ? "Selected Persona" : label
+                items.append(StageMenuAction("Replace Shown with " + name) { [weak self] in
+                    guard let self, self.overlayGeneration == generation, self.shownCard?.copyID == card.copyID,
+                          self.replacementForShown?.id == replacement.id else { return }
+                    self.replaceShownWithSelected()
+                })
+            }
+            if shownCardHasNewerLook {
+                items.append(StageMenuAction("Update Shown Card") { [weak self] in
+                    guard let self, self.overlayGeneration == generation, self.shownCard?.copyID == card.copyID else { return }
+                    self.updateShownCard()
+                })
+            }
+            return items
+        }
+        /// End overlay releases the one card, shown or hidden.
+        func endCard() -> NSMenuItem {
+            StageMenuAction("End Overlay") { [weak self] in
+                guard let self, self.overlayGeneration == generation else { return }; self.endOverlaySession()
+            }
+        }
         if sessionState.phase != .idle {
             let state = sessionState
             if let feedback = state.feedback { menu.addItem(StageMenuAction(feedback, enabled: false) {}) }
@@ -1130,6 +1308,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     action(shape.title, .shape(selected.id, shape), checked: shape == selected.shape)
                 })
                 menu.addSubmenu("Replace Selected", items: state.candidates.map { action($0.label, .replace(instanceID: selected.id, personaID: $0.id), checked: $0.id == selected.personaID) })
+                // The selected copy's persona was saved with another look since the set started.
+                if shownCardHasNewerLook { menu.addItem(action("Update Selected", .update(selected.id))) }
                 menu.addItem(action(selected.visible ? "Hide Selected" : "Show Selected", .visible(selected.id, !selected.visible)))
                 menu.addItem(action("Bring Forward", .move(selected.id, 1)))
                 menu.addItem(action("Send Backward", .move(selected.id, -1)))
@@ -1144,6 +1324,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         } else if overlayVisible, let current = displayedID {
             // A Next, Previous or choice that could not show says why where it happened.
             if let failure = cardFeedback { menu.addItem(StageMenuAction(failure, enabled: false) {}) }
+            cardChanges().forEach(menu.addItem)
             let ids = liveSelection?.candidateIDs ?? [current]
             menu.addSubmenu("Choose Persona", items: ids.enumerated().map { index, id in
                 StageMenuAction(liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)", checked: id == current) { [weak self] in
@@ -1172,13 +1353,23 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 })
             }
             if let item = voiceSwitch() { menu.addItem(item) }
-            menu.addItem(StageMenuAction("End Overlay") { [weak self] in
-                guard let self, self.overlayGeneration == generation else { return }; self.hideOverlay()
-            })
+            menu.addItem(endCard())
         } else {
-            menu.addItem(StageMenuAction("Show Selected Persona", enabled: !visibleItems.isEmpty) { [weak self] in
-                guard let self, self.overlayGeneration == generation else { return }; self.showOverlay()
-            })
+            if let card = shownCard {
+                // A hidden card is kept: Show again brings back this card, not the selection.
+                if let failure = cardFeedback { menu.addItem(StageMenuAction(failure, enabled: false) {}) }
+                menu.addItem(StageMenuAction("Show Again") { [weak self] in
+                    guard let self, self.overlayGeneration == generation, self.shownCard?.copyID == card.copyID else { return }
+                    self.showAgain()
+                })
+                cardChanges().forEach(menu.addItem)
+                if let item = voiceSwitch() { menu.addItem(item) }
+                menu.addItem(endCard())
+            } else {
+                menu.addItem(StageMenuAction("Show Selected Persona", enabled: !visibleItems.isEmpty) { [weak self] in
+                    guard let self, self.overlayGeneration == generation else { return }; self.showOverlay()
+                })
+            }
             let ready = groups.filter { preparedGroupIDs.contains($0.id) && $0.overlays?.isEmpty == false }
             if !ready.isEmpty {
                 menu.addSubmenu("Start Prepared Set", items: ready.enumerated().map { index, group in
@@ -1218,13 +1409,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Live overlays keep only what the library still has; nothing is added.
     private func reconcileLive() {
         session?.reconcile(availableGroups: groups, existingPersonas: Set(items.map(\.id)))
-        if var session = liveSelection {
-            session.reconcile(group: activeGroup, existingIDs: Set(items.map(\.id)))
-            liveSelection = session
-            cardDeck?.keepOnly(session.candidateIDs)
-            if session.currentID == nil { hideOverlay() }
+        if var live = liveSelection {
+            // Against the card's own group, never whichever group preparation shows
+            // now: browsing groups neither hides nor narrows the shown card. Removing
+            // its persona, or its group or membership, subtracts it and ends the card.
+            live.reconcile(group: live.groupID.flatMap { id in groups.first { $0.id == id } }, existingIDs: Set(items.map(\.id)))
+            liveSelection = live
+            cardDeck?.keepOnly(live.candidateIDs)
+            if live.currentID == nil { endOverlaySession() }
         }
-        if let displayedID, !items.contains(where: { $0.id == displayedID }) { hideOverlay() }
+        if let displayedID, !items.contains(where: { $0.id == displayedID }) { endOverlaySession() }
         refreshOverlay()
     }
     private func select(previous: UUID?) {

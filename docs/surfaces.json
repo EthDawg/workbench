@@ -1862,11 +1862,37 @@
     "note": "Voice framing, the Persona option named in the Grammar. Off by default; listens only while the framed persona shows."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.runtime-2aa73098749c",
+    "surface": "Persona menu",
+    "label": null,
+    "expression": "\"Replace Shown with \" + name",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality within Persona (#170): replaces the shown floating card, shown or hidden, with the preparation selection, keeping its size, place and lock. Named by the selection's public label only."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-again",
+    "surface": "Persona menu",
+    "label": "Show Again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality within Persona (#170): Hide keeps the one floating card, and Show Again brings back that card, the same words as a paused set's Show Again."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-selected-persona",
     "surface": "Persona menu",
     "label": "Show Selected Persona",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.update-shown-card",
+    "surface": "Persona menu",
+    "label": "Update Shown Card",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality within Persona (#170): offered only when the shown card's persona was saved with another look; updates that copy alone, keeping its place."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.action.bring-forward",
@@ -1927,6 +1953,14 @@
     "label": "Send Backward",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.action.update-selected",
+    "surface": "Persona menu",
+    "label": "Update Selected",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality within Persona (#170): the prepared set's selected copy takes its persona's newer saved look; other copies keep theirs, and the layout is saved only when asked."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.addSubmenu.add-overlay",

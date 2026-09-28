@@ -114,6 +114,38 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-shown-only"] {
+            // Disposable libraries and synthetic artwork only; a fake microphone; no shortcut or preference.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let shown = PersonaShownTests(), oneCard = PersonaOneCardTests(), personas = PersonaTests(), workspace = PersonaWorkspaceTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("shown: browsing never replaces or hides the shown card", shown.testBrowsingNeverReplacesOrHidesTheShownCard),
+                ("shown: Replace shown keeps size, place and lock", shown.testReplaceShownWithSelectedKeepsSizePlaceAndLock),
+                ("shown: Update shown card changes only that copy", shown.testUpdateShownCardChangesOnlyThatCopy),
+                ("shown: a hidden card is kept with the microphone stopped", shown.testHiddenCardIsKeptUntilShowAgainWithTheMicrophoneStopped),
+                ("shown: a prepared copy is identified and changed alone", shown.testPreparedCopyIsIdentifiedAndChangedAlone),
+                ("one card failed Next in live menu and panel notice", oneCard.testFailedNextIsReportedInTheLiveMenuAndThePanelNotice),
+                ("one card bad replacement keeps the shown card", oneCard.testReplacingTheShownCardWithABadOneKeepsIt),
+                ("persona ungrouped HUD scope and native controls", personas.testUngroupedHUDStaysScopedToDisplayedPersonaAndControlsItsLifecycle),
+                ("persona workspace single card immediate show and stop", workspace.testWorkspaceSingleCardShowsAndStopsWithoutDismissal),
+                ("optional offscreen selected and shown renders", shown.testOffscreenShownRenders)
+            ]
+            var skipped = 0
+            for (name, test) in tests {
+                // An optional render runs only when asked for; otherwise it is reported as skipped.
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-appearance-only"] {
             // Disposable libraries and synthetic artwork only; a fake microphone; no shortcut or preference.
             _ = NSApplication.shared
@@ -372,6 +404,7 @@ struct TestRunner {
         let personaStarters = PersonaStarterTests()
         let personaCreation = PersonaCreationTests()
         let personaAppearance = PersonaAppearanceTests()
+        let personaShown = PersonaShownTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
@@ -482,6 +515,11 @@ struct TestRunner {
             ("appearance: tall, wide, small and transparent artwork", personaAppearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
             ("appearance: deck keeps the shown look until the new one is ready", personaAppearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
             ("appearance: scene placement uses the chosen look", personaAppearance.testScenePlacementUsesTheChosenLook),
+            ("shown: browsing never replaces or hides the shown card", personaShown.testBrowsingNeverReplacesOrHidesTheShownCard),
+            ("shown: Replace shown keeps size, place and lock", personaShown.testReplaceShownWithSelectedKeepsSizePlaceAndLock),
+            ("shown: Update shown card changes only that copy", personaShown.testUpdateShownCardChangesOnlyThatCopy),
+            ("shown: a hidden card is kept with the microphone stopped", personaShown.testHiddenCardIsKeptUntilShowAgainWithTheMicrophoneStopped),
+            ("shown: a prepared copy is identified and changed alone", personaShown.testPreparedCopyIsIdentifiedAndChangedAlone),
             ("persona geometry and strict validation", personas.testGeometryBoundsAndValidation),
             ("persona durable image and separate desktop placement", personas.testDurableImportSeparatePlacementAndRemoval),
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
