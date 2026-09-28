@@ -21,7 +21,7 @@
     "label": "Reset position",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality (#197 review): renamed from Reset to bottom centre. The dictation panel's options repeat Position…'s Reset position, the same reset of the one shared position.",
+    "note": "Quality (#197 review): renamed from Reset to bottom centre. A result's own Position menu repeats Position…'s Reset position, the same reset of the one shared position.",
     "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
   },
   {
@@ -865,15 +865,16 @@
     "label": "Reset position",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options offer the same reset under the same name."
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. A result's own Position menu offers the same reset under the same name."
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",
+    "id": "LocalVoice.Views.ContentView.Button.position-floating-toolbar",
     "surface": "dictate page options",
-    "label": "Position dictation panel…",
+    "label": "Position floating toolbar…",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
+    "aliasOf": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
+    "note": "Quality (#211 follow-up): renamed from Position dictation panel…, since #134 T4 made the dictation panel part of the one floating toolbar host. It opens the floating toolbar's Position…, the control More's Position… opens, from Dictate's options, as the old entry did (Option of Dictate: moved from the Settings page to the Dictate page, same control, #134 W3)."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.transcribe-a-meeting-or-call",

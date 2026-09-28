@@ -304,7 +304,7 @@ tool or a live label that widens the row never moves the launcher, and nothing
 but a new placement turns the row round. The toolbar sizes to its content and
 has no resize handles. A recording, a result or the cue is the same toolbar at the
 same position, so dragging it moves that one position (#134 T4). Position
-dictation panel… on the Dictate page opens Position… at the toolbar.
+floating toolbar… on the Dictate page opens Position… at the toolbar.
 
 Position… in More opens one compact control with the eight docks and
 Reset position, which docks at bottom centre. It is the keyboard and precise way

@@ -182,7 +182,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var tracking: ToolbarTrackingView?
     private let motion = ToolbarWindowMotion()
     private var measuringToolbar = false
-    /// Position… is open for the Dictate page's Position dictation panel….
+    /// Position… is open for the Dictate page's Position floating toolbar….
     private var previewShowsPosition = false
     /// Where the tools rest while they are not docked (#163); nil while they are docked at
     /// `controls.anchor`. Only a person's placement changes it: a frame recovered onto
@@ -426,7 +426,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
     }
 
-    /// Position dictation panel… on the Dictate page opens Position… at the toolbar, which is
+    /// Position floating toolbar… on the Dictate page opens Position… at the toolbar, which is
     /// where dictation shows now (#134 T4); closing it ends the preview.
     private func showPositionForPreview(_ model: AppModel) {
         guard model.previewingPanel else { previewShowsPosition = false; return }

@@ -2183,7 +2183,7 @@ enum SurfaceGallery {
                  E(surface: "Settings page", label: "Dictate options…", leads: "Page: dictate, scrolled to and focused on its options", route: "dictate"),
                  page("Settings page", "Show me a first dictation, until the first dictation", "home"),
                  action("Settings page", "Appearance · Floating toolbar switch", "Shows or hides the floating toolbar between actions"),
-                 page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position dictation panel…", "Shows the dictation panel preview"),
+                 page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position floating toolbar…", "Opens Position… at the floating toolbar"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"),
                  action("Snap page", "Use selected · Organise… · Hand off for synthesis…", "Opens the handoff review for a Snap review"),

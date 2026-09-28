@@ -273,7 +273,7 @@ struct WorkbenchHome: View {
                             Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
                         }
                     }
-                    Text("Delivery, text style, activation, your dictionary and the dictation panel are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
+                    Text("Delivery, text style, activation, your dictionary and the floating toolbar's position are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
                     Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
                     Divider()
                     FounderIntroductionCard(model: introduction, canDismiss: false)
