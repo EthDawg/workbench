@@ -261,7 +261,8 @@ final class PersonaSessionController {
               (item.shape ?? candidate.shape) != shape else { return }
         let image = try look(of: candidate, in: shape)
         var placement = item.placement
-        if phase == .active, item.visible, let panel = panels[id], let label = state.instances.first(where: { $0.id == id })?.label {
+        // Shown, paused or hidden, the copy keeps its centre: a paused set comes back in place.
+        if let panel = panels[id], let label = state.instances.first(where: { $0.id == id })?.label {
             placement = panel.reshape(image: image, outline: shape.outline, name: label, state: item.placement)
             placement.locked = item.placement.locked
         }

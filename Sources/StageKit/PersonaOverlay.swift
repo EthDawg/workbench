@@ -100,8 +100,10 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     /// keeps its width and its centre on screen, moving only as far as it must to
     /// stay on the display. The voice outline and handles follow the new edge, and
     /// the lock is unchanged. Returns the placement that does this.
+    /// A copy hidden or paused keeps its last place, so its centre is kept too
+    /// and it comes back there in the new look.
     func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
-        guard let window, window.isVisible, let screen = screenForArtwork() else {
+        guard let window, artwork.image != nil, window.frame.width > 0, window.frame.height > 0, let screen = screenForArtwork() else {
             setOutline(outline); configure(image: image, name: name, state: state); return self.state
         }
         let before = CGRect(x: window.frame.minX + artwork.artworkInsets.left, y: window.frame.minY + artwork.artworkInsets.bottom,

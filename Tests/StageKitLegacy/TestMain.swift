@@ -128,6 +128,8 @@ struct TestRunner {
                 ("appearance: prepared copy changes alone and saves only when asked", appearance.testPreparedCopyChangesShapeAloneAndSavesOnlyWhenAsked),
                 ("appearance: one keyboard-reachable choice", appearance.testAppearanceChoiceIsOneKeyboardReachableSelection),
                 ("appearance: the toolbar changes exactly the captured copy", appearance.testToolbarChangesExactlyTheCapturedCopy),
+                ("appearance: the toolbar targets one prepared copy exactly", appearance.testToolbarTargetsOnePreparedCopyExactly),
+                ("appearance: a paused copy reshapes around its centre", appearance.testPausedCopyReshapesAroundItsCentre),
                 ("appearance: tall, wide, small and transparent artwork", appearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
                 ("appearance: deck keeps the shown look until the new one is ready", appearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
                 ("appearance: scene placement uses the chosen look", appearance.testScenePlacementUsesTheChosenLook),
@@ -136,12 +138,18 @@ struct TestRunner {
                 ("persona scene attachment transparency and missing-file recovery", personas.testSceneAttachmentTransparencyAndMissingFile),
                 ("optional offscreen appearance renders", appearance.testOffscreenAppearanceRenders)
             ]
+            var skipped = 0
             for (name, test) in tests {
+                // An optional render runs only when asked for; otherwise it is reported as skipped.
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
                 let before = assertionFailures
                 do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
                 if assertionFailures == before { print("PASS \(name)") }
             }
-            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
         if args == ["--persona-creation-only"] {
@@ -469,6 +477,8 @@ struct TestRunner {
             ("appearance: prepared copy changes alone and saves only when asked", personaAppearance.testPreparedCopyChangesShapeAloneAndSavesOnlyWhenAsked),
             ("appearance: one keyboard-reachable choice", personaAppearance.testAppearanceChoiceIsOneKeyboardReachableSelection),
             ("appearance: the toolbar changes exactly the captured copy", personaAppearance.testToolbarChangesExactlyTheCapturedCopy),
+            ("appearance: the toolbar targets one prepared copy exactly", personaAppearance.testToolbarTargetsOnePreparedCopyExactly),
+            ("appearance: a paused copy reshapes around its centre", personaAppearance.testPausedCopyReshapesAroundItsCentre),
             ("appearance: tall, wide, small and transparent artwork", personaAppearance.testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline),
             ("appearance: deck keeps the shown look until the new one is ready", personaAppearance.testDeckKeepsTheShownLookUntilTheNewOneIsReady),
             ("appearance: scene placement uses the chosen look", personaAppearance.testScenePlacementUsesTheChosenLook),

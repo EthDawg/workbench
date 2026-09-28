@@ -602,13 +602,28 @@ struct PersonaCardEditor: View {
 }
 
 /// Circle's framing: the picture under a round window, exactly as Circle draws it.
-/// Drag the picture, pinch or use Zoom, or focus it and use the arrow keys.
+/// Drag the picture, pinch or use Zoom, or focus it and use the arrow keys;
+/// VoiceOver can zoom it and move it with named actions.
 struct PersonaFramingPreview: View {
     let portrait: NSImage
     @Binding var framing: PersonaFraming
     var diameter: CGFloat = 240
     @State private var dragStart: PersonaFraming?
     @State private var pinchStart: PersonaFraming?
+
+    /// One arrow-key step: the picture moves a twentieth of the circle that way.
+    static func nudged(_ framing: PersonaFraming, _ direction: MoveCommandDirection, diameter: CGFloat, portrait size: CGSize) -> PersonaFraming {
+        let step = diameter * 0.05
+        let move: CGSize
+        switch direction {
+        case .left: move = CGSize(width: -step, height: 0)
+        case .right: move = CGSize(width: step, height: 0)
+        case .up: move = CGSize(width: 0, height: -step)
+        case .down: move = CGSize(width: 0, height: step)
+        @unknown default: move = .zero
+        }
+        return framing.dragged(by: move, diameter: diameter, portrait: size)
+    }
 
     var body: some View {
         let size = portrait.size
@@ -632,18 +647,7 @@ struct PersonaFramingPreview: View {
                 framing = start.zoomed(to: start.zoom * value.magnification, portrait: size)
             }.onEnded { _ in pinchStart = nil })
             .focusable()
-            .onMoveCommand { direction in
-                let step = diameter * 0.05
-                let move: CGSize
-                switch direction {
-                case .left: move = CGSize(width: -step, height: 0)
-                case .right: move = CGSize(width: step, height: 0)
-                case .up: move = CGSize(width: 0, height: -step)
-                case .down: move = CGSize(width: 0, height: step)
-                @unknown default: move = .zero
-                }
-                framing = framing.dragged(by: move, diameter: diameter, portrait: size)
-            }
+            .onMoveCommand { direction in framing = Self.nudged(framing, direction, diameter: diameter, portrait: size) }
             .accessibilityElement()
             .accessibilityLabel("Circle framing")
             .accessibilityValue("Zoom \(String(format: "%.1f", framing.zoom)) times")
@@ -654,6 +658,11 @@ struct PersonaFramingPreview: View {
                 @unknown default: break
                 }
             }
+            // VoiceOver moves the picture with the same step as the arrow keys.
+            .accessibilityAction(named: "Move left") { framing = Self.nudged(framing, .left, diameter: diameter, portrait: size) }
+            .accessibilityAction(named: "Move right") { framing = Self.nudged(framing, .right, diameter: diameter, portrait: size) }
+            .accessibilityAction(named: "Move up") { framing = Self.nudged(framing, .up, diameter: diameter, portrait: size) }
+            .accessibilityAction(named: "Move down") { framing = Self.nudged(framing, .down, diameter: diameter, portrait: size) }
             .help("Drag to frame the picture in the circle")
     }
 }

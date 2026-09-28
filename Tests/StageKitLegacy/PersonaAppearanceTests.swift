@@ -439,6 +439,88 @@ final class PersonaAppearanceTests {
         }
     }
 
+    /// The toolbar API's prepared-set path: nothing selected names no copy; a
+    /// copy captured in one set is refused once another set is showing; and one
+    /// copy changes while a sibling copy of the same persona keeps its look.
+    func testToolbarTargetsOnePreparedCopyExactly() throws {
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = try write(png(width: 300, height: 400), named: "portrait.png", in: root)
+        let settings = SettingsStore(defaults: UserDefaults(suiteName: root.appendingPathComponent("settings").path)!)
+        for action in Action.allCases {
+            var shortcut = action.defaultShortcut; shortcut.enabled = false
+            settings.value.shortcuts[action.rawValue] = shortcut
+        }
+        let app = AppCoordinator(settings: settings, archiveURL: root.appendingPathComponent("boards.json"), embedded: true)
+        let scenes = DemoScenes(root: root.appendingPathComponent("scenes"), systemIntegrationEnabled: false, personaPanels: { Panel() })
+        app.demoScenes = scenes
+        defer { scenes.shutdown() }
+        let library = scenes.personas
+        let persona = try library.addImage(source, name: "Private name", card: PersonaCardStyle(label: "Site lead"))
+        let first = try library.createGroup(name: "Private first", members: [persona.id])
+        let a = PersonaOverlayItem(personaID: persona.id), b = PersonaOverlayItem(personaID: persona.id)
+        try library.saveGroupLayout(first, overlays: [a, b], publicLabel: "First")
+        let second = try library.createGroup(name: "Private second", members: [persona.id])
+        try library.saveGroupLayout(second, overlays: [PersonaOverlayItem(personaID: persona.id)], publicLabel: "Second")
+        try library.startOverlaySession(groupIDs: [first, second], initialGroupID: first)
+        MainActor.assumeIsolated {
+            let stage = StageKitController(coordinator: app)
+            stage.useSharedActivityControls()
+            guard let copyA = stage.selectedPersonaCopy else { XCTAssertTrue(false, "The selected copy is named"); return }
+            // One copy changes; its sibling copy of the same persona keeps its look.
+            stage.setPersonaShape(.circle, for: copyA)
+            XCTAssertEqual(library.sessionState.instances.map(\.shape), [.circle, .card])
+            XCTAssertEqual(stage.personaShape(of: copyA), .circle)
+            // Nothing selected: no copy to change.
+            library.performOverlayAction(.remove(b.id)); library.performOverlayAction(.remove(a.id))
+            XCTAssertTrue(library.sessionState.selectedInstanceID == nil)
+            XCTAssertTrue(stage.selectedPersonaCopy == nil, "A live set with nothing selected names no copy")
+            // A copy captured in the first set is refused once the second set shows.
+            library.performOverlayAction(.selectGroup(second))
+            guard let other = library.sessionState.instances.first else { return }
+            XCTAssertTrue(stage.personaShape(of: copyA) == nil, "The captured copy is not live in this set")
+            stage.setPersonaShape(.original, for: copyA)
+            XCTAssertEqual(library.sessionState.instances.first { $0.id == other.id }?.shape, .card, "Another set's copy is left alone")
+            library.endOverlaySession()
+        }
+    }
+
+    /// A copy whose look changes while its set is paused comes back where it
+    /// was, centred as before, in its new look.
+    func testPausedCopyReshapesAroundItsCentre() throws {
+        guard let screen = screen() else { XCTAssertTrue(false, "The native check needs a display"); return }
+        let root = try temporary(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = try write(png(width: 300, height: 400), named: "portrait.png", in: root)
+        var panels: [PersonaOverlayController] = []
+        let library = PersonaLibrary(root: root.appendingPathComponent("library"), sessionPanelFactory: {
+            let panel = PersonaOverlayController(pointer: PersonaTestPointer(), revealDelay: 0); panels.append(panel); return panel
+        }, sessionHUDEnabled: false)
+        defer { library.shutdown() }
+        library.usesSharedControls = true
+        let persona = try library.addImage(source, name: "Private name", card: PersonaCardStyle(label: "Site lead"))
+        let group = try library.createGroup(name: "Private group", members: [persona.id])
+        let item = PersonaOverlayItem(personaID: persona.id, placement: PersonaOverlayState(x: 0.4, y: 0.5, width: 0.16, screenID: displayID(screen), locked: true))
+        try library.saveGroupLayout(group, overlays: [item], publicLabel: "Set")
+        try library.startOverlaySession(groupIDs: [group], initialGroupID: group)
+        guard let panel = panels.first, let before = panel.visibleFrame else { XCTAssertTrue(false, "The copy shows"); return }
+        library.pauseOverlaySession()
+        let menu = library.makeControlsMenu()
+        XCTAssertTrue(menu.items.contains { $0.title == "Appearance" }, "Appearance stays available while paused")
+        library.setLiveShape(.circle, for: .overlay(item.id, group: group))
+        try library.resumeOverlaySession()
+        guard let after = panel.visibleFrame else { return }
+        XCTAssertEqual(Double(after.width / after.height), 1, accuracy: 0.01)
+        XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: 1)
+        XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: 1, file: #filePath, line: #line)
+        XCTAssertEqual(Double(after.width), Double(before.width), accuracy: 1)
+        XCTAssertTrue(panel.window?.ignoresMouseEvents == true, "Still locked")
+        // VoiceOver's named moves take the arrow keys' step.
+        let size = CGSize(width: 300, height: 400), closer = PersonaFraming(x: 0.5, y: 0.5, zoom: 2)
+        XCTAssertTrue(PersonaFramingPreview.nudged(closer, .left, diameter: 240, portrait: size).x > 0.5, "Move left moves the picture left")
+        XCTAssertTrue(PersonaFramingPreview.nudged(closer, .right, diameter: 240, portrait: size).x < 0.5)
+        XCTAssertTrue(PersonaFramingPreview.nudged(closer, .up, diameter: 240, portrait: size).y < 0.5)
+        XCTAssertTrue(PersonaFramingPreview.nudged(closer, .down, diameter: 240, portrait: size).y > 0.5)
+    }
+
     // MARK: 5. Tall, wide, small and transparent artwork
 
     func testTallWideSmallAndTransparentArtworkAgreeWithTheirOutline() throws {
