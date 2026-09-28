@@ -7,6 +7,7 @@ recognition, delivery and the state writer are injected fixtures.
 """
 import hashlib
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -32,20 +33,65 @@ methods = '\n'.join([
     # Manual copies and the undelivered result they resolve (#134 T5).
     extract('    func copyTranscript()', '\n    func showLibrary()'),
     extract('    func copyCapture(', '\n    func showPanelPreview()'),
+    # Removing a transcript drops an undelivered result that names it (#134 T5 review).
+    extract('    func removeTranscript(', '\n    func retainMeetingTranscript('),
     extract('    func fail(', '\n    func persist()'),
     extract('    func saveNow()', '\n    func shutdown()'),
     source[source.index('    func shutdown()'):source.rindex('\n}')],
 ])
-def clear_call_sites():
-    sites, member = set(), None
-    for line in source.splitlines():
-        stripped = line.strip()
-        if line.startswith('    ') and not line.startswith('     ') and ' func ' in ' ' + stripped:
-            member = stripped.split('func ', 1)[1].split('(', 1)[0]
-        if 'clipboardReceipt.clear()' in line:
-            sites.add(member)
-    return sites
-clear_sites = clear_call_sites()
+
+# Static inventories of AppModel.swift, so a new way of reaching the receipt or
+# the undelivered result cannot slip past the behavioural checks below.
+MEMBER = re.compile(r'^    (?:@\w+(?:\([^)]*\))?\s+)*(?:(?:private|fileprivate|internal|public)(?:\(set\))?\s+|static\s+|final\s+|override\s+|nonisolated\s+|lazy\s+)*'
+                    r'(?:func\s+(\w+)|(init)\b|(deinit)\b|var\s+(\w+)|let\s+(\w+))')
+def members(text):
+    """Each code line of `text` with the member declared four spaces in above it."""
+    member = None
+    for line in text.splitlines():
+        found = MEMBER.match(line)
+        if found:
+            member = next(group for group in found.groups() if group)
+        yield member, line.split('//', 1)[0]
+def receipt_clear_sites(text):
+    """Members that clear or hide the clipboard receipt: directly, through optional
+    chaining, or through a local or captured alias; by clear() or dismissHUD()."""
+    names = {'clipboardReceipt'}
+    names |= set(re.findall(r'(?:let|var)\s+(\w+)\s*(?::\s*ClipboardReceiptModel\??\s*)?=\s*(?:self\s*[?!]?\s*\.\s*)?clipboardReceipt\b', text))
+    names |= set(re.findall(r'[\[,]\s*(?:weak\s+|unowned\s+)?(\w+)\s*=\s*(?:self\s*[?!]?\s*\.\s*)?clipboardReceipt\s*[\],]', text))
+    call = re.compile(r'\b(?:' + '|'.join(sorted(names)) + r')\s*[?!]?\s*\.\s*(?:clear|dismissHUD)\b')
+    return {member for member, code in members(text) if call.search(code)}
+slot_source = (PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift').read_text()
+mutators = set(re.findall(r'mutating func (\w+)', slot_source[slot_source.index('struct UnresolvedDeliverySlot'):]))
+def undelivered_writers(text):
+    """Members that change the one undelivered result: its mutating methods, an
+    assignment, or an inout pass."""
+    write = re.compile(r'\bundelivered\s*(?:\.\s*(?:' + '|'.join(sorted(mutators)) + r')\s*\(|=(?!=))|&\s*(?:self\s*\.\s*)?undelivered\b')
+    return {member for member, code in members(text) if write.search(code) and not re.search(r'\bvar\s+undelivered\b', code)}
+# The scans themselves catch the forms a later edit might use.
+probe = """
+    func direct() { clipboardReceipt.clear() }
+    func chained() { self?.clipboardReceipt?.clear() }
+    func hides() { clipboardReceipt.dismissHUD() }
+    func aliased() {
+        let receipts = clipboardReceipt
+        receipts.clear()
+    }
+    func captured() { Task { [weak held = clipboardReceipt] in held?.dismissHUD() } }
+    func reads() { _ = clipboardReceipt.receipt; undelivered.shown(in: records) }
+    init() { undelivered.restore(nil) }
+    func assigns() { undelivered = UnresolvedDeliverySlot() }
+    func passes() { tidy(&undelivered) }
+"""
+assert receipt_clear_sites(probe) == {'direct', 'chained', 'hides', 'aliased', 'captured'}, receipt_clear_sites(probe)
+assert {'note', 'dismiss', 'transcriptRemoved', 'restore'} <= mutators, mutators
+assert undelivered_writers(probe) == {'init', 'assigns', 'passes'}, undelivered_writers(probe)
+clear_sites = receipt_clear_sites(source)
+writers = undelivered_writers(source)
+# Launch restores the undelivered result only once capture recovery has settled the draft,
+# so a draft that recovery replaced drops a draft entry instead of showing it.
+launch = source[source.index('    init(preferences: VoicePreferences)'):source.index('\n    }\n', source.index('    init(preferences: VoicePreferences)'))]
+assert 'undelivered.restore(' in launch and launch.index('restoreCaptureRecovery()') < launch.index('undelivered.restore('), \
+    'launch restores the undelivered result after capture recovery'
 labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:', 'var canRecordAgain:', 'var hasSavedRecordings:']))
 request = shortcuts[shortcuts.index('@MainActor\nfinal class DictationRequest'):shortcuts.index('/// Shortcuts owns Record Audio')]
 fixture = r'''
@@ -96,7 +142,8 @@ struct CaptureSettings {
     struct Result { let text: String; let method: String }
     var calls = 0
     func clean(_ raw: String, style: String, configuration: String) async -> Result {
-        calls += 1; return Result(text: raw.isEmpty ? "" : "Synthetic captured words.", method: "Fixture Light")
+        // The usual fixture words tidy to one sentence; any other words pass through, so checks can tell dictations apart.
+        calls += 1; return Result(text: raw.isEmpty ? "" : raw == "um synthetic captured words" ? "Synthetic captured words." : raw, method: "Fixture Light")
     }
 }
 @MainActor enum TextDelivery {
@@ -143,6 +190,8 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
     var isBusy = false
     var shutdownCount = 0
     func shutdown() { shutdownCount += 1 }
+    func hasRecording(for id: UUID) -> Bool { false }
+    func removeCompletedRecording(for id: UUID, commit: () throws -> Void) throws -> String? { try commit(); return nil }
 }
 
 enum CaptureMode { case toggle, hold }
@@ -158,8 +207,9 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var holdGesture: HoldGesture?
     var captureUsesHoldShortcut = false, isMicrophoneQuiet = false, rendering = false
     var microphoneStartFailure: ((String?) -> String?)?
-    var unresolvedDelivery: UnresolvedDelivery?
-    var deliveringCaptureID: UUID?
+    var undelivered = UnresolvedDeliverySlot()
+    var draftRevision: UInt64 = 0
+    var persistWork: DispatchWorkItem?
     /// Starting the recorder is the one step these checks script: nothing here opens a microphone.
     var startedAttempts: [UUID] = []
     func startRecording(_ attempt: UUID) async { startedAttempts.append(attempt) }
@@ -169,7 +219,8 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     let captureRecovery: CaptureRecoveryStore
     var captureStateWriter: ((SavedState) throws -> Void)?
     var loaded = true
-    var rawTranscript = "Old original", transcript = "Old draft", cleanupMethod = "Old method"
+    var rawTranscript = "Old original", cleanupMethod = "Old method"
+    var transcript = "Old draft" { didSet { draftRevision &+= 1 } }
     var speechText = "Reading stays separate", history: [Transcript] = [], replacements: [Replacement] = []
     var voice = "Fixture voice", rate = 180.0
     var transcriptionID: UUID?, transcriptionTask: Task<Void, Never>?
@@ -194,6 +245,8 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
         coach.voiceOverEnabled = { false }; coach.announce = { _ in }
         captureRecovery = CaptureRecoveryStore(directory: directory)
         if let state { transcript = state.draft; rawTranscript = state.rawDraft ?? state.draft; history = state.history }
+        // As AppModel's launch does once the draft is settled (the writer inventory checks it calls this).
+        undelivered.restore(state?.undelivered, loadedDraftRevision: draftRevision, in: deliveryRecords)
     }
     func captureSettings() -> CaptureSettings { captureOptions }
     func stopPlayback() {}
@@ -209,7 +262,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     func restore() { restoreCaptureRecovery() }
     func admitsCapture() -> Bool { admitNewCapture() }
     func staleCommit(_ invocation: UUID, url: URL) throws -> Bool {
-        try commitRecognizedCapture(raw: "stale", text: "Stale result", seconds: 1, method: "Fixture", ownedAudio: url, invocation: invocation)
+        try commitRecognizedCapture(raw: "stale", text: "Stale result", seconds: 1, method: "Fixture", ownedAudio: url, invocation: invocation) != nil
     }
     __METHODS__
 }
@@ -687,10 +740,17 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
 
         // An undelivered result stays with its owner (#134 T5). The receipt going,
         // its clear() on a new or retried capture, and teardown cannot resolve it;
-        // copying the same words again, or Dismiss, does.
+        // the same words delivered again, or Dismiss, does. The inventories are
+        // read from AppModel.swift: every member that clears or hides the receipt,
+        // and every member that changes the undelivered result.
         let clearCallSites: Set<String> = __CLEAR_CALL_SITES__
-        try check(clearCallSites == ["toggleRecording", "transcribe", "shutdown"],
-                  "every clipboardReceipt.clear() call site is covered below: \(clearCallSites.sorted())")
+        try check(clearCallSites == ["receiveReadingSelection", "toggleRecording", "transcribe", "cleanCurrentDraft", "shutdown"],
+                  "every member that clears or hides the receipt is known: \(clearCallSites.sorted())")
+        let writers: Set<String> = __UNDELIVERED_WRITERS__
+        try check(writers == ["init", "transcribe", "copyTextWithReceipt", "dismissUnresolvedDelivery", "removeTranscript"],
+                  "only delivery, a copy, Dismiss, removing its transcript and launch change the undelivered result: \(writers.sorted())")
+        try check(clearCallSites.intersection(writers) == ["transcribe"],
+                  "of those that clear the receipt, only transcribe also changes the result, and only by its own delivery (checked below)")
         let undelivered = CaptureHarness(directory: folder("undelivered"))
         TextDelivery.nextOutcome = TextDelivery.Outcome(message: "Could not copy.", clipboardChangeCount: nil, failure: .copyFailed)
         undelivered.run(try undelivered.makeRecording(wav), owned: true); await finish(undelivered)
@@ -701,16 +761,27 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         undelivered.toggleRecording()
         try check(undelivered.unresolvedDelivery?.kind == .copyFailed, "a new capture (toggleRecording's clear) does not resolve it")
         undelivered.cancelRecording()
+        undelivered.engine.result = "um different words entirely"
         undelivered.run(try undelivered.makeRecording(wav), owned: true); await finish(undelivered)
+        undelivered.engine.result = "um synthetic captured words"
         try check(undelivered.history.count == 2 && undelivered.unresolvedDelivery?.reference == failedID.map { .transcript($0) },
-                  "a later transcription (transcribe's clear) and its successful delivery do not resolve an older result")
+                  "a later transcription (transcribe's clear) and its successful delivery of other words do not resolve an older result")
         undelivered.shutdown()
         try check(undelivered.unresolvedDelivery?.kind == .copyFailed, "teardown (shutdown's clear) leaves it for its canonical record")
+        let quitState = undelivered.store.saved
+        try check(quitState?.undelivered?.kind == .copyFailed && quitState?.undelivered?.reference == failedID.map { .transcript($0) },
+                  "quit saves it with the session, naming its transcript")
+        let afterQuit = CaptureHarness(directory: folder("undelivered-relaunch"), state: quitState)
+        try check(afterQuit.unresolvedDelivery?.kind == .copyFailed && afterQuit.unresolvedDelivery?.offersCopy == true,
+                  "relaunch shows it on the shelf, with Copy again")
         let copiesBefore = TextDelivery.copies.count
-        undelivered.copyUnresolvedDelivery()
-        try check(TextDelivery.copies.count == copiesBefore + 1 && TextDelivery.copies.last == undelivered.history.first(where: { $0.id == failedID })?.text
-                  && undelivered.unresolvedDelivery == nil, "Copy again copies those exact words, and only then is it resolved")
+        afterQuit.copyUnresolvedDelivery()
+        try check(TextDelivery.copies.count == copiesBefore + 1 && TextDelivery.copies.last == afterQuit.history.first(where: { $0.id == failedID })?.text
+                  && afterQuit.unresolvedDelivery == nil, "Copy again copies those exact words, and only then is it resolved")
+        afterQuit.saveNow()
+        try check(afterQuit.store.saved?.undelivered == nil && afterQuit.store.saved?.history.count == 2, "once resolved, the next save carries nothing undelivered")
 
+        // The words decide: the same words copied from the draft resolve a transcript's unconfirmed paste.
         let uncertain = CaptureHarness(directory: folder("uncertain"))
         TextDelivery.nextOutcome = TextDelivery.Outcome(message: "Paste sent · insertion could not be confirmed.", failure: .pasteUnconfirmed, pasteWasAttempted: true)
         uncertain.run(try uncertain.makeRecording(wav), owned: true); await finish(uncertain)
@@ -719,16 +790,72 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         uncertain.copyUnresolvedDelivery()
         try check(uncertain.unresolvedDelivery?.kind == .pasteUnconfirmed && TextDelivery.copies.count == uncertainCopies,
                   "an unconfirmed paste offers no second copy to paste, and stays until the person decides")
+        try check(uncertain.transcript == uncertain.history.first?.text, "the dictation left the same words in the draft")
+        uncertain.copyTranscript()
+        try check(uncertain.unresolvedDelivery == nil, "copying those same words from the draft resolves it")
+        TextDelivery.nextOutcome = TextDelivery.Outcome(message: "Paste sent · insertion could not be confirmed.", failure: .pasteUnconfirmed, pasteWasAttempted: true)
+        uncertain.run(try uncertain.makeRecording(wav), owned: true); await finish(uncertain)
+        TextDelivery.nextOutcome = TextDelivery.Outcome()
         uncertain.dismissUnresolvedDelivery()
-        try check(uncertain.unresolvedDelivery == nil && uncertain.history.count == 1, "Dismiss sets it aside; the transcript stays in History")
+        try check(uncertain.unresolvedDelivery == nil && uncertain.history.count == 2, "Dismiss sets it aside; the transcript stays in History")
 
+        // Removing its transcript is the person's choice: the result goes with it, and is not saved.
+        let removing = CaptureHarness(directory: folder("undelivered-removed"))
+        TextDelivery.nextOutcome = TextDelivery.Outcome(message: "Could not copy.", clipboardChangeCount: nil, failure: .copyFailed)
+        removing.run(try removing.makeRecording(wav), owned: true); await finish(removing)
+        TextDelivery.nextOutcome = TextDelivery.Outcome()
+        let removed = removing.history.first!
+        removing.removeTranscript(removed)
+        try check(removing.history.isEmpty && removing.unresolvedDelivery == nil && removing.undelivered.entry == nil
+                  && removing.store.saved?.undelivered == nil && removing.store.saved?.history.isEmpty == true,
+                  "removing its transcript drops it, from memory and from the saved session")
+
+        // A draft entry acts only while the draft is the one that failed.
         let draft = CaptureHarness(directory: folder("draft-copy"))
         TextDelivery.copyFails = true
         draft.copyTranscript()
-        try check(draft.unresolvedDelivery?.kind == .copyFailed && draft.unresolvedDelivery?.reference == .draft, "a failed copy of the draft is kept too")
+        TextDelivery.copyFails = false
+        try check(draft.unresolvedDelivery?.kind == .copyFailed && draft.unresolvedDelivery?.isDraft == true, "a failed copy of the draft is kept too")
+        draft.saveNow()
+        try check(draft.store.saved?.undelivered?.isDraft == true && draft.store.saved?.draft == "Old draft", "a save carries a draft entry with the draft it names")
+        draft.run(try draft.makeRecording(wav), owned: true); await finish(draft)
+        let changedDraft = draft.unresolvedDelivery
+        try check(draft.transcript == "Synthetic captured words." && changedDraft?.draftChanged == true && changedDraft?.offersCopy == false,
+                  "a new dictation replaced the draft: the shelf says the draft changed and offers Review, not Copy again")
+        let copiesAfterChange = TextDelivery.copies.count
+        draft.copyUnresolvedDelivery()
+        try check(TextDelivery.copies.count == copiesAfterChange && draft.unresolvedDelivery != nil, "Copy again never copies whatever the draft became")
+        draft.saveNow()
+        try check(draft.store.saved?.undelivered == nil, "a save after the draft changed carries nothing undelivered, so relaunch drops it")
+        draft.dismissUnresolvedDelivery()
+        TextDelivery.copyFails = true
+        draft.copyTranscript()
         TextDelivery.copyFails = false
         draft.copyTranscript()
-        try check(draft.unresolvedDelivery == nil, "copying the draft again resolves it")
+        try check(draft.unresolvedDelivery == nil, "copying the unchanged draft again resolves it")
+
+        // T4's fallback: a lesson the host drops after asking gives this attempt's cue after all.
+        let dropped = CaptureHarness(directory: folder("hold-lesson-dropped"), tips: tips("dropped"))
+        dropped.coach.canPresent = { true }
+        try holdTap(dropped)
+        let pending = dropped.coach.card
+        try check(pending != nil && dropped.captureCue == nil, "the lesson was asked for in place of the cue")
+        dropped.coach.drop(pending!.id)
+        try check(dropped.coach.card == nil && dropped.captureCue?.reason == .tooShort && dropped.status == "No speech heard. Nothing was added."
+                  && !dropped.coach.tips.isRetired(HoldLesson.tip), "a card the host drops gives the cue after all; the attempt never shows neither")
+        dropped.dismissCaptureCue()
+        try holdTap(dropped, down: 80, up: 80.1)
+        dropped.coach.didPresent(dropped.coach.card!.id)
+        dropped.coach.drop(dropped.coach.card!.id)
+        try check(dropped.captureCue == nil && dropped.coach.card != nil, "a card the host showed is never followed by the cue")
+        let superseded = CaptureHarness(directory: folder("hold-lesson-superseded"), tips: tips("superseded"))
+        superseded.coach.canPresent = { true }
+        try holdTap(superseded)
+        let stalePending = superseded.coach.card!.id
+        superseded.toggleRecording()
+        superseded.coach.drop(stalePending)
+        try check(superseded.captureCue == nil && superseded.phase != .idle, "a newer capture removes the pending card; a late drop shows no cue over it")
+        superseded.cancelRecording()
 
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }
@@ -736,6 +863,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
 '''
 values = core[:core.index('struct StateStore {')]
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
+fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)

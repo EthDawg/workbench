@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 // Brief feedback that teaches once and leaves work intact (#134 T5): the one
 // lifetime every timed notice uses.
@@ -97,22 +97,26 @@ struct NoticeLifetime: Equatable {
 final class NoticeExpiry {
     private var task: Task<Void, Never>?
     private let clock: MonotonicClock
+    /// The event and deadline it is waiting for, if any; checks read it.
+    private(set) var pending: (event: UUID, deadline: TimeInterval)?
 
     init(clock: @escaping MonotonicClock = Monotonic.now) { self.clock = clock }
     deinit { task?.cancel() }
 
     func schedule(_ lifetime: NoticeLifetime?, fire: @escaping @MainActor (UUID) -> Void) {
-        task?.cancel(); task = nil
+        cancel()
         guard let lifetime, let deadline = lifetime.deadline else { return }
         let event = lifetime.event, wait = max(0, deadline - clock())
-        task = Task { @MainActor in
+        pending = (event, deadline)
+        task = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             guard !Task.isCancelled else { return }
+            self?.pending = nil
             fire(event)
         }
     }
 
-    func cancel() { task?.cancel(); task = nil }
+    func cancel() { task?.cancel(); task = nil; pending = nil }
 }
 
 /// A quiet, four-second confirmation of something that actually succeeded,
@@ -128,5 +132,17 @@ struct LocalConfirmation<Kind: Equatable>: Equatable {
         var lifetime = NoticeLifetime(duration: Self.seconds)
         lifetime.present(at: now)
         self.lifetime = lifetime
+    }
+}
+
+/// What brief feedback says to VoiceOver: once, waiting for current speech
+/// rather than interrupting it, so a notice that goes after a few seconds is
+/// still heard.
+enum FeedbackAnnouncement {
+    @MainActor static func post(_ text: String) {
+        // Only the running app speaks; a check or render process never does.
+        guard let app = NSApp, app.isRunning else { return }
+        NSAccessibility.post(element: app, notification: .announcementRequested,
+                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 }

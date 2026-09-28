@@ -21,7 +21,8 @@ after a confirmed paste); the pointer or its pin holds it. The one-time
 coaching card (#134 T5) is shown by this host above the compact anchor, never
 by expanding the row: the host shows it only when `FeedbackCoachModel.canPresent`
 allows, reports `didPresent` once it is on screen and `drop` when it cannot be
-shown, and removes it on screen capture and another capture.
+shown (the attempt then gets its ordinary no-speech cue), and removes it on
+screen capture and another capture.
 
 **The mode follows you.** A mode is one capability or named workflow: Dictate,
 Read, Snap, Snap & Talk, Draw, Present or Persona. Starting anything from any

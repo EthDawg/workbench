@@ -41,6 +41,12 @@ import Foundation
 import Combine
 
 enum StoreFailure: Error { case simulated }
+/// The session now carries the one undelivered result (#134 T5); corrections
+/// never create one, so delivery here is only the outcome shape it reads.
+enum TextDelivery {
+    enum FailureKind { case copyFailed, pasteUnconfirmed, cancelled, clipboardChanged, clipboardRestoreFailed }
+    struct Outcome { var failure: FailureKind?; var pasteWasAttempted = false }
+}
 @MainActor final class StateStore {
     var saved: SavedState?
     var attempts = 0
@@ -57,6 +63,7 @@ enum StoreFailure: Error { case simulated }
     enum Phase: String { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var loaded = false
     var draftRevision: UInt64 = 0
+    var undelivered = UnresolvedDeliverySlot()
     var persistWork: DispatchWorkItem?
     let store = StateStore()
     /// History's observer records the first dictation for Home (#15); corrections never depend on it.
@@ -349,6 +356,7 @@ with tempfile.TemporaryDirectory(prefix="workbench-remember-correction-", dir="/
     subprocess.run([
         "swiftc", "-parse-as-library", "-swift-version", "5", "-module-cache-path", str(directory / "ModuleCache"),
         str(directory / "CoreValues.swift"), str(PROJECT / "Sources/LocalVoice/TextPrimitives.swift"), str(PROJECT / "Sources/LocalVoice/CorrectionRule.swift"),
+        str(PROJECT / "Sources/LocalVoice/DeliveryOutcome.swift"),
         str(directory / "Checks.swift"), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True, timeout=15)

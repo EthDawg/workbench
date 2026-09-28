@@ -68,9 +68,10 @@ enum HoldLesson {
 ///
 /// The host seam: set `canPresent`; when `card` is set and not yet presented,
 /// show `CoachCardView` and then call `didPresent(_:)` once it is really on
-/// screen, or `drop(_:)` if it cannot be shown. Call `remove()` on screen
-/// capture and when another capture starts. The owner itself removes it on
-/// sleep, lock and a new dictation.
+/// screen, or `drop(_:)` if it cannot be shown, which gives the owner's own
+/// feedback instead. Call `remove()` on screen capture and when another
+/// capture starts. The owner itself removes it on sleep, lock and a new
+/// dictation.
 @MainActor
 final class FeedbackCoachModel: ObservableObject {
     struct Card: Identifiable, Equatable {
@@ -95,6 +96,8 @@ final class FeedbackCoachModel: ObservableObject {
     var voiceOverEnabled: () -> Bool = { NSWorkspace.shared.isVoiceOverEnabled }
     var announce: (String) -> Void = { FeedbackAnnouncement.post($0) }
     private let expiry: NoticeExpiry
+    /// What the owner shows if the host drops the pending card.
+    private var fallback: (() -> Void)?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
     init(tips: CoachTips = CoachTips(), clock: @escaping MonotonicClock = Monotonic.now,
@@ -118,12 +121,14 @@ final class FeedbackCoachModel: ObservableObject {
 
     /// Offers a lesson that has not been taught. False when it cannot show
     /// now: already learned, or no host can show it. Nothing is queued, and a
-    /// lesson that was not shown is not spent.
+    /// lesson that was not shown is not spent. `otherwise` runs if the host
+    /// then drops it, so the owner can give the feedback it replaced.
     @discardableResult
-    func request(_ card: Card) -> Bool {
+    func request(_ card: Card, otherwise: (() -> Void)? = nil) -> Bool {
         guard !tips.isRetired(card.tip), canPresent?() == true else { return false }
         remove()
         self.card = card
+        fallback = otherwise
         lifetime = NoticeLifetime(event: card.id, duration: Self.seconds, waitsForDismissal: voiceOverEnabled())
         return true
     }
@@ -132,6 +137,7 @@ final class FeedbackCoachModel: ObservableObject {
     /// is spent, and VoiceOver hears it once. Calling again changes nothing.
     func didPresent(_ id: UUID) {
         guard let card, card.id == id, var lifetime, !lifetime.isPresented else { return }
+        fallback = nil
         lifetime.present(at: clock())
         self.lifetime = lifetime
         tips.retire(card.tip)
@@ -140,10 +146,13 @@ final class FeedbackCoachModel: ObservableObject {
     }
 
     /// The host could not show it. It is dropped, never queued, and the
-    /// lesson stays for the next gesture that qualifies.
+    /// lesson stays for the next gesture that qualifies. The owner's own
+    /// feedback for that gesture shows instead.
     func drop(_ id: UUID) {
         guard card?.id == id, lifetime?.isPresented != true else { return }
+        let fallback = fallback
         clear()
+        fallback?()
     }
 
     func hold(_ hold: NoticeLifetime.Hold, _ held: Bool, for id: UUID) {
@@ -175,16 +184,8 @@ final class FeedbackCoachModel: ObservableObject {
 
     private func clear() {
         expiry.cancel()
+        fallback = nil
         if card != nil { card = nil }
         if lifetime != nil { lifetime = nil }
-    }
-}
-
-enum FeedbackAnnouncement {
-    /// One announcement that waits for current speech rather than interrupting it.
-    @MainActor static func post(_ text: String) {
-        guard let app = NSApp else { return }
-        NSAccessibility.post(element: app, notification: .announcementRequested,
-                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 }

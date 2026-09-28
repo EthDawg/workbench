@@ -197,6 +197,9 @@ struct WorkbenchClipboardShelf: View {
     var unresolved: UnresolvedDelivery? = nil
     let review: () -> Void
     let showCue: () -> Void
+    /// Review for an undelivered result: the Dictate page for the draft's
+    /// words, History for a transcript's.
+    var reviewUnresolved: (UnresolvedDelivery) -> Void = { _ in }
     var copyAgain: () -> Void = {}
     var dismissUnresolved: () -> Void = {}
     var body: some View {
@@ -220,21 +223,24 @@ struct WorkbenchClipboardShelf: View {
                     Text(receipt.detail)
                         .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 } else if let unresolved {
-                    // What happened and where the words are; never a ⌘V after an uncertain paste.
-                    HStack(spacing: 6) {
-                        Image(systemName: unresolved.symbolName).foregroundStyle(.orange).accessibilityHidden(true)
-                        Text(unresolved.title).font(.callout.weight(.semibold)).lineLimit(1)
-                    }
-                    Text(unresolved.detail)
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    // What happened and where the words are, read as one by VoiceOver;
+                    // never a ⌘V after an uncertain paste.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: unresolved.symbolName).foregroundStyle(.orange).accessibilityHidden(true)
+                            Text(unresolved.title).font(.callout.weight(.semibold)).lineLimit(1)
+                        }
+                        Text(unresolved.detail)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    }.accessibilityElement(children: .combine)
                 }
                 HStack {
-                    Button("Review text", action: review)
+                    Button("Review text") { if receipt == nil, let unresolved { reviewUnresolved(unresolved) } else { review() } }
                     Spacer()
                     if receipt != nil { Button("Show cue", action: showCue) }
                     else if let unresolved {
                         if unresolved.offersCopy { Button("Copy again", action: copyAgain) }
-                        Button("Dismiss", action: dismissUnresolved)
+                        Button("Dismiss", action: dismissUnresolved).accessibilityLabel("Dismiss unfinished delivery")
                     }
                 }.controlSize(.small)
             }.padding(12)
@@ -352,6 +358,7 @@ struct WorkbenchHomePage: View {
                             model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
                         },
                         showCue: { model.clipboardReceipt.revealHUD() },
+                        reviewUnresolved: { model.page = $0.isDraft ? "dictate" : "history" },
                         copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                 }
             }

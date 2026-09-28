@@ -121,6 +121,8 @@ final class KeyboardCoachModel: ObservableObject {
     @Published private(set) var confirmation: LocalConfirmation<ShortcutConfirmation>?
     let clock: MonotonicClock
     private let confirmationExpiry: NoticeExpiry
+    /// VoiceOver hears the same words once, without interrupting.
+    var announce: (String) -> Void = { FeedbackAnnouncement.post($0) }
     @Published private(set) var entries: [ShortcutEntry]
     @Published var selectedID: String {
         didSet { if selectedID != oldValue { stopInteraction(); practice = nil; message = nil; clearConfirmation() } }
@@ -157,6 +159,8 @@ final class KeyboardCoachModel: ObservableObject {
         let confirmation = LocalConfirmation(kind, at: clock())
         self.confirmation = confirmation
         confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) }
+        // The label goes after four seconds; VoiceOver still hears what happened.
+        announce(kind.rawValue)
     }
 
     /// Ends the confirmation only if it is still this one and it is due.
@@ -224,8 +228,10 @@ final class KeyboardCoachModel: ObservableObject {
         message = nil; hasError = false; practice = nil; clearConfirmation()
     }
 
+    /// Turning off a shortcut that is already off changes nothing, so it
+    /// saves and confirms nothing.
     func disableSelected() {
-        guard var candidate = selected?.shortcut else { return }
+        guard var candidate = selected?.shortcut, candidate.enabled else { return }
         stopInteraction(); suspended = true; suspend(true)
         candidate.enabled = false
         _ = save(candidate)

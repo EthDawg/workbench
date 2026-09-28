@@ -533,6 +533,7 @@ enum SurfaceGallery {
                                   detail: "Its ring counts the receipt's own eight seconds; the pointer or a pin holds it.",
                                   file: "panel-floating-receipt-\(theme).png", to: output))
         }
+        model.clipboardReceipt.holdHUD(false)
         model.clipboardReceipt.clear()
 
         // The one-time coaching card, shown by a host, with its ring half spent and, for VoiceOver, still.
@@ -548,6 +549,34 @@ enum SurfaceGallery {
             // The host proposes the card's standard width; its text wraps and it grows downward.
             let view = CoachCardView(coach: coach, fixedFraction: fraction).frame(width: 320)
                 .fixedSize(horizontal: false, vertical: true).padding(12)
+            let host = NSHostingView(rootView: view.background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
+            window.contentView = host
+            defer { window.contentView = nil; window.close() }
+            settle(host)
+            window.setContentSize(host.fittingSize)
+            settle(host, seconds: 0.05)
+            shots.append(try save(try snapshot(host), id: id, title: title, detail: detail, file: "panel-\(id)-\(theme).png", to: output))
+        }
+
+        // The menu-bar panel's shelf for a delivery that did not finish (#134 T5): once
+        // with its transcript in History, and once for a draft that has changed since.
+        let words = SurfacePass.history[0]
+        let failed = TextDelivery.Outcome(message: "Could not copy the transcript.", clipboardChangeCount: nil, wasPasted: false,
+                                          destinationName: nil, failure: .copyFailed)
+        let then = DeliveryRecords(history: [words], draft: (text: words.text, revision: 1))
+        let now = DeliveryRecords(history: [words], draft: (text: "A newer draft replaced it.", revision: 2))
+        var fromHistory = UnresolvedDeliverySlot(), fromDraft = UnresolvedDeliverySlot()
+        fromHistory.note(failed, text: words.text, from: .transcript(words.id), in: then)
+        fromDraft.note(failed, text: words.text, from: .draft(revision: 1), in: then)
+        for (id, title, detail, entry) in [
+            ("shelf-undelivered", "Panel shelf: copy failed", "Kept after the receipt goes and across quit, with where the words are, Review text, Copy again and Dismiss.",
+             fromHistory.shown(in: now)),
+            ("shelf-draft-changed", "Panel shelf: the draft changed", "A failed copy of the draft once the draft has changed: Review text opens Dictate, and there is no Copy again.",
+             fromDraft.shown(in: now))] {
+            let receipts = ClipboardReceiptModel(clipboardChangeCount: { 0 }, automaticallySchedules: false)
+            let view = WorkbenchClipboardShelf(receipts: receipts, unresolved: entry, review: {}, showCue: {})
+                .frame(width: 304).fixedSize(horizontal: false, vertical: true).padding(12)
             let host = NSHostingView(rootView: view.background(Color(nsColor: .windowBackgroundColor)))
             let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
             window.contentView = host
