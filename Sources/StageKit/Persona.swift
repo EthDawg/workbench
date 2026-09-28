@@ -233,7 +233,15 @@ final class PersonaLibrary: NSObject, ObservableObject {
     @Published var notice: String?
     /// Live persona keys for help text, set by the shortcut owner.
     @Published var shortcutHint: String?
-    @Published private(set) var overlayVisible = false
+    @Published private(set) var overlayVisible = false { didSet { updateVoice() } }
+    /// React to my voice: a ring around the shown persona that moves as the
+    /// presenter speaks. Off by default and remembered. It listens only while
+    /// the persona it frames is showing, measures loudness and records nothing.
+    @Published private(set) var voiceRing = false
+    /// The input the ring is listening to; nil whenever the microphone is closed.
+    @Published private(set) var voiceDevice: String?
+    @Published private(set) var voicePermissionPending = false
+    var voiceAvailable: Bool { voiceAccess != nil }
     @Published private(set) var overlayLocked = false
     @Published private(set) var overlayWidth = 0.16
     var usesSharedControls = false { didSet { if usesSharedControls { hud?.hide() } } }
@@ -264,16 +272,23 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private var overlayGeneration = UUID()
     private let sessionPanelFactory: (() -> any PersonaSessionDisplaying)?
     private let sessionHUDEnabled: Bool
+    private let voiceAccess: PersonaVoiceAccess?
+    private var voice: (any PersonaVoiceSource)?
     private var archiveVersion = 2
     private let imageCache = NSCache<NSString, NSImage>()
     private var applyingArchive = false
     private var libraryURL: URL { root.appendingPathComponent("persona-library.json") }
     private var overlayURL: URL { root.appendingPathComponent("persona-overlay.json") }
 
-    init(root: URL, readOnlyReason: String? = nil, sessionPanelFactory: (() -> any PersonaSessionDisplaying)? = nil, sessionHUDEnabled: Bool = true) {
+    /// Without `voice`, React to my voice is unavailable: no switch, microphone
+    /// or saved preference. Only the app's own library passes the system one.
+    init(root: URL, readOnlyReason: String? = nil, sessionPanelFactory: (() -> any PersonaSessionDisplaying)? = nil, sessionHUDEnabled: Bool = true,
+         voice: PersonaVoiceAccess? = nil) {
         self.root = root; self.readOnlyReason = readOnlyReason
         self.sessionPanelFactory = sessionPanelFactory
         self.sessionHUDEnabled = sessionHUDEnabled
+        self.voiceAccess = voice
+        self.voiceRing = voice?.savedChoice() ?? false
         super.init()
         imageCache.totalCostLimit = 128 * 1024 * 1024
         applyingArchive = true
@@ -512,6 +527,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
         hideOverlay()
         session = proposed
         proposed.onChange = { [weak self] in self?.refreshSessionState() }
+        proposed.setVoiceRing(voiceRing && voiceAccess != nil)
         notice = nil
         onShow?()
         proposed.start()
@@ -676,6 +692,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             overlay = PersonaOverlayController()
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
         }
+        overlay?.setVoiceRing(voiceRing && voiceAccess != nil)
         let placed = overlay?.show(image: displayedImage ?? image, name: displayedLabel ?? "Floating persona", state: overlayState)
         overlayVisible = true
         if let placed { updateOverlay(placed) }
@@ -683,7 +700,83 @@ final class PersonaLibrary: NSObject, ObservableObject {
         onShow?()
     }
     func hideOverlay() { endOverlaySession() }
-    func shutdown() { hideOverlay(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects() }
+    func shutdown() {
+        hideOverlay(); stopVoice(); overlay?.shutdown(); overlay = nil; hud?.shutdown(); hud = nil; imageCache.removeAllObjects()
+    }
+
+    /// Remembered for next time. Turning it on asks macOS for the microphone
+    /// at once, while the presenter is preparing, never later in front of an
+    /// audience. Turning it off stops the microphone at once.
+    func setVoiceRing(_ enabled: Bool) {
+        guard let access = voiceAccess else { return }
+        if enabled && access.permission() == .denied {
+            rememberVoiceRing(false); notice = PersonaVoiceError.microphoneDenied.localizedDescription; return
+        }
+        rememberVoiceRing(enabled)
+    }
+    /// A short line under the switch and menu item while the ring is on.
+    var voiceStatus: String? {
+        guard voiceRing, voiceAccess != nil else { return nil }
+        if voicePermissionPending { return "Waiting for microphone access" }
+        if let voiceDevice { return "Listening · \(voiceDevice)" }
+        return session == nil ? "Listens while a persona shows" : "Listens while the selected overlay shows"
+    }
+    private func rememberVoiceRing(_ enabled: Bool) {
+        voiceRing = enabled
+        voiceAccess?.saveChoice(enabled)
+        updateVoice()
+    }
+    /// The one place that decides whether the ring shows and the microphone runs.
+    private func updateVoice() {
+        guard let access = voiceAccess else { return }
+        // A persona being hidden keeps its place until it is gone; the next
+        // show sets its ring before placing it.
+        if overlayVisible && session == nil { overlay?.setVoiceRing(voiceRing) }
+        session?.setVoiceRing(voiceRing)
+        guard voiceRing else { stopVoice(); return }
+        switch access.permission() {
+        case .allowed:
+            let framing = session.map { $0.voiceTargetID != nil } ?? overlayVisible
+            if framing { startVoice() } else { stopVoice() }
+        case .undecided:
+            stopVoice(); requestVoicePermission(access)
+        case .denied:
+            voiceUnavailable(PersonaVoiceError.microphoneDenied.localizedDescription)
+        }
+    }
+    private func requestVoicePermission(_ access: PersonaVoiceAccess) {
+        guard !voicePermissionPending else { return }
+        voicePermissionPending = true
+        access.requestPermission { [weak self] granted in
+            guard let self else { return }
+            self.voicePermissionPending = false
+            if granted { self.updateVoice() }
+            else if self.voiceRing { self.voiceUnavailable(PersonaVoiceError.microphoneDenied.localizedDescription) }
+        }
+    }
+    private func startVoice() {
+        guard voice == nil, let access = voiceAccess else { return }
+        let source = access.makeSource()
+        source.onFrames = { [weak self] frames in self?.deliverVoice(frames) }
+        source.onUnavailable = { [weak self] reason in self?.voiceUnavailable(reason) }
+        source.onDevice = { [weak self] name in self?.voiceDevice = name }
+        voice = source
+        do { try source.start(); voiceDevice = source.deviceName }
+        catch { voiceUnavailable(error.localizedDescription) }
+    }
+    private func stopVoice() {
+        guard let source = voice else { return }
+        voice = nil
+        source.onFrames = nil; source.onUnavailable = nil; source.onDevice = nil
+        source.stop()
+        voiceDevice = nil
+    }
+    private func deliverVoice(_ frames: [PersonaVoiceFrame]) {
+        if let session { session.showVoice(frames) } else { overlay?.showVoice(frames) }
+    }
+    private func voiceUnavailable(_ reason: String) {
+        stopVoice(); rememberVoiceRing(false); notice = reason
+    }
 
     func setOverlayLocked(_ locked: Bool) {
         if let session, let id = session.selectedInstanceID { session.setLocked(locked, for: id); return }
@@ -761,6 +854,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
                 self.performOverlayAction(operation)
             }
         }
+        // One switch for the voice ring in both live menus. Its second line
+        // names the microphone while it listens.
+        func voiceSwitch() -> NSMenuItem? {
+            guard voiceAccess != nil else { return nil }
+            let item = StageMenuAction("React to My Voice · Uses Microphone", checked: voiceRing) { [weak self] in
+                guard let self, self.overlayGeneration == generation else { return }; self.setVoiceRing(!self.voiceRing)
+            }
+            if #available(macOS 14.4, *), let status = voiceStatus { item.subtitle = status }
+            return item
+        }
         if sessionState.phase != .idle {
             let state = sessionState
             if let feedback = state.feedback { menu.addItem(StageMenuAction(feedback, enabled: false) {}) }
@@ -786,6 +889,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
             menu.addSubmenu("Add Overlay", items: state.candidates.map { action($0.label, .add($0.id), enabled: state.instances.count < PersonaSessionController.maximumOverlays) })
             menu.addItem(.separator())
             menu.addItem(action(state.phase == .paused ? "Show Again" : "Hide All Temporarily", .pauseResume))
+            if let item = voiceSwitch() { menu.addItem(item) }
             menu.addItem(action("Save Layout for Next Time", .saveLayout, enabled: state.canSaveLayout && state.hasUnsavedLayout))
             menu.addItem(action("End Overlays", .end))
         } else if overlayVisible, let current = displayedID {
@@ -807,6 +911,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
                     self.setOverlayPosition(x: anchor.unitPoint.x, y: anchor.unitPoint.y)
                 }
             })
+            if let item = voiceSwitch() { menu.addItem(item) }
             menu.addItem(StageMenuAction("End Overlay") { [weak self] in
                 guard let self, self.overlayGeneration == generation else { return }; self.hideOverlay()
             })
