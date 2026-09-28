@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // The views for brief feedback (#134 T5). They read lifetimes from their
@@ -67,6 +68,93 @@ struct CountdownDismissButton: View {
     }
 }
 
+/// Whether the pointer is over a notice, including a pointer already resting
+/// where the notice appears, which SwiftUI's hover reports only once the
+/// pointer moves. A notice uses it to hold its time. It takes no clicks.
+struct PointerPresence: NSViewRepresentable {
+    let changed: (Bool) -> Void
+    func makeNSView(context: Context) -> PointerPresenceView { PointerPresenceView(changed: changed) }
+    func updateNSView(_ view: PointerPresenceView, context: Context) { view.changed = changed }
+    static func dismantleNSView(_ view: PointerPresenceView, coordinator: ()) { view.stop() }
+}
+
+final class PointerPresenceView: NSView {
+    var changed: (Bool) -> Void
+    /// The pointer in screen coordinates; checks supply their own.
+    var pointer: () -> NSPoint = { NSEvent.mouseLocation }
+    /// Whether the window is on screen; checks supply their own.
+    var windowShows: (NSWindow) -> Bool = { $0.isVisible }
+    /// Reports wait until the current layout pass ends; checks deliver at once.
+    var deliver: (@escaping () -> Void) -> Void = { work in DispatchQueue.main.async(execute: work) }
+    private(set) var isInside = false
+    private var area: NSTrackingArea?
+    private var windowObserver: NSObjectProtocol?
+
+    init(changed: @escaping (Bool) -> Void) {
+        self.changed = changed
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let windowObserver { NotificationCenter.default.removeObserver(windowObserver); self.windowObserver = nil }
+        if let window {
+            // Ordered in or out without moving: judge the pointer again.
+            windowObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
+                                                                    object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
+            }
+        }
+        refresh()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        refresh()
+    }
+
+    /// Where the pointer is now decides the start; AppKit then reports the
+    /// exit, or the entry, from that state.
+    func refresh() {
+        if let area { removeTrackingArea(area); self.area = nil }
+        let inside = pointerIsInside
+        if window != nil {
+            var options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+            if inside { options.insert(.assumeInside) }
+            let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+            addTrackingArea(area)
+            self.area = area
+        }
+        report(inside)
+    }
+
+    var pointerIsInside: Bool {
+        guard let window, windowShows(window), !isHiddenOrHasHiddenAncestor else { return false }
+        return visibleRect.contains(convert(window.convertPoint(fromScreen: pointer()), from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { report(true) }
+    override func mouseExited(with event: NSEvent) { report(false) }
+
+    /// The notice is gone: whatever held it lets go.
+    func stop() {
+        if let windowObserver { NotificationCenter.default.removeObserver(windowObserver); self.windowObserver = nil }
+        report(false)
+    }
+
+    deinit { if let windowObserver { NotificationCenter.default.removeObserver(windowObserver) } }
+
+    private func report(_ inside: Bool) {
+        guard inside != isInside else { return }
+        isInside = inside
+        let changed = changed
+        deliver { changed(inside) }
+    }
+}
+
 /// The one-time coaching card: a neutral symbol, a 13 pt title, a 12 pt line
 /// and a close control whose ring shows its four seconds. At most 320 pt wide
 /// at standard text sizes; larger text wraps and grows. The host places it,
@@ -101,11 +189,14 @@ struct CoachCardView: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.12)))
             .contentShape(RoundedRectangle(cornerRadius: 12))
-            .onHover { coach.hold(.pointer, $0, for: card.id) }
+            // A pointer already resting where the card appears holds it too.
+            .background(PointerPresence { coach.hold(.pointer, $0, for: card.id) })
             .onChange(of: focused) { _, isFocused in coach.hold(.focus, isFocused, for: card.id) }
             .onExitCommand { if focused { coach.dismiss(card.id) } }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Hint")
+            // Each card is its own view, so a newer card judges the pointer afresh.
+            .id(card.id)
         }
     }
 }

@@ -79,7 +79,7 @@ card, so the gap passes clicks through. The host allows it
 would cover no permission prompt, no Workbench window in front, none of the
 toolbar's popovers and no result's controls open in its place; reports
 `didPresent` once it has been on screen for a display pass; drops a card it cannot
-show, so its lesson is not spent; removes it on a screen capture and when a
+show, so its lesson is not spent and the attempt gets its ordinary no-speech cue; removes it on a screen capture and when a
 narration starts; and fades it out in 160 ms, or at once with Reduce Motion.
 
 Revealed, the toolbar is a 40-point capsule: `[tool ▾] [next action]

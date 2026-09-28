@@ -863,7 +863,7 @@
     "label": "Copy again",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality (#134 T5): a dictation whose copy failed or was never pasted stays in the shelf after its receipt has gone; Copy again copies those exact words from History or the draft. Never offered after an uncertain paste, and nothing retries by itself."
+    "note": "Quality (#134 T5): a dictation whose copy failed or was never pasted stays in the shelf after its receipt has gone, and across quit; Copy again copies the words its record holds now, from History or the unchanged draft, and copying those words resolves it. Never offered after an uncertain paste or once the draft has changed, and nothing retries by itself."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.dismiss",
@@ -871,14 +871,15 @@
     "label": "Dismiss",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality (#134 T5): the person sets an undelivered result aside; the words stay in History. Hiding a notice never does this."
+    "note": "Quality (#134 T5): the person sets an undelivered result aside; the words stay in History or the draft. Hiding a notice never does this. VoiceOver hears it as Dismiss unfinished delivery."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.review-text",
     "surface": "quick panel status rows",
     "label": "Review text",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Review opens where the words are kept: History for a transcript and Library for a prompt; for an undelivered result, History for a transcript's words and the Dictate page for the draft's (#134 T5)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Button.show-cue",

@@ -59,6 +59,10 @@ final class SnapModel: ObservableObject {
     @Published private(set) var confirmation: LocalConfirmation<SnapConfirmation>?
     let clock: MonotonicClock
     private let confirmationExpiry: NoticeExpiry
+    /// VoiceOver hears a success's words once, without interrupting.
+    var announce: (String) -> Void = { FeedbackAnnouncement.post($0) }
+    /// The confirmation's pending close, for checks.
+    var pendingConfirmationExpiry: UUID? { confirmationExpiry.pending?.event }
     @Published var search = ""
     @Published var showingArchived = false
     let store: SnapStore
@@ -432,6 +436,8 @@ final class SnapModel: ObservableObject {
         let confirmation = LocalConfirmation(kind, at: clock())
         self.confirmation = confirmation
         confirmationExpiry.schedule(confirmation.lifetime) { [weak self] event in self?.expireConfirmation(event) }
+        // The label goes after four seconds; VoiceOver still hears what happened.
+        announce(kind.rawValue)
     }
 
     /// Ends the confirmation only if it is still this one and it is due.

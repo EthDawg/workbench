@@ -966,7 +966,8 @@ private struct CaptureReceiptView: View {
                 }
                 CapturePositionMenu(controls: controls)
             }
-            .onHover { receipts.holdHUD($0) }
+            // The pointer holds its time, including one resting where it appears (#134 T5).
+            .background(PointerPresence { receipts.holdHUD($0) })
         }
     }
 }

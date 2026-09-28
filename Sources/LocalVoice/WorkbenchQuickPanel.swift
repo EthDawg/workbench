@@ -66,6 +66,9 @@ struct WorkbenchQuickPanel: View {
                                 if prompt { open("library") } else { model.openHistory(); open("history") }
                             },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() },
+                            reviewUnresolved: { entry in
+                                if entry.isDraft { open("dictate") } else { model.openHistory(); open("history") }
+                            },
                             copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                         if receipts.receipt?.isClipboardCurrent != true {
                             if !context.activitySummary.isEmpty {
@@ -119,8 +122,10 @@ struct WorkbenchQuickPanel: View {
             HStack {
                 Text(keyboard.selected?.title ?? "Shortcut").font(.callout.weight(.semibold))
                 Spacer()
-                // ✓ Saved or ✓ Practice complete for four seconds, in space kept for it (#134 T5).
-                ConfirmationLabel(text: keyboard.confirmation?.kind.rawValue, reserving: ShortcutConfirmation.texts)
+                // ✓ Saved for four seconds, in space kept for it (#134 T5). Practice
+                // happens on the Keyboard page, so this editor never shows its check.
+                ConfirmationLabel(text: keyboard.confirmation?.kind == .saved ? ShortcutConfirmation.saved.rawValue : nil,
+                                  reserving: [ShortcutConfirmation.saved.rawValue])
                 Button("Done") { editor.end() }
                     .buttonStyle(.plain).foregroundStyle(Workbench.accent)
             }
@@ -128,7 +133,10 @@ struct WorkbenchQuickPanel: View {
                 .font(.caption).foregroundStyle(keyboard.hasError ? .orange : .secondary).lineLimit(3)
             HStack {
                 Button("Change") { keyboard.beginRecording() }
+                // Off already: nothing to turn off, so nothing to confirm. It stays
+                // usable while recording, which this editor starts on opening.
                 Button("Turn off") { keyboard.disableSelected() }
+                    .disabled(keyboard.selected?.shortcut.enabled != true)
                 if keyboard.isInteracting { Button("Cancel") { keyboard.stopInteraction() } }
             }.controlSize(.small)
         }

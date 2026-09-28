@@ -379,14 +379,19 @@ try MainActor.assumeIsolated {
     model.draft = nil
 }
 // Saves and exports are classified where they happen (#134 T5): a full success
-// gets a four-second confirmation that clears only itself; a save whose copy
-// failed is a partial failure whose notice stays; nothing times an editor.
+// gets a four-second confirmation that clears only itself, and VoiceOver hears
+// it; a save whose copy failed is a partial failure whose notice stays;
+// nothing times an editor. Every absent ✓ is checked after one was showing.
 try MainActor.assumeIsolated {
     var clock: TimeInterval = 500
-    let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("confirmed-history")), clock: { clock })
+    let root = directory.appendingPathComponent("confirmed-history")
+    let model = SnapModel(store: SnapStore(root: root), clock: { clock })
+    var heard: [String] = []
+    model.announce = { heard.append($0) }
     model.draft = SnapDraft(originalPNG: png, source: .region, title: "Saved quietly", notes: "", tags: [], edit: .init())
     try check(model.saveDraft(model.draft!, copyAfterSaving: false) && model.lastOutcome == .saved
               && model.confirmation?.kind == .saved && model.notice == nil, "a save is confirmed as Saved to History, with no lingering notice")
+    try check(heard == ["Saved to History"], "VoiceOver hears the save once, in the label's words")
     let savedEvent = model.confirmation!.lifetime.event
     clock += 3.9; model.expireConfirmation(savedEvent)
     try check(model.confirmation?.kind == .saved, "the confirmation lasts four seconds")
@@ -399,25 +404,45 @@ try MainActor.assumeIsolated {
     model.draft = SnapDraft(originalPNG: png, source: .window, title: "Saved and copied", notes: "", tags: [], edit: .init())
     try check(model.saveDraft(model.draft!, copyAfterSaving: true) && model.lastOutcome == .savedAndCopied
               && model.confirmation?.kind == .savedAndCopied && pasted.count == 1, "Save & Copy confirms both only after both happened")
+    try check(heard.last == "Saved and copied" && heard.count == 2, "VoiceOver hears that both happened")
     let copiedEvent = model.confirmation!.lifetime.event
+    try check(model.pendingConfirmationExpiry == copiedEvent, "a check is showing, and waiting to close, before the partial failure")
     model.copyImage = { _ in false }
     model.draft = SnapDraft(originalPNG: png, source: .screen, title: "Copy refused", notes: "", tags: [], edit: .init())
     try check(model.saveDraft(model.draft!, copyAfterSaving: true) && model.lastOutcome == .savedButCopyFailed
-              && model.confirmation == nil && model.notice?.contains("Copy failed") == true,
-              "a save whose copy failed is a partial failure, never a timed success")
+              && model.confirmation == nil && model.notice?.contains("Copy failed") == true && heard.count == 2,
+              "a save whose copy failed replaces the showing check with its notice, and is not announced as a success")
+    try check(model.pendingConfirmationExpiry == nil, "nothing is left waiting to close: the partial failure is untimed")
     clock += 60; model.expireConfirmation(copiedEvent)
-    try check(model.notice?.contains("Copy failed") == true && model.lastOutcome == .savedButCopyFailed,
-              "an earlier success's expiry cannot hide the partial failure")
+    try check(model.notice?.contains("Copy failed") == true && model.lastOutcome == .savedButCopyFailed && model.confirmation == nil,
+              "the earlier success's deadline passing changes nothing")
 
     let exported = directory.appendingPathComponent("Exported.png")
     model.export(model.items[0].id, to: exported)
     try check(fm.fileExists(atPath: exported.path) && model.lastOutcome == .exported && model.confirmation?.kind == .exported && model.notice == nil,
               "an export is confirmed only once its file is written")
+    try check(heard.last == "Image exported" && heard.count == 3, "VoiceOver hears the export")
     model.export(model.items[0].id, to: directory.appendingPathComponent("missing-folder/Exported.png"))
-    try check(model.lastOutcome == .failed && model.confirmation == nil && model.notice != nil, "a failed export keeps its reason and no success")
+    try check(model.lastOutcome == .failed && model.confirmation == nil && model.notice != nil && heard.count == 3,
+              "a failed export replaces the showing check with its reason, and says nothing of success")
+
+    model.export(model.items[0].id, to: directory.appendingPathComponent("Exported again.png"))
+    try check(model.confirmation?.kind == .exported, "a check is showing before the refused save")
     model.draft = SnapDraft(originalPNG: png, source: .region, title: "   ", notes: "", tags: [], edit: .init())
     try check(!model.saveDraft(model.draft!, copyAfterSaving: false) && model.lastOutcome == .failed && model.draft != nil
-              && model.confirmation == nil, "a refused save keeps the editor open and claims nothing")
+              && model.confirmation == nil && heard.count == 4, "a refused save keeps the editor open, ends the showing check and claims nothing")
+
+    // The store itself refuses the write: its folder is read-only for this one save.
+    model.export(model.items[0].id, to: directory.appendingPathComponent("Exported a third time.png"))
+    try check(model.confirmation?.kind == .exported && heard.count == 5, "a check is showing before the store refuses a write")
+    let count = model.items.count
+    try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: root.path)
+    model.draft = SnapDraft(originalPNG: png, source: .region, title: "Store refuses", notes: "", tags: [], edit: .init())
+    let refusedByStore = model.saveDraft(model.draft!, copyAfterSaving: true)
+    try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+    try check(!refusedByStore && model.lastOutcome == .failed && model.confirmation == nil && model.draft?.title == "Store refuses"
+              && model.notice?.hasPrefix("Snap was not saved.") == true && model.items.count == count && heard.count == 5,
+              "a write the store refuses keeps the editor and its reason, ends the showing check and claims nothing")
     model.draft = nil
 }
 print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
