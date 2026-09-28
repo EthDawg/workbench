@@ -50,6 +50,14 @@ import StageKit
                             ToolbarRow(state: state, textScale: scale, accent: WorkbenchPalette.accent)
                         }
                     }
+                    // The chooser with work live in other tools: its checkmark, dots and keys.
+                    if let live = ToolbarGallery.choosers.last {
+                        HStack(alignment: .top, spacing: 18) {
+                            Text(live.name).font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary).frame(width: 220, alignment: .leading)
+                            ToolbarChooserView(model: ToolbarChooserModel(choices: live.choices), textScale: scale, accent: WorkbenchPalette.accent)
+                        }
+                    }
                 }.padding(24).fixedSize()
                     .tint(WorkbenchPalette.accent)
                     .background(Color(nsColor: .windowBackgroundColor))
