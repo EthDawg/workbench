@@ -19,7 +19,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private var shortcutsSuspended = false
     let settings: SettingsStore
     let hotkeys = HotkeyManager()
-    lazy var demoScenes = DemoScenes(readOnlyReason: migrationFailure)
+    /// Only the app's own storage gets the real microphone for React to my voice.
+    lazy var demoScenes = DemoScenes(readOnlyReason: migrationFailure, personaVoice: usesAppStorage ? .system : nil)
     private let migrationFailure: String?
     @Published var tool = DrawingTool.pen
     @Published var isDrawing = false
@@ -77,6 +78,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published private(set) var timerSessionStarted = false
     private var storageBlocked = false
     private let archiveURL: URL
+    private let usesAppStorage: Bool
     private let availableTimerDisplays: () -> [BreakTimerDisplay]
     private let fallbackTimerDisplayID: () -> String?
     private lazy var timerPlacement = BreakTimerPlacementStore(
@@ -109,6 +111,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         let testRoot = ProcessInfo.processInfo.environment["WORKBENCH_STAGE_DATA_DIR"] ?? ProcessInfo.processInfo.environment["STAGEMARK_DATA_DIR"]
         self.archiveURL = archiveURL ?? testRoot.map { URL(fileURLWithPath: $0).appendingPathComponent("boards.json") }
             ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("boards.json")
+        self.usesAppStorage = archiveURL == nil && testRoot == nil
         super.init()
     }
     func start() {
