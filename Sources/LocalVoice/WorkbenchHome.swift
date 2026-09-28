@@ -38,6 +38,9 @@ struct WorkbenchHome: View {
     /// sidebar is always the way back.
     static let subpages: [(id: String, page: String, title: String)] = [
         ("dictionary", "dictate", "Your dictionary"), ("meeting", "dictate", "Transcribe meeting or call")]
+    /// Home's photo arrival cue opens Library on From iPhone by this route. Nothing else holds
+    /// the section, so a later Library door returns to Resources.
+    static let photoArrivals = "photos"
 
     /// Where a route lands: the sidebar page it highlights and, on a page with sections, the
     /// section it shows. Every door resolves here, so a route that was once a page of its own
@@ -176,15 +179,12 @@ struct WorkbenchHome: View {
                           introduction: introduction, handoffReview: $handoffReview)
     }
     /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
-    /// at the top (#134). From iPhone also opens from Home's arrival cue, through the flag the
-    /// Resources view has always read; choosing another section, or the Library shortcut, clears it.
+    /// at the top (#134). The route alone chooses the section, so every Library door opens
+    /// Resources and Home's arrival cue opens From iPhone by its own route.
     private var library: some View {
-        let section = model.page == "library" && model.showingPhonePhotos ? "photos" : Self.destination(model.page).section ?? "library"
+        let section = Self.destination(model.page).section ?? "library"
         return VStack(alignment: .leading, spacing: 0) {
-            sectionSwitcher("library", selection: section) { route in
-                if route != "photos" { model.showingPhonePhotos = false }
-                model.page = route
-            }
+            sectionSwitcher("library", selection: section) { model.page = $0 }
             switch section {
             case "packs": PackLibraryView(model: packs) { pack, entry in packs.use(entry, from: pack, readback: readback, app: model, stage: stage) }
             case "photos":
@@ -192,7 +192,7 @@ struct WorkbenchHome: View {
                     .padding(32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             default: ContentView(model: model, embedded: true)
             }
-        }.onChange(of: model.libraryFocusToken) { _, _ in model.showingPhonePhotos = false }
+        }
     }
 
     /// Settings holds General, Keyboard, Models and Connections as sections of one page, with
@@ -505,8 +505,7 @@ struct WorkbenchHomePage: View {
                 }
                 case .photos:
                     PhotoHandoffArrivalCue(handoff: model.photoHandoff) {
-                        model.showingPhonePhotos = true
-                        model.page = "library"
+                        model.page = WorkbenchHome.photoArrivals
                     }
                 }
             }

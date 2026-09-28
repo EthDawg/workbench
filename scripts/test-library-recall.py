@@ -43,7 +43,6 @@ struct FixturePreferences { func shortcut(_ id: UInt32) -> FixtureShortcut { Fix
     @Published var page = "library"
     @Published var libraryFocusToken = UUID()
     @Published var preferences = FixturePreferences()
-    @Published var showingPhonePhotos = false
     let photoHandoff = FixturePhotoHandoff()
     let presenter = FixturePresenter()
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?

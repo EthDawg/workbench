@@ -122,7 +122,7 @@ struct DemoLibraryView: View {
         }
     }
     private func performReturnAction(fromSearch: Bool) -> KeyPress.Result {
-        guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, removal == nil,
+        guard model.page == "library", library.draft == nil, removal == nil,
               let window = NSApp.keyWindow, window === NSApp.mainWindow, window.attachedSheet == nil else { return .ignored }
         let editor = window.firstResponder as? NSTextView
         let event = NSApp.currentEvent
@@ -132,12 +132,12 @@ struct DemoLibraryView: View {
         return library.performPrimaryAction() ? .handled : .ignored
     }
     private func focusSearchWhenReady() {
-        guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, library.importReview == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
+        guard model.page == "library", library.draft == nil, library.importReview == nil, let window = NSApp.keyWindow, window === NSApp.mainWindow else { return }
         // Recall can reveal a hidden editor before SwiftUI has mounted the search
         // field. Re-arm focus on the next main-loop turn, after the window is key.
         searching = false
         DispatchQueue.main.async {
-            guard model.page == "library", !model.showingPhonePhotos, library.draft == nil, library.importReview == nil, window.isVisible, window === NSApp.keyWindow else { return }
+            guard model.page == "library", library.draft == nil, library.importReview == nil, window.isVisible, window === NSApp.keyWindow else { return }
             searching = true
         }
     }

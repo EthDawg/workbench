@@ -46,6 +46,18 @@ enum WorkbenchPageChecks {
             try check(pages.contains(WorkbenchHome.destination(route).page), "\(route) lands on a sidebar page")
         }
 
+        // Home's photo arrival cue opens From iPhone by its own route, and nothing else holds the
+        // section, so the Library doors that follow it (the Library shortcut, Window › Library, the
+        // sidebar item and Switch to › Set up, all "library") open Resources. The cue used to open
+        // "library" with a separate flag those doors never cleared (#198 review).
+        let cue = WorkbenchHome.destination(WorkbenchHome.photoArrivals)
+        try check(cue.page == "library" && cue.section == "photos", "Home's photo cue opens Library on From iPhone by its own route")
+        try check(WorkbenchHome.photoArrivals != "library", "the photo cue does not share the Library doors' route")
+        for route in [WorkbenchHome.navItems.first { $0.title == "Library" }?.id ?? "", "library"] {
+            let landing = WorkbenchHome.destination(route)
+            try check(landing.page == "library" && landing.section == "library", "after the photo cue, a Library door (\(route)) opens Resources")
+        }
+
         try check(WorkbenchHome.name(of: "settings") == "Settings" && WorkbenchHome.name(of: "library") == "Library",
                   "a page's own name wins over its first section's")
         try check(WorkbenchHome.name(of: "shortcuts") == "Keyboard" && WorkbenchHome.name(of: "models") == "Models" && WorkbenchHome.name(of: "packs") == "Packs",
