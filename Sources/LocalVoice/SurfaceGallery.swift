@@ -1185,15 +1185,15 @@ enum SurfaceGallery {
     func waitForToolbar(_ host: CapturePanelController, _ controls: CaptureHUDControls, tier: ToolbarTier, content: NSView,
                         stillFor: TimeInterval? = nil) {
         let deadline = Date().addingTimeInterval(3)
-        var still = 0, last = host.window?.frame.size ?? .zero, since = Date()
+        var still = 0, last = host.window?.frame ?? .zero, since = Date()
         while Date() < deadline && (stillFor.map { Date().timeIntervalSince(since) < $0 } ?? (still < 6)) {
             content.layoutSubtreeIfNeeded()
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
-            let size = host.window?.frame.size ?? .zero
-            // Any change restarts the stillness clock before the loop condition reads it again.
-            if controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && size == last { still += 1 }
+            let frame = host.window?.frame ?? .zero
+            // Any change of size or place restarts the stillness clock before the loop condition reads it again.
+            if controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && frame == last { still += 1 }
             else { still = 0; since = Date() }
-            last = size
+            last = frame
         }
     }
 
@@ -1321,11 +1321,30 @@ enum SurfaceGallery {
         // A new host reads the saved position, as Workbench does after a relaunch.
         let kept = CGPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
         host.releaseTools(atLauncher: kept); settle(.resting)
+        /// A new host places its window as it is first updated. Wait until the window is on screen,
+        /// at rest where the host's position puts it, and has held still there for half a second, as a
+        /// relaunch settles, rather than compare at once: a slow runner can reach the check before a
+        /// new window is placed (#205, batch 4). A host that never gets there fails with what it saw.
+        func settleNewHost() {
+            let deadline = Date().addingTimeInterval(5)
+            var since = Date(), last = NSRect.zero
+            while Date() < deadline {
+                host.window?.contentView?.layoutSubtreeIfNeeded()
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+                let frame = host.window?.frame ?? .zero
+                let wants = ToolbarGeometry.frame(size: frame.size, position: host.toolsPosition, screen: screen)
+                let placed = host.window?.isVisible == true && controls.toolbar.state.tier == .resting && !host.isAnimatingToolbar
+                    && abs(frame.minX - wants.minX) <= 0.5 && abs(frame.minY - wants.minY) <= 0.5
+                if !placed || frame != last { since = Date() }
+                last = frame
+                if Date().timeIntervalSince(since) >= 0.5 { return }
+            }
+        }
         func relaunch(_ prepare: (UserDefaults) -> Void) {
             host.close()
             prepare(UserDefaults.standard)
             (host, controls) = makeHost()
-            host.update(model: model); settle(.resting)
+            host.update(model: model); settleNewHost()
         }
         relaunch { _ in }
         expect("A new host, as after a relaunch", [free(kept), at(kept, "after a relaunch")])
