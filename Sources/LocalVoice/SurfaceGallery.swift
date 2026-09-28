@@ -26,7 +26,7 @@ enum SurfaceGallery {
     /// `ran` marks a destination learned from the app's own code rather than the catalogue.
     struct Entry: Codable { var surface: String; var label: String; var leads: String; var route: String?; var ran = false }
     struct Listing: Codable { var title: String; var lines: [String] }
-    struct Pass: Codable { var theme: String; var panels: [Shot]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
+    struct Pass: Codable { var theme: String; var panels: [Shot]; var pickers: [Shot]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -72,7 +72,7 @@ enum SurfaceGallery {
             passes.append(try JSONDecoder().decode(Pass.self, from: data))
         }
         let flags = try SurfaceIndex(passes: passes).write(to: output)
-        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
+        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.pickers.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
     }
 
@@ -227,6 +227,7 @@ enum SurfaceGallery {
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
+        let pickers = try renderPickerStates(to: output)
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
             let window = homeWindow(size: size)
@@ -243,7 +244,79 @@ enum SurfaceGallery {
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
-        return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+        return SurfaceGallery.Pass(theme: theme, panels: panels, pickers: pickers, pages: pages, entries: entries() + menuEntries, menus: listings)
+    }
+
+    // MARK: Saved Prompts picker
+
+    /// Present's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
+    /// standard and larger text. The panel's placement and focus are covered by --check-core and
+    /// need a pointer on the installed app; nothing here opens a window on screen.
+    func renderPickerStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let now = Date(timeIntervalSince1970: 1_789_546_320)
+        func prompt(_ title: String, favourite: Bool = false, product: String = "", persona: String = "", age: Double = 0) -> DemoResource {
+            DemoResource(kind: .prompt, title: title, product: product, persona: persona,
+                         content: "Synthetic prompt for \(title).", favorite: favourite, modified: now.addingTimeInterval(-age * 3_600))
+        }
+        let library = [prompt("Open with the customer's goal", favourite: true, product: "Acme CRM", age: 1),
+                       prompt("Show the approval flow", favourite: true, product: "Acme CRM", persona: "Manager", age: 2),
+                       prompt("Summarise the pricing change", product: "Acme CRM", age: 3),
+                       prompt("Walk through onboarding", persona: "Manager", age: 4),
+                       prompt("Explain the security review", persona: "HR Admin", age: 5),
+                       prompt("Close with next steps", age: 6)]
+        let long = [prompt("Explain how the quarterly planning review connects the regional forecasts to the hiring plan and the budget", favourite: true,
+                           product: "A product name long enough to need truncating in one line", persona: "Regional operations manager"),
+                    prompt("Supercalifragilisticexpialidocious-configuration-walkthrough-for-the-enterprise-tenant-administrators", age: 1),
+                    prompt("Short one", age: 2)]
+        let large = (1...60).map { prompt("Demo prompt \($0)", favourite: $0 % 12 == 1, product: "Product \($0 % 4 + 1)", age: Double($0)) }
+        let notes = PromptPickerMode.insert(into: "Notes")
+        let stopped = PromptAttempt(prompt: "Show the approval flow", destination: "Mail",
+                                    result: "Insertion stopped. 12 characters confirmed; nothing was replayed.")
+        struct State {
+            var id, title, detail: String; var resources: [DemoResource]; var mode: PromptPickerMode; var scale: CGFloat = 1
+            var query = ""; var filter = PromptPickerList.Filter.all; var running = false; var attempt: PromptAttempt?; var details = false
+        }
+        let states = [
+            State(id: "empty", title: "No saved prompts", detail: "An empty library leads to Saved resources.", resources: [], mode: notes),
+            State(id: "one", title: "One prompt", detail: "Inserting into Notes, the field in front when the picker opened.", resources: [library[0]], mode: notes),
+            State(id: "grouped", title: "Favourites, then the rest", detail: "Product and Persona tags filter the one list. The last delivery went to Mail and says so.",
+                  resources: library, mode: notes, attempt: stopped),
+            State(id: "details", title: "Last delivery details", detail: "Details shows the full reason, wrapped inside the picker.",
+                  resources: library, mode: notes, attempt: stopped, details: true),
+            State(id: "copy", title: "Copy prompt", detail: "Without Accessibility approval the action is Copy prompt, with no reminder to approve.",
+                  resources: library, mode: .copy(noField: false),
+                  attempt: PromptAttempt(prompt: "Close with next steps", destination: "Clipboard", result: TextDelivery.copiedMessage)),
+            State(id: "no-field", title: "No readable field", detail: "With approval but no readable field in front, choosing a prompt copies it.",
+                  resources: library, mode: .copy(noField: true)),
+            State(id: "long-names", title: "Long names", detail: "Long names wrap to two lines or truncate; the picker keeps its width.",
+                  resources: long, mode: notes),
+            State(id: "filtered", title: "One category", detail: "Persona: Manager narrows the same list.", resources: library, mode: notes,
+                  filter: .persona("Manager")),
+            State(id: "no-match", title: "No match", detail: "A search with no match offers to show every prompt.", resources: library, mode: notes, query: "zebra"),
+            State(id: "inserting", title: "Inserting", detail: "While a prompt is typed in, the picker offers Stop inserting.", resources: library, mode: notes,
+                  running: true, attempt: PromptAttempt(prompt: "Show the approval flow", destination: "Notes", result: "Inserting…", finished: false)),
+            State(id: "large", title: "Sixty prompts", detail: "A large library scrolls at the picker's maximum height; search finds any prompt.",
+                  resources: large, mode: notes),
+            State(id: "grouped-larger", title: "Favourites, larger text", detail: "At 1.35 times the text size the picker keeps its width and wraps.",
+                  resources: library, mode: notes, scale: 1.35, attempt: stopped),
+            State(id: "long-names-larger", title: "Long names, larger text", detail: "Long names at 1.35 times the text size.",
+                  resources: long, mode: .copy(noField: false), scale: 1.35)]
+        var shots: [SurfaceGallery.Shot] = []
+        for state in states {
+            let model = PromptPickerModel(list: PromptPickerList(resources: state.resources), mode: state.mode, width: PromptPickerLayout.maxWidth,
+                                          available: 640, textScale: state.scale, perform: { _ in }, dismiss: {})
+            model.list.query = state.query; model.list.filter = state.filter
+            model.show(running: state.running, attempt: state.attempt); model.showsDetails = state.details
+            let host = NSHostingView(rootView: PromptPickerView(model: model).padding(16).background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
+            window.contentView = host
+            settle(host); window.setContentSize(host.fittingSize); settle(host, seconds: 0.1)
+            window.setContentSize(host.fittingSize); settle(host, seconds: 0.05)
+            defer { window.contentView = nil; window.close() }
+            shots.append(try save(try snapshot(host), id: state.id, title: state.title, detail: state.detail,
+                                  file: "picker-\(state.id)-\(theme).png", to: output))
+        }
+        return shots
     }
 
     // MARK: History states
@@ -736,7 +809,7 @@ private struct SurfaceIndex {
         h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:15px;margin:22px 0 4px}
         p,li{color:var(--muted)}.flag{color:var(--flag)}.ok{color:var(--ok)}code{font:12px ui-monospace,monospace}
         .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}figure{margin:0}figcaption{font-size:12px;color:var(--muted)}
-        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.page img{width:560px}
+        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}
         pre{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto;font-size:12px}
         table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid var(--line);padding:5px 8px;vertical-align:top}th{font-weight:600}
         .menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
@@ -754,6 +827,10 @@ private struct SurfaceIndex {
         }
         html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona Overlay showing", "Timer running"].map {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
+        html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Drawn at its 420-point width on the window background from synthetic prompts; its placement near each screen edge, keyboard and choices are covered by --check-core.</p>"
+        for (index, shot) in light.pickers.enumerated() {
+            html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row picker\">" + figure(shot, "Light") + figure(dark.pickers[index], "Dark") + "</div>"
+        }
         html += "<h2>Options menus</h2><div class=\"menus\">" + light.menus.map { "<div><h3>\(esc($0.title))</h3><pre>\(esc($0.lines.joined(separator: "\n")))</pre></div>" }.joined() + "</div>"
         html += "<h2>Pages</h2><p>The top of each page, with the window at its default size and at its minimum size.</p>"
         for (index, page) in light.pages.enumerated() {
@@ -783,7 +860,7 @@ private struct SurfaceIndex {
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
-        let shots = passes.flatMap { pass in pass.panels + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
+        let shots = passes.flatMap { pass in pass.panels + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
         let manifest: [String: Any] = ["renders": shots, "flags": flags, "entries": light.entries.map { ["surface": $0.surface, "label": $0.label, "leads": $0.leads] }]
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("manifest.json"))
         return flags.count
