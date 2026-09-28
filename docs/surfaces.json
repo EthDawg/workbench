@@ -1489,12 +1489,12 @@
     "note": "The panel footer's word for this door stays Shortcuts, as the Grammar lists the footer (Open Workbench, Settings, Shortcuts) and #134 decision 3 keeps it. It opens Settings › Keyboard on the same route, shortcuts, so it names the Keyboard section's job rather than a separate place (#134)."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-header.Toggle.floating-toolbar",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-header.PanelSwitch.floating-toolbar",
     "surface": "quick panel header",
     "label": "Floating toolbar",
     "kind": "setting",
     "belongsTo": "app",
-    "note": "Quality: the one floating-toolbar switch at the panel header's top right, bound to the same saved preference as Settings, the Window menu and the toolbar's Hide toolbar (#134 H3). It supersedes only decision 3's removal of the header toggle; Window › Quick controls stays removed."
+    "note": "Quality: the one floating-toolbar switch at the panel header's top right, bound to the same saved preference as Settings, the Window menu and the toolbar's Hide toolbar (#134 H3). Its label and the whole 32 point row toggle with the switch, which is the one accessibility element. It supersedes only decision 3's removal of the header toggle; Window › Quick controls stays removed."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-persona-options.NativeControlMenu.options",

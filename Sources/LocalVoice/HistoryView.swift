@@ -236,9 +236,10 @@ struct HistoryView: View {
     @State private var expandedResult: UUID?
     @State private var revealed: UUID?
     @State private var revealRequest: UUID?
-    /// A transcript a door asked to show, and the request that scrolls to it once.
+    /// A transcript a door asked to show, and the request that scrolls to it and focuses it once.
     @State private var shownTranscript: UUID?
     @State private var transcriptRequest: UUID?
+    @FocusState private var focusedTranscript: UUID?
     @AccessibilityFocusState private var voiceOverTranscript: UUID?
     @FocusState private var focusedTask: UUID?
     @AccessibilityFocusState private var voiceOverTask: UUID?
@@ -387,8 +388,8 @@ struct HistoryView: View {
                         case .transcript(let item):
                             TranscriptHistoryRow(model: model, library: library, item: item,
                                 history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
-                                original: $original, details: $details, removal: $removal)
-                                .accessibilityFocused($voiceOverTranscript, equals: item.id)
+                                original: $original, details: $details, removal: $removal,
+                                shown: shownTranscript == item.id, focus: $focusedTranscript, voiceOverFocus: $voiceOverTranscript)
                                 .overlay(RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
                         case .snap(let item):
@@ -422,11 +423,14 @@ struct HistoryView: View {
                 voiceOverTask = target.task
             }
             .task(id: transcriptRequest) {
-                // A transcript Home showed: scroll to it and move VoiceOver there. Nothing is selected.
+                // A transcript Home showed: scroll to it and move keyboard and VoiceOver focus to its
+                // heading, as a revealed task's. The list has no selection of its own to move, so
+                // nothing is selected: the shared selection is only its checkboxes.
                 guard transcriptRequest != nil, let id = shownTranscript else { return }
                 try? await Task.sleep(nanoseconds: 80_000_000)
                 withAnimation { proxy.scrollTo(HistoryEntry.ID.transcript(id), anchor: .center) }
                 try? await Task.sleep(nanoseconds: 120_000_000)
+                focusedTranscript = id
                 voiceOverTranscript = id
             }
         }

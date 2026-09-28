@@ -702,8 +702,10 @@ enum SurfaceGallery {
 
     /// The floating toolbar's one switch from its doors (#134 H3): the panel's header switch,
     /// Settings › General's switch and the Window menu read and change the one saved preference,
-    /// and each shows what the others did. The toolbar's own Hide toolbar sets the same preference;
-    /// its menu is not opened here. Which surface shows over live work is CaptureHUDChecks' (#155).
+    /// and each shows what the others did. The panel header's whole 32 point row is the switch's
+    /// target, and the switch is its one accessibility element. The toolbar's own Hide toolbar
+    /// sets the same preference; its menu is not opened here. Which surface shows over live work
+    /// is CaptureHUDChecks' (#155).
     func checkToolbarVisibility() throws -> [String] {
         let kept = model.floatingToolbarVisible
         defer { model.floatingToolbarVisible = kept }
@@ -741,8 +743,70 @@ enum SurfaceGallery {
         try agree(false, after: "the Window menu")
         NSApp.sendAction(item.action!, to: shell, from: item)
         try agree(true, after: "the Window menu again")
+
+        // The header's whole switch row is one control (#134 review): a click on the words, beside
+        // them, above or below them or on the switch toggles once, and a click just outside the
+        // 32 point row lands elsewhere. Each click goes to the view AppKit's hit test picks.
+        func rows(in view: NSView) -> [PanelSwitch.Row] { (view as? PanelSwitch.Row).map { [$0] } ?? view.subviews.flatMap(rows) }
+        guard let row = rows(in: panelHost).first, row.bounds.height >= PanelSwitch.Row.minimumHeight else {
+            throw VoiceError.message("The panel header's Floating toolbar row is missing or shorter than \(Int(PanelSwitch.Row.minimumHeight)) points.")
+        }
+        let root = panelHost.superview ?? panelHost, control = row.control
+        let area = row.convert(row.bounds, to: nil), knob = control.convert(control.bounds, to: nil), words = row.label.convert(row.label.bounds, to: nil)
+        let points: [(String, NSPoint)] = [
+            ("the words", NSPoint(x: words.midX, y: words.midY)), ("the gap beside the switch", NSPoint(x: knob.minX - 3, y: knob.midY)),
+            ("the row above the words", NSPoint(x: words.midX, y: area.maxY - 1)), ("the row below the words", NSPoint(x: words.midX, y: area.minY + 1)),
+            ("the row above the switch", NSPoint(x: knob.midX, y: area.maxY - 1)), ("the switch", NSPoint(x: knob.midX, y: knob.midY))]
+        for (place, point) in points {
+            guard let hit = root.hitTest(root.convert(point, from: nil)), hit === row || hit.isDescendant(of: control) else {
+                throw VoiceError.message("A click on \(place) in the panel header does not reach the Floating toolbar switch.")
+            }
+            let before = model.floatingToolbarVisible
+            click(hit, at: point, in: panelWindow)
+            try agree(!before, after: "a click on \(place)")
+        }
+        let outside = NSPoint(x: words.midX, y: area.maxY + 3)
+        if let hit = root.hitTest(root.convert(outside, from: nil)), hit === row || hit.isDescendant(of: row) {
+            throw VoiceError.message("The Floating toolbar row takes clicks beyond its own height.")
+        }
+        // One accessibility element, the switch, whose value follows the preference; VoiceOver's
+        // press and Space on the focused switch each toggle it once.
+        let value = { ((control as NSObject).value(forKey: "accessibilityValue") as? NSNumber)?.boolValue }
+        guard !row.isAccessibilityElement(), !row.label.isAccessibilityElement(), control.isAccessibilityElement(),
+              control.accessibilityLabel() == "Floating toolbar", control.accessibilitySubrole() == .switch,
+              value() == model.floatingToolbarVisible else {
+            throw VoiceError.message("The panel header's switch is not one accessibility element named Floating toolbar with its On or Off value.")
+        }
+        var before = model.floatingToolbarVisible
+        _ = control.accessibilityPerformPress()
+        try agree(!before, after: "VoiceOver's press")
+        guard value() == model.floatingToolbarVisible else { throw VoiceError.message("The switch's accessibility value did not follow VoiceOver's press.") }
+        guard panelWindow.makeFirstResponder(control) else { throw VoiceError.message("The panel header's switch cannot take keyboard focus.") }
+        before = model.floatingToolbarVisible
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            panelWindow.sendEvent(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                   windowNumber: panelWindow.windowNumber, context: nil, characters: " ",
+                                                   charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49)!)
+        }
+        try agree(!before, after: "Space on the focused switch")
         return ["The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
+                "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
+                "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
                 "The toolbar's More › Hide toolbar sets the same saved preference; which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+    }
+
+    /// A click delivered straight to the view AppKit's hit test picked: the gallery's windows are
+    /// never on screen, so the window server routes nothing to them. The release is queued first
+    /// for a control that tracks the mouse itself, as NSSwitch does, and handed over otherwise.
+    func click(_ view: NSView, at point: NSPoint, in window: NSWindow) {
+        let time = ProcessInfo.processInfo.systemUptime
+        func event(_ type: NSEvent.EventType, after delay: TimeInterval) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: time + delay, windowNumber: window.windowNumber,
+                               context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)!
+        }
+        NSApp.postEvent(event(.leftMouseUp, after: 0.05), atStart: false)
+        view.mouseDown(with: event(.leftMouseDown, after: 0))
+        if let release = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true) { view.mouseUp(with: release) }
     }
 
     // MARK: Dictate states

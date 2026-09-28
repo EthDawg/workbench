@@ -41,13 +41,8 @@ struct WorkbenchQuickPanel: View {
             HStack(alignment: .center, spacing: 8) {
                 Text("Workbench").font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 8)
-                HStack(spacing: 6) {
-                    // The words are part of the switch's target; VoiceOver reads the switch's own label.
-                    Text("Floating toolbar").font(.system(size: 11)).foregroundStyle(.secondary)
-                        .onTapGesture { model.floatingToolbarVisible.toggle() }.accessibilityHidden(true)
-                    Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch).controlSize(.mini).labelsHidden()
-                        .accessibilityHint(WorkbenchHome.floatingToolbarHelp)
-                }.frame(minHeight: 32).contentShape(Rectangle()).help(WorkbenchHome.floatingToolbarHelp)
+                PanelSwitch(title: "Floating toolbar", isOn: $model.floatingToolbarVisible, help: WorkbenchHome.floatingToolbarHelp)
+                    .fixedSize()
             }
             Divider()
             VStack(spacing: 2) {
@@ -319,6 +314,93 @@ struct PanelRecoveryRow: View {
 
 /// Snapshot the menu at click time. Tracking a native menu must not rebuild it
 /// under the pointer when an independent operation publishes a new status.
+/// The panel header's Floating toolbar switch (#134 H3): the 11 point label, the space beside it
+/// and the row's full 32 point height are one control, so a click anywhere in it toggles, while
+/// the switch keeps its own clicks and drags. VoiceOver finds one element, the switch, named by
+/// the label with its On or Off value, and Space toggles it when it has focus. AppKit, so the
+/// surface gallery can click every part of the row.
+struct PanelSwitch: NSViewRepresentable {
+    var title: String
+    @Binding var isOn: Bool
+    var help: String
+    func makeNSView(context: Context) -> Row {
+        let row = Row(title: title, help: help)
+        row.control.target = context.coordinator
+        row.control.action = #selector(Coordinator.changed(_:))
+        return row
+    }
+    func updateNSView(_ row: Row, context: Context) {
+        context.coordinator.isOn = $isOn
+        row.update(title: title, help: help)
+        row.control.state = isOn ? .on : .off
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView row: Row, context: Context) -> CGSize? { row.fittingSize }
+    func makeCoordinator() -> Coordinator { Coordinator(isOn: $isOn) }
+
+    final class Coordinator: NSObject {
+        var isOn: Binding<Bool>
+        init(isOn: Binding<Bool>) { self.isOn = isOn }
+        @objc func changed(_ sender: NSSwitch) { isOn.wrappedValue = sender.state == .on }
+    }
+
+    final class Row: NSView {
+        static let minimumHeight: CGFloat = 32
+        let label = Words()
+        let control = NSSwitch()
+        init(title: String, help: String) {
+            super.init(frame: .zero)
+            control.controlSize = .mini
+            for view in [label, control] as [NSView] {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(view)
+            }
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: leadingAnchor),
+                label.centerYAnchor.constraint(equalTo: centerYAnchor),
+                control.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 6),
+                control.trailingAnchor.constraint(equalTo: trailingAnchor),
+                control.centerYAnchor.constraint(equalTo: centerYAnchor),
+                heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumHeight),
+                heightAnchor.constraint(greaterThanOrEqualTo: label.heightAnchor),
+                heightAnchor.constraint(greaterThanOrEqualTo: control.heightAnchor),
+            ])
+            update(title: title, help: help)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        func update(title: String, help: String) {
+            label.text = title
+            control.setAccessibilityLabel(title)
+            control.setAccessibilityHelp(help)
+            toolTip = help
+        }
+        /// The switch takes its own clicks; every other point of the row is the row's.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let hit = super.hitTest(point) else { return nil }
+            return hit.isDescendant(of: control) ? hit : self
+        }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func mouseDown(with event: NSEvent) {}
+        /// A click released inside the row toggles, as a click on the switch does.
+        override func mouseUp(with event: NSEvent) {
+            if bounds.contains(convert(event.locationInWindow, from: nil)) { control.performClick(nil) }
+        }
+    }
+
+    /// The row's words in 11 point secondary text, drawn by the view so a layer render shows
+    /// them as the screen does (it draws an NSTextField's text twice). Not an accessibility
+    /// element: the switch carries the name.
+    final class Words: NSView {
+        var text = "" { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
+        private var attributes: [NSAttributedString.Key: Any] { [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor] }
+        override var intrinsicContentSize: NSSize {
+            let size = (text as NSString).size(withAttributes: attributes)
+            return NSSize(width: ceil(size.width), height: ceil(size.height))
+        }
+        override func draw(_ dirtyRect: NSRect) { (text as NSString).draw(at: .zero, withAttributes: attributes) }
+        override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
+    }
+}
+
 struct NativeControlMenu: NSViewRepresentable {
     var title: String
     var makeMenu: () -> NSMenu
