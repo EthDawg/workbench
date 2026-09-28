@@ -668,10 +668,10 @@ struct WorkbenchHomePage: View {
                 Text("Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            // Why Read did nothing, beside the tile that was clicked (#173). Read shows the same
-            // words in full; a reading that stopped has its own row in Current work.
-            if tools.contains(.read), let attention = model.attention, attention.page == .read, model.readingFailure == nil {
-                Label(attention.message, systemImage: "exclamationmark.triangle")
+            // Why the Read tile did nothing, beside it (#173): only the tile's own problem, gone as
+            // soon as anything replaces or clears it. Read's banner shows every Read problem.
+            if tools.contains(.read), let notice = Attention.besideHomeReadTile(model.attention) {
+                Label(notice, systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }

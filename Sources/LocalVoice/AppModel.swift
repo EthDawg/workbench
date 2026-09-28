@@ -395,7 +395,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// The same text is not restarted: paused resumes, playing carries on.
     func listen(to text: String) {
         // Only replace the draft when the reading can start, so it never waits unheard.
-        guard !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
+        guard !meetings.isBusy else {
+            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTile); return
+        }
         guard phase == .idle else { return }
         guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
         // Text the selected provider cannot read is turned away before anything changes: the
@@ -403,7 +405,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // nothing starts. The reason is Read's, heard at once wherever the tile was (#173).
         if let rejection = readingRejection(for: text) {
             let reason = copiedTextRefusal(rejection, text: text)
-            report(reason, on: .read)
+            report(reason, on: .read, from: .homeReadTile)
             announceForAccessibility(reason)
             return
         }
@@ -1333,7 +1335,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func dismissReadingFailure() { clearReadingFailure() }
     /// Raises a problem with the page that shows it in full (#134): the menu-bar panel's door
     /// opens that page, so it is chosen here, where the problem is known, never from the words.
-    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
+    /// `origin` names a control that also shows it beside itself; only Home's Read tile does (#173).
+    func report(_ message: String, on page: Attention.Page, from origin: Attention.Origin? = nil) {
+        attention = Attention(message: message, page: page, origin: origin)
+    }
     /// The error banner's dismiss, which also dismisses a reading failure it shows.
     func dismissError() {
         if let failure = readingFailure, error == failure.message { readingFailure = nil }
