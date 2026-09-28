@@ -226,3 +226,33 @@ struct Countdown {
         return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }
+
+/// The break timer's one transport state. The Draw page, the quick controls,
+/// the Timer menu and the floating timer all show its next action, so none can
+/// offer Resume for a countdown that has not started or has already finished.
+enum TimerTransport: Equatable {
+    /// Not started, or reset: Start.
+    case idle
+    case running
+    case paused
+    /// The countdown reached zero: Restart, with the configured duration.
+    case finished
+
+    var title: String {
+        switch self {
+        case .idle: return "Start"
+        case .running: return "Pause"
+        case .paused: return "Resume"
+        case .finished: return "Restart"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .idle, .paused: return "play.fill"
+        case .running: return "pause.fill"
+        case .finished: return "arrow.counterclockwise"
+        }
+    }
+    /// Start and Restart begin a new countdown through the normal start path.
+    var starts: Bool { self == .idle || self == .finished }
+}

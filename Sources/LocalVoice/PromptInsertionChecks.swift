@@ -81,6 +81,25 @@ enum PromptInsertionChecks {
         let task = Task { await queued.run() }; task.cancel()
         _ = await task.value
         try check(queued.writes.isEmpty && queued.pastes == 0, "cancelling a queued delivery Task prevents its first write")
+
+        // After the picker closes, typing waits for the frozen field to be in front again.
+        let start = Date(timeIntervalSince1970: 1_000)
+        var clock = start, polls = 0, pauses = 0
+        func pause() async { pauses += 1; clock.addTimeInterval(0.02) }
+        let immediate = await PromptFieldReturn.wait(until: { polls += 1; return true }, now: { clock }, pause: pause)
+        try check(immediate && polls == 1 && pauses == 0, "a field already in front is typed into at once")
+        polls = 0
+        let returned = await PromptFieldReturn.wait(until: { polls += 1; return polls > 12 }, now: { clock }, pause: pause)
+        try check(returned && pauses == 12 && clock.timeIntervalSince(start) < 0.3,
+                  "typing waits while the field comes back, however long that takes within the limit")
+        clock = start; pauses = 0
+        let never = await PromptFieldReturn.wait(until: { false }, now: { clock }, pause: pause)
+        try check(!never && abs(clock.timeIntervalSince(start) - PromptFieldReturn.limit) < 0.03,
+                  "after about a second it stops waiting and leaves the runner's check to refuse")
+        clock = start; pauses = 0
+        let stopped = Task { await PromptFieldReturn.wait(until: { false }, now: { clock }, pause: pause) }
+        stopped.cancel()
+        try check(await stopped.value == false && pauses == 0, "Escape or Stop ends the wait at once")
         print("PROMPT_INSERTION_CHECKS_OK: \(count) checks passed")
     }
 }

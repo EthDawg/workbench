@@ -325,7 +325,7 @@ struct PersonaLibraryView: View {
                         Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
                 }
-                .help("A ring around the shown persona moves as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures loudness and records nothing. In a prepared set, the ring follows the selected overlay.")
+                .help("A quiet outline around the shown persona brightens as you speak, so your audience sees who is talking. Workbench listens only while it shows, measures loudness and records nothing. In a prepared set, the outline follows the selected overlay.")
             }
         }
     }

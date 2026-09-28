@@ -128,6 +128,25 @@ enum AudioRendererCancellationChecks {
             throw VoiceError.message("CHECK FAILED: cancelled renderer terminates its child process promptly")
         }
         try await AudioRenderer.runCancellable("/usr/bin/true", [])
-        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated and a later render can start")
+
+        // Save audio's tool is bounded: a hung process is stopped at its limit.
+        let boundedStarted = Date()
+        var timedOut = false
+        do { try await AudioRenderer.runBounded("/bin/sleep", ["30"], timeout: 0.3) } catch is AudioRenderer.ToolTimeout { timedOut = true }
+        guard timedOut, Date().timeIntervalSince(boundedStarted) < 3 else {
+            throw VoiceError.message("CHECK FAILED: a tool past its bound is stopped promptly and reported as a timeout")
+        }
+        try await AudioRenderer.runBounded("/usr/bin/true", [], timeout: 5)
+        // The bounded export Save audio uses writes its file from synthetic silence.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("LocalVoice-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let wav = folder.appendingPathComponent("synthetic.wav"), m4a = folder.appendingPathComponent("synthetic.m4a")
+        try SpekoRenderer.wav(Data(repeating: 0, count: 48_000)).write(to: wav)
+        try await AudioRenderer.exportBounded(wav, to: m4a)
+        guard ((try? FileManager.default.attributesOfItem(atPath: m4a.path))?[.size] as? NSNumber)?.intValue ?? 0 > 0 else {
+            throw VoiceError.message("CHECK FAILED: the bounded export writes its file")
+        }
+        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated, a hung tool stops at its bound, the bounded export writes its file, and a later render can start")
     }
 }

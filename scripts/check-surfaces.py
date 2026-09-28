@@ -8,11 +8,12 @@ The check finds changes; people decide taste.
 
 Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
-views embedded in it); the Draw, Present, Persona, Timer and Saved Prompts
-menus that the rows, the floating toolbar and the app menu bar open, with any
-native views embedded in them; the floating toolbar's modes, next action and
-hover labels, accessory and glyph menu, and the live dictation, narration and
-reading controls shown in the same window; the app menu bar and any status item menu
+views embedded in it); the Draw, Present, Persona and Timer menus that the
+rows, the floating toolbar and the app menu bar open, with any native views
+embedded in them, and the Saved Prompts picker the toolbar opens; the
+floating toolbar's modes, next action and hover labels, accessory and glyph
+menu, and the live dictation, narration and reading controls shown in the
+same window; the app menu bar and any status item menu
 built in AppDelegate; the window sidebar; every control on Home and on the
 Settings page, including views embedded in them; the global shortcut
 catalogue; proactive offers, found as types named *Offer* or *Cue plus
@@ -102,6 +103,8 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
     ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar glyph menu', 'controls'),
+    # Position… in that menu opens the toolbar's placement control (#163).
+    ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
     # The same window's live dictation, narration and reading controls.
     ('LocalVoice/FloatingToolbar.swift', 'WorkbenchFloatingContent', 'floating toolbar live controls', 'page'),
     ('StageKit/AnnotationMenu.swift', 'AnnotationMenu', 'Draw menu', 'controls'),
@@ -110,7 +113,7 @@ ENTRY_POINTS = [
     ('StageKit/StageKitController.swift', 'StageKitController.makePersonaMenu', 'Persona menu', 'controls'),
     ('StageKit/Persona.swift', 'PersonaLibrary.makeControlsMenu', 'Persona menu', 'controls'),
     ('StageKit/StageKitController.swift', 'StageKitController.makeTimerMenu', 'Timer menu', 'controls'),
-    ('LocalVoice/PromptInsertion.swift', 'SavedPromptMenu', 'Saved Prompts menu', 'controls'),
+    ('LocalVoice/PromptPicker.swift', 'PromptPickerView', 'Saved Prompts picker', 'controls'),
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),
@@ -150,8 +153,9 @@ ENTRY_POINTS = [
 ]
 # Calls that change the window's route or open a place (mode 'doors').
 # openHistory opens History with a door's starting view; openTranscript opens
-# a transcript on the Dictate page.
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript'}
+# a transcript on the Dictate page; importReading opens text on the Read page
+# through its import decision.
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading'}
 # Inline shortcut editors: the global shortcut catalogue records these shortcuts.
 EXCLUDED = {'LocalVoice/WorkbenchQuickPanel.swift': ['WorkbenchQuickPanel.shortcutEditor'],
             'LocalVoice/QuickControls.swift': ['ShortcutControl', 'ShortcutKeycap']}
@@ -171,9 +175,11 @@ OFFER_TYPES = ['FounderIntroductionCard']
 # Choice lists with their own stable IDs and surface.
 ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 
+# CapturePreviewButton is a capture image that opens the read-only preview; its
+# first argument is its accessible name.
 CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
     Stepper Slider Link NativeControlMenu ToolbarMenuAction StageMenuAction
-    NSMenuItem NSButton addItem addSubmenu card command actionItem action'''.split())
+    NSMenuItem NSButton addItem addSubmenu card command actionItem action CapturePreviewButton'''.split())
 # Label-taking helpers, counted only in the file that declares them.
 HELPERS = {'card', 'command', 'actionItem', 'action'}
 IDENT = r'[A-Za-z_$][\w$]*'

@@ -4,8 +4,8 @@ import StageKit
 import ToolbarCore
 import ToolbarKit
 
-/// One window owns idle tools, dictation, and narration. Starting an operation
-/// never changes the user's choice to keep the idle toolbar visible.
+/// One window owns the tools, dictation, and narration. Starting an operation
+/// never changes the user's choice to show the toolbar.
 enum FloatingToolbarSurface: Equatable {
     case hidden, tools, dictation, narration, reading
 
@@ -15,6 +15,17 @@ enum FloatingToolbarSurface: Equatable {
         if dictation { return .dictation }
         if reading { return .reading }
         return enabled ? .tools : .hidden
+    }
+
+    /// Hide toolbar is authoritative for the tools (#155). Drawing, a presentation and
+    /// personas are deliberately not consulted: they carry on without the tools, reachable
+    /// by their keys and the menu-bar panel, and Show floating toolbar brings the tools back
+    /// with their live state. A prompt insertion keeps the tools until it ends, because its
+    /// Stop is there. Recording, processing, narration and reading keep their own surfaces.
+    static func resolve(shown: Bool, drawing: Bool, presenting: Bool, persona: Bool, inserting: Bool,
+                        capturingScreen: Bool, dictation: Bool, narration: Bool, reading: Bool) -> Self {
+        resolve(enabled: shown || inserting, capturingScreen: capturingScreen,
+                dictation: dictation, narration: narration, reading: reading)
     }
 }
 
@@ -58,7 +69,7 @@ struct FloatingToolbar: View {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
-            anchor: (controls.anchor ?? .bottom).toolbarAnchor,
+            anchor: controls.rowAnchor,
             mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
             actionHint: action.hint(key: action.operation.keyMode.flatMap(key)),
             switcher: ToolbarNextAction.switcher(for: live, key: key),
@@ -74,7 +85,7 @@ struct FloatingToolbar: View {
     var body: some View {
         let state = viewState
         ToolbarRow(state: state, accent: Workbench.accent,
-            makeAccessoryMenu: { SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction) },
+            openAccessory: { button in openPrompts(anchor: button, destination: controls.promptDestination?()) },
             action: performSelected, selectMode: { model.toolbarMode = $0 }, makeMenu: toolsMenu,
             menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
             focusButton: { button in
@@ -83,13 +94,35 @@ struct FloatingToolbar: View {
                     button.window?.makeFirstResponder(button)
                 }
             }, escape: controls.endKeyboardInteraction, drag: controls.dragActions)
-            .background(GeometryReader { geometry in
-                Color.clear.preference(key: ToolbarMeasuredSize.self, value: ToolbarMeasurement(tier: state.tier, size: geometry.size))
-            })
-            .onPreferenceChange(ToolbarMeasuredSize.self) { measurement in controls.reportSize(measurement.size, tier: measurement.tier) }
+            // The host sizes its window from these reports (#152). A preference written
+            // from a background GeometryReader never reached onPreferenceChange once the
+            // row held conditional content, so every window kept its seed size.
+            .onGeometryChange(for: ToolbarMeasurement.self) { ToolbarMeasurement(tier: state.tier, size: $0.size) } action: { measurement in
+                // A row that opens revealed (Keep open at launch) has not drawn its resting
+                // element yet. Measure it once, unseen, so a top or bottom dock centres on it.
+                if measurement.tier == .revealed && !controls.hasMeasured(.resting) {
+                    controls.reportRestingSize(NSHostingView(rootView: ToolbarRow(state: Self.resting(state))).fittingSize)
+                }
+                controls.reportSize(measurement.size, tier: measurement.tier)
+            }
             .pinnedToDock(state.anchor)
             .help(detail)
             .tint(Workbench.accent).workbenchTheme()
+    }
+
+    private static func resting(_ state: ToolbarViewState) -> ToolbarViewState {
+        var resting = state; resting.tier = .resting
+        return resting
+    }
+
+    /// One Saved Prompts picker for the accessory and the glyph menu (#159). It
+    /// freezes the field that was in front when it was asked for.
+    private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
+        let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
+            receipts: model.clipboardReceipt, destination: destination, trusted: AXIsProcessTrusted(),
+            controls: controls, openLibrary: { model.showLibrary() })
+        if let anchor { PromptPickerController.shared.show(from: anchor, context: context) }
+        else if let frame { PromptPickerController.shared.show(anchor: frame, context: context) }
     }
 
     /// Each operation goes to the owner that already does it. The toolbar never
@@ -136,9 +169,11 @@ struct FloatingToolbar: View {
             Self.inline(stage.makeAnnotationMenu(includeSettings: false), into: menu)
         case .present:
             Self.inline(stage.makePresentationMenu(), into: menu)
-            let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
-            prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction)
-            menu.addItem(prompts)
+            // The picker opens once this menu has closed, for the field in front now.
+            let destination = controls.promptDestination?(), toolbarFrame = NSApp.currentEvent?.window?.frame
+            menu.addItem(ToolbarMenuAction("Saved Prompts…") {
+                controls.toolbar.afterMenuTracking { if let toolbarFrame { openPrompts(frame: toolbarFrame, destination: destination) } }
+            })
             menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)
@@ -159,12 +194,9 @@ struct FloatingToolbar: View {
             menu.addItem(ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } })
         }
         menu.addItem(.separator())
-        let position = NSMenuItem(title: "Position", action: nil, keyEquivalent: "")
-        let positions = NSMenu(); positions.autoenablesItems = false
-        for anchor in FloatingControlAnchor.allCases {
-            positions.addItem(ToolbarMenuAction(anchor.title, checked: controls.anchor == anchor) { controls.choosePosition?(anchor) })
-        }
-        position.submenu = positions; menu.addItem(position)
+        // One command in place of the eight-item submenu: the named docks and a reset, for
+        // the keyboard and precise placement (#163). Dragging is the everyday way to move.
+        menu.addItem(ToolbarMenuAction("Position…") { controls.toolbar.afterMenuTracking { controls.showPosition?() } })
         menu.addItem(ToolbarMenuAction("Keep open", checked: controls.toolbar.state.keepsOpen) {
             controls.toolbar.send(.keepOpenChanged(!controls.toolbar.state.keepsOpen))
         })
@@ -208,10 +240,6 @@ private struct ToolbarMeasurement: Equatable {
     var tier: ToolbarTier
     var size: CGSize
 }
-private struct ToolbarMeasuredSize: PreferenceKey {
-    static var defaultValue = ToolbarMeasurement(tier: .resting, size: .zero)
-    static func reduce(value: inout ToolbarMeasurement, nextValue: () -> ToolbarMeasurement) { value = nextValue() }
-}
 
 struct WorkbenchFloatingContent: View {
     @ObservedObject var model: AppModel
@@ -231,7 +259,7 @@ struct WorkbenchFloatingContent: View {
         } else if CapturePanelController.showsDictation(model) {
             RecordingOverlay(model: model, controls: controls,
                 finishDrawing: stage.isDrawing ? { stage.finishDrawing() } : nil)
-        } else if model.rendering || model.playing || model.paused {
+        } else if model.rendering || model.playing || model.paused || model.readingFailure != nil {
             ReadingControls(model: model)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
@@ -242,9 +270,37 @@ struct WorkbenchFloatingContent: View {
 
 /// Reading only needs its active transport. Editing and voice choices stay in
 /// Workbench; there is no second reading editor hidden behind this surface.
+/// A reading that stopped because its audio could not be read stays here with
+/// the reason, Retry and Dismiss until the person does one of them.
 private struct ReadingControls: View {
     @ObservedObject var model: AppModel
     var body: some View {
+        if let failure = model.readingFailure, !model.rendering, !model.playing, !model.paused {
+            stopped(failure)
+        } else {
+            transport
+        }
+    }
+
+    private func stopped(_ failure: AppModel.ReadingFailure) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Reading stopped").font(.system(size: 12, weight: .semibold))
+                Text("Its audio could not be read.").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            }.accessibilityElement(children: .combine).accessibilityLabel(failure.message).help(failure.message)
+            Spacer(minLength: 4)
+            Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
+                .accessibilityHint("Makes new audio and reads from the start")
+            Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                .accessibilityLabel("Dismiss reading error")
+        }.padding(14).frame(width: 336, height: 64)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain).accessibilityLabel("Reading controls")
+            .workbenchTheme()
+    }
+
+    private var transport: some View {
         HStack(spacing: 12) {
             Image(systemName: "speaker.wave.2").foregroundStyle(Workbench.accent)
             Text(model.rendering ? "Preparing Reading" : model.paused ? "Reading Paused" : "Reading")

@@ -335,4 +335,47 @@ try MainActor.assumeIsolated {
     try check(location.location == "/Users/example/Elsewhere", "a previous custom location is restored")
     try check(appliedBeforeManual == 3 && applied == 5, "macOS is asked to apply only real location changes, never a kept manual choice")
 }
-print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")
+// An open editor never stalls new screenshots (#151). The draft keeps its own
+// bytes, Save's revision check still guards an edit after History reloads, and
+// a later manual location change still pauses collecting instead of fighting it.
+try MainActor.assumeIsolated {
+    let location = FakeScreenshotLocation(), suite = directory.appendingPathComponent("SnapInboxDraft-" + UUID().uuidString).path,
+        preferences = UserDefaults(suiteName: suite)!
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let inbox = shots.appendingPathComponent("Inbox while editing")
+    try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+    let model = SnapModel(store: SnapStore(root: directory.appendingPathComponent("inbox-draft-history")), screenshotLocation: location,
+                          preferences: preferences, screenshotInbox: inbox,
+                          trash: { url in try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png")) },
+                          applyScreenshotLocation: {})
+    model.setKeepsScreenshotsOffDesktop(true)
+    func arrive(_ name: String, _ bytes: Data) throws -> URL {
+        let file = inbox.appendingPathComponent(name)
+        try bytes.write(to: file); try markScreenCapture(file)
+        return file
+    }
+    model.draft = SnapDraft(originalPNG: ink, source: .region, title: "Open in the editor", notes: "", tags: [], edit: .init())
+    let opened = model.draft!.id
+    model.notice = "Give this Snap a title before saving."
+    let first = try arrive("Screenshot 2026-09-05 at 9.00.00 am.png", png)
+    model.importInbox(); model.importInbox()
+    try check(model.activeCount == 1 && !fm.fileExists(atPath: first.path) && model.draft?.id == opened && model.draft?.originalPNG == ink,
+              "a settled screenshot is adopted while a draft is open, and the draft is untouched")
+    try check(model.notice == "Give this Snap a title before saving.", "adoption leaves the open editor's own message in place")
+    try check(model.saveDraft(model.draft!, copyAfterSaving: false) && model.activeCount == 2 && model.draft == nil,
+              "the draft still saves after adoption, as a separate Snap")
+    model.edit(model.items.first { $0.title == "Open in the editor" }!.id)
+    let second = try arrive("Screenshot 2026-09-05 at 9.01.00 am.png", cropped)
+    model.importInbox(); model.importInbox()
+    var renamed = model.draft!; renamed.title = "Renamed while a screenshot arrived"
+    try check(model.activeCount == 3 && !fm.fileExists(atPath: second.path) && model.saveDraft(renamed, copyAfterSaving: false)
+              && model.items.contains { $0.title == "Renamed while a screenshot arrived" },
+              "an edit opened before adoption still saves once History has reloaded")
+    model.draft = SnapDraft(originalPNG: ink, source: .window, title: "Still open", notes: "", tags: [], edit: .init())
+    location.location = "/Users/example/Manual"
+    model.importInbox()
+    try check(model.screenshotRedirectPaused && location.location == "/Users/example/Manual" && model.draft?.title == "Still open",
+              "a later manual location change pauses collecting with a draft open, and is kept")
+    model.draft = nil
+}
+print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")

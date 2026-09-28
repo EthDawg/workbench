@@ -52,6 +52,7 @@ struct SnapWorkspaceView: View {
                     .help("Snap never saves to the Desktop. This also sends screenshots taken with the macOS shortcuts to History, by changing where macOS saves them. The menu bar refreshes once to apply it; turning it off restores your previous location.")
                 #endif
             }
+            if !model.screenAccessGranted { screenAccessCard }
             if model.screenshotRedirectPaused {
                 Text("macOS now saves screenshots somewhere else, so Workbench stopped collecting them. Turn Keep new screenshots off the Desktop off, then on, to collect them again.")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -112,6 +113,32 @@ struct SnapWorkspaceView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refresh() }
     }
 
+    /// Region, Window and Screen need Screen Recording (#112). Everything already
+    /// saved keeps working, and an image the person already has can still come in.
+    private var screenAccessCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Screen Recording is off for Workbench", systemImage: "rectangle.dashed.badge.record")
+                .font(.callout.weight(.semibold))
+            Text("Region, Window and Screen need it to capture. Your Snaps stay here to view, copy, edit and hand off, and you can add an image you already have.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Paste image") { model.pasteImage() }.disabled(model.isBusy)
+                Button("Import image…") { model.importImage() }.disabled(model.isBusy)
+                Spacer(minLength: 8)
+                Button("Open System Settings…") { model.openScreenRecordingSettings() }
+                    .help("Privacy & Security → Screen Recording. Workbench changes no setting itself.")
+            }
+            if model.suggestsReopenForScreenAccess {
+                Text(ScreenCaptureAccess.reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Allow Workbench under Privacy & Security → Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.orange.opacity(0.25)))
+            .accessibilityElement(children: .contain)
+    }
+
     private var emptyTitle: String {
         if !model.search.isEmpty { return "No matching Snaps" }
         return model.showingArchived ? "Nothing archived" : "Your Snaps start here"
@@ -158,16 +185,22 @@ struct SnapWorkspaceView: View {
                 Spacer()
                 if item.edit != SnapEdit() { Image(systemName: "pencil").font(.caption).accessibilityLabel("Edited; original preserved") }
             }
-            Button { if item.archivedAt == nil { model.edit(item.id) } } label: {
+            // The image opens read-only, archived or not; Edit… is its own action.
+            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: model.store) }) {
                 SnapThumbnail(model: model, item: item).frame(height: 118).frame(maxWidth: .infinity)
-            }.buttonStyle(.plain).accessibilityLabel("Edit \(item.title)").disabled(item.archivedAt != nil)
+            }
             Text(item.title).font(.callout.weight(.semibold)).lineLimit(2).frame(height: 34, alignment: .topLeading)
             Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
             if !item.tags.isEmpty { Text(item.tags.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             HStack {
                 Button("Copy") { model.copy(item.id) }.controlSize(.small)
+                if item.archivedAt == nil {
+                    Button("Edit…") { model.edit(item.id) }.controlSize(.small).disabled(model.isBusy).accessibilityLabel("Edit \(item.title)")
+                }
                 Spacer()
                 Menu {
+                    Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: model.store)) }
+                    Divider()
                     Button("Export image…") { model.export(item.id) }
                     if item.archivedAt == nil {
                         Button("Edit…") { model.edit(item.id) }

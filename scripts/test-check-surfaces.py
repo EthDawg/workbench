@@ -400,6 +400,22 @@ class SurfaceTests(unittest.TestCase):
         self.assertIn('Unregistered entry on settings page: "Packs".', errors)
         self.assertIn('Unregistered entry on window sidebar: "Guide".', errors)
 
+    def test_capture_preview_buttons_on_home_are_entries_but_not_page_doors(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          var body: some View { switch page { case "snap": SnapWorkspaceView(); default: welcome } }
+          private var welcome: some View {
+            CapturePreviewButton("View \\(item.title)", item: { .snap(item) }) { HomeSnapThumbnail() }
+            CapturePreviewButton("View latest Snap", item: { .snap(item) }) { HomeSnapThumbnail() }
+          }
+        }''')
+        self.write('LocalVoice/SnapWorkspaceView.swift', '''struct SnapWorkspaceView: View {
+          var body: some View { CapturePreviewButton("View card", item: { .snap(item) }) { SnapThumbnail() } }
+        }''')
+        home = [e for e in self.entries() if e['surface'] == 'window home']
+        self.assertIn('View latest Snap', [e['label'] for e in home])
+        self.assertTrue(any(e['label'] is None and 'item.title' in e.get('expression', '') for e in home))
+        self.assertNotIn('View card', self.labels())
+
     def test_native_views_in_menus_are_followed(self):
         self.write('StageKit/Persona.swift', '''final class PersonaLibrary {
           func makeControlsMenu() -> NSMenu { let size = NSMenuItem(); size.view = PersonaSizeMenuView(width: 0.2) { set($0) }; menu.addItem(size); return menu }

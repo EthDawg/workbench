@@ -2,10 +2,13 @@ import AppKit
 import ObjectiveC
 import SwiftUI
 import StageKit
+import ToolbarCore
 
-/// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states and the top
-/// of every Home page at the default and minimum window sizes, then writes `index.html` listing
-/// each entry and where it leads. It uses synthetic fixtures only: nothing is launched, and no
+/// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states, the production
+/// floating toolbar host in every mode at rest and revealed, and the top of every Home page at the
+/// default and minimum window sizes, then writes `index.html` listing each entry and where it leads.
+/// A toolbar window that is not the size of its row fails the run; other flags are reported only.
+/// It uses synthetic fixtures only: nothing is launched, and no
 /// shortcut, microphone, screen capture, Keychain item or network request is used.
 ///
 /// Each appearance renders in a child process whose home is a new temporary folder, so every
@@ -26,7 +29,18 @@ enum SurfaceGallery {
     /// `ran` marks a destination learned from the app's own code rather than the catalogue.
     struct Entry: Codable { var surface: String; var label: String; var leads: String; var route: String?; var ran = false }
     struct Listing: Codable { var title: String; var lines: [String] }
-    struct Pass: Codable { var theme: String; var panels: [Shot]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
+    /// One state of the production toolbar host: the size its window got and the size its row wanted.
+    struct HostCheck: Codable { var id, title, mode, tier: String; var window, wants, preferred: [Double]; var measured, twinMeasured: Bool; var problems: [String]; var file: String
+        /// The toolbar reached the tier this state asked for; its sizes are only compared if so.
+        var settled = true }
+    /// One step of the toolbar's placement through the production host (#163).
+    struct PlacementCheck: Codable { var title: String; var problems: [String] }
+    /// One state of the production Saved Prompts panel: the size it got and the size its content wanted.
+    struct PickerHostCheck: Codable { var id, title: String; var window, wants: [Double]; var heard: Bool; var problems: [String]; var file: String
+        /// The picker was still open when measured; its sizes are only compared if so.
+        var settled = true }
+    struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pickers: [Shot]; var pickerHost: [PickerHostCheck]
+        var pages: [Page]; var entries: [Entry]; var menus: [Listing]; var placement: [PlacementCheck] = [] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -72,7 +86,24 @@ enum SurfaceGallery {
             passes.append(try JSONDecoder().decode(Pass.self, from: data))
         }
         let flags = try SurfaceIndex(passes: passes).write(to: output)
-        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
+        // A toolbar window that is not the size of its row fails the run (#152), after the index
+        // has recorded it. Every other flag stays report-only.
+        let wrongSize = passes.flatMap { pass in pass.host.filter(\.hasSizeProblem).map { "\($0.title), \(pass.theme)" } }
+        if !wrongSize.isEmpty {
+            throw VoiceError.message("The floating toolbar's window is not the size of its row in \(wrongSize.count) states (\(wrongSize.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
+        // So does a toolbar that does not rest where it was put (#163).
+        let misplaced = passes.flatMap { pass in pass.placement.filter { !$0.problems.isEmpty }.map { "\($0.title), \(pass.theme)" } }
+        if !misplaced.isEmpty {
+            throw VoiceError.message("The floating toolbar did not rest where it was put in \(misplaced.count) steps (\(misplaced.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
+        // The same for the Saved Prompts panel: a panel that is not the size of its content
+        // leaves blank space or clips its status line (#159, the pattern #152 found).
+        let wrongPicker = passes.flatMap { pass in pass.pickerHost.filter(\.hasSizeProblem).map { "\($0.title), \(pass.theme)" } }
+        if !wrongPicker.isEmpty {
+            throw VoiceError.message("The Saved Prompts picker's panel is not the size of its content in \(wrongPicker.count) states (\(wrongPicker.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
+        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pickers.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
     }
 
@@ -154,6 +185,8 @@ enum SurfaceGallery {
     let stage: StageKitController
     let readback: ReadbackModel
     let sessionReadback: ReadbackModel
+    /// The preferences that name the synthetic session as recent.
+    let sessionDefaults: UserDefaults
     let snap: SnapModel
     /// Meeting owners with a fixed audio-app list and a capture that records nothing.
     let meetings: MeetingModel
@@ -191,11 +224,14 @@ enum SurfaceGallery {
         model.transcript = SurfacePass.history[0].text; model.rawTranscript = model.transcript
         let noCapture: @MainActor () async throws -> ReadbackScreenshot = { throw ReadbackError.message("The surface gallery never captures the screen.") }
         let noSpeech: @MainActor (URL) async throws -> String = { _ in throw ReadbackError.message("The surface gallery never transcribes audio.") }
-        readback = ReadbackModel(engine: model.engine, captureDisplay: noCapture, transcribeAudio: noSpeech)
+        // Screen Recording reads as allowed, so pages render alike on every Mac; a separate state shows it off.
+        readback = ReadbackModel(engine: model.engine, captureDisplay: noCapture, transcribeAudio: noSpeech, screenAccess: .fixed(true))
         let session = try SurfacePass.makeSession(in: home)
         let sessionDefaults = try SurfaceGallery.isolatedDefaults("SnapSession", home: home)
         sessionDefaults.set([session.path], forKey: "readback.recentSessionPaths.v1")
-        sessionReadback = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech)
+        sessionReadback = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech,
+                                        screenAccess: .fixed(true))
+        self.sessionDefaults = sessionDefaults
         // Snap storage wants the resolved spelling of its folder, which may name /private as /tmp.
         let snaps = Workbench.supportDirectory(component: "Snaps")
         try FileManager.default.createDirectory(at: snaps, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -203,7 +239,7 @@ enum SurfaceGallery {
         let desktop = home.appendingPathComponent("Desktop", isDirectory: true)
         try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         snap = SnapModel(store: try SurfacePass.makeSnaps(SnapStore(root: snaps.resolvingSymlinksInPath())), desktop: desktop,
-                         trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") })
+                         trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") }, screenAccess: .fixed(true))
         stage = StageKitController(reserving: preferences.enabledCombinations, defaults: stageDefaults)
         stage.useSharedActivityControls()
         let model = model
@@ -229,6 +265,12 @@ enum SurfaceGallery {
             panels.append(try save(rep, id: state.id, title: state.title, detail: state.detail, file: "panel-\(state.id)-\(theme).png", to: output))
             try state.reset()
         }
+        panels += try renderFloatingStates(to: output)
+        let (hostShots, host) = try renderToolbarHost(to: output)
+        let toolbar = hostShots + [try renderPositionControl(to: output)]
+        let placement = try checkToolbarPlacement()
+        let pickers = try renderPickerStates(to: output)
+        let (pickerShots, pickerHost) = try checkPickerHost(to: output)
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
             let window = homeWindow(size: size)
@@ -243,26 +285,304 @@ enum SurfaceGallery {
             }
         }
         if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
+        // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
+        if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) }
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
+        // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
+        if let snapPage = pages.firstIndex(where: { $0.route == "snap" }) { pages[snapPage].shots += try renderImagePreview(to: output) }
         let listings = menus()
-        return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+        // Screen Recording off (#112): Snap, Home's Snap card and a Snap & Talk session explain it.
+        for (route, shot) in try renderScreenAccessOff(to: output) {
+            if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
+        }
+        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers + pickerShots, pickerHost: pickerHost,
+                                   pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement)
+    }
+
+    // MARK: Saved Prompts picker
+
+    /// Present's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
+    /// standard and larger text. The panel's placement and focus are covered by --check-core and
+    /// need a pointer on the installed app; nothing here opens a window on screen.
+    func renderPickerStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let now = Date(timeIntervalSince1970: 1_789_546_320)
+        func prompt(_ title: String, favourite: Bool = false, product: String = "", persona: String = "", age: Double = 0) -> DemoResource {
+            DemoResource(kind: .prompt, title: title, product: product, persona: persona,
+                         content: "Synthetic prompt for \(title).", favorite: favourite, modified: now.addingTimeInterval(-age * 3_600))
+        }
+        let library = [prompt("Open with the customer's goal", favourite: true, product: "Acme CRM", age: 1),
+                       prompt("Show the approval flow", favourite: true, product: "Acme CRM", persona: "Manager", age: 2),
+                       prompt("Summarise the pricing change", product: "Acme CRM", age: 3),
+                       prompt("Walk through onboarding", persona: "Manager", age: 4),
+                       prompt("Explain the security review", persona: "HR Admin", age: 5),
+                       prompt("Close with next steps", age: 6)]
+        let long = [prompt("Explain how the quarterly planning review connects the regional forecasts to the hiring plan and the budget", favourite: true,
+                           product: "A product name long enough to need truncating in one line", persona: "Regional operations manager"),
+                    prompt("Supercalifragilisticexpialidocious-configuration-walkthrough-for-the-enterprise-tenant-administrators", age: 1),
+                    prompt("Short one", age: 2)]
+        let large = (1...60).map { prompt("Demo prompt \($0)", favourite: $0 % 12 == 1, product: "Product \($0 % 4 + 1)", age: Double($0)) }
+        let notes = PromptPickerMode.insert(into: "Notes")
+        let stopped = PromptAttempt(prompt: "Show the approval flow", destination: "Mail",
+                                    result: "Insertion stopped. 12 characters confirmed; nothing was replayed.")
+        struct State {
+            var id, title, detail: String; var resources: [DemoResource]; var mode: PromptPickerMode; var scale: CGFloat = 1
+            var query = ""; var filter = PromptPickerList.Filter.all; var running = false; var attempt: PromptAttempt?; var details = false
+        }
+        let states = [
+            State(id: "empty", title: "No saved prompts", detail: "An empty library leads to Saved resources.", resources: [], mode: notes),
+            State(id: "one", title: "One prompt", detail: "Inserting into Notes, the field in front when the picker opened.", resources: [library[0]], mode: notes),
+            State(id: "grouped", title: "Favourites, then the rest", detail: "Product and Persona tags filter the one list. The last delivery went to Mail and says so.",
+                  resources: library, mode: notes, attempt: stopped),
+            State(id: "details", title: "Last delivery details", detail: "Details shows the full reason, wrapped inside the picker.",
+                  resources: library, mode: notes, attempt: stopped, details: true),
+            State(id: "copy", title: "Copy prompt", detail: "Without Accessibility approval the action is Copy prompt, with no reminder to approve.",
+                  resources: library, mode: .copy(noField: false),
+                  attempt: PromptAttempt(prompt: "Close with next steps", destination: "Clipboard", result: TextDelivery.copiedMessage)),
+            State(id: "no-field", title: "No readable field", detail: "With approval but no readable field in front, choosing a prompt copies it.",
+                  resources: library, mode: .copy(noField: true)),
+            State(id: "long-names", title: "Long names", detail: "Long names wrap to two lines or truncate; the picker keeps its width.",
+                  resources: long, mode: notes),
+            State(id: "filtered", title: "One category", detail: "Persona: Manager narrows the same list.", resources: library, mode: notes,
+                  filter: .persona("Manager")),
+            State(id: "no-match", title: "No match", detail: "A search with no match offers to show every prompt.", resources: library, mode: notes, query: "zebra"),
+            State(id: "inserting", title: "Inserting", detail: "While a prompt is typed in, the picker offers Stop inserting.", resources: library, mode: notes,
+                  running: true, attempt: PromptAttempt(prompt: "Show the approval flow", destination: "Notes", result: "Inserting…", finished: false)),
+            State(id: "large", title: "Sixty prompts", detail: "A large library scrolls at the picker's maximum height; search finds any prompt.",
+                  resources: large, mode: notes),
+            State(id: "grouped-larger", title: "Favourites, larger text", detail: "At 1.35 times the text size the picker keeps its width and wraps.",
+                  resources: library, mode: notes, scale: 1.35, attempt: stopped),
+            State(id: "long-names-larger", title: "Long names, larger text", detail: "Long names at 1.35 times the text size.",
+                  resources: long, mode: .copy(noField: false), scale: 1.35)]
+        var shots: [SurfaceGallery.Shot] = []
+        for state in states {
+            let model = PromptPickerModel(list: PromptPickerList(resources: state.resources), mode: state.mode, width: PromptPickerLayout.maxWidth,
+                                          available: 640, textScale: state.scale, perform: { _ in }, dismiss: {})
+            model.list.query = state.query; model.list.filter = state.filter
+            model.show(running: state.running, attempt: state.attempt); model.showsDetails = state.details
+            let host = NSHostingView(rootView: PromptPickerView(model: model).padding(16).background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
+            window.contentView = host
+            settle(host); window.setContentSize(host.fittingSize); settle(host, seconds: 0.1)
+            window.setContentSize(host.fittingSize); settle(host, seconds: 0.05)
+            defer { window.contentView = nil; window.close() }
+            shots.append(try save(try snapshot(host), id: state.id, title: state.title, detail: state.detail,
+                                  file: "picker-\(state.id)-\(theme).png", to: output))
+        }
+        return shots
+    }
+
+    // MARK: Saved Prompts picker host
+
+    /// The production picker, `PromptPickerController`, opened as the toolbar host check drives
+    /// the toolbar: its panel is invisible, ignores the pointer, takes no keyboard focus and
+    /// watches no clicks. It opens over a bottom-docked Prompts button with synthetic prompts,
+    /// narrows to one row, gains a status line, shows that line's Details, then lists every prompt
+    /// again. Each time its panel must be the size its content wants, within the display, as
+    /// measured by a twin view that sizes its own window. The picker's renders above size their
+    /// own windows, so only this check can see a panel its content never resized (#152).
+    func checkPickerHost(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [SurfaceGallery.PickerHostCheck]) {
+        guard let screen = NSScreen.main else { return ([], []) }
+        let now = Date(timeIntervalSince1970: 1_789_546_320)
+        let prompts = [("Open with the customer's goal", true, "Acme CRM", ""), ("Show the approval flow", true, "Acme CRM", "Manager"),
+                       ("Summarise the pricing change", false, "Acme CRM", ""), ("Walk through onboarding", false, "", "Manager"),
+                       ("Explain the security review", false, "", "HR Admin"), ("Close with next steps", false, "", "")]
+            .enumerated().map { index, item in
+                DemoResource(kind: .prompt, title: item.0, product: item.2, persona: item.3, content: "Synthetic prompt for \(item.0).",
+                             favorite: item.1, modified: now.addingTimeInterval(-Double(index) * 3_600))
+            }
+        // Copy prompt writes only to this pasteboard; nothing is pasted or typed anywhere.
+        let board = NSPasteboard(name: .init("Workbench.PickerHostCheck." + UUID().uuidString))
+        defer { board.releaseGlobally() }
+        let isolated = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false }, preparePaste: { nil })
+        let receipts = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
+        let delivery = PromptInsertion()
+        let controller = PromptPickerController()
+        controller.offscreenForChecks = true
+        let visible = screen.visibleFrame
+        let anchor = NSRect(x: visible.midX - 32, y: visible.minY + 40, width: 64, height: 30)
+        controller.show(anchor: anchor, context: .init(resources: prompts, delivery: delivery, receipts: receipts, destination: nil,
+                                                       trusted: false, controls: nil, openLibrary: {}))
+        defer { controller.close() }
+        guard let panel = controller.shownPanel, let content = panel.contentView else { throw VoiceError.message("The Saved Prompts picker did not open.") }
+        panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        let steps: [(id: String, title: String, apply: () -> Void)] = [
+            ("open", "Opened", {}),
+            ("one-row", "Narrowed to one row", { controller.shownModel?.list.query = "pricing" }),
+            ("status", "With a status line", {
+                delivery.copy("Synthetic prompt for Summarise the pricing change.", title: "Summarise the pricing change", receipts: receipts, system: isolated)
+            }),
+            // A result too long for one line gets Details. With no field, nothing is typed.
+            ("details", "With the status line's Details", {
+                delivery.insert("Synthetic prompt.", title: "Walk through onboarding", into: nil); controller.shownModel?.showsDetails = true
+            }),
+            ("all", "Every prompt again", { controller.shownModel?.list.query = "" })]
+        var shots: [SurfaceGallery.Shot] = [], checks: [SurfaceGallery.PickerHostCheck] = []
+        for step in steps {
+            step.apply()
+            waitForPicker(controller, panel)
+            let title = "Saved Prompts panel, \(step.title.lowercased())", file = "picker-host-\(step.id)-\(theme).png"
+            guard let model = controller.shownModel else {
+                checks.append(.init(id: step.id, title: title, window: [], wants: [], heard: false,
+                                    problems: ["the picker closed during the check"], file: "", settled: false))
+                break
+            }
+            let natural = pickerWants(model)
+            let wants = PromptPickerLayout.frame(content: natural, anchor: anchor, visible: visible, above: controller.opensAbove).size
+            let window = panel.frame.size
+            var problems: [String] = []
+            let heard = controller.reportedSize.map { abs($0.width - natural.width) <= 0.5 && abs($0.height - natural.height) <= 0.5 } ?? false
+            if !heard {
+                problems.append("the panel never heard its content's current size" + (controller.reportedSize.map { "; the last report was \(Self.points($0))" } ?? ""))
+            }
+            if abs(window.width - wants.width) > 0.5 || abs(window.height - wants.height) > 0.5 {
+                problems.append("the panel is \(Self.points(window)) but its content wants \(Self.points(wants))"
+                    + (window.height > wants.height + 0.5 ? ", so it shows blank space" : window.height + 0.5 < wants.height ? ", so its content is clipped" : ""))
+            }
+            if !visible.insetBy(dx: PromptPickerLayout.edgeMargin - 0.5, dy: PromptPickerLayout.edgeMargin - 0.5).contains(panel.frame) {
+                problems.append("the panel is not inside the display with its margins")
+            }
+            // An empty panel has nothing to draw; its size is the finding.
+            if content.bounds.width >= 1 && content.bounds.height >= 1 {
+                shots.append(try save(try snapshot(content), id: "host-\(step.id)", title: title,
+                                      detail: "The production panel, invisible: \(Self.points(window)); its content wants \(Self.points(wants)).", file: file, to: output))
+            }
+            checks.append(.init(id: step.id, title: title, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                heard: heard, problems: problems, file: file))
+        }
+        return (shots, checks)
+    }
+
+    /// Spins the main run loop until the picker's panel has held its frame for six turns of about
+    /// 50 ms, the picker closes, or three seconds pass.
+    func waitForPicker(_ controller: PromptPickerController, _ panel: NSPanel) {
+        let deadline = Date().addingTimeInterval(3)
+        var still = 0, last = panel.frame
+        while Date() < deadline && still < 6 && controller.isShown {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            still = panel.frame == last ? still + 1 : 0
+            last = panel.frame
+        }
+    }
+
+    /// What the picker's content wants: the same state in a twin view that sizes its own window.
+    func pickerWants(_ model: PromptPickerModel) -> NSSize {
+        let twinModel = PromptPickerModel(list: model.list, mode: model.mode, width: model.width, available: model.available,
+                                          textScale: model.textScale, perform: { _ in }, dismiss: {})
+        twinModel.show(running: model.running, attempt: model.attempt); twinModel.showsDetails = model.showsDetails
+        let twin = NSHostingView(rootView: PromptPickerView(model: twinModel))
+        let window = offscreenWindow(size: NSSize(width: model.width, height: 200), styleMask: [.borderless])
+        window.contentView = twin
+        defer { window.contentView = nil; window.close() }
+        var size = twin.fittingSize
+        for _ in 0..<20 {
+            window.setContentSize(size); settle(twin, seconds: 0.05)
+            let next = twin.fittingSize
+            if abs(next.width - size.width) <= 0.5 && abs(next.height - size.height) <= 0.5 { break }
+            size = next
+        }
+        return size
+    }
+
+    // MARK: Floating surface states
+
+    /// The floating surface's own moments, which no page shows: the routine cue in place of
+    /// the recording controls after a dictation that heard no speech, and a reading that
+    /// stopped because its audio could not be read. Both at the compact size they use.
+    func renderFloatingStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let controls = CaptureHUDControls(defaults: .standard)
+        model.announceForAccessibility = { _ in }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String) throws {
+            let size = CaptureHUDLayout.compact
+            let content = WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
+                                                   dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
+            let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: size, styleMask: [.borderless])
+            window.contentView = host
+            defer { window.contentView = nil; window.close() }
+            settle(host)
+            shots.append(try save(try snapshot(host), id: id, title: title, detail: detail, file: "panel-\(id)-\(theme).png", to: output))
+        }
+        model.endWithoutSpeech(.tooQuiet)
+        try shot("floating-no-speech", "Floating: no speech heard",
+                 "In place of the recording controls for under two seconds, then the toolbar again. Hover holds it.")
+        model.dismissCaptureCue()
+        model.reportReadingFailure(.audioUnreadable)
+        try shot("floating-reading-stopped", "Floating: reading stopped",
+                 "A reading whose audio could not be read keeps its controls with Retry and dismiss.")
+        model.dismissReadingFailure()
+        return shots
     }
 
     // MARK: Read states
 
-    /// Read after a reading stopped because its audio could not be read: one error with Retry,
-    /// and the text back in the editor.
+    /// Read after a reading stopped because its audio could not be read (one error with Retry,
+    /// and the text back in the editor), and with a History transcript waiting for Replace
+    /// reading or Keep current over a different draft.
     func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
         let size = SurfaceGallery.sizes[0].size
         let window = homeWindow(size: size)
-        defer { window.contentViewController = nil; window.close(); model.error = nil; model.speechText = "" }
-        model.speechText = "The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget."
-        model.error = AppModel.readingAudioUnreadable
-        let (rep, drawn) = try renderPage("speak", in: window)
-        return [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                         detail: "The reading stopped; the text is editable again and Retry makes new audio.",
-                         file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
+        defer { window.contentViewController = nil; window.close(); model.dismissReadingFailure() }
+        model.importReading("The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget.", from: .savedText)
+        model.reportReadingFailure(.audioUnreadable)
+        var (rep, drawn) = try renderPage("speak", in: window)
+        var shots = [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                              detail: "The reading stopped; the text is editable again and Retry makes new audio.",
+                              file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
+        model.dismissReadingFailure()
+        model.importReading(SurfacePass.history[0].text, from: .transcript)
+        defer { model.keepCurrentReading() }
+        for (name, size) in SurfaceGallery.sizes {
+            let sized = name == "default" ? window : homeWindow(size: size)
+            defer { if sized !== window { sized.contentViewController = nil; sized.close() } }
+            (rep, drawn) = try renderPage("speak", in: sized)
+            shots.append(try save(rep, id: "state-import-review-\(name)", title: "Read, a transcript to review, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                                  detail: "Read aloud on a History transcript while a different draft is in Read: nothing changes until Replace reading or Keep current.",
+                                  file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
+        }
+        return shots
+    }
+
+    // MARK: Home states
+
+    /// The first-dictation journey (#15): the guide beside earlier Snaps, the
+    /// ordinary Home after Skip for now with its way back, and the guide's result
+    /// right after a first dictation. Synthetic history only; the pass's own
+    /// history, draft and guide choice are restored afterwards.
+    func renderHomeStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let size = NSSize(width: 1180, height: 1_000)
+        let kept = (history: model.history, draft: model.transcript, raw: model.rawTranscript, guide: model.preferences.firstDictationGuide)
+        defer {
+            model.history = kept.history; model.transcript = kept.draft; model.rawTranscript = kept.raw
+            model.preferences.firstDictationGuide = kept.guide
+        }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String, then change: (() -> Void)? = nil) throws {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.page = "home"
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame, seconds: 1)
+            if let change { change(); settle(frame, seconds: 1) }
+            shots.append(try save(try snapshot(frame), id: "state-\(id)", title: title, detail: detail, file: "page-home-state-\(id)-\(theme).png", to: output))
+        }
+        model.history = []; model.transcript = ""; model.rawTranscript = ""
+        model.preferences.firstDictationGuide = nil
+        try shot("first-dictation", "First dictation, beside earlier Snaps", "Nothing dictated yet but Snaps saved: the guide stays, with Skip for now, and recent work below it.")
+        model.preferences.firstDictationGuide = .skipped
+        try shot("guide-skipped", "Guide skipped", "After Skip for now: the ordinary Home, with Show me a first dictation until someone dictates.")
+        model.preferences.firstDictationGuide = .offered
+        let first = SurfacePass.history[1]
+        try shot("first-result", "First result", "Right after the first dictation: the words, their delivery controls and where they were saved.") { [self] in
+            model.rawTranscript = first.text; model.transcript = first.text; model.history = [first]
+        }
+        return shots
     }
 
     // MARK: History states
@@ -294,7 +614,7 @@ enum SurfaceGallery {
         let size = NSSize(width: 1180, height: 1_180), jobs = model.handoffJobs, library = model.historyLibrary
         // A Snap folder that does not exist yet reads as an empty history.
         let emptySnaps = SnapModel(store: SnapStore(root: home.appendingPathComponent("Empty Snaps", isDirectory: true)), desktop: home.appendingPathComponent("Desktop"),
-                                   trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") })
+                                   trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") }, screenAccess: .fixed(true))
         var shots: [SurfaceGallery.Shot] = []
         func shot(_ id: String, _ title: String, _ detail: String, snaps: SnapModel, door: HistoryDoor? = nil) throws {
             let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
@@ -355,6 +675,46 @@ enum SurfaceGallery {
         return shots
     }
 
+    // MARK: Image preview
+
+    /// The preview window at Home's default size: a full-display synthetic capture fitted to the
+    /// window, the same at actual size, and a missing file. Its Snap lives in a store of its own, so
+    /// the pages above are unchanged.
+    func renderImagePreview(to output: URL) throws -> [SurfaceGallery.Shot] {
+        // Snap storage wants the resolved spelling of its folder, as for the pages' Snaps.
+        let folder = home.appendingPathComponent("Preview Snaps", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let store = SnapStore(root: folder.resolvingSymlinksInPath())
+        let item = try store.insert(originalPNG: try CaptureImagePreviewChecks.screenPNG(width: 2_880, height: 1_800, heading: "Synthetic release notes"),
+                                    width: 2_880, height: 1_800, title: "Release notes", source: .screen,
+                                    id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000300")!, createdAt: Date(timeIntervalSince1970: 1_789_546_320))
+        let owner = offscreenWindow(size: SurfaceGallery.sizes[0].size, styleMask: [.titled])
+        let preview = CaptureImagePreview()
+        preview.present = { _ in }
+        defer { preview.close(); owner.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String, _ item: CaptureImagePreviewItem, command: CaptureImagePreviewModel.Command? = nil) throws {
+            preview.show(item, over: owner)
+            guard let panel = preview.panel, let model = preview.model else { throw VoiceError.message("The image preview did not open.") }
+            panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+            panel.setFrame(NSRect(origin: .zero, size: SurfaceGallery.sizes[0].size), display: false)
+            let frame = panel.contentView?.superview ?? panel.contentView!
+            try wait("the preview to load") { if case .loading = model.state { return false }; return true }
+            settle(frame)
+            if let command { model.perform(command); settle(frame, seconds: 0.1) }
+            let rep = try snapshot(frame)
+            shots.append(try save(rep, id: "preview-\(id)", title: title, detail: detail, file: "page-snap-preview-\(id)-\(theme).png", to: output))
+        }
+        try shot("fit", "Image preview, fitted", "A full-display synthetic capture opened from its thumbnail, fitted to the window.", .snap(item, store: store))
+        try shot("actual", "Image preview, actual size", "The same capture after Actual size (⌘0): one image pixel per screen pixel.", .snap(item, store: store), command: .actualSize)
+        let gone = ReadbackSection(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000301")!, capturedAt: Date(timeIntervalSince1970: 1_789_546_320),
+            displayName: "Synthetic display", directory: "items/gone", screenshot: "items/gone/screen.png", audio: nil, originalTranscript: nil,
+            transcript: nil, status: .ready, failure: nil, deletedAt: nil)
+        try shot("missing", "Image preview, missing file", "A Snap & Talk screenshot whose file is gone from its session folder.",
+                 .section(gone, number: 3, session: home.appendingPathComponent("Snap & Talk/Moved session", isDirectory: true)))
+        return shots
+    }
+
     // MARK: Fixtures
 
     static let history: [Transcript] = [
@@ -405,6 +765,37 @@ enum SurfaceGallery {
         return store
     }
 
+    // MARK: Screen Recording off
+
+    /// The pages that capture the screen, with Screen Recording off: the Snap page, Home (taller, to
+    /// reach its Snap card) and a Snap & Talk session. The Snaps and session are the same synthetic ones.
+    func renderScreenAccessOff(to output: URL) throws -> [(String, SurfaceGallery.Shot)] {
+        let noCapture: @MainActor () async throws -> ReadbackScreenshot = { throw ReadbackError.message("The surface gallery never captures the screen.") }
+        let noSpeech: @MainActor (URL) async throws -> String = { _ in throw ReadbackError.message("The surface gallery never transcribes audio.") }
+        let snapOff = SnapModel(store: SnapStore(root: snap.store.root), desktop: home.appendingPathComponent("Desktop"),
+                                trash: { _ in throw SnapError.message("The surface gallery never moves files to the Trash.") }, screenAccess: .fixed(false))
+        let sessionOff = ReadbackModel(engine: model.engine, defaults: sessionDefaults, captureDisplay: noCapture, transcribeAudio: noSpeech,
+                                       screenAccess: .fixed(false))
+        var shots: [(String, SurfaceGallery.Shot)] = []
+        for (route, size, detail, readback) in [
+            ("snap", SurfaceGallery.sizes[0].size, "Region, Window and Screen explain the missing access and offer Paste image, Import image and System Settings.", readback),
+            ("home", NSSize(width: 1180, height: 1_300), "The Snap card says Screen Recording is off before it is chosen.", readback),
+            ("readback", SurfaceGallery.sizes[0].size, "An open session explains the missing access; its screenshots and narration stay available.", sessionOff)] {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.page = route
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snapOff))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame, seconds: 1)
+            let rep = try snapshot(frame)
+            shots.append((route, try save(rep, id: "screen-access-off", title: "Screen Recording off", detail: detail,
+                                         file: "page-\(route)-screen-access-off-\(theme).png", to: output)))
+        }
+        return shots
+    }
+
     static func syntheticMeetings(_ directory: URL) -> MeetingModel {
         MeetingModel(directory: directory, defaults: .standard, processSource: SyntheticAudioApps(),
                      transcribe: { _ in throw MeetingError.message("The surface gallery never transcribes audio.") },
@@ -452,7 +843,7 @@ enum SurfaceGallery {
                        apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
                        reset: { model.error = nil }),
             PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
-                       apply: { model.error = AppModel.readingAudioUnreadable }, reset: { model.error = nil }),
+                       apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
                        reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings }),
@@ -477,6 +868,256 @@ enum SurfaceGallery {
         settle(host, seconds: 0.05)
         defer { window.contentView = nil; window.close() }
         return try snapshot(host)
+    }
+
+    // MARK: Floating toolbar host
+
+    /// The production toolbar host, `CapturePanelController`, with this pass's models. Its panel is
+    /// ordered in with alpha zero and mouse events ignored, so it sizes exactly as the app's does
+    /// without appearing. Each mode is driven at rest and revealed through the toolbar's own events,
+    /// and the window's size is compared with what the same content wants, measured by a twin
+    /// hosting view that sizes itself and reports to its own controls. The host pins seed sizes
+    /// until the row reports (`CaptureHUDControls.reportSize`), so a row the host never heard from
+    /// draws wider than its window; the view gallery cannot see that, because it sizes its own
+    /// window to the content (#152).
+    func renderToolbarHost(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [SurfaceGallery.HostCheck]) {
+        // The host places its window on a screen; a Mac with none renders nothing rather than a false flag.
+        guard NSScreen.main != nil else { return ([], []) }
+        let defaults = try SurfaceGallery.isolatedDefaults("Toolbar", home: home)
+        let controls = CaptureHUDControls(defaults: defaults)
+        let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
+                                          dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+        guard let panel = host.window, let content = panel.contentView else { throw VoiceError.message("The toolbar host has no window.") }
+        panel.alphaValue = 0; panel.ignoresMouseEvents = true
+        panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        // The twin has its own controls, so its size reports never reach the host under test.
+        let twinControls = CaptureHUDControls(defaults: defaults)
+        twinControls.toolbar.activate()
+        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, snapModel: snap,
+                                                                     dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}))
+        let twinWindow = offscreenWindow(size: NSSize(width: 600, height: 60), styleMask: [.borderless])
+        twinWindow.contentView = twin
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible
+        defer {
+            host.close(); twinControls.suspendToolbar(); twinWindow.contentView = nil; twinWindow.close()
+            model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode
+        }
+        // Publishing the switch is what makes the host resolve its surface and show the tools.
+        model.floatingToolbarVisible = true
+        settle(content, seconds: 0.5)
+        guard controls.toolbar.isActive else { throw VoiceError.message("The toolbar host did not show its tools.") }
+        var shots: [SurfaceGallery.Shot] = [], checks: [SurfaceGallery.HostCheck] = []
+        for mode in ToolbarMode.allCases {
+            model.toolbarMode = mode
+            for tier in ToolbarTier.allCases {
+                // A keyboard hold reveals the row and keeps it up whatever the real pointer does;
+                // releasing it lets the grace timer bring the row back to rest.
+                let event: ToolbarEvent = tier == .revealed ? .holdBegan(.keyboard) : .holdEnded(.keyboard)
+                controls.toolbar.send(event); twinControls.toolbar.send(event)
+                waitForToolbar(host, controls, tier: tier, content: content)
+                settle(twin, seconds: 0.2)
+                let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+                var problems: [String] = []
+                if controls.toolbar.state.tier != tier {
+                    problems.append("the toolbar did not settle \(tier == .resting ? "at rest" : "revealed") (in a local run, a pointer inside the invisible panel can hold it)")
+                }
+                if !controls.hasMeasured(tier) {
+                    problems.append("the host never received the row's size for this tier, so its window is the seed size"
+                        + (twinControls.hasMeasured(tier) ? "" : " (a self-sizing twin of the same content received no report either, so the report path itself is silent)"))
+                }
+                if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                    problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+                }
+                if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                    problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+                }
+                let id = "\(mode.rawValue)-\(tier.rawValue)", title = "\(mode.title), \(tier == .resting ? "at rest" : "revealed")"
+                let file = "toolbar-\(id)-\(theme).png"
+                shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
+                checks.append(.init(id: id, title: title, mode: mode.title, tier: tier.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                    preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
+                                    problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
+            }
+        }
+        // A mode switch while the row is open changes its width with no reveal or collapse, so
+        // the host hears of it only through the row's own report: Present's Prompts widen the row.
+        controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
+        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.present), (.present, .dictate)] {
+            model.toolbarMode = from
+            waitForToolbar(host, controls, tier: .revealed, content: content)
+            model.toolbarMode = to
+            // The new width arrives by the row's own report, a turn or more later; a slow runner
+            // gets a full second of stillness before the window is read.
+            waitForToolbar(host, controls, tier: .revealed, content: content, stillFor: 1)
+            settle(twin, seconds: 0.2)
+            let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+            var problems: [String] = []
+            if controls.toolbar.state.tier != .revealed { problems.append("the toolbar did not stay revealed") }
+            if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+            }
+            if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+            }
+            let id = "\(from.rawValue)-to-\(to.rawValue)-revealed", title = "\(from.title) to \(to.title), revealed"
+            let file = "toolbar-\(id)-\(theme).png"
+            shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
+            checks.append(.init(id: id, title: title, mode: to.title, tier: ToolbarTier.revealed.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(.revealed), twinMeasured: twinControls.hasMeasured(.revealed),
+                                problems: problems, file: file, settled: controls.toolbar.state.tier == .revealed))
+        }
+        return (shots, checks)
+    }
+
+    /// Spins the main run loop until the toolbar reports `tier`, its frame animation has finished
+    /// and the window's size has held still for a moment (six turns of about 50 ms, or `stillFor`
+    /// seconds when given), or three seconds have passed.
+    func waitForToolbar(_ host: CapturePanelController, _ controls: CaptureHUDControls, tier: ToolbarTier, content: NSView,
+                        stillFor: TimeInterval? = nil) {
+        let deadline = Date().addingTimeInterval(3)
+        var still = 0, last = host.window?.frame.size ?? .zero, since = Date()
+        while Date() < deadline && (stillFor.map { Date().timeIntervalSince(since) < $0 } ?? (still < 6)) {
+            content.layoutSubtreeIfNeeded()
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            let size = host.window?.frame.size ?? .zero
+            // Any change restarts the stillness clock before the loop condition reads it again.
+            if controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && size == last { still += 1 }
+            else { still = 0; since = Date() }
+            last = size
+        }
+    }
+
+    static func points(_ size: NSSize) -> String { "\(Int(ceil(size.width))) × \(Int(ceil(size.height))) pt" }
+
+    // MARK: Floating toolbar placement
+
+    /// Position…, the toolbar's placement control, as the glyph menu opens it with the toolbar
+    /// docked at bottom centre and the keyboard on that dock.
+    func renderPositionControl(to output: URL) throws -> SurfaceGallery.Shot {
+        let view = NSHostingView(rootView: ToolbarPositionControl(current: .bottom, choose: { _ in }, reset: {}, close: {}))
+        let window = offscreenWindow(size: view.fittingSize, styleMask: [.borderless])
+        window.isOpaque = false; window.backgroundColor = .clear
+        window.contentView = view
+        defer { window.contentView = nil; window.close() }
+        settle(view)
+        return try save(try snapshot(view), id: "position-control", title: "Position…",
+                        detail: "The eight docks with bottom centre current and selected, and Reset position.", file: "toolbar-position-control-\(theme).png", to: output)
+    }
+
+    /// Free placement through the production host (#163), with its panel invisible. A release
+    /// away from every dock rests right there through an update, a reveal and a collapse, on
+    /// either half of the display; a release within the snap distance of a dock docks and one
+    /// just beyond stays free; a new host, as after a relaunch, restores the free position;
+    /// and Reset position docks at bottom centre. Positions are compared at the resting
+    /// element, which is where they are kept whichever tier a real pointer holds.
+    func checkToolbarPlacement() throws -> [SurfaceGallery.PlacementCheck] {
+        guard let screen = NSScreen.main?.visibleFrame else { return [] }
+        let defaults = try SurfaceGallery.isolatedDefaults("ToolbarPlacement", home: home)
+        func makeHost() -> (CapturePanelController, CaptureHUDControls) {
+            let controls = CaptureHUDControls(defaults: defaults)
+            let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
+                                              dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+            host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
+            return (host, controls)
+        }
+        let previousMode = model.toolbarMode, previousVisible = model.floatingToolbarVisible, previousMeetings = model.meetings
+        // The synthetic meeting widens the resting element's live title below; the hosts observe it from the start.
+        model.meetings = recordingMeetings
+        var (host, controls) = makeHost()
+        defer { host.close(); model.floatingToolbarVisible = previousVisible; model.toolbarMode = previousMode; model.meetings = previousMeetings }
+        model.toolbarMode = .dictate; model.floatingToolbarVisible = true
+        host.update(model: model)
+        waitForToolbar(host, controls, tier: .resting, content: host.window?.contentView ?? NSView())
+        var checks: [SurfaceGallery.PlacementCheck] = []
+        func settle(_ tier: ToolbarTier) {
+            waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
+        }
+        func resting() -> NSRect {
+            guard let frame = host.window?.frame else { return .zero }
+            let size = controls.restingSize
+            return NSRect(x: controls.rowAnchor.growsLeftward ? frame.maxX - size.width : frame.minX, y: frame.minY, width: size.width, height: size.height)
+        }
+        func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
+        func at(_ origin: NSPoint, _ what: String) -> String? {
+            let found = resting().origin
+            return abs(found.x - origin.x) > 0.5 || abs(found.y - origin.y) > 0.5
+                ? "\(what): the resting element is at \(Int(found.x)), \(Int(found.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+        }
+        func free(_ origin: NSPoint) -> String? {
+            guard case .free(let free) = host.toolsPosition, controls.anchor == nil else { return "the toolbar is docked, not free" }
+            let resting = free.restingFrame(size: controls.restingSize).origin
+            return abs(resting.x - origin.x) > 0.5 || abs(resting.y - origin.y) > 0.5
+                ? "the toolbar is free at \(Int(resting.x)), \(Int(resting.y)), not \(Int(origin.x)), \(Int(origin.y))" : nil
+        }
+        let size = controls.restingSize
+        for (side, origin) in [("left", NSPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
+                               ("right", NSPoint(x: screen.maxX - screen.width * 0.3 - size.width, y: screen.minY + screen.height * 0.6))] {
+            let origin = NSPoint(x: origin.x.rounded(), y: origin.y.rounded())
+            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
+            let leftward = side == "right"
+            expect("Released free on the \(side), at rest", [free(origin), at(origin, "at rest"),
+                controls.rowAnchor.growsLeftward == leftward ? nil : "the row would grow \(leftward ? "rightward, off" : "leftward, away from") the near edge"])
+            // An update while free must not pull the toolbar back to a dock.
+            model.floatingToolbarVisible = true; host.update(model: model); settle(.resting)
+            expect("Free on the \(side), after an update", [free(origin), at(origin, "after an update")])
+            controls.toolbar.send(.holdBegan(.keyboard)); settle(.revealed)
+            let window = host.window?.frame ?? .zero
+            expect("Free on the \(side), revealed", [at(origin, "revealed"), screen.contains(window) ? nil : "the revealed row leaves the display",
+                abs(window.width - controls.preferredToolbarSize.width) > 0.5 ? "the window is \(Self.points(window.size)), not the row's \(Self.points(controls.preferredToolbarSize))" : nil])
+            controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
+            expect("Free on the \(side), collapsed again", [at(origin, "collapsed again")])
+        }
+        // A live title that changes the resting width must neither turn a free row round nor move its
+        // glyph: released just left of the middle, and on the right half, then a meeting widens the title.
+        func glyphEdge() -> (leftward: Bool, x: CGFloat) {
+            let frame = host.window?.frame ?? .zero, leftward = controls.rowAnchor.growsLeftward
+            return (leftward, leftward ? frame.maxX : frame.minX)
+        }
+        for (place, midX) in [("just left of the middle", screen.midX - 5), ("on the right half", screen.minX + screen.width * 0.7)] {
+            let origin = NSPoint(x: (midX - size.width / 2).rounded(), y: (screen.minY + screen.height * 0.45).rounded())
+            host.releaseTools(at: NSRect(origin: origin, size: size)); settle(.resting)
+            let before = glyphEdge(), width = controls.restingSize.width
+            for (change, start) in [("a meeting widens the title", true), ("the meeting ends", false)] {
+                try drive(recordingMeetings, start: start); settle(.resting)
+                let after = glyphEdge(), grown = controls.restingSize.width - width
+                expect("Released \(place), then \(change)", [
+                    start && abs(grown) < 0.5 ? "the resting width stayed \(Int(width)) pt, so this step shows nothing" : nil,
+                    after.leftward != before.leftward ? "the row turned round, from growing \(before.leftward ? "leftward" : "rightward")" : nil,
+                    after.leftward == before.leftward && abs(after.x - before.x) > 0.5 ? "the glyph moved \(Int((after.x - before.x).rounded())) pt" : nil])
+            }
+        }
+        let dock = FloatingControlGeometry.frame(anchor: .bottomRight, size: size, visibleFrame: screen)
+        host.releaseTools(at: dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance - 2), dy: 0)); settle(.resting)
+        expect("Released \(Int(FloatingControlPlacement.snapDistance - 2)) pt from the bottom-right dock", [controls.anchor == .bottomRight ? nil : "the toolbar did not dock bottom right", at(dock.origin, "docked")])
+        let beyond = dock.offsetBy(dx: -(FloatingControlPlacement.snapDistance + 4), dy: 0).origin
+        host.releaseTools(at: NSRect(origin: beyond, size: size)); settle(.resting)
+        expect("Released \(Int(FloatingControlPlacement.snapDistance + 4)) pt from the bottom-right dock", [free(beyond), at(beyond, "beyond the snap distance")])
+        // A new host reads the saved position, as Workbench does after a relaunch.
+        let kept = NSPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
+        host.releaseTools(at: NSRect(origin: kept, size: size)); settle(.resting)
+        host.close()
+        (host, controls) = makeHost()
+        host.update(model: model); settle(.resting)
+        expect("A new host, as after a relaunch", [free(kept), at(kept, "after a relaunch")])
+        // An earlier build saved only the resting element's origin and size: a new host decides its
+        // side once, where it was left, and saves that with it.
+        let earlier = NSRect(x: (screen.minX + screen.width * 0.65).rounded(), y: (screen.minY + screen.height * 0.3).rounded(), width: 132, height: 36)
+        host.close()
+        UserDefaults.standard.removeObject(forKey: "capturePanelFreePosition.v1"); UserDefaults.standard.removeObject(forKey: "capturePanelAnchor.v2")
+        UserDefaults.standard.set(NSStringFromPoint(earlier.origin), forKey: "capturePanelOrigin.v1")
+        UserDefaults.standard.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
+        (host, controls) = makeHost()
+        host.update(model: model); settle(.resting)
+        let migrated = UserDefaults.standard.dictionary(forKey: "capturePanelFreePosition.v1")
+        expect("A new host reading an earlier free save", [
+            controls.anchor == nil ? nil : "the earlier free save came back docked",
+            controls.rowAnchor.growsLeftward ? nil : "the earlier save on the right half grows rightward",
+            abs((host.window?.frame.maxX ?? 0) - earlier.maxX) > 0.5 ? "the glyph is at \(Int(host.window?.frame.maxX ?? 0)), not the saved edge \(Int(earlier.maxX))" : nil,
+            (migrated?["growsLeftward"] as? Bool) == true ? nil : "the side decided for the earlier save was not saved with it"])
+        controls.choosePosition?(.bottom); settle(.resting)
+        let bottom = FloatingControlGeometry.frame(anchor: .bottom, size: controls.restingSize, visibleFrame: screen)
+        expect("Reset position", [controls.anchor == .bottom ? nil : "Reset position did not dock at bottom centre", at(bottom.origin, "reset")])
+        return checks
     }
 
     /// One Home window per size, set up like AppDelegate's. As in the app, pages change inside it
@@ -537,7 +1178,12 @@ enum SurfaceGallery {
             guard let layer = view.layer else { return }
             context.saveGState()
             context.translateBy(x: rect.minX, y: rect.minY)
-            if view.isFlipped { context.translateBy(x: 0, y: rect.height); context.scaleBy(x: 1, y: -1) }
+            // A magnified scroll view shows its document scaled, as the image preview does.
+            let scale = CGSize(width: view.bounds.width > 0 ? rect.width / view.bounds.width : 1,
+                               height: view.bounds.height > 0 ? rect.height / view.bounds.height : 1)
+            let magnified = abs(scale.width - 1) > 0.001 || abs(scale.height - 1) > 0.001
+            if magnified { context.scaleBy(x: scale.width, y: scale.height) }
+            if view.isFlipped { context.translateBy(x: 0, y: magnified ? view.bounds.height : rect.height); context.scaleBy(x: 1, y: -1) }
             layer.render(in: context)
             context.restoreGState()
         }
@@ -750,6 +1396,16 @@ private struct SurfaceIndex {
                 flags.append("\(page.title) (\(page.route)) rendered blank: the gallery could not capture it.")
             }
         }
+        for check in light.host { for problem in check.problems { flags.append("Floating toolbar host · \(check.title): \(problem).") } }
+        for check in light.placement { for problem in check.problems { flags.append("Floating toolbar placement · \(check.title): \(problem).") } }
+        for check in light.pickerHost { for problem in check.problems { flags.append("Saved Prompts picker host · \(check.title): \(problem).") } }
+        // A menu door that carries a page's sidebar name plus other words is the same door under
+        // another name; the Grammar's Names rule gives a place one name on every surface.
+        for entry in light.entries where entry.surface == "App menus" {
+            guard let route = entry.route, let title = WorkbenchHome.navItems.first(where: { $0.0 == route })?.1,
+                  let label = entry.label.components(separatedBy: " › ").last?.replacingOccurrences(of: "…", with: "") else { continue }
+            if label != title && label.hasPrefix(title) { flags.append("\(entry.surface) · \(entry.label) opens \(title) under another name.") }
+        }
         var html = """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Workbench surfaces</title><style>
@@ -759,7 +1415,7 @@ private struct SurfaceIndex {
         h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:15px;margin:22px 0 4px}
         p,li{color:var(--muted)}.flag{color:var(--flag)}.ok{color:var(--ok)}code{font:12px ui-monospace,monospace}
         .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}figure{margin:0}figcaption{font-size:12px;color:var(--muted)}
-        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.page img{width:560px}
+        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}.toolbar img{width:auto;max-height:72px}
         pre{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto;font-size:12px}
         table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid var(--line);padding:5px 8px;vertical-align:top}th{font-weight:600}
         .menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
@@ -777,6 +1433,37 @@ private struct SurfaceIndex {
         }
         html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona Overlay showing", "Timer running"].map {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
+        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
+        if light.host.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
+        html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
+        for check in light.host {
+            html += "<tr><td>\(esc(check.title))</td><td>\(points(check.window))</td><td>\(points(check.wants))</td><td>\(check.measured ? "Yes" : "No")</td><td>\(check.twinMeasured ? "Yes" : "No")</td>"
+                + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+        }
+        html += "</table>"
+        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163).</p>"
+        if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
+        html += "<table><tr><th>Step</th><th>Check</th></tr>" + light.placement.map { check in
+            "<tr><td>\(esc(check.title))</td>" + (check.problems.isEmpty ? "<td class=\"ok\">Rests where it was put</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+        }.joined() + "</table>"
+        for (index, shot) in light.toolbar.enumerated() {
+            html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
+                + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
+        }
+        html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard and choices are covered by --check-core. The production panel (<code>PromptPickerController</code>) is then opened invisibly over a bottom-docked Prompts button, narrowed to one row, given a status line and its Details, and widened to every prompt again. Each time its panel is compared with what its content wants.</p>"
+        if light.pickerHost.isEmpty { html += "<p>The production panel was not opened: this Mac reported no display.</p>" }
+        else {
+            html += "<table><tr><th>State</th><th>Panel</th><th>Content wants</th><th>Panel heard its content</th><th>Check</th></tr>"
+            for check in light.pickerHost {
+                html += "<tr><td>\(esc(check.title))</td><td>\(points(check.window))</td><td>\(points(check.wants))</td><td>\(check.heard ? "Yes" : "No")</td>"
+                    + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+            }
+            html += "</table>"
+        }
+        for (index, shot) in light.pickers.enumerated() {
+            html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row picker\">" + figure(shot, "Light")
+                + (index < dark.pickers.count ? figure(dark.pickers[index], "Dark") : "") + "</div>"
+        }
         html += "<h2>Options menus</h2><div class=\"menus\">" + light.menus.map { "<div><h3>\(esc($0.title))</h3><pre>\(esc($0.lines.joined(separator: "\n")))</pre></div>" }.joined() + "</div>"
         html += "<h2>Pages</h2><p>The top of each page, with the window at its default size and at its minimum size.</p>"
         for (index, page) in light.pages.enumerated() {
@@ -796,21 +1483,25 @@ private struct SurfaceIndex {
         }
         html += "</table><h2>Limitations</h2><ul>" + [
             "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
+            "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
+            "The Saved Prompts panel is opened the same way, with no keyboard focus and no click monitors; its placement, focus return and dismissal need a pointer on the installed app.",
             "StageKit is never started, so Annotate reports Ready on 0 displays.",
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
             "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",
-            "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Screen Recording and Microphone access.",
+            "Snap & Talk shows its first-run page. An open session shows its folder path and this Mac's Microphone access. Screen Recording reads as allowed, except in the Screen Recording off states.",
             "History shows the synthetic transcripts and Snaps, then its states: empty; All with Hand off tasks and two items selected; Results with running, completed, failed and Ready tasks; and Transcripts. Tasks run through a synthetic provider with a fixed clock; no process starts. The running strip draws a still symbol in place of its live indicator. Snap shows three synthetic Snaps with fixed dates.",
             "The meeting page lists two synthetic audio apps instead of this Mac's; the meeting status row comes from a synthetic capture that records nothing.",
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
-        let shots = passes.flatMap { pass in pass.panels + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
+        let shots = passes.flatMap { pass in pass.panels + pass.toolbar + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
         let manifest: [String: Any] = ["renders": shots, "flags": flags, "entries": light.entries.map { ["surface": $0.surface, "label": $0.label, "leads": $0.leads] }]
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("manifest.json"))
         return flags.count
     }
+
+    func points(_ size: [Double]) -> String { size.count == 2 ? "\(Int(ceil(size[0]))) × \(Int(ceil(size[1]))) pt" : "?" }
 
     func figure(_ shot: SurfaceGallery.Shot, _ theme: String) -> String {
         "<figure><a href=\"\(esc(shot.file))\"><img src=\"\(esc(shot.file))\" alt=\"\(esc(shot.title)), \(theme)\" loading=\"lazy\"></a>"
@@ -820,6 +1511,25 @@ private struct SurfaceIndex {
     func esc(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+extension SurfaceGallery.PickerHostCheck {
+    /// The panel never heard its content, or is not the size its content wants within the
+    /// display. A picker that closed during the check (a click in a local run) is only reported.
+    var hasSizeProblem: Bool { settled && !problems.isEmpty }
+}
+
+extension SurfaceGallery.HostCheck {
+    /// The host never heard the row, the window is smaller than the row wants, or the window is
+    /// not the size the host prefers. A state that did not reach its tier is not compared: in a
+    /// local run a real pointer inside the invisible panel can hold the row revealed, and that
+    /// window is not the resting size its twin wants. Not settling is itself reported only.
+    var hasSizeProblem: Bool {
+        guard settled else { return false }
+        guard window.count == 2, wants.count == 2, preferred.count == 2 else { return true }
+        return !measured || window[0] + 0.5 < wants[0] || window[1] + 0.5 < wants[1]
+            || abs(window[0] - preferred[0]) > 0.5 || abs(window[1] - preferred[1]) > 0.5
     }
 }
 

@@ -86,7 +86,7 @@ public enum FloatingControlGeometry {
         return closest.0
     }
 
-    private static func valid(_ frame: NSRect) -> Bool {
+    fileprivate static func valid(_ frame: NSRect) -> Bool {
         [frame.minX, frame.minY, frame.width, frame.height, frame.maxX, frame.maxY].allSatisfy(\.isFinite)
             && frame.width > 0 && frame.height > 0
     }
@@ -94,5 +94,41 @@ public enum FloatingControlGeometry {
         let requested = inset.isFinite ? max(0, inset) : 16
         return NSSize(width: min(requested, max(0, (visible.width - size.width) / 2)),
                       height: min(requested, max(0, (visible.height - size.height) / 2)))
+    }
+}
+
+/// Direct manipulation shared by floating controls (#163). The floating toolbar uses it, and
+/// Persona overlays can adopt it while keeping their own per-copy state (#157). A press moves
+/// the control only after `dragThreshold` points; less is a click. A release within
+/// `snapDistance` of a named destination docks there, which is when its guide is active;
+/// anywhere else keeps the free position, whole on the display it covers most.
+public enum FloatingControlPlacement {
+    public static let dragThreshold: CGFloat = 4
+    public static let snapDistance: CGFloat = 16
+
+    public static func isDrag(from start: NSPoint, to point: NSPoint) -> Bool {
+        hypot(point.x - start.x, point.y - start.y) >= dragThreshold
+    }
+
+    /// The named destination a release at `frame` docks to, if one is within `snapDistance`.
+    public static func snapAnchor(for frame: NSRect, in visibleFrame: NSRect, inset: CGFloat = 16) -> FloatingControlAnchor? {
+        FloatingControlGeometry.nearestAnchor(to: frame, in: visibleFrame, threshold: snapDistance, inset: inset)
+    }
+
+    /// The display a frame belongs to: the visible frame it covers most, or `preferred` when it
+    /// covers none, such as after its display was removed.
+    public static func screen(for frame: NSRect, screens: [NSRect], preferred: NSRect) -> NSRect {
+        guard FloatingControlGeometry.valid(frame) else { return preferred }
+        let best = screens.map { screen -> (NSRect, CGFloat) in
+            let overlap = screen.intersection(frame)
+            return (screen, overlap.isNull ? 0 : overlap.width * overlap.height)
+        }.max { $0.1 < $1.1 }
+        guard let best, best.1 > 0 else { return preferred }
+        return best.0
+    }
+
+    /// A free frame recovered whole onto the display it belongs to, flush edges allowed.
+    public static func recover(_ frame: NSRect, screens: [NSRect], preferred: NSRect) -> NSRect {
+        FloatingControlGeometry.clamp(frame, to: screen(for: frame, screens: screens, preferred: preferred), inset: 0)
     }
 }
