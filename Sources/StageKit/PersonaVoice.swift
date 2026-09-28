@@ -236,9 +236,13 @@ final class PersonaMicrophoneLevel: PersonaVoiceSource {
             } else {
                 // An interface may carry the voice on its second input: mix them.
                 var mixed = [Float](repeating: 0, count: count)
-                for channel in 0..<channelCount { vDSP_vadd(mixed, 1, channels[channel], 1, &mixed, 1, vDSP_Length(count)) }
-                var scale = 1 / Float(channelCount)
-                vDSP_vsmul(mixed, 1, &scale, &mixed, 1, vDSP_Length(count))
+                mixed.withUnsafeMutableBufferPointer { sum in
+                    for channel in 0..<channelCount {
+                        vDSP_vadd(sum.baseAddress!, 1, channels[channel], 1, sum.baseAddress!, 1, vDSP_Length(count))
+                    }
+                    var scale = 1 / Float(channelCount)
+                    vDSP_vsmul(sum.baseAddress!, 1, &scale, sum.baseAddress!, 1, vDSP_Length(count))
+                }
                 frames = mixed.withUnsafeBufferPointer { analyzer.process($0) }
             }
             guard !frames.isEmpty else { return }

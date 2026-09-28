@@ -138,6 +138,7 @@ private final class PersonaArtworkView: NSView {
     private var analysis: (image: ObjectIdentifier, outline: PersonaVoiceOutline, tint: NSColor)?
     private var ringLink: CADisplayLink?
     private var lastTick: CFTimeInterval?
+    private var displayOptions: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -202,7 +203,7 @@ private final class PersonaArtworkView: NSView {
         let desired = image.recommendedLayerContentsScale(scale)
         artworkLayer.contents = image.layerContents(forContentsScale: desired)
         artworkLayer.contentsScale = desired
-        ring.contentsScale = scale
+        ring.contentsScale = scale; ring.setNeedsLayout()
         needsLayout = true
     }
     /// Measured once per artwork: the edge to follow and the colour to use.
@@ -217,10 +218,16 @@ private final class PersonaArtworkView: NSView {
     }
     private func ringChanged() {
         ring.reset()
-        ring.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        ring.increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        applyDisplayOptions()
         ring.isHidden = !ringOn
+        if let displayOptions { NSWorkspace.shared.notificationCenter.removeObserver(displayOptions) }
+        displayOptions = nil
         if ringOn {
+            // Reduce Motion and Increase Contrast apply at once, mid-presentation too.
+            displayOptions = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                    self?.applyDisplayOptions()
+                }
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0; fade.toValue = 1; fade.duration = 0.25
             ring.add(fade, forKey: "appear")
@@ -228,6 +235,11 @@ private final class PersonaArtworkView: NSView {
             stopTicking(); ring.geometry = nil
         }
         needsLayout = true
+    }
+
+    private func applyDisplayOptions() {
+        ring.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        ring.increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
     }
 
     /// The display link runs only while the ring is moving.

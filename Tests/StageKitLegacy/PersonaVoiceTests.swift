@@ -413,6 +413,27 @@ final class PersonaVoiceTests {
         XCTAssertGreaterThan(corners.count, 0, "Corners are turned, not left bare")
     }
 
+    func testRingSleepsInSilenceAndWakesOnTheFirstSyllable() {
+        let ring = PersonaVoiceRingLayer()
+        ring.reduceMotion = false
+        ring.frame = CGRect(x: 0, y: 0, width: 300, height: 300)
+        ring.geometry = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 50, y: 50, width: 200, height: 200))
+        let quiet = PersonaVoiceFrame.quiet.lasting(0.021)
+        for _ in 0..<40 { ring.enqueue([quiet, quiet, quiet, quiet, quiet]) }
+        XCTAssertFalse(ring.isMoving, "Silence never wakes the display link")
+        let voice = PersonaVoiceFrame(level: 0.8, bands: [0.8, 0.7, 0.5, 0.4, 0.3, 0.2], speaking: true, seconds: 0.021)
+        ring.enqueue([voice])
+        XCTAssertTrue(ring.isMoving)
+        ring.advance(by: 1.0 / 60)
+        ring.advance(by: 1.0 / 60)
+        XCTAssertTrue(ring.sublayers?.compactMap { ($0 as? CAShapeLayer)?.path }.count == 4, "The first syllable draws bars at once, not after queued silence")
+        for _ in 0..<120 { ring.advance(by: 1.0 / 60) }
+        XCTAssertFalse(ring.isMoving, "Without new sound it settles and sleeps")
+        ring.reduceMotion = true
+        ring.enqueue([voice]); ring.advance(by: 1.0 / 60)
+        XCTAssertTrue(ring.sublayers?.compactMap { ($0 as? CAShapeLayer)?.path }.count == 2, "Reduce Motion shows only the line")
+    }
+
     /// Set WORKBENCH_LAYOUT_EVIDENCE to write synthetic renders of the ring.
     func testOffscreenVoiceRingRenders() throws {
         guard let output = ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] else { return }

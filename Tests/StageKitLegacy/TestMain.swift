@@ -39,6 +39,7 @@ struct TestRunner {
                 ("persona voice ring outline fitting", suite.testOutlineFollowsARoundBadgeACardAndAPhoto),
                 ("persona voice ring colour from artwork", suite.testRingColourComesFromTheArtwork),
                 ("persona voice ring geometry scale", suite.testRingGeometryScalesWithTheArtwork),
+                ("persona voice ring sleeps in silence", suite.testRingSleepsInSilenceAndWakesOnTheFirstSyllable),
                 ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders)
             ]
             for (name, test) in tests {
@@ -411,6 +412,7 @@ struct TestRunner {
             ("persona voice ring outline fitting", personaVoice.testOutlineFollowsARoundBadgeACardAndAPhoto),
             ("persona voice ring colour from artwork", personaVoice.testRingColourComesFromTheArtwork),
             ("persona voice ring geometry scale", personaVoice.testRingGeometryScalesWithTheArtwork),
+            ("persona voice ring sleeps in silence", personaVoice.testRingSleepsInSilenceAndWakesOnTheFirstSyllable),
             ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders)
         ], at: 5)
         tests.append(("shared persona menu frozen target and session generation", personaSessions.testSharedMenuTargetsFrozenCopiesAndRejectsPreviousSessionActions))

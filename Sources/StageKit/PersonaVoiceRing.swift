@@ -330,8 +330,8 @@ final class PersonaVoiceRingLayer: CALayer {
             applyStyle(); render()
         }
     }
-    var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { didSet { render() } }
-    var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast { didSet { applyStyle() } }
+    var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { didSet { if reduceMotion != oldValue { applyStyle(); render() } } }
+    var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast { didSet { if increaseContrast != oldValue { applyStyle(); render() } } }
     private let lineEdge = CAShapeLayer(), lineLayer = CAShapeLayer()
     private let barEdge = CAShapeLayer(), bars = CAShapeLayer()
     private var queue: [PersonaVoiceFrame] = []
