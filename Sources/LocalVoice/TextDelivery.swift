@@ -3,8 +3,41 @@ import AppKit
 @MainActor
 final class TextDelivery {
     enum FailureKind: String, Equatable {
-        case copyFailed, accessibilityUnavailable, focusChanged, pasteUnavailable
+        case copyFailed, accessibilityUnavailable, focusChanged, fieldUnreadable, pasteUnavailable
         case pasteUnconfirmed, clipboardChanged, clipboardRestoreFailed, cancelled
+    }
+    /// Everything delivery touches outside Workbench. `live` is this Mac; checks
+    /// pass an untrusted Mac, an isolated pasteboard and a recorder, so they never
+    /// read or change the person's clipboard or Accessibility approval.
+    @MainActor struct System {
+        var pasteboard: NSPasteboard
+        /// Accessibility approval, which automatic paste needs.
+        var isTrusted: () -> Bool
+        /// The captured field is still frontmost, focused and not secure.
+        var isEligible: (Target) -> Bool
+        /// The ⌘V poster, or nil when its key events cannot be made.
+        var preparePaste: () -> (() -> Void)?
+
+        static var live: System {
+            System(pasteboard: .general, isTrusted: { AXIsProcessTrusted() }, isEligible: { TextDelivery.eligible($0) },
+                   preparePaste: {
+                       guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
+                             let up = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false) else { return nil }
+                       down.flags = .maskCommand; up.flags = .maskCommand
+                       return { down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap) }
+                   })
+        }
+    }
+    /// One wording for text that was copied and not pasted, shared by dictation
+    /// and Saved Prompts. Missing approval is not a fault: it reads as plain copying.
+    static let copiedMessage = "Copied. Paste with ⌘V."
+    static func copiedDetail(_ failure: FailureKind?) -> String {
+        switch failure {
+        case .focusChanged: return "The field changed, so nothing was pasted. Paste with ⌘V when ready."
+        case .fieldUnreadable: return "The field could not be read, so nothing was pasted. Paste with ⌘V when ready."
+        case .pasteUnavailable: return "Paste could not start. Paste with ⌘V when ready."
+        default: return "Paste with ⌘V."
+        }
     }
     struct Outcome: Equatable {
         var message: String
@@ -75,17 +108,21 @@ final class TextDelivery {
     }
 
     static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool,
-                        validateTarget: (() -> Bool)? = nil, expectedValue: String? = nil, expectedSelection: NSRange? = nil) async -> Outcome {
-        let pasteboard = NSPasteboard.general
+                        validateTarget: (() -> Bool)? = nil, expectedValue: String? = nil, expectedSelection: NSRange? = nil,
+                        system: System? = nil) async -> Outcome {
+        let system = system ?? .live
+        let pasteboard = system.pasteboard
         let destinationName = target?.app.localizedName
         guard !Task.isCancelled, validateTarget?() != false else {
             return Outcome(message: "Delivery stopped before copying or pasting.", clipboardChangeCount: nil,
                            wasPasted: false, destinationName: destinationName, failure: .cancelled)
         }
-        // Only inspect old clipboard contents when restoration was requested.
+        // Without approval nothing can be pasted, so copying is the whole delivery.
+        let mayPaste = mode == .paste && target != nil && system.isTrusted()
+        // Only inspect old clipboard contents when a paste may need restoring.
         let priorCount = pasteboard.changeCount
         let previous: [NSPasteboardItem]
-        if restoreClipboard, mode == .paste, target != nil {
+        if restoreClipboard, mayPaste {
             previous = pasteboard.pasteboardItems?.map { item in
                 let saved = NSPasteboardItem()
                 for type in item.types { if let data = item.data(forType: type) { saved.setData(data, forType: type) } }
@@ -102,18 +139,20 @@ final class TextDelivery {
             Outcome(message: message, clipboardChangeCount: pasteboard.changeCount == ownedChange ? ownedChange : nil,
                     wasPasted: wasPasted, destinationName: destinationName, failure: failure, pasteWasAttempted: pasteWasAttempted)
         }
-        guard mode == .paste, let target else { return outcome("Transcript ready and copied.") }
-        guard AXIsProcessTrusted() else {
-            return outcome("Copied · enable Accessibility in Workbench Settings for automatic paste.", failure: .accessibilityUnavailable)
+        guard mode == .paste, let target else { return outcome(copiedMessage) }
+        // Automatic paste waits for approval. The copy is the supported result,
+        // so it says what to do next rather than where to change a setting.
+        guard mayPaste else { return outcome(copiedMessage, failure: .accessibilityUnavailable) }
+        guard target.element != nil else {
+            return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
         }
-        guard eligible(target) else {
-            return outcome("Copied · focus changed, so nothing was pasted. Press ⌘V when ready.", failure: .focusChanged)
+        guard system.isEligible(target) else {
+            return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
         }
         // Snapshot immediately before insertion so an unrelated user edit is not mistaken for our paste.
         let before = target.element.flatMap { string($0, kAXValueAttribute) }
-        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
-              let up = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false) else {
-            return outcome("Copied · paste could not start. Press ⌘V when ready.", failure: .pasteUnavailable)
+        guard let paste = system.preparePaste() else {
+            return outcome("Copied. " + copiedDetail(.pasteUnavailable), failure: .pasteUnavailable)
         }
         guard pasteboard.changeCount == ownedChange else {
             return outcome("Clipboard changed before insertion, so nothing was pasted. The transcript is available in Workbench.", failure: .clipboardChanged)
@@ -121,14 +160,13 @@ final class TextDelivery {
         guard !Task.isCancelled, validateTarget?() != false else {
             return outcome("Delivery stopped before pasting. The transcript remains copied.", failure: .cancelled)
         }
-        down.flags = .maskCommand; up.flags = .maskCommand
         pasteWasAttempted = true
-        down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+        paste()
         do { try await Task.sleep(nanoseconds: 450_000_000) }
         catch {
             return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)
         }
-        let stillEligible = eligible(target)
+        let stillEligible = system.isEligible(target)
         let after = stillEligible ? target.element.flatMap { string($0, kAXValueAttribute) } : nil
         let selectionConfirmed = expectedSelection.map { expected in target.element.flatMap { PromptInsertion.selection($0) } == expected } ?? true
         let confirmed = stillEligible && selectionConfirmed && (expectedValue.map { after == $0 } ?? (after != before && after?.contains(text) == true))

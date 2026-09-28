@@ -223,7 +223,8 @@ struct WorkbenchControlContext {
         case .dictate:
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
             if !model.ready { return "Prepare speech in Workbench." }
-            return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .paste ? "Paste in a Mac field" : "Copy text")
+            return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .clipboard ? "Copy text"
+                : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until automatic paste is approved")
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
         case .snapAndTalk:
             if readback.isCapturing { return "Capturing the display under the pointer…" }

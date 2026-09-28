@@ -114,6 +114,32 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-creation-only"] {
+            // Disposable libraries and synthetic portraits only; no shortcut, preference or microphone.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let creation = PersonaCreationTests(), starters = PersonaStarterTests(), personas = PersonaTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("new portrait cancel at any step leaves the library", creation.testCancellingANewPortraitAtAnyStepLeavesTheLibraryUnchanged),
+                ("new portrait repeated cancels leave nothing", creation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
+                ("new portrait Add saves once", creation.testAddSavesOneItemWithOneMembershipOnce),
+                ("new portrait failed Add keeps the draft", creation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+                ("saved card edit cancel and shown card", creation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
+                ("read-only library makes no draft", creation.testReadOnlyLibraryMakesNoDraft),
+                ("optional offscreen persona editor renders", creation.testOffscreenEditorRenders),
+                ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", starters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
+                ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", starters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
+                ("personas: EditableCardRenderingAndSaveFailurePreserveSources", personas.testEditableCardRenderingAndSaveFailurePreserveSources),
+                ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--shortcut-settings-only"] {
             // Data-only: do not create NSApplication, monitors, windows or global registrations.
             let suite = CoreTests()
@@ -298,6 +324,7 @@ struct TestRunner {
         let personaVoice = PersonaVoiceTests()
         let personaVoiceLatency = PersonaVoiceLatencyTests()
         let personaStarters = PersonaStarterTests()
+        let personaCreation = PersonaCreationTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let sceneSync = SceneSyncAdapterTests()
@@ -388,6 +415,12 @@ struct TestRunner {
             ("persona starter: MissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas", personaStarters.testMissingCorruptOversizedAndLinkedSourcesDoNotAddBrokenPersonas),
             ("persona starter: ChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies", personaStarters.testChoosingOneStarterUsesActiveGroupAndKeepsSeparateEditableCopies),
             ("persona starter: BundledPortraitsHaveReadableArtworkAndRealTransparency", personaStarters.testBundledPortraitsHaveReadableArtworkAndRealTransparency),
+            ("new portrait cancel at any step leaves the library", personaCreation.testCancellingANewPortraitAtAnyStepLeavesTheLibraryUnchanged),
+            ("new portrait repeated cancels leave nothing", personaCreation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
+            ("new portrait Add saves once", personaCreation.testAddSavesOneItemWithOneMembershipOnce),
+            ("new portrait failed Add keeps the draft", personaCreation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+            ("saved card edit cancel and shown card", personaCreation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
+            ("read-only library makes no draft", personaCreation.testReadOnlyLibraryMakesNoDraft),
             ("persona geometry and strict validation", personas.testGeometryBoundsAndValidation),
             ("persona durable image and separate desktop placement", personas.testDurableImportSeparatePlacementAndRemoval),
             ("persona corrupt future and concurrent archive preservation", personas.testCorruptFutureAndConcurrentArchivesStayUntouched),
