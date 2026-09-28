@@ -219,6 +219,10 @@ struct WorkbenchControlContext {
         FloatingToolbar.shortcutLabel(model.preferences.shortcut(id), failure: model.shortcutFailures[id])
     }
     func detail(_ tool: WorkbenchControlTool) -> String {
+        // Without Screen Recording the Snap row still opens Snap, which explains and offers Paste and Import (#112).
+        if tool == .snap, snap?.isBusy != true, snap?.screenAccessGranted == false {
+            return "Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have."
+        }
         switch tool {
         case .dictate:
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
@@ -227,6 +231,9 @@ struct WorkbenchControlContext {
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
         case .snapAndTalk:
             if readback.isCapturing { return "Capturing the display under the pointer…" }
+            if !readback.screenPermissionGranted && !readback.isRecording {
+                return "Screen Recording is off for Workbench. Saved sessions and narration stay available; Snap & Talk shows how to allow it."
+            }
             let count = readback.activeSections.count
             let captured = "\(count) " + (count == 1 ? "capture" : "captures")
             return readback.hasPendingTranscriptions ? captured + " · transcribing narration…" : readback.sessionURL == nil ? "Capture a screen, then explain it." : captured + " in this session"

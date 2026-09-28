@@ -42,6 +42,12 @@ final class SnapModel: ObservableObject {
     /// Text Vision found in each image, so search finds a Snap by what it shows.
     @Published private(set) var recognizedText: [UUID: String] = [:]
     @Published private(set) var importingScreenshots = false
+    /// Whether macOS lets Workbench record the screen. Without it Region,
+    /// Window and Screen cannot capture, but saved Snaps, Paste image and
+    /// Import image all still work (#112).
+    @Published private(set) var screenAccessGranted: Bool
+    private let screenAccess: ScreenCaptureAccess
+    private var activationObserver: NSObjectProtocol?
     let desktop: URL
     private let trash: (URL) throws -> Void
     /// Set when new screenshots are redirected into History but macOS now
@@ -81,9 +87,12 @@ final class SnapModel: ObservableObject {
          preferences: UserDefaults = .standard, screenshotInbox: URL? = nil,
          trash: @escaping (URL) throws -> Void = SnapScreenshots.moveToTrash,
          applyScreenshotLocation: @escaping () -> Void = SystemScreenshotLocation.restartScreenshotService,
-         imageSource: (any SnapImageSource)? = nil, pasteboard: NSPasteboard = .general) {
+         imageSource: (any SnapImageSource)? = nil, pasteboard: NSPasteboard = .general,
+         screenAccess: ScreenCaptureAccess = .system) {
         self.captureService = imageSource ?? SnapCapture()
         self.pasteboard = pasteboard
+        self.screenAccess = screenAccess
+        screenAccessGranted = screenAccess.isGranted()
         self.store = store ?? SnapStore(root: Workbench.supportDirectory(component: "Snaps"))
         self.desktop = desktop ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
         self.screenshotLocation = screenshotLocation ?? SystemScreenshotLocation()
@@ -94,7 +103,23 @@ final class SnapModel: ObservableObject {
         self.applyScreenshotLocation = applyScreenshotLocation
         refresh()
         if keepsScreenshotsOffDesktop { startInbox() }
+        // Access can change in System Settings while Workbench runs.
+        activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshScreenAccess() }
+        }
     }
+
+    // MARK: Screen Recording access
+
+    static let screenAccessOff = "Screen Recording is off for Workbench, so Snap can't capture the screen. Your Snaps are still here, and you can paste or import an image you already have."
+
+    func refreshScreenAccess() {
+        let granted = screenAccess.isGranted()
+        if granted != screenAccessGranted { screenAccessGranted = granted }
+    }
+
+    /// System Settings → Privacy & Security → Screen Recording. It changes nothing by itself.
+    func openScreenRecordingSettings() { NSWorkspace.shared.open(ScreenCaptureAccess.settingsURL) }
 
     // MARK: New screenshots off the Desktop
 
@@ -203,6 +228,7 @@ final class SnapModel: ObservableObject {
     }
 
     func refresh() {
+        refreshScreenAccess()
         do { let read = try store.load(); items = read.items; problems = read.problems }
         catch { problems = [error.localizedDescription] }
         refreshDerivedData()
@@ -242,6 +268,14 @@ final class SnapModel: ObservableObject {
         // An open editor, even one hidden with its window, never silently
         // blocks a capture door: the host brings it back to finish or cancel.
         guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); return }
+        refreshScreenAccess()
+        guard screenAccessGranted else {
+            // Asked from the person's own action: the first request lists Workbench
+            // in System Settings. Nothing is hidden, and the Snap page explains.
+            _ = screenAccess.request()
+            notice = Self.screenAccessOff
+            onRestoreAfterCapture?(.failed); return
+        }
         let request = UUID(); captureRequest = request
         isCapturing = true; notice = mode == .screen ? "Capturing the display under the pointer…" : "Choose a \(mode.title.lowercased()). Escape cancels."
         onStateChange?(); onHideForCapture?(origin)

@@ -459,7 +459,10 @@ struct WorkbenchHomePage: View {
                     else { readClipboard() }
                 }
                 card("Snap", "Capture a region", "viewfinder", "Window or screen on the Snap page", prepare: "snap",
-                     disabled: snap.disablesCaptureDoors) { Task { await snap.capture(.region) } }
+                     disabled: snap.disablesCaptureDoors,
+                     note: snap.screenAccessGranted ? nil : "Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.") {
+                    Task { await snap.capture(.region) }
+                }
             }
             moment("Capturing", "Explain screens aloud and get a deck in seconds.") {
                 card("Snap & Talk", readback.sessionURL == nil ? "New session…" : readback.isCapturing ? "Capturing…" : "Capture & narrate",

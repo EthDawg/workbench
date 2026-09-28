@@ -9,6 +9,19 @@ protocol SnapImageSource: AnyObject {
     func cancel()
 }
 
+/// Screen Recording access, read and requested only through here, so checks
+/// can give a fixed answer and never change the Mac's permissions. Snap and
+/// Snap & Talk share it. A managed Mac may keep it off whatever the person does.
+struct ScreenCaptureAccess {
+    var isGranted: () -> Bool
+    /// Asks macOS. The first request lists Workbench in System Settings.
+    var request: () -> Bool
+    static let system = ScreenCaptureAccess(isGranted: { CGPreflightScreenCaptureAccess() }, request: { CGRequestScreenCaptureAccess() })
+    static func fixed(_ granted: Bool) -> Self { .init(isGranted: { granted }, request: { granted }) }
+    /// System Settings → Privacy & Security → Screen Recording.
+    static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+}
+
 /// How a standalone capture ended, so the host can finish every door the same way.
 enum SnapCaptureOutcome: Equatable {
     /// A new capture is open in the editor.
