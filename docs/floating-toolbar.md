@@ -72,7 +72,7 @@ add/remove, visibility, explicit layout saving and End. Mac colour selection
 updates the same drawing settings from either entry point. Native menus snapshot
 their content before tracking rather than rebuilding under the pointer.
 
-Saved Prompts reads the existing Saved Resources library. Favourite, Product and
+Saved Prompts reads the existing Library. Favourite, Product and
 Persona groupings do not create another store. The original field, value and
 UTF-16 selection are captured before the picker opens. Supported fields receive
 confirmed literal chunks; other readable fields get one guarded paste labelled

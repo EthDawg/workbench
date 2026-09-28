@@ -663,8 +663,8 @@ enum SurfaceGallery {
                  page(panel, "Meeting status row, while a meeting is busy", "meeting"), action(panel, "Meeting status row · Stop or Cancel", "Stops or cancels the meeting")]
         list += WorkbenchHome.navItems.map { E(surface: "Home sidebar", label: $0.1, leads: "Page: \($0.0)", route: $0.0, ran: true) }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings"), action("Home sidebar", "Suite appearance", "Changes the appearance")]
-        list += [page(home, "Dictate card", "dictate"), page(home, "Read aloud card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
-                 page(home, "Annotate card", "annotate"), page(home, "Present a device card", "present"), page(home, "Persona card", "personas"), page(home, "Try the keyboard", "shortcuts"),
+        list += [page(home, "Dictate card", "dictate"), page(home, "Read card", "speak"), page(home, "Snap card", "snap"), page(home, "Snap & Talk card", "readback"),
+                 page(home, "Draw card", "annotate"), page(home, "Present card", "present"), page(home, "Persona card", "personas"), page(home, "Try the keyboard", "shortcuts"),
                  page(home, "Speech settings, while speech is not ready", "models"), page(home, "Phone photo arrival", "library"),
                  page("Settings page", "Your dictionary", "dictionary"), page("Settings page", "Models and local server", "models"),
                  page("Settings page", "Keyboard and practice", "shortcuts"), action("Settings page", "Position dictation panel…", "Shows the dictation panel preview"),
@@ -674,7 +674,7 @@ enum SurfaceGallery {
                  action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
                  action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
                  action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
-                 action("Read aloud page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
+                 action("Read page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
                  page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "History", "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
@@ -689,14 +689,14 @@ enum SurfaceGallery {
                  page(menu, "Workbench › Keyboard shortcuts…", "shortcuts"), action(menu, "Window › Open Workbench", "Opens Home on its current page"),
                  action(menu, "Window › Quick controls", "Opens this panel"), action(menu, "Window › Show floating toolbar", "Shows the toolbar"),
                  action(menu, "Window › Focus floating toolbar", "Moves keyboard focus to the toolbar"), action(menu, "Window › Restore menu-bar icon", "Shows the icon and the toolbar"),
-                 page(menu, "Window › Saved resources", "library"), action(menu, "Window › Switch to…", "Opens the Switch to panel"),
+                 page(menu, "Window › Library", "library"), action(menu, "Window › Switch to…", "Opens the Switch to panel"),
                  page(menu, "Window › Snap & Talk sessions", "readback"), page(menu, "Window › History", "history"), page(menu, "Window › Persona", "personas"),
                  page(menu, "Window › Transcribe meeting or call…", "meeting"), page(menu, "Window › Save clipboard as prompt…", "library"),
                  action(menu, "Help › Workbench Guide", "Opens the web guide")]
-        list += [page(other, "Saved resources shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
+        list += [page(other, "Library shortcut", "library"), page(other, "Read shortcut, when nothing is playing", "speak"),
                  page(other, "Snap & Talk shortcut, without a session or access", "readback"), page(other, "Present shortcut, without a scene", "present"),
                  action(other, "Quick controls shortcut", "Opens this panel"), action(other, "Switch to shortcut", "Opens the Switch to panel"),
-                 page(other, "Read aloud Service (selected text)", "speak"), page(other, "Private pack link", "packs"),
+                 page(other, "Read Selection service (selected text)", "speak"), page(other, "Private pack link", "packs"),
                  page(other, "Meeting offer panel", "meeting"), page(other, "Pack persona import", "personas"),
                  page(other, "Switch to panel · Set up", "library"), page(other, "StageKit controls and drawing settings", "annotate"),
                  page(other, "StageKit shortcut editing", "shortcuts"), page(other, "StageKit persona preparation", "personas")]
@@ -770,7 +770,7 @@ private struct SurfaceIndex {
         }
         html += "</table><h2>Limitations</h2><ul>" + [
             "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
-            "StageKit is never started, so Annotate reports Ready on 0 displays.",
+            "StageKit is never started, so Draw reports Ready on 0 displays.",
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
             "Buttons, app menus and keys come from a catalogue in SurfaceGallery.swift. Add a row there when adding an entry.",

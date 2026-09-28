@@ -19,7 +19,7 @@ struct DemoLibraryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Picker("Saved resources", selection: $model.showingPhonePhotos) {
+            Picker("Library", selection: $model.showingPhonePhotos) {
                 Text("Resources").tag(false)
                 Text("From iPhone").tag(true)
             }.pickerStyle(.segmented).frame(maxWidth: 340)

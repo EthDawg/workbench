@@ -94,7 +94,7 @@ The [Snap contract](snap.md) owns capture, editing, canonical Snap History, reve
 
 The bundled deck skill uses a neutral default. Colleagues can optionally connect a private GitHub content pack in Packs and choose its compatible skills for new sessions. Company content is maintained outside the public application. GitHub sign-in is needed only for private pack downloads and updates. Each session keeps its complete chosen skill and assets; updates never rewrite earlier or customised sessions. Branded templates are explicit choices and optional branding cannot block neutral creation. Rich-file/deck skills retain the complete portable manual handoff; Workbench does not execute their helpers or silently replace their output contract with a text-only task.
 
-The bounded macOS Service accepts an explicit text selection into Read aloud; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
+The bounded macOS Service accepts an explicit text selection into Read; it is not a clipboard watcher or document reader. Native equivalents remain the starting comparison. Broad demo orchestration, a generic plugin framework and a Windows rewrite are not prerequisites for this version.
 
 ## History and optional assistance
 
@@ -110,7 +110,7 @@ Detect Meetings & Calls is off by default. Enabling it inspects supported Mac au
 
 ## One app, several ways in
 
-**Switch to** extends Saved resources through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. This describes retained source behavior; Chrome extension development and distribution are paused. Use the [production release record](../site/updates/production.json) to identify the current public Mac package and its source revision. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
+**Switch to** extends Library through a Chrome adapter and a transient native picker. One resource UUID identifies the link; machine-local profile bindings and disposable tab IDs do not sync or enter portable exports. The [presenter decision and acceptance contract](presenter-direction.md) covers setup, exact targeting, recovery and the weekly-password boundary. This describes retained source behavior; Chrome extension development and distribution are paused. Use the [production release record](../site/updates/production.json) to identify the current public Mac package and its source revision. It adds no credential store, private-note HUD or promise of hidden controls during screen sharing.
 
 ```mermaid
 flowchart TB
@@ -139,7 +139,7 @@ Three surfaces share the same operation and data owners:
 
 The toolbar has one window, saved position and lifecycle. It hides during screenshot acquisition. Its two-tier hover, native menu holds, positioning and Reduce Motion behavior are specified in [the floating-toolbar contract](floating-toolbar.md). Window → Focus floating toolbar provides explicit keyboard access; ordinary pointer controls preserve the other app's focus. Window → Show floating toolbar and Restore menu-bar icon recover access when macOS conceals a status item. Closing or minimising Home leaves the utility running; opening Workbench from the Dock restores its window. Quit stops app-owned work. Login launch remains an explicit user setting.
 
-Saved prompts reuse Saved Resources records, favourites and Product/Persona tags. The picker freezes its choices and the original Mac field/value/selection when opened. It inserts literal text progressively only where Accessibility supports confirmed selected-text writes; otherwise it uses one guarded paste and labels that result as pasted. Escape, Stop, focus/value/selection changes and shortcut editing stop insertion. Partial or uncertain delivery is never replayed, and no Return, Tab or submit command is sent. No new prompt shortcuts or duplicate library are created.
+Saved prompts reuse Library records, favourites and Product/Persona tags. The picker freezes its choices and the original Mac field/value/selection when opened. It inserts literal text progressively only where Accessibility supports confirmed selected-text writes; otherwise it uses one guarded paste and labels that result as pasted. Escape, Stop, focus/value/selection changes and shortcut editing stop insertion. Partial or uncertain delivery is never replayed, and no Return, Tab or submit command is sent. No new prompt shortcuts or duplicate library are created.
 
 Normal application menus, buttons and editable shortcuts remain available together. Spotlight can find the app by name. The existing App Intent accepts audio and returns text; it does not own microphone recording. The selected-text Service receives only the request pasteboard supplied by macOS, opens a reviewable reading draft and never starts playback. Additional Spotlight actions, Share extensions and URL automation must be treated as new integrations with their own evidence.
 
@@ -165,7 +165,7 @@ Prefer a small explicit provider contract over a general agent framework. Add an
 
 ## Appearance and onboarding
 
-Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. The quick panel and preparation pages follow the [Grammar names](#grammar); names that still differ, such as Annotate for Draw or Read aloud for Read, are recorded as aliases in the surface registry until they are unified. A label should explain an action; a status should describe what actually happened.
+Keep the Workbench name and a shared restrained mint/slate palette, system typography, native controls, clear states and System/Light/Dark choices. The quick panel and the window's pages follow the [Grammar names](#grammar) on every surface, so the surface registry keeps no aliases for them. A label should explain an action; a status should describe what actually happened.
 
 Home introduces useful actions, first-use access requests explain themselves, and keyboard practice teaches muscle memory. Home follows the journey: before anything is captured it guides one first dictation; afterwards it shows what is live, the newest work of each kind, and the three moments as one-click tiles with Prepare… as the link to each page. Prefer these working experiences over an introductory slideshow. Use synthetic scenes, text and recordings in examples. Brand assets can improve later without changing the action or data architecture.
 
@@ -217,7 +217,7 @@ The current desktop output/recovery mechanism exists inside scene preparation. A
 
 ## Selected-photo handoff
 
-The retained iPhone-to-Mac photo source is governed by [photo-handoff.md](photo-handoff.md). It joins a selected photo to existing Saved resources and backdrop replacement, without synchronising whole libraries or changing a scene on arrival. The earlier signed, notarized Preview 3 package carried the verified capability for Apple’s Production iCloud environment. That is historical evidence for the provisioned Preview identity. The production Workbench packaging path does not enable photo or scene CloudKit sync; the [production release record](../site/updates/production.json) identifies the current public Mac package. Mobile work is paused. In a capable Preview, sync requires explicit opt-in; package capability alone does not establish paired scene reception or a public iOS release.
+The retained iPhone-to-Mac photo source is governed by [photo-handoff.md](photo-handoff.md). It joins a selected photo to the existing Library and backdrop replacement, without synchronising whole libraries or changing a scene on arrival. The earlier signed, notarized Preview 3 package carried the verified capability for Apple’s Production iCloud environment. That is historical evidence for the provisioned Preview identity. The production Workbench packaging path does not enable photo or scene CloudKit sync; the [production release record](../site/updates/production.json) identifies the current public Mac package. Mobile work is paused. In a capable Preview, sync requires explicit opt-in; package capability alone does not establish paired scene reception or a public iOS release.
 
 ## Personal scene preparation
 

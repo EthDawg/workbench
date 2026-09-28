@@ -121,7 +121,7 @@ enum SavedPromptMenu {
                 afterTracking { prepare(); delivery.insert(prompt.content, into: target) }
             }
         }
-        if prompts.isEmpty { menu.addItem(ToolbarMenuAction("Save a prompt in Saved Resources first.", enabled: false) {}) }
+        if prompts.isEmpty { menu.addItem(ToolbarMenuAction("Save a prompt in Library first.", enabled: false) {}) }
         else {
             menu.addItem(ToolbarMenuAction("Insert into the selected field · never submits", enabled: false) {})
             menu.addItem(ToolbarMenuAction("Types progressively when supported; otherwise pastes once", enabled: false) {})

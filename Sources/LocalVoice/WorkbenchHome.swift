@@ -22,10 +22,10 @@ struct WorkbenchHome: View {
     /// Every sidebar destination. The surface gallery renders each one.
     static let navItems: [(String, String, String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
-        ("speak", "Read aloud", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Annotate", "pencil.tip"),
-        ("present", "Present a device", "iphone"), ("personas", "Persona", "person.crop.circle"),
+        ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.and.pencil.and.ellipsis"), ("annotate", "Draw", "pencil.tip"),
+        ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.circle"),
         ("history", "History", "clock"),
-        ("library", "Saved resources", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
+        ("library", "Library", "square.stack"), ("shortcuts", "Keyboard", "keyboard"),
         ("packs", "Packs", "shippingbox"), ("models", "Models", "cpu"), ("settings", "Settings", "slider.horizontal.3")]
     init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel) {
         self.model = model; self.stage = stage; self.keyboard = keyboard; self.readback = readback

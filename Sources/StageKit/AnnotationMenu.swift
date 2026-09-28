@@ -9,7 +9,8 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
     init(coordinator: AppCoordinator, includeSettings: Bool = true) {
         self.coordinator = coordinator
         self.includeSettings = includeSettings
-        super.init(title: "Annotate")
+        // The menu bar shows this title for the app's Draw menu.
+        super.init(title: "Draw")
         autoenablesItems = false
         delegate = self
         refresh()

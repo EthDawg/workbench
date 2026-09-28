@@ -34,7 +34,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Surface | Activation | Owns | Closing/focus |
 | --- | --- | --- | --- |
 | App window | Open app/menu/configured shortcut | Drafts, history, models, settings, scenes/personas, keyboard practice | Ordinary editing focus; close does not quit or delete saved work |
-| Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read aloud; Keep current or Replace reading resolves a conflict; neither starts playback |
+| Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read; Keep current or Replace reading resolves a conflict; neither starts playback |
 | Snap & Talk editor | App navigation; dedicated global shortcut captures outside it | User-chosen session folder, ordered screenshots, narration and recovery | Closing or switching sessions does not delete work; queued transcription resumes from saved audio |
 | Snap workspace | App navigation and explicit capture actions | Unsaved crop/annotations, searchable local history, reversible archive and common selections | Cancel keeps history unchanged; saved originals remain editable |
 | Persona workspace | Independent app navigation or Persona preparation action | Existing library and overlay preparation | Show acts immediately; Hide retains prepared arrangement, End releases live copies |
@@ -140,7 +140,7 @@ Public Workbench, internal Workbench Preview and a local source build are distin
 
 ## Scope
 
-The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Saved resources. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
+The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Library. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
 
 The current source includes contextual presentation controls, one persistent floating toolbar, independent Persona and Snap, shared selected history, optional bounded assistant tasks and explicit meeting recording. [Issue #112](https://github.com/EthDawg/workbench/issues/112) owns combined validation; earlier usability studies are historical evidence. Public downloads identify production Workbench. Preview is internal, and iOS/iPadOS/Chrome development remains paused.
 
@@ -183,7 +183,7 @@ An enabled animated starter plays in the visible, active Mac scene editor. **Pau
 
 ## Backdrop editing contract
 
-Within Present a device, **Change backdrop…** previews a replacement in the existing composition. Apply patches only the image and crop; Cancel leaves the saved archive and files untouched. The same operation repairs missing images. This remains scene preparation. Persistent wallpaper is a separate accepted product direction, with its current/proposed boundaries and lifecycle in the [visual-experience contract](../site/handbook/contract.json). See [the comparison, decisions and test contract](background-management.md).
+Within Present, **Change backdrop…** previews a replacement in the existing composition. Apply patches only the image and crop; Cancel leaves the saved archive and files untouched. The same operation repairs missing images. This remains scene preparation. Persistent wallpaper is a separate accepted product direction, with its current/proposed boundaries and lifecycle in the [visual-experience contract](../site/handbook/contract.json). See [the comparison, decisions and test contract](background-management.md).
 
 ## Optional background motion
 

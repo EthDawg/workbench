@@ -64,7 +64,7 @@ The core Mac app needs no account or subscription. Parakeet recognition and inst
 
 Automatic text delivery checks the original destination, excludes secure fields and never submits it. Review any unconfirmed insertion. Screen captures and narrated sessions can contain sensitive information: inspect a session before sharing it. Workbench's handoff opens your chosen tool and copies a prompt; you still grant access and submit it.
 
-Saved resources contain prompts, links and local file references, not a password vault. Original media and recoverable session deletions remain in their user-chosen folders. Keep saved-data directories when replacing the app. Stable uses `~/Library/Application Support/Workbench`; Preview uses `~/Library/Application Support/Workbench Preview`. See [storage and migration boundaries](docs/design.md).
+Library holds prompts, links and local file references, not a password vault. Original media and recoverable session deletions remain in their user-chosen folders. Keep saved-data directories when replacing the app. Stable uses `~/Library/Application Support/Workbench`; Preview uses `~/Library/Application Support/Workbench Preview`. See [storage and migration boundaries](docs/design.md).
 
 ## Contribute and verify
 

@@ -403,8 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let edit = NSMenuItem(); edit.title = "Edit"; let editMenu = NSMenu(title: "Edit")
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] { editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key) }
         edit.submenu = editMenu; main.addItem(edit)
-        let annotate = NSMenuItem(title: "Annotate", action: nil, keyEquivalent: "")
-        annotate.submenu = stage.makeAnnotationMenu(); main.addItem(annotate)
+        let draw = NSMenuItem(title: "Draw", action: nil, keyEquivalent: "")
+        draw.submenu = stage.makeAnnotationMenu(); main.addItem(draw)
         let windows = NSMenuItem(); windows.title = "Window"; let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         menu.addItem(withTitle: "Open Workbench", action: #selector(showWindow), keyEquivalent: "0")
@@ -412,7 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Show floating toolbar", action: #selector(showFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Focus floating toolbar", action: #selector(focusFloatingToolbar), keyEquivalent: "")
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
-        menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
+        menu.addItem(withTitle: "Library", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
         menu.addItem(withTitle: "History", action: #selector(showHistory), keyEquivalent: "")
@@ -612,7 +612,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyboard?.stopInteraction(); keyboard?.replaceEntries(shortcutEntries()); model.page = page; showWindow()
     }
     /// The voice catalogue's titles, one per id in `VoicePreferences.shortcutIDs`.
-    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Saved resources"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
+    static let voiceShortcutCatalogue: [(UInt32, String)] = [(1, "Dictate"), (2, "Quick controls"), (3, "Library"), (4, "Switch to"), (5, "Snap & Talk"), (6, "Read"), (7, "Present"), (8, "Snap")]
     func voiceShortcutEntries() -> [ShortcutEntry] {
         Self.voiceShortcutCatalogue.map { id, title in
             ShortcutEntry(id: "voice.\(id)", title: title, shortcut: model.preferences.shortcut(id), error: model.shortcutFailures[id])

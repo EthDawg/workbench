@@ -1,10 +1,10 @@
 # Presenter direction: return to the right place
 
-> **Paused — 24 September 2026.** Chrome extension development and distribution work are paused until the Mac experience meets the release quality bar. The adapter source, setup procedure and historical evidence remain available for reference; they are not an active Chrome release or testing invitation. This pause does not remove Mac Saved resources, persona overlays or [connected-phone presentation guidance](phone-presenting.md).
+> **Paused — 24 September 2026.** Chrome extension development and distribution work are paused until the Mac experience meets the release quality bar. The adapter source, setup procedure and historical evidence remain available for reference; they are not an active Chrome release or testing invitation. This pause does not remove the Mac Library, persona overlays or [connected-phone presentation guidance](phone-presenting.md).
 
 The selected increment is **Switch to**: save a named demo tab in its Chrome profile, then return to it from the browser or Workbench’s native picker. “Manager” should bring forward the prepared Manager tab while the presenter moves between browser, slides, a native app and a mirrored phone. Workbench activates the destination; it does not certify the signed-in account or control the phone.
 
-This extends Saved resources. It does not introduce a second library, a presales platform, or a new app lifecycle. The current branch implements the browser adapter and native picker. Public Preview 3 predates them; build, installed acceptance, review and publication are separate states.
+This extends Library. It does not introduce a second library, a presales platform, or a new app lifecycle. The current branch implements the browser adapter and native picker. Public Preview 3 predates them; build, installed acceptance, review and publication are separate states.
 
 ## Decision and research
 
@@ -31,13 +31,13 @@ Native application activation and exact-window selection differ: [NSWorkspace](h
 
 ## Use it
 
-1. In the built Mac app, open **Saved resources → Chrome destinations → Enable Chrome connection**. This registers the bundled host for the current user and selected Workbench edition.
+1. In the built Mac app, open **Library → Chrome destinations → Enable Chrome connection**. This registers the bundled host for the current user and selected Workbench edition.
 2. Choose **Show Chrome extension**. In each participating Chrome profile, open `chrome://extensions`, enable Developer mode and **Load unpacked** with that folder. Pin Workbench if desired. This local distribution is not a Chrome Web Store release.
 3. On a demo tab, open the extension, give that profile a recognisable name and **Connect profile**. Choose **Save or update this tab**, type a label such as Manager, and inspect the address.
 4. For a new site, **Allow this site** opens Chrome’s permission prompt. Chrome closes its popup; reopen Workbench to finish **Save destination**. The short-lived draft survives; no save is queued behind a denied prompt. A later save at an already allowed site is direct.
 5. From any app, use **Control–Option–G**, or Workbench’s menu **Switch to…**. Type a name, use arrows and Return, or select a row. Escape returns to the previous app. Change/disable the shortcut in the existing Keyboard page.
 
-Both native and browser activation obey the same guard during recording and keyboard practice. Entering Switch to ends active drawing input and exits the board view using the existing StageKit Escape path; drawing history remains owned by StageKit. The extension also lists the same destinations and can switch between profiles. Saved resources can edit labels, remove entries or **Use default browser instead**. Chrome destinations do not contain private notes in the switcher. The feature requests neither Accessibility nor Screen Recording. A shared display can show the picker and its labels.
+Both native and browser activation obey the same guard during recording and keyboard practice. Entering Switch to ends active drawing input and exits the board view using the existing StageKit Escape path; drawing history remains owned by StageKit. The extension also lists the same destinations and can switch between profiles. Library can edit labels, remove entries or **Use default browser instead**. Chrome destinations do not contain private notes in the switcher. The feature requests neither Accessibility nor Screen Recording. A shared display can show the picker and its labels.
 
 A changed tenant subdomain is explicit: open the new URL in the intended profile, choose **Update [destination]**, review old/new addresses and grant the new site if needed. The resource ID stays stable. There is no wildcard tenant match or automatic URL rewrite across unrelated accounts. Queries and fragments are removed and previewed; use a stable navigation URL rather than a signed, secret-bearing or query/hash-dependent route.
 

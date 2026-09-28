@@ -1,6 +1,6 @@
 # Backgrounds that preserve the scene
 
-Decision and specification · 13 September 2026. This record covers **scene preparation**, within Present a device. The broader product now also recognises persistent wallpaper as a separate job: see the [visual-experience contract](../site/handbook/contract.json). macOS provides its native baseline; a dedicated Workbench wallpaper experience is proposed. The useful Workbench promise is to prepare a composition once, then change its setting without rebuilding it.
+Decision and specification · 13 September 2026. This record covers **scene preparation**, within Present. The broader product now also recognises persistent wallpaper as a separate job: see the [visual-experience contract](../site/handbook/contract.json). macOS provides its native baseline; a dedicated Workbench wallpaper experience is proposed. The useful Workbench promise is to prepare a composition once, then change its setting without rebuilding it.
 
 ## What the comparison changed
 
@@ -31,7 +31,7 @@ This scene-backdrop increment excluded a wallpaper daemon, weather widgets, arbi
 
 ## Selected interaction
 
-Entry: **Present a device → Change backdrop…**, also available beside **Backdrop missing**. Add backdrop continues to create a new scene.
+Entry: **Present → Change backdrop…**, also available beside **Backdrop missing**. Add backdrop continues to create a new scene.
 
 The sheet has one composition preview, image choices, crop controls, **Cancel** and **Use backdrop**. It shows backgrounds already used in scenes and the bundled starters; **Choose image…** opens the native file picker. Original files remain local. Thumbnails select a candidate; they do not save or start presenting.
 

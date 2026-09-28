@@ -758,12 +758,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.annotate",
     "surface": "window sidebar",
-    "label": "Annotate",
+    "label": "Draw",
     "page": "annotate",
     "kind": "capability",
     "belongsTo": "draw",
-    "aliasOf": "draw",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Annotate takes its Grammar name, Draw, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.dictate",
@@ -793,12 +792,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.library",
     "surface": "window sidebar",
-    "label": "Saved resources",
+    "label": "Library",
     "page": "library",
     "kind": "place",
     "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Saved resources takes its Grammar place name, Library, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.models",
@@ -827,12 +825,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.present",
     "surface": "window sidebar",
-    "label": "Present a device",
+    "label": "Present",
     "page": "present",
     "kind": "capability",
     "belongsTo": "present",
-    "aliasOf": "present",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Present a device takes its Grammar name, Present, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.readback",
@@ -871,12 +868,11 @@
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.speak",
     "surface": "window sidebar",
-    "label": "Read aloud",
+    "label": "Read",
     "page": "speak",
     "kind": "capability",
     "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "unify under Grammar Names"
+    "note": "Quality: Read aloud takes its Grammar name, Read, in the same place. The alias it needed is gone (#134)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.all-history",
@@ -1388,13 +1384,12 @@
     "belongsTo": "settings"
   },
   {
-    "id": "LocalVoice.main.AppDelegate.NSMenuItem.annotate",
+    "id": "LocalVoice.main.AppDelegate.NSMenuItem.draw",
     "surface": "app menu bar",
-    "label": "Annotate",
+    "label": "Draw",
     "kind": "action",
     "belongsTo": "draw",
-    "aliasOf": "draw",
-    "note": "unify under Grammar Names"
+    "note": "Quality: the top-level Annotate menu takes its Grammar name, Draw, in the same place, holding the same Draw menu (#134)."
   },
   {
     "id": "LocalVoice.main.AppDelegate.NSMenuItem.services",
@@ -1477,6 +1472,14 @@
     "belongsTo": "settings"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.library",
+    "surface": "app menu bar",
+    "label": "Library",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Quality: Window › Saved resources takes the page's name, Library, in the same slot and keeps ⌘L (#134)."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.open-workbench",
     "surface": "app menu bar",
     "label": "Open Workbench",
@@ -1526,15 +1529,6 @@
     "label": "Save clipboard as prompt…",
     "kind": "action",
     "belongsTo": "library"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.saved-resources",
-    "surface": "app menu bar",
-    "label": "Saved resources",
-    "kind": "action",
-    "belongsTo": "library",
-    "aliasOf": "library",
-    "note": "unify under Grammar Names"
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.select-all",
