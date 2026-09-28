@@ -693,22 +693,31 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Label.runtime-3034720066fd",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.Label.runtime-2a193c56060b",
     "surface": "quick panel status rows",
     "label": null,
-    "expression": "receipt . canSuggestPaste ? \"Ready to paste\" : receipt . title",
+    "expression": "receipt . title",
     "kind": "status",
     "belongsTo": "dictate",
-    "note": "Runtime label from receipt . canSuggestPaste ? \"Ready to paste\" : receipt . title; no rendered text assumed."
+    "note": "Quality: the shelf's title is the receipt's own title, such as Copied, so the panel, Home and the floating receipt agree (#165). Runtime label from receipt . title; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-fa3ac20d3788",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-036523842dab",
     "surface": "quick panel status rows",
     "label": null,
-    "expression": "receipt . canSuggestPaste ? \"\\(receipt.wordCount) words from Workbench. Paste where you need them.\" : receipt . detail",
+    "expression": "\"\\(receipt.wordCount) \\(receipt.wordCount == 1 ? \"word\" : \"words\")\"",
     "kind": "status",
     "belongsTo": "dictate",
-    "note": "Runtime label from receipt . canSuggestPaste ? \"\\(receipt.wordCount) words from Workbench. Paste where you need them.\" : receipt . detail; no rendered text assumed."
+    "note": "Quality: the word count beside the title, as the floating receipt shows it (#165). Runtime label; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchClipboardShelf.status.runtime-226f79815f30",
+    "surface": "quick panel status rows",
+    "label": null,
+    "expression": "receipt . detail",
+    "kind": "status",
+    "belongsTo": "dictate",
+    "note": "Quality: the receipt's own detail, such as Paste with ⌘V., replacing the shelf's separate wording (#165). Runtime label from receipt . detail; no rendered text assumed."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.dictate-options",
