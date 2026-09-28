@@ -177,12 +177,12 @@ struct WorkbenchHome: View {
     }
     /// Library holds Resources, Packs and From iPhone as sections of one page, with its switcher
     /// at the top (#134). From iPhone also opens from Home's arrival cue, through the flag the
-    /// Resources view has always read; choosing Resources, or the Library shortcut, clears it.
+    /// Resources view has always read; choosing another section, or the Library shortcut, clears it.
     private var library: some View {
         let section = model.page == "library" && model.showingPhonePhotos ? "photos" : Self.destination(model.page).section ?? "library"
         return VStack(alignment: .leading, spacing: 0) {
             sectionSwitcher("library", selection: section) { route in
-                if route == "library" { model.showingPhonePhotos = false }
+                if route != "photos" { model.showingPhonePhotos = false }
                 model.page = route
             }
             switch section {
