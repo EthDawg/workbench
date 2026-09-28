@@ -151,6 +151,8 @@ struct WorkbenchQuickPanel: View {
                 Button("Transcribe meeting or call…") { open("meeting") }
                 Button("Open Dictate…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()
+                // The same 11 pt accent label the native Options controls use on every other row.
+                .font(.system(size: 11)).foregroundStyle(Workbench.accent)
         case .read:
             EmptyView()
         case .snap:
