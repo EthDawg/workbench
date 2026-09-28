@@ -212,19 +212,26 @@ enum WorkbenchControlChecks {
             try check(ToolbarAccessoryMenus.appearance(copy: Int?.none, current: { _ in nil }, choose: { _, _ in }).items.isEmpty,
                       "with no copy, Appearance has nothing to change")
             // When the row has no room for Appearance it waits in More, unless Persona's own menu there
-            // already holds the choice, as a shown card's and a set's Appearance do.
-            func personaMenu(_ titles: [String], appearance: Bool) -> NSMenu {
+            // already holds the choice, as a shown card's and a set's Appearance do. The StageKit suite
+            // checks the real Persona menus; these stand-ins check the rule around them (#216).
+            func personaMenu(_ titles: [String], appearance choices: [String]?) -> NSMenu {
                 let menu = NSMenu()
                 titles.forEach { menu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
-                if appearance {
-                    let item = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: ""), choices = NSMenu()
-                    ["Circle", "Card", "Original"].forEach { choices.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
-                    item.submenu = choices; menu.addItem(item)
+                if let choices {
+                    let item = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: ""), submenu = NSMenu()
+                    choices.forEach { submenu.addItem(withTitle: $0, action: nil, keyEquivalent: "") }
+                    item.submenu = submenu; menu.addItem(item)
                 }
                 return menu
             }
-            let hiddenCard = personaMenu(["Show Again", "End Overlay"], appearance: false)
-            let shownCard = personaMenu(["Choose Persona", "End Overlay"], appearance: true)
+            let hiddenCard = personaMenu(["Show Again", "End Overlay"], appearance: nil)
+            let shownCard = personaMenu(["Choose Persona", "End Overlay"], appearance: ["Circle", "Card", "Original"])
+            // Choices that grow or change order under Persona's Appearance never bring a second one.
+            for grown in [["Card", "Circle", "Original"], ["Circle", "Card", "Original", "Outline"]] {
+                try check(!ToolbarAccessoryMenus.moreNeedsAppearance(personaMenu(["Choose Persona"], appearance: grown),
+                                                                      accessoryFits: false, hasCopy: true),
+                          "Persona's Appearance is found by its title, whatever choices it holds: \(grown)")
+            }
             try check(ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: false, hasCopy: true),
                       "a hidden card's Appearance waits in More when the row has no room for it")
             try check(!ToolbarAccessoryMenus.moreNeedsAppearance(hiddenCard, accessoryFits: true, hasCopy: true),

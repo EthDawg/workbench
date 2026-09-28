@@ -158,6 +158,13 @@ public final class StageKitController: ObservableObject {
     public func isPersonaCopyHidden(_ copy: PersonaCopy) -> Bool {
         coordinator.demoScenes.personas.liveCopyHidden(copy.copy) == true
     }
+    /// Whether this menu holds a live copy's Appearance: an item with that title and a submenu, as
+    /// the Persona menu names it for a shown card and for a set's selected copy, never for a hidden
+    /// card. Found by its title, so choices added under it or reordered never make the floating
+    /// toolbar's More add a second Appearance beside it (#134 part B, #216).
+    public static func personaMenuHoldsAppearance(_ menu: NSMenu) -> Bool {
+        menu.items.contains { $0.title == "Appearance" && $0.hasSubmenu }
+    }
     /// Changes exactly that live copy's look, as its Appearance menu does. The
     /// saved persona, other copies and the layout's saved state are unchanged.
     public func setPersonaShape(_ shape: PersonaShape, for copy: PersonaCopy) {
