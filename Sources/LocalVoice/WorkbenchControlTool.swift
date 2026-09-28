@@ -85,6 +85,8 @@ struct WorkbenchControlState {
     /// A StageKit screenshot handoff or a standalone Snap capture owns the screen.
     var screenshotting = false
     var snapBusy = false
+    /// Dictated words wait for drawing to end before they are delivered (#211 F5).
+    var waitingForDrawing = false
 
     func enabled(_ tool: WorkbenchControlTool) -> Bool {
         switch tool {
@@ -109,6 +111,7 @@ struct WorkbenchControlState {
         case .requesting: dictation = .requesting
         case .recording: dictation = .recording
         case .cancelling: dictation = .cancelling
+        case .delivering where waitingForDrawing: dictation = .waitingForDrawing
         case .transcribing, .cleaning, .delivering: dictation = .processing
         }
         return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: canRecordAgain,
@@ -234,7 +237,8 @@ struct WorkbenchControlContext {
             overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession,
             timerRunning: stage.isTimerRunning, timerTransport: stage.timerTransport, canRecordAgain: model.canRecordAgain,
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
-            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true)
+            screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true,
+            waitingForDrawing: model.waitingForDrawing)
     }
     /// What the owners say is going on, for the toolbar's compact rest (#134). Only each
     /// owner's structured state counts, recomputed whenever it is read and so at launch: never
@@ -274,7 +278,9 @@ struct WorkbenchControlContext {
             paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
             live: live,
             // The last ten seconds before a dictation or narration stops at its 5-minute limit (#134 T4).
-            stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290))
+            stopsSoon: (model.phase == .recording && model.elapsed >= 290) || (readback.isRecording && readback.recordingElapsed >= 290),
+            // The dictation owner's own judgement of a microphone too quiet to use, for VoiceOver's value (#211 F7).
+            quiet: capture == .dictation && model.isMicrophoneQuiet)
     }
 
     /// The break timer's part of the compact status: a running countdown is live work and a

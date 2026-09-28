@@ -134,9 +134,19 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(state("reading-playing")?.actionTitle, "Pause reading")
         XCTAssertEqual(state("reading-paused-in-dictate")?.actionTitle, "Resume reading")
         XCTAssertEqual(state("recording-dictation-stops-soon")?.status.stopsSoonBadge, true)
+        XCTAssertEqual(state("recording-dictation-stops-soon-attention")?.status.badges, [.stopsSoon, .attention], "both badges, in the launcher too")
+        XCTAssertEqual(state("recording-waiting-for-drawing")?.actionTitle, "Stop drawing", "words waiting for drawing (#211 F5)")
+        XCTAssertEqual(state("recording-waiting-for-drawing")?.status.indicator, .pendingDelivery)
         for resting in ToolbarGallery.recording.filter({ $0.tier == .resting }) {
             XCTAssertNotEqual(resting.status.indicator, .idle, "\(resting.name) rests with its status")
         }
+    }
+
+    /// A result waiting for the person is reviewed as keyboard entry shows it: the launcher row,
+    /// revealed, carrying the result's status (#211 F1).
+    func testAWaitingResultIsReviewedOnTheLauncherRow() {
+        XCTAssertEqual(ToolbarGallery.waiting.map(\.tier), [.revealed, .revealed])
+        XCTAssertEqual(ToolbarGallery.waiting.map(\.status.indicator), [.failure, .pendingDelivery])
     }
 
     /// Each tool's one accessory, when it applies (#134 part B): Snap & Talk's Review once a

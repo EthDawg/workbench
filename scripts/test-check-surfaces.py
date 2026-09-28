@@ -156,6 +156,13 @@ class SurfaceTests(unittest.TestCase):
         self.file.write_text(self.file.read_text().replace('func options', 'func rowOptions'))
         self.assertEqual(before, {e['surface']: e['id'] for e in self.entries()})
 
+    def test_the_header_switch_row_is_a_header_control(self):
+        self.file.write_text(PANEL % '''
+          PanelSwitch(title: "Floating toolbar", isOn: $visible, help: help).fixedSize()
+          Button("Settings") { open("settings") }''')
+        surfaces = {e['label']: e['surface'] for e in self.entries()}
+        self.assertEqual({'Floating toolbar': 'quick panel header', 'Settings': 'quick panel footer'}, surfaces)
+
     def test_a_fixed_row_inside_the_rows_loop_is_a_row(self):
         self.file.write_text(PANEL % '''
           ForEach(WorkbenchControlTool.allCases) { tool in

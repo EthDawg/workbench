@@ -21,15 +21,8 @@
     "label": "Reset position",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Quality (#197 review): renamed from Reset to bottom centre. The dictation panel's options repeat Position…'s Reset position, the same reset of the one shared position.",
+    "note": "Quality (#197 review): renamed from Reset to bottom centre. A result's own Position menu repeats Position…'s Reset position, the same reset of the one shared position.",
     "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
-  },
-  {
-    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Button.settings-for-next-capture",
-    "surface": "floating toolbar live controls",
-    "label": "Settings for next capture",
-    "kind": "action",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.CapturePanel.CapturePositionMenu.Menu.runtime-e93c1d1636eb",
@@ -248,12 +241,29 @@
     "note": "Quality (#134 T4): the Snap & Talk narration panel's Cancel, moved into More under Snap & Talk while narration records; it keeps the screenshot. Existing contextual \"Cancel\" label inside snapAndTalk; the row's next action is Stop narration."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel.3",
+    "surface": "floating toolbar More menu",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "read",
+    "aliasOf": "read",
+    "note": "Quality (#211 F6): a preparing reading's own Cancel, in More's Read section while drawing or an insertion holds the next action; the same owner as the row's Cancel. Shared wording, not a separate capability."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again",
     "surface": "floating toolbar More menu",
     "label": "Copy again",
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality (#134 T4): the clipboard shelf's Copy again, first in More under the undelivered result's own title once its receipt has gone, so the compact mark's warning reaches its recovery from the toolbar. Only where it cannot lead to a second insertion, as on the shelf."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again.2",
+    "surface": "floating toolbar More menu",
+    "label": "Copy again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): the undelivered words' Copy again under the waiting receipt, which leads More, only where a second copy cannot insert twice; the same owner as its own section's."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-now",
@@ -270,6 +280,14 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality (#134 T4): the clipboard shelf's Dismiss, in the same More section: the person sets the undelivered result aside; the words stay in History. Revealing or collapsing the toolbar never does this."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.dismiss.2",
+    "surface": "floating toolbar More menu",
+    "label": "Dismiss",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): the waiting result's own dismiss, as its view's ×, first in More now that keyboard entry keeps the launcher row: a dictation failure, the receipt, or a stopped reading, each through its own owner."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
@@ -330,12 +348,60 @@
     "note": "Quality (#205 review): under Active work while another tool is chosen, the same Open Snap… door, so an unsaved Snap capture the compact mark shows reaches its editor. Snap's own options already offer it."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-workbench",
+    "surface": "floating toolbar More menu",
+    "label": "Open Workbench",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Quality (#211 F1): a dictation failure's Open Workbench, as its view offers it, under the failure first in More."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.pause-reading",
+    "surface": "floating toolbar More menu",
+    "label": "Pause reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#211 F6): reading's own next action, in More's Read section while drawing or an insertion holds the row's; the row's own words and owner."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
     "surface": "floating toolbar More menu",
     "label": "Position…",
     "kind": "option",
     "belongsTo": "app",
     "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.record-again",
+    "surface": "floating toolbar More menu",
+    "label": "Record again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): a dictation failure's Record again, as its view offers it, under the failure first in More."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.resume-reading",
+    "surface": "floating toolbar More menu",
+    "label": "Resume reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#211 F6): reading's own next action, in More's Read section while drawing or an insertion holds the row's; the row's own words and owner."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.retry",
+    "surface": "floating toolbar More menu",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#211 F1): a stopped reading's Retry, as its view offers it, under the reading first in More."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.review",
+    "surface": "floating toolbar More menu",
+    "label": "Review",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#211 F1): the waiting receipt's Review, as its view offers it, first in More: Library for a copied prompt, History for a transcript."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-2a736db79384",
@@ -345,6 +411,15 @@
     "kind": "action",
     "belongsTo": "timer",
     "note": "Quality (#205 review): under Active work, the break timer's next transport as TimerTransport names it (Pause timer, Resume timer or Restart timer), the same command as the Timer menu's, whichever tool is chosen, since Timer is not a tool. Runtime label from transport . title + \" timer\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-343c7a0bb03c",
+    "surface": "floating toolbar More menu",
+    "label": null,
+    "expression": "model . retryCaptureLabel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Runtime label from model . retryCaptureLabel: Retry transcription or Retry saving, as the failure's own Retry reads, under the failure first in More (#211 F1). No rendered text assumed."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",
@@ -806,15 +881,16 @@
     "label": "Reset position",
     "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. The dictation panel's options offer the same reset under the same name."
+    "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. A result's own Position menu offers the same reset under the same name."
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.position-dictation-panel",
+    "id": "LocalVoice.Views.ContentView.Button.position-floating-toolbar",
     "surface": "dictate page options",
-    "label": "Position dictation panel…",
+    "label": "Position floating toolbar…",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
+    "aliasOf": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
+    "note": "Quality (#211 follow-up): renamed from Position dictation panel…, since #134 T4 made the dictation panel part of the one floating toolbar host. It opens the floating toolbar's Position…, the control More's Position… opens, from Dictate's options, as the old entry did (Option of Dictate: moved from the Settings page to the Dictate page, same control, #134 W3)."
   },
   {
     "id": "LocalVoice.Views.ContentView.Button.transcribe-a-meeting-or-call",
@@ -975,18 +1051,19 @@
     "note": "Option: Settings › General's door back to Home's first-dictation guide, beside Dictate options… and shown only until the first dictation, as Home's own link is. It offers the guide again and opens Home (#15)."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.floating-toolbar",
+    "surface": "settings page",
+    "label": "Floating toolbar",
+    "kind": "setting",
+    "belongsTo": "app",
+    "note": "Quality: Show floating toolbar becomes the Floating toolbar switch under Settings › General › Appearance, with the same preference as the menu-bar panel's header switch, the Window menu and the toolbar's Hide toolbar (#134 H3)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.open-workbench-at-login",
     "surface": "settings page",
     "label": "Open Workbench at login",
     "kind": "setting",
     "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Toggle.show-floating-toolbar",
-    "surface": "settings page",
-    "label": "Show floating toolbar",
-    "kind": "setting",
-    "belongsTo": "app"
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.connections",
@@ -1031,7 +1108,7 @@
     "page": "photos",
     "kind": "option",
     "belongsTo": "library",
-    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's arrival cue still opens it."
+    "note": "Quality: From iPhone, the segment Saved resources already had beside Resources, becomes a section of Library's one switcher instead of a switcher inside a section (#134). Home's Saved from iPhone link opens it."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.section.settings",
@@ -1145,12 +1222,13 @@
     "note": "Quality: Read aloud takes its Grammar name, Read, in the same place. The alias it needed is gone (#134)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.all-history",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.cancel",
     "surface": "window home",
-    "label": "All history",
+    "label": "Cancel",
     "kind": "action",
-    "belongsTo": "history",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9)."
+    "belongsTo": "read",
+    "aliasOf": "read",
+    "note": "Existing contextual \"Cancel\" label inside read; shared wording, not a separate capability. Current work's action while Read makes audio: it cancels the generation, as Read's Cancel generation does (#134 H1)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy",
@@ -1159,14 +1237,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Text ready: copies the waiting delivery."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy-instructions",
-    "surface": "window home",
-    "label": "Copy instructions",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Last Hand off job, not completed."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy-text",
@@ -1182,7 +1252,7 @@
     "label": "Copy",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Copies the latest transcript."
+    "note": "Option: Copy beside a recent transcript in Home's Recent work, the same copy and receipt as History's (#134 H1)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.copy.3",
@@ -1190,7 +1260,7 @@
     "label": "Copy",
     "kind": "action",
     "belongsTo": "snap",
-    "note": "Existing contextual \"Copy\" label inside snap; shared wording, not a separate capability. Copies the latest Snap from Home.",
+    "note": "Existing contextual \"Copy\" label inside snap; shared wording, not a separate capability. Copies a recent Snap from Home's Recent work (#134 H1).",
     "aliasOf": "snap"
   },
   {
@@ -1202,14 +1272,6 @@
     "note": "Option: ends the first-dictation guide once its copy step has been seen; leaving Home does the same (#142 review B6)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.edit",
-    "surface": "window home",
-    "label": "Edit…",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest Snap in its editor."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.end-presentation",
     "surface": "window home",
     "label": "End presentation",
@@ -1218,20 +1280,20 @@
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.hand-off",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-dictate",
     "surface": "window home",
-    "label": "Hand off…",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Open Snap & Talk session with captures and nothing pending."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-dictate",
-    "surface": "window home",
-    "label": "Open in Dictate",
+    "label": "Open Dictate",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Opens the latest transcript on the Dictate page."
+    "note": "Option: Current work's door to Dictate for a kept capture that has no retry here, where its recovery files and Discard are (#134 H1)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-history",
+    "surface": "window home",
+    "label": "Open History",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Quality: All history becomes Open History below Home's Recent work, the five newest History entries (#134 H1). It opens History on All."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-in-history",
@@ -1242,20 +1304,21 @@
     "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-result",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-session",
     "surface": "window home",
-    "label": "Open result",
+    "label": "Open session",
     "kind": "action",
-    "belongsTo": "history",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Last Hand off job, completed."
+    "belongsTo": "snapAndTalk",
+    "note": "Option: Continue Snap & Talk's door to the loaded session's review. It changes the page only: nothing is reloaded, queued or reset (#134 H1)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.prepare",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry",
     "surface": "window home",
-    "label": "Prepare…",
+    "label": "Retry",
     "kind": "action",
-    "belongsTo": "app",
-    "note": "Option: each tile’s small link to its own page; one definition in the card helper, eight tiles (#134 W9)."
+    "belongsTo": "read",
+    "aliasOf": "read",
+    "note": "Existing contextual \"Retry\" label inside read; shared wording, not a separate capability. Current work's recovery for a reading that stopped, the same Retry Read shows beside Listen (#134 H1)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry-model",
@@ -1266,13 +1329,13 @@
     "note": "Quality: the existing engine banner gains Retry when preparation fails (#134 W9)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-160368cee30e",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-343c7a0bb03c",
     "surface": "window home",
     "label": null,
-    "expression": "readback . isCapturing ? \"Capturing…\" : \"Capture & narrate\"",
-    "note": "Option: a door on Home to an existing capability action; Home introduces useful actions (#134 W9). Capture & narrate on the open session.",
+    "expression": "model . retryCaptureLabel",
     "kind": "action",
-    "belongsTo": "snapAndTalk"
+    "belongsTo": "dictate",
+    "note": "Runtime label: Retry transcription or Retry saving, Current work's recovery for a kept capture, the same action Dictate offers (#134 H1). Home never discards the recovery."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-690989861a19",
@@ -1291,6 +1354,15 @@
     "note": "Quality: the live strip's Persona action (was Button.hide-persona), with its label and click now from the shared Persona action: Hide persona, Hide personas, or Show personas for a hidden prepared set, as the toolbar and panel read (#134).",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-d81c55f49c5b",
+    "surface": "window home",
+    "label": null,
+    "expression": "saved",
+    "kind": "action",
+    "belongsTo": "library",
+    "note": "Runtime label from HomeRecentWork.savedFromIPhone: Saved from iPhone with the photo count and the newest photo's stored date, a quiet link to Library › From iPhone (#134 H1). Photos are Library's, so they are not Recent work, and nothing calls them new."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.set-up-automatic-paste",
@@ -1354,7 +1426,7 @@
     "label": "Stop task",
     "kind": "action",
     "belongsTo": "history",
-    "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Last Hand off job, running."
+    "note": "Option: Current work's action for a running Hand off task, the same Stop task as History's running strip (#134 H1)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop.2",
@@ -1366,12 +1438,12 @@
     "aliasOf": "snapAndTalk"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-latest-snap",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-snap",
     "surface": "window home",
-    "label": "View latest Snap",
+    "label": "View Snap",
     "kind": "action",
     "belongsTo": "snap",
-    "note": "Quality (#154): the latest Snap's image on Home opens the read-only image preview, as every capture image does. It views an existing capture; editing stays Edit…."
+    "note": "Quality: a recent Snap's thumbnail and title open its read-only preview, where editing stays an explicit action (#134 H1). Was View latest Snap."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.NativeControlMenu.timer",
@@ -1387,31 +1459,7 @@
     "label": "Dictate",
     "kind": "capability",
     "belongsTo": "dictate",
-    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.draw",
-    "surface": "window home",
-    "label": "Draw",
-    "kind": "capability",
-    "belongsTo": "draw",
-    "note": "Quality: renamed to the Grammar name; the tile now acts instead of opening (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.persona",
-    "surface": "window home",
-    "label": "Persona",
-    "kind": "capability",
-    "belongsTo": "persona",
-    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.present",
-    "surface": "window home",
-    "label": "Present",
-    "kind": "capability",
-    "belongsTo": "present",
-    "note": "Quality: renamed to the Grammar name; the tile now acts instead of opening (#134 W9)."
+    "note": "Quality: a Quick start tile (#134 H1): the whole tile starts dictating and does nothing else; Dictate's page is its sidebar item. The guide's own Start dictating replaces it while the guide shows, and it steps aside while dictation is current work."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.read",
@@ -1419,7 +1467,7 @@
     "label": "Read",
     "kind": "capability",
     "belongsTo": "read",
-    "note": "Quality: renamed to the Grammar name; the tile now acts instead of opening (#134 W9)."
+    "note": "Quality: a Quick start tile (#134 H1): the whole tile reads the clipboard aloud and does nothing else; Read's page is its sidebar item. It steps aside while a reading is current work."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap",
@@ -1427,23 +1475,7 @@
     "label": "Snap",
     "kind": "capability",
     "belongsTo": "snap",
-    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap-talk",
-    "surface": "window home",
-    "label": "Snap & Talk",
-    "kind": "workflow",
-    "belongsTo": "snapAndTalk",
-    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage); the tile now performs the action instead of opening the page, Prepare… opens the page (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.timer",
-    "surface": "window home",
-    "label": "Timer",
-    "kind": "capability",
-    "belongsTo": "timer",
-    "note": "Option: Timer tile on Home starts a break; Timer was only a panel row and a Draw tab (#134 W9)."
+    "note": "Quality: a Quick start tile (#134 H1): the whole tile captures a region and does nothing else; Snap's page is its sidebar item."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
@@ -1555,6 +1587,14 @@
     "belongsTo": "settings",
     "aliasOf": "settings",
     "note": "The panel footer's word for this door stays Shortcuts, as the Grammar lists the footer (Open Workbench, Settings, Shortcuts) and #134 decision 3 keeps it. It opens Settings › Keyboard on the same route, shortcuts, so it names the Keyboard section's job rather than a separate place (#134)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-header.PanelSwitch.floating-toolbar",
+    "surface": "quick panel header",
+    "label": "Floating toolbar",
+    "kind": "setting",
+    "belongsTo": "app",
+    "note": "Quality: the one floating-toolbar switch at the panel header's top right, bound to the same saved preference as Settings, the Window menu and the toolbar's Hide toolbar (#134 H3). Its label and the whole 32 point row toggle with the switch, which is the one accessibility element. It supersedes only decision 3's removal of the header toggle; Window › Quick controls stays removed."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-persona-options.NativeControlMenu.options",
@@ -1797,16 +1837,18 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.runtime-bd16767525b2",
+    "surface": "app menu bar",
+    "label": null,
+    "expression": "Self . floatingToolbarTitle ( visible : model . floatingToolbarVisible )",
+    "kind": "action",
+    "belongsTo": "app",
+    "note": "Runtime label: Show floating toolbar while the saved preference is off and Hide floating toolbar while it is on, the same switch as the panel and Settings (#134 H3). Focus floating toolbar stays beside it."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.select-all",
     "surface": "app menu bar",
     "label": "Select All",
-    "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.show-floating-toolbar",
-    "surface": "app menu bar",
-    "label": "Show floating toolbar",
     "kind": "action",
     "belongsTo": "app"
   },
@@ -2586,8 +2628,8 @@
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.wait",
     "surface": "floating toolbar next action",
     "label": null,
-    "expression": "live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing ? \"Processing…\" : \"Capturing…\"",
-    "note": "Runtime label from live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing ? \"Processing…\" : \"Capturing…\"; no rendered text assumed.",
+    "expression": "live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing | | live . dictation == . waitingForDrawing ? \"Processing…\" : \"Capturing…\"",
+    "note": "Runtime label from live . dictation == . cancelling ? \"Cancelling…\" : live . dictation == . processing | | live . dictation == . waitingForDrawing ? \"Processing…\" : \"Capturing…\". Quality (#211 F5): words waiting for drawing that has already ended read Processing…, as other processing does; while drawing continues, Stop drawing leads instead.",
     "kind": "status",
     "belongsTo": "app"
   },

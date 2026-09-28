@@ -90,6 +90,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     @Published var shortcutFailures: [UInt32: String] = [:]
     @Published var page = "home"
+    /// A section a named door asks its page to show and focus once it appears, such as Dictate's
+    /// options (#134). The page clears it when it has.
+    @Published var focusRequest: PageFocusRequest?
     /// How the next visit to History begins. The page applies it once and
     /// clears it; without one, History opens on All.
     @Published var historyDoor: HistoryDoor?
@@ -457,6 +460,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         invalidateAudio()
         return note
+    }
+
+    /// Record again, from a failure's own controls or More: only ever a start. They were drawn, or
+    /// More was built, while nothing ran, so a recording begun since, by the shortcut say, is left
+    /// alone rather than cancelled or stopped by the toggle, as Home's Quick start does (#211).
+    func recordAgain() {
+        guard phase == .idle else { return }
+        toggleRecording()
     }
 
     func toggleRecording(fromShortcut: Bool = false, target: TextDelivery.Target? = nil) {

@@ -11,6 +11,15 @@ final class CapturePanel: NSPanel {
     var allowsKeyboardFocus = false
     override var canBecomeKey: Bool { allowsKeyboardFocus }
     override var canBecomeMain: Bool { false }
+    /// Escape that nothing inside handled leaves keyboard interaction, whatever the toolbar shows,
+    /// the launcher row or a result's own controls (#211 F1).
+    var escape: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) {
+        if let escape { escape() } else { super.cancelOperation(sender) }
+    }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, let escape { escape() } else { super.keyDown(with: event) }
+    }
 }
 
 final class CaptureHostingView<Content: View>: NSHostingView<Content> {
@@ -68,26 +77,46 @@ final class CaptureHUDControls: ObservableObject {
     // MARK: Results (#134 T4)
 
     /// The open row shows a result's own controls instead of the launcher row. It is decided as
-    /// the row opens, so a failure or receipt that arrives while the row is open never replaces
-    /// it under the pointer: it waits as the mark's status until the person reveals it.
+    /// the row opens, and only for the pointer's own reveal, a dwell or a click on the mark: a
+    /// failure or receipt that arrives while the row is open never replaces it under the pointer,
+    /// and waits as the mark's status until the person reveals it. Keyboard entry keeps the
+    /// launcher row, with the result's own commands first in More (#211 F1), and a row that Keep
+    /// open brings back waits for the checks the kept-open swap makes (#211 F8).
     @Published private(set) var revealsResult = false
     /// A result is waiting for the person; the host answers from its owners.
     var resultPending: () -> Bool = { false }
     private func tierWillShow(_ tier: ToolbarTier) {
-        let reveals = tier == .revealed && resultPending()
+        let state = toolbar.state
+        let reveals = tier == .revealed && state.pointerInside && !state.holds.contains(.keyboard) && resultPending()
         if revealsResult != reveals { revealsResult = reveals }
     }
     /// The result was resolved, dismissed or expired: the open row goes back to the launcher row.
     func resultEnded() { if revealsResult { revealsResult = false } }
+    /// The tools came back, after a capture, Hide toolbar or a cue, and the host has not yet found
+    /// the pointer: a kept-open row keeps its launcher until it has (#211 F8). The host's own
+    /// update runs again from inside the return, before it has looked.
+    private(set) var awaitingPointer = false
+    /// Brings the tools back. A kept-open row reveals at once; a waiting result waits for the pointer.
+    func activateToolbar() {
+        if !toolbar.isActive { awaitingPointer = true }
+        toolbar.activate()
+    }
+    /// The host has found the pointer again since the tools came back.
+    func pointerSettled() { awaitingPointer = false }
+    /// Where each action of a shown result is, by name, in its window's content with the origin
+    /// at the top left: the gallery checks that none sits over the mark at a right-hand dock
+    /// (#211 F3). SwiftUI keeps no accessibility tree to read while no assistive app asks for one.
+    var resultActionFrames: [String: CGRect] = [:]
     /// A row kept open by Keep open alone shows a new result in its place, as the dictation
     /// panel did: Keep open is the person's choice of persistent controls, and there is no rest to
-    /// show the status on. Only while no pointer is on it and nothing holds it, a menu or the
-    /// chooser included; the host also waits for Position… to close. It never activates Workbench,
-    /// takes the keyboard or moves the anchor: the host sizes the window from the same centre.
+    /// show the status on. Only while no pointer is on it and nothing holds it, a menu, the chooser
+    /// or the keyboard included; the host also waits for Position… to close, and for the pointer
+    /// to be found again when the row comes back. It never activates Workbench, takes the keyboard
+    /// or moves the anchor: the host sizes the window from the same centre.
     func showResultIfKeptOpen() {
         let state = toolbar.state
-        guard !revealsResult, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside, state.holds.isEmpty,
-              resultPending() else { return }
+        guard !revealsResult, !awaitingPointer, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside,
+              state.holds.isEmpty, resultPending() else { return }
         revealsResult = true
     }
 
@@ -153,7 +182,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var tracking: ToolbarTrackingView?
     private let motion = ToolbarWindowMotion()
     private var measuringToolbar = false
-    /// Position… is open for the Dictate page's Position dictation panel….
+    /// Position… is open for the Dictate page's Position floating toolbar….
     private var previewShowsPosition = false
     /// Where the tools rest while they are not docked (#163); nil while they are docked at
     /// `controls.anchor`. Only a person's placement changes it: a frame recovered onto
@@ -209,6 +238,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.chooserChoicesChanged = { [weak self] choices in self?.chooser.refresh(choices) }
         controls.revealFromRest = { [weak self] in self?.revealFromRest() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
+        panel.escape = { [weak controls] in controls?.endKeyboardInteraction() }
         controls.resultPending = { [weak model] in model.map { FloatingResult.pending($0) != nil } ?? false }
         controls.promptDestination = { [weak self] in
             guard let self else { return nil }
@@ -337,13 +367,11 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             self.surface = surface
             tracking?.acceptsCrossings = false
             motion.finish(window)
-            if surface == .tools { controls.toolbar.activate() }
+            if surface == .tools { controls.activateToolbar() }
             else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
-        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4),
-        // or, in a row kept open by Keep open alone, takes its place once nothing is using it.
+        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
         if FloatingResult.pending(model) == nil { controls.resultEnded() }
-        else if !chooser.isShown && !positionControl.isShown { controls.showResultIfKeptOpen() }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging(); updateCoach()
             return
@@ -360,7 +388,11 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
         window.orderFrontRegardless()
         tracking?.acceptsCrossings = surface == .tools && !dragging && motion.target == nil
-        if previousSurface != surface && surface == .tools { tracking?.settle() }
+        if previousSurface != surface && surface == .tools { tracking?.settle(); controls.pointerSettled() }
+        // In a row kept open by Keep open alone, a waiting result takes the row's place once nothing
+        // is using it: after the pointer is found again above, so a row that comes back under the
+        // pointer keeps its launcher until the pointer leaves (#211 F8).
+        if FloatingResult.pending(model) != nil, !chooser.isShown, !positionControl.isShown { controls.showResultIfKeptOpen() }
         showPositionForPreview(model)
         updateCoach()
     }
@@ -394,7 +426,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
     }
 
-    /// Position dictation panel… on the Dictate page opens Position… at the toolbar, which is
+    /// Position floating toolbar… on the Dictate page opens Position… at the toolbar, which is
     /// where dictation shows now (#134 T4); closing it ends the preview.
     private func showPositionForPreview(_ model: AppModel) {
         guard model.previewingPanel else { previewShowsPosition = false; return }
@@ -435,13 +467,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// action from the toolbar will use, and Workbench is not made the active app.
     func revealFromRest() {
         guard surface == .tools, let panel = window as? CapturePanel else { return }
+        // The click is the pointer's: it reveals as a dwell would, a waiting result's own controls
+        // included (#211 F1), and only then takes the keyboard. A panel that cannot take it holds
+        // nothing, so no keyboard hold is left that nothing can release.
+        controls.toolbar.send(.pointerEntered)
         let target = panel.allowsKeyboardFocus && panel.isKeyWindow ? keyboardTarget : TextDelivery.capture()
-        guard takeKeyboard(panel, target: target) else {
-            // The panel could not take the keyboard: reveal for the pointer that clicked, as a
-            // dwell would, so no keyboard hold is left that nothing can release.
-            controls.toolbar.send(.pointerEntered)
-            return
-        }
+        takeKeyboard(panel, target: target)
     }
 
     /// Gives the toolbar the keyboard, with `target` as the field it came from, and focuses the
@@ -733,10 +764,19 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             reset: { [weak self] in self?.choosePosition(.bottom) },
             closed: { [weak self] reason in
                 onClose?()
-                if let self, let model = self.model { self.update(model: model) }
-                guard reason.returnsKeyboard(openedFromKeyboard: fromKeyboard) else { return }
-                self?.returnKeyboardToToolbar(target: target)
+                self?.positionClosed(returnsKeyboard: reason.returnsKeyboard(openedFromKeyboard: fromKeyboard)) {
+                    self?.returnKeyboardToToolbar(target: target)
+                }
             })
+    }
+
+    /// After Position… closes (#211 F2): the keyboard goes back first, when it should, and only then
+    /// does the host update, so a result waiting on a kept-open row finds the keyboard's hold and
+    /// stays behind the launcher row instead of taking the keyboard's place. The gallery passes
+    /// the keyboard's hold alone as `returnKeyboard`, so it never takes the person's keyboard.
+    func positionClosed(returnsKeyboard: Bool, returnKeyboard: () -> Void) {
+        if returnsKeyboard { returnKeyboard() }
+        if let model { update(model: model) }
     }
 
     /// The tool chooser (#134), from a click, Space or Return on the launcher. It holds the row
@@ -779,7 +819,7 @@ protocol FloatingHUDDragController: AnyObject {
 }
 
 struct PanelDragHandle: NSViewRepresentable {
-    var accessibilityLabel = "Drag dictation panel; named positions are also available in options"
+    var accessibilityLabel = "Drag toolbar; named positions are also in Toolbar position"
     var showsGrip = false
     func makeNSView(context: Context) -> DragHandleView { DragHandleView(accessibilityLabel: accessibilityLabel, showsGrip: showsGrip) }
     func updateNSView(_ nsView: DragHandleView, context: Context) {}
@@ -839,19 +879,31 @@ struct DictationResultView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// The failure's commands, the first of which takes the keyboard's focus (#211 F1).
+    enum Action: Hashable { case retry, recordAgain, openWorkbench, dismiss }
+    @FocusState private var focused: Action?
+
+    private var firstAction: Action {
+        if model.canRetry { return .retry }
+        return model.canRecordAgain ? .recordAgain : .openWorkbench
+    }
 
     var body: some View {
+        // It grows from the launcher's centre like the row, so at a right-hand dock it is mirrored:
+        // the drag handle and the words sit over the mark the pointer came from, and the commands
+        // and Position at the far end (#211 F3). VoiceOver reads it in the same order either way.
+        let mirrored = controls.rowAnchor.growsLeftward
         HStack(spacing: 8) {
-            PanelDragHandle().frame(width: 8, height: 40)
+            if !mirrored { PanelDragHandle().frame(width: 8, height: 40) }
             if let failure = model.captureFailure {
-                failureState(failure)
+                failureState(failure, mirrored: mirrored)
+                    .defaultFocus($focused, firstAction)
+                    .onAppear { ResultKeyboard.appeared(controls) { focused = firstAction } }
             } else {
-                // A copied prompt is kept in Library; a transcript in History.
-                CaptureReceiptView(receipts: model.clipboardReceipt, review: {
-                    if model.clipboardReceipt.receipt?.source == .prompt { model.showLibrary() }
-                    else { model.openHistory(); model.onShowEditor?("history") }
-                }, controls: controls)
+                CaptureReceiptView(receipts: model.clipboardReceipt, review: { Self.review($0, model: model) }, controls: controls,
+                                   mirrored: mirrored)
             }
+            if mirrored { PanelDragHandle().frame(width: 8, height: 40) }
         }.padding(.horizontal, 12)
             .frame(width: CaptureHUDLayout.message.width, height: CaptureHUDLayout.message.height)
             .background {
@@ -860,34 +912,46 @@ struct DictationResultView: View {
             }
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(0.12)))
             .transaction { $0.animation = nil }
+            .onExitCommand(perform: controls.endKeyboardInteraction)
             .tint(Workbench.accent).workbenchTheme()
     }
 
-    private func failureState(_ failure: String) -> some View {
-        HStack(spacing: 9) {
-            VStack(alignment: .leading, spacing: 7) {
-                Label("Dictation needs attention", systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
-                Text(failure).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true).help(failure)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 4) {
-                if model.canRetry {
-                    Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
-                }
-                if model.canRecordAgain {
-                    Button("Record again") { model.toggleRecording() }
-                        .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
-                } else if !model.canRetry || model.hasCaptureRecovery {
-                    Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
-                        Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
-                    }.buttonStyle(.bordered)
-                }
-                Button { model.dismissCaptureFailure() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
-                    .buttonStyle(.plain).accessibilityLabel("Dismiss dictation error")
-            }.controlSize(.small)
-            CapturePositionMenu(controls: controls)
+    /// Review opens where the words are kept: Library for a copied prompt, History for a transcript.
+    static func review(_ receipt: ClipboardReceipt, model: AppModel) {
+        if receipt.source == .prompt { model.showLibrary() }
+        else { model.openHistory(); model.onShowEditor?("history") }
+    }
+
+    private func failureState(_ failure: String, mirrored: Bool) -> some View {
+        let message = VStack(alignment: .leading, spacing: 7) {
+            Label("Dictation needs attention", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
+            Text(failure).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true).help(failure)
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilitySortPriority(3)
+        let commands = VStack(spacing: 4) {
+            if model.canRetry {
+                Button { model.retryTranscription() } label: { Text(model.retryCaptureLabel).frame(minWidth: 44, minHeight: 28) }
+                    .buttonStyle(.borderedProminent).help(model.retryCaptureHelp)
+                    .focused($focused, equals: .retry).resultAction("Retry", controls)
+            }
+            if model.canRecordAgain {
+                Button("Record again") { model.recordAgain() }
+                    .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
+                    .focused($focused, equals: .recordAgain).resultAction("Record again", controls)
+            } else if !model.canRetry || model.hasCaptureRecovery {
+                Button { model.dismissCaptureFailure(); model.onShowEditor?("dictate") } label: {
+                    Text("Open Workbench").font(.system(size: 12)).frame(minHeight: 28)
+                }.buttonStyle(.bordered)
+                    .focused($focused, equals: .openWorkbench).resultAction("Open Workbench", controls)
+            }
+            Button { model.dismissCaptureFailure() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                .buttonStyle(.plain).accessibilityLabel("Dismiss dictation error")
+                .focused($focused, equals: .dismiss).resultAction("Dismiss", controls)
+        }.controlSize(.small).accessibilityElement(children: .contain).accessibilitySortPriority(2)
+        let position = CapturePositionMenu(controls: controls).accessibilitySortPriority(1)
+        return HStack(spacing: 9) {
+            if mirrored { position; commands; message } else { message; commands; position }
         }
     }
 
@@ -945,49 +1009,78 @@ struct NoSpeechCueView: View {
 
 private struct CaptureReceiptView: View {
     @ObservedObject var receipts: ClipboardReceiptModel
-    let review: () -> Void
+    /// Opens where the words are kept, for the receipt as it was when Review was pressed:
+    /// dismissing a receipt whose words have left the clipboard clears it.
+    let review: (ClipboardReceipt) -> Void
     @ObservedObject var controls: CaptureHUDControls
+    /// At a right-hand dock the commands and Position sit at the far end (#211 F3).
+    var mirrored = false
+    /// Review, the receipt's first command, takes the keyboard's focus (#211 F1).
+    @FocusState private var reviewFocused: Bool
     var body: some View {
         if let receipt = receipts.receipt {
-            HStack(spacing: 9) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 7) {
-                        Image(systemName: receipt.symbolName).foregroundStyle(Workbench.accent)
-                        Text(receipt.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                        if receipt.wordCount > 0 { Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.system(size: 12)).foregroundStyle(.secondary) }
-                    }
-                    Text(receipt.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                VStack(spacing: 3) {
-                    Button { receipts.dismissHUD(); review() } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
-                        .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
-                    HStack(spacing: 2) {
-                        if receipt.isClipboardCurrent {
-                            Button { receipts.keepVisible.toggle() } label: {
-                                Image(systemName: receipts.keepVisible ? "pin.fill" : "pin").frame(width: 28, height: 28)
-                            }.buttonStyle(.plain)
-                                .accessibilityLabel(receipts.keepVisible ? "Unpin receipt" : "Keep receipt visible")
-                                .help("Keep visible while this text is on the clipboard")
-                        }
-                        // The ring reads the receipt's own lifetime: eight seconds for a copy, four for a paste (#134 T5).
-                        Button { receipts.dismissHUD() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
-                            .buttonStyle(.plain).accessibilityLabel("Dismiss dictation receipt")
-                            .overlay { LiveCountdownRing(lifetime: receipts.lifetime, clock: receipts.now).allowsHitTesting(false) }
-                    }
+            let words = VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    Image(systemName: receipt.symbolName).foregroundStyle(Workbench.accent)
+                    Text(receipt.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    if receipt.wordCount > 0 { Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.system(size: 12)).foregroundStyle(.secondary) }
                 }
-                CapturePositionMenu(controls: controls)
+                Text(receipt.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading).accessibilitySortPriority(3)
+            let commands = VStack(spacing: 3) {
+                Button { receipts.dismissHUD(); review(receipt) } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
+                    .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
+                    .focused($reviewFocused).resultAction("Review", controls)
+                HStack(spacing: 2) {
+                    if receipt.isClipboardCurrent {
+                        Button { receipts.keepVisible.toggle() } label: {
+                            Image(systemName: receipts.keepVisible ? "pin.fill" : "pin").frame(width: 28, height: 28)
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel(receipts.keepVisible ? "Unpin receipt" : "Keep receipt visible")
+                            .help("Keep visible while this text is on the clipboard").resultAction("Pin", controls)
+                    }
+                    // The ring reads the receipt's own lifetime: eight seconds for a copy, four for a paste (#134 T5).
+                    Button { receipts.dismissHUD() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                        .buttonStyle(.plain).accessibilityLabel("Dismiss dictation receipt").resultAction("Dismiss", controls)
+                        .overlay { LiveCountdownRing(lifetime: receipts.lifetime, clock: receipts.now).allowsHitTesting(false) }
+                }
+            }.accessibilityElement(children: .contain).accessibilitySortPriority(2)
+            let position = CapturePositionMenu(controls: controls).accessibilitySortPriority(1)
+            HStack(spacing: 9) {
+                if mirrored { position; commands; words } else { words; commands; position }
             }
             // The pointer holds its time, including one resting where it appears (#134 T5).
             .background(PointerPresence { receipts.holdHUD($0) })
+            .defaultFocus($reviewFocused, true)
+            .onAppear { ResultKeyboard.appeared(controls) { reviewFocused = true } }
         }
     }
 }
 
+/// Keyboard for a result's own controls (#211 F1). Keyboard entry keeps the launcher row, so a
+/// result shows only for the pointer's reveal; a person who then takes the keyboard, by the
+/// click on the mark or Window › Focus floating toolbar, lands on the result's first command,
+/// and Escape leaves as it does from the launcher row (`.onExitCommand` on each result, and
+/// `CapturePanel.escape` for a key nothing inside handled).
+extension View {
+    /// Reports this result action's frame for the gallery's right-hand dock check (#211 F3).
+    func resultAction(_ name: String, _ controls: CaptureHUDControls) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { controls.resultActionFrames[name] = $0 }
+    }
+}
+
+@MainActor enum ResultKeyboard {
+    static func appeared(_ controls: CaptureHUDControls, focusFirst: @escaping () -> Void) {
+        controls.focusFirstControl = focusFirst
+        if controls.toolbar.state.holds.contains(.keyboard) { focusFirst() }
+    }
+}
+
+/// A result's own placement menu: the named docks and Reset position. It sits at the result's
+/// far end from the mark, with its other commands, when the result is mirrored (#211 F3).
 struct CapturePositionMenu: View {
     @ObservedObject var controls: CaptureHUDControls
-    var settings: (() -> Void)? = nil
-    var accessibilityName = "Dictation panel options"
     var body: some View {
         Menu {
             Section("Position") {
@@ -999,13 +1092,9 @@ struct CapturePositionMenu: View {
                 }
                 Button("Reset position") { controls.choosePosition?(.bottom) }
             }
-            if let settings {
-                Divider()
-                Button("Settings for next capture", action: settings)
-            }
         } label: {
             Image(systemName: "ellipsis").frame(width: 28, height: 32)
         }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .accessibilityLabel(accessibilityName).help("Position and options")
+            .accessibilityLabel("Toolbar position").help("Position")
     }
 }

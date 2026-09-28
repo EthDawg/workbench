@@ -203,9 +203,9 @@ OFFER_TYPES = ['FounderIntroductionCard']
 ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 
 # CapturePreviewButton is a capture image that opens the read-only preview; its
-# first argument is its accessible name.
+# first argument is its accessible name. PanelSwitch is the panel header's switch row.
 CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
-    Stepper Slider Link NativeControlMenu ToolbarMenuAction StageMenuAction
+    Stepper Slider Link NativeControlMenu PanelSwitch ToolbarMenuAction StageMenuAction
     NSMenuItem NSButton addItem addSubmenu card command actionItem action CapturePreviewButton'''.split())
 # Label-taking helpers, counted only in the file that declares them.
 HELPERS = {'card', 'command', 'actionItem', 'action'}
@@ -1108,7 +1108,7 @@ def quick_panel_surface(swift, index, api):
     funcs = [s for s in swift.scopes if s[2] == 'func' and s[0] < index < s[1]]
     if funcs and 'WorkbenchControlTool' in v[max(funcs)[4]:max(funcs)[0]]:
         return 'quick panel row controls'
-    if api == 'Toggle':
+    if api in ('Toggle', 'PanelSwitch'):
         return 'quick panel header'
     return 'quick panel status rows' if api == 'status' else 'quick panel footer'
 

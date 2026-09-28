@@ -52,6 +52,7 @@ public enum ToolbarGallery {
         return ToolbarActivity(capture: captures, playback: live.reading == .playing,
             processing: live.dictation == .processing || live.dictation == .cancelling || live.dictation == .requesting
                 || live.pendingNarration || live.reading == .preparing,
+            pendingDelivery: live.dictation == .waitingForDrawing,
             paused: live.reading == .paused || live.timer == .paused || live.persona == .sessionHidden, live: running)
     }
 
@@ -132,9 +133,15 @@ public enum ToolbarGallery {
              activity: ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true)),
         live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation-stops-soon-resting", tier: .resting,
              activity: ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true)),
+        // Both at once: the timer beside the trace and the warning on the corner, in the launcher too (#211 F4).
+        live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation-stops-soon-attention",
+             activity: ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true)),
         // Dictating while Present is the tool: the recording claims the button, as everywhere.
         live(ToolbarLiveState(mode: .present, dictation: .recording, presenting: true), name: "recording-dictation-in-present",
              activity: ToolbarActivity(capture: .dictation, level: 0.3, live: [.presenting])),
+        // Dictated words waiting for drawing to end: Stop drawing delivers them, Copy now is in
+        // More, and the mark says a result is waiting (#211 F5).
+        live(ToolbarLiveState(mode: .dictate, dictation: .waitingForDrawing, drawing: true), name: "recording-waiting-for-drawing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing-resting", tier: .resting),
         live(ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 2), name: "recording-narration",
@@ -142,6 +149,13 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing"),
         live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing-resting", tier: .resting),
         live(ToolbarLiveState(mode: .dictate, reading: .paused), name: "reading-paused-in-dictate")
+    ]
+
+    /// A result waiting for the person, revealed from the keyboard (#211 F1): the launcher row, not
+    /// the result's own view, with the result's status as a badge on the launcher.
+    public static let waiting: [ToolbarViewState] = [
+        live(ToolbarLiveState(mode: .dictate), name: "waiting-failure", activity: ToolbarActivity(failure: true)),
+        live(ToolbarLiveState(mode: .present), name: "waiting-receipt", activity: ToolbarActivity(pendingDelivery: true))
     ]
 
     /// The compact rest in each indicator (#134), in priority order: capture with its level,
@@ -172,5 +186,5 @@ public enum ToolbarGallery {
     ]
 
     /// Everything, in a stable order.
-    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + accessories + statuses
+    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + waiting + accessories + statuses
 }

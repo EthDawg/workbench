@@ -32,13 +32,16 @@ public struct ToolbarActivity: Hashable, Sendable {
     public var live: [Live]
     /// The capture stops by itself at its time limit within the last seconds (#134 T4).
     public var stopsSoon: Bool
+    /// The capturing owner judges its microphone too quiet to use, after a stretch of near silence.
+    public var quiet: Bool
 
     public init(capture: Capture? = nil, level: Double? = nil, playback: Bool = false, processing: Bool = false,
                 failure: Bool = false, pendingDelivery: Bool = false, unsavedCapture: Bool = false,
-                paused: Bool = false, live: [Live] = [], stopsSoon: Bool = false) {
+                paused: Bool = false, live: [Live] = [], stopsSoon: Bool = false, quiet: Bool = false) {
         self.capture = capture; self.level = level; self.playback = playback; self.processing = processing
         self.failure = failure; self.pendingDelivery = pendingDelivery; self.unsavedCapture = unsavedCapture
         self.paused = paused; self.live = Live.allCases.filter(live.contains); self.stopsSoon = stopsSoon
+        self.quiet = quiet
     }
 
     public static let idle = ToolbarActivity()
@@ -85,14 +88,34 @@ public struct ToolbarStatus: Equatable, Sendable {
     /// The recording stops by itself at its time limit in the last seconds: a timer badge.
     public var stopsSoonBadge: Bool
     public var level: Double?
+    /// The capture's microphone has been too quiet to use for a while, in the owner's judgement.
+    public var quiet: Bool
     /// Every state the mark stands for, in words, for VoiceOver and the tooltip.
     public var description: String
 
     public init(indicator: Indicator = .idle, attentionBadge: Bool = false, stopsSoonBadge: Bool = false, level: Double? = nil,
-                description: String = "Nothing running") {
+                quiet: Bool = false, description: String = "Nothing running") {
         self.indicator = indicator; self.attentionBadge = attentionBadge; self.stopsSoonBadge = stopsSoonBadge
-        self.level = level; self.description = description
+        self.level = level; self.quiet = quiet; self.description = description
     }
+
+    /// The badges beside the capture signal, in their order: the time-limit timer, then the
+    /// warning for another job that needs attention. Both show when both apply (#211 F4).
+    public enum Badge: Hashable, Sendable { case stopsSoon, attention }
+    public var badges: [Badge] {
+        (stopsSoonBadge ? [.stopsSoon] : []) + (attentionBadge ? [.attention] : [])
+    }
+
+    /// The capture's level in words, for VoiceOver's value and never announced (#211 F7): Low
+    /// microphone level once the owner judges it too quiet, otherwise Quiet or Receiving sound.
+    /// Nil without a level sample, as for a meeting.
+    public var levelWords: String? {
+        guard indicator == .capture, let level else { return nil }
+        if quiet { return "Low microphone level" }
+        return level < 0.05 ? "Quiet" : "Receiving sound"
+    }
+    /// What VoiceOver reads as the mark's value: every state in words, then the level's.
+    public var spokenValue: String { levelWords.map { description + ". " + $0 } ?? description }
 
     public static let idle = ToolbarStatus()
 
@@ -113,6 +136,7 @@ public struct ToolbarStatus: Equatable, Sendable {
         return ToolbarStatus(indicator: indicator, attentionBadge: indicator == .capture && attention,
                              stopsSoonBadge: indicator == .capture && activity.stopsSoon,
                              level: indicator == .capture ? activity.level.map { min(1, max(0, $0)) } : nil,
+                             quiet: indicator == .capture && activity.quiet,
                              description: describe(activity))
     }
 
@@ -137,9 +161,9 @@ public struct ToolbarStatus: Equatable, Sendable {
     }
 
     /// Whether VoiceOver should hear about a change: a new indicator, badge or state in words,
-    /// never a level, which the words leave out. So a failure, a pending result or an unsaved
-    /// capture arriving under processing or playback is heard, though the indicator stays, and
-    /// so is the time-limit warning, once, when it appears.
+    /// never a level or how quiet it is, which the words leave out. So a failure, a pending
+    /// result or an unsaved capture arriving under processing or playback is heard, though the
+    /// indicator stays, and so is the time-limit warning, once, when it appears.
     public func announces(after previous: ToolbarStatus) -> Bool {
         indicator != previous.indicator || attentionBadge != previous.attentionBadge || description != previous.description
     }

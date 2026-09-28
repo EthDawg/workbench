@@ -44,13 +44,24 @@ private final class ToolbarCoachWindow: NSPanel {
         guard let visible = (NSScreen.screens.first { $0.frame.intersects(host) } ?? NSScreen.main)?.visibleFrame else { return false }
         let panel = self.panel ?? makePanel(coach)
         self.panel = panel
+        let appearing = !panel.isVisible
         // Measured on its own, as the chooser is: the panel's view never sizes the panel itself.
         let size = NSHostingView(rootView: Self.card(coach)).fittingSize
         panel.setFrame(ToolbarCoachPlacement.frame(card: size, host: host, launcherX: launcherX, visible: visible), display: false)
         panel.level = NSWindow.Level(rawValue: level.rawValue + 1)
-        panel.alphaValue = offscreenForChecks ? 0 : 1
         panel.ignoresMouseEvents = offscreenForChecks
+        // A new card fades in over 160 ms, or appears at once with Reduce Motion; a shown card
+        // that follows the toolbar just moves.
+        let fades = !offscreenForChecks && appearing && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        panel.alphaValue = offscreenForChecks || fades ? 0 : 1
         panel.orderFrontRegardless()
+        if fades {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.16
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+            }
+        }
         guard shownCard != card.id else { return true }
         shownCard = card.id
         // Presented once it has been on screen for a display pass, never on a mere request.
@@ -61,7 +72,7 @@ private final class ToolbarCoachWindow: NSPanel {
         return true
     }
 
-    /// Takes the card down: a 160 ms fade, or at once with Reduce Motion.
+    /// Takes the card down: a 160 ms fade, as it came, or at once with Reduce Motion.
     func hide() {
         guard let panel else { return }
         self.panel = nil; shownCard = nil

@@ -100,7 +100,7 @@ public struct ToolbarRow: View {
     private var compact: some View {
         ToolbarCompactMark(status: state.status, accent: accent)
             .overlay {
-                ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.description,
+                ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.spokenValue,
                                   reveal: revealFromRest, options: menuOpener, drag: drag)
             }
             .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
@@ -179,6 +179,14 @@ public struct ToolbarRow: View {
                     } else {
                         Image(systemName: state.mode.symbol).font(.system(size: 15 * scale, weight: .medium))
                             .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
+                            .overlay(alignment: .topTrailing) {
+                                // A waiting result keeps its status on the launcher while the row is
+                                // open, the mark's glyph as a badge on the tool's symbol (#211 F1).
+                                if let glyph = ToolbarResultGlyph(state.status.indicator) {
+                                    Image(systemName: glyph.name).font(.system(size: 7 * scale, weight: .bold)).foregroundStyle(glyph.color)
+                                        .offset(x: 5 * scale, y: -4 * scale)
+                                }
+                            }
                         Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(.secondary)
                     }
                 }
@@ -227,9 +235,8 @@ public struct ToolbarCompactMark: View {
         case .capture: ToolbarCaptureSignal(status: status, accent: accent)
         case .playback: symbol("speaker.wave.2.fill", accent)
         case .processing: symbol("ellipsis", Color.secondary)
-        case .failure: symbol("exclamationmark.triangle.fill", Color.orange)
-        case .pendingDelivery: symbol("doc.on.clipboard", Color.primary)
-        case .unsavedCapture: symbol("pencil", Color.primary)
+        case .failure, .pendingDelivery, .unsavedCapture:
+            if let glyph = ToolbarResultGlyph(status.indicator) { symbol(glyph.name, glyph.color) }
         case .paused: symbol("pause.fill", Color.secondary)
         case .live(let work): symbol(work.symbol, accent)
         }
@@ -241,22 +248,45 @@ public struct ToolbarCompactMark: View {
     }
 }
 
+/// A waiting result's glyph: a failure's warning, a result waiting to be delivered, or an unsaved
+/// capture. The compact mark shows it at rest, and the launcher as a badge while the row is open.
+struct ToolbarResultGlyph {
+    let name: String
+    let color: Color
+    init?(_ indicator: ToolbarStatus.Indicator) {
+        switch indicator {
+        case .failure: (name, color) = ("exclamationmark.triangle.fill", .orange)
+        case .pendingDelivery: (name, color) = ("doc.on.clipboard", .primary)
+        case .unsavedCapture: (name, color) = ("pencil", .primary)
+        default: return nil
+        }
+    }
+}
+
 /// The capture signal: the shared voice trace, a red recording dot and the recording owner's own
-/// level through the shared envelope and stroke (#134, #209), and one badge beside it: a timer in
-/// the last seconds before the limit, or else a warning for another job that needs attention. The
-/// compact mark shows it at rest and the launcher while the row is open. The trace keeps still in
-/// silence and follows Reduce Motion and Increase Contrast itself.
+/// level through the shared envelope and stroke (#134, #209), with its badges. A timer beside the
+/// trace says this recording stops at its limit within seconds; a warning on the capsule's corner
+/// says another job needs attention, like a badge on an icon. Both show when both apply (#211 F4),
+/// each about 7 points, inside the 48 × 28 target, and the words name every state
+/// (`ToolbarStatus.description`). The compact mark shows it at rest and the launcher while the row
+/// is open. The trace keeps still in silence and follows Reduce Motion and Increase Contrast.
 struct ToolbarCaptureSignal: View {
     let status: ToolbarStatus
     let accent: Color
+    /// The signal's box: the capsule's width less a 2-point margin each side, and its height.
+    static let size = CGSize(width: ToolbarLayout.markCapsule.width - 4, height: ToolbarLayout.statusHeight)
     var body: some View {
         HStack(spacing: 3) {
             VoiceTrace(level: status.level, accent: accent)
-            // One badge fits beside the trace; the words name every state (ToolbarStatus.description).
-            if status.stopsSoonBadge {
+            if status.badges.contains(.stopsSoon) {
                 Image(systemName: "timer").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
-            } else if status.attentionBadge {
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .overlay(alignment: .topTrailing) {
+            if status.badges.contains(.attention) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange)
+                    .offset(x: 1, y: -7)
             }
         }
     }
@@ -393,11 +423,14 @@ private struct ToolbarLauncher: NSViewRepresentable {
     }
     func updateNSView(_ view: LauncherButton, context: Context) {
         view.setAccessibilityLabel("Tool: " + state.mode.title)
-        view.setAccessibilityValue(state.status.indicator == .capture ? state.launcherDescription + ". " + state.status.description
-                                                                        : state.launcherDescription)
+        // A recording, and a result waiting for the person, keep their words on the launcher while
+        // the row is open, as the mark carries them at rest (#134 T4, #211 F1).
+        let status = state.status.indicator == .capture || ToolbarResultGlyph(state.status.indicator) != nil
+        view.setAccessibilityValue(status ? state.launcherDescription + ". " + state.status.spokenValue : state.launcherDescription)
         view.setAccessibilityHelp("Choose a tool")
         view.setAccessibilityIdentifier("toolbar.launcher")
-        view.toolTip = state.launcherDescription + ". Click to choose a tool; drag to move."
+        view.toolTip = (status ? state.launcherDescription + ". " + state.status.description : state.launcherDescription)
+            + ". Click to choose a tool; drag to move."
         view.escape = escape; view.drag = drag
         view.open = { [weak view] in if let view { open(view) } }
         view.options = { [weak view] in if let view { options(view) } }

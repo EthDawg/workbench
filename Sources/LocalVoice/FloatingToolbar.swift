@@ -239,9 +239,11 @@ struct FloatingToolbar: View {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
         let mode = live.mode
-        // What the live work can do besides the next action comes first (#134 T4): the
-        // recording's Cancel and Copy now, narration's Cancel, and reading's Stop.
-        let owner = liveCommands(action: action)
+        // A waiting result's own commands come first (#211 F1), then what the live work can do
+        // besides the next action (#134 T4): the recording's Cancel and Copy now, narration's
+        // Cancel, and reading's own commands.
+        var owner = liveCommands(action: action)
+        if let result = resultCommands() { owner.insert(result, at: 0) }
         for (index, section) in owner.enumerated() {
             if index > 0 { menu.addItem(.separator()) }
             menu.addItem(.sectionHeader(title: section.title))
@@ -338,10 +340,51 @@ struct FloatingToolbar: View {
         if readback.isRecording {
             sections.append(("Snap & Talk", [ToolbarMenuAction("Cancel") { readback.cancelNarration() }]))
         }
-        if model.playing || model.paused {
-            sections.append(("Read", [ToolbarMenuAction("Stop reading") { model.stopPlayback() }]))
+        // Reading keeps its own next action here while drawing or an insertion holds the primary,
+        // preparing included, and Stop reading throughout (#211 F6).
+        let reading = ToolbarReadingCommands.operations(primary: action.operation, reading: live.reading).map { operation -> NSMenuItem in
+            switch operation {
+            case .cancelReading: return ToolbarMenuAction("Cancel") { perform(.cancelReading) }
+            case .pauseReading: return ToolbarMenuAction("Pause reading") { perform(.pauseReading) }
+            case .resumeReading: return ToolbarMenuAction("Resume reading") { perform(.resumeReading) }
+            default: return ToolbarMenuAction("Stop reading") { model.stopPlayback() }
+            }
         }
+        if !reading.isEmpty { sections.append(("Read", reading)) }
         return sections
+    }
+
+    /// The waiting result's own commands, first in More (#211 F1). Keyboard entry keeps the
+    /// launcher row rather than showing the result's view, so what that view offers is here too,
+    /// under its title, with a failure's reason: the same commands on the same owners.
+    private func resultCommands() -> (title: String, items: [NSMenuItem])? {
+        guard let result = FloatingResult.pending(model) else { return nil }
+        var items: [NSMenuItem] = []
+        let header: String, dismiss: () -> Void
+        switch result {
+        case .dictationFailure:
+            guard let failure = model.captureFailure else { return nil }
+            header = "Dictation needs attention"; dismiss = { model.dismissCaptureFailure() }
+            items.append(ToolbarMenuAction(failure, enabled: false) {})
+            if model.canRetry { items.append(ToolbarMenuAction(model.retryCaptureLabel) { model.retryTranscription() }) }
+            if model.canRecordAgain { items.append(ToolbarMenuAction("Record again") { model.recordAgain() }) }
+            else if !model.canRetry || model.hasCaptureRecovery {
+                items.append(ToolbarMenuAction("Open Workbench") { model.dismissCaptureFailure(); model.onShowEditor?("dictate") })
+            }
+        case .readingFailure:
+            guard let failure = model.readingFailure else { return nil }
+            header = "Reading stopped"; dismiss = { model.dismissReadingFailure() }
+            items.append(ToolbarMenuAction(failure.message, enabled: false) {})
+            items.append(ToolbarMenuAction("Retry", enabled: model.canRetryReading) { model.retryReading() })
+        case .receipt:
+            guard let receipt = receipts.receipt else { return nil }
+            header = receipt.title; dismiss = { receipts.dismissHUD() }
+            // Only where a second copy cannot lead to a second insertion, as its own section says.
+            if model.unresolvedDelivery?.offersCopy == true { items.append(ToolbarMenuAction("Copy again") { model.copyUnresolvedDelivery() }) }
+            items.append(ToolbarMenuAction("Review") { receipts.dismissHUD(); DictationResultView.review(receipt, model: model) })
+        }
+        items.append(ToolbarMenuAction("Dismiss", run: dismiss))
+        return (header, items)
     }
 
     /// Move a builder's items into this menu, so the mode's options sit at the
@@ -401,7 +444,7 @@ struct FloatingResultView: View {
         switch result {
         case .dictationFailure: DictationResultView(model: model, controls: controls)
         case .receipt: DictationResultView(model: model, controls: controls)
-        case .readingFailure: ReadingStoppedView(model: model)
+        case .readingFailure: ReadingStoppedView(model: model, controls: controls)
         }
     }
 }
@@ -409,27 +452,45 @@ struct FloatingResultView: View {
 /// A reading that stopped because its audio could not be read keeps the reason, Retry and
 /// Dismiss until the person does one of them. Pausing, resuming and stopping a live reading
 /// are the toolbar row's next action and More (#134 T4); editing and voices stay in Workbench.
+/// It grows from the launcher's centre like the row, so at a right-hand dock it is mirrored:
+/// the reason sits over the mark the pointer came from, and Retry and Dismiss away from it
+/// (#211 F3).
 private struct ReadingStoppedView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var controls: CaptureHUDControls
+    enum Action: Hashable { case retry, dismiss }
+    @FocusState private var focused: Action?
     var body: some View {
         if let failure = model.readingFailure { stopped(failure) }
     }
 
+    private var firstAction: Action { model.canRetryReading ? .retry : .dismiss }
+
     private func stopped(_ failure: AppModel.ReadingFailure) -> some View {
-        HStack(spacing: 10) {
+        let mirrored = controls.rowAnchor.growsLeftward
+        let reason = HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Reading stopped").font(.system(size: 12, weight: .semibold))
                 Text("Its audio could not be read.").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }.accessibilityElement(children: .combine).accessibilityLabel(failure.message).help(failure.message)
-            Spacer(minLength: 4)
-            Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
-                .accessibilityHint("Makes new audio and reads from the start")
-            Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-                .accessibilityLabel("Dismiss reading error")
-        }.padding(14).frame(width: 336, height: 64)
+        }.accessibilitySortPriority(3)
+        // Mirrored or not, VoiceOver reads the reason, then Retry, then Dismiss.
+        let retry = Button("Retry") { model.retryReading() }.controlSize(.small).disabled(!model.canRetryReading)
+            .accessibilityHint("Makes new audio and reads from the start")
+            .focused($focused, equals: .retry).accessibilitySortPriority(2).resultAction("Retry", controls)
+        let dismiss = Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+            .accessibilityLabel("Dismiss reading error")
+            .focused($focused, equals: .dismiss).accessibilitySortPriority(1).resultAction("Dismiss", controls)
+        return HStack(spacing: 10) {
+            if mirrored { dismiss; retry; Spacer(minLength: 4); reason }
+            else { reason; Spacer(minLength: 4); retry; dismiss }
+        }.padding(14).frame(width: CaptureHUDLayout.compact.width, height: CaptureHUDLayout.compact.height)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain).accessibilityLabel("Reading controls")
+            .defaultFocus($focused, firstAction)
+            .onAppear { ResultKeyboard.appeared(controls) { focused = firstAction } }
+            .onExitCommand(perform: controls.endKeyboardInteraction)
             .workbenchTheme()
     }
 }

@@ -103,6 +103,34 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertTrue(both.attentionBadge && both.stopsSoonBadge, "a background failure and the limit keep both signals")
     }
 
+    /// A background failure in a recording's last ten seconds shows both badges, the timer and the
+    /// warning, and the words name both states (#211 F4).
+    func testBothBadgesShowAndBothStatesAreNamed() {
+        let both = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true))
+        XCTAssertEqual(both.badges, [.stopsSoon, .attention])
+        XCTAssertTrue(both.description.contains("5-minute limit") && both.description.contains("Needs attention"), both.description)
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, stopsSoon: true)).badges, [.stopsSoon])
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, pendingDelivery: true)).badges, [.attention])
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(failure: true, stopsSoon: true)).badges, [], "no badges without a capture")
+        let failing = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true))
+        XCTAssertTrue(both.announces(after: failing), "a failure arriving in the last seconds is heard")
+    }
+
+    /// The level in words is VoiceOver's value, never announced (#211 F7): Quiet, Receiving sound,
+    /// or Low microphone level once the owner judges the microphone too quiet to use.
+    func testTheLevelInWordsIsTheValueAndNeverAnnounced() {
+        let quiet = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.01))
+        let sound = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.6))
+        let low = ToolbarStatus.resolve(ToolbarActivity(capture: .dictation, level: 0.01, quiet: true))
+        XCTAssertEqual([quiet.levelWords, sound.levelWords, low.levelWords], ["Quiet", "Receiving sound", "Low microphone level"])
+        XCTAssertEqual(sound.spokenValue, "Recording dictation. Receiving sound")
+        XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(capture: .meeting)).levelWords, "no words without a level sample")
+        XCTAssertNil(ToolbarStatus.resolve(ToolbarActivity(playback: true, quiet: true)).levelWords, "and none without a capture")
+        XCTAssertEqual(ToolbarStatus.resolve(ToolbarActivity(playback: true)).spokenValue, "Reading aloud")
+        XCTAssertFalse(sound.announces(after: quiet) || low.announces(after: sound) || quiet.announces(after: low),
+                       "the level and its words are never announced")
+    }
+
     /// Live work keeps one order, whatever order the host listed it in, and its words.
     func testLiveWorkHasOneOrderAndItsOwnWords() {
         let activity = ToolbarActivity(live: [.snapAndTalk, .timer, .drawing])

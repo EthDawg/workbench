@@ -139,6 +139,66 @@ enum WorkbenchControlChecks {
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
         }
+        // Reading keeps its own commands in More while another job holds the primary (#211 F6).
+        do {
+            func reading(_ primary: ToolbarOperation, _ state: ToolbarLiveState.Reading) -> [ToolbarOperation] {
+                ToolbarReadingCommands.operations(primary: primary, reading: state)
+            }
+            try check(reading(.finishDrawing, .playing) == [.pauseReading, .stopReading] && reading(.stopInserting, .paused) == [.resumeReading, .stopReading],
+                      "while drawing or an insertion holds the primary, More offers Pause reading or Resume reading, and Stop reading")
+            try check(reading(.finishDrawing, .preparing) == [.cancelReading], "and Cancel while the reading is still preparing")
+            try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
+                      "the row's own reading action is not repeated there, and no reading offers nothing")
+        }
+        // Words waiting for drawing to end lead with Stop drawing, which delivers them; Copy now
+        // is in More (#211 F5).
+        do {
+            var waiting = WorkbenchControlState(); waiting.phase = .delivering; waiting.waitingForDrawing = true; waiting.drawing = true
+            try check(waiting.live(.dictate).dictation == .waitingForDrawing && waiting.actionTitle(.dictate) == "Stop drawing"
+                      && waiting.rowAction(.dictate) == .operation(.finishDrawing), "words waiting for drawing lead with Stop drawing, not a disabled Processing…")
+            waiting.drawing = false
+            try check(waiting.actionTitle(.dictate) == "Processing…", "once drawing has ended they are a moment's processing")
+        }
+        // Keyboard entry keeps the launcher row: only the pointer's own reveal shows a waiting
+        // result's controls, and a row that Keep open brings back waits for the pointer and holds
+        // as the kept-open swap does (#211 F1, F8).
+        do {
+            let suite = "Workbench.ToolbarResultChecks." + UUID().uuidString
+            guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            func toolbar() -> CaptureHUDControls {
+                let controls = CaptureHUDControls(defaults: defaults)
+                controls.resultPending = { true }
+                controls.toolbar.activate()
+                return controls
+            }
+            let keyboard = toolbar()
+            keyboard.focusToolbar()
+            try check(keyboard.toolbar.state.tier == .revealed && !keyboard.revealsResult,
+                      "keyboard entry onto a waiting result reveals the launcher row, not the result's controls")
+            let pointer = toolbar()
+            pointer.toolbar.send(.pointerEntered)
+            try check(pointer.revealsResult, "the pointer's own reveal shows the waiting result's controls")
+            pointer.focusToolbar()
+            try check(pointer.revealsResult, "and the keyboard taken after it, by the click on the mark, keeps them")
+            let kept = toolbar()
+            kept.toolbar.send(.keepOpenChanged(true))
+            kept.suspendToolbar()
+            // The host's resize runs its update again from inside the return, before it has looked
+            // for the pointer; that update tries the kept-open swap too.
+            kept.resize = { [weak kept] in kept?.showResultIfKeptOpen() }
+            kept.activateToolbar()
+            kept.resize = nil
+            try check(kept.toolbar.state.tier == .revealed && !kept.revealsResult,
+                      "a kept-open row that comes back keeps its launcher until the host has found the pointer, even from the host's update inside the return")
+            kept.toolbar.send(.pointerEntered); kept.pointerSettled(); kept.showResultIfKeptOpen()
+            try check(!kept.revealsResult, "and while the pointer is on it the result waits")
+            kept.focusToolbar(); kept.toolbar.send(.pointerLeft); kept.showResultIfKeptOpen()
+            try check(!kept.revealsResult, "as it does while the keyboard holds the row")
+            kept.unfocusToolbar(); kept.showResultIfKeptOpen()
+            try check(kept.revealsResult, "once nothing is on it, the result takes the kept-open row's place")
+            kept.toolbar.send(.keepOpenChanged(false))
+        }
         // Persona's Shape (#134 part B): Circle, Card and Original for the copy taken as the menu
         // opens, its current look checked; a choice changes that copy and no other.
         do {
