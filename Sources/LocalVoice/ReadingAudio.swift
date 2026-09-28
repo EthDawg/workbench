@@ -235,6 +235,10 @@ final class ReadingPlayer {
     var onFinish: ((ReadingPlayer, Bool) -> Void)?
     private(set) var isPlaying = false
     private(set) var isFinished = false
+    /// Why the source could not be read: it threw, or a finished source had no
+    /// audio where it said there was. It is never read again, and the next
+    /// `tick()` reports the failure once through `onFinish`.
+    private(set) var readFailure: Error?
     /// Playing, but caught up with a Mac voice that is still rendering.
     var isWaitingForAudio: Bool { isPlaying && !advancing && !isFinished }
 
@@ -321,10 +325,15 @@ final class ReadingPlayer {
         if isPlaying { startAdvancing(from: target) }
     }
 
-    /// Keeps audio scheduled ahead of the playhead, and notices the end, or an
-    /// underrun while a Mac voice is still rendering. Call it often.
+    /// Keeps audio scheduled ahead of the playhead, and notices the end, an
+    /// underrun while a Mac voice is still rendering, or audio that could not
+    /// be read. Call it often.
     func tick() {
-        guard isPlaying, !isFinished else { return }
+        guard !isFinished else { return }
+        // Reported here, never from inside play() or seeking, so the owner
+        // learns of it once, whether the reading was playing or just paused.
+        if readFailure != nil { finish(false); return }
+        guard isPlaying else { return }
         // Sleep or a lost output can stop the engine without a configuration
         // notice; continue from the same frame rather than stall silently.
         if output == .device, !engine.isRunning { recoverOutput(); return }
@@ -357,18 +366,27 @@ final class ReadingPlayer {
         heldFrame = frame
         lastFrame = frame
         schedule(from: frame)
-        // Nothing rendered here yet: tick() starts once it exists.
-        guard scheduledEnd > frame else { return }
+        // Nothing rendered here yet: tick() starts once it exists. After a
+        // read failure, tick() ends the reading instead.
+        guard readFailure == nil, scheduledEnd > frame else { return }
         node.play()
         advancing = true
     }
 
     private func schedule(from position: AVAudioFramePosition) {
+        guard readFailure == nil else { return }
         let chunk = AVAudioFramePosition(Self.chunkSeconds * sampleRate)
         let target = min(position + AVAudioFramePosition(Self.lookaheadSeconds * sampleRate), source.availableFrames)
         while scheduledEnd < target {
-            guard let buffer = try? source.read(from: scheduledEnd, count: AVAudioFrameCount(min(chunk, target - scheduledEnd))),
-                  buffer.frameLength > 0 else { break }
+            let buffer: AVAudioPCMBuffer?
+            do { buffer = try source.read(from: scheduledEnd, count: AVAudioFrameCount(min(chunk, target - scheduledEnd))) }
+            catch { readFailure = error; return }
+            guard let buffer, buffer.frameLength > 0 else {
+                // A voice still rendering has not written this far yet: wait.
+                // A finished source never will, so that is a failure too.
+                if source.isComplete { readFailure = VoiceError.message("The reading audio ended before its expected length.") }
+                return
+            }
             node.scheduleBuffer(buffer, completionHandler: nil)
             scheduledEnd += AVAudioFramePosition(buffer.frameLength)
         }

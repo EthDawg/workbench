@@ -240,10 +240,27 @@ enum SurfaceGallery {
                                                    detail: "", file: "page-\(pages[index].route)-\(name)-\(theme).png", to: output))
             }
         }
+        if let read = pages.firstIndex(where: { $0.route == "speak" }) { pages[read].shots += try renderReadStates(to: output) }
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         let listings = menus()
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
+    }
+
+    // MARK: Read states
+
+    /// Read after a reading stopped because its audio could not be read: one error with Retry,
+    /// and the text back in the editor.
+    func renderReadStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let size = SurfaceGallery.sizes[0].size
+        let window = homeWindow(size: size)
+        defer { window.contentViewController = nil; window.close(); model.error = nil; model.speechText = "" }
+        model.speechText = "The workshop starts at nine with a short review of last week's notes. Maya walks through the revised budget."
+        model.error = AppModel.readingAudioUnreadable
+        let (rep, drawn) = try renderPage("speak", in: window)
+        return [try save(rep, id: "state-audio-unreadable", title: "Read, audio could not be read, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                         detail: "The reading stopped; the text is editable again and Retry makes new audio.",
+                         file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
     }
 
     // MARK: History states
@@ -432,6 +449,8 @@ enum SurfaceGallery {
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
                        apply: { model.error = "Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench." },
                        reset: { model.error = nil }),
+            PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
+                       apply: { model.error = AppModel.readingAudioUnreadable }, reset: { model.error = nil }),
             PanelState(id: "meeting-recording", title: "Meeting recording", detail: "A meeting recording app audio, which shows the meeting status row.", readback: readback,
                        apply: { [self] in model.meetings = recordingMeetings; try drive(recordingMeetings, start: true) },
                        reset: { [self] in try drive(recordingMeetings, start: false); model.meetings = meetings })]

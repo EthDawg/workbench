@@ -193,6 +193,25 @@ enum SpekoRenderer {
     }
 }
 
+/// Wraps the real audio and throws once a read reaches `failFrom`, like a
+/// reading whose file became unreadable. It counts reads and throws, so a
+/// retry loop or repeated error would show.
+final class FailingSource: ReadingAudioSource {
+    let inner: ReadingAudioSource
+    let failFrom: AVAudioFramePosition
+    private(set) var reads = 0
+    private(set) var failures = 0
+    init(_ inner: ReadingAudioSource, failFrom: AVAudioFramePosition) { self.inner = inner; self.failFrom = failFrom }
+    var format: AVAudioFormat { inner.format }
+    var availableFrames: AVAudioFramePosition { inner.availableFrames }
+    var isComplete: Bool { inner.isComplete }
+    func read(from frame: AVAudioFramePosition, count: AVAudioFrameCount) throws -> AVAudioPCMBuffer? {
+        reads += 1
+        if frame + AVAudioFramePosition(count) > failFrom { failures += 1; throw VoiceError.message("Synthetic read failure.") }
+        return try inner.read(from: frame, count: count)
+    }
+}
+
 @MainActor final class ReadingHarness {
     struct MeetingWork { var isBusy = false }
     var meetings = MeetingWork()
@@ -213,7 +232,8 @@ enum SpekoRenderer {
     var audioDuration = 0.0
     var playbackTime = 0.0
     var status = "Ready"
-    var error: String?
+    var error: String? { didSet { if error != nil { errorReports += 1 } } }
+    var errorReports = 0
     var speechText = "# Notes\nHello there. Read **this** with `Sources/App/Core.swift` open."
     var signature = "mac|karen|180|synthetic"
     var rate = 180.0
@@ -230,7 +250,11 @@ enum SpekoRenderer {
     var cloudRequestActive = false
     var previewStops = 0
     func stopVoicePreview() { previewStops += 1 }
-    func makeReadingPlayer(_ source: ReadingAudioSource) throws -> ReadingPlayer { try ReadingPlayer(source: source, output: .offline) }
+    /// A check can wrap the audio the player reads, to inject a read failure.
+    var sourceFault: ((ReadingAudioSource) -> ReadingAudioSource)?
+    func makeReadingPlayer(_ source: ReadingAudioSource) throws -> ReadingPlayer {
+        try ReadingPlayer(source: sourceFault?(source) ?? source, output: .offline)
+    }
     __EXACT_METHODS__
 }
 
@@ -460,8 +484,79 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         await remoteTask?.value
         try check(remote.player == nil && !remote.playing && remote.audio == nil, "A delayed remote completion cannot start playback after cancellation")
 
+        // An audio source that throws ends the reading visibly, once, and keeps
+        // the text and voice. It is not mistaken for audio still rendering.
+        let sayVoice = MacVoiceChoice.installed(MacVoice(id: "com.apple.voice.Aman", name: "Aman", language: "en-IN", quality: .compact, sayOnly: true, legacyNames: ["Aman"]))
+        func faultyReading(from frame: AVAudioFramePosition) -> (ReadingHarness, () -> FailingSource?) {
+            let harness = ReadingHarness()
+            harness.voiceChoice = sayVoice
+            var wrapped: FailingSource?
+            harness.sourceFault = { let source = FailingSource($0, failFrom: frame); wrapped = source; return source }
+            return (harness, { wrapped })
+        }
+        func playUntilStopped(_ harness: ReadingHarness, maximumFrames: Int = 16_000 * 50) throws -> (frames: Int, lastTime: Double) {
+            var frames = 0, lastTime = 0.0
+            while let player = harness.player, frames < maximumFrames {
+                lastTime = harness.playbackTime
+                _ = try player.renderOffline(4_096); frames += 4_096
+                harness.followPlayback(player)
+            }
+            return (frames, lastTime)
+        }
+        let (early, earlySource) = faultyReading(from: 0)
+        let earlyText = early.speechText
+        early.listen(); await early.readingTask?.value
+        let earlyPlayer = early.player, earlyURL = early.playingTrack?.url
+        _ = try playUntilStopped(early)
+        try check(early.player == nil && !early.playing && !early.paused && !early.rendering && early.playTimer == nil,
+                  "A source that fails before its first frame ends the reading")
+        try check(early.errorReports == 1 && early.error == ReadingHarness.readingAudioUnreadable,
+                  "The failure shows one error: \(early.errorReports) reports, \(early.error ?? "none")")
+        try check(early.speechText == earlyText && early.voiceChoice == sayVoice && early.rate == 180, "The text, voice and pace survive a failed reading")
+        try check(earlyURL != nil && early.audio == nil && !exists(earlyURL), "Unreadable audio is discarded so Retry makes it again")
+        for _ in 0..<20 { if let earlyPlayer { early.followPlayback(earlyPlayer) } }
+        try check(earlySource()?.failures == 1 && early.errorReports == 1, "No retry loop or repeated error after a failure")
+        try check(early.canRetryReading, "Retry is offered beside the failure")
+        early.sourceFault = nil
+        let rendersBefore = AudioRenderer.sayCalls.count
+        early.retryReading(); await early.readingTask?.value
+        try check(early.playing && early.error == nil && AudioRenderer.sayCalls.count == rendersBefore + 1 && early.audio?.url != earlyURL,
+                  "Retry makes new audio and plays it")
+        _ = try playUntilStopped(early)
+        try check(early.player == nil && early.status == "Finished reading." && early.error == nil && early.errorReports == 1,
+                  "Retry with a good source completes the reading")
+
+        let (late, lateSource) = faultyReading(from: 16_000 * 5)
+        late.listen(); await late.readingTask?.value
+        let (lateFrames, lateTime) = try playUntilStopped(late)
+        try check(lateFrames > 16_000 && lateTime > 0.5, "Audio before the failure plays (\(lateFrames) frames, \(lateTime) s)")
+        try check(late.player == nil && !late.playing && !late.paused && late.errorReports == 1
+                  && late.error == ReadingHarness.readingAudioUnreadable && lateSource()?.failures == 1 && late.audio == nil,
+                  "A source that fails after buffered audio ends the reading with one error")
+        late.sourceFault = nil
+        late.listen(); await late.readingTask?.value
+        try check(late.playing && late.error == nil && !late.canRetryReading, "Listen after a failure also makes new audio, and Retry goes")
+        late.stopPlayback()
+
+        // Audio a Mac voice has not rendered yet is not a failure: playback waits, then continues.
+        let waiting = ReadingHarness()
+        waiting.signature = "mac|karen|180|waiting"
+        let renderers = MacSpeechRenderer.created.count
+        waiting.listen()
+        await settle { MacSpeechRenderer.created.count == renderers + 1 }
+        let fifth = MacSpeechRenderer.created.last!
+        try fifth.deliver(seconds: 0.3)
+        await settle { waiting.playing }
+        for _ in 0..<5 { _ = try waiting.player!.renderOffline(4_096); waiting.followPlayback(waiting.player!) }
+        try check(waiting.playing && waiting.player?.isWaitingForAudio == true && waiting.error == nil && waiting.errorReports == 0,
+                  "Playback that catches up with rendering waits without an error")
+        try fifth.deliver(seconds: 0.5)
+        try fifth.complete()
+        _ = try playUntilStopped(waiting)
+        try check(waiting.status == "Finished reading." && waiting.error == nil, "A reading that waited for rendering finishes normally")
+
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote] {
+        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")
