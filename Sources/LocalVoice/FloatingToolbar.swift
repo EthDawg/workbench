@@ -242,7 +242,9 @@ struct FloatingToolbar: View {
         }
         // Work running in another tool is never a dead end: whatever the compact mark shows has
         // its finish, resume or door under Active work, worded as that tool's own label would be.
-        let active: [NSMenuItem] = ToolbarActiveWork.items(activeWorkFacts(action: action)).map { item in
+        // The timer's step as More shows it: its item performs that step and only that (#174).
+        let timerStep = stage.timerStep
+        let active: [NSMenuItem] = ToolbarActiveWork.items(activeWorkFacts(action: action, timer: timerStep.transport)).map { item in
             switch item {
             case .stopDrawing: return ToolbarMenuAction("Stop drawing") { stage.finishDrawing() }
             case .endPresentation: return ToolbarMenuAction("End presentation") { stage.endDeviceScene() }
@@ -251,7 +253,7 @@ struct FloatingToolbar: View {
             case .meetingRecovery:
                 return ToolbarMenuAction("Transcribe meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
             case .snapDraft: return ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") }
-            case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport() }
+            case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport(expected: timerStep) }
             }
         }
         if !active.isEmpty {
@@ -272,11 +274,11 @@ struct FloatingToolbar: View {
     }
 
     /// What the owners say for More's Active work section, read when More opens.
-    func activeWorkFacts(action: ToolbarNextAction) -> ToolbarActiveWork.Facts {
+    func activeWorkFacts(action: ToolbarNextAction, timer: TimerTransport? = nil) -> ToolbarActiveWork.Facts {
         let live = self.live
         return ToolbarActiveWork.Facts(mode: live.mode, nextAction: action.operation, drawing: live.drawing, presenting: live.presenting,
             persona: live.persona, meetingRecording: live.meetingRecording,
-            meetingRecovery: meetings.hasRecovery && !meetings.isBusy, snapDraft: snapModel.draft != nil, timer: stage.timerTransport)
+            meetingRecovery: meetings.hasRecovery && !meetings.isBusy, snapDraft: snapModel.draft != nil, timer: timer ?? stage.timerTransport)
     }
 
     /// The commands a live recording, narration or reading keeps besides its next action, each

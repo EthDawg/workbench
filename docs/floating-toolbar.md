@@ -172,7 +172,8 @@ commands worded as their own tool words them (`ToolbarActiveWork`): `Stop drawin
 call…` for a meeting recording saved for retry, from every tool, since Dictate's
 own options hold only its page; `Open Snap…` for an unsaved Snap capture; and the
 break timer's next transport as the timer names it, `Pause timer`,
-`Resume timer` or `Restart timer`, since Timer is not a tool. The next action is the row's own button
+`Resume timer` or `Restart timer`, since Timer is not a tool; the item performs only
+the transport it showed, for the countdown it showed it for (#174). The next action is the row's own button
 and is not repeated there, and there is no Change tool: the launcher is the one
 way to another tool. Dictate, Read and Snap are start and stop on this surface,
 so each carries one door to its page and nothing else, named as
