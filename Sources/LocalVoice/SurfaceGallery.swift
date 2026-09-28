@@ -30,7 +30,9 @@ enum SurfaceGallery {
     struct Entry: Codable { var surface: String; var label: String; var leads: String; var route: String?; var ran = false }
     struct Listing: Codable { var title: String; var lines: [String] }
     /// One state of the production toolbar host: the size its window got and the size its row wanted.
-    struct HostCheck: Codable { var id, title, mode, tier: String; var window, wants, preferred: [Double]; var measured, twinMeasured: Bool; var problems: [String]; var file: String }
+    struct HostCheck: Codable { var id, title, mode, tier: String; var window, wants, preferred: [Double]; var measured, twinMeasured: Bool; var problems: [String]; var file: String
+        /// The toolbar reached the tier this state asked for; its sizes are only compared if so.
+        var settled = true }
     struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pages: [Page]; var entries: [Entry]; var menus: [Listing] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
@@ -534,7 +536,7 @@ enum SurfaceGallery {
                 shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
                 checks.append(.init(id: id, title: title, mode: mode.title, tier: tier.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
                                     preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
-                                    problems: problems, file: file))
+                                    problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
             }
         }
         // A mode switch while the row is open changes its width with no reveal or collapse, so
@@ -544,7 +546,9 @@ enum SurfaceGallery {
             model.toolbarMode = from
             waitForToolbar(host, controls, tier: .revealed, content: content)
             model.toolbarMode = to
-            waitForToolbar(host, controls, tier: .revealed, content: content)
+            // The new width arrives by the row's own report, a turn or more later; a slow runner
+            // gets a full second of stillness before the window is read.
+            waitForToolbar(host, controls, tier: .revealed, content: content, stillFor: 1)
             settle(twin, seconds: 0.2)
             let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
             var problems: [String] = []
@@ -560,21 +564,24 @@ enum SurfaceGallery {
             shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
             checks.append(.init(id: id, title: title, mode: to.title, tier: ToolbarTier.revealed.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
                                 preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(.revealed), twinMeasured: twinControls.hasMeasured(.revealed),
-                                problems: problems, file: file))
+                                problems: problems, file: file, settled: controls.toolbar.state.tier == .revealed))
         }
         return (shots, checks)
     }
 
     /// Spins the main run loop until the toolbar reports `tier`, its frame animation has finished
-    /// and the window's size has held still for a moment, or three seconds have passed.
-    func waitForToolbar(_ host: CapturePanelController, _ controls: CaptureHUDControls, tier: ToolbarTier, content: NSView) {
+    /// and the window's size has held still for a moment (six turns of about 50 ms, or `stillFor`
+    /// seconds when given), or three seconds have passed.
+    func waitForToolbar(_ host: CapturePanelController, _ controls: CaptureHUDControls, tier: ToolbarTier, content: NSView,
+                        stillFor: TimeInterval? = nil) {
         let deadline = Date().addingTimeInterval(3)
-        var still = 0, last = host.window?.frame.size ?? .zero
-        while Date() < deadline && still < 6 {
+        var still = 0, last = host.window?.frame.size ?? .zero, since = Date()
+        while Date() < deadline && (stillFor.map { Date().timeIntervalSince(since) < $0 } ?? (still < 6)) {
             content.layoutSubtreeIfNeeded()
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
             let size = host.window?.frame.size ?? .zero
             still = controls.toolbar.state.tier == tier && !host.isAnimatingToolbar && size == last ? still + 1 : 0
+            if still == 0 { since = Date() }
             last = size
         }
     }
@@ -947,9 +954,11 @@ private struct SurfaceIndex {
 
 extension SurfaceGallery.HostCheck {
     /// The host never heard the row, the window is smaller than the row wants, or the window is
-    /// not the size the host prefers. Not settling is left out: in a local run a real pointer
-    /// inside the invisible panel can hold the row revealed.
+    /// not the size the host prefers. A state that did not reach its tier is not compared: in a
+    /// local run a real pointer inside the invisible panel can hold the row revealed, and that
+    /// window is not the resting size its twin wants. Not settling is itself reported only.
     var hasSizeProblem: Bool {
+        guard settled else { return false }
         guard window.count == 2, wants.count == 2, preferred.count == 2 else { return true }
         return !measured || window[0] + 0.5 < wants[0] || window[1] + 0.5 < wants[1]
             || abs(window[0] - preferred[0]) > 0.5 || abs(window[1] - preferred[1]) > 0.5
