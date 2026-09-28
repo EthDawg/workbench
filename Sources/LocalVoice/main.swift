@@ -729,6 +729,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try TranscriptHandoffChecks.runAll() }
         case "--check-history-library":
             try await MainActor.run { try WorkbenchHistoryChecks.run() }
+            try await HistoryChecks.run()
         case "--check-handoff-jobs":
             try await MainActor.run { try HandoffJobsChecks.run() }
         case "--check-readback-pack":

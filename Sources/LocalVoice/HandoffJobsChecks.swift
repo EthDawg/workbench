@@ -392,6 +392,62 @@ enum HandoffJobsChecks {
         try check(SkillMetadata(skill: "# No frontmatter\nworkbench-reply: inline\n") == SkillMetadata()
                   && SkillMetadata(skill: "---\nworkbench-reply: inline\n---\n") == SkillMetadata(),
                   "Workbench keys count only inside the frontmatter's metadata map")
+
+        // History: Hand off names the task it actually used, and each task lists
+        // what it was made from by reading its own frozen selection.json. An
+        // isolated pasteboard and preferences keep the person's clipboard and
+        // settings out of it.
+        let suite = "Workbench.synthetic.history." + UUID().uuidString
+        guard let isolated = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
+        defer { isolated.removePersistentDomain(forName: suite) }
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let doors = HandoffJobsModel(directory: root.appendingPathComponent("history-door"), defaults: isolated, pasteboard: pasteboard)
+        let madeFrom = try doors.prepare(sources: sources, task: "Summarize the decision.", skill: skill)
+        let newer = try doors.prepare(sources: sources, task: "A newer, different request.", skill: skill)
+        try check(doors.jobs.first?.id == newer.id && newer.id != madeFrom.id, "a different request is a newer task at the top")
+        var reported: [UUID] = []
+        try doors.handOff(sources: sources, task: "Summarize the decision.", skill: skill, provider: nil) { reported.append($0) }
+        try check(reported == [madeFrom.id] && doors.jobs.count == 2,
+                  "Hand off with identical inputs reports the earlier task it reused, not the newest one")
+        try check(pasteboard.string(forType: .string)?.contains("Task: Summarize the decision.") == true && doors.error == nil,
+                  "Copy instructions copies that task's instructions to the pasteboard it was given")
+        try doors.handOff(sources: sources, task: "A third request.", skill: skill, provider: nil) { reported.append($0) }
+        try check(reported.count == 2 && reported[1] == doors.jobs.first?.id && !Set([madeFrom.id, newer.id]).contains(reported[1]),
+                  "a changed request reports the new task it prepared")
+        try doors.handOff(sources: sources, task: "Summarize the decision.", skill: skill, provider: .codex) { reported.append($0) }
+        try check(reported.count == 2 && doors.error != nil, "a task that could not start reports nothing to reveal")
+        doors.error = nil
+
+        let inputs = doors.inputs(madeFrom)
+        try check(inputs.problem == nil && inputs.task == "Summarize the decision." && inputs.items.map(\.reference) == sources.map(\.reference)
+                  && inputs.items.map(\.title) == ["Synthetic meeting", "Synthetic Snap"] && inputs.items[0].originalText == "um " + phrase,
+                  "a task lists its frozen inputs and request from its own selection.json")
+        try check(doors.inputs(madeFrom) == inputs, "the listing is kept while selection.json is unchanged")
+        let frozenImage = inputs.items[1].images[0]
+        try check(try doors.inputImageURL(madeFrom, path: frozenImage).map { try Data(contentsOf: $0) } == image,
+                  "a frozen input image opens from the task's own folder")
+        try check(doors.inputImageURL(madeFrom, path: "../" + frozenImage) == nil && doors.inputImageURL(madeFrom, path: "selection.json") == nil
+                  && doors.inputImageURL(madeFrom, path: "inputs/not-recorded.png") == nil,
+                  "only safe image paths the task recorded are opened")
+        let selectionURL = doors.folder(madeFrom).appendingPathComponent("selection.json")
+        let frozenSelection = try Data(contentsOf: selectionURL)
+        try HandoffJobStore.write(Data("{broken".utf8), to: selectionURL)
+        try check(doors.inputs(madeFrom).problem == HandoffJobInputs.damaged && doors.inputs(madeFrom).items.isEmpty,
+                  "a damaged selection.json is reported instead of guessed at, once it changes on disk")
+        try check(try Data(contentsOf: selectionURL) == Data("{broken".utf8), "reading a damaged selection never rewrites it")
+        try FileManager.default.removeItem(at: selectionURL)
+        try check(doors.inputs(madeFrom).problem == HandoffJobInputs.missing, "a missing selection.json is reported as missing")
+        try HandoffJobStore.write(try Data(contentsOf: doors.folder(newer).appendingPathComponent("selection.json")), to: selectionURL)
+        try check(doors.inputs(madeFrom).problem == HandoffJobInputs.foreign, "another task's selection is not shown as this task's inputs")
+        try HandoffJobStore.write(frozenSelection, to: selectionURL)
+        try check(doors.inputs(madeFrom) == inputs, "the restored selection lists the same inputs again")
+        try FileManager.default.removeItem(at: doors.folder(madeFrom).appendingPathComponent(frozenImage))
+        try check(doors.inputImageURL(madeFrom, path: frozenImage) == nil && doors.inputs(madeFrom).items[1].images == [frozenImage],
+                  "a missing frozen image is unavailable while its input stays listed")
+        try check(!doors.resultAvailable(madeFrom), "a task without result.md offers no result to read or open")
+        try HandoffJobStore.write(Data("A synthetic result.".utf8), to: doors.folder(madeFrom).appendingPathComponent("result.md"))
+        try check(doors.resultAvailable(madeFrom) && doors.result(madeFrom) == "A synthetic result.", "a saved result is offered")
         print("HANDOFF_JOBS_CHECKS_OK: \(passed) checks")
     }
 }
