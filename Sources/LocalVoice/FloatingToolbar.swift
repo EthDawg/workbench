@@ -66,6 +66,8 @@ struct FloatingToolbar: View {
     @ObservedObject var promptInsertion: PromptInsertion
     @ObservedObject var meetings: MeetingModel
     @ObservedObject var snapModel: SnapModel
+    /// The clipboard receipt is its own owner: a new one must redraw the mark's status (#134 T4).
+    @ObservedObject var receipts: ClipboardReceiptModel
     let dictate: () -> Void
     let snap: () -> Void
     let snapCapture: () -> Void
@@ -283,6 +285,13 @@ struct FloatingToolbar: View {
             dictation.append(ToolbarMenuAction("Cancel") { model.cancelCurrentCapture() })
         }
         if !dictation.isEmpty { sections.append(("Dictate", dictation)) }
+        // A delivery that did not finish keeps its recovery here once its receipt has gone (#134 T5).
+        if let unresolved = model.unresolvedDelivery, FloatingResult.pending(model) != .receipt {
+            var items: [NSMenuItem] = []
+            if unresolved.offersCopy { items.append(ToolbarMenuAction("Copy again") { model.copyUnresolvedDelivery() }) }
+            items.append(ToolbarMenuAction("Dismiss") { model.dismissUnresolvedDelivery() })
+            sections.append((unresolved.title, items))
+        }
         if readback.isRecording {
             sections.append(("Snap & Talk", [ToolbarMenuAction("Cancel") { readback.cancelNarration() }]))
         }
@@ -330,7 +339,8 @@ struct WorkbenchFloatingContent: View {
             NoSpeechCueHUD(cue: cue, hold: model.holdCaptureCue)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
-                            meetings: model.meetings, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present)
+                            meetings: model.meetings, snapModel: snapModel, receipts: model.clipboardReceipt,
+                            dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present)
         }
     }
 }

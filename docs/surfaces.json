@@ -126,12 +126,28 @@
     "note": "Quality (#134 T4): the Snap & Talk narration panel's Cancel, moved into More under Snap & Talk while narration records; it keeps the screenshot. Existing contextual \"Cancel\" label inside snapAndTalk; the row's next action is Stop narration."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again",
+    "surface": "floating toolbar More menu",
+    "label": "Copy again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T4): the clipboard shelf's Copy again, first in More under the undelivered result's own title once its receipt has gone, so the compact mark's warning reaches its recovery from the toolbar. Only where it cannot lead to a second insertion, as on the shelf."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-now",
     "surface": "floating toolbar More menu",
     "label": "Copy now",
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality (#134 T4): the dictation panel's Copy now, moved into More under Dictate while finished text waits for drawing to end."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.dismiss",
+    "surface": "floating toolbar More menu",
+    "label": "Dismiss",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality (#134 T4): the clipboard shelf's Dismiss, in the same More section: the person sets the undelivered result aside; the words stay in History. Revealing or collapsing the toolbar never does this."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
