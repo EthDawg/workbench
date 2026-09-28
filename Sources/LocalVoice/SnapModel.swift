@@ -32,7 +32,7 @@ final class SnapModel: ObservableObject {
     @Published private(set) var importingScreenshots = false
     let desktop: URL
     private let trash: (URL) throws -> Void
-    /// Set when new screenshots are redirected into Snap History but macOS now
+    /// Set when new screenshots are redirected into History but macOS now
     /// saves them somewhere else, for example after a change in the Screenshot app.
     @Published private(set) var screenshotRedirectPaused = false
     let screenshotLocation: any ScreenshotLocationStore
@@ -95,7 +95,7 @@ final class SnapModel: ObservableObject {
                 }
                 preferences.set(true, forKey: Self.redirectKey)
                 startInbox()
-                notice = "New screenshots now go straight to Snap History; the menu bar refreshed once to apply it. Turn this off to restore your previous screenshot location."
+                notice = "New screenshots now go straight to History; the menu bar refreshed once to apply it. Turn this off to restore your previous screenshot location."
             } catch { notice = "Screenshots were not redirected. \(error.localizedDescription)" }
         } else {
             if screenshotLocation.location == inboxPath {
@@ -136,7 +136,7 @@ final class SnapModel: ObservableObject {
             } catch { /* Left in the folder; an identical retry only clears it. */ }
         }
         inboxSizes = sizes
-        if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to Snap History." : "\(added) new screenshots were added to Snap History." }
+        if added > 0 { refresh(); notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
     }
 
     // MARK: Desktop screenshots

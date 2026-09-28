@@ -10,7 +10,7 @@ The desktop Snap workspace owns quick crop, pen, arrow and rectangle annotations
 
 ## New screenshots off the Desktop
 
-**Keep new screenshots off the Desktop** is an explicit, reversible change to a macOS setting. It records the current macOS screenshot location, points it at `~/Pictures/Workbench Screenshots`, and asks macOS to apply it (the menu bar refreshes once). While Workbench runs, settled files that macOS marked as screen captures move from there into Snap History, each saved and read back before its file goes to the Trash. Turning it off restores the previous location unless the person has chosen another one since; a later manual change pauses collecting instead of fighting it. App Store builds omit this choice.
+**Keep new screenshots off the Desktop** is an explicit, reversible change to a macOS setting. It records the current macOS screenshot location, points it at `~/Pictures/Workbench Screenshots`, and asks macOS to apply it (the menu bar refreshes once). While Workbench runs, settled files that macOS marked as screen captures move from there into History, each saved and read back before its file goes to the Trash. Turning it off restores the previous location unless the person has chosen another one since; a later manual change pauses collecting instead of fighting it. App Store builds omit this choice.
 
 ## Ownership and preservation
 
