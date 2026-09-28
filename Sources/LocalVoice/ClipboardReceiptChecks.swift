@@ -12,11 +12,13 @@ enum ClipboardReceiptChecks {
         var clock = Date(timeIntervalSince1970: 1_000)
         let model = ClipboardReceiptModel(clipboardChangeCount: { clipboardCount }, now: { clock }, automaticallySchedules: false)
         func copied(_ count: Int) -> TextDelivery.Outcome {
-            TextDelivery.Outcome(message: "Transcript ready and copied.", clipboardChangeCount: count, wasPasted: false, destinationName: nil)
+            TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: count, wasPasted: false, destinationName: nil)
         }
         model.record(outcome: copied(10), wordCount: 6)
         try check(model.isHUDVisible && model.receipt?.isClipboardCurrent == true && model.receipt?.wordCount == 6,
                   "own copy creates visible metadata receipt")
+        try check(model.receipt?.title == "Copied" && model.receipt?.detail == "Paste with ⌘V.",
+                  "a copy's receipt reads Copied and Paste with ⌘V.")
         clock.addTimeInterval(8); model.refreshClipboardOwnership()
         try check(!model.isHUDVisible && model.receipt?.isClipboardCurrent == true,
                   "copied HUD expires but current clipboard shelf remains")
