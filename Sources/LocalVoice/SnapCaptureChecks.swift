@@ -12,9 +12,10 @@ import SwiftUI
 /// preferences file and pasteboard in a new temporary folder: nothing captures
 /// the screen, touches the clipboard or reads the person's own Snaps, and the
 /// check window is never on a display. A watchdog on its own thread ends the
-/// process, naming the step, if any step stops making progress for two
-/// minutes, so a hang fails in CI instead of holding the job (#181). It stays
-/// armed while the process exits, so this check runs in a process of its own.
+/// process if any step stops making progress for two minutes. It names the
+/// step, logs every thread's stack and aborts, so a hang fails in CI instead of
+/// holding the job (#181). It stays armed while the process exits, so this
+/// check runs in a process of its own.
 @MainActor
 enum SnapCaptureChecks {
     static func run() async throws {
@@ -26,6 +27,11 @@ enum SnapCaptureChecks {
             count += 1
             watchdog.passed(name)
         }
+        watchdog.step("launching AppKit without a Dock icon")
+        // As the surface gallery does, which renders windows reliably on the CI runners.
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.prohibited)
+        NSApp.finishLaunching()
         watchdog.step("preparing the synthetic store")
         let fm = FileManager.default
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
@@ -169,8 +175,6 @@ enum SnapCaptureChecks {
     /// draft opened, and the editor must still appear then.
     private static func checkEditorExposure(makeSnap: (String) -> SnapModel, watchdog: CheckWatchdog,
                                             check: (Bool, String) throws -> Void) async throws {
-        _ = NSApplication.shared
-        NSApp.setActivationPolicy(.prohibited)
         let sheets = SheetRequests()
         sheets.start()
         defer { sheets.stop() }
@@ -340,8 +344,8 @@ private final class OffscreenCheckWindow: NSWindow {
 /// attached, and ending it removes the record. The window's sheet, the
 /// sheet's parent and its sheet flag read from that record, so SwiftUI and the
 /// Snap page see an attached sheet while none can appear on a display. The
-/// records are locked, never assumed to be on the main thread, since AppKit can
-/// ask from any thread. The original methods return on stop.
+/// records are locked and answer only on the main thread; AppKit asking from any
+/// other thread gets its own answer. The original methods return on stop.
 private final class SheetRequests: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
@@ -384,18 +388,20 @@ private final class SheetRequests: @unchecked Sendable {
         typealias ListGetter = @convention(c) (NSWindow, Selector) -> NSArray
         typealias FlagGetter = @convention(c) (NSWindow, Selector) -> Bool
         var attachedSheet: WindowGetter?, sheetParent: WindowGetter?, sheetList: ListGetter?, isSheet: FlagGetter?
+        // Only the main thread, where SwiftUI and the check ask, sees the records.
+        // Any other thread gets AppKit's own answer.
         let readSheet: @convention(block) (NSWindow) -> NSWindow? = { [weak self] window in
-            self?.sheet(on: window) ?? attachedSheet?(window, NSSelectorFromString("attachedSheet"))
+            (Thread.isMainThread ? self?.sheet(on: window) : nil) ?? attachedSheet?(window, NSSelectorFromString("attachedSheet"))
         }
         let readParent: @convention(block) (NSWindow) -> NSWindow? = { [weak self] window in
-            self?.parent(of: window) ?? sheetParent?(window, NSSelectorFromString("sheetParent"))
+            (Thread.isMainThread ? self?.parent(of: window) : nil) ?? sheetParent?(window, NSSelectorFromString("sheetParent"))
         }
         let readList: @convention(block) (NSWindow) -> NSArray = { [weak self] window in
-            if let sheet = self?.sheet(on: window) { return [sheet] as NSArray }
+            if Thread.isMainThread, let sheet = self?.sheet(on: window) { return [sheet] as NSArray }
             return sheetList?(window, NSSelectorFromString("sheets")) ?? []
         }
         let readFlag: @convention(block) (NSWindow) -> Bool = { [weak self] window in
-            self?.parent(of: window) != nil || (isSheet?(window, NSSelectorFromString("isSheet")) ?? false)
+            (Thread.isMainThread && self?.parent(of: window) != nil) || (isSheet?(window, NSSelectorFromString("isSheet")) ?? false)
         }
         attachedSheet = replace("attachedSheet", with: readSheet).map { unsafeBitCast($0, to: WindowGetter.self) }
         sheetParent = replace("sheetParent", with: readParent).map { unsafeBitCast($0, to: WindowGetter.self) }
@@ -412,9 +418,10 @@ private final class SheetRequests: @unchecked Sendable {
 /// Ends a check that stops making progress, naming the step it stopped in and
 /// the last check that passed, so a hang fails in minutes instead of holding
 /// CI until its job limit. It waits on a thread of its own, never on the main
-/// thread or Swift's shared pool, which a hang may hold, writes its message
-/// with a plain system call and ends the process without running exit
-/// handlers that a stuck thread could block.
+/// thread or Swift's shared pool, which a hang may hold. When it fires it
+/// writes its message with plain system calls, adds a `sample` of every
+/// thread's stack to the log, and aborts, which also leaves a crash report in
+/// ~/Library/Logs/DiagnosticReports. It runs no exit handlers a stuck thread could block.
 final class CheckWatchdog: @unchecked Sendable {
     private let prefix: String
     private let context: String
@@ -424,10 +431,17 @@ final class CheckWatchdog: @unchecked Sendable {
     private var deadline: Date
     private var current = "starting"
     private var lastPassed: String?
+    /// Prepared now, so sampling a stuck process needs no Foundation call.
+    private let samplePath: [CChar]
+    private let sampleArguments: [UnsafeMutablePointer<CChar>?]
 
     init(_ prefix: String, limit: TimeInterval, context: String) {
         self.prefix = prefix; self.context = context; self.limit = limit
         deadline = Date().addingTimeInterval(limit)
+        let path = NSTemporaryDirectory() + "check-watchdog-\(getpid()).sample.txt"
+        samplePath = Array(path.utf8CString)
+        let arguments: [String] = ["/usr/bin/sample", String(getpid()), "3", "-mayDie", "-file", path]
+        sampleArguments = arguments.map { strdup($0) } + [nil]
         let thread = Thread { [self] in watch() }
         thread.name = "\(prefix) watchdog"
         thread.start()
@@ -453,10 +467,42 @@ final class CheckWatchdog: @unchecked Sendable {
         let message = lock.withLock {
             "\(prefix): timed out after \(Int(limit)) s during \(current)" + (lastPassed.map { "; last passed: \($0)" } ?? "") + " (\(context))\n"
         }
-        _ = message.withCString { write(STDERR_FILENO, $0, strlen($0)) }
+        Self.writeError(message)
         // Keep what was already printed, unless the stuck thread holds stdout.
         if ftrylockfile(stdout) == 0 { fflush(stdout); funlockfile(stdout) }
-        _exit(1)
+        Self.writeError("Every thread's stack follows, from `sample` of this process:\n")
+        sampleStacks()
+        Self.writeError("\n\(prefix): end of sample. Aborting, which leaves a crash report.\n")
+        abort()
+    }
+
+    /// Runs `sample` on this process for 3 s, gives it 30 s to finish, then copies its report to stderr.
+    private func sampleStacks() {
+        var child: pid_t = 0
+        let started = sampleArguments.withUnsafeBufferPointer { arguments in
+            posix_spawn(&child, "/usr/bin/sample", nil, nil, UnsafeMutablePointer(mutating: arguments.baseAddress), environ)
+        }
+        guard started == 0 else { Self.writeError("`sample` could not start (error \(started)).\n"); return }
+        var status: Int32 = 0, finished = false
+        for _ in 0..<300 {
+            if waitpid(child, &status, WNOHANG) == child { finished = true; break }
+            usleep(100_000)
+        }
+        if !finished { kill(child, SIGKILL); _ = waitpid(child, &status, 0); Self.writeError("`sample` did not finish in 30 s.\n") }
+        let file = samplePath.withUnsafeBufferPointer { open($0.baseAddress!, O_RDONLY) }
+        guard file >= 0 else { Self.writeError("The sample report could not be read.\n"); return }
+        var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { read(file, $0.baseAddress, $0.count) }
+            if count <= 0 { break }
+            _ = buffer.withUnsafeBytes { write(STDERR_FILENO, $0.baseAddress, count) }
+        }
+        close(file)
+        _ = samplePath.withUnsafeBufferPointer { unlink($0.baseAddress!) }
+    }
+
+    private static func writeError(_ text: String) {
+        _ = text.withCString { write(STDERR_FILENO, $0, strlen($0)) }
     }
 }
 
