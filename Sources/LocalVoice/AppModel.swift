@@ -263,8 +263,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
     var onMenuRecording: (() -> Void)?
     var onCloseMenu: (() -> Void)?
-    var onPasteLast: (() -> Void)?
-    var onPasteTranscript: ((String) -> Void)?
     var onCancelShortcut: (() -> Void)?
     var onResetShortcuts: (() -> Void)?
     var onResetPanel: (() -> Void)?
