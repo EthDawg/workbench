@@ -205,7 +205,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         // by that same call once the measurement returns.
         guard let window, !measuringToolbar else { return }
         let previousSurface = self.surface
-        let surface = FloatingToolbarSurface.resolve(enabled: model.floatingToolbarVisible || stage?.isDrawing == true || stage?.isPresenting == true || stage?.hasActivePersona == true || model.promptInsertion.running,
+        let surface = FloatingToolbarSurface.resolve(shown: model.floatingToolbarVisible, drawing: stage?.isDrawing == true,
+            presenting: stage?.isPresenting == true, persona: stage?.hasActivePersona == true, inserting: model.promptInsertion.running,
             capturingScreen: readback?.isCapturing == true || stage?.isTakingScreenshot == true || independentScreenCapture(),
             dictation: Self.showsDictation(model), narration: readback?.isRecording == true,
             reading: model.rendering || model.playing || model.paused)

@@ -4,8 +4,8 @@ import StageKit
 import ToolbarCore
 import ToolbarKit
 
-/// One window owns idle tools, dictation, and narration. Starting an operation
-/// never changes the user's choice to keep the idle toolbar visible.
+/// One window owns the tools, dictation, and narration. Starting an operation
+/// never changes the user's choice to show the toolbar.
 enum FloatingToolbarSurface: Equatable {
     case hidden, tools, dictation, narration, reading
 
@@ -15,6 +15,17 @@ enum FloatingToolbarSurface: Equatable {
         if dictation { return .dictation }
         if reading { return .reading }
         return enabled ? .tools : .hidden
+    }
+
+    /// Hide toolbar is authoritative for the tools (#155). Drawing, a presentation and
+    /// personas are deliberately not consulted: they carry on without the tools, reachable
+    /// by their keys and the menu-bar panel, and Show floating toolbar brings the tools back
+    /// with their live state. A prompt insertion keeps the tools until it ends, because its
+    /// Stop is there. Recording, processing, narration and reading keep their own surfaces.
+    static func resolve(shown: Bool, drawing: Bool, presenting: Bool, persona: Bool, inserting: Bool,
+                        capturingScreen: Bool, dictation: Bool, narration: Bool, reading: Bool) -> Self {
+        resolve(enabled: shown || inserting, capturingScreen: capturingScreen,
+                dictation: dictation, narration: narration, reading: reading)
     }
 }
 
