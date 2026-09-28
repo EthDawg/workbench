@@ -335,7 +335,11 @@ struct HistoryView: View {
     @ViewBuilder private var runningTask: some View {
         if jobs.isBusy {
             HStack(spacing: 10) {
-                Image(systemName: "hourglass").foregroundStyle(Workbench.accent).accessibilityHidden(true)
+                // The surface gallery's isolated pass draws a still symbol, so its renders repeat
+                // byte for byte; the app shows the live indicator.
+                if CommandLine.arguments.dropFirst().first == "--render-surfaces-pass" {
+                    Image(systemName: "hourglass").foregroundStyle(Workbench.accent).accessibilityHidden(true)
+                } else { ProgressView().controlSize(.small) }
                 Text("Running · " + (jobs.jobs.first(where: { $0.id == jobs.activeID })?.title ?? "Hand off task"))
                     .font(.callout.weight(.medium)).lineLimit(1)
                 Spacer()
