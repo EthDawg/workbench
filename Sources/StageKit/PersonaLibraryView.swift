@@ -153,7 +153,7 @@ struct PersonaLibraryView: View {
                                                                     set: { library.setShape($0, for: selected.id) })) {
                                 ForEach(PersonaAppearance.Shape.allCases) { Text($0.title).tag($0) }
                             }.pickerStyle(.segmented).fixedSize().disabled(library.isReadOnly)
-                                .help("Circle, Card or Original, the next time this persona is shown or placed. A card already shown keeps its look.")
+                                .help("Circle, Card or Original, the next time this persona is shown or placed. A card already shown keeps its look until you choose Update shown card.")
                             HStack {
                                 Button("Edit appearance…") { editors.open(.saved(selected)) }.disabled(library.isReadOnly)
                                 Button(role: .destructive) { removingPersona = selected } label: {
@@ -631,7 +631,7 @@ struct PersonaCardEditor: View {
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Text(session.isNew ? "Nothing is saved until you choose Add persona."
-                               : "A card already shown keeps its look. Scenes keep their existing copy until you use the persona again.")
+                               : "A card already shown keeps its look until you choose Update shown card. Scenes keep their existing copy until you use the persona again.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let failure = session.failure {
                 Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
