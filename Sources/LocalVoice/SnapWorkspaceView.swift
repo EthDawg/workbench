@@ -158,16 +158,22 @@ struct SnapWorkspaceView: View {
                 Spacer()
                 if item.edit != SnapEdit() { Image(systemName: "pencil").font(.caption).accessibilityLabel("Edited; original preserved") }
             }
-            Button { if item.archivedAt == nil { model.edit(item.id) } } label: {
+            // The image opens read-only, archived or not; Edit… is its own action.
+            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: model.store) }) {
                 SnapThumbnail(model: model, item: item).frame(height: 118).frame(maxWidth: .infinity)
-            }.buttonStyle(.plain).accessibilityLabel("Edit \(item.title)").disabled(item.archivedAt != nil)
+            }
             Text(item.title).font(.callout.weight(.semibold)).lineLimit(2).frame(height: 34, alignment: .topLeading)
             Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
             if !item.tags.isEmpty { Text(item.tags.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             HStack {
                 Button("Copy") { model.copy(item.id) }.controlSize(.small)
+                if item.archivedAt == nil {
+                    Button("Edit…") { model.edit(item.id) }.controlSize(.small).disabled(model.isBusy).accessibilityLabel("Edit \(item.title)")
+                }
                 Spacer()
                 Menu {
+                    Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: model.store)) }
+                    Divider()
                     Button("Export image…") { model.export(item.id) }
                     if item.archivedAt == nil {
                         Button("Edit…") { model.edit(item.id) }
