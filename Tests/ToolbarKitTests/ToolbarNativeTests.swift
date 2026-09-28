@@ -37,10 +37,10 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    /// The compact mark's drawn capsule: 20 points high in every state, inside the
-    /// fixed 48 × 28 target, with the shared voice trace and the timer badge fitting inside it
-    /// (#134, #209). The warning badge sits on the capsule's corner (below).
-    @MainActor func testTheCompactMarkKeepsItsTwentyPointCapsuleInEveryState() throws {
+    /// Ordinary work shares the quiet handle; recording and recovery remain visible.
+    /// Drawn bounds prove no live-tool glyph escapes the thin capsule and the hit target
+    /// stays generous. Capture badges retain their separate bounds checks below.
+    @MainActor func testTheCompactMarkDistinguishesQuietWorkFromSignalsWithoutMovingItsTarget() throws {
         _ = NSApplication.shared
         func drawn(_ status: ToolbarStatus) throws -> (width: Int, height: Int, size: NSSize) {
             let view = NSHostingView(rootView: ToolbarCompactMark(status: status).environment(\.colorScheme, .light))
@@ -58,12 +58,15 @@ final class ToolbarNativeTests: XCTestCase {
             func points(_ pixels: Set<Int>) -> Int { pixels.isEmpty ? 0 : Int((CGFloat(pixels.max()! - pixels.min()! + 1) / perPoint).rounded()) }
             return (points(columns), points(rows), view.fittingSize)
         }
-        let idle = try drawn(.idle)
-        XCTAssertEqual(idle.size, ToolbarLayout.mark)
-        XCTAssertEqual(idle.height, 20, "the idle capsule")
-        XCTAssertEqual(idle.width, 48)
+        for status in [ToolbarStatus.idle] + ToolbarActivity.Live.allCases.map({ .resolve(ToolbarActivity(live: [$0])) }) {
+            let quiet = try drawn(status)
+            XCTAssertEqual(quiet.size, ToolbarLayout.mark, status.description)
+            XCTAssertEqual(quiet.height, 8, "a quiet handle, without a tiny tool glyph: \(status.description)")
+            XCTAssertEqual(quiet.width, 48)
+        }
         for activity in [ToolbarActivity(capture: .dictation, level: 0.6), ToolbarActivity(capture: .narration, level: 0.3, stopsSoon: true),
-                         ToolbarActivity(processing: true), ToolbarActivity(live: [.timer])] {
+                         ToolbarActivity(processing: true), ToolbarActivity(playback: true), ToolbarActivity(paused: true),
+                         ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true), ToolbarActivity(unsavedCapture: true)] {
             let working = try drawn(.resolve(activity))
             XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
             XCTAssertEqual(working.height, 20, "the active capsule: \(activity)")
@@ -238,6 +241,20 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertTrue(buttons(view).isEmpty, "no control is reachable at rest but the target")
     }
 
+    @MainActor func testQuietLiveWorkRetainsItsAccessibleStatusAndRevealAction() throws {
+        _ = NSApplication.shared
+        var reveals = 0
+        let status = ToolbarStatus.resolve(ToolbarActivity(live: [.drawing, .presenting, .timer]))
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "quiet-live", tier: .resting, mode: .draw, status: status),
+                                      revealFromRest: { reveals += 1 }))
+        func all(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(all) }
+        let target = try XCTUnwrap(all(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
+        XCTAssertEqual(target.accessibilityValue() as? String, "Drawing, Presenting, Timer running")
+        XCTAssertTrue(target.accessibilityPerformPress())
+        XCTAssertEqual(reveals, 1)
+        XCTAssertEqual(view.fittingSize, ToolbarLayout.mark)
+    }
+
     /// A real window with the row in it, invisible and taking no pointer, for pressing its
     /// controls through their own mouse handling.
     @MainActor private func shown<V: View>(_ root: V) -> (NSPanel, NSHostingView<V>) {
@@ -404,7 +421,11 @@ final class ToolbarNativeTests: XCTestCase {
             XCTAssertEqual(ToolbarRevealVisuals.progress(viewportHeight: row, rowHeight: row), 1)
             let halfway = ToolbarRevealVisuals.progress(viewportHeight: (28 + row) / 2, rowHeight: row)
             XCTAssertEqual(halfway, 0.5, accuracy: 0.001)
-            XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: halfway, rowHeight: row), (20 + row) / 2)
+            for (indicator, rest) in [(ToolbarStatus.Indicator.idle, CGFloat(8)), (.live(.presenting), 8), (.capture, 20), (.failure, 20)] {
+                XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: 0, rowHeight: row, indicator: indicator), rest)
+                XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: halfway, rowHeight: row, indicator: indicator), (rest + row) / 2)
+                XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: 1, rowHeight: row, indicator: indicator), row)
+            }
         }
     }
 

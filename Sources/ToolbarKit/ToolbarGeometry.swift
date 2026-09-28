@@ -9,8 +9,15 @@ import ToolbarCore
 public enum ToolbarLayout {
     /// The compact rest: its pointer target, and the whole resting window.
     public static let mark = NSSize(width: 48, height: 28)
-    /// The visible capsule in every resting state, inside the larger pointer target.
-    public static let markCapsule = NSSize(width: 48, height: 20)
+    /// The quiet handle, inside the larger pointer target. Tool identity appears on reveal.
+    public static let markCapsule = NSSize(width: 48, height: 8)
+    /// Make room for a recording, transport or recovery signal without moving the target.
+    static func restingCapsuleHeight(for indicator: ToolbarStatus.Indicator) -> CGFloat {
+        switch indicator {
+        case .idle, .live: return markCapsule.height
+        default: return 20
+        }
+    }
     /// The box for a resting status glyph or voice signal.
     public static let statusHeight: CGFloat = 12
     /// A badge on the capture signal or the launcher: a fixed square, whatever its symbol's metrics.
