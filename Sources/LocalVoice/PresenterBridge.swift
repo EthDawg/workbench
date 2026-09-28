@@ -256,9 +256,9 @@ final class PresenterModel: ObservableObject {
         case "busy": "Finish the current recording, keyboard practice, switch or resource edit, then try again."
         case "permission": "Open this site in its Chrome profile and update the destination to allow access again."
         case "ambiguous": "Several tabs match. Open the right tab and update this destination in the Workbench extension."
-        case "saveFailed": "The resource could not be saved. Check Saved resources in Workbench."
+        case "saveFailed": "The resource could not be saved. Check Library in Workbench."
         case "duplicateProfile": "Two Chrome connections share a profile identity. Close the copied connection and reconnect the intended profile."
-        case "capacity": "The Chrome destination list is too large. Remove unused destinations or shorten their saved addresses in Saved resources."
+        case "capacity": "The Chrome destination list is too large. Remove unused destinations or shorten their saved addresses in Library."
         case "changed": "The tab changed while switching. Open the right tab and update its destination in the Workbench extension."
         default: "The switch could not be confirmed. Open the destination’s Workbench extension and reconnect it."
         }

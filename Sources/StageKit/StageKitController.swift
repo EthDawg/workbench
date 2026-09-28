@@ -338,7 +338,7 @@ private struct PhotoBackdropChooser: View {
                             description: Text("The scene library could not be read. Its original files are preserved. You can still save a separate copy of this photo."))
                     } else if model.scenes.isEmpty {
                         ContentUnavailableView("Prepare a scene first", systemImage: "rectangle.on.rectangle",
-                            description: Text("Create a scene in Present a device, then return to this photo. Choosing a backdrop never creates a duplicate scene."))
+                            description: Text("Create a scene in Present, then return to this photo. Choosing a backdrop never creates a duplicate scene."))
                     } else {
                         List(selection: $sceneID) {
                             ForEach(model.scenes) { scene in

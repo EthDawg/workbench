@@ -79,12 +79,12 @@ enum SpekoKeychain {
         return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
     static func read() throws -> String {
-        guard !surfacePass else { throw VoiceError.message("Add your Speko API key in Read aloud first.") }
+        guard !surfacePass else { throw VoiceError.message("Add your Speko API key on the Read page first.") }
         var query = query; query[kSecReturnData as String] = true
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data, let key = String(data: data, encoding: .utf8), !key.isEmpty else {
-            throw VoiceError.message(status == errSecItemNotFound ? "Add your Speko API key in Read aloud first." : "Could not read the Speko key. Unlock Keychain and try again.")
+            throw VoiceError.message(status == errSecItemNotFound ? "Add your Speko API key on the Read page first." : "Could not read the Speko key. Unlock Keychain and try again.")
         }
         return key
     }

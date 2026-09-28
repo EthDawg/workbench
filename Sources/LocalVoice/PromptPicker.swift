@@ -12,7 +12,7 @@ extension DemoResource {
     }
 }
 
-/// The prompts one picker shows, frozen when it opens (#159). Saved Resources
+/// The prompts one picker shows, frozen when it opens (#159). Library
 /// stays the store. Favourites come first, then every other prompt, each in
 /// one place; search and one optional Product or Persona filter narrow that
 /// same list, and nothing opens a submenu.
@@ -366,9 +366,9 @@ struct PromptPickerView: View {
     private var emptyLibrary: some View {
         VStack(alignment: .leading, spacing: 8 * scale) {
             Text("No saved prompts yet.").font(.system(size: 13 * scale, weight: .medium))
-            Text("Save a prompt in Saved resources, then choose it here.")
+            Text("Save a prompt in Library, then choose it here.")
                 .font(.system(size: 11 * scale)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Button("Open Saved resources…") { model.openLibrary() }.font(.system(size: 12 * scale))
+            Button("Open Library…") { model.openLibrary() }.font(.system(size: 12 * scale))
         }.padding(12 * scale).frame(maxWidth: .infinity, alignment: .leading)
     }
 

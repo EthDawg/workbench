@@ -496,6 +496,125 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(('Snap & Talk', 'snap'), (entries['quick-panel.row.snap']['label'], entries['quick-panel.row.snap']['case']))
         self.assertEqual(3, len(entries))  # No second entry for each row's Text(tool.title).
 
+    def test_page_record_sections_are_doors_to_their_routes(self):
+        home = self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("settings", "Settings", "gear")]
+          static let sections: [(id: String, page: String, title: String)] = [("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard")]
+          static let subpages: [(id: String, page: String, title: String)] = [("meeting", "dictate", "Transcribe meeting or call")]
+        }''')
+        entries = {e['id']: e for e in self.entries()}
+        keyboard = entries['LocalVoice.WorkbenchHome.WorkbenchHome.section.shortcuts']
+        self.assertEqual(('page sections', 'Keyboard', 'shortcuts'), (keyboard['surface'], keyboard['label'], keyboard['page']))
+        self.assertEqual('General', entries['LocalVoice.WorkbenchHome.WorkbenchHome.section.settings']['label'])
+        self.assertEqual('settings', entries['LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.settings']['page'])
+        self.assertNotIn('Transcribe meeting or call', self.labels(), 'a subpage has no control of its own')
+        before = self.registry()
+        home.write_text(home.read_text().replace('("shortcuts", "settings", "Keyboard")]', '("shortcuts", "settings", "Keyboard"), ("models", "settings", "Models")]'))
+        self.assertIn('Unregistered entry on page sections: "Models".', '\n'.join(self.errors(before)))
+
+    def test_menu_page_items_take_their_names_from_the_page_record(self):
+        home = self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("readback", "Snap & Talk", "x"), ("settings", "Settings", "y")]
+          static let sections: [(id: String, page: String, title: String)] = [("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard")]
+          static let subpages: [(id: String, page: String, title: String)] = [("meeting", "dictate", "Transcribe meeting or call")]
+        }''')
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() {
+            appMenu.addItem(pageItem("settings", more: true, key: ",")); appMenu.addItem(pageItem("shortcuts", more: true))
+            menu.addItem(pageItem("readback")); menu.addItem(pageItem("meeting", more: true))
+          }
+          private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+            NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+          }
+        }''')
+        items = {e['page']: e['label'] for e in self.entries() if e['surface'] == 'app menu bar'}
+        self.assertEqual({'settings': 'Settings…', 'shortcuts': 'Keyboard…', 'readback': 'Snap & Talk',
+                          'meeting': 'Transcribe meeting or call…'}, items)
+        before = self.registry()
+        home.write_text(home.read_text().replace('"Snap & Talk", "x"', '"Snap & Talk sessions", "x"'))
+        self.assertIn('Changed entry on app menu bar: "Snap & Talk sessions".', '\n'.join(self.errors(before)))
+
+    def test_a_menu_door_that_names_its_page_differently_is_drift(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("readback", "Snap & Talk", "x"), ("history", "History", "y"), ("settings", "Settings", "z")]
+          static let sections: [(id: String, page: String, title: String)] = [("settings", "settings", "General"), ("shortcuts", "settings", "Keyboard")]
+        }''')
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() {
+            appMenu.addItem(withTitle: "Check for Updates…", action: #selector(showUpdates), keyEquivalent: "")
+            appMenu.addItem(withTitle: "Keyboard shortcuts…", action: #selector(showShortcuts), keyEquivalent: "")
+            appMenu.addItem(pageItem("settings", more: true, key: ","))
+            menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
+            menu.addItem(withTitle: "History…", action: #selector(showHistory), keyEquivalent: "")
+            menu.addItem(withTitle: "Draw menu", action: #selector(showAnnotationMenu), keyEquivalent: "")
+            menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+          }
+          private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+            NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+          }
+          @objc func showUpdates() { showSettings(); checkForUpdates() }
+          @objc func showSettings() { model.page = "settings"; showWindow() }
+          @objc func showShortcuts() { navigate("shortcuts") }
+          @objc func showReadback() { model.page = "readback"; showWindow() }
+          @objc func showHistory() { model.openHistory(); showWindow() }
+          @objc func showAnnotationMenu() { guard let button else { model.page = "annotate"; return }; show(button) }
+        }''')
+        pages = {e['label']: e.get('page') for e in self.entries() if e['surface'] == 'app menu bar'}
+        self.assertEqual({'Check for Updates…': None, 'Keyboard shortcuts…': 'shortcuts', 'Settings…': 'settings',
+                          'Snap & Talk sessions': 'readback', 'History…': 'history', 'Draw menu': None, 'Close Window': None}, pages)
+        errors = '\n'.join(self.errors())
+        self.assertIn('Menu name drift on app menu bar: "Snap & Talk sessions" opens Snap & Talk (readback)', errors)
+        self.assertIn('Menu name drift on app menu bar: "Keyboard shortcuts…" opens Keyboard (shortcuts)', errors)
+        self.assertEqual(2, errors.count('Menu name drift'), 'History… adds only the ellipsis; the others are actions')
+
+    def test_a_subpage_door_is_named_from_the_record_too(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          static let navItems: [(id: String, title: String, symbol: String)] = [("dictate", "Dictate", "mic")]
+          static let subpages: [(id: String, page: String, title: String)] = [("meeting", "dictate", "Transcribe meeting or call")]
+        }''')
+        main = self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() { menu.addItem(withTitle: "Transcribe a meeting or call…", action: #selector(showMeeting), keyEquivalent: "") }
+          @objc func showMeeting() { model.page = "meeting"; showWindow() }
+        }''')
+        registry, names = self.registry(), check.Tree(self.root).page_names()
+        self.assertEqual('Transcribe meeting or call', names['meeting'])
+        self.assertIn('Menu name drift on app menu bar: "Transcribe a meeting or call…" opens Transcribe meeting or call (meeting)',
+                      '\n'.join(check.compare(self.entries(), registry, names)))
+        main.write_text(main.read_text().replace('"Transcribe a meeting or call…"', '"Transcribe meeting or call…"'))
+        self.assertNotIn('Menu name drift', '\n'.join(check.compare(self.entries(), self.registry(), names)))
+
+    def test_a_hand_written_item_cannot_open_a_page_through_open_page(self):
+        self.write('LocalVoice/main.swift', '''class AppDelegate {
+          func makeMainMenu() { menu.addItem(pageItem("history")); menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(openPage(_:)), keyEquivalent: "") }
+          private func pageItem(_ route: String, more: Bool = false, key: String = "") -> NSMenuItem {
+            NSMenuItem(title: WorkbenchHome.name(of: route) + (more ? "…" : ""), action: #selector(openPage(_:)), keyEquivalent: key)
+          }
+        }''')
+        with self.assertRaisesRegex(ValueError, 'opens a page through openPage by hand'):
+            self.entries()
+        # A qualified or bare selector names the same method.
+        for selector in ('AppDelegate.openPage(_:)', 'self.openPage', 'openPage'):
+            self.write('LocalVoice/main.swift', f'''class AppDelegate {{
+              func makeMainMenu() {{ menu.addItem(withTitle: "History", action: #selector({selector}), keyEquivalent: "") }}
+            }}''')
+            with self.assertRaisesRegex(ValueError, 'opens a page through openPage by hand', msg=selector):
+                self.entries()
+
+    def test_selector_names_its_method_however_it_is_written(self):
+        for text, name in [('#selector(openPage(_:))', 'openPage'), ('#selector(AppDelegate.openPage(_:))', 'openPage'),
+                           ('#selector(self.openPage)', 'openPage'), ('#selector(NSApplication.hide(_:))', 'hide'),
+                           ('#selector(showSettings)', 'showSettings'), ('nil', None)]:
+            self.assertEqual(name, check.selector_name(check.lex(text)), text)
+
+    def test_the_keyboard_section_is_the_catalogue_editor(self):
+        self.write('LocalVoice/WorkbenchHome.swift', '''struct WorkbenchHome: View {
+          private var settings: some View { KeyboardCoachView(model: keyboard); Toggle("Open Workbench at login", isOn: $x) }
+        }''')
+        self.write('LocalVoice/KeyboardCoach.swift', '''struct KeyboardCoachView: View {
+          var body: some View { Button("Record shortcut") {}; Button("Practice") {} }
+        }''')
+        self.assertEqual(['Open Workbench at login'], [e['label'] for e in self.entries() if e['surface'] == 'settings page'])
+
     def test_voice_and_stage_shortcuts_have_stable_ids(self):
         self.write('LocalVoice/main.swift', '''class AppDelegate {
           func voiceShortcutEntries() -> [ShortcutEntry] { [(UInt32(1), "Dictate"), (UInt32(8), "New action")].map { id, title in entry(id, title) } }

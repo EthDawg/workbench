@@ -87,7 +87,7 @@ A prompt insertion keeps the tools until it ends, because its Stop is there.
 Recording, processing, narration and reading keep their own controls whatever the
 choice (`FloatingToolbarSurface.resolve`, checked by `--check-floating-toolbar`).
 
-Saved Prompts reads the existing Saved Resources library. Favourite, Product and
+Saved Prompts reads the existing Library. Favourite, Product and
 Persona groupings do not create another store. The Prompts accessory and the
 glyph menu's Saved Prompts… open one picker: a search field, favourites and then
 every other prompt once, and one optional Product or Persona filter that narrows

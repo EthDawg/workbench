@@ -16,7 +16,7 @@ Make frequent Mac tasks easy to start, understand and leave. Dictate, Snap, Pers
 | Explain a browser demo | Browser owns page input; explicit Workbench overlay edit mode | Annotation and saved persona, move/size/lock/hide |
 | Hear a draft | Reading engine, not microphone capture | Read, pause, resume, stop, export |
 | Hear a selection from another Mac app | That app and macOS Services own the explicit selection | Open a review draft; keep or replace an existing reading; wait for Listen |
-| Hear a saved transcript or saved text | History and Saved resources own the item | Read aloud opens it in Read through the same review as a selection; Keep current or Replace reading; wait for Listen |
+| Hear a saved transcript or saved text | History and Library own the item | Read aloud opens it in Read through the same review as a selection; Keep current or Replace reading; wait for Listen |
 | Narrate a screen for later slides | Display under the pointer, then Mac microphone | Capture once with the pointer, retain linked audio/transcripts, order and revise sections |
 | Keep a useful screen capture | Explicit region/window/display or imported image | Crop, annotate, copy and save in canonical Snap History; retain the original and avoid Desktop clutter |
 | Transcribe a meeting or Mac-routed call | Explicit selected Mac app audio and optional current microphone | Offer only when enabled, record only after Start, retain recovery audio and save a typed transcript |
@@ -35,7 +35,7 @@ Sources: [iPhone dictation](https://support.apple.com/en-gb/guide/iphone/iph2c06
 | Surface | Activation | Owns | Closing/focus |
 | --- | --- | --- | --- |
 | App window | Open app/menu/configured shortcut | Drafts, history, models, settings, scenes/personas, keyboard practice | Ordinary editing focus; close does not quit or delete saved work |
-| Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read aloud; Keep current or Replace reading resolves a conflict; neither starts playback |
+| Selected-text Service | Services menu while another app exposes selected plain text | One pending reading import, never surrounding content or clipboard fallback | Opens Read; Keep current or Replace reading resolves a conflict; neither starts playback |
 | Snap & Talk editor | App navigation; dedicated global shortcut captures outside it | User-chosen session folder, ordered screenshots, narration and recovery | Closing or switching sessions does not delete work; queued transcription resumes from saved audio |
 | Snap workspace | App navigation and explicit capture actions | Unsaved crop/annotations, searchable local history, reversible archive and common selections | Cancel keeps history unchanged; saved originals remain editable |
 | Persona workspace | Independent app navigation or Persona preparation action | Existing library and overlay preparation | Show acts immediately; Hide retains prepared arrangement, End releases live copies |
@@ -60,7 +60,7 @@ Capture images open one read-only preview: Snap cards and History rows, archived
 
 Creating a session first reads the bundled deck skill from the installed app's Resources directory (or the executable-adjacent resource bundle for command-line development). A missing or unreadable skill returns a reinstall message before creating any session files; it must not invoke SwiftPM's fatal resource-bundle accessor. Packaging runs `--check-readback-resources` from the built app to create and reopen a disposable session and compare the skill bytes.
 
-New sessions default to the neutral deck skill, which supports an explicitly supplied `template.pptx`. **Packs** connects optional private GitHub content using the [private-pack contract](private-packs.md). Snap & Talk offers only compatible installed skills and remembers the new-session choice. Each new session snapshots the skill's complete directory and immutable source/version provenance. Company artwork and helpers are maintained in their private pack repository; the public app contains the generic loader and neutral skill. The existing Hand off action uses the session's complete payload; folder access and prompt submission remain explicit.
+New sessions default to the neutral deck skill, which supports an explicitly supplied `template.pptx`. **Library → Packs** connects optional private GitHub content using the [private-pack contract](private-packs.md). Snap & Talk offers only compatible installed skills and remembers the new-session choice. Each new session snapshots the skill's complete directory and immutable source/version provenance. Company artwork and helpers are maintained in their private pack repository; the public app contains the generic loader and neutral skill. The existing Hand off action uses the session's complete payload; folder access and prompt submission remain explicit.
 
 `PrivatePackKit.PackStore` owns edition-specific repository downloads; `ReadbackSkillPackStore` retains compatibility with older installed packs and session snapshots. `skill-pack.json` is the immutable session provenance record; `session.json` retains its existing schema. New sessions snapshot the selected skill before publication. Updating or removing a pack, changing the future-session skill, reopening, or updating Workbench never rewrites old/custom sessions. A missing optional pack cannot break neutral creation. If an explicitly selected skill is unavailable, creation stops before making files and offers repair through Packs or Neutral. Packaging runs `--check-readback-pack` against the transformed Preview and final extracted production archive using temporary preferences and sessions.
 
@@ -86,7 +86,7 @@ The selected-text Service preserves the supplied string exactly, including white
 
 ## Saved-resource import review
 
-Saved resources → Library → Import library opens a review before changing saved data. Show New, Changed and Unchanged counts, unavailable incoming file references, and an explicit note that files are not bundled. Selecting a changed row exposes both versions of its name, kind, product, persona, text/path, notes and favorite state. Keep mine is the default; Use incoming selects that record for replacement. New records are added on Apply import. Keep library completes a no-op review; Cancel discards the review.
+Library → Resources → More → Import library… opens a review before changing saved data. Show New, Changed and Unchanged counts, unavailable incoming file references, and an explicit note that files are not bundled. Selecting a changed row exposes both versions of its name, kind, product, persona, text/path, notes and favorite state. Keep mine is the default; Use incoming selects that record for replacement. New records are added on Apply import. Keep library completes a no-op review; Cancel discards the review.
 
 Apply commits all chosen changes together. Invalid, unsupported, oversized or duplicate-ID input cannot mutate the library. A failed save retains review choices for retry. A changed saved file blocks Apply; Review again reloads it and resets decisions. Export/import do not share browser-profile bindings or security bookmarks. Retain local attachments on a metadata-only update of the same destination; changing its path/URL removes the old attachment. Missing files remain references with Locate file recovery.
 
@@ -146,7 +146,7 @@ Public Workbench, internal Workbench Preview and a local source build are distin
 
 ## Scope
 
-The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Saved resources. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
+The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Library. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
 
 The current source includes contextual presentation controls, one persistent floating toolbar, independent Persona and Snap, shared selected history, optional bounded assistant tasks and explicit meeting recording. [Issue #112](https://github.com/EthDawg/workbench/issues/112) owns combined validation; earlier usability studies are historical evidence. Public downloads identify production Workbench. Preview is internal, and iOS/iPadOS/Chrome development remains paused.
 
@@ -189,7 +189,7 @@ An enabled animated starter plays in the visible, active Mac scene editor. **Pau
 
 ## Backdrop editing contract
 
-Within Present a device, **Change backdrop…** previews a replacement in the existing composition. Apply patches only the image and crop; Cancel leaves the saved archive and files untouched. The same operation repairs missing images. This remains scene preparation. Persistent wallpaper is a separate accepted product direction, with its current/proposed boundaries and lifecycle in the [visual-experience contract](../site/handbook/contract.json). See [the comparison, decisions and test contract](background-management.md).
+Within Present, **Change backdrop…** previews a replacement in the existing composition. Apply patches only the image and crop; Cancel leaves the saved archive and files untouched. The same operation repairs missing images. This remains scene preparation. Persistent wallpaper is a separate accepted product direction, with its current/proposed boundaries and lifecycle in the [visual-experience contract](../site/handbook/contract.json). See [the comparison, decisions and test contract](background-management.md).
 
 ## Optional background motion
 

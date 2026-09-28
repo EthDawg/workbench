@@ -15,7 +15,7 @@ struct ClipboardReceipt: Identifiable, Equatable {
     /// to paste. An uncertain destination must not encourage duplicate insertion.
     var canSuggestPaste: Bool
     /// What was copied, so Review opens where it is kept: History for a
-    /// transcript, Saved resources for a prompt.
+    /// transcript, Library for a prompt.
     var source: Source = .transcript
     enum Source: Equatable { case transcript, prompt }
 }

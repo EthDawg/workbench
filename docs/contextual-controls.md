@@ -9,7 +9,7 @@ The snapshots below record the earlier compact menu and capture controls. Their 
 ![Light controls](assets/contextual-controls/light.png)
 ![Dark controls](assets/contextual-controls/dark.png)
 
-The native Annotate menu is available in the application menu bar, the status icon’s right-click menu and the compact Tools action. It refreshes selected tools, ink, boards, undo/redo and actual configured shortcuts each time it opens. Finish Drawing keeps marks and releases input. These menus share the existing annotation owner and shortcut registrations.
+The native Draw menu is available in the application menu bar, the status icon’s right-click menu and the compact Tools action. It refreshes selected tools, ink, boards, undo/redo and actual configured shortcuts each time it opens. Finish Drawing keeps marks and releases input. These menus share the existing annotation owner and shortcut registrations.
 
 A failed audio-only capture offers Retry transcription and Record again. Starting fresh moves the whole prior recovery folder into private Saved recordings before opening a new capture slot. The old WAV stays available for import; the current text draft is unchanged. A failed recognized-text save still blocks new capture until Retry saving succeeds. Invalid imports, changed metadata and unsafe files never silently replace recovery.
 
