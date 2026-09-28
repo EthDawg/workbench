@@ -457,7 +457,7 @@ enum TranscriptHandoffStore {
         return """
         # \(manifest.title)
 
-        This is a portable Workbench handoff folder, created from transcripts you selected in Recent transcriptions.
+        This is a portable Workbench handoff folder, created from transcripts you selected in Workbench History.
 
         - `\(manifest.skillEntryPoint)` is the single task entry point: the \(manifest.skill.name) skill, pack \(manifest.skill.id) version \(manifest.skill.version).
         - `\(TranscriptHandoffStore.manifestName)` is the authoritative typed record of this handoff: the selected transcripts with their original Workbench ids and capture times, both wordings, the skill and any included evidence.

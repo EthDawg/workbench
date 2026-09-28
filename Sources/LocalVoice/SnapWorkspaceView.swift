@@ -6,8 +6,8 @@ struct SnapWorkspaceView: View {
     @ObservedObject var model: SnapModel
     @Binding var selectedIDs: Set<UUID>
     var savedSelectionID: UUID?
-    var selectionControls = AnyView(EmptyView())
-    var onHandOff: () -> Void = {}
+    /// The shared selection owner's problem, such as a selection that could not be saved.
+    var selectionProblem: String?
     var onAddToNarratedSession: ([UUID]) -> Void = { _ in }
     var onOrganiseHandOff: (String) -> Void = { _ in }
     @State private var reviewingOrganization = false
@@ -47,8 +47,8 @@ struct SnapWorkspaceView: View {
             Divider()
             HStack {
                 TextField("Search titles, notes and tags", text: $model.search).textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Search Snap History")
-                Picker("History", selection: $model.showingArchived) { Text("History").tag(false); Text("Archived").tag(true) }
+                    .accessibilityLabel("Search Snaps")
+                Picker("Show", selection: $model.showingArchived) { Text("Snaps").tag(false); Text("Archived").tag(true) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 175)
             }
             if !model.problems.isEmpty {
@@ -73,14 +73,13 @@ struct SnapWorkspaceView: View {
                 }
             }
             Divider()
-            selectionControls
             ViewThatFits(in: .horizontal) {
                 HStack { selectionSummary; Spacer(); selectionActions }
                 VStack(alignment: .leading, spacing: 8) { selectionSummary; selectionActions }
             }
         }.padding(24)
             .sheet(item: $model.draft) { draft in SnapEditorView(model: model, draft: draft) }
-            .confirmationDialog("Import \(importCandidates.count) Desktop screenshot\(importCandidates.count == 1 ? "" : "s") into Snap History?",
+            .confirmationDialog("Import \(importCandidates.count) Desktop screenshot\(importCandidates.count == 1 ? "" : "s") into History?",
                                 isPresented: Binding(get: { !importCandidates.isEmpty }, set: { if !$0 { importCandidates = [] } })) {
                 Button("Import and Move Originals to Trash") {
                     let files = importCandidates; importCandidates = []
@@ -91,7 +90,7 @@ struct SnapWorkspaceView: View {
                 }
                 Button("Cancel", role: .cancel) { importCandidates = [] }
             } message: {
-                Text("Only files macOS marked as screenshots are included. Each is saved in Snap History with its original date before its file moves to the Trash, where you can restore it.")
+                Text("Only files macOS marked as screenshots are included. Each is saved in History with its original date before its file moves to the Trash, where you can restore it.")
             }
             .sheet(isPresented: $reviewingOrganization) {
                 SnapOrganizationView(model: model, selectedIDs: selectedIDs, savedSelectionID: savedSelectionID,
@@ -103,7 +102,7 @@ struct SnapWorkspaceView: View {
 
     private var emptyTitle: String {
         if !model.search.isEmpty { return "No matching Snaps" }
-        return model.showingArchived ? "Nothing archived" : "Your Snap History starts here"
+        return model.showingArchived ? "Nothing archived" : "Your Snaps start here"
     }
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -120,8 +119,9 @@ struct SnapWorkspaceView: View {
                 Button("Exclude \(archived.count) archived from selection") { selectedIDs.subtract(archived) }.font(.caption)
             }
             if !missing.isEmpty || !archived.isEmpty {
-                Text("Other selected evidence stays selected. Use Update to change a saved selection.").font(.caption2).foregroundStyle(.secondary)
+                Text("Other selected evidence stays selected. Use Update in History to change a saved selection.").font(.caption2).foregroundStyle(.secondary)
             }
+            if let selectionProblem { Text(selectionProblem).foregroundStyle(.red).font(.caption) }
         }
     }
     private var selectionActions: some View {
@@ -129,7 +129,6 @@ struct SnapWorkspaceView: View {
             Button("Select visible") { selectedIDs.formUnion(model.visibleItems.map(\.id)) }.disabled(model.visibleItems.isEmpty)
             Button("Clear") { selectedIDs.removeAll() }.disabled(selectedIDs.isEmpty)
             Menu("Use selected") {
-                Button("Hand off…", action: onHandOff)
                 Button("Add to Snap & Talk") { onAddToNarratedSession(Array(selectedIDs)) }
                 Button("Organise…") { reviewingOrganization = true }
                 Divider()
@@ -169,7 +168,7 @@ struct SnapWorkspaceView: View {
     }
 }
 
-private struct SnapThumbnail: View {
+struct SnapThumbnail: View {
     let model: SnapModel
     let item: SnapItem
     @State private var image: NSImage?

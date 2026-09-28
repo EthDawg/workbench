@@ -48,7 +48,7 @@ struct SnapEditorView: View {
             }
             if let notice = model.notice { Text(notice).font(.caption).foregroundStyle(.secondary).lineLimit(3).help(notice) }
             HStack {
-                Text("Saved locally in Snap History.").font(.caption).foregroundStyle(.secondary)
+                Text("Saved locally in History.").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Save") { save(copy: false) }.keyboardShortcut("s", modifiers: .command)
                 Button("Save & Copy") { save(copy: true) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)

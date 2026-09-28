@@ -293,13 +293,13 @@ final class MeetingModel: ObservableObject {
         let processor = MeetingProcessor(session: session, transcribe: transcribe, commit: { [weak self] transcript, purpose, notes in
             guard let self else { throw CancellationError() }
             try self.check(token)
-            guard let save = self.saveTranscript else { throw MeetingError.message("Recent transcripts is not ready to save this recording. Its original audio was kept.") }
+            guard let save = self.saveTranscript else { throw MeetingError.message("History is not ready to save this recording. Its original audio was kept.") }
             self.pendingTranscriptNotes = notes
             try save(transcript, purpose)
         }, isCurrent: { [weak self] in self?.generation == token })
         let result = try await processor.run()
         pendingTranscriptNotes = result.notes
-        notice = ([result.committed ? "Saved to Recent transcripts." : "Original audio was kept."] + result.notes).joined(separator: " ")
+        notice = ([result.committed ? "Saved to History." : "Original audio was kept."] + result.notes).joined(separator: " ")
         elapsed = result.manifest.seconds
     }
 

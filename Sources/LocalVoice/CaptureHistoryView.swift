@@ -22,7 +22,7 @@ struct CaptureHistoryView: View {
     var compact: Bool
     @State private var query = ""
     @State private var original: Transcript?
-    @State private var removal: (transcript: Transcript, includesRecording: Bool)?
+    @State private var removal: TranscriptRemoval?
     @State private var details: Transcript?
     @State private var selecting = false
 
@@ -30,7 +30,6 @@ struct CaptureHistoryView: View {
         self.model = model; self.library = model.historyLibrary; self.compact = compact
     }
     private var matches: [Transcript] { library.matching(model.history, query: query) }
-    private var removalIncludesRecording: Bool { removal?.includesRecording == true }
     private var selectedIDs: Set<UUID> { Set(library.selected.filter { $0.kind == .transcript }.map(\.id)) }
     private var missingIDs: Set<UUID> { selectedIDs.subtracting(Set(model.history.map(\.id))) }
     private var hiddenCount: Int { selectedIDs.subtracting(Set(matches.map(\.id))).count - missingIDs.count }
@@ -55,7 +54,12 @@ struct CaptureHistoryView: View {
                     Text("Search checks your original words and saved details.").font(.caption).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView { LazyVStack(alignment: .leading, spacing: 10) { ForEach(matches) { row($0) } } }
+                ScrollView { LazyVStack(alignment: .leading, spacing: 10) { ForEach(matches) { item in
+                    TranscriptHistoryRow(model: model, library: library, item: item, history: model.history, compact: compact,
+                        showsCheckbox: !compact && (selecting || selectedIDs.contains(item.id)),
+                        onDetails: { details = item }, onOriginal: { original = item },
+                        onRemove: { removal = TranscriptRemoval(transcript: item, includesRecording: model.meetings.hasRecording(for: item.id)) })
+                } } }
             }
             if !compact {
                 if hiddenCount > 0 { Text("\(hiddenCount) selected transcripts are hidden by this search.").font(.caption).foregroundStyle(.secondary) }
@@ -70,44 +74,85 @@ struct CaptureHistoryView: View {
                 Button("Open full history…") { model.onShowEditor?("history") }.buttonStyle(.link)
             }
         }
-        .sheet(item: $original) { item in
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Original transcript").font(.title2)
-                ScrollView { Text(item.rawText ?? item.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                HStack { Text(item.date, format: .dateTime.month().day().hour().minute()).foregroundStyle(.secondary); Spacer(); Button("Done") { original = nil }.keyboardShortcut(.defaultAction) }
-            }.padding(24).frame(width: 560, height: 380)
-        }
-        .sheet(item: $details) { item in
-            TranscriptMetadataEditor(transcript: item, library: library, suggest: { model.onSuggestTranscriptDetails?(item.id) })
-        }
-        .confirmationDialog(removalIncludesRecording ? "Remove this transcript and its recording?" : "Remove this saved transcript?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
-            Button(removalIncludesRecording ? "Remove transcript and recording" : "Remove transcript", role: .destructive) {
-                if let removal { model.removeTranscript(removal.transcript, includingRecording: removal.includesRecording) }
-                removal = nil
-            }
-            Button("Cancel", role: .cancel) { removal = nil }
-        } message: {
-            Text(removalIncludesRecording
-                 ? "Permanently removes this saved transcript and its recording from this Mac. Saved selections will show it as missing. Existing handoff snapshots and exported copies are kept."
-                 : "Saved selections will show this item as missing. Existing handoff snapshots are kept.")
-        }
+        .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal))
     }
+}
 
-    private func row(_ item: Transcript) -> some View {
-        let context = CaptureHistoryAccessibility.context(for: item, history: model.history)
+struct TranscriptRemoval {
+    let transcript: Transcript
+    let includesRecording: Bool
+}
+
+/// A transcript list's page-level sheets: the original wording, the details
+/// editor and the removal confirmation that names a saved recording. They sit
+/// on the page, not the row, so a row leaving a lazy list cannot close them.
+struct TranscriptHistoryDialogs: ViewModifier {
+    @ObservedObject var model: AppModel
+    @Binding var original: Transcript?
+    @Binding var details: Transcript?
+    @Binding var removal: TranscriptRemoval?
+    private var removalIncludesRecording: Bool { removal?.includesRecording == true }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $original) { item in
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Original transcript").font(.title2)
+                    ScrollView { Text(item.rawText ?? item.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    HStack { Text(item.date, format: .dateTime.month().day().hour().minute()).foregroundStyle(.secondary); Spacer(); Button("Done") { original = nil }.keyboardShortcut(.defaultAction) }
+                }.padding(24).frame(width: 560, height: 380)
+            }
+            .sheet(item: $details) { item in
+                TranscriptMetadataEditor(transcript: item, library: model.historyLibrary, suggest: { model.onSuggestTranscriptDetails?(item.id) })
+            }
+            .confirmationDialog(removalIncludesRecording ? "Remove this transcript and its recording?" : "Remove this saved transcript?", isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }), titleVisibility: .visible) {
+                Button(removalIncludesRecording ? "Remove transcript and recording" : "Remove transcript", role: .destructive) {
+                    if let removal { model.removeTranscript(removal.transcript, includingRecording: removal.includesRecording) }
+                    removal = nil
+                }
+                Button("Cancel", role: .cancel) { removal = nil }
+            } message: {
+                Text(removalIncludesRecording
+                     ? "Permanently removes this saved transcript and its recording from this Mac. Saved selections will show it as missing. Existing handoff snapshots and exported copies are kept."
+                     : "Saved selections will show this item as missing. Existing handoff snapshots are kept.")
+            }
+    }
+}
+
+/// One saved transcript with its actions, as History and the compact list show it.
+struct TranscriptHistoryRow: View {
+    @ObservedObject var model: AppModel
+    /// Observed here, so a row's checkbox follows the shared selection.
+    @ObservedObject var library: WorkbenchHistoryModel
+    let item: Transcript
+    /// The captures to tell identical times apart among. Passing only those in
+    /// the same second keeps a long history from being scanned for every row.
+    var history: [Transcript]
+    var compact = false
+    var showsCheckbox: Bool
+    /// History names the kind of each row, since transcripts sit among Snaps and results.
+    var showsKind = false
+    var onDetails: () -> Void = {}
+    var onOriginal: () -> Void = {}
+    var onRemove: () -> Void = {}
+
+    var body: some View {
+        let context = CaptureHistoryAccessibility.context(for: item, history: history)
         let metadata = library.metadata(for: item.id)
         let ref = WorkbenchItemReference(kind: .transcript, id: item.id)
-        return HStack(alignment: .top, spacing: 12) {
-            if !compact && (selecting || selectedIDs.contains(item.id)) {
+        HStack(alignment: .top, spacing: 12) {
+            if showsCheckbox {
                 Toggle("", isOn: Binding(get: { library.selected.contains(ref) }, set: { include in
                     var refs = library.selected
                     if include { refs.insert(ref) } else { refs.remove(ref) }
                     library.setSelected(refs)
                 })).toggleStyle(.checkbox).labelsHidden()
-                    .accessibilityLabel(CaptureHistoryAccessibility.label("Include in handoff", context: context))
+                    .accessibilityLabel(showsKind ? CaptureHistoryAccessibility.label("Select transcript, " + metadata.purpose.title, context: context)
+                                        : CaptureHistoryAccessibility.label("Include in handoff", context: context))
             }
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
+                    if showsKind { Image(systemName: "mic").foregroundStyle(Workbench.accent).accessibilityHidden(true) }
                     Text(item.date, format: .dateTime.month(.abbreviated).day().hour().minute())
                     Text(metadata.purpose.title).fontWeight(.medium)
                     Spacer(); Text("\(TextRules.wordCount(item.text)) words")
@@ -130,8 +175,8 @@ struct CaptureHistoryView: View {
                         Button("Paste") { model.onPasteTranscript?(item.text) }.disabled(model.phase != .idle)
                             .accessibilityLabel(CaptureHistoryAccessibility.label("Paste", context: context))
                     } else {
-                        Button("Details…") { details = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Edit details", context: context))
-                        Button("Original") { original = item }.accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
+                        Button("Details…", action: onDetails).accessibilityLabel(CaptureHistoryAccessibility.label("Edit details", context: context))
+                        Button("Original", action: onOriginal).accessibilityLabel(CaptureHistoryAccessibility.label("Show original", context: context))
                         Menu("More…") {
                             Button("Read aloud") { model.speechText = item.text; model.page = "speak" }
                             Button("Save prompt") { model.savePrompt(item.text) }
@@ -141,9 +186,7 @@ struct CaptureHistoryView: View {
                     }
                     Spacer()
                     if !compact {
-                        Button {
-                            removal = (item, model.meetings.hasRecording(for: item.id))
-                        } label: { Image(systemName: "trash") }
+                        Button(action: onRemove) { Image(systemName: "trash") }
                             .accessibilityLabel(CaptureHistoryAccessibility.label("Remove transcript", context: context))
                     }
                 }.buttonStyle(.borderless).font(.system(size: 11))

@@ -849,23 +849,13 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.handoffs",
-    "surface": "window sidebar",
-    "label": "Handoffs",
-    "page": "handoffs",
-    "kind": "place",
-    "belongsTo": "history",
-    "note": "Transitional door: Hand off tasks and results fold into History (#124 step 4)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.history",
     "surface": "window sidebar",
-    "label": "Recent transcripts",
+    "label": "History",
     "page": "history",
     "kind": "place",
     "belongsTo": "history",
-    "aliasOf": "history",
-    "note": "unify under Grammar Names"
+    "note": "Quality: the same place in the same slot takes its Grammar name, so the alias is dropped (#137)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.home",
@@ -978,11 +968,12 @@
     "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.recent-transcripts",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.history",
     "surface": "quick panel dictate options",
-    "label": "Recent Transcripts…",
+    "label": "History…",
     "kind": "action",
-    "belongsTo": "history"
+    "belongsTo": "history",
+    "note": "Quality: Dictate's recent-transcripts option in the same slot, renamed to the place it opens. It opens History on Transcripts (#137)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.transcribe-meeting-or-call",
@@ -1284,6 +1275,14 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.addItem.history",
+    "surface": "app menu bar",
+    "label": "History",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Option of History: the menu and keyboard route to captured work, replacing Snap History one for one (#137)."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.addItem.keyboard-shortcuts",
     "surface": "app menu bar",
     "label": "Keyboard shortcuts…",
@@ -1370,14 +1369,6 @@
     "label": "Show floating toolbar",
     "kind": "action",
     "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.main.AppDelegate.addItem.snap-history",
-    "surface": "app menu bar",
-    "label": "Snap History",
-    "kind": "action",
-    "belongsTo": "history",
-    "note": "Transitional door: opens the Snap page today; Snaps fold into History (#124 step 4)."
   },
   {
     "id": "LocalVoice.main.AppDelegate.addItem.snap-talk-sessions",

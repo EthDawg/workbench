@@ -90,7 +90,7 @@ struct MeetingWorkspaceView: View {
                         Button("Start") { Task { await model.start() } }.buttonStyle(.borderedProminent)
                             .disabled(!model.includeMicrophone && model.selectedAppID == nil)
                         if model.hasRecovery { Button("Retry saved recording") { Task { await model.retry() } } }
-                        Button("Recent transcripts", action: openHistory)
+                        Button("History", action: openHistory)
                     }
                 }
                 if !model.notice.isEmpty { Text(model.notice).font(.callout).textSelection(.enabled) }

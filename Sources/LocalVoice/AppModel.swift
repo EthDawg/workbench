@@ -76,6 +76,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var shortcutFailures: [UInt32: String] = [:]
     @Published var quickTab = "Dictate"
     @Published var page = "home"
+    /// How the next visit to History begins. The page applies it once and
+    /// clears it; without one, History opens on All.
+    @Published var historyDoor: HistoryDoor?
     @Published var libraryFocusToken = UUID()
     @Published var showingPhonePhotos = false
     @Published var phase: Phase = .idle
@@ -692,7 +695,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             }
             canRetry = true
             let message = record.capture == nil ? "A recording was recovered. Use Retry transcription."
-                : (preservedSavedDraft ? "An unsaved capture was recovered. Your saved draft is unchanged. Retry saving adds the capture to Recent transcripts without pasting."
+                : (preservedSavedDraft ? "An unsaved capture was recovered. Your saved draft is unchanged. Retry saving adds the capture to History without pasting."
                    : "An unsaved capture was recovered. Use Retry saving; text will not be pasted automatically.")
             captureFailure = message; status = message
         } catch { self.error = error.localizedDescription; captureFailure = self.error; status = "Capture recovery needs attention." }
@@ -733,6 +736,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(text))
     }
     func showLibrary() { page = "library"; onShowEditor?("library"); libraryFocusToken = UUID() }
+    /// Every door opens History on All, even when History is already showing.
+    /// Dictate's own option asks for Transcripts, and Hand off for its task.
+    func openHistory(_ door: HistoryDoor = HistoryDoor()) { historyDoor = door; page = "history" }
     func savePrompt(_ text: String) { guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }; showLibrary(); library.newPrompt(text) }
     func copyCapture(_ item: Transcript) { copyTextWithReceipt(item.text) }
     func showPanelPreview() {
@@ -1184,7 +1190,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         try store.save(SavedState(draft: transcript, speechText: speechText, history: next,
             replacements: replacements, voice: voice, rate: rate, rawDraft: rawTranscript))
         history = next
-        status = "Meeting saved in Recent transcripts."
+        status = "Meeting saved in History."
         onPhaseChange?()
     }
     func selectedHandoffSources(references: Set<WorkbenchItemReference>? = nil) throws -> [HandoffSourceSnapshot] {

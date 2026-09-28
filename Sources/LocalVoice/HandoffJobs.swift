@@ -32,7 +32,7 @@ extension SnapHandoffSnapshot {
     }
 }
 
-struct HandoffInputRecord: Codable {
+struct HandoffInputRecord: Codable, Equatable {
     var reference: WorkbenchItemReference
     var title: String
     var capturedAt: Date
@@ -44,6 +44,29 @@ struct HandoffInputRecord: Codable {
     // Older frozen inputs omitted duration. Keep that unknown rather than
     // rewriting their bytes or borrowing values from the changing live library.
     var seconds: Double? = nil
+}
+
+/// What a task was made from, as its frozen selection.json recorded it. The
+/// file is only read: a missing, damaged or foreign record is reported in
+/// `problem`, and nothing in the task folder is repaired or rewritten.
+struct HandoffJobInputs: Equatable {
+    var task = ""
+    var items: [HandoffInputRecord] = []
+    /// Why the saved inputs cannot be listed, when they cannot.
+    var problem: String?
+
+    static let missing = "This task’s saved selection is missing, so its inputs can’t be listed. Its other files were kept; Show selected files opens them."
+    static let damaged = "This task’s saved selection is damaged, so its inputs can’t be listed. Its files were kept; Show selected files opens them."
+    static let foreign = "This task’s saved selection belongs to another task or a newer Workbench, so its inputs aren’t listed. Its files were kept."
+
+    static func read(_ job: HandoffJob, folder: URL) -> HandoffJobInputs {
+        let url = folder.appendingPathComponent("selection.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return .init(problem: missing) }
+        guard let record = try? HandoffJobStore.read(HandoffSnapshotRecord.self, at: url),
+              record.items.count <= HandoffJobStore.maximumItems else { return .init(problem: damaged) }
+        guard record.id == job.id, record.formatVersion == 1 else { return .init(problem: foreign) }
+        return .init(task: record.task, items: record.items)
+    }
 }
 
 struct HandoffSnapshotRecord: Codable {
@@ -328,15 +351,21 @@ final class HandoffJobsModel: ObservableObject {
     @Published var notice: String?
     let directory: URL
     private let defaults: UserDefaults
+    private let pasteboard: NSPasteboard
     private var running: Task<Void, Never>?
+    /// Frozen inputs by task, with the selection.json size and date they were
+    /// read from, so a file changed or removed outside Workbench is read again.
+    private var inputCache: [UUID: (stamp: String, inputs: HandoffJobInputs)] = [:]
     var isBusy: Bool { activeID != nil }
     var onStateChange: (() -> Void)?
     var onPublishReview: ((HandoffJob, HandoffSnapshotRecord, String, Bool) throws -> String)?
     var currentReviewDigest: ((String) -> String?)?
     var onOpenReview: ((String) -> Void)?
 
-    init(directory: URL, defaults: UserDefaults = .standard) {
-        self.directory = directory; self.defaults = defaults
+    /// Checks pass their own pasteboard so Copy instructions never touches the
+    /// person's clipboard.
+    init(directory: URL, defaults: UserDefaults = .standard, pasteboard: NSPasteboard = .general) {
+        self.directory = directory; self.defaults = defaults; self.pasteboard = pasteboard
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         do {
             try HandoffJobStore.privateDirectory(directory)
@@ -386,12 +415,42 @@ final class HandoffJobsModel: ObservableObject {
         if !jobs.contains(where: { $0.id == job.id }) { jobs.insert(job, at: 0) }
         return job
     }
+    /// Prepares the reviewed selection, then starts it with a provider or copies
+    /// its instructions, and names the task it used. Identical inputs reuse an
+    /// earlier task, so the caller learns that task's ID rather than assuming a
+    /// new one; nothing is reported when the start or the copy failed.
+    func handOff(sources: [HandoffSourceSnapshot], task: String, skill: ReadbackSkillPackSnapshot,
+                 review: SnapReviewContext? = nil, provider: SubscriptionProvider?, onPrepared: (UUID) -> Void) throws {
+        let job = try prepare(sources: sources, task: task, skill: skill, review: review)
+        if let provider { start(job, provider: provider, retry: [.failed, .cancelled, .interrupted].contains(job.status)) } else { copy(job) }
+        if error == nil { onPrepared(job.id) }
+    }
+    /// The task's frozen inputs, read once from its selection.json and kept until
+    /// that file changes. It never writes; see `HandoffJobInputs.read`.
+    func inputs(_ job: HandoffJob) -> HandoffJobInputs {
+        let url = folder(job).appendingPathComponent("selection.json")
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let stamp = values.map { "\($0.contentModificationDate?.timeIntervalSince1970 ?? 0):\($0.fileSize ?? -1)" } ?? "absent"
+        if let cached = inputCache[job.id], cached.stamp == stamp { return cached.inputs }
+        let inputs = HandoffJobInputs.read(job, folder: folder(job))
+        inputCache[job.id] = (stamp, inputs)
+        return inputs
+    }
+    /// A frozen image this task recorded, only when it is a safe path listed in
+    /// the task's own inventory and still an ordinary file.
+    func inputImageURL(_ job: HandoffJob, path: String) -> URL? {
+        guard job.inputFiles.contains(path), path.hasPrefix("inputs/"),
+              let url = try? TranscriptHandoffStore.safeURL(root: folder(job), relative: path),
+              let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true else { return nil }
+        return url
+    }
     func copy(_ job: HandoffJob) {
         error = nil
         do {
             let (snapshot, skill) = try input(job)
             let prompt = HandoffJobStore.prompt(snapshot: snapshot, skill: skill, folder: folder(job), manual: true)
-            guard TextDelivery.copy(prompt) != nil else { throw VoiceError.message("The instructions could not be copied.") }
+            guard TextDelivery.copy(prompt, to: pasteboard) != nil else { throw VoiceError.message("The instructions could not be copied.") }
             notice = snapshot.items.contains(where: { !$0.images.isEmpty })
                 ? "Instructions copied. Attach the selected images in your assistant; Show selected files opens them."
                 : "Selected text and instructions copied. Paste them into your assistant and submit when ready."
@@ -403,6 +462,12 @@ final class HandoffJobsModel: ObservableObject {
         guard let size = try? url.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey]), size.isSymbolicLink != true,
               (size.fileSize ?? Int.max) <= 2_000_000 else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)
+    }
+    /// Whether a saved result can be read, without reading it on every redraw.
+    func resultAvailable(_ job: HandoffJob) -> Bool {
+        let url = folder(job).appendingPathComponent("result.md")
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]) else { return false }
+        return values.isRegularFile == true && values.isSymbolicLink != true && (values.fileSize ?? Int.max) <= 2_000_000
     }
     func showResult(_ job: HandoffJob) {
         let url = folder(job).appendingPathComponent("result.md")
@@ -473,7 +538,7 @@ final class HandoffJobsModel: ObservableObject {
             return
         }
         guard job.status == .ready || (retry && [.failed, .cancelled, .interrupted].contains(job.status)) else {
-            notice = job.status == .completed ? "This selection already has a result. Open it below." : "Review this handoff before retrying."
+            notice = job.status == .completed ? "This selection already has a result, shown in History." : "Review this handoff before retrying."
             return
         }
         guard enabled(provider), let connection = connections[provider], connection.ready else {
@@ -543,9 +608,8 @@ final class HandoffJobsModel: ObservableObject {
     }
 
     func isMetadataSuggestion(_ job: HandoffJob) -> Bool {
-        guard let snapshot = try? HandoffJobStore.read(HandoffSnapshotRecord.self,
-            at: folder(job).appendingPathComponent("selection.json")) else { return false }
-        return snapshot.task == MetadataSuggestionReview.task && snapshot.items.count == 1
+        let snapshot = inputs(job)
+        return snapshot.problem == nil && snapshot.task == MetadataSuggestionReview.task && snapshot.items.count == 1
             && snapshot.items.first?.reference.kind == .transcript
     }
 }

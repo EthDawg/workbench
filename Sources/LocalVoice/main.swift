@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         readback = ReadbackModel(engine: model.engine)
         snap = SnapModel()
         readback.onSaveCapturedSnap = { [weak snap] bytes, name in
-            guard let snap else { throw VoiceError.message("Snap History is unavailable.") }
+            guard let snap else { throw VoiceError.message("History is unavailable.") }
             return try snap.saveNarratedCapture(bytes, displayName: name)
         }
         model.resolveAdditionalHandoffItems = { [weak snap] references in
@@ -403,7 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Saved resources", action: #selector(showLibrary), keyEquivalent: "l")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(withTitle: "Snap & Talk sessions", action: #selector(showReadback), keyEquivalent: "")
-        menu.addItem(withTitle: "Snap History", action: #selector(showSnap), keyEquivalent: "")
+        menu.addItem(withTitle: "History", action: #selector(showHistory), keyEquivalent: "")
         menu.addItem(withTitle: "Persona", action: #selector(showPersonas), keyEquivalent: "")
         menu.addItem(withTitle: "Transcribe meeting or call…", action: #selector(showMeeting), keyEquivalent: "")
         let savePrompt = menu.addItem(withTitle: "Save clipboard as prompt…", action: #selector(saveClipboardPrompt), keyEquivalent: "s")
@@ -553,9 +553,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func copyBuildDetails() { WorkbenchUpdates.shared.copyDetails() }
     @objc func showSettings() { model.page = "settings"; showWindow() }
     @objc func showShortcuts() { model.page = "shortcuts"; showWindow() }
-    @objc func showHistory() { model.page = "history"; showWindow() }
+    @objc func showHistory() { model.openHistory(); showWindow() }
     @objc func showReadback() { model.page = "readback"; showWindow() }
-    @objc func showSnap() { model.page = "snap"; showWindow() }
     @objc func showPersonas() { model.page = "personas"; showWindow() }
     @objc func showMeeting() { model.page = "meeting"; showWindow() }
     @objc func showLibrary() { model.showLibrary() }
