@@ -679,6 +679,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try CorrectionRuleChecks.run()
             try HomeJourneyChecks.run()
             try PanelDestinationChecks.run()
+            try await MainActor.run { try WorkbenchPageChecks.run() }
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try ReadingChecks.run() }
