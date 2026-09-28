@@ -1046,6 +1046,14 @@
     "aliasOf": "snap"
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.done",
+    "surface": "window home",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Option: ends the first-dictation guide once its copy step has been seen; leaving Home does the same (#142 review B6)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.edit",
     "surface": "window home",
     "label": "Edit…",
