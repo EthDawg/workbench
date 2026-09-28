@@ -36,3 +36,46 @@ Dictate and Snap & Talk narration both record with a 16 kHz PCM `AVAudioRecorder
 - A Bluetooth headset (switching to its microphone), external displays and VoiceOver.
 - A meeting receiver's view of a shared screen in Teams or Zoom.
 - The real Dictate, meeting and narration flows in an installed Preview; the check reproduced their capture settings rather than driving their windows.
+
+## Quiet outline and response · #158
+
+[#158](https://github.com/EthDawg/workbench/issues/158) replaced the bars with a quiet, still outline that brightens and thickens a little while the presenter speaks, and set two targets: visible within 150 ms of the first speech frame Workbench receives, and back to rest within 500 ms of the last. The time macOS takes to deliver a buffer is measured separately.
+
+### What was wrong
+
+`say` sentences mixed with a synthetic room ran through the unchanged analyser and ring (source `00be555`), in 100 ms deliveries with a 60 Hz display:
+
+| Case | Before | After |
+| --- | --- | --- |
+| Turned on mid-sentence | Floor learned at −39 dBFS against a −62 room, then held 12–23 dB high for the whole 16 s; the response ran at about half strength | Floor stays within 2 dB of the room |
+| Turned on mid-sentence, soft voice | Onset 467 ms; levels 0–0.4 for about 5 s | Onset 33 ms |
+| 16 s of continuous speech | Floor climbed 15 dB, from −63 to −47 dBFS | Floor within 2 dB of the room |
+| Return to rest | 333–600 ms | At most 400 ms |
+| A fan switched on | About 4 s of false response | None |
+
+The hypothesis in #158 holds: the estimator learned speech as room noise, through the first-eight-frame adaptation when speech was already under way and through the three-second rolling minimum during unbroken speech. The ring also replayed each delivery at the pace it was heard and eased down over 170 ms, which put return to rest past 500 ms.
+
+### The new metering
+
+A voice is recognised by its pitch: the analyser measures how clearly the last 40 ms repeats at a speaking pitch (70–400 Hz, looked for in the 150 Hz–4 kHz band). A frame counts at 0.7, or 0.5 once speech is under way, when it is also 6 dB above the room. A word that opens on "s" counts from its hiss, which must sit 12 dB above a room already heard and mostly above 4 kHz. Speech is held for 0.18 s through the gaps between words. The room is learned only from steady sound: a quieter room at once, steady unvoiced sound in about a quarter second, a steady tone within a second, anything else at most 0.25 dB a second. Loudness is measured against the presenter's usual level, the loudest fifth of voiced frames, settled over the first half second. The outline takes each delivery at once, lights within one display frame, and fades with a 40 ms time constant.
+
+### Offline harness
+
+`PersonaVoiceLatencyTests` feeds deterministic speech-like sound (formant vowels with a moving pitch, and "s", "sh" and "f" onsets) through the real analyser and outline state with a simulated clock: 100 ms deliveries, a 60 Hz display, five alignments against the buffers. Every case runs in `scripts/test-stage.sh --persona-voice-only` and in CI.
+
+| Case | Onset, worst | Back to rest, worst |
+| --- | --- | --- |
+| Speech already under way when turned on (device zeros, then mid-sentence) | 17 ms | 300 ms |
+| A first word opening on "s" | 117 ms | 400 ms |
+| Usual voice, 48 kHz built-in | 117 ms | 400 ms |
+| Soft voice, 16 dB above the room | 117 ms | 300 ms |
+| Loud headset | 117 ms | 400 ms |
+| 44.1 kHz interface | 117 ms | 383 ms |
+| 16 kHz Bluetooth headset | 117 ms (133 ms from the vowel of an "sh" or "f" word) | 400 ms |
+| 12 s without a pause, usual and soft | 117 ms, lit throughout including the last 3 s; floor within 4 dB of the room | 383 ms |
+
+Words that open on "sh" or "f" light at their vowel, within 133 ms of it and 217 ms of the hiss. Silence, a fan and a loud fan from the moment the outline turns on, steady hiss, 50 and 60 Hz mains hum, typing, and a fan or hiss switched on lit it on no display frame. A phrase raised by 9 dB read as loud throughout; usual speech never did.
+
+With `WORKBENCH_VOICE_SAY=1` the same harness also measures 32 sentences from four Mac voices, written by `say -o` to a temporary folder and never played. At usual and soft levels: onset median 17 ms, 95th percentile 117 ms, worst 217 ms (sentences opening on "sh", "f" or "h"); from the first voiced frame, worst 17 ms usual and 117 ms soft; back to rest median 283 ms, worst 400 ms.
+
+Known limits: a steady 120 Hz tone present when the outline turns on shows for about 0.7 s before it is learned (mains hum at 50 or 60 Hz does not); a loud hiss concentrated above 4 kHz reads as an "s"; whispered speech lights only at its "s" sounds.

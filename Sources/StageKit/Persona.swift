@@ -234,9 +234,10 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Live persona keys for help text, set by the shortcut owner.
     @Published var shortcutHint: String?
     @Published private(set) var overlayVisible = false { didSet { updateVoice() } }
-    /// React to my voice: a ring around the shown persona that moves as the
-    /// presenter speaks. Off by default and remembered. It listens only while
-    /// the persona it frames is showing, measures loudness and records nothing.
+    /// React to my voice: a quiet outline around the shown persona that
+    /// brightens as the presenter speaks. Off by default and remembered. It
+    /// listens only while the persona it frames is showing, measures loudness
+    /// and records nothing.
     @Published private(set) var voiceRing = false
     /// The input the ring is listening to; nil whenever the microphone is closed.
     @Published private(set) var voiceDevice: String?

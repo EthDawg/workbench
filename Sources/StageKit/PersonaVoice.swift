@@ -2,77 +2,118 @@ import Accelerate
 import AppKit
 import AVFoundation
 
-/// One moment of the presenter's voice, as the ring shows it. Nothing about the
-/// sound itself survives: a frame is how loud the presenter is against their
-/// own room, and the rough balance from low to high pitch.
+/// One moment of the presenter's voice, as the outline shows it. Nothing about
+/// the sound itself survives: a frame says whether a voice is present and how
+/// loud it is against the presenter's own usual level.
 struct PersonaVoiceFrame: Equatable {
-    static let bandCount = 6
-    /// 0 is the room's own noise, 1 the presenter's recent speaking peak.
+    /// How loud the voice is against the presenter's usual speaking level:
+    /// about 0.5 is their usual voice, 1 one raised by 8 dB. 0 when no voice is heard.
     var level: Float
-    /// Low to high pitch, each 0...level.
-    var bands: [Float]
-    /// Stays true through the short gaps between words.
+    /// A voice is present: voiced sound above the room, held through the short
+    /// gaps between words.
     var speaking: Bool
     /// The stretch of audio this frame measured.
     var seconds: Double
+    /// Its loudness in dBFS, for measurement receipts only.
+    var decibels: Float = -120
 
-    static let quiet = PersonaVoiceFrame(level: 0, bands: Array(repeating: 0, count: bandCount), speaking: false, seconds: 0)
+    static let quiet = PersonaVoiceFrame(level: 0, speaking: false, seconds: 0)
     func lasting(_ seconds: Double) -> PersonaVoiceFrame { var frame = self; frame.seconds = seconds; return frame }
 }
 
-/// Microphone samples in, ring frames out. Quiet and loud microphones both fill
-/// the ring because loudness is measured against the room's noise floor and the
-/// presenter's own recent peak, not against fixed decibels. Samples are measured
-/// and discarded; only the numbers in each frame leave.
+/// Microphone samples in, voice frames out. A voice is recognised by its pitch
+/// (the regular repetition of voiced sound), or at the start of a word by an
+/// "s" well above a room already heard, so a fan, hiss, typing or mains hum
+/// never counts as speech, while a first syllable counts at once, even when
+/// someone is already talking as the outline turns on. The room is learned
+/// only from steady sound, so talking without pause never becomes the room.
+/// Loudness is measured against the presenter's own usual level, so quiet and
+/// loud microphones read alike. Samples are measured and discarded; only the
+/// numbers in each frame leave.
 final class PersonaVoiceAnalyzer {
-    /// Voice lives between a man's lowest fundamental and the top of "s".
-    static let bandEdges: [Double] = [80, 200, 450, 1_000, 2_200, 4_500, 8_000]
+    /// A voice's harmonics are looked for here, clear of rumble and hiss.
+    static let voiceBand = 150.0...4_000.0
+    /// The pitch of a speaking voice, low man to high child.
+    static let pitchRange = 70.0...400.0
+    /// Voiced sound at least this far above the room counts.
+    static let margin: Float = 6
+    /// Pitch this clear starts speech; a little less continues it.
+    static let startingPitch: Float = 0.7, continuingPitch: Float = 0.5
+    /// Speech is held through gaps this long, so words run together.
+    static let hold = 0.18
+    /// A room that has not been heard yet: a quiet office.
+    static let assumedRoom: Float = -62
     let sampleRate: Double
-    /// About 20 ms of audio, a power of two for the FFT.
+    /// About 20 ms of audio, a power of two.
     let chunk: Int
-    /// dBFS. The quietest the room has been lately.
-    private(set) var noiseFloor: Float = -62
-    /// dBFS. The loudest the presenter has been lately.
-    private(set) var voicePeak: Float = -26
-    private var shortTerm: Float?
-    /// Recent short-term loudness. Its minimum is the room: a speaker breathes
-    /// within any three seconds, so speech never becomes the floor.
-    private var recent: [Float]
-    private var recentIndex = 0
-    private var recentCount = 0
-    private var quietFor: Double = 1
+    /// dBFS. The room's own steady sound: a quiet office, a fan or hum.
+    private(set) var noiseFloor: Float = PersonaVoiceAnalyzer.assumedRoom
+    /// dBFS. The presenter's usual speaking level, once heard.
+    private(set) var speakingLevel: Float?
+    /// Voiced frames heard so far, up to the first half second.
+    private var voicedFrames = 0
+    /// How clearly the newest frame repeats at a voice's pitch, 0...1.
+    private(set) var periodicity: Float = 0
+    private var sinceVoice = Double.infinity
+    /// Loudness eased over a few frames, for learning the room.
+    private var smoothed: Float?
+    /// The room has been heard steady at least once, so hiss that rises well
+    /// above it can be told from it.
+    private var roomHeard = false
+    /// Consecutive frames that sound like an "s".
+    private var hissing = 0
+    /// Energy near the voice's middle, in the sibilant band and overall, from the latest spectrum.
+    private var spectrum: (middle: Float, sibilant: Float, overall: Float) = (0, 0, 0)
+    /// Recent frames for recognising steady sound.
+    private var recent: [(decibels: Float, pitch: Float, lag: Int)] = []
+    private let steadyCount: Int, longSteadyCount: Int
     private var pending: [Float] = []
-    private let log2n: vDSP_Length
+    // Pitch: autocorrelation over the last ~40 ms, from a zero-padded FFT.
+    private let window: Int, fftSize: Int, log2n: vDSP_Length
     private let setup: FFTSetup
-    private let window: [Float]
-    private var windowed: [Float]
-    private var real: [Float]
-    private var imaginary: [Float]
-    private var power: [Float]
-    private let bandBins: [Range<Int>]
+    private let hann: [Float]
+    /// The Hann window's own autocorrelation, normalised, so a steady tone reads 1.
+    private var hannCorrelation: [Float] = []
+    private let lags: ClosedRange<Int>
+    private let band: ClosedRange<Int>
+    /// FFT bins for 1–3 kHz, 4–8 kHz (an "s") and 80 Hz–8 kHz.
+    private let bands: (middle: ClosedRange<Int>, sibilant: ClosedRange<Int>, overall: ClosedRange<Int>)
+    private var history: [Float]
+    private var padded: [Float]
+    private var real: [Float], imaginary: [Float]
 
     init(sampleRate: Double) {
         let rate = sampleRate.isFinite && sampleRate >= 8_000 ? sampleRate : 48_000
         self.sampleRate = rate
         let exponent = min(11, max(8, Int((log2(rate * 0.02)).rounded())))
         chunk = 1 << exponent
-        log2n = vDSP_Length(exponent)
+        let windowExponent = max(exponent + 1, Int(log2(rate * 0.04).rounded(.up)))
+        window = 1 << windowExponent
+        fftSize = window * 2
+        log2n = vDSP_Length(windowExponent + 1)
         setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
-        var hann = [Float](repeating: 0, count: chunk)
-        vDSP_hann_window(&hann, vDSP_Length(chunk), Int32(vDSP_HANN_NORM))
-        window = hann
-        windowed = [Float](repeating: 0, count: chunk)
-        real = [Float](repeating: 0, count: chunk / 2)
-        imaginary = [Float](repeating: 0, count: chunk / 2)
-        power = [Float](repeating: 0, count: chunk / 2)
-        let binWidth = rate / Double(chunk), nyquist = chunk / 2
-        bandBins = (0..<Self.bandEdges.count - 1).map { band in
-            let low = max(1, Int((Self.bandEdges[band] / binWidth).rounded()))
-            let high = min(nyquist, max(low + 1, Int((Self.bandEdges[band + 1] / binWidth).rounded())))
-            return low < nyquist ? low..<high : nyquist..<nyquist
+        var taper = [Float](repeating: 0, count: window)
+        vDSP_hann_window(&taper, vDSP_Length(window), Int32(vDSP_HANN_NORM))
+        hann = taper
+        history = [Float](repeating: 0, count: window)
+        padded = [Float](repeating: 0, count: fftSize)
+        real = [Float](repeating: 0, count: fftSize / 2)
+        imaginary = [Float](repeating: 0, count: fftSize / 2)
+        let binWidth = rate / Double(fftSize)
+        band = max(1, Int((Self.voiceBand.lowerBound / binWidth).rounded(.up)))...min(fftSize / 2 - 1, Int(Self.voiceBand.upperBound / binWidth))
+        let top = window - 1
+        func bins(_ low: Double, _ high: Double) -> ClosedRange<Int> {
+            min(top, max(1, Int(low / binWidth)))...min(top, max(1, Int(high / binWidth)))
         }
-        recent = [Float](repeating: 0, count: max(1, Int((3 * rate / Double(chunk)).rounded(.up))))
+        bands = (bins(1_000, 3_000), bins(4_000, 8_000), bins(80, 8_000))
+        lags = Int(rate / Self.pitchRange.upperBound)...min(Int((rate / Self.pitchRange.lowerBound).rounded(.up)), window / 3)
+        let frameSeconds = Double(chunk) / rate
+        steadyCount = max(4, Int((0.25 / frameSeconds).rounded()))
+        longSteadyCount = max(steadyCount, Int((1.0 / frameSeconds).rounded()))
         pending.reserveCapacity(chunk * 24)
+        for index in 0..<window { padded[index] = hann[index] }
+        let own = autocorrelate(band: nil)
+        hannCorrelation = own.map { own[0] > 0 ? $0 / own[0] : 0 }
     }
     deinit { vDSP_destroy_fftsetup(setup) }
 
@@ -91,58 +132,139 @@ final class PersonaVoiceAnalyzer {
 
     private func analyze(_ samples: UnsafePointer<Float>) -> PersonaVoiceFrame {
         let seconds = Double(chunk) / sampleRate
+        history.removeFirst(chunk)
+        history.append(contentsOf: UnsafeBufferPointer(start: samples, count: chunk))
         var meanSquare: Float = 0
         vDSP_measqv(samples, 1, &meanSquare, vDSP_Length(chunk))
+        sinceVoice += seconds
         // A device starting up delivers exact zeros. They say nothing about the
-        // room, so they must not drag the floor down.
-        guard meanSquare > 1e-10 else { quietFor += seconds; return .quiet.lasting(seconds) }
+        // room, so they must not move the floor.
+        guard meanSquare > 1e-10 else {
+            periodicity = 0
+            return PersonaVoiceFrame(level: 0, speaking: sinceVoice < Self.hold, seconds: seconds)
+        }
         let decibels = 10 * log10(meanSquare)
-
-        let smoothing = Float(1 - exp(-seconds / 0.06))
-        let smoothed = shortTerm.map { $0 + (decibels - $0) * smoothing } ?? decibels
-        shortTerm = smoothed
-        recent[recentIndex] = smoothed
-        recentIndex = (recentIndex + 1) % recent.count
-        recentCount = min(recent.count, recentCount + 1)
-        let quietest = recent[0..<recentCount].min() ?? smoothed
-        // The floor drops to a quieter room at once and rises to a noisier one
-        // within a second or two, but never to the presenter's voice.
-        let follow = Float(1 - exp(-seconds / (quietest < noiseFloor || recentCount < 8 ? 0.08 : 0.8)))
-        noiseFloor = min(-30, max(-96, noiseFloor + (quietest - noiseFloor) * follow))
-        if decibels > voicePeak { voicePeak = decibels } else { voicePeak -= Float(seconds * 1.5) }
-        voicePeak = min(0, max(noiseFloor + 20, voicePeak))
-
-        let gate = noiseFloor + 9
-        let level = min(1, max(0, (decibels - gate) / max(12, voicePeak - gate)))
-        quietFor = level > 0.18 ? 0 : quietFor + seconds
-        let speaking = quietFor < 0.3
-        return PersonaVoiceFrame(level: level, bands: bands(samples, level: level), speaking: speaking, seconds: seconds)
+        let (pitch, lag) = voicing()
+        periodicity = pitch
+        let floor = noiseFloor
+        let continuing = sinceVoice < Self.hold
+        var peak: Float = 0
+        vDSP_maxmgv(samples, 1, &peak, vDSP_Length(chunk))
+        // An "s" starting a word: hiss well above a room already heard, high
+        // in pitch, smooth rather than a click, for two frames running.
+        let sibilant = roomHeard && decibels >= floor + 12 && spectrum.sibilant >= 0.5 * spectrum.overall
+            && spectrum.sibilant >= 4 * spectrum.middle && peak <= 5 * meanSquare.squareRoot()
+        hissing = sibilant ? hissing + 1 : 0
+        let voiced = pitch >= (continuing ? Self.continuingPitch : Self.startingPitch) && decibels >= floor + Self.margin
+        var level: Float = 0
+        if voiced {
+            sinceVoice = 0
+            // The usual level settles near the loudest fifth of voiced frames,
+            // quickly over the first half second so a soft first sound does not
+            // make everything after it read as raised.
+            var usual = speakingLevel ?? decibels
+            let settling = voicedFrames < Int(0.5 / seconds)
+            if settling { voicedFrames += 1; usual = max(usual, decibels - 3) }
+            speakingLevel = usual + (decibels > usual ? (settling ? 32 : 4) : (settling ? -8 : -1)) * Float(seconds)
+            level = min(1, max(0, 0.5 + (decibels - usual) / 16))
+        } else if hissing >= 2 {
+            // An "s" opens speech at the usual loudness; hiss never sets that level.
+            sinceVoice = 0
+            level = 0.5
+        }
+        learnRoom(decibels, pitch: pitch, lag: lag, seconds: seconds)
+        return PersonaVoiceFrame(level: level, speaking: sinceVoice < Self.hold, seconds: seconds, decibels: decibels)
     }
 
-    /// The balance between bands, relative to the loudest one, scaled by level.
-    private func bands(_ samples: UnsafePointer<Float>, level: Float) -> [Float] {
-        guard level > 0 else { return Array(repeating: 0, count: PersonaVoiceFrame.bandCount) }
-        vDSP_vmul(samples, 1, window, 1, &windowed, 1, vDSP_Length(chunk))
+    /// The room is what stays steady. A quieter room is learned at once; steady
+    /// sound (a fan, hiss or hum) within a quarter to a whole second; anything
+    /// else only creeps in, so a voice never becomes the room.
+    private func learnRoom(_ decibels: Float, pitch: Float, lag: Int, seconds: Double) {
+        recent.append((decibels, pitch, lag))
+        if recent.count > longSteadyCount { recent.removeFirst(recent.count - longSteadyCount) }
+        let eased = smoothed.map { $0 + (decibels - $0) * Float(1 - exp(-seconds / 0.06)) } ?? decibels
+        smoothed = eased
+        func steady(_ count: Int, spread limit: Float, range: Float) -> (Bool, mean: Float) {
+            guard recent.count >= count else { return (false, 0) }
+            let values = recent.suffix(count).map(\.decibels)
+            let mean = values.reduce(0, +) / Float(count)
+            let spread = (values.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Float(count)).squareRoot()
+            return (spread <= limit && (values.max()! - values.min()!) <= range, mean)
+        }
+        let short = steady(steadyCount, spread: 1.5, range: 6)
+        let loose = steady(steadyCount, spread: 2.5, range: 9)
+        let latest = recent.suffix(steadyCount)
+        let unvoiced = latest.allSatisfy { $0.pitch < Self.startingPitch }
+        let heldLags = latest.map(\.lag)
+        // A hum holds one pitch; a voice's pitch keeps moving.
+        let tone = latest.allSatisfy { $0.pitch >= Self.continuingPitch } && (heldLags.max() ?? 0) - (heldLags.min() ?? 0) <= max(2, (heldLags.min() ?? 0) / 50)
+        let long = steady(longSteadyCount, spread: 1.5, range: 6)
+        if (loose.0 && unvoiced) || short.0 { roomHeard = true }
+        if eased < noiseFloor {
+            noiseFloor += (eased - noiseFloor) * Float(1 - exp(-seconds / 0.06))
+        } else if loose.0 && unvoiced {
+            noiseFloor += (loose.mean - noiseFloor) * Float(1 - exp(-seconds / 0.2))
+        } else if short.0 && tone {
+            noiseFloor += (short.mean - noiseFloor) * Float(1 - exp(-seconds / 0.2))
+        } else if long.0 {
+            noiseFloor += (long.mean - noiseFloor) * Float(1 - exp(-seconds / 0.2))
+        } else {
+            noiseFloor += min(eased - noiseFloor, 0.25 * Float(seconds))
+        }
+        noiseFloor = min(-20, max(-100, noiseFloor))
+    }
+
+    /// How clearly the last ~40 ms repeats at a speaking pitch: 1 for a steady
+    /// voiced tone, well under a half for noise, clicks and whispering.
+    private func voicing() -> (Float, Int) {
+        var mean: Float = 0
+        vDSP_meanv(history, 1, &mean, vDSP_Length(window))
+        for index in 0..<window { padded[index] = (history[index] - mean) * hann[index] }
+        let heard = autocorrelate(band: band)
+        guard heard[0] > 0 else { return (0, 0) }
+        var best: Float = 0, bestLag = 0
+        for lag in lags where hannCorrelation[lag] > 0.05 {
+            let value = heard[lag] / heard[0] / hannCorrelation[lag]
+            if value > best { best = value; bestLag = lag }
+        }
+        return (min(1, best), bestLag)
+    }
+
+    /// Autocorrelation of the first `window` samples of `padded`, zero-padded so
+    /// it does not wrap, optionally keeping only the frequencies in `band`
+    /// (FFT bins). Index is the lag in samples; the scale is arbitrary.
+    private func autocorrelate(band: ClosedRange<Int>?) -> [Float] {
+        for index in window..<fftSize { padded[index] = 0 }
+        var result = [Float](repeating: 0, count: window)
         real.withUnsafeMutableBufferPointer { realPart in
             imaginary.withUnsafeMutableBufferPointer { imaginaryPart in
                 var split = DSPSplitComplex(realp: realPart.baseAddress!, imagp: imaginaryPart.baseAddress!)
-                windowed.withUnsafeBufferPointer { input in
-                    input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: chunk / 2) {
-                        vDSP_ctoz($0, 2, &split, 1, vDSP_Length(chunk / 2))
+                padded.withUnsafeBufferPointer { input in
+                    input.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: fftSize / 2) {
+                        vDSP_ctoz($0, 2, &split, 1, vDSP_Length(fftSize / 2))
                     }
                 }
                 vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
-                vDSP_zvmags(&split, 1, &power, 1, vDSP_Length(chunk / 2))
+                // Bin 0 packs the DC term (real) and the Nyquist term (imaginary).
+                let keepEnds = band == nil
+                realPart[0] = keepEnds ? realPart[0] * realPart[0] : 0
+                imaginaryPart[0] = keepEnds ? imaginaryPart[0] * imaginaryPart[0] : 0
+                var middle: Float = 0, sibilant: Float = 0, overall: Float = 0
+                for bin in 1..<fftSize / 2 {
+                    let magnitude = realPart[bin] * realPart[bin] + imaginaryPart[bin] * imaginaryPart[bin]
+                    if bands.middle.contains(bin) { middle += magnitude }
+                    if bands.sibilant.contains(bin) { sibilant += magnitude }
+                    if bands.overall.contains(bin) { overall += magnitude }
+                    realPart[bin] = band.map { $0.contains(bin) } ?? true ? magnitude : 0
+                    imaginaryPart[bin] = 0
+                }
+                if band != nil { spectrum = (middle, sibilant, overall) }
+                vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_INVERSE))
+                // The inverse leaves lag 2k in real[k] and lag 2k+1 in imaginary[k].
+                for lag in 0..<window { result[lag] = lag % 2 == 0 ? realPart[lag / 2] : imaginaryPart[lag / 2] }
             }
         }
-        let energy = bandBins.map { bins -> Float in
-            guard !bins.isEmpty else { return -120 }
-            var sum: Float = 0
-            power.withUnsafeBufferPointer { vDSP_sve($0.baseAddress! + bins.lowerBound, 1, &sum, vDSP_Length(bins.count)) }
-            return 10 * log10(max(sum, 1e-12))
-        }
-        let loudest = energy.max() ?? -120
-        return energy.map { level * (0.3 + 0.7 * min(1, max(0, ($0 - (loudest - 30)) / 30))) }
+        return result
     }
 }
 
