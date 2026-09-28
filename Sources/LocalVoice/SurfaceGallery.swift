@@ -242,6 +242,8 @@ enum SurfaceGallery {
         }
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
+        // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
+        if let snapPage = pages.firstIndex(where: { $0.route == "snap" }) { pages[snapPage].shots += try renderImagePreview(to: output) }
         let listings = menus()
         return SurfaceGallery.Pass(theme: theme, panels: panels, pages: pages, entries: entries() + menuEntries, menus: listings)
     }
@@ -333,6 +335,46 @@ enum SurfaceGallery {
         jobs.cancel()
         try wait("the running task to stop") { !jobs.isBusy }
         library.setSelected([])
+        return shots
+    }
+
+    // MARK: Image preview
+
+    /// The preview window at Home's default size: a full-display synthetic capture fitted to the
+    /// window, the same at actual size, and a missing file. Its Snap lives in a store of its own, so
+    /// the pages above are unchanged.
+    func renderImagePreview(to output: URL) throws -> [SurfaceGallery.Shot] {
+        // Snap storage wants the resolved spelling of its folder, as for the pages' Snaps.
+        let folder = home.appendingPathComponent("Preview Snaps", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let store = SnapStore(root: folder.resolvingSymlinksInPath())
+        let item = try store.insert(originalPNG: try CaptureImagePreviewChecks.screenPNG(width: 2_880, height: 1_800, heading: "Synthetic release notes"),
+                                    width: 2_880, height: 1_800, title: "Release notes", source: .screen,
+                                    id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000300")!, createdAt: Date(timeIntervalSince1970: 1_789_546_320))
+        let owner = offscreenWindow(size: SurfaceGallery.sizes[0].size, styleMask: [.titled])
+        let preview = CaptureImagePreview()
+        preview.present = { _ in }
+        defer { preview.close(); owner.close() }
+        var shots: [SurfaceGallery.Shot] = []
+        func shot(_ id: String, _ title: String, _ detail: String, _ item: CaptureImagePreviewItem, command: CaptureImagePreviewModel.Command? = nil) throws {
+            preview.show(item, over: owner)
+            guard let panel = preview.panel, let model = preview.model else { throw VoiceError.message("The image preview did not open.") }
+            panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+            panel.setFrame(NSRect(origin: .zero, size: SurfaceGallery.sizes[0].size), display: false)
+            let frame = panel.contentView?.superview ?? panel.contentView!
+            try wait("the preview to load") { if case .loading = model.state { return false }; return true }
+            settle(frame)
+            if let command { model.perform(command); settle(frame, seconds: 0.1) }
+            let rep = try snapshot(frame)
+            shots.append(try save(rep, id: "preview-\(id)", title: title, detail: detail, file: "page-snap-preview-\(id)-\(theme).png", to: output))
+        }
+        try shot("fit", "Image preview, fitted", "A full-display synthetic capture opened from its thumbnail, fitted to the window.", .snap(item, store: store))
+        try shot("actual", "Image preview, actual size", "The same capture after Actual size (⌘0): one image pixel per screen pixel.", .snap(item, store: store), command: .actualSize)
+        let gone = ReadbackSection(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000301")!, capturedAt: Date(timeIntervalSince1970: 1_789_546_320),
+            displayName: "Synthetic display", directory: "items/gone", screenshot: "items/gone/screen.png", audio: nil, originalTranscript: nil,
+            transcript: nil, status: .ready, failure: nil, deletedAt: nil)
+        try shot("missing", "Image preview, missing file", "A Snap & Talk screenshot whose file is gone from its session folder.",
+                 .section(gone, number: 3, session: home.appendingPathComponent("Snap & Talk/Moved session", isDirectory: true)))
         return shots
     }
 
@@ -514,7 +556,12 @@ enum SurfaceGallery {
             guard let layer = view.layer else { return }
             context.saveGState()
             context.translateBy(x: rect.minX, y: rect.minY)
-            if view.isFlipped { context.translateBy(x: 0, y: rect.height); context.scaleBy(x: 1, y: -1) }
+            // A magnified scroll view shows its document scaled, as the image preview does.
+            let scale = CGSize(width: view.bounds.width > 0 ? rect.width / view.bounds.width : 1,
+                               height: view.bounds.height > 0 ? rect.height / view.bounds.height : 1)
+            let magnified = abs(scale.width - 1) > 0.001 || abs(scale.height - 1) > 0.001
+            if magnified { context.scaleBy(x: scale.width, y: scale.height) }
+            if view.isFlipped { context.translateBy(x: 0, y: magnified ? view.bounds.height : rect.height); context.scaleBy(x: 1, y: -1) }
             layer.render(in: context)
             context.restoreGState()
         }
