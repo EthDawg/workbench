@@ -286,8 +286,6 @@ public final class StageKitController: ObservableObject {
     public func focusOverlayControls() { coordinator.demoScenes.personas.focusOverlayControls() }
     public func stepOverlaySet(_ offset: Int) { coordinator.demoScenes.personas.performOverlayAction(.stepGroup(offset)) }
     public func toggleOverlayVisibility() { coordinator.demoScenes.personas.performOverlayAction(.pauseResume) }
-    public func endOverlays() { coordinator.demoScenes.personas.hideOverlay() }
-    public func endPresentation() { coordinator.demoScenes.endPresentation(); coordinator.demoScenes.personas.hideOverlay(); coordinator.hideTimer(); coordinator.escape() }
     public func escape() { coordinator.escape() }
     public func performShortcut(id: String) {
         guard let action = Action(rawValue: id) else { return }

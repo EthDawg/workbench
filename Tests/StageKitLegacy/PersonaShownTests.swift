@@ -242,9 +242,15 @@ final class PersonaShownTests {
     /// alone, other copies keep their frozen images, and the layout is saved
     /// only when asked.
     func testPreparedCopyIsIdentifiedAndChangedAlone() throws {
-        var panels: [Panel] = []
-        let f = try fixture(panels: { let panel = Panel(); panels.append(panel); return panel }); defer { cleanup(f) }
-        let one = PersonaOverlayItem(personaID: f.a.id), two = PersonaOverlayItem(personaID: f.a.id)
+        var panels: [PersonaOverlayController] = []
+        let f = try fixture(panels: {
+            let panel = PersonaOverlayController(pointer: PersonaTestPointer(), revealDelay: 0); panels.append(panel); return panel
+        }); defer { cleanup(f) }
+        // B is a Circle and A a Card, so a replacement changes the copy's shape.
+        XCTAssertTrue(f.library.setShape(.circle, for: f.b.id))
+        let screenID = (NSScreen.main ?? NSScreen.screens.first).flatMap { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value }
+        let one = PersonaOverlayItem(personaID: f.a.id, placement: PersonaOverlayState(x: 0.2, y: 0.2, width: 0.14, screenID: screenID, locked: true))
+        let two = PersonaOverlayItem(personaID: f.a.id, placement: PersonaOverlayState(x: 0.7, y: 0.2, width: 0.14, screenID: screenID, locked: true))
         try f.library.saveGroupLayout(f.first, overlays: [one, two], publicLabel: "Set")
         try f.library.startOverlaySession(groupIDs: [f.first], initialGroupID: f.first)
         let saved = try Data(contentsOf: f.archive)
@@ -266,8 +272,15 @@ final class PersonaShownTests {
         XCTAssertTrue(f.library.shownCardHasNewerLook, "The second copy still has the older look")
         f.library.selectedID = f.b.id
         XCTAssertEqual(f.library.replacementForShown?.id, f.b.id)
+        guard panels.count == 2, let before = panels[1].visibleFrame else { XCTAssertTrue(false, "Both copies show"); return }
         try f.library.replaceShownWithSelected().get()
         XCTAssertEqual(f.library.sessionState.instances.map(\.personaID), [f.a.id, f.b.id])
+        if let after = panels[1].visibleFrame {
+            XCTAssertEqual(Double(after.width / after.height), 1, accuracy: 0.01)
+            XCTAssertEqual(Double(after.midX), Double(before.midX), accuracy: 1)
+            XCTAssertEqual(Double(after.midY), Double(before.midY), accuracy: 1, file: #filePath, line: #line)
+            XCTAssertTrue(panels[1].window?.ignoresMouseEvents == true, "The replacement keeps the copy's lock")
+        } else { XCTAssertTrue(false, "The replacement shows in the copy's place") }
         XCTAssertTrue(updatedImage(f.library, 0) === updated[0].image, "The updated copy is unchanged by the replacement")
         // A persona outside the set is not offered.
         f.library.selectedID = f.c.id
@@ -280,6 +293,36 @@ final class PersonaShownTests {
         XCTAssertFalse(now == saved, "Only the library edit was saved meanwhile")
         f.library.performOverlayAction(.saveLayout)
         XCTAssertEqual(f.library.groups.first { $0.id == f.first }?.overlays?.map(\.personaID), [f.a.id, f.b.id], "Save Layout keeps the replacement")
+    }
+    /// The End shortcut releases the one floating card: Option-F afterwards
+    /// shows the selection as a new card, never the ended one.
+    func testEndShortcutReleasesTheCard() throws {
+        let f = try fixture(); defer { cleanup(f) }
+        // A suite named by a path keeps its plist in this folder, not in ~/Library/Preferences.
+        let settings = SettingsStore(defaults: UserDefaults(suiteName: f.root.appendingPathComponent("settings").path)!)
+        for action in Action.allCases {
+            var shortcut = action.defaultShortcut; shortcut.enabled = false
+            settings.value.shortcuts[action.rawValue] = shortcut
+        }
+        let app = AppCoordinator(settings: settings, archiveURL: f.root.appendingPathComponent("boards.json"), embedded: true)
+        let scenes = DemoScenes(root: f.root.appendingPathComponent("scenes"), systemIntegrationEnabled: false)
+        app.demoScenes = scenes
+        defer { scenes.shutdown() }
+        let library = scenes.personas
+        let a = try library.addImage(f.root.appendingPathComponent("synthetic-0.png"), name: "Private Alpha", card: PersonaCardStyle(label: "Site lead"))
+        let b = try library.addImage(f.root.appendingPathComponent("synthetic-1.png"), name: "Private Bravo", card: PersonaCardStyle(label: "Account lead"))
+        library.selectedID = a.id
+        app.handleHotkey(.personaToggle, down: true)
+        XCTAssertEqual(library.shownCard?.source.id, a.id)
+        let ended = library.shownCard?.copyID
+        app.handleHotkey(.overlayEnd, down: true)
+        XCTAssertTrue(library.shownCard == nil, "End releases the card, not only hides it")
+        XCTAssertFalse(library.overlayVisible)
+        library.selectedID = b.id
+        app.handleHotkey(.personaToggle, down: true)
+        XCTAssertEqual(library.shownCard?.source.id, b.id, "Option-F after End shows the selection")
+        XCTAssertFalse(library.shownCard?.copyID == ended, "It is a new card, not the ended one")
+        library.endOverlaySession()
     }
     private func updatedImage(_ library: PersonaLibrary, _ index: Int) -> NSImage? {
         let instances = library.sessionState.instances

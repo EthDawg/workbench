@@ -254,11 +254,20 @@ final class PersonaSessionController {
         groups[index].overlays.append(item); selectedInstanceID = item.id
         render(animated: softReveal && phase == .active); onChange?(); return item.id
     }
-    /// The replacement shows as it was prepared, in the copy's place.
+    /// The replacement shows as it was prepared, in the copy's place: it keeps
+    /// the copy's width and centre, and its lock, whatever its shape.
     func replace(_ id: UUID, personaID: UUID) throws {
-        guard let index = groupIndex, groups[index].candidates.contains(where: { $0.id == personaID }) else { throw PersonaError.invalidSettings }
+        guard let index = groupIndex, let candidate = groups[index].candidates.first(where: { $0.id == personaID })
+        else { throw PersonaError.invalidSettings }
+        guard let item = groups[index].overlays.first(where: { $0.id == id }) else { return }
         updatedSources[CopyKey(group: currentGroupID, instance: id)] = nil
-        update(id) { $0.personaID = personaID; $0.shape = nil }
+        var placement = item.placement
+        if let panel = panels[id] {
+            let label = item.publicLabel ?? (candidate.label.isEmpty ? "Overlay" : candidate.label)
+            placement = panel.reshape(image: candidate.image, outline: candidate.shape.outline, name: label, state: item.placement)
+            placement.locked = item.placement.locked
+        }
+        update(id) { $0.personaID = personaID; $0.shape = nil; $0.placement = placement }
         releaseUnusedLooks()
     }
     /// The frozen source a copy in the current set shows: its update, if it has
