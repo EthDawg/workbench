@@ -537,6 +537,31 @@ enum SurfaceGallery {
                                     problems: problems, file: file))
             }
         }
+        // A mode switch while the row is open changes its width with no reveal or collapse, so
+        // the host hears of it only through the row's own report: Present's Prompts widen the row.
+        controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
+        for (from, to) in [(ToolbarMode.dictate, ToolbarMode.present), (.present, .dictate)] {
+            model.toolbarMode = from
+            waitForToolbar(host, controls, tier: .revealed, content: content)
+            model.toolbarMode = to
+            waitForToolbar(host, controls, tier: .revealed, content: content)
+            settle(twin, seconds: 0.2)
+            let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
+            var problems: [String] = []
+            if controls.toolbar.state.tier != .revealed { problems.append("the toolbar did not stay revealed") }
+            if window.width + 0.5 < wants.width || window.height + 0.5 < wants.height {
+                problems.append("the window is \(Self.points(window)) but the row wants \(Self.points(wants)), so the row is clipped")
+            }
+            if abs(window.width - preferred.width) > 0.5 || abs(window.height - preferred.height) > 0.5 {
+                problems.append("the window is \(Self.points(window)) while the host prefers \(Self.points(preferred))")
+            }
+            let id = "\(from.rawValue)-to-\(to.rawValue)-revealed", title = "\(from.title) to \(to.title), revealed"
+            let file = "toolbar-\(id)-\(theme).png"
+            shots.append(try save(try snapshot(content), id: id, title: title, detail: "Window \(Self.points(window)); the row wants \(Self.points(wants)).", file: file, to: output))
+            checks.append(.init(id: id, title: title, mode: to.title, tier: ToolbarTier.revealed.rawValue, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(.revealed), twinMeasured: twinControls.hasMeasured(.revealed),
+                                problems: problems, file: file))
+        }
         return (shots, checks)
     }
 
@@ -859,7 +884,7 @@ private struct SurfaceIndex {
         }
         html += "<h3>Not rendered</h3><ul>" + ["Drawing", "Presenting a device scene", "Persona Overlay showing", "Timer running"].map {
             "<li>\($0): needs a live StageKit session (overlay windows or device capture). The options menus below show these rows' idle menus.</li>" }.joined() + "</ul>"
-        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
+        html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
         if light.host.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
         for check in light.host {

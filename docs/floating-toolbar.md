@@ -251,9 +251,11 @@ retains the full gallery as an artifact. These are real native views, not HTML
 approximations. Visual acceptance still requires inspecting the images.
 
 The surface gallery (`LocalVoice --render-surfaces`) adds the host: it drives the
-production `CapturePanelController` offscreen for every mode at rest and revealed
-and flags a window smaller than its row, the check the renderer above cannot make
-because it sizes its own window to the row. The host pins seed sizes until the row
+production `CapturePanelController` offscreen for every mode at rest and revealed,
+then switches between Dictate and Present with the row open, a width change that
+reaches the host only through the row's own report. It flags a window smaller than
+its row, the check the renderer above cannot make because it sizes its own window
+to the row. The host pins seed sizes until the row
 reports (`CaptureHUDControls.reportSize`), so a report that never arrives leaves the
 row and its corners clipped (#152). The flags appear in the gallery's index and log.
 A size problem fails the run once the index is written: a row the host never heard,
