@@ -69,6 +69,9 @@ final class Receipt { func dismissHUD() {} }
     func listen() { listens += 1 }
     var failureClears = 0
     func clearReadingFailure() { failureClears += 1 }
+    // What VoiceOver would hear when Home's tile refuses text (#173).
+    var announcements: [String] = []
+    func announceForAccessibility(_ text: String) { announcements.append(text) }
 __METHODS__
 }
 @main struct Checks {
@@ -159,6 +162,13 @@ __METHODS__
         try check(home.speechText == "Copied text" && home.listens == 2 && home.error?.contains("meeting") == true,
                   "a meeting in progress leaves the draft alone and says why")
         try check(home.attention?.page == .read, "a reading a meeting blocked is Read's to explain (#134)")
+        // Text the provider cannot read is refused before the owner touches the draft (#173).
+        home.meetings.isBusy = false
+        let refusedInvalidations = home.invalidations
+        home.listen(to: String(repeating: "z", count: 10_001))
+        try check(home.speechText == "Copied text" && home.listens == 2 && home.invalidations == refusedInvalidations
+                  && home.error?.hasPrefix("The copied text has 10,001 characters") == true && home.attention?.page == .read
+                  && home.announcements.last == home.error, "the tile refuses text over the limit, keeps the draft and says why")
         print("READ_SELECTION_MODEL_OK: \(count) checks; actual handoff methods, isolated draft and provider state")
     }
 }
@@ -170,6 +180,8 @@ with tempfile.TemporaryDirectory(prefix="workbench-read-selection-", dir="/priva
     executable = directory / "Checks"
     subprocess.run(["swiftc", "-swift-version", "5", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
                     str(ROOT / "Sources/LocalVoice/ReadSelectionService.swift"), str(ROOT / "Sources/LocalVoice/Attention.swift"),
+                    # The tile's admission check prepares text the way a reading does (#173).
+                    str(ROOT / "Sources/LocalVoice/ListeningText.swift"),
                     str(fixture), "-o", str(executable)], check=True, timeout=120)
     subprocess.run([str(executable)], check=True, timeout=30)
 
