@@ -58,11 +58,15 @@ public struct ToolbarRow: View {
     private let textScale: CGFloat
     private let accent: Color
     private let makeAccessoryMenu: () -> NSMenu
+    /// When set, the accessory opens the host's own surface anchored to the
+    /// button instead of popping up `makeAccessoryMenu`'s menu.
+    private let openAccessory: ((NSView) -> Void)?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
 
     public init(state: ToolbarViewState, textScale: CGFloat = 1, accent: Color = .accentColor,
                 makeAccessoryMenu: @escaping () -> NSMenu = { NSMenu() },
+                openAccessory: ((NSView) -> Void)? = nil,
                 action: @escaping () -> Void = {}, selectMode: @escaping (ToolbarMode) -> Void = { _ in },
                 makeMenu: @escaping () -> NSMenu = { NSMenu() },
                 menuBegan: @escaping (NSMenu) -> Bool = { _ in true }, menuEnded: @escaping () -> Void = {},
@@ -73,6 +77,7 @@ public struct ToolbarRow: View {
         self.menuBegan = menuBegan; self.menuEnded = menuEnded; self.focusButton = focusButton
         self.escape = escape; self.drag = drag
         self.makeAccessoryMenu = makeAccessoryMenu
+        self.openAccessory = openAccessory
     }
     private var scale: CGFloat { textScale * systemScale }
     private var side: CGFloat { 36 * scale }
@@ -107,7 +112,7 @@ public struct ToolbarRow: View {
 
     @ViewBuilder private var accessory: some View {
         if let accessoryTitle = state.accessoryTitle {
-            ToolbarAccessory(title: accessoryTitle, makeMenu: makeAccessoryMenu, began: menuBegan, ended: menuEnded)
+            ToolbarAccessory(title: accessoryTitle, makeMenu: makeAccessoryMenu, openPanel: openAccessory, began: menuBegan, ended: menuEnded)
                 .frame(width: 64 * scale, height: 30 * scale)
         }
     }
@@ -291,6 +296,7 @@ struct ToolbarModeStrip: NSViewRepresentable {
 private struct ToolbarAccessory: NSViewRepresentable {
     let title: String
     let makeMenu: () -> NSMenu
+    let openPanel: ((NSView) -> Void)?
     let began: (NSMenu) -> Bool
     let ended: () -> Void
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
@@ -299,6 +305,7 @@ private struct ToolbarAccessory: NSViewRepresentable {
         view.setAccessibilityLabel(title); view.setAccessibilityIdentifier("toolbar.accessory")
         view.open = { [weak view] in
             guard let view else { return }
+            if let openPanel { openPanel(view); return }
             let menu = makeMenu(); guard began(menu) else { return }
             defer { ended() }
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
