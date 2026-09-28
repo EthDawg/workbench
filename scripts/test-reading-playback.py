@@ -268,6 +268,8 @@ final class FailingSource: ReadingAudioSource {
     let clipboardReceipt = Receipt()
     var pendingReadingSelection: ReadingSelectionImport?
     var readingFailure: ReadingFailure?
+    var announcements: [String] = []
+    lazy var announceForAccessibility: (String) -> Void = { [unowned self] in self.announcements.append($0) }
     var page = "home"
     var onShowEditor: ((String) -> Void)?
     var readingLimit: Int { readingProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000 }
