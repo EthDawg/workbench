@@ -61,6 +61,25 @@ enum ToolbarActiveWork: Equatable {
     }
 }
 
+/// Reading's commands in More (#211 F6): its own next action, Cancel while preparing, Pause
+/// reading or Resume reading, whenever another job holds the row's primary, such as drawing or
+/// a prompt insertion; and Stop reading while it plays or is paused.
+enum ToolbarReadingCommands {
+    static func operations(primary: ToolbarOperation, reading: ToolbarLiveState.Reading) -> [ToolbarOperation] {
+        var operations: [ToolbarOperation] = []
+        let own: ToolbarOperation?
+        switch reading {
+        case .preparing: own = .cancelReading
+        case .playing: own = .pauseReading
+        case .paused: own = .resumeReading
+        case .idle: own = nil
+        }
+        if let own, own != primary { operations.append(own) }
+        if reading == .playing || reading == .paused { operations.append(.stopReading) }
+        return operations
+    }
+}
+
 /// Each item retains its action for the duration of native menu tracking.
 final class ToolbarMenuAction: NSMenuItem {
     private let run: () -> Void

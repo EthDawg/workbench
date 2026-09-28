@@ -240,6 +240,15 @@
     "note": "Quality (#134 T4): the Snap & Talk narration panel's Cancel, moved into More under Snap & Talk while narration records; it keeps the screenshot. Existing contextual \"Cancel\" label inside snapAndTalk; the row's next action is Stop narration."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel.3",
+    "surface": "floating toolbar More menu",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "read",
+    "aliasOf": "read",
+    "note": "Quality (#211 F6): a preparing reading's own Cancel, in More's Read section while drawing or an insertion holds the next action; the same owner as the row's Cancel. Shared wording, not a separate capability."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again",
     "surface": "floating toolbar More menu",
     "label": "Copy again",
@@ -338,6 +347,14 @@
     "note": "Quality (#211 F1): a dictation failure's Open Workbench, as its view offers it, under the failure first in More."
   },
   {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.pause-reading",
+    "surface": "floating toolbar More menu",
+    "label": "Pause reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#211 F6): reading's own next action, in More's Read section while drawing or an insertion holds the row's; the row's own words and owner."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
     "surface": "floating toolbar More menu",
     "label": "Position…",
@@ -352,6 +369,14 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Quality (#211 F1): a dictation failure's Record again, as its view offers it, under the failure first in More."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.resume-reading",
+    "surface": "floating toolbar More menu",
+    "label": "Resume reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality (#211 F6): reading's own next action, in More's Read section while drawing or an insertion holds the row's; the row's own words and owner."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.retry",

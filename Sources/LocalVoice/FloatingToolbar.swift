@@ -209,7 +209,7 @@ struct FloatingToolbar: View {
         let mode = live.mode
         // A waiting result's own commands come first (#211 F1), then what the live work can do
         // besides the next action (#134 T4): the recording's Cancel and Copy now, narration's
-        // Cancel, and reading's Stop.
+        // Cancel, and reading's own commands.
         var owner = liveCommands(action: action)
         if let result = resultCommands() { owner.insert(result, at: 0) }
         for (index, section) in owner.enumerated() {
@@ -299,9 +299,17 @@ struct FloatingToolbar: View {
         if readback.isRecording {
             sections.append(("Snap & Talk", [ToolbarMenuAction("Cancel") { readback.cancelNarration() }]))
         }
-        if model.playing || model.paused {
-            sections.append(("Read", [ToolbarMenuAction("Stop reading") { model.stopPlayback() }]))
+        // Reading keeps its own next action here while drawing or an insertion holds the primary,
+        // preparing included, and Stop reading throughout (#211 F6).
+        let reading = ToolbarReadingCommands.operations(primary: action.operation, reading: live.reading).map { operation -> NSMenuItem in
+            switch operation {
+            case .cancelReading: return ToolbarMenuAction("Cancel") { perform(.cancelReading) }
+            case .pauseReading: return ToolbarMenuAction("Pause reading") { perform(.pauseReading) }
+            case .resumeReading: return ToolbarMenuAction("Resume reading") { perform(.resumeReading) }
+            default: return ToolbarMenuAction("Stop reading") { model.stopPlayback() }
+            }
         }
+        if !reading.isEmpty { sections.append(("Read", reading)) }
         return sections
     }
 

@@ -139,6 +139,17 @@ enum WorkbenchControlChecks {
                       && items(.draw) { $0.presenting = true } == [.endPresentation] && items(.dictate) { $0.meetingRecording = true; $0.meetingRecovery = true }.isEmpty,
                       "the other tools' finishes are unchanged, and a recording meeting is not offered for recovery")
         }
+        // Reading keeps its own commands in More while another job holds the primary (#211 F6).
+        do {
+            func reading(_ primary: ToolbarOperation, _ state: ToolbarLiveState.Reading) -> [ToolbarOperation] {
+                ToolbarReadingCommands.operations(primary: primary, reading: state)
+            }
+            try check(reading(.finishDrawing, .playing) == [.pauseReading, .stopReading] && reading(.stopInserting, .paused) == [.resumeReading, .stopReading],
+                      "while drawing or an insertion holds the primary, More offers Pause reading or Resume reading, and Stop reading")
+            try check(reading(.finishDrawing, .preparing) == [.cancelReading], "and Cancel while the reading is still preparing")
+            try check(reading(.pauseReading, .playing) == [.stopReading] && reading(.cancelReading, .preparing).isEmpty && reading(.finishDrawing, .idle).isEmpty,
+                      "the row's own reading action is not repeated there, and no reading offers nothing")
+        }
         // Words waiting for drawing to end lead with Stop drawing, which delivers them; Copy now
         // is in More (#211 F5).
         do {
