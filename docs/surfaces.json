@@ -154,13 +154,6 @@
     "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.saved-prompts",
-    "surface": "floating toolbar glyph menu",
-    "label": "Saved Prompts",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
     "surface": "floating toolbar glyph menu",
     "label": "End presentation",
@@ -236,6 +229,14 @@
     "note": "Runtime label from action . title; no rendered text assumed.",
     "kind": "action",
     "belongsTo": "app"
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.saved-prompts",
+    "surface": "floating toolbar glyph menu",
+    "label": "Saved Prompts…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: the glyph menu's Saved Prompts, in the same place, now opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.settings",
@@ -504,41 +505,71 @@
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.all-prompts",
-    "surface": "Saved Prompts menu",
-    "label": "All Prompts",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-saved-resources",
+    "surface": "Saved Prompts picker",
+    "label": "Open Saved resources…",
     "kind": "action",
-    "belongsTo": "present"
+    "belongsTo": "library",
+    "note": "Option of Saved resources: the empty picker's one door to where prompts are saved, so an empty Prompts picker is not a dead end (#159)."
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.by-persona",
-    "surface": "Saved Prompts menu",
-    "label": "By Persona",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.NSMenuItem.by-product",
-    "surface": "Saved Prompts menu",
-    "label": "By Product",
-    "kind": "option",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.ToolbarMenuAction.runtime-e77e635dc1d9",
-    "surface": "Saved Prompts menu",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-14443435e8dd",
+    "surface": "Saved Prompts picker",
     "label": null,
-    "expression": "prompt . title",
+    "expression": "model . mode . actionTitle",
     "kind": "action",
     "belongsTo": "present",
-    "note": "Runtime label from prompt . title; no rendered text assumed."
+    "note": "Quality: the picker's action for the highlighted prompt, Insert into the frozen field's app, or Copy prompt without Accessibility approval or a readable field (#159, #165). Runtime label from model . mode . actionTitle; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.PromptInsertion.SavedPromptMenu.ToolbarMenuAction.stop-inserting",
-    "surface": "Saved Prompts menu",
-    "label": "Stop Inserting",
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-54146627b2ad",
+    "surface": "Saved Prompts picker",
+    "label": null,
+    "expression": "prompt . pickerTitle",
     "kind": "action",
-    "belongsTo": "present"
+    "belongsTo": "present",
+    "note": "Quality: one row per saved prompt, favourites first, replacing the menu's repeated prompt items (#159). Runtime label from prompt . pickerTitle; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.runtime-7ace8db149f9",
+    "surface": "Saved Prompts picker",
+    "label": null,
+    "expression": "model . showsDetails ? \"Hide details\" : \"Details\"",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: shows the last delivery's full reason behind its one-line status (#159). Runtime label; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.show-all-prompts",
+    "surface": "Saved Prompts picker",
+    "label": "Show all prompts",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: clears the picker's own search and category after no match (#159)."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Button.stop-inserting",
+    "surface": "Saved Prompts picker",
+    "label": "Stop inserting",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: the menu's Stop Inserting, in the picker while a prompt is being inserted, worded as the toolbar's label (#159)."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.Picker.category",
+    "surface": "Saved Prompts picker",
+    "label": "Category",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Quality: one optional Product or Persona filter that narrows the same list, replacing the By Product and By Persona submenus (#159)."
+  },
+  {
+    "id": "LocalVoice.PromptPicker.PromptPickerView.choice.all-prompts",
+    "surface": "Saved Prompts picker",
+    "label": "All prompts",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Quality: the category filter's default, every saved prompt (#159)."
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Button.set-up-automatic-paste",

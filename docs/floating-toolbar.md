@@ -69,7 +69,7 @@ then Position…, Keep open, Hide toolbar and Settings. There is no Change tool.
 Dictate, Read and Snap are start and stop on this surface, so each carries one
 door to its page and nothing else, named as `Open Dictate…`, `Open Read…` and
 `Open Snap…`. Snap & Talk offers its review. Draw holds the
-drawing menu inline. Present holds the presentation items inline, Saved Prompts
+drawing menu inline. Present holds the presentation items inline, Saved Prompts…
 and Switch to Browser Tab; source, reconnect, proportions, motion, window
 placement, native-app handoff and End remain reachable there. Persona holds the
 persona menu inline: the frozen session's public labels, size, position, lock,
@@ -88,10 +88,27 @@ Recording, processing, narration and reading keep their own controls whatever th
 choice (`FloatingToolbarSurface.resolve`, checked by `--check-floating-toolbar`).
 
 Saved Prompts reads the existing Saved Resources library. Favourite, Product and
-Persona groupings do not create another store. The original field, value and
-UTF-16 selection are captured before the picker opens. Supported fields receive
-confirmed literal chunks; other readable fields get one guarded paste labelled
-as such. Escape, Stop, changed focus/selection/value and shortcut editing cancel
+Persona groupings do not create another store. The Prompts accessory and the
+glyph menu's Saved Prompts… open one picker: a search field, favourites and then
+every other prompt once, and one optional Product or Persona filter that narrows
+the list without a submenu. It is a transient panel of at most 420 points, kept
+16 points inside the display near either edge, above a bottom dock and below a
+top one. Long names wrap to two lines or truncate and keep their full accessible
+text. It takes keyboard focus without activating Workbench, holds the row open
+as a native menu does, and closes on Escape, a click outside, a second click on
+Prompts or a choice; ↑ ↓ and Return choose. A choice acts only after the picker
+has gone, as a menu item's action runs after tracking, and typing waits, for about
+a second at most, until the frozen app is in front with the frozen field focused.
+The picker's panel is sized from its content's `onGeometryChange` report, never
+from a background `GeometryReader` preference (#152).
+
+The original field, value and UTF-16 selection are captured before the picker
+opens. Supported fields receive confirmed literal chunks; other readable fields
+get one guarded paste labelled as such. Without Accessibility approval, or with
+no readable field, the action is Copy prompt: one copy of the exact text and the
+Copied, Paste with ⌘V. receipt, with no paste or Accessibility write. The last
+delivery is one line naming its destination, with Details for the full reason.
+Escape, Stop, changed focus/selection/value and shortcut editing cancel
 insertion. No partial write is replayed and no submit key is sent.
 
 ## Placement
@@ -321,6 +338,14 @@ in a new host as after a relaunch, and after Reset position. A toolbar that does
 not rest where it was put fails the run. It renders Position… in both themes.
 `ToolbarPlacementTests` covers the 4-point threshold, the 16-point snap zone,
 inward growth, clamping and recovery.
+
+The gallery opens the Saved Prompts picker's production panel,
+`PromptPickerController`, the same way: invisible, ignoring the pointer, with no
+keyboard focus and no click monitors. It narrows the list to one row, adds a status
+line and its Details, then shows every prompt again. A panel that is not the size
+its content wants within the display, or that never heard its content's size,
+fails the run, as a toolbar window does. A picker that closes during the check is
+reported only.
 
 `CaptureHUDControls` bridges the row's measured size and the core's effects into
 the existing app panel. `ToolbarSession` owns the one deadline and persisted

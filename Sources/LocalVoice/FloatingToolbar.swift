@@ -85,7 +85,7 @@ struct FloatingToolbar: View {
     var body: some View {
         let state = viewState
         ToolbarRow(state: state, accent: Workbench.accent,
-            makeAccessoryMenu: { SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction) },
+            openAccessory: { button in openPrompts(anchor: button, destination: controls.promptDestination?()) },
             action: performSelected, selectMode: { model.toolbarMode = $0 }, makeMenu: toolsMenu,
             menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
             focusButton: { button in
@@ -113,6 +113,16 @@ struct FloatingToolbar: View {
     private static func resting(_ state: ToolbarViewState) -> ToolbarViewState {
         var resting = state; resting.tier = .resting
         return resting
+    }
+
+    /// One Saved Prompts picker for the accessory and the glyph menu (#159). It
+    /// freezes the field that was in front when it was asked for.
+    private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
+        let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
+            receipts: model.clipboardReceipt, destination: destination, trusted: AXIsProcessTrusted(),
+            controls: controls, openLibrary: { model.showLibrary() })
+        if let anchor { PromptPickerController.shared.show(from: anchor, context: context) }
+        else if let frame { PromptPickerController.shared.show(anchor: frame, context: context) }
     }
 
     /// Each operation goes to the owner that already does it. The toolbar never
@@ -159,9 +169,11 @@ struct FloatingToolbar: View {
             Self.inline(stage.makeAnnotationMenu(includeSettings: false), into: menu)
         case .present:
             Self.inline(stage.makePresentationMenu(), into: menu)
-            let prompts = NSMenuItem(title: "Saved Prompts", action: nil, keyEquivalent: "")
-            prompts.submenu = SavedPromptMenu.make(library: model.library, delivery: promptInsertion, target: controls.promptDestination?(), afterTracking: controls.toolbar.afterMenuTracking, prepare: controls.endKeyboardInteraction)
-            menu.addItem(prompts)
+            // The picker opens once this menu has closed, for the field in front now.
+            let destination = controls.promptDestination?(), toolbarFrame = NSApp.currentEvent?.window?.frame
+            menu.addItem(ToolbarMenuAction("Saved Prompts…") {
+                controls.toolbar.afterMenuTracking { if let toolbarFrame { openPrompts(frame: toolbarFrame, destination: destination) } }
+            })
             menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
         case .persona:
             Self.inline(stage.makePersonaMenu(), into: menu)

@@ -8,11 +8,12 @@ The check finds changes; people decide taste.
 
 Scope: ENTRY_POINTS, CATALOGUES and offers. That is the quick panel (header,
 capability rows, each row's shortcut key and options, status rows, footer and
-views embedded in it); the Draw, Present, Persona, Timer and Saved Prompts
-menus that the rows, the floating toolbar and the app menu bar open, with any
-native views embedded in them; the floating toolbar's modes, next action and
-hover labels, accessory and glyph menu, and the live dictation, narration and
-reading controls shown in the same window; the app menu bar and any status item menu
+views embedded in it); the Draw, Present, Persona and Timer menus that the
+rows, the floating toolbar and the app menu bar open, with any native views
+embedded in them, and the Saved Prompts picker the toolbar opens; the
+floating toolbar's modes, next action and hover labels, accessory and glyph
+menu, and the live dictation, narration and reading controls shown in the
+same window; the app menu bar and any status item menu
 built in AppDelegate; the window sidebar; every control on Home and on the
 Settings page, including views embedded in them; the global shortcut
 catalogue; proactive offers, found as types named *Offer* or *Cue plus
@@ -112,7 +113,7 @@ ENTRY_POINTS = [
     ('StageKit/StageKitController.swift', 'StageKitController.makePersonaMenu', 'Persona menu', 'controls'),
     ('StageKit/Persona.swift', 'PersonaLibrary.makeControlsMenu', 'Persona menu', 'controls'),
     ('StageKit/StageKitController.swift', 'StageKitController.makeTimerMenu', 'Timer menu', 'controls'),
-    ('LocalVoice/PromptInsertion.swift', 'SavedPromptMenu', 'Saved Prompts menu', 'controls'),
+    ('LocalVoice/PromptPicker.swift', 'PromptPickerView', 'Saved Prompts picker', 'controls'),
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),

@@ -35,8 +35,12 @@ enum SurfaceGallery {
         var settled = true }
     /// One step of the toolbar's placement through the production host (#163).
     struct PlacementCheck: Codable { var title: String; var problems: [String] }
-    struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pages: [Page]; var entries: [Entry]; var menus: [Listing]
-        var placement: [PlacementCheck] = [] }
+    /// One state of the production Saved Prompts panel: the size it got and the size its content wanted.
+    struct PickerHostCheck: Codable { var id, title: String; var window, wants: [Double]; var heard: Bool; var problems: [String]; var file: String
+        /// The picker was still open when measured; its sizes are only compared if so.
+        var settled = true }
+    struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pickers: [Shot]; var pickerHost: [PickerHostCheck]
+        var pages: [Page]; var entries: [Entry]; var menus: [Listing]; var placement: [PlacementCheck] = [] }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -93,7 +97,13 @@ enum SurfaceGallery {
         if !misplaced.isEmpty {
             throw VoiceError.message("The floating toolbar did not rest where it was put in \(misplaced.count) steps (\(misplaced.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
         }
-        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
+        // The same for the Saved Prompts panel: a panel that is not the size of its content
+        // leaves blank space or clips its status line (#159, the pattern #152 found).
+        let wrongPicker = passes.flatMap { pass in pass.pickerHost.filter(\.hasSizeProblem).map { "\($0.title), \(pass.theme)" } }
+        if !wrongPicker.isEmpty {
+            throw VoiceError.message("The Saved Prompts picker's panel is not the size of its content in \(wrongPicker.count) states (\(wrongPicker.joined(separator: "; "))). See \(output.appendingPathComponent("index.html").path).")
+        }
+        let renders = passes.reduce(0) { $0 + $1.panels.count + $1.toolbar.count + $1.pickers.count + $1.pages.reduce(0) { $0 + $1.shots.count } }
         print("SURFACE_GALLERY_OK: \(renders) renders, \(passes[0].entries.count) entries, \(flags) flags in \(output.path)")
     }
 
@@ -259,6 +269,8 @@ enum SurfaceGallery {
         let (hostShots, host) = try renderToolbarHost(to: output)
         let toolbar = hostShots + [try renderPositionControl(to: output)]
         let placement = try checkToolbarPlacement()
+        let pickers = try renderPickerStates(to: output)
+        let (pickerShots, pickerHost) = try checkPickerHost(to: output)
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         for (name, size) in SurfaceGallery.sizes {
             let window = homeWindow(size: size)
@@ -284,8 +296,193 @@ enum SurfaceGallery {
         for (route, shot) in try renderScreenAccessOff(to: output) {
             if let index = pages.firstIndex(where: { $0.route == route }) { pages[index].shots.append(shot) }
         }
-        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pages: pages, entries: entries() + menuEntries, menus: listings,
-                                   placement: placement)
+        return SurfaceGallery.Pass(theme: theme, panels: panels, toolbar: toolbar, host: host, pickers: pickers + pickerShots, pickerHost: pickerHost,
+                                   pages: pages, entries: entries() + menuEntries, menus: listings, placement: placement)
+    }
+
+    // MARK: Saved Prompts picker
+
+    /// Present's Saved Prompts picker, from synthetic prompts, at its 420-point width and at
+    /// standard and larger text. The panel's placement and focus are covered by --check-core and
+    /// need a pointer on the installed app; nothing here opens a window on screen.
+    func renderPickerStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        let now = Date(timeIntervalSince1970: 1_789_546_320)
+        func prompt(_ title: String, favourite: Bool = false, product: String = "", persona: String = "", age: Double = 0) -> DemoResource {
+            DemoResource(kind: .prompt, title: title, product: product, persona: persona,
+                         content: "Synthetic prompt for \(title).", favorite: favourite, modified: now.addingTimeInterval(-age * 3_600))
+        }
+        let library = [prompt("Open with the customer's goal", favourite: true, product: "Acme CRM", age: 1),
+                       prompt("Show the approval flow", favourite: true, product: "Acme CRM", persona: "Manager", age: 2),
+                       prompt("Summarise the pricing change", product: "Acme CRM", age: 3),
+                       prompt("Walk through onboarding", persona: "Manager", age: 4),
+                       prompt("Explain the security review", persona: "HR Admin", age: 5),
+                       prompt("Close with next steps", age: 6)]
+        let long = [prompt("Explain how the quarterly planning review connects the regional forecasts to the hiring plan and the budget", favourite: true,
+                           product: "A product name long enough to need truncating in one line", persona: "Regional operations manager"),
+                    prompt("Supercalifragilisticexpialidocious-configuration-walkthrough-for-the-enterprise-tenant-administrators", age: 1),
+                    prompt("Short one", age: 2)]
+        let large = (1...60).map { prompt("Demo prompt \($0)", favourite: $0 % 12 == 1, product: "Product \($0 % 4 + 1)", age: Double($0)) }
+        let notes = PromptPickerMode.insert(into: "Notes")
+        let stopped = PromptAttempt(prompt: "Show the approval flow", destination: "Mail",
+                                    result: "Insertion stopped. 12 characters confirmed; nothing was replayed.")
+        struct State {
+            var id, title, detail: String; var resources: [DemoResource]; var mode: PromptPickerMode; var scale: CGFloat = 1
+            var query = ""; var filter = PromptPickerList.Filter.all; var running = false; var attempt: PromptAttempt?; var details = false
+        }
+        let states = [
+            State(id: "empty", title: "No saved prompts", detail: "An empty library leads to Saved resources.", resources: [], mode: notes),
+            State(id: "one", title: "One prompt", detail: "Inserting into Notes, the field in front when the picker opened.", resources: [library[0]], mode: notes),
+            State(id: "grouped", title: "Favourites, then the rest", detail: "Product and Persona tags filter the one list. The last delivery went to Mail and says so.",
+                  resources: library, mode: notes, attempt: stopped),
+            State(id: "details", title: "Last delivery details", detail: "Details shows the full reason, wrapped inside the picker.",
+                  resources: library, mode: notes, attempt: stopped, details: true),
+            State(id: "copy", title: "Copy prompt", detail: "Without Accessibility approval the action is Copy prompt, with no reminder to approve.",
+                  resources: library, mode: .copy(noField: false),
+                  attempt: PromptAttempt(prompt: "Close with next steps", destination: "Clipboard", result: TextDelivery.copiedMessage)),
+            State(id: "no-field", title: "No readable field", detail: "With approval but no readable field in front, choosing a prompt copies it.",
+                  resources: library, mode: .copy(noField: true)),
+            State(id: "long-names", title: "Long names", detail: "Long names wrap to two lines or truncate; the picker keeps its width.",
+                  resources: long, mode: notes),
+            State(id: "filtered", title: "One category", detail: "Persona: Manager narrows the same list.", resources: library, mode: notes,
+                  filter: .persona("Manager")),
+            State(id: "no-match", title: "No match", detail: "A search with no match offers to show every prompt.", resources: library, mode: notes, query: "zebra"),
+            State(id: "inserting", title: "Inserting", detail: "While a prompt is typed in, the picker offers Stop inserting.", resources: library, mode: notes,
+                  running: true, attempt: PromptAttempt(prompt: "Show the approval flow", destination: "Notes", result: "Inserting…", finished: false)),
+            State(id: "large", title: "Sixty prompts", detail: "A large library scrolls at the picker's maximum height; search finds any prompt.",
+                  resources: large, mode: notes),
+            State(id: "grouped-larger", title: "Favourites, larger text", detail: "At 1.35 times the text size the picker keeps its width and wraps.",
+                  resources: library, mode: notes, scale: 1.35, attempt: stopped),
+            State(id: "long-names-larger", title: "Long names, larger text", detail: "Long names at 1.35 times the text size.",
+                  resources: long, mode: .copy(noField: false), scale: 1.35)]
+        var shots: [SurfaceGallery.Shot] = []
+        for state in states {
+            let model = PromptPickerModel(list: PromptPickerList(resources: state.resources), mode: state.mode, width: PromptPickerLayout.maxWidth,
+                                          available: 640, textScale: state.scale, perform: { _ in }, dismiss: {})
+            model.list.query = state.query; model.list.filter = state.filter
+            model.show(running: state.running, attempt: state.attempt); model.showsDetails = state.details
+            let host = NSHostingView(rootView: PromptPickerView(model: model).padding(16).background(Color(nsColor: .windowBackgroundColor)))
+            let window = offscreenWindow(size: host.fittingSize, styleMask: [.borderless])
+            window.contentView = host
+            settle(host); window.setContentSize(host.fittingSize); settle(host, seconds: 0.1)
+            window.setContentSize(host.fittingSize); settle(host, seconds: 0.05)
+            defer { window.contentView = nil; window.close() }
+            shots.append(try save(try snapshot(host), id: state.id, title: state.title, detail: state.detail,
+                                  file: "picker-\(state.id)-\(theme).png", to: output))
+        }
+        return shots
+    }
+
+    // MARK: Saved Prompts picker host
+
+    /// The production picker, `PromptPickerController`, opened as the toolbar host check drives
+    /// the toolbar: its panel is invisible, ignores the pointer, takes no keyboard focus and
+    /// watches no clicks. It opens over a bottom-docked Prompts button with synthetic prompts,
+    /// narrows to one row, gains a status line, shows that line's Details, then lists every prompt
+    /// again. Each time its panel must be the size its content wants, within the display, as
+    /// measured by a twin view that sizes its own window. The picker's renders above size their
+    /// own windows, so only this check can see a panel its content never resized (#152).
+    func checkPickerHost(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [SurfaceGallery.PickerHostCheck]) {
+        guard let screen = NSScreen.main else { return ([], []) }
+        let now = Date(timeIntervalSince1970: 1_789_546_320)
+        let prompts = [("Open with the customer's goal", true, "Acme CRM", ""), ("Show the approval flow", true, "Acme CRM", "Manager"),
+                       ("Summarise the pricing change", false, "Acme CRM", ""), ("Walk through onboarding", false, "", "Manager"),
+                       ("Explain the security review", false, "", "HR Admin"), ("Close with next steps", false, "", "")]
+            .enumerated().map { index, item in
+                DemoResource(kind: .prompt, title: item.0, product: item.2, persona: item.3, content: "Synthetic prompt for \(item.0).",
+                             favorite: item.1, modified: now.addingTimeInterval(-Double(index) * 3_600))
+            }
+        // Copy prompt writes only to this pasteboard; nothing is pasted or typed anywhere.
+        let board = NSPasteboard(name: .init("Workbench.PickerHostCheck." + UUID().uuidString))
+        defer { board.releaseGlobally() }
+        let isolated = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false }, preparePaste: { nil })
+        let receipts = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
+        let delivery = PromptInsertion()
+        let controller = PromptPickerController()
+        controller.offscreenForChecks = true
+        let visible = screen.visibleFrame
+        let anchor = NSRect(x: visible.midX - 32, y: visible.minY + 40, width: 64, height: 30)
+        controller.show(anchor: anchor, context: .init(resources: prompts, delivery: delivery, receipts: receipts, destination: nil,
+                                                       trusted: false, controls: nil, openLibrary: {}))
+        defer { controller.close() }
+        guard let panel = controller.shownPanel, let content = panel.contentView else { throw VoiceError.message("The Saved Prompts picker did not open.") }
+        panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        let steps: [(id: String, title: String, apply: () -> Void)] = [
+            ("open", "Opened", {}),
+            ("one-row", "Narrowed to one row", { controller.shownModel?.list.query = "pricing" }),
+            ("status", "With a status line", {
+                delivery.copy("Synthetic prompt for Summarise the pricing change.", title: "Summarise the pricing change", receipts: receipts, system: isolated)
+            }),
+            // A result too long for one line gets Details. With no field, nothing is typed.
+            ("details", "With the status line's Details", {
+                delivery.insert("Synthetic prompt.", title: "Walk through onboarding", into: nil); controller.shownModel?.showsDetails = true
+            }),
+            ("all", "Every prompt again", { controller.shownModel?.list.query = "" })]
+        var shots: [SurfaceGallery.Shot] = [], checks: [SurfaceGallery.PickerHostCheck] = []
+        for step in steps {
+            step.apply()
+            waitForPicker(controller, panel)
+            let title = "Saved Prompts panel, \(step.title.lowercased())", file = "picker-host-\(step.id)-\(theme).png"
+            guard let model = controller.shownModel else {
+                checks.append(.init(id: step.id, title: title, window: [], wants: [], heard: false,
+                                    problems: ["the picker closed during the check"], file: "", settled: false))
+                break
+            }
+            let natural = pickerWants(model)
+            let wants = PromptPickerLayout.frame(content: natural, anchor: anchor, visible: visible, above: controller.opensAbove).size
+            let window = panel.frame.size
+            var problems: [String] = []
+            let heard = controller.reportedSize.map { abs($0.width - natural.width) <= 0.5 && abs($0.height - natural.height) <= 0.5 } ?? false
+            if !heard {
+                problems.append("the panel never heard its content's current size" + (controller.reportedSize.map { "; the last report was \(Self.points($0))" } ?? ""))
+            }
+            if abs(window.width - wants.width) > 0.5 || abs(window.height - wants.height) > 0.5 {
+                problems.append("the panel is \(Self.points(window)) but its content wants \(Self.points(wants))"
+                    + (window.height > wants.height + 0.5 ? ", so it shows blank space" : window.height + 0.5 < wants.height ? ", so its content is clipped" : ""))
+            }
+            if !visible.insetBy(dx: PromptPickerLayout.edgeMargin - 0.5, dy: PromptPickerLayout.edgeMargin - 0.5).contains(panel.frame) {
+                problems.append("the panel is not inside the display with its margins")
+            }
+            // An empty panel has nothing to draw; its size is the finding.
+            if content.bounds.width >= 1 && content.bounds.height >= 1 {
+                shots.append(try save(try snapshot(content), id: "host-\(step.id)", title: title,
+                                      detail: "The production panel, invisible: \(Self.points(window)); its content wants \(Self.points(wants)).", file: file, to: output))
+            }
+            checks.append(.init(id: step.id, title: title, window: [window.width, window.height], wants: [wants.width, wants.height],
+                                heard: heard, problems: problems, file: file))
+        }
+        return (shots, checks)
+    }
+
+    /// Spins the main run loop until the picker's panel has held its frame for six turns of about
+    /// 50 ms, the picker closes, or three seconds pass.
+    func waitForPicker(_ controller: PromptPickerController, _ panel: NSPanel) {
+        let deadline = Date().addingTimeInterval(3)
+        var still = 0, last = panel.frame
+        while Date() < deadline && still < 6 && controller.isShown {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            still = panel.frame == last ? still + 1 : 0
+            last = panel.frame
+        }
+    }
+
+    /// What the picker's content wants: the same state in a twin view that sizes its own window.
+    func pickerWants(_ model: PromptPickerModel) -> NSSize {
+        let twinModel = PromptPickerModel(list: model.list, mode: model.mode, width: model.width, available: model.available,
+                                          textScale: model.textScale, perform: { _ in }, dismiss: {})
+        twinModel.show(running: model.running, attempt: model.attempt); twinModel.showsDetails = model.showsDetails
+        let twin = NSHostingView(rootView: PromptPickerView(model: twinModel))
+        let window = offscreenWindow(size: NSSize(width: model.width, height: 200), styleMask: [.borderless])
+        window.contentView = twin
+        defer { window.contentView = nil; window.close() }
+        var size = twin.fittingSize
+        for _ in 0..<20 {
+            window.setContentSize(size); settle(twin, seconds: 0.05)
+            let next = twin.fittingSize
+            if abs(next.width - size.width) <= 0.5 && abs(next.height - size.height) <= 0.5 { break }
+            size = next
+        }
+        return size
     }
 
     // MARK: Floating surface states
@@ -1162,6 +1359,7 @@ private struct SurfaceIndex {
         }
         for check in light.host { for problem in check.problems { flags.append("Floating toolbar host · \(check.title): \(problem).") } }
         for check in light.placement { for problem in check.problems { flags.append("Floating toolbar placement · \(check.title): \(problem).") } }
+        for check in light.pickerHost { for problem in check.problems { flags.append("Saved Prompts picker host · \(check.title): \(problem).") } }
         // A menu door that carries a page's sidebar name plus other words is the same door under
         // another name; the Grammar's Names rule gives a place one name on every surface.
         for entry in light.entries where entry.surface == "App menus" {
@@ -1178,7 +1376,7 @@ private struct SurfaceIndex {
         h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:15px;margin:22px 0 4px}
         p,li{color:var(--muted)}.flag{color:var(--flag)}.ok{color:var(--ok)}code{font:12px ui-monospace,monospace}
         .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}figure{margin:0}figcaption{font-size:12px;color:var(--muted)}
-        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.page img{width:560px}.toolbar img{width:auto;max-height:72px}
+        img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}.panel img{width:328px}.picker img{width:452px}.page img{width:560px}.toolbar img{width:auto;max-height:72px}
         pre{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto;font-size:12px}
         table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid var(--line);padding:5px 8px;vertical-align:top}th{font-weight:600}
         .menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
@@ -1213,6 +1411,20 @@ private struct SurfaceIndex {
             html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row toolbar\">" + figure(shot, "Light")
                 + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
         }
+        html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard and choices are covered by --check-core. The production panel (<code>PromptPickerController</code>) is then opened invisibly over a bottom-docked Prompts button, narrowed to one row, given a status line and its Details, and widened to every prompt again. Each time its panel is compared with what its content wants.</p>"
+        if light.pickerHost.isEmpty { html += "<p>The production panel was not opened: this Mac reported no display.</p>" }
+        else {
+            html += "<table><tr><th>State</th><th>Panel</th><th>Content wants</th><th>Panel heard its content</th><th>Check</th></tr>"
+            for check in light.pickerHost {
+                html += "<tr><td>\(esc(check.title))</td><td>\(points(check.window))</td><td>\(points(check.wants))</td><td>\(check.heard ? "Yes" : "No")</td>"
+                    + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
+            }
+            html += "</table>"
+        }
+        for (index, shot) in light.pickers.enumerated() {
+            html += "<h3>\(esc(shot.title))</h3><p>\(esc(shot.detail))</p><div class=\"row picker\">" + figure(shot, "Light")
+                + (index < dark.pickers.count ? figure(dark.pickers[index], "Dark") : "") + "</div>"
+        }
         html += "<h2>Options menus</h2><div class=\"menus\">" + light.menus.map { "<div><h3>\(esc($0.title))</h3><pre>\(esc($0.lines.joined(separator: "\n")))</pre></div>" }.joined() + "</div>"
         html += "<h2>Pages</h2><p>The top of each page, with the window at its default size and at its minimum size.</p>"
         for (index, page) in light.pages.enumerated() {
@@ -1233,6 +1445,7 @@ private struct SurfaceIndex {
         html += "</table><h2>Limitations</h2><ul>" + [
             "Drawing, presenting, persona and timer states need live StageKit windows or device capture and are not rendered.",
             "The floating toolbar host is driven with its panel at alpha zero and mouse events ignored, in every mode but with no live work; in a local run a pointer inside that invisible frame can hold the row revealed, which the check reports as not settling.",
+            "The Saved Prompts panel is opened the same way, with no keyboard focus and no click monitors; its placement, focus return and dismissal need a pointer on the installed app.",
             "StageKit is never started, so Annotate reports Ready on 0 displays.",
             "Workbench is never the active app, so controls draw in their inactive style (the Floating Toolbar switch is grey).",
             "Menu contents are listed as text. The Dictate options menu is SwiftUI and is listed from its source; the others are the panel's own native menus.",
@@ -1243,7 +1456,7 @@ private struct SurfaceIndex {
             "The speech engine is never loaded, so Models shows a fresh install. Mac voices, Apple Intelligence availability and keyboard labels come from the rendering Mac.",
             "Pixel sizes follow the rendering display's scale."].map { "<li>\(esc($0))</li>" }.joined() + "</ul></body></html>\n"
         try Data(html.utf8).write(to: output.appendingPathComponent("index.html"), options: .atomic)
-        let shots = passes.flatMap { pass in pass.panels + pass.toolbar + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
+        let shots = passes.flatMap { pass in pass.panels + pass.toolbar + pass.pickers + pass.pages.flatMap(\.shots) }.map { ["file": $0.file, "width": $0.width, "height": $0.height] as [String: Any] }
         let manifest: [String: Any] = ["renders": shots, "flags": flags, "entries": light.entries.map { ["surface": $0.surface, "label": $0.label, "leads": $0.leads] }]
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("manifest.json"))
         return flags.count
@@ -1260,6 +1473,12 @@ private struct SurfaceIndex {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
     }
+}
+
+extension SurfaceGallery.PickerHostCheck {
+    /// The panel never heard its content, or is not the size its content wants within the
+    /// display. A picker that closed during the check (a click in a local run) is only reported.
+    var hasSizeProblem: Bool { settled && !problems.isEmpty }
 }
 
 extension SurfaceGallery.HostCheck {
