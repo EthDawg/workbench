@@ -83,7 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         snapCapture.attach(to: snap) { [weak self] in
             self?.closeControls(); self?.capturePanel?.window?.orderOut(nil)
         }
-        snap.onStateChange = { [weak self] in self?.updateRecordingUI() }
+        CaptureImagePreview.shared.snapOwner = snap
+        model.library.showImages = { images, selected in CaptureImagePreview.shared.showLibrary(images, selected: selected) }
+        CaptureImagePreview.shared.attach(to: snap, parent: { [weak self] in self?.window }) { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.onStateChange = { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.currentReviewDigest = { [weak snap] key in
             guard let snap else { return nil }
@@ -116,6 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
         stage.onOpenPersonas = { [weak self] in self?.navigate("personas") }
+        stage.onViewImages = { images, selected in
+            let collection = images.map { CaptureImagePreviewItem(title: $0.title, detail: $0.detail, source: .generated($0.id), render: $0.png) }
+            if let index = images.firstIndex(where: { $0.id == selected }) {
+                CaptureImagePreview.shared.show(collection[index], collection: collection)
+            }
+        }
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
             return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
@@ -727,6 +735,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
         case "--check-capture-preview":
             try await CaptureImagePreviewChecks.run()
+        case "--check-image-workspace":
+            try await ImageWorkspaceChecks.run(output: args.count > 1 ? URL(fileURLWithPath: args[1]) : nil)
         case "--check-quick-look-panel":
             let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
             try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }

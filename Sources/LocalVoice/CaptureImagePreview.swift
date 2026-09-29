@@ -1,8 +1,9 @@
 import AppKit
 import ImageIO
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// One capture image for the read-only preview (#154): a Snap's current
+/// One image in the shared workspace: a Snap's current
 /// revision, a Snap & Talk section's screenshot or a task's saved copy. It is
 /// named for the person and for VoiceOver, and says what to show when its
 /// file cannot be read.
@@ -14,10 +15,13 @@ struct CaptureImagePreviewItem: Equatable {
         case snap(root: URL, id: UUID)
         /// Bytes already in hand, such as an image a Hand off is about to share.
         case bytes(Data)
+        case generated(UUID)
     }
     var title: String
     var detail: String
     var source: Source
+    var render: (@MainActor () throws -> Data)? = nil
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.title == rhs.title && lhs.detail == rhs.detail && lhs.source == rhs.source }
 
     /// A Snap & Talk section. Active sections are numbered as the session shows them.
     static func section(_ section: ReadbackSection, number: Int?, session: URL?) -> Self {
@@ -64,6 +68,7 @@ enum CaptureImagePreviewError: LocalizedError {
 struct CapturePreviewImage {
     let image: CGImage
     let pixelSize: CGSize
+    var sourceBytes: Data? = nil
 }
 
 /// Set once a preview is closed or replaced, so a decode that has not started never starts.
@@ -87,15 +92,12 @@ enum CaptureImageLoader {
         return min(8_192, max(2_048, Int(largest * 2)))
     }
 
-    static func image(_ source: CaptureImagePreviewItem.Source, maximumPixelSize: Int,
-                      cancellation: CapturePreviewCancellation = CapturePreviewCancellation()) throws -> CapturePreviewImage {
-        // A preview closed while this waited in the queue reads nothing, not even up to 100 MB of file.
-        if cancellation.isCancelled { throw CancellationError() }
+    static func bytes(_ source: CaptureImagePreviewItem.Source) throws -> Data {
         let data: Data
         switch source {
         case .file(let url, let missing):
             guard let url, let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                  values.isRegularFile == true, let bytes = try? Data(contentsOf: url) else { throw CaptureImagePreviewError.unavailable(missing) }
+                  values.isRegularFile == true, (values.fileSize ?? Int.max) <= maximumBytes, let bytes = try? Data(contentsOf: url) else { throw CaptureImagePreviewError.unavailable(missing) }
             guard (values.fileSize ?? bytes.count) <= maximumBytes, bytes.count <= maximumBytes else {
                 throw CaptureImagePreviewError.unavailable("This image is larger than 100 MB, so it is not shown here. Its file is unchanged.")
             }
@@ -105,19 +107,31 @@ enum CaptureImageLoader {
             data = try SnapStore(root: root).snapshot(id).imagePNG
         case .bytes(let bytes):
             data = bytes
+        case .generated:
+            throw CaptureImagePreviewError.unavailable("This image could not be prepared. Its source is unchanged.")
         }
+        guard data.count <= maximumBytes else { throw CaptureImagePreviewError.unavailable("Choose an image under 100 MB.") }
+        return data
+    }
+
+    static func image(_ source: CaptureImagePreviewItem.Source, maximumPixelSize: Int,
+                      cancellation: CapturePreviewCancellation = CapturePreviewCancellation()) throws -> CapturePreviewImage {
+        // A preview closed while this waited in the queue reads nothing, not even up to 100 MB of file.
+        if cancellation.isCancelled { throw CancellationError() }
+        let data = try bytes(source)
         if cancellation.isCancelled { throw CancellationError() }
         let notAnImage = CaptureImagePreviewError.unavailable("This file is not an image Workbench can show. It is unchanged.")
         guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
               width > 0, height > 0 else { throw notAnImage }
-        let image = max(width, height) > maximumPixelSize
-            ? CGImageSourceCreateThumbnailAtIndex(imageSource, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceShouldCacheImmediately: true,
+        let orientation = (properties[kCGImagePropertyOrientation] as? Int) ?? 1
+        let image = max(width, height) > maximumPixelSize || orientation != 1
+            ? CGImageSourceCreateThumbnailAtIndex(imageSource, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceShouldCacheImmediately: true, kCGImageSourceCreateThumbnailWithTransform: true,
                                                                     kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize] as CFDictionary)
             : CGImageSourceCreateImageAtIndex(imageSource, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
         guard let image else { throw notAnImage }
-        return CapturePreviewImage(image: image, pixelSize: CGSize(width: width, height: height))
+        return CapturePreviewImage(image: image, pixelSize: (5...8).contains(orientation) ? CGSize(width: height, height: width) : CGSize(width: width, height: height), sourceBytes: data)
     }
 }
 
@@ -150,15 +164,30 @@ final class CaptureImagePreviewModel: ObservableObject {
     enum Command { case fit, actualSize, zoomIn, zoomOut }
     let item: CaptureImagePreviewItem
     @Published private(set) var state: State = .loading
+    @Published var notice: String?
     @Published fileprivate(set) var percent = 100
     fileprivate weak var view: PreviewImageScrollView?
     private var loading: Task<Void, Never>?
+    private var noticeEvent = UUID()
     private let cancellation = CapturePreviewCancellation()
 
     init(item: CaptureImagePreviewItem) { self.item = item }
+    func report(_ message: String, success: Bool) {
+        notice = message; noticeEvent = UUID()
+        guard success else { return }
+        FeedbackAnnouncement.post(message)
+        let event = noticeEvent
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if let self, self.noticeEvent == event { self.notice = nil }
+        }
+    }
 
     func load() {
-        let source = item.source, limit = CaptureImageLoader.pixelLimit(), cancellation = cancellation
+        let source: CaptureImagePreviewItem.Source
+        do { source = try item.render.map { .bytes(try $0()) } ?? item.source }
+        catch { state = .unavailable(error.localizedDescription); return }
+        let limit = CaptureImageLoader.pixelLimit(), cancellation = cancellation
         loading = Task { [weak self] in
             let result: Result<CapturePreviewImage, Error> = await withCheckedContinuation { finished in
                 CaptureImageLoader.queue.async {
@@ -187,47 +216,56 @@ final class CaptureImagePreviewModel: ObservableObject {
     var isShowingImage: Bool { if case .shown = state { return true }; return false }
 }
 
-/// The preview's chrome: title, zoom and Close. Nothing here edits, replaces
-/// or copies the image.
+/// Viewing and editing share this window, with explicit save boundaries.
 struct CaptureImagePreviewView: View {
     @ObservedObject var model: CaptureImagePreviewModel
+    var position = ""
+    var previous: (() -> Void)? = nil
+    var next: (() -> Void)? = nil
+    var edit: (() -> Void)? = nil
+    var editTitle = "Edit a copy"
+    var copy: (() -> Void)? = nil
+    var export: (() -> Void)? = nil
     let close: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.item.title).font(.headline).lineLimit(1)
-                    Text(model.item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(model.item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer(minLength: 12)
-                if model.isShowingImage {
-                    Button("Fit") { model.perform(.fit) }.help("Fit the whole image in the window (⌘9)")
-                    Button("Actual size") { model.perform(.actualSize) }.help("One image pixel for each screen pixel (⌘0)")
-                    HStack(spacing: 2) {
-                        Button { model.perform(.zoomOut) } label: { Image(systemName: "minus.magnifyingglass") }
-                            .accessibilityLabel("Zoom out").help("Zoom out (⌘−)")
-                        Text("\(model.percent)%").font(.callout.monospacedDigit()).frame(minWidth: 48)
-                            .accessibilityLabel("Zoom \(model.percent) percent of actual size")
-                        Button { model.perform(.zoomIn) } label: { Image(systemName: "plus.magnifyingglass") }
-                            .accessibilityLabel("Zoom in").help("Zoom in (⌘+)")
-                    }
-                }
-                Button("Close", action: close).keyboardShortcut(.cancelAction).help("Close the preview (Escape)")
-            }.padding(.horizontal, 14).padding(.vertical, 10)
+                if let copy { Button("Copy image", action: copy).disabled(!model.isShowingImage) }
+                if let export { Button("Export…", action: export).disabled(!model.isShowingImage) }
+                if let edit { Button(editTitle, action: edit).buttonStyle(.borderedProminent).disabled(!model.isShowingImage) }
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
+            }.padding(.horizontal, 16).padding(.vertical, 12)
             Divider()
             switch model.state {
-            case .loading:
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .shown(let image):
-                PreviewImage(loaded: image, model: model, accessibilityLabel: model.item.title)
+            case .loading: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .shown(let image): PreviewImage(loaded: image, model: model, accessibilityLabel: model.item.title)
             case .unavailable(let message):
                 VStack(spacing: 10) {
                     Image(systemName: "photo.badge.exclamationmark").font(.largeTitle).foregroundStyle(.secondary)
-                    Text(message).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).frame(maxWidth: 420)
+                    Text(message).multilineTextAlignment(.center).frame(maxWidth: 420)
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }.frame(minWidth: 520, minHeight: 360).tint(Workbench.accent).workbenchTheme()
+            if let notice = model.notice { Text(notice).font(.callout).padding(8) }
+            Divider()
+            HStack(spacing: 10) {
+                if !position.isEmpty {
+                    Button { previous?() } label: { Image(systemName: "chevron.left") }.disabled(previous == nil).accessibilityLabel("Previous image").help("Previous image (←)")
+                    Text(position).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    Button { next?() } label: { Image(systemName: "chevron.right") }.disabled(next == nil).accessibilityLabel("Next image").help("Next image (→)")
+                }
+                if case .shown(let image) = model.state {
+                    Text("\(Int(image.pixelSize.width)) × \(Int(image.pixelSize.height)) px").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                Spacer()
+                ImageWorkspaceZoomControls(percent: model.percent, perform: model.perform).disabled(!model.isShowingImage)
+            }.padding(.horizontal, 16).padding(.vertical, 10)
+        }.frame(minWidth: 720, minHeight: 440).tint(Workbench.accent).workbenchTheme()
     }
 }
 
@@ -343,9 +381,19 @@ private final class CenteringClipView: NSClipView {
 /// Escape closes the preview only, never Workbench, and the usual zoom keys
 /// work wherever focus is inside it.
 final class CaptureImagePreviewPanel: NSPanel {
+    var constrainsToScreen = true
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        constrainsToScreen ? super.constrainFrameRect(frameRect, to: screen) : frameRect
+    }
     var command: ((CaptureImagePreviewModel.Command) -> Void)?
-    override func cancelOperation(_ sender: Any?) { close() }
+    var navigate: ((Int) -> Void)?
+    var requestClose: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) { if let requestClose { requestClose() } else { close() } }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+           !(firstResponder is NSTextView), let navigate, [123, 124].contains(event.keyCode) {
+            navigate(event.keyCode == 123 ? -1 : 1); return true
+        }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.shift, .numericPad, .function])
         guard modifiers == .command, let key = event.charactersIgnoringModifiers,
               let command = Self.command(for: key) else { return super.performKeyEquivalent(with: event) }
@@ -374,34 +422,182 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
     private(set) var model: CaptureImagePreviewModel?
     private var parentObserver: NSObjectProtocol?
 
-    /// Shows `item` over `parent`, or over Workbench's main window. A popover
-    /// or panel that asked for it never becomes its owner.
-    func show(_ item: CaptureImagePreviewItem, over parent: NSWindow? = nil) {
-        let owner = parent ?? NSApp.mainWindow
-        let model = CaptureImagePreviewModel(item: item)
-        let panel = self.panel ?? makePanel(over: owner)
-        self.model?.cancel()
-        self.model = model
-        panel.title = item.title
-        panel.setAccessibilityTitle(item.title)
-        panel.command = { [weak model] in model?.perform($0) }
-        let content = NSHostingView(rootView: CaptureImagePreviewView(model: model) { [weak self] in self?.close() })
-        // The panel keeps its own size; the content only sets a minimum.
-        content.sizingOptions = [.minSize]
-        panel.contentView = content
-        model.load()
-        present(panel)
+    weak var snapOwner: SnapModel?
+    private(set) var editing: ImageWorkspaceEditing?
+    private(set) var items: [CaptureImagePreviewItem] = []
+    private(set) var index = 0
+    private var editingFromPreview = false
+    /// Read scopes and generated images belong to this visit, not the library.
+    var onClose: (() -> Void)?
+    var approveDiscard: (() -> Bool)?
+
+    func attach(to snap: SnapModel, parent: @escaping () -> NSWindow?, stateChanged: @escaping () -> Void) {
+        snapOwner = snap
+        snap.onStateChange = { [weak self, weak snap] in
+            stateChanged()
+            if let snap, let draft = snap.draft { self?.showEditor(snap: snap, draft: draft, over: parent()) }
+        }
     }
 
-    func close() { panel?.close() }
+    func show(_ item: CaptureImagePreviewItem, over parent: NSWindow? = nil,
+              collection: [CaptureImagePreviewItem] = []) {
+        guard editing == nil else { if let panel { present(panel) }; return }
+        onClose?(); onClose = nil
+        items = collection.contains(item) ? collection : [item]
+        index = items.firstIndex(of: item) ?? 0
+        showCurrent(over: parent)
+    }
+
+    func step(_ offset: Int) {
+        guard editing == nil, items.indices.contains(index + offset) else { return }
+        index += offset; showCurrent()
+    }
+
+    func showLibrary(_ resources: [DemoResource], selected: UUID) {
+        let collection = resources.map { resource in
+            CaptureImagePreviewItem(title: resource.title, detail: "Library image · Edit a copy to save in Snap History", source: .generated(resource.id)) {
+                guard let resolved = resource.resolvedFile else { throw CaptureImagePreviewError.unavailable("Locate this file again to reconnect it.") }
+                let url = resolved.url, access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                return try CaptureImageLoader.bytes(.file(url, missing: "This image is unavailable. Reconnect its drive or locate the file again."))
+            }
+        }
+        if let index = resources.firstIndex(where: { $0.id == selected }) { show(collection[index], collection: collection) }
+    }
+
+    private func showCurrent(over parent: NSWindow? = nil) {
+        guard items.indices.contains(index) else { return }
+        let item = items[index], model = CaptureImagePreviewModel(item: items[index])
+        let panel = self.panel ?? makePanel(over: parent ?? NSApp.mainWindow)
+        self.model?.cancel(); self.model = model
+        panel.title = item.title; panel.setAccessibilityTitle(item.title)
+        panel.command = { [weak model] in model?.perform($0) }
+        panel.navigate = { [weak self] in self?.step($0) }
+        panel.requestClose = { [weak self] in self?.close() }
+        let canEdit = snapOwner != nil
+        let content = NSHostingView(rootView: CaptureImagePreviewView(model: model,
+            position: items.count > 1 ? "\(index + 1) of \(items.count)" : "",
+            previous: index > 0 ? { [weak self] in self?.step(-1) } : nil,
+            next: index + 1 < items.count ? { [weak self] in self?.step(1) } : nil,
+            edit: canEdit ? { [weak self] in self?.beginEditing() } : nil,
+            editTitle: editableSnapID(item) != nil ? "Edit" : "Edit a copy",
+            copy: { [weak self] in self?.copyImage() }, export: { [weak self] in self?.exportImage() },
+            close: { [weak self] in self?.close() }))
+        content.sizingOptions = [.minSize]; panel.contentView = content
+        model.load(); present(panel)
+    }
+
+    private func editableSnapID(_ item: CaptureImagePreviewItem) -> UUID? {
+        guard case .snap(let root, let id) = item.source, root == snapOwner?.store.root,
+              let current = try? snapOwner?.store.read(id), current.archivedAt == nil else { return nil }
+        return id
+    }
+    func beginEditing() {
+        guard let snap = snapOwner, let item = model?.item, editing == nil else { return }
+        if snap.isBusy { model?.notice = "Finish the open Snap before editing another image."; return }
+        editingFromPreview = true
+        if let id = editableSnapID(item) { snap.edit(id) }
+        else {
+            do { try snap.editCopy(shownBytes(), title: item.title) }
+            catch { model?.notice = error.localizedDescription }
+        }
+        if let draft = snap.draft { showEditor(snap: snap, draft: draft) }
+        else { editingFromPreview = false }
+    }
+
+    func showEditor(snap: SnapModel, draft: SnapDraft, over parent: NSWindow? = nil) {
+        if editing?.draft.id == draft.id { if let panel { present(panel) }; return }
+        guard editing == nil else { return }
+        do {
+            let editor = try ImageWorkspaceEditing(draft: draft)
+            snapOwner = snap; editing = editor
+            let panel = self.panel ?? makePanel(over: parent ?? NSApp.mainWindow)
+            panel.title = draft.existing == nil ? "New Snap" : draft.title
+            panel.setAccessibilityTitle(panel.title)
+            panel.minSize = NSSize(width: 820, height: 560)
+            if panel.frame.width < 1_080 || panel.frame.height < 680 {
+                let visible = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? panel.frame
+                panel.setContentSize(NSSize(width: min(1_180, visible.width - 40), height: min(780, visible.height - 60)))
+            }
+            panel.command = { [weak editor] in editor?.zoom($0) }; panel.navigate = nil
+            panel.requestClose = { [weak self] in self?.cancelEditing() }
+            let content = NSHostingView(rootView: SnapEditorView(model: snap, editing: editor,
+                save: { [weak self] in self?.saveEditing(copy: $0) }, cancel: { [weak self] in self?.cancelEditing() }))
+            content.sizingOptions = [.minSize]; panel.contentView = content; present(panel)
+        } catch { snap.notice = error.localizedDescription }
+    }
+
+    func saveEditing(copy: Bool) {
+        guard let editing, let snap = snapOwner else { return }
+        var draft = editing.draft
+        draft.tags = Array(Set(draft.tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+        var savedItem: SnapItem?
+        if snap.saveDraft(draft, copyAfterSaving: copy, didSave: { savedItem = $0 }) {
+            if let savedItem, items.indices.contains(index) {
+                // After Edit a copy, show what was just saved while keeping the original source untouched.
+                items[index] = .snap(savedItem, store: snap.store)
+            }
+            let message = snap.notice ?? snap.confirmation?.kind.rawValue
+            finishEditing()
+            if let message { model?.report(message, success: snap.notice == nil) }
+        }
+    }
+    func cancelEditing() {
+        guard resolveDiscard() else { return }
+        snapOwner?.draft = nil; finishEditing()
+    }
+    private func resolveDiscard() -> Bool {
+        guard editing?.dirty == true else { return true }
+        if let approveDiscard { return approveDiscard() }
+        let alert = NSAlert(); alert.messageText = "Discard these image edits?"
+        alert.informativeText = "Your saved image and original will stay unchanged."
+        alert.addButton(withTitle: "Keep editing"); alert.addButton(withTitle: "Discard edits")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+    private func finishEditing() {
+        editing = nil
+        if editingFromPreview { editingFromPreview = false; showCurrent() }
+        else { close() }
+    }
+    private func copyImage() {
+        guard model?.isShowingImage == true else { return }
+        do {
+            let bytes = try SnapRendering.png(shownBytes())
+            NSPasteboard.general.clearContents()
+            let copied = NSPasteboard.general.setData(bytes, forType: .png)
+            model?.report(copied ? "Image copied. Paste with ⌘V." : "The image could not be copied.", success: copied)
+        } catch { model?.notice = error.localizedDescription }
+    }
+    private func exportImage() {
+        guard let item = model?.item else { return }
+        let save = NSSavePanel(); save.allowedContentTypes = [.png]; save.nameFieldStringValue = item.title + ".png"
+        guard save.runModal() == .OK, let url = save.url else { return }
+        do { try SnapRendering.png(shownBytes()).write(to: url, options: .atomic); model?.report("Image exported.", success: true) }
+        catch { model?.notice = error.localizedDescription }
+    }
+    private func shownBytes() throws -> Data {
+        guard case .shown(let image) = model?.state, let bytes = image.sourceBytes else {
+            throw CaptureImagePreviewError.unavailable("Wait for the image to finish opening.")
+        }
+        return bytes
+    }
+    func close() {
+        if editing != nil { cancelEditing(); return }
+        panel?.close()
+    }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard editing != nil else { return true }
+        cancelEditing(); return false
+    }
 
     private func makePanel(over owner: NSWindow?) -> CaptureImagePreviewPanel {
         let visible = (owner?.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1_280, height: 800)
         let size = NSSize(width: min(1_600, max(520, visible.width * 0.8)), height: min(1_100, max(360, visible.height * 0.85)))
         let panel = CaptureImagePreviewPanel(contentRect: NSRect(origin: .zero, size: size),
-                                             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+                                             styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
+        panel.collectionBehavior.insert(.fullScreenPrimary)
         panel.minSize = NSSize(width: 520, height: 360)
         panel.delegate = self
         panel.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2))
@@ -422,7 +618,8 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         window.delegate = nil
         if let parentObserver { NotificationCenter.default.removeObserver(parentObserver) }
         parentObserver = nil
-        model?.cancel(); model = nil; panel = nil
+        model?.cancel(); model = nil; panel = nil; editing = nil; items = []
+        onClose?(); onClose = nil
     }
 }
 
@@ -434,23 +631,24 @@ enum ReadbackItemNames {
     static func captured(_ section: ReadbackSection) -> String { section.capturedAt.formatted(date: .abbreviated, time: .standard) }
 }
 
-/// A capture thumbnail that opens the read-only preview on click, and on
+/// A capture thumbnail that opens the shared image workspace on click, and on
 /// Space or Return when focused. Editing and replacing stay separate actions.
 struct CapturePreviewButton<Label: View>: View {
     let accessibilityLabel: String
     let item: () -> CaptureImagePreviewItem
     let label: Label
+    let collection: () -> [CaptureImagePreviewItem]
 
-    init(_ accessibilityLabel: String, item: @escaping () -> CaptureImagePreviewItem, @ViewBuilder label: () -> Label) {
-        self.accessibilityLabel = accessibilityLabel; self.item = item; self.label = label()
+    init(_ accessibilityLabel: String, item: @escaping () -> CaptureImagePreviewItem, collection: @escaping () -> [CaptureImagePreviewItem] = { [] }, @ViewBuilder label: () -> Label) {
+        self.accessibilityLabel = accessibilityLabel; self.item = item; self.label = label(); self.collection = collection
     }
 
     var body: some View {
-        Button { CaptureImagePreview.shared.show(item()) } label: { label.contentShape(Rectangle()) }
+        Button { CaptureImagePreview.shared.show(item(), collection: collection()) } label: { label.contentShape(Rectangle()) }
             .buttonStyle(.plain)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Opens a larger view to read. Escape closes it.")
             .help(accessibilityLabel)
-            .onKeyPress(.return) { CaptureImagePreview.shared.show(item()); return .handled }
+            .onKeyPress(.return) { CaptureImagePreview.shared.show(item(), collection: collection()); return .handled }
     }
 }

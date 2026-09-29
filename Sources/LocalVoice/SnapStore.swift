@@ -41,22 +41,32 @@ struct SnapCrop: Codable, Equatable {
 }
 
 struct SnapMark: Codable, Equatable, Identifiable {
-    enum Kind: String, Codable, CaseIterable { case pen, arrow, rectangle }
+    enum Kind: String, Codable, CaseIterable { case pen, arrow, rectangle, text }
     var id = UUID()
     var kind: Kind
     var points: [SnapPoint]
     var colour = "red"
     var width = 0.004
+    /// Optional fields keep existing v1 marks readable without a migration.
+    var text: String? = nil
+    var fontSize: Double? = nil
+    var background: String? = nil
     var isValid: Bool {
         (2...20_000).contains(points.count) && points.allSatisfy(\.isValid) &&
-            ["red", "yellow", "blue", "white", "black"].contains(colour) && width.isFinite && (0.0001...0.1).contains(width)
+            ["red", "yellow", "blue", "white", "black"].contains(colour) && width.isFinite && (0.0001...0.1).contains(width) &&
+            (kind != .text || (points.count == 2 && (text?.count ?? 0) <= 10_000 &&
+                (fontSize.map { $0.isFinite && (0.005...0.2).contains($0) } ?? false))) &&
+            (background == nil || ["none", "white", "black", "yellow"].contains(background!))
     }
 }
 
 struct SnapEdit: Codable, Equatable {
     var crop = SnapCrop.full
     var marks: [SnapMark] = []
-    var isValid: Bool { crop.isValid && marks.count <= 1_000 && marks.allSatisfy(\.isValid) }
+    var rotation: Int? = nil
+    var quarterTurns: Int { rotation ?? 0 }
+    var requiresV2: Bool { quarterTurns != 0 || marks.contains { $0.kind == .text } }
+    var isValid: Bool { crop.isValid && (0...3).contains(quarterTurns) && marks.count <= 1_000 && marks.allSatisfy(\.isValid) }
 }
 
 struct SnapItem: Codable, Equatable, Identifiable {
@@ -83,7 +93,7 @@ struct SnapItem: Codable, Equatable, Identifiable {
     }
     func validate() throws {
         let validName = imageName == "original.png" || (imageName.hasPrefix("edit-") && imageName.hasSuffix(".png") && UUID(uuidString: String(imageName.dropFirst(5).dropLast(4))) != nil)
-        guard formatVersion == 1, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 240,
+        guard (1...2).contains(formatVersion), !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 240,
               notes.count <= 50_000, tags.count <= 50, tags.allSatisfy({ !$0.isEmpty && $0.count <= 80 }),
               pixelWidth > 0, pixelHeight > 0, pixelWidth <= 32_768, pixelHeight <= 32_768,
               Int64(pixelWidth) * Int64(pixelHeight) <= 100_000_000,
@@ -167,6 +177,7 @@ final class SnapStore {
         var item = SnapItem(id: id, createdAt: createdAt, updatedAt: Date(), title: title, source: source,
                             pixelWidth: width, pixelHeight: height, originalSHA256: Self.digest(originalPNG), imageSHA256: Self.digest(originalPNG), edit: edit)
         item.notes = notes; item.tags = tags
+        if edit.requiresV2 { item.formatVersion = 2 }
         try item.validate()
         try write(originalPNG, to: staging.appendingPathComponent("original.png"))
         if let renderedPNG, renderedPNG != originalPNG {
@@ -195,6 +206,7 @@ final class SnapStore {
             throw SnapError.message("An edit cannot replace the original Snap.")
         }
         var item = proposed
+        if item.edit.requiresV2 { item.formatVersion = 2 }
         var newFile: URL?
         if let renderedPNG {
             guard !renderedPNG.isEmpty, renderedPNG.count <= Self.maximumImageBytes else { throw SnapError.message("The edited image is too large to save.") }
@@ -208,6 +220,12 @@ final class SnapStore {
             }
         }
         do {
+            // Preserve the exact old record before the first v2 edit. Older apps
+            // reject v2 instead of silently discarding text or rotation on save.
+            if current.formatVersion == 1 && item.formatVersion == 2 {
+                let backup = directory.appendingPathComponent("before-v2-\(current.revision.uuidString.lowercased()).json")
+                if !manager.fileExists(atPath: backup.path) { try write(disk, to: backup) }
+            }
             item.updatedAt = Date(); item.revision = UUID()
             let bytes = try encode(item)
             guard try readPrivateFile(recordURL, maximum: 4 * 1_024 * 1_024) == disk else { throw SnapError.message("This Snap changed during saving. Reload it and try again.") }

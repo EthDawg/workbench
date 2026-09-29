@@ -276,6 +276,7 @@ struct PersonaShownIdentity {
 /// Like DemoScenes, this UI model is owned and called by StageKit's main-thread
 /// coordinator. Keep storage and scene rendering on that same synchronous path.
 final class PersonaLibrary: NSObject, ObservableObject {
+    var onViewImages: (([StageImagePreview], UUID) -> Void)?
     let root: URL
     @Published private(set) var items: [SavedPersona] = []
     @Published private(set) var groups: [PersonaGroup] = []

@@ -47,7 +47,7 @@ final class SnapModel: ObservableObject {
     @Published var draft: SnapDraft? {
         didSet {
             if let closed = oldValue, closed.id != draft?.id { onDraftClosed?(closed.id, closingWithCopy) }
-            onStateChange?()
+            if oldValue?.id != draft?.id { onStateChange?() }
         }
     }
     /// Problems and partial results that stay until something replaces them.
@@ -335,7 +335,7 @@ final class SnapModel: ObservableObject {
         if let reason = mayBeginCapture?() { notice = reason; return }
         // An open editor, even one hidden with its window, never silently
         // blocks a capture door: the host brings it back to finish or cancel.
-        guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); return }
+        guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); onStateChange?(); return }
         refreshScreenAccess()
         guard screenAccessGranted else {
             // Asked from the person's own action: the first request lists Workbench
@@ -403,18 +403,27 @@ final class SnapModel: ObservableObject {
         } catch { notice = error.localizedDescription }
     }
 
+    /// A session, task, scene or external file remains owned by its source.
+    /// Editing it explicitly creates an unsaved Snap from the full image.
+    func editCopy(_ bytes: Data, title: String) throws {
+        guard !isBusy else { throw SnapError.message("Finish or cancel the current Snap first.") }
+        notice = nil
+        try beginDraft(SnapRendering.png(bytes), source: .imported, title: String(title.prefix(240)))
+    }
+
     @discardableResult
-    func saveDraft(_ draft: SnapDraft, copyAfterSaving: Bool) -> Bool {
+    func saveDraft(_ draft: SnapDraft, copyAfterSaving: Bool, didSave: ((SnapItem) -> Void)? = nil) -> Bool {
         do {
             let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { throw SnapError.message("Give this Snap a title before saving.") }
             let rendered = try SnapRendering.render(draft.originalPNG, edit: draft.edit)
+            let saved: SnapItem
             if var existing = draft.existing {
                 existing.title = title; existing.notes = draft.notes; existing.tags = draft.tags; existing.edit = draft.edit
-                _ = try store.save(existing, renderedPNG: rendered)
+                saved = try store.save(existing, renderedPNG: rendered)
             } else {
                 let dimensions = try SnapRendering.dimensions(draft.originalPNG)
-                _ = try store.insert(originalPNG: draft.originalPNG, renderedPNG: rendered, width: dimensions.width,
+                saved = try store.insert(originalPNG: draft.originalPNG, renderedPNG: rendered, width: dimensions.width,
                                         height: dimensions.height, title: title, source: draft.source, edit: draft.edit, notes: draft.notes, tags: draft.tags)
             }
             // Copied before the draft closes, so the host knows the image is ready to paste.
@@ -423,6 +432,7 @@ final class SnapModel: ObservableObject {
             refresh()
             let outcome: SnapOutcome = copyAfterSaving ? (copied ? .savedAndCopied : .savedButCopyFailed) : .saved
             finish(outcome, notice: outcome == .savedButCopyFailed ? "Saved to History. Copy failed; use Copy from History to try again." : nil)
+            didSave?(saved)
             return true
         } catch { finish(.failed, notice: "Snap was not saved. \(error.localizedDescription)"); return false }
     }

@@ -32,6 +32,57 @@ enum SurfaceGallery {
     }
     static let unknownRoute = "surface-gallery-unknown-route"
 
+    /// Draws the window's layer tree, as the screen would. Neither `cacheDisplay` nor a layer render
+    /// of the window reliably includes a scroll view's document (macOS may show it through the
+    /// scroll edge portal), so each visible document is hidden for the window pass and then drawn
+    /// on its own, outer ones first, clipped to its scroll view.
+    @MainActor static func snapshot(_ root: NSView) throws -> NSBitmapImageRep {
+        root.window?.display()
+        let scale = root.window?.backingScaleFactor ?? 2, bounds = root.bounds
+        guard root.layer != nil, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: Int(bounds.width * scale), height: Int(bounds.height * scale), bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            throw VoiceError.message("Could not allocate a render.")
+        }
+        context.scaleBy(x: scale, y: scale)
+        // The window background is not in the layer tree, so paint it first, in the window's appearance.
+        var background = NSColor.windowBackgroundColor.cgColor
+        (root.window?.effectiveAppearance ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
+            background = NSColor.windowBackgroundColor.cgColor
+        }
+        context.setFillColor(background); context.fill(bounds)
+        func draw(_ view: NSView, in rect: NSRect) {
+            guard let layer = view.layer else { return }
+            context.saveGState()
+            context.translateBy(x: rect.minX, y: rect.minY)
+            // A magnified scroll view shows its document scaled, as the image preview does.
+            let scale = CGSize(width: view.bounds.width > 0 ? rect.width / view.bounds.width : 1,
+                               height: view.bounds.height > 0 ? rect.height / view.bounds.height : 1)
+            let magnified = abs(scale.width - 1) > 0.001 || abs(scale.height - 1) > 0.001
+            if magnified { context.scaleBy(x: scale.width, y: scale.height) }
+            if view.isFlipped { context.translateBy(x: 0, y: magnified ? view.bounds.height : rect.height); context.scaleBy(x: 1, y: -1) }
+            layer.render(in: context)
+            context.restoreGState()
+        }
+        func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
+        let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
+        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
+        let opacities = documents.map(\.opacity)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
+        documents.forEach { $0.isHidden = true }
+        draw(root, in: SurfacePass.unflipped(root.bounds, of: root, in: root))
+        for (clip, document) in scrolled {
+            document.layer?.isHidden = false; document.layer?.opacity = 1
+            context.saveGState()
+            context.clip(to: SurfacePass.unflipped(clip.bounds, of: clip, in: root))
+            draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
+            context.restoreGState()
+        }
+        guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
+        return NSBitmapImageRep(cgImage: image)
+    }
+
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
     struct Page: Codable { var route: String; var title: String; var fallsThrough: Bool; var blank = false; var shots: [Shot] }
     /// `ran` marks a destination learned from the app's own code rather than the catalogue.
@@ -1294,14 +1345,22 @@ enum SurfaceGallery {
                                     id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000300")!, createdAt: Date(timeIntervalSince1970: 1_789_546_320))
         let owner = offscreenWindow(size: SurfaceGallery.sizes[0].size, styleMask: [.titled])
         let preview = CaptureImagePreview()
-        preview.present = { _ in }
-        defer { preview.close(); owner.close() }
+        let editorOwner = SnapModel(store: store, desktop: home.appendingPathComponent("Desktop"),
+                                   preferences: try SurfaceGallery.isolatedDefaults("ImageWorkspace", home: home),
+                                   screenshotInbox: home.appendingPathComponent("ImageWorkspace Inbox"), screenAccess: .fixed(false))
+        editorOwner.announce = { _ in }
+        preview.attach(to: editorOwner, parent: { owner }, stateChanged: {})
+        preview.present = { panel in
+            (panel as? CaptureImagePreviewPanel)?.constrainsToScreen = false
+            panel.setFrameOrigin(NSPoint(x: -40_000, y: -40_000))
+        }
+        defer { preview.approveDiscard = { true }; preview.cancelEditing(); preview.close(); owner.close() }
         var shots: [SurfaceGallery.Shot] = []
         func shot(_ id: String, _ title: String, _ detail: String, _ item: CaptureImagePreviewItem, command: CaptureImagePreviewModel.Command? = nil) throws {
             preview.show(item, over: owner)
             guard let panel = preview.panel, let model = preview.model else { throw VoiceError.message("The image preview did not open.") }
             panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
-            panel.setFrame(NSRect(origin: .zero, size: SurfaceGallery.sizes[0].size), display: false)
+            panel.setFrame(NSRect(origin: NSPoint(x: -40_000, y: -40_000), size: SurfaceGallery.sizes[0].size), display: false)
             let frame = panel.contentView?.superview ?? panel.contentView!
             try wait("the preview to load") { if case .loading = model.state { return false }; return true }
             settle(frame)
@@ -1316,6 +1375,25 @@ enum SurfaceGallery {
             transcript: nil, status: .ready, failure: nil, deletedAt: nil)
         try shot("missing", "Image preview, missing file", "A Snap & Talk screenshot whose file is gone from its session folder.",
                  .section(gone, number: 3, session: home.appendingPathComponent("Snap & Talk/Moved session", isDirectory: true)))
+        preview.show(.snap(item, store: store), over: owner)
+        try wait("the editor source to load") { if case .loading = preview.model?.state { return false }; return true }
+        preview.beginEditing()
+        guard let editing = preview.editing, let panel = preview.panel else { throw VoiceError.message("The image editor did not open.") }
+        editing.addText()
+        editing.updateSelected { $0.text = "Start here\nOne image, one workspace"; $0.fontSize = 0.045 }
+        func editorShot(_ id: String, title: String, size: NSSize) throws {
+            panel.setContentSize(size)
+            let frame = panel.contentView?.superview ?? panel.contentView!
+            settle(frame)
+            shots.append(try save(snapshot(frame), id: "image-workspace-\(id)", title: title,
+                detail: "Synthetic image in the shared workspace. The canvas and saved image use the same renderer.",
+                file: "page-snap-workspace-\(id)-\(theme).png", to: output))
+        }
+        try editorShot("text", title: "Image workspace, editable text", size: NSSize(width: 1180, height: 740))
+        editing.tool = .crop; editing.setAspect(.widescreen)
+        try editorShot("crop", title: "Image workspace, 16:9 crop", size: NSSize(width: 1180, height: 740))
+        editing.tool = .select
+        try editorShot("compact", title: "Image workspace, compact", size: NSSize(width: 820, height: 560))
         return shots
     }
 
@@ -2458,56 +2536,7 @@ enum SurfaceGallery {
         view.layoutSubtreeIfNeeded()
     }
 
-    /// Draws the window's layer tree, as the screen would. Neither `cacheDisplay` nor a layer render
-    /// of the window reliably includes a scroll view's document (macOS may show it through the
-    /// scroll edge portal), so each visible document is hidden for the window pass and then drawn
-    /// on its own, outer ones first, clipped to its scroll view.
-    func snapshot(_ root: NSView) throws -> NSBitmapImageRep {
-        root.window?.display()
-        let scale = root.window?.backingScaleFactor ?? 2, bounds = root.bounds
-        guard root.layer != nil, let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(data: nil, width: Int(bounds.width * scale), height: Int(bounds.height * scale), bitsPerComponent: 8,
-                                      bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-            throw VoiceError.message("Could not allocate a render.")
-        }
-        context.scaleBy(x: scale, y: scale)
-        // The window background is not in the layer tree, so paint it first, in the window's appearance.
-        var background = NSColor.windowBackgroundColor.cgColor
-        (root.window?.effectiveAppearance ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
-            background = NSColor.windowBackgroundColor.cgColor
-        }
-        context.setFillColor(background); context.fill(bounds)
-        func draw(_ view: NSView, in rect: NSRect) {
-            guard let layer = view.layer else { return }
-            context.saveGState()
-            context.translateBy(x: rect.minX, y: rect.minY)
-            // A magnified scroll view shows its document scaled, as the image preview does.
-            let scale = CGSize(width: view.bounds.width > 0 ? rect.width / view.bounds.width : 1,
-                               height: view.bounds.height > 0 ? rect.height / view.bounds.height : 1)
-            let magnified = abs(scale.width - 1) > 0.001 || abs(scale.height - 1) > 0.001
-            if magnified { context.scaleBy(x: scale.width, y: scale.height) }
-            if view.isFlipped { context.translateBy(x: 0, y: magnified ? view.bounds.height : rect.height); context.scaleBy(x: 1, y: -1) }
-            layer.render(in: context)
-            context.restoreGState()
-        }
-        func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
-        let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
-        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
-        let opacities = documents.map(\.opacity)
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
-        documents.forEach { $0.isHidden = true }
-        draw(root, in: SurfacePass.unflipped(root.bounds, of: root, in: root))
-        for (clip, document) in scrolled {
-            document.layer?.isHidden = false; document.layer?.opacity = 1
-            context.saveGState()
-            context.clip(to: SurfacePass.unflipped(clip.bounds, of: clip, in: root))
-            draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
-            context.restoreGState()
-        }
-        guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
-        return NSBitmapImageRep(cgImage: image)
-    }
+    func snapshot(_ root: NSView) throws -> NSBitmapImageRep { try SurfaceGallery.snapshot(root) }
 
     /// A view's rectangle in the root's bottom-left coordinates, which the bitmap context uses.
     static func unflipped(_ rect: NSRect, of view: NSView, in root: NSView) -> NSRect {

@@ -216,6 +216,7 @@ struct DesktopSnapshot: Codable {
 }
 
 final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
+    var onViewImages: (([StageImagePreview], UUID) -> Void)?
     @Published private(set) var scenes: [DemoScene] = [] { didSet { reconcileSelection() } }
     @Published var query = "" { didSet { reconcileSelection() } }
     @Published private(set) var selection = SceneListSelection()

@@ -91,7 +91,6 @@ struct SnapWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 8) { selectionSummary; selectionActions }
             }
         }.padding(24)
-            .sheet(item: $model.draft) { draft in SnapEditorView(model: model, draft: draft) }
             .confirmationDialog("Import \(importCandidates.count) Desktop screenshot\(importCandidates.count == 1 ? "" : "s") into History?",
                                 isPresented: Binding(get: { !importCandidates.isEmpty }, set: { if !$0 { importCandidates = [] } })) {
                 Button("Import and Move Originals to Trash") {
@@ -186,7 +185,7 @@ struct SnapWorkspaceView: View {
                 if item.edit != SnapEdit() { Image(systemName: "pencil").font(.caption).accessibilityLabel("Edited; original preserved") }
             }
             // The image opens read-only, archived or not; Edit… is its own action.
-            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: model.store) }) {
+            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: model.store) }, collection: { model.visibleItems.map { .snap($0, store: model.store) } }) {
                 SnapThumbnail(model: model, item: item).frame(height: 118).frame(maxWidth: .infinity)
             }
             Text(item.title).font(.callout.weight(.semibold)).lineLimit(2).frame(height: 34, alignment: .topLeading)
@@ -199,7 +198,7 @@ struct SnapWorkspaceView: View {
                 }
                 Spacer()
                 Menu {
-                    Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: model.store)) }
+                    Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: model.store), collection: model.visibleItems.map { .snap($0, store: model.store) }) }
                     Divider()
                     Button("Export image…") { model.export(item.id) }
                     if item.archivedAt == nil {

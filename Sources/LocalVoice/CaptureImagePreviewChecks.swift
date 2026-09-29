@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ImageIO
 
 /// `LocalVoice --check-capture-preview` (#154): the one
 /// read-only preview shows each capture's current image, for Snaps (edited,
@@ -125,7 +126,19 @@ enum CaptureImagePreviewChecks {
         if case .success(let large) = load(.savedCopy(title: "Release notes", url: frozen), limit: 1_000) {
             try check(max(large.image.width, large.image.height) <= 1_000 && large.pixelSize == CGSize(width: 2_880, height: 1_800),
                       "an image larger than the limit is decoded smaller, keeping its own size for Actual size")
+            try check(large.sourceBytes == screen, "display downsampling retains the full original bytes for copying, export and editing")
         } else { try check(false, "an image larger than the limit is decoded smaller, keeping its own size for Actual size") }
+        let jpeg = NSMutableData()
+        let sourceImage = try SnapRendering.image(screen)
+        guard let destination = CGImageDestinationCreateWithData(jpeg, "public.jpeg" as CFString, 1, nil) else {
+            throw VoiceError.message("Could not create an oriented image fixture")
+        }
+        CGImageDestinationAddImage(destination, sourceImage, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        try check(CGImageDestinationFinalize(destination), "oriented JPEG fixture writes")
+        let oriented = try CaptureImageLoader.image(.bytes(jpeg as Data), maximumPixelSize: 8192)
+        try check(oriented.pixelSize == CGSize(width: 1800, height: 2880) && oriented.image.width == 1800 && oriented.image.height == 2880,
+                  "phone image orientation is applied once with the displayed dimensions")
+        try check(oriented.sourceBytes == jpeg as Data, "viewing an oriented image preserves its full source bytes")
         try check((2_048...8_192).contains(CaptureImageLoader.pixelLimit(screens: [])) && (2_048...8_192).contains(CaptureImageLoader.pixelLimit()),
                   "the decode limit is about twice the display, within 2,048 and 8,192 pixels")
         let cancelled = CapturePreviewCancellation(); cancelled.cancel()

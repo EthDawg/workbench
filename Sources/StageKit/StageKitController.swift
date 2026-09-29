@@ -32,6 +32,12 @@ public final class StageKitController: ObservableObject {
     }
     /// Opens the host’s independent Persona workspace. Scene selection keeps its own sheet.
     public var onOpenPersonas: (() -> Void)?
+    public var onViewImages: (([StageImagePreview], UUID) -> Void)? {
+        didSet {
+            coordinator.demoScenes.onViewImages = onViewImages
+            coordinator.demoScenes.personas.onViewImages = onViewImages
+        }
+    }
     public var onOpenShortcuts: (() -> Void)? {
         didSet { coordinator.onOpenShortcuts = onOpenShortcuts }
     }

@@ -146,8 +146,13 @@ struct PersonaLibraryView: View {
                     }
                     VStack(alignment: .leading, spacing: 12) {
                         if let selected = library.selected {
-                            thumbnail(selected, width: 265, height: 155)
-                                .frame(maxWidth: .infinity)
+                            if library.onViewImages != nil {
+                                Button { library.viewImages(startingAt: selected.id) } label: {
+                                    thumbnail(selected, width: 265, height: 155).frame(maxWidth: .infinity)
+                                }.buttonStyle(.plain).accessibilityLabel("View " + selected.name).help("View image")
+                            } else {
+                                thumbnail(selected, width: 265, height: 155).frame(maxWidth: .infinity)
+                            }
                             // Selected is what you browse and prepare; Shown, above, is what is live.
                             Text("Selected: " + selected.name).font(.headline).lineLimit(2)
                                 .accessibilityLabel("Selected persona: " + selected.name)

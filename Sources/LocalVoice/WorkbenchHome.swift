@@ -794,7 +794,9 @@ struct WorkbenchHomePage: View {
                 }.buttonStyle(.plain).help("Show it in History")
                 Button("Copy") { model.copyCapture(item) }
             case .snap(let item):
-                CapturePreviewButton("View Snap", item: { .snap(item, store: snap.store) }) {
+                CapturePreviewButton("View Snap", item: { .snap(item, store: snap.store) }, collection: {
+                    recent.compactMap { if case .snap(let image) = $0 { return .snap(image, store: snap.store) }; return nil }
+                }) {
                     HStack(spacing: 12) {
                         HomeSnapThumbnail(model: snap, item: item)
                         recentText(title: item.title, detail: "Snap · " + stamp(item.createdAt))
