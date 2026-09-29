@@ -133,6 +133,7 @@ ENTRY_POINTS = [
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),
+    ('StageKit/LocalPersonaProfile.swift', 'LocalPersonaProfileView', 'local profile', 'page'),
     # The window's own controls around the pages: the sidebar column.
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.body', 'window sidebar', 'controls'),
     # Capability pages own their options (Grammar: options live with their

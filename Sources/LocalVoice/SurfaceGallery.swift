@@ -2134,7 +2134,7 @@ enum SurfaceGallery {
     func checkResultsYieldToLiveWork(host: CapturePanelController, controls: CaptureHUDControls,
                                      expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.title }
+        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.accessibilityLabel() }
         /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
@@ -2381,12 +2381,12 @@ enum SurfaceGallery {
             model.toolbarMode = mode; settle(.revealed)
             let expected = ToolbarAccessory.offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false)
             let found = host.window?.contentView.map(buttons)?.filter { $0.accessibilityIdentifier() == "toolbar.accessory" } ?? []
-            let title = expected.map { $0.opensList ? $0.title + " ⌄" : $0.title }
+            let title = expected?.title
             expect("\(mode.title)'s accessory, revealed with nothing live", [
                 found.count > 1 ? "the row shows \(found.count) accessories" : nil,
-                found.first?.title == title ? nil
-                    : "the row shows \(found.first.map { "\"\($0.title)\"" } ?? "no accessory"), not \(title.map { "\"\($0)\"" } ?? "none")",
-                found.first.map { $0.accessibilityLabel() == expected?.title ? nil : "VoiceOver hears \"\($0.accessibilityLabel() ?? "")\"" } ?? nil])
+                found.first?.accessibilityLabel() == title ? nil
+                    : "the row shows \(found.first.map { "\"\($0.accessibilityLabel() ?? "")\"" } ?? "no accessory"), not \(title.map { "\"\($0)\"" } ?? "none")",
+                found.first.map { $0.image != nil ? nil : "the accessory has no visible action icon" } ?? nil])
         }
         controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
         var routes: [String] = []

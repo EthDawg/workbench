@@ -2,6 +2,12 @@
 
 A saved persona is reusable finished artwork or an editable portrait card. A **group** collects the cards for one audience. Its **layout** places several copies on screen; its private name stays in preparation. Mobile scenes still use one independent placed persona.
 
+## Your local Me profile
+
+Open **Me** on Home to take or choose a profile photo. **Take photo…** asks for Camera access only when chosen and opens the Mac picture taker. **Choose photo…** uses a local file. Both open the usual Persona appearance preview; **Use photo** saves, and **Cancel** leaves the current photo untouched. You can also use the selected saved Persona as Me.
+
+The profile references the same saved Persona library; there is no account or separate image store. Replacing the photo preserves that Persona’s ID, group membership and earlier artwork used by scenes or shown copies. **Open Me in Persona** selects it for preparation. Showing it and **React to my voice** remain explicit Persona actions.
+
 ## Quick: show one card
 
 Open **Persona** in Workbench, or **Persona → Options → Open Persona…** in the menu panel. The desktop workspace shows and hides overlays directly; it does not require opening Present or dismissing a preparation sheet. **Add persona…** imports or pastes finished artwork, or chooses a starter portrait with an editable visible label/colour. The empty library also offers direct starter and finished-card import buttons. **Show selected** preserves the simple one-card workflow. Drag the labelled **Size** slider left to make the floating card smaller, or right to enlarge it, without unlocking the artwork. The percentage is the requested display width (6–40%); tall artwork is also limited by available height. A prepared group's candidates remain scoped to that group, while **All saved** offers one card at a time from the frozen saved list. A shown card never changes merely because you browse another library item or group. Show selected needs only the chosen card's image. The other cards in its group, or in All saved, keep the look they had when you showed the card, and load only when you move to them. If one cannot show because its image is missing, changed or too large, the shown card stays up. The live Persona menu and the menu panel say why, naming that card by its public label, and Next and Previous skip it until another card shows. When no other card can show, Next and Previous say so. Hiding or showing the card also clears an earlier Persona message from the menu panel. Hiding the card clears the message.

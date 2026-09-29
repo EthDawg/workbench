@@ -124,17 +124,16 @@ toolbar's popovers and no result's controls open in its place; reports
 show, so its lesson is not spent and the attempt gets its ordinary no-speech cue; removes it on a screen capture and when a
 narration starts; and fades it out in 160 ms, or at once with Reduce Motion.
 
-Revealed, the toolbar is a 40-point capsule: `[tool ▾] [next action]
-[accessory] [⋯]`, reversed on a right-hand anchor. At standard text its minimum
-width is 160 points, or 252 with an accessory. The launcher's 48-point target sits
-flush with the capsule's end, then 4-point gaps between the next action, the
-88-point accessory and the 32-point More, and 8 points of padding at the far end
-only. The action fits its current wording with 12 points of horizontal inset on
-each side and a 64-point minimum target; it keeps its 32-point height. Padding at the launcher's end would move the shared centre 32
-points in and grow the row toward the display's edge. Longer labels and larger
-text grow the row; an essential action is never shrunk or truncated. When the accessory does
-not fit the display less 24 points, it waits in More. The launcher and the
-compact mark share one fixed centre on screen, and the row grows inward from it.
+Revealed, the toolbar is a black 40-point capsule: `[tool ▾] [action icon]
+[accessory icon] [⋯]`, reversed on a right-hand anchor. At standard text its
+width is 132 points, or 172 with an accessory. The launcher's 48-point target
+stays anchored, followed by 4-point gaps, 36-point primary and accessory targets,
+a 32-point More target and 8 points of padding at the far end. The action icons
+are white; hover adds a grey inset background without moving any target. Larger
+text scales the controls. When the accessory does not fit the display less 24
+points, it waits in More. The launcher and compact mark share one fixed centre,
+and the row grows inward from it. Full command names stay in the hint and
+accessible name, including capture counts and the exact Stop, Pause or Resume.
 
 The next action is the label for where you are in the journey, from one pure
 function of what is live (`ToolbarNextAction`) with a fixed priority: what is
@@ -150,7 +149,7 @@ and acts when it comes up only if both still hold: a Stop that completes while
 it is pressed is discarded, never turned into a new start. The hover hint shows
 a key only for an operation that key performs: Present's key does not stop an
 insertion, Dictate's key does not stop a meeting, and the persona key does not
-pause a prepared set. Native hover text and VoiceOver help name the visible action
+pause a prepared set. The read-only hover hint and VoiceOver help name the current action
 followed by its usable shortcut, for example `Draw · Hold ⌥D` or
 `Stop · Release ⌥Space`. Hold and Release reflect the actual capture or drawing
 session. A mouse-latched hold drawing, another drawing tool, or an unprepared
@@ -213,15 +212,16 @@ colour selection updates the same drawing settings from either entry point.
 Native menus snapshot their content before tracking rather than rebuilding under
 the pointer.
 
-The primary starts at the width its current action needs. During one open
-interaction it may grow for a longer action, but never shrinks when a shorter
-label replaces it. Collapse resets that width floor. This avoids empty space
-reserved for unrelated tools while keeping nearby targets steady after a Stop
-becomes a start verb. The row holds no information-only text:
-the assigned key and any count are the action's hover hint. Snap & Talk keeps its
-session capture count in the label between captures and while saving. Disabled or
-unassigned shortcut combinations are omitted; the toolbar has no shortcut editor.
-Keep open is an explicit persistent preference.
+The primary keeps one stable icon target through action changes. The icon comes
+from the exact latched operation: Stop, Pause, Play, Hide or the start capability.
+A noninteractive text panel appears above the hovered or focused target, below
+at a top edge, and names the action with its usable key and any capture count.
+It ignores clicks and never takes focus. A 180 ms dwell avoids flashes; an 80 ms
+exit grace lets movement to an adjacent button crossfade the same panel over
+120 ms. Menus, actions, collapse and detach dismiss it immediately. Reduce
+Motion presents the text without fading. Disabled or unassigned shortcut
+combinations are omitted; the toolbar has no shortcut editor. Keep open is an
+explicit persistent preference.
 
 **Contextual accessories** (#134 part B). A tool has at most one accessory, the
 existing adjustment it needs most often, shown only while it applies
@@ -274,8 +274,8 @@ the row grows toward never changes during an interaction. The visible capsule,
 mask and content read the host's current layout bounds during that animation;
 there is no second animation clock or asynchronous size observer. The quiet
 handle grows into the row and its tool symbol appears at the anchored centre;
-recording and result signals keep that same centre through the transition. Controls fade in only after
-their entire labels fit, and fade away before closing can cut through them. The
+recording and result signals keep that same centre through the transition. White glyphs fade in together during the final fifth of expansion, after each
+target fits, and disappear before the closing edge reaches them. The
 launcher remains anchored even while the host is smaller than its content.
 Reduce Motion changes the frame and content at once and holds the voice trace still.
 
@@ -546,12 +546,11 @@ The core cannot be right if the host feeds it fiction.
 ## The look and acceptance
 
 The compact mark and the launcher keep one centre on screen while the row grows
-inward from it. Content-sized text and native controls support larger type, and
+inward from it. Scaled native icons and readable hints support larger type, and
 the launcher's target stays 48 points wide at every size so that centre holds. At
 rest the status glyph says what is running; revealed, the launcher's one dot says
 work is live somewhere and the chooser's labelled dots say where. Changing status
-must not substitute a different menu-bar brand icon. Reduce Transparency uses
-opaque fills. Reduce Motion removes the frame animation and holds the voice trace
+must not substitute a different menu-bar brand icon. The capsule stays opaque in every appearance. Reduce Motion removes the frame animation and holds the voice trace
 still; the trace follows Increase Contrast itself, and its recording dot stays
 red, distinct from the voice colour.
 

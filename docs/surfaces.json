@@ -423,15 +423,6 @@
     "note": "Runtime label from model . retryCaptureLabel: Retry transcription or Retry saving, as the failure's own Retry reads, under the failure first in More (#211 F1). No rendered text assumed."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",
-    "surface": "floating toolbar More menu",
-    "label": null,
-    "expression": "title",
-    "note": "Runtime label from title: Hide persona, Hide personas or Show personas, as Persona's own label reads, under Active work while another tool is chosen (#134). No rendered text assumed.",
-    "kind": "action",
-    "belongsTo": "persona"
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-894c4cc35124",
     "surface": "floating toolbar More menu",
     "label": null,
@@ -439,6 +430,15 @@
     "kind": "action",
     "belongsTo": "snapAndTalk",
     "note": "Runtime label from \"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"; no rendered text assumed."
+  },
+  {
+    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",
+    "surface": "floating toolbar More menu",
+    "label": null,
+    "expression": "title",
+    "note": "Runtime label from title: Hide persona, Hide personas or Show personas, as Persona's own label reads, under Active work while another tool is chosen (#134). No rendered text assumed.",
+    "kind": "action",
+    "belongsTo": "persona"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.saved-prompts",
@@ -1035,6 +1035,15 @@
     "note": "Option (a door): Dictate's options live on the Dictate page; this keeps Settings free of dead ends (#134 W3)."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-154195417da5",
+    "surface": "window sidebar",
+    "label": null,
+    "expression": "Image ( systemName : \"sidebar.left\" )",
+    "note": "Requested sidebar collapse/expand control. Its tooltip and accessibility label name the current action; Control-Command-S performs the same local navigation setting.",
+    "kind": "action",
+    "belongsTo": "app"
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-e9b18abfdfc4",
     "surface": "window sidebar",
     "label": null,
@@ -1281,6 +1290,14 @@
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9)."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.me",
+    "surface": "window home",
+    "label": "Me",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Home entry to the requested local Me profile, backed by an ordinary saved Persona; no account or duplicate library."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-dictate",
     "surface": "window home",
     "label": "Open Dictate",
@@ -1305,12 +1322,12 @@
     "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-session",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.read-the-clipboard-aloud",
     "surface": "window home",
-    "label": "Open session",
+    "label": "Read the clipboard aloud",
     "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "note": "Option: Continue Snap & Talk's door to the loaded session's review. It changes the page only: nothing is reloaded, queued or reset (#134 H1)."
+    "belongsTo": "read",
+    "note": "The existing Home clipboard reading action, moved from a card to a secondary link with the same admission and draft-preservation checks."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry",
@@ -1463,20 +1480,20 @@
     "note": "Quality: a Quick start tile (#134 H1): the whole tile starts dictating and does nothing else; Dictate's page is its sidebar item. The guide's own Start dictating replaces it while the guide shows, and it steps aside while dictation is current work."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.read",
-    "surface": "window home",
-    "label": "Read",
-    "kind": "capability",
-    "belongsTo": "read",
-    "note": "Quality: a Quick start tile (#134 H1): the whole tile reads the clipboard aloud and does nothing else; Read's page is its sidebar item. It steps aside while a reading is current work."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap",
     "surface": "window home",
     "label": "Snap",
     "kind": "capability",
     "belongsTo": "snap",
     "note": "Quality: a Quick start tile (#134 H1): the whole tile captures a region and does nothing else; Snap's page is its sidebar item."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap-talk",
+    "surface": "window home",
+    "label": "Snap & Talk",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "The Home workflow card opens Snap & Talk and continues a loaded valid session in place. Replaces the separate Continue section."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
@@ -1514,19 +1531,19 @@
     "note": "Quality: Draw's options end with the one door to its page, as Snap, Present and Persona's do (#134). Its tools and boards stay above it."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
-    "surface": "quick panel dictate options",
-    "label": "Open Dictate…",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.history",
     "surface": "quick panel dictate options",
     "label": "History…",
     "kind": "action",
     "belongsTo": "history",
     "note": "Quality: Dictate's recent-transcripts option in the same slot, renamed to the place it opens. It opens History on Transcripts (#137)."
+  },
+  {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
+    "surface": "quick panel dictate options",
+    "label": "Open Dictate…",
+    "kind": "action",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.set-up-automatic-paste",
@@ -2168,6 +2185,64 @@
     "belongsTo": "present"
   },
   {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.choose-photo",
+    "surface": "local profile",
+    "label": "Choose photo…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.done",
+    "surface": "local profile",
+    "label": "Done",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Existing contextual dismissal wording inside the local Persona profile; it closes the draft or sheet without creating a capability.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.edit-appearance",
+    "surface": "local profile",
+    "label": "Edit appearance…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.open-camera-settings",
+    "surface": "local profile",
+    "label": "Open Camera settings",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.open-me-in-persona",
+    "surface": "local profile",
+    "label": "Open Me in Persona",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.runtime-1861f6de0637",
+    "surface": "local profile",
+    "label": null,
+    "expression": "\"Use \\(selected.name) as Me\"",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work.",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.take-photo",
+    "surface": "local profile",
+    "label": "Take photo…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-overlay",
     "surface": "Persona menu",
     "label": "End Overlay",
@@ -2362,6 +2437,56 @@
     "label": "Start Prepared Set",
     "kind": "option",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaCardEditor.Button.cancel",
+    "surface": "local profile",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Existing contextual dismissal wording inside the local Persona profile; it closes the draft or sheet without creating a capability.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaCardEditor.Button.reset-framing",
+    "surface": "local profile",
+    "label": "Reset framing",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaCardEditor.Button.runtime-e62aa08fc01d",
+    "surface": "local profile",
+    "label": null,
+    "expression": "saveTitle",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work.",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaCardEditor.ColorPicker.background-colour",
+    "surface": "local profile",
+    "label": "Background colour",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaCardEditor.Picker.appearance",
+    "surface": "local profile",
+    "label": "Appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaCardEditor.TextField.visible-label",
+    "surface": "local profile",
+    "label": "Visible label",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
   },
   {
     "id": "StageKit.StageKitController.StageKitController.StageMenuAction.1-min",
