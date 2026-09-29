@@ -119,6 +119,14 @@ final class CaptureHUDControls: ObservableObject {
               state.holds.isEmpty, resultPending() else { return }
         revealsResult = true
     }
+    /// The mirror of that for a result live work now holds back (#222): a kept-open row gives it
+    /// up to the work's own row once no pointer is on it and nothing holds it. Under the pointer,
+    /// or held, the result stays until that lets go, so a click aimed at it never lands on the work.
+    func showRowIfKeptOpen() {
+        let state = toolbar.state
+        guard revealsResult, toolbar.isActive, state.tier == .revealed, state.keepsOpen, !state.pointerInside, state.holds.isEmpty else { return }
+        revealsResult = false
+    }
 
     @Published var anchor: FloatingControlAnchor? = .bottom
     /// The anchor the row is drawn for: its dock, or the side a free row grows from (#163).
@@ -173,6 +181,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private weak var model: AppModel?
     private weak var readback: ReadbackModel?
     private weak var stage: StageKitController?
+    private weak var snapModel: SnapModel?
+    /// The result pending when input-consuming work began, held back from the pointer's reveal
+    /// while that work lasts (#220, #222).
+    private var resultHold = ToolbarResultHold<FloatingResult.Identity>()
     private var positioning = false
     private var dragging = false
     private let snapGuide = FloatingControlGuideController()
@@ -216,7 +228,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: panel)
         self.model = model
-        self.readback = readback; self.stage = stage
+        self.readback = readback; self.stage = stage; self.snapModel = snapModel
         let saved = Self.savedPosition(UserDefaults.standard, screens: NSScreen.screens.map(\.visibleFrame),
                                        preferred: NSScreen.main?.visibleFrame)
         switch saved.position {
@@ -239,7 +251,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.revealFromRest = { [weak self] in self?.revealFromRest() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         panel.escape = { [weak controls] in controls?.endKeyboardInteraction() }
-        controls.resultPending = { [weak model] in model.map { FloatingResult.pending($0) != nil } ?? false }
+        controls.resultPending = { [weak self] in self?.revealableResult() != nil }
         controls.promptDestination = { [weak self] in
             guard let self else { return nil }
             return self.window?.isKeyWindow == true ? self.keyboardTarget : TextDelivery.capture()
@@ -318,12 +330,24 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.cancelDragging(); self?.chooser.close(); self?.position() }
             .store(in: &observations)
-        // A result waiting on a kept-open row shows once its pointer, holds and popovers let go.
+        // A result waiting on a kept-open row shows once its pointer, holds and popovers let go; one
+        // that live work now holds back gives that row to the work the same way (#222).
         controls.toolbar.$state.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in
-                guard let self, let model, !self.controls.revealsResult, FloatingResult.pending(model) != nil else { return }
+                guard let self, let model else { return }
+                let revealable = self.revealableResult() != nil
+                guard self.controls.revealsResult ? !revealable && FloatingResult.pending(model) != nil : revealable else { return }
                 self.update(model: model)
             }
+            .store(in: &observations)
+        // A held result's own slot set again, to a new failure in the same words or to none, lets it
+        // go: what is pending of that kind from then on is new. Each kind only on its own publisher,
+        // which fires as it is about to be set, so the hold hears it on the next pass (#222).
+        model.$captureFailure.receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in self?.heldSlotChanged(.dictationFailure, model: model) }
+            .store(in: &observations)
+        model.$readingFailure.receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in self?.heldSlotChanged(.readingFailure, model: model) }
             .store(in: &observations)
         // The coaching card (#134 T5): this host says when one may show, shows a pending one above
         // its place and reports it presented, and takes it down when it goes. A narration
@@ -370,7 +394,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             if surface == .tools { controls.activateToolbar() }
             else { chooser.close(); controls.suspendToolbar(); releaseKeyboardFocus(); positionControl.close() }
         }
-        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4).
+        // A result that went leaves the open row; a new one waits as the mark's status (#134 T4). One
+        // the pointer or a hold keeps open stays there as live work begins (#222).
+        observeResultHold()
         if FloatingResult.pending(model) == nil { controls.resultEnded() }
         guard surface != .hidden else {
             window.orderOut(nil); cancelDragging(); updateCoach()
@@ -392,7 +418,12 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         // In a row kept open by Keep open alone, a waiting result takes the row's place once nothing
         // is using it: after the pointer is found again above, so a row that comes back under the
         // pointer keeps its launcher until the pointer leaves (#211 F8).
-        if FloatingResult.pending(model) != nil, !chooser.isShown, !positionControl.isShown { controls.showResultIfKeptOpen() }
+        // A kept-open row held by nothing gives a result held back by live work's start to that work,
+        // as it gives a new result the row (#222).
+        if !chooser.isShown, !positionControl.isShown {
+            if revealableResult() != nil { controls.showResultIfKeptOpen() }
+            else if FloatingResult.pending(model) != nil { controls.showRowIfKeptOpen() }
+        }
         showPositionForPreview(model)
         updateCoach()
     }
@@ -439,6 +470,27 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     /// A routine no-speech cue, unless a failure or a new capture has since taken the surface.
     static func showsCue(_ model: AppModel) -> Bool { model.captureCue != nil && model.captureFailure == nil && model.phase == .idle }
+
+    /// Tells the hold what is live and pending now, as the row reads it from the same owners:
+    /// input-consuming work that begins holds back the result pending at that moment (#220, #222).
+    private func observeResultHold() {
+        guard let model, let readback, let stage else { return }
+        let live = WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snapModel).state.live(model.toolbarMode)
+        resultHold.observe(live, pending: FloatingResult.pending(model)?.identity(in: model))
+    }
+    /// A slot's owner set it again. Only a held result of that kind lets go; the host then looks
+    /// again, so a kept-open row can show what is now new.
+    private func heldSlotChanged(_ kind: FloatingResult.Identity, model: AppModel?) {
+        guard resultHold.held == kind else { return }
+        resultHold.slotChanged(kind)
+        if let model { update(model: model) }
+    }
+    /// The result the pointer's reveal would show now: the pending one, unless it is held back.
+    private func revealableResult() -> FloatingResult? {
+        guard let model else { return nil }
+        observeResultHold()
+        return FloatingResult.revealed(model, hold: resultHold)
+    }
 
     static func showsDictation(_ model: AppModel) -> Bool {
         model.previewingPanel || model.phase != .idle || model.captureFailure != nil || model.captureCue != nil ||

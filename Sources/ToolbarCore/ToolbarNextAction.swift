@@ -43,6 +43,15 @@ public struct ToolbarLiveState: Hashable, Sendable {
         self.insertingPrompt = insertingPrompt; self.meetingRecording = meetingRecording; self.mayStart = mayStart
     }
 
+    /// Input-consuming work is live: an insertion, dictation, a screen capture, narration, drawing
+    /// or a reading preparing, playing or paused. It claims the next action whatever tool is chosen
+    /// and holds back the result that was waiting when it began (#220, #222). The chosen tool's own
+    /// sessions, a presentation, personas, Snap & Talk between captures or a meeting transcription,
+    /// hold nothing back: a result is revealed over them as before (#134 T4).
+    public var consumesInput: Bool {
+        insertingPrompt || dictation != .idle || capturingScreen || narrating || drawing || reading != .idle
+    }
+
     /// Whether a mode's own capability is running, whichever mode is selected.
     /// The chooser's rows and the launcher's aggregate indicator use it.
     public func isLive(_ mode: ToolbarMode) -> Bool {
@@ -138,6 +147,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         let parts = [detail, key].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+
 
     /// The seven tools for the chooser (#134): the chosen one checked, each lit when its
     /// capability is live, with its key.

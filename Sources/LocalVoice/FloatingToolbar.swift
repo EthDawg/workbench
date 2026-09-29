@@ -40,13 +40,37 @@ enum FloatingToolbarSurface: Equatable {
 enum FloatingResult: Equatable {
     case dictationFailure, readingFailure, receipt
 
-    /// The result waiting for the person, if nothing live has taken the host since.
+    /// The result waiting for the person: the mark's warning and the first section of More say so
+    /// while other work runs. A new recording or its processing sets it aside until it ends.
     @MainActor static func pending(_ model: AppModel) -> FloatingResult? {
         guard model.phase == .idle, !model.previewingPanel else { return nil }
         if model.captureFailure != nil { return .dictationFailure }
         if model.readingFailure != nil, !model.rendering, !model.playing, !model.paused { return .readingFailure }
         if model.clipboardReceipt.isHUDVisible, model.clipboardReceipt.receipt != nil { return .receipt }
         return nil
+    }
+
+    /// Which result is pending, for the live work's hold (#222). A failure is known by its kind: the
+    /// host lets a held one go when its owner sets that slot again, so a new failure in the same
+    /// words is new. A receipt has an identity of its own.
+    enum Identity: Hashable { case dictationFailure, readingFailure, receipt(UUID) }
+    @MainActor func identity(in model: AppModel) -> Identity? {
+        switch self {
+        case .dictationFailure: return .dictationFailure
+        case .readingFailure: return .readingFailure
+        case .receipt: return model.clipboardReceipt.receipt.map { .receipt($0.id) }
+        }
+    }
+
+    /// The result the pointer's reveal shows in place of the row (#220, #222): the pending one,
+    /// unless it was already pending when the input-consuming work now live began. The row of a
+    /// reading preparing, playing or paused, a narration, a recording, drawing or an insertion then
+    /// stays under the pointer, and the result keeps the mark's warning and More's first section
+    /// until the next reveal after that work ends. A result that arrives during the work, or over
+    /// the chosen tool's own session, is revealed as any new result is.
+    @MainActor static func revealed(_ model: AppModel, hold: ToolbarResultHold<Identity>) -> FloatingResult? {
+        guard let result = pending(model), let identity = result.identity(in: model), hold.reveals(identity) else { return nil }
+        return result
     }
 }
 
@@ -156,7 +180,8 @@ struct FloatingToolbar: View {
     }
 
     /// The launcher row, or, when the row opened on a result, that result's own controls,
-    /// growing inward from the same place (#134 T4).
+    /// growing inward from the same place (#134 T4). The host decides at the reveal; a result it
+    /// showed stays while the pointer or a hold keeps it, even as live work begins (#222).
     @ViewBuilder private func content(_ state: ToolbarViewState) -> some View {
         if state.tier == .revealed, controls.revealsResult, let result = FloatingResult.pending(model) {
             FloatingResultView(result: result, model: model, controls: controls)

@@ -140,6 +140,18 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(failures, 0)
     }
 
+    /// Only input-consuming work holds a waiting result back from the pointer's reveal (#220, #222):
+    /// exactly the global work the next action puts first, never the chosen tool's own session.
+    func testOnlyInputConsumingWorkHoldsAResultBack() {
+        var failures = 0
+        Self.product { live in
+            if live.consumesInput != Self.inputLive(live) { failures += 1 }
+            // A tool's own session claims its label, yet holds no result back.
+            if Self.ownLive(live) && !Self.inputLive(live) && live.consumesInput { failures += 1 }
+        }
+        XCTAssertEqual(failures, 0)
+    }
+
     func testTheTimerNeverClaimsTheLabel() {
         var failures = 0
         Self.product { live in
