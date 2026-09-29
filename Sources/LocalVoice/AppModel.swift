@@ -395,9 +395,20 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// The same text is not restarted: paused resumes, playing carries on.
     func listen(to text: String) {
         // Only replace the draft when the reading can start, so it never waits unheard.
-        guard !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
+        guard !meetings.isBusy else {
+            report("Finish the meeting recording or transcription before playing a reading.", on: .read, from: .homeReadTileMeeting); return
+        }
         guard phase == .idle else { return }
         guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        // Text the selected provider cannot read is turned away before anything changes: the
+        // draft, its audio, player and playhead, and any review stay exactly as they were, and
+        // nothing starts. The reason is Read's, heard at once wherever the tile was (#173).
+        if let rejection = readingRejection(for: text) {
+            let reason = copiedTextRefusal(rejection, text: text)
+            report(reason, on: .read, from: .homeReadTileRefused)
+            announceForAccessibility(reason)
+            return
+        }
         let setAside = pendingReadingSelection != nil
         pendingReadingSelection = nil
         if text != speechText {
@@ -429,8 +440,49 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
 
     func readingLimitMessage(for text: String) -> String? {
         guard text.count > readingLimit else { return nil }
-        let provider = readingProvider == .speko ? "Speko" : "Mac reading"
-        return "This text has \(text.count.formatted()) characters. \(provider) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
+        return "This text has \(text.count.formatted()) characters. \(readingProviderName) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
+    }
+    private var readingProviderName: String { readingProvider == .speko ? "Speko" : "Mac reading" }
+
+    /// Why the selected provider cannot read a text (#173).
+    enum ReadingRejection: Equatable {
+        /// More characters than the provider accepts.
+        case tooLong
+        /// Within the limit as shown, but over it once prepared: Speko receives the prepared text,
+        /// which can be a little longer than what is shown.
+        case preparedTooLong
+        /// Nothing left to say once the text is prepared for listening.
+        case nothingToRead
+        /// What Listen and Save audio report when the draft itself cannot be read.
+        var message: String {
+            switch self {
+            case .tooLong, .preparedTooLong: return "This reading is too long for the selected provider."
+            case .nothingToRead: return "This text has nothing to read aloud."
+            }
+        }
+    }
+    /// The one admission check every reading passes before any audio is made, any text is sent
+    /// or an earlier reading ends: the provider's limit on the text as shown and, for Speko, on
+    /// the prepared text, then something to read. The prepared text is made only when the text
+    /// is within the limit, unless the caller already has it. Nil when the text can be read.
+    func readingRejection(for text: String, prepared: ListeningText? = nil) -> ReadingRejection? {
+        guard text.count <= readingLimit else { return .tooLong }
+        let spoken = (prepared ?? ListeningText(text)).spoken
+        guard readingProvider != .speko || spoken.count <= readingLimit else { return .preparedTooLong }
+        guard !spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .nothingToRead }
+        return nil
+    }
+    /// Home's tile read nothing: why, and that the draft it would have replaced is kept.
+    private func copiedTextRefusal(_ rejection: ReadingRejection, text: String) -> String {
+        let kept = "Your reading draft is unchanged."
+        switch rejection {
+        case .tooLong:
+            return "The copied text has \(text.count.formatted()) characters, more than \(readingProviderName) accepts (\(readingLimit.formatted())). \(kept)"
+        case .preparedTooLong:
+            return "Prepared for listening, the copied text is longer than \(readingProviderName) accepts (\(readingLimit.formatted()) characters). \(kept)"
+        case .nothingToRead:
+            return "The copied text has nothing to read aloud. \(kept)"
+        }
     }
 
     private func applyReadingSelection(_ selection: ReadingSelectionImport) {
@@ -1137,10 +1189,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard readingGenerationID == generationID else { throw CancellationError() }
         rendering = true; readingGenerationActive = true; attention = nil
         let text = speechText, prepared = ListeningText(text), selectedChoice = voiceChoice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = rate, selectedProvider = readingProvider, originalSignature = signature
-        let limit = selectedProvider == .speko ? SpekoRenderer.maximumCharacters : 50_000
-        // Speko receives the prepared text, which can be a little longer than what is shown.
-        guard text.count <= limit, selectedProvider != .speko || prepared.spoken.count <= limit else { throw VoiceError.message("This reading is too long for the selected provider.") }
-        guard !prepared.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw VoiceError.message("This text has nothing to read aloud.") }
+        // The same admission Home's tile runs before it replaces the draft (#173).
+        if let rejection = readingRejection(for: text, prepared: prepared) { throw VoiceError.message(rejection.message) }
         defer {
             if readingGenerationID == generationID {
                 readingGenerationActive = false; cloudRequestActive = false
@@ -1285,7 +1335,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     func dismissReadingFailure() { clearReadingFailure() }
     /// Raises a problem with the page that shows it in full (#134): the menu-bar panel's door
     /// opens that page, so it is chosen here, where the problem is known, never from the words.
-    func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
+    /// `origin` names a control that also shows it beside itself; only Home's Read tile does (#173).
+    func report(_ message: String, on page: Attention.Page, from origin: Attention.Origin? = nil) {
+        attention = Attention(message: message, page: page, origin: origin)
+    }
     /// The error banner's dismiss, which also dismisses a reading failure it shows.
     func dismissError() {
         if let failure = readingFailure, error == failure.message { readingFailure = nil }

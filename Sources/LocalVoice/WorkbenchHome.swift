@@ -671,6 +671,13 @@ struct WorkbenchHomePage: View {
                 Text("Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            // Why the Read tile did nothing, beside it (#173): only the tile's own problem, gone as
+            // soon as anything replaces or clears it, and a meeting wait only while the meeting runs.
+            // Read's banner shows every Read problem.
+            if tools.contains(.read), let notice = Attention.besideHomeReadTile(model.attention, meetingBusy: meetings.isBusy) {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
     /// A quick-start tile: the capability's registry symbol and name with the exact action it
