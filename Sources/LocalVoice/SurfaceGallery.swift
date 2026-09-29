@@ -2064,18 +2064,30 @@ enum SurfaceGallery {
         /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
-        func receipt(_ outcome: TextDelivery.Outcome) -> () -> Void {
-            { self.model.clipboardReceipt.record(outcome: outcome, wordCount: 12); self.model.clipboardReceipt.keepVisible = true }
+        func receipt(_ outcome: @escaping () -> TextDelivery.Outcome) -> () -> Void {
+            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.keepVisible = true }
+        }
+        /// A receipt goes the moment the clipboard changes, so a copy made on this Mac while a local
+        /// run is under way would end a receipt case early. A case runs again, twice at most, when
+        /// the clipboard's change count moved while it ran; nothing here writes the clipboard.
+        func steady(_ run: () -> [String?]) -> [String?] {
+            var problems: [String?] = []
+            for _ in 0..<3 {
+                let before = NSPasteboard.general.changeCount
+                problems = run()
+                if NSPasteboard.general.changeCount == before { break }
+            }
+            return problems
         }
         func endReading() { model.rendering = false; model.playing = false; model.paused = false }
         func described(_ title: String?) -> String { title.map { "\"\($0)\"" } ?? "nothing" }
         let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                                       meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
                                       dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
-        let copied = TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
-                                          wasPasted: false, destinationName: nil)
-        let notCopied = TextDelivery.Outcome(message: "Could not copy the transcript.", clipboardChangeCount: nil, wasPasted: false,
-                                             destinationName: nil, failure: .copyFailed)
+        let copied = { TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
+                                            wasPasted: false, destinationName: nil) }
+        let notCopied = { TextDelivery.Outcome(message: "Could not copy the transcript.", clipboardChangeCount: nil, wasPasted: false,
+                                               destinationName: nil, failure: .copyFailed) }
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
             ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() }),
@@ -2094,39 +2106,43 @@ enum SurfaceGallery {
         for result in results {
             for reading in readings {
                 // Waiting before the reading begins: held back while it lasts.
-                result.show(); settle(.resting)
-                reading.start(); settle(.resting)
-                let warning = controls.status.description
-                reveal()
-                let row = !controls.revealsResult, reads = primary(), goesOn = model.rendering || model.playing || model.paused
-                let more = toolbar.moreMenu().items.map(\.title), section = header(result.kind)
-                collapse()
-                endReading(); settle(.resting)
-                reveal()
-                let back = controls.revealsResult
-                collapse()
-                expect("\(result.name) waiting as a reading starts \(reading.state)", [
-                    row ? nil : "the pointer's reveal showed the older result over the reading",
-                    reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
-                    goesOn ? nil : "revealing ended the reading",
-                    result.kind != .dictationFailure || warning.contains("Needs attention") ? nil : "the mark lost the result's warning: \"\(warning)\"",
-                    more.contains(section) ? nil : "More lost the result's commands (\(section))",
-                    reading.state == "preparing" || more.contains("Stop reading") ? nil : "More has no Stop reading",
-                    back ? nil : "once the reading ended the pointer's reveal did not show the result"])
-                result.clear(); endReading(); settle(.resting)
+                expect("\(result.name) waiting as a reading starts \(reading.state)", steady {
+                    result.show(); settle(.resting)
+                    reading.start(); settle(.resting)
+                    let warning = controls.status.description
+                    reveal()
+                    let row = !controls.revealsResult, reads = primary(), goesOn = model.rendering || model.playing || model.paused
+                    let more = toolbar.moreMenu().items.map(\.title), section = header(result.kind)
+                    collapse()
+                    endReading(); settle(.resting)
+                    reveal()
+                    let back = controls.revealsResult
+                    collapse()
+                    result.clear(); endReading(); settle(.resting)
+                    return [
+                        row ? nil : "the pointer's reveal showed the older result over the reading",
+                        reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
+                        goesOn ? nil : "revealing ended the reading",
+                        result.kind != .dictationFailure || warning.contains("Needs attention") ? nil : "the mark lost the result's warning: \"\(warning)\"",
+                        more.contains(section) ? nil : "More lost the result's commands (\(section))",
+                        reading.state == "preparing" || more.contains("Stop reading") ? nil : "More has no Stop reading",
+                        back ? nil : "once the reading ended the pointer's reveal did not show the result"]
+                })
                 // Arriving during the reading: revealed as any new result, with the reading still reachable.
-                reading.start(); settle(.resting)
-                result.show(); settle(.resting)
-                reveal()
-                let shown = controls.revealsResult, over = primary()
-                collapse()
-                let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.moreMenu().items.map(\.title)
-                expect("\(result.name) arriving during a reading \(reading.state)", [
-                    shown ? nil : "the pointer's reveal held a new result back",
-                    over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
-                    entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
-                    reading.state == "preparing" || commands.contains("Stop reading") ? nil : "More has no Stop reading"])
-                result.clear(); endReading(); settle(.resting)
+                expect("\(result.name) arriving during a reading \(reading.state)", steady {
+                    reading.start(); settle(.resting)
+                    result.show(); settle(.resting)
+                    reveal()
+                    let shown = controls.revealsResult, over = primary()
+                    collapse()
+                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.moreMenu().items.map(\.title)
+                    result.clear(); endReading(); settle(.resting)
+                    return [
+                        shown ? nil : "the pointer's reveal held a new result back",
+                        over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
+                        entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
+                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "More has no Stop reading"]
+                })
             }
         }
         // A failure set again in the same words during the reading is a new failure, cleared first
@@ -2144,48 +2160,57 @@ enum SurfaceGallery {
         model.captureFailure = words; settle(.resting)
         let setAgain = revealsNow()
         endReading(); model.dismissCaptureFailure(); settle(.resting)
-        receipt(copied)(); settle(.resting)
-        model.playing = true; settle(.resting)
-        model.captureFailure = nil; settle(.resting)
-        let receiptHeld = !revealsNow()
-        endReading(); model.clipboardReceipt.clear(); settle(.resting)
+        let receiptHeld = steady {
+            receipt(copied)(); settle(.resting)
+            model.playing = true; settle(.resting)
+            model.captureFailure = nil; settle(.resting)
+            let held = !revealsNow() && model.clipboardReceipt.receipt != nil
+            endReading(); model.clipboardReceipt.clear(); settle(.resting)
+            return [held ? nil : "clearing the dictation failure's slot let a held receipt over the reading"]
+        }
         expect("A failure in the same words, and a held receipt, during a reading", [
             heldFirst ? nil : "the failure waiting as the reading began was not held back",
             clearedAndSet ? nil : "a failure cleared and set again in the same words stayed held back",
-            setAgain ? nil : "a failure set again in the same words stayed held back",
-            receiptHeld ? nil : "clearing the dictation failure's slot let a held receipt over the reading"])
-        // A narration holds back the result waiting as it began and reveals one that arrives; a newer
-        // recording and its processing keep their own rows; the chosen tool's own sessions hold
-        // nothing back. The first and last at the selection seam, with the real results.
-        let sessions: [(String, ToolbarLiveState)] = [
-            ("a presentation", ToolbarLiveState(mode: .present, presenting: true)),
-            ("a Persona set", ToolbarLiveState(mode: .persona, persona: .session)),
-            ("a meeting transcription", ToolbarLiveState(mode: .dictate, meetingRecording: true)),
-            ("a Snap & Talk session", ToolbarLiveState(mode: .snapAndTalk, captureCount: 2))]
-        let narration = ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 1)
-        var wrong: [String] = []
+            setAgain ? nil : "a failure set again in the same words stayed held back"] + receiptHeld)
+        // At the selection seam, with the real results: global input work holds back the result
+        // pending as it began, and the chosen tool's own sessions hold nothing back. Each row says
+        // which it expects on its own, never from the rule under test. A result that arrives during
+        // any of them is revealed. A newer recording and its processing keep their rows in the host.
+        let scenarios: [(name: String, live: ToolbarLiveState, holdsOlder: Bool)] = [
+            ("a narration", ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 1), true),
+            ("drawing", ToolbarLiveState(mode: .draw, drawing: true), true),
+            ("an insertion", ToolbarLiveState(mode: .present, insertingPrompt: true), true),
+            ("a presentation", ToolbarLiveState(mode: .present, presenting: true), false),
+            ("a Persona set", ToolbarLiveState(mode: .persona, persona: .session), false),
+            ("a meeting transcription", ToolbarLiveState(mode: .dictate, meetingRecording: true), false),
+            ("a Snap & Talk session", ToolbarLiveState(mode: .snapAndTalk, captureCount: 2), false)]
+        var olderWrong: [String] = [], newerWrong: [String] = [], recordingWrong: [String] = []
         for result in results {
-            for (name, live) in [("a narration", narration)] + sessions {
-                let holds = live.consumesInput
+            for scenario in scenarios {
                 var older = ToolbarResultHold<FloatingResult.Identity>(), newer = ToolbarResultHold<FloatingResult.Identity>()
-                newer.observe(live, pending: pendingIdentity())
+                newer.observe(scenario.live, pending: pendingIdentity())
                 result.show(); settle(.resting)
-                older.observe(ToolbarLiveState(mode: live.mode), pending: pendingIdentity())
-                older.observe(live, pending: pendingIdentity())
-                newer.observe(live, pending: pendingIdentity())
-                if (FloatingResult.revealed(model, hold: older) == nil) != holds { wrong.append("an older \(result.name.lowercased()) under \(name) was \(holds ? "revealed" : "held back")") }
-                if FloatingResult.revealed(model, hold: newer) != result.kind { wrong.append("a newer \(result.name.lowercased()) under \(name) was held back") }
+                older.observe(ToolbarLiveState(mode: scenario.live.mode), pending: pendingIdentity())
+                older.observe(scenario.live, pending: pendingIdentity())
+                newer.observe(scenario.live, pending: pendingIdentity())
+                let olderHeld = FloatingResult.revealed(model, hold: older) == nil
+                if olderHeld != scenario.holdsOlder {
+                    olderWrong.append("an older \(result.name.lowercased()) under \(scenario.name) was \(olderHeld ? "held back" : "revealed")")
+                }
+                if FloatingResult.revealed(model, hold: newer) != result.kind { newerWrong.append("a newer \(result.name.lowercased()) under \(scenario.name)") }
                 result.clear(); settle(.resting)
             }
             result.show(); settle(.resting)
             for phase in [AppModel.Phase.recording, .transcribing] {
                 model.phase = phase; settle(.resting)
-                if revealsNow() { wrong.append("\(result.name.lowercased()) took the reveal from a newer \(phase)") }
+                if revealsNow() { recordingWrong.append("\(result.name.lowercased()) during a newer \(phase)") }
             }
             model.phase = .idle; settle(.resting)
             result.clear(); settle(.resting)
         }
-        expect("Results under a narration, a newer recording and the tools' own sessions", [wrong.isEmpty ? nil : wrong.joined(separator: "; ")])
+        expect("Older results under global input work and the tools' own sessions", [olderWrong.isEmpty ? nil : olderWrong.joined(separator: "; ")])
+        expect("Newer results under the same work", [newerWrong.isEmpty ? nil : "held back: " + newerWrong.joined(separator: "; ")])
+        expect("Results under a newer recording and its processing", [recordingWrong.isEmpty ? nil : "took the reveal: " + recordingWrong.joined(separator: "; ")])
         // A result revealed under the pointer keeps its place as a reading starts; once the pointer
         // lets go the row is the reading's, and after it the result's again. A kept-open row does
         // the same once its hold lets go.
