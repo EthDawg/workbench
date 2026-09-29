@@ -39,7 +39,7 @@ methods = model.extract([
     'scheduleCaptureCueExpiry',
     'saveNow', 'session', 'shutdown',
     # Preparing the speech model, whose failure is Home's (#134).
-    'prepare',
+    'prepare', 'dismissCaptureFailure',
 ])
 
 # Static inventories of AppModel, so a new way of reaching the receipt or the
@@ -95,6 +95,12 @@ assert 'undelivered.restore(' in launch and launch.index('restoreCaptureRecovery
 labels = model.extract(['retryCaptureLabel', 'retryCaptureHelp', 'hasCaptureRecovery', 'canRecordAgain',
                         'hasSavedRecordings', 'canDiscardCaptureRecovery'])
 request = SwiftFile(PROJECT / 'Sources/LocalVoice/Shortcuts.swift').extract(['DictationRequest'])
+# Exercise the actual shell callback that Persona, Draw, Present and Timer share.
+shell = SwiftFile(PROJECT / 'Sources/LocalVoice/main.swift').type('AppDelegate')
+assert re.search(r'stage\.onBeginActivity\s*=\s*\{\s*\[weak self\]\s*in\s*self\?\.beginStageActivity\(\)\s*\}',
+                 shell.select(['applicationDidFinishLaunching'])[0].code), 'Stage starts use the tested shell callback'
+stage_start = shell.extract(['beginStageActivity'])
+
 fixture = r'''
 import AppKit
 import AVFoundation
@@ -187,7 +193,9 @@ struct CaptureSettings {
 }
 @MainActor final class ClipboardReceipt {
     var receipts = 0
+    var hidden = false
     func clear() {}
+    func dismissHUD() { hidden = true }
     func record(outcome: TextDelivery.Outcome, wordCount: Int) { receipts += 1 }
 }
 enum AudioRenderer { static func remove(_ url: URL?) {} }
@@ -276,6 +284,21 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     __METHODS__
 }
 
+@MainActor final class StageActivityHarness {
+    final class Surface {
+        var hides = 0
+        func hide() { hides += 1 }
+        func orderOut(_ sender: Any?) { hides += 1 }
+    }
+    let model: CaptureHarness
+    var presenterPanel: Surface? = Surface()
+    var window: Surface? = Surface()
+    var closes = 0
+    init(model: CaptureHarness) { self.model = model }
+    func closeControls() { closes += 1 }
+    __STAGE_START__
+}
+
 struct CheckFailure: Error, CustomStringConvertible { let description: String }
 @main struct Checks {
     @MainActor static func main() async throws {
@@ -293,6 +316,22 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             tag("RIFF"); le(UInt32(32036)); tag("WAVEfmt "); le(UInt32(16)); le(UInt16(1)); le(UInt16(1)); le(UInt32(16000)); le(UInt32(32000)); le(UInt16(2)); le(UInt16(16)); tag("data"); le(UInt32(32000)); data.append(Data(repeating: 0, count: 32000)); return data
         }
         let wav = wave()
+        let independent = CaptureHarness(directory: folder("stage-preserves-failure"))
+        let retainedAudio = try independent.makeRecording(wav)
+        independent.captureFailure = "Synthetic dictation failure"
+        independent.transcript = "Existing draft"
+        independent.previewingPanel = true
+        let stageShell = StageActivityHarness(model: independent)
+        stageShell.beginStageActivity()
+        try check(independent.captureFailure == "Synthetic dictation failure", "starting independent Stage work preserves the dictation result")
+        try check(independent.recordURL == retainedAudio && (try Data(contentsOf: retainedAudio)) == wav && independent.transcript == "Existing draft",
+                  "the same Stage start preserves recording bytes, recovery reference and draft")
+        try check(independent.clipboardReceipt.hidden && !independent.previewingPanel && stageShell.closes == 1 && stageShell.presenterPanel?.hides == 1 && stageShell.window?.hides == 1,
+                  "starting Stage work still hides the preparation surfaces")
+        independent.dismissCaptureFailure()
+        try check(independent.captureFailure == nil && (try Data(contentsOf: retainedAudio)) == wav,
+                  "explicit Dismiss still clears the result without deleting retained audio")
+
         let meetingBusy = CaptureHarness(directory: folder("meeting-busy"))
         meetingBusy.meetings.isBusy = true
         meetingBusy.importAudio(folder("unread.wav"))
@@ -886,6 +925,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
 values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState'])])
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
+fixture = fixture.replace('__STAGE_START__', stage_start)
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)

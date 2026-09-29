@@ -74,7 +74,9 @@ warning and its section in More, and the next reveal after the work ends shows t
 result again. A result that arrives during the work, a failure set again in the same
 words included, is revealed as any new result is, and the chosen tool's own sessions,
 a presentation, personas, Snap & Talk between captures or a meeting transcription,
-hold nothing back. A result already revealed under the pointer, or held open by a
+hold nothing back. Starting Persona, Draw, Present or Timer preserves a pending
+dictation failure and its recovery controls; hiding preparation windows does not
+dismiss that result. A result already revealed under the pointer, or held open by a
 hold, keeps its place as such work begins, until the pointer or the hold lets go
 (#220, #222). Keyboard entry, Window › Focus floating toolbar, reveals the launcher
 row instead, with the launcher focused and keeping the result's status, the mark's
