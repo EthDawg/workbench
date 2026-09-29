@@ -2210,14 +2210,6 @@
     "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
   },
   {
-    "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.open-camera-settings",
-    "surface": "local profile",
-    "label": "Open Camera settings",
-    "kind": "action",
-    "belongsTo": "persona",
-    "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
-  },
-  {
     "id": "StageKit.LocalPersonaProfile.LocalPersonaProfileView.Button.open-me-in-persona",
     "surface": "local profile",
     "label": "Open Me in Persona",
@@ -2487,6 +2479,78 @@
     "kind": "option",
     "belongsTo": "persona",
     "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraPreviewHost.native-control.live-camera-preview",
+    "surface": "local profile",
+    "label": "Live camera preview",
+    "kind": "status",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: accessible video preview inside the existing profile camera visit; hidden from accessibility until frames arrive."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.cancel",
+    "surface": "local profile",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: Cancel ends only the current camera visit and returns to the unchanged profile; the existing contextual dismissal wording."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.choose-photo",
+    "surface": "local profile",
+    "label": "Choose photo…",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the existing local file choice stays reachable while the camera starts or fails. It stops camera capture before opening the file picker."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.open-camera-settings",
+    "surface": "local profile",
+    "label": "Open Camera settings",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: moved the existing Camera settings recovery beside the denied-access explanation."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.take-photo",
+    "surface": "local profile",
+    "label": "Take photo",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shutter becomes available after a real frame and hands one in-memory photo to the existing Persona appearance review."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Button.try-again",
+    "surface": "local profile",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: explicit recovery retries the selected camera. A disconnected camera never silently falls back to another source."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.Picker.camera",
+    "surface": "local profile",
+    "label": "Camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Option of the existing camera visit: choose a source when several cameras are available. The choice lasts only for this visit and starts no separate capability."
+  },
+  {
+    "id": "StageKit.ProfileCamera.ProfileCameraView.choice.choose-a-camera",
+    "surface": "local profile",
+    "label": "Choose a camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Temporary empty choice when a selected camera disappeared and another is available; it requires an explicit new source."
   },
   {
     "id": "StageKit.StageKitController.StageKitController.StageMenuAction.1-min",

@@ -1,6 +1,4 @@
 import AppKit
-import AVFoundation
-import Quartz
 import SwiftUI
 
 /// A single reference in the existing edition's preferences; Persona remains the image owner.
@@ -25,18 +23,41 @@ struct LocalPersonaProfileView: View {
     var changed: () -> Void
     var openPersona: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var camera = ProfilePictureTaker()
+    @StateObject private var camera: ProfileCamera
     @State private var editors = PersonaEditorHolder()
     @State private var replacement: SavedPersona?
     @State private var notice: String?
     private var persona: SavedPersona? { LocalPersonaProfile.persona(in: library, defaults: defaults) }
 
+    @MainActor init(library: PersonaLibrary, defaults: UserDefaults, changed: @escaping () -> Void,
+         openPersona: @escaping () -> Void = {}, camera: ProfileCamera? = nil) {
+        self.library = library; self.defaults = defaults; self.changed = changed; self.openPersona = openPersona
+        _camera = StateObject(wrappedValue: camera ?? ProfileCamera())
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if camera.isPresented {
+                ProfileCameraView(camera: camera, captured: prepare) {
+                    camera.cancel()
+                    choosePhoto()
+                }
+            } else { profile }
+        }.padding(24).frame(width: 470).background(Workbench.background).workbenchTheme()
+            .sheet(item: $editors.current) { session in
+                PersonaCardEditor(library: library, session: session, replacing: replacement,
+                                  confirmationTitle: session.isNew ? "Use photo" : nil) { id in
+                    if LocalPersonaProfile.choose(id, in: library, defaults: defaults) { library.objectWillChange.send(); changed() }
+                }
+            }
+            .onDisappear { camera.cancel() }
+    }
+    private var profile: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 Text("Your profile").font(.title2.weight(.semibold))
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction).disabled(camera.isBusy)
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             HStack(spacing: 18) {
                 Group {
@@ -52,44 +73,31 @@ struct LocalPersonaProfileView: View {
             }
             HStack {
                 Button("Take photo…") {
-                    camera.takePhoto(in: NSApp.keyWindow) { image in prepare(image) }
-                }.disabled(library.isReadOnly || camera.isBusy).help("Allow Camera access, then take and review a photo")
-                Button("Choose photo…") { choosePhoto() }.disabled(library.isReadOnly || camera.isBusy)
+                    notice = nil; camera.start()
+                }.disabled(library.isReadOnly).help("Allow Camera access, then take and review a photo")
+                Button("Choose photo…") { choosePhoto() }.disabled(library.isReadOnly)
                 if let persona {
                     Button("Edit appearance…") { replacement = nil; editors.open(.saved(persona)) }
-                        .disabled(library.isReadOnly || camera.isBusy)
+                        .disabled(library.isReadOnly)
                 }
             }
             if persona == nil, let selected = library.selected {
                 Button("Use \(selected.name) as Me") {
                     if LocalPersonaProfile.choose(selected.id, in: library, defaults: defaults) { library.objectWillChange.send(); changed() }
-                }.buttonStyle(.link).disabled(library.isReadOnly || camera.isBusy)
+                }.buttonStyle(.link).disabled(library.isReadOnly)
             }
             if let persona {
                 Button("Open Me in Persona") {
                     library.prepareGroup(nil); library.selectedID = persona.id
                     dismiss(); openPersona()
-                }.buttonStyle(.link).disabled(camera.isBusy)
+                }.buttonStyle(.link)
             }
             Text("Taking or choosing a photo opens a preview. Use photo saves it as your Me persona; Cancel keeps everything as it was.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let message = notice ?? camera.notice ?? library.notice {
+            if let message = notice ?? library.notice {
                 Text(message).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
-            if camera.permissionDenied {
-                Button("Open Camera settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") { NSWorkspace.shared.open(url) }
-                }
-            }
-            if camera.isBusy { ProgressView("Waiting for your photo…").controlSize(.small) }
-        }.padding(24).frame(width: 470).background(Workbench.background).workbenchTheme()
-            .sheet(item: $editors.current) { session in
-                PersonaCardEditor(library: library, session: session, replacing: replacement,
-                                  confirmationTitle: session.isNew ? "Use photo" : nil) { id in
-                    if LocalPersonaProfile.choose(id, in: library, defaults: defaults) { library.objectWillChange.send(); changed() }
-                }
-            }
-            .onDisappear { camera.cancel() }
+        }
     }
     private func choosePhoto() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = LogoImport.contentTypes
@@ -114,67 +122,5 @@ struct LocalPersonaProfileView: View {
         guard editors.current == nil else { return }
         replacement = persona; notice = nil
         editors.open(.new(draft))
-    }
-}
-
-/// Apple's native picture taker owns the camera preview and its shutter. Its recent-picture
-/// store is off: a photo stays in memory until the Persona editor's explicit confirmation.
-@MainActor
-final class ProfilePictureTaker: NSObject, ObservableObject {
-    @Published private(set) var isBusy = false
-    @Published private(set) var notice: String?
-    @Published private(set) var permissionDenied = false
-    private var generation = UUID()
-    private var picker: IKPictureTaker?
-    private var completion: ((NSImage) -> Void)?
-
-    func takePhoto(in window: NSWindow?, completion: @escaping (NSImage) -> Void) {
-        guard !isBusy else { return }
-        isBusy = true; notice = nil; permissionDenied = false
-        let request = UUID(); generation = request
-        Task { [weak self, weak window] in
-            let authorized: Bool
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
-            case .authorized: authorized = true
-            case .notDetermined: authorized = await AVCaptureDevice.requestAccess(for: .video)
-            default: authorized = false
-            }
-            guard let self, self.generation == request else { return }
-            guard authorized else {
-                self.isBusy = false; self.permissionDenied = true
-                self.notice = "Camera access is off. Allow it in Camera settings, or choose a photo from a file."
-                return
-            }
-            guard let window else { self.isBusy = false; return }
-            guard let picker = IKPictureTaker.pictureTaker() else {
-                self.isBusy = false; self.notice = "The camera preview could not open. Choose a photo from a file instead."; return
-            }
-            self.picker = picker; self.completion = completion
-            picker.setValue(true, forKey: IKPictureTakerAllowsVideoCaptureKey)
-            picker.setValue(false, forKey: IKPictureTakerAllowsFileChoosingKey)
-            picker.setValue(false, forKey: IKPictureTakerShowRecentPictureKey)
-            picker.setValue(false, forKey: IKPictureTakerUpdateRecentPictureKey)
-            picker.setValue(false, forKey: IKPictureTakerShowAddressBookPictureKey)
-            picker.setValue(false, forKey: IKPictureTakerShowEffectsKey)
-            picker.setValue(NSValue(size: NSSize(width: 1600, height: 1600)), forKey: IKPictureTakerOutputImageMaxSizeKey)
-            picker.setValue("Take a photo for your Me persona.", forKey: IKPictureTakerInformationalTextKey)
-            picker.setInputImage(nil)
-            picker.beginSheet(for: window, withDelegate: self,
-                              didEnd: #selector(finished(_:returnCode:contextInfo:)), contextInfo: nil)
-        }
-    }
-    @objc private func finished(_ picker: IKPictureTaker, returnCode: Int, contextInfo: UnsafeMutableRawPointer?) {
-        let image = returnCode == NSApplication.ModalResponse.OK.rawValue ? picker.outputImage() : nil
-        let completed = completion
-        self.picker = nil; completion = nil; isBusy = false
-        picker.setInputImage(nil)
-        if let image { completed?(image) }
-    }
-    func cancel() {
-        generation = UUID(); completion = nil; isBusy = false
-        if let picker {
-            if let parent = picker.sheetParent { parent.endSheet(picker, returnCode: .cancel) }
-            picker.orderOut(nil); self.picker = nil
-        }
     }
 }

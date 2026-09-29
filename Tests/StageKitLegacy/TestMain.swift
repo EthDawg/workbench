@@ -4,6 +4,33 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--profile-camera-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let camera = ProfileCameraTests(), creation = PersonaCreationTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("camera permission cancellation and late approval", camera.testPermissionIsExplicitAndLateApprovalCannotReopen),
+                ("camera denied and restricted access", camera.testDeniedAndRestrictedAccessKeepAnExitWithoutOpeningHardware),
+                ("camera timeout retry and stale events", camera.testStartupTimeoutRetryAndLateEvents),
+                ("camera fresh frames and deadline ownership", camera.testOnlyFreshFramesEnableTheShutterAndOldDeadlinesCannotFailNewFrames),
+                ("camera photo handoff and late cancellation", camera.testPhotoHandsOffOnceAfterStoppingAndCancelDropsLatePhoto),
+                ("camera source switch and interruption", camera.testSwitchCameraRejectsOldPhotoAndDisconnectionRequiresExplicitRetry),
+                ("camera photo failure and timeout", camera.testPhotoFailureAndTimeoutLeaveTheProfileUnchanged),
+                ("camera stays in profile host and Cancel preserves library", camera.testProfileKeepsCameraInTheSameHostAndCancelReturnsWithoutSaving),
+                ("camera frame conversion preserves pixels", camera.testFrameConversionKeepsItsSizeAndOrientation),
+                ("camera synthetic layouts", camera.testCameraLayouts),
+                ("profile replacement preserves originals", creation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
+                ("profile save failure preserves draft", creation.testFailedProfileReplacementKeepsDraftAndFiles)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-workspace-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -581,6 +608,16 @@ struct TestRunner {
             ("new portrait repeated cancels leave nothing", personaCreation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
             ("new portrait Add saves once", personaCreation.testAddSavesOneItemWithOneMembershipOnce),
             ("new portrait failed Add keeps the draft", personaCreation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+                ("camera permission cancellation and late approval", ProfileCameraTests().testPermissionIsExplicitAndLateApprovalCannotReopen),
+                ("camera denied and restricted access", ProfileCameraTests().testDeniedAndRestrictedAccessKeepAnExitWithoutOpeningHardware),
+                ("camera timeout retry and stale events", ProfileCameraTests().testStartupTimeoutRetryAndLateEvents),
+                ("camera fresh frames and deadline ownership", ProfileCameraTests().testOnlyFreshFramesEnableTheShutterAndOldDeadlinesCannotFailNewFrames),
+                ("camera photo handoff and late cancellation", ProfileCameraTests().testPhotoHandsOffOnceAfterStoppingAndCancelDropsLatePhoto),
+                ("camera source switch and interruption", ProfileCameraTests().testSwitchCameraRejectsOldPhotoAndDisconnectionRequiresExplicitRetry),
+                ("camera photo failure and timeout", ProfileCameraTests().testPhotoFailureAndTimeoutLeaveTheProfileUnchanged),
+                ("camera stays in profile host and Cancel preserves library", ProfileCameraTests().testProfileKeepsCameraInTheSameHostAndCancelReturnsWithoutSaving),
+                ("camera frame conversion preserves pixels", ProfileCameraTests().testFrameConversionKeepsItsSizeAndOrientation),
+                ("camera synthetic layouts", ProfileCameraTests().testCameraLayouts),
             ("profile reference and replacement keep identity and original artwork", personaCreation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
             ("profile failed replacement keeps draft and files", personaCreation.testFailedProfileReplacementKeepsDraftAndFiles),
             ("saved card edit cancel and shown card", personaCreation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),

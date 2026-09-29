@@ -31,6 +31,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Workbench uses the camera when you take a profile photo or select device video for a presentation.</string>
 	<key>NSHighResolutionCapable</key>
