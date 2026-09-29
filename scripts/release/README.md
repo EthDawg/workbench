@@ -168,6 +168,28 @@ Production normally uses `vVERSION`. When publishing a newer bundle build with t
 
 Use an HTML fragment for concise user-facing release notes. Sparkle generates the appcast, signs the final archive and signs the feed. The helper verifies provenance, keys, edition, signature, notarization, increasing build number and enclosure URL/size. Never manually edit a signed XML file.
 
+### Write notes people want to read
+
+Lead with what the person can do more easily in this release. Use a short, warm opening and three to five concrete outcomes, with the most useful first. Name the familiar tool and a real moment: “Pick up your last capture from Home” or “Keep your reading draft when copied text can’t be read.” Include an outcome only after it passes the release’s acceptance checks. Avoid component names, test counts, vague “improvements” and promises of perfect reliability in the updater’s small reading area.
+
+Draft the customer-facing copy once, then use the same opening and outcomes in the GitHub Markdown and Sparkle HTML. A useful shape is:
+
+```markdown
+# Workbench VERSION
+
+[One friendly sentence about the work this release makes easier.]
+
+- **[A useful outcome.]** [The familiar action and what changed.]
+- **[Another useful outcome.]** [A concrete benefit in one sentence.]
+- **[A fix worth knowing about.]** [The problem the person will no longer hit.]
+
+Choose Settings → Workbench updates when you’re ready. Your saved work stays in this edition’s library.
+```
+
+For a first download, add the short instruction to unzip, move the app to Applications and open it from there. An update refusal about the download location needs the same quit, move and relaunch steps. Preserve an existing Applications location and name any real migration limit. Follow the outcomes with a separate Verification section on GitHub for exact version/build/source, signing, tests actually run and remaining limits. Keep a user-relevant limitation beside the affected outcome when it changes whether someone can use it. Check the HTML at a narrow updater width and the Markdown preview before packaging; keep their claims aligned. Release notes are frozen into the signed feed, so later copy changes belong to a newly prepared release.
+
+### Publish the prepared release
+
 After integrating the verified source into `main`, package that exact clean commit and publish:
 
 ```sh
