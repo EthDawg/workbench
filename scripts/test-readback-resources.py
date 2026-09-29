@@ -4,12 +4,16 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+import sys
 import tempfile
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 ROOT = Path(__file__).resolve().parents[1]
-model = (ROOT / "Sources/LocalVoice/ReadbackModel.swift").read_text()
-types = model[model.index("enum ReadbackSectionStatus"):model.index("enum ReadbackHandoffTarget")]
-store = model[model.index("enum ReadbackStore {"):model.index("struct ReadbackScreenshot")]
+model = SwiftFile(ROOT / "Sources/LocalVoice/ReadbackModel.swift")
+types = model.extract(["ReadbackSectionStatus", "ReadbackSection", "ReadbackManifest", "ReadbackError", "ReadbackHandoffBrief"])
+store = model.extract(["ReadbackStore"])
 assert "Bundle.module" not in store, "The generated accessor traps before its caller can catch an error"
 harness = r'''
 import Foundation

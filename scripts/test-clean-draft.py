@@ -9,26 +9,18 @@ under test are extracted verbatim from the current application source.
 import hashlib
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCE = PROJECT / "Sources/LocalVoice/AppModel.swift"
-source = SOURCE.read_text()
-
-
-def method(start: str, next_declaration: str) -> str:
-    begin = source.index(start)
-    return source[begin:source.index(next_declaration, begin)].rstrip()
-
-
-methods = "\n".join([
-    method("    var canCancelCurrentCapture: Bool {", "\n    func dismissCaptureFailure"),
-    method("    func cancelCurrentCapture() {", "\n    func importAudio()"),
-    method("    func cleanCurrentDraft() {", "\n    func openTranscript("),
-])
-transcript = next(line for line in source.splitlines() if "@Published var transcript =" in line)
+model = SwiftFile(PROJECT / "Sources/LocalVoice/AppModel.swift").type("AppModel")
+methods = model.extract(["canCancelCurrentCapture", "cancelCurrentCapture", "cleanCurrentDraft"])
+transcript = model.extract(["transcript"])
 
 fixture = r'''
 import Foundation

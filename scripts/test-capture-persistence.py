@@ -9,68 +9,61 @@ import hashlib
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 PROJECT = Path(__file__).resolve().parents[1]
-source = (PROJECT / 'Sources/LocalVoice/AppModel.swift').read_text()
-core = (PROJECT / 'Sources/LocalVoice/Core.swift').read_text()
-shortcuts = (PROJECT / 'Sources/LocalVoice/Shortcuts.swift').read_text()
+app_model = SwiftFile(PROJECT / 'Sources/LocalVoice/AppModel.swift')
+model = app_model.type('AppModel')
+core = SwiftFile(PROJECT / 'Sources/LocalVoice/Core.swift')
 
-def extract(start, end):
-    begin = source.index(start)
-    return source[begin:source.index(end, begin)].rstrip()
-
-methods = '\n'.join([
-    extract('    func resumeWaitingDelivery()', '\n    @Published var isMicrophoneQuiet'),
+methods = model.extract([
+    'resumeWaitingDelivery', 'copyWaitingDelivery',
     # The Dictate shortcut's press and release, and the attempt it starts (#134 T5).
-    extract('    func toggleRecording(', '\n    private func startRecording('),
-    extract('    func cancelShortcut(', '\n    func transcribeForShortcut'),
-    extract('    func stopRecording()', '\n    func cancelRecording()'),
-    extract('    func cancelRecording()', '\n    func importAudio()'),
-    extract('    func importAudio(_ url:', '\n    func retryTranscription()'),
-    extract('    func retryTranscription()', '\n    private func captureSettings()'),
-    extract('    private func transcribe(', '\n    func copyTranscript()'),
+    'toggleRecording', 'recordAgain', 'shortcutChanged',
+    'cancelShortcut', 'stopRecording', 'cancelRecording', 'cancelCurrentCapture', 'importAudio(_:)', 'retryTranscription',
+    # Transcription, its commit and the recovery it keeps.
+    'transcribe', 'admitNewCapture', 'commitRecognizedCapture', 'savePendingCapture', 'restoreCaptureRecovery',
+    'discardRecordingRecovery', 'discardCaptureRecovery', 'showCaptureRecoveryFiles', 'showSavedRecordings',
     # Manual copies and the undelivered result they resolve (#134 T5).
-    extract('    func copyTranscript()', '\n    func showLibrary()'),
-    extract('    func copyCapture(', '\n    func showPanelPreview()'),
+    'copyTranscript', 'deliveryRecords', 'unresolvedDelivery', 'copyTextWithReceipt', 'copyUnresolvedDelivery',
+    'dismissUnresolvedDelivery', 'copyCapture',
     # Removing a transcript drops an undelivered result that names it (#134 T5 review).
-    extract('    func removeTranscript(', '\n    func retainMeetingTranscript('),
-    extract('    func fail(', '\n    func persist()'),
-    extract('    func saveNow()', '\n    func shutdown()'),
+    'removeTranscript',
+    # Failures, the routine no-speech cue (#156) and the hold lesson that can take its place (#134 T5).
+    'fail', 'captureCue', 'captureCueClock', 'captureCueExpiry', 'announceForAccessibility', 'quietCapturesInARow',
+    'endWithoutSpeech', 'showDroppedLessonCue', 'showCaptureCue', 'holdCaptureCue', 'dismissCaptureCue',
+    'scheduleCaptureCueExpiry',
+    'saveNow', 'session', 'shutdown',
     # Preparing the speech model, whose failure is Home's (#134).
-    extract('    func prepare() async', '\n    /// The one owner of text arriving in Read'),
-    source[source.index('    func shutdown()'):source.rindex('\n}')],
+    'prepare',
 ])
 
-# Static inventories of AppModel.swift, so a new way of reaching the receipt or
-# the undelivered result cannot slip past the behavioural checks below.
-MEMBER = re.compile(r'^    (?:@\w+(?:\([^)]*\))?\s+)*(?:(?:private|fileprivate|internal|public)(?:\(set\))?\s+|static\s+|final\s+|override\s+|nonisolated\s+|lazy\s+)*'
-                    r'(?:func\s+(\w+)|(init)\b|(deinit)\b|var\s+(\w+)|let\s+(\w+))')
-def members(text):
-    """Each code line of `text` with the member declared four spaces in above it."""
-    member = None
-    for line in text.splitlines():
-        found = MEMBER.match(line)
-        if found:
-            member = next(group for group in found.groups() if group)
-        yield member, line.split('//', 1)[0]
-def receipt_clear_sites(text):
+# Static inventories of AppModel, so a new way of reaching the receipt or the
+# undelivered result cannot slip past the behavioural checks below. Each member
+# is read whole, so every line belongs to the declaration that holds it.
+def receipt_clear_sites(scope):
     """Members that clear or hide the clipboard receipt: directly, through optional
     chaining, or through a local or captured alias; by clear() or dismissHUD()."""
+    text = '\n'.join(member.code for member in scope.members)
     names = {'clipboardReceipt'}
     names |= set(re.findall(r'(?:let|var)\s+(\w+)\s*(?::\s*ClipboardReceiptModel\??\s*)?=\s*(?:self\s*[?!]?\s*\.\s*)?clipboardReceipt\b', text))
     names |= set(re.findall(r'[\[,]\s*(?:weak\s+|unowned\s+)?(\w+)\s*=\s*(?:self\s*[?!]?\s*\.\s*)?clipboardReceipt\s*[\],]', text))
     call = re.compile(r'\b(?:' + '|'.join(sorted(names)) + r')\s*[?!]?\s*\.\s*(?:clear|dismissHUD)\b')
-    return {member for member, code in members(text) if call.search(code)}
-slot_source = (PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift').read_text()
-mutators = set(re.findall(r'mutating func (\w+)', slot_source[slot_source.index('struct UnresolvedDeliverySlot'):]))
-def undelivered_writers(text):
+    return {member.name for member in scope.members if call.search(member.code)}
+slot = SwiftFile(PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift').type('UnresolvedDeliverySlot')
+mutators = {member.name for member in slot.members if member.kind == 'func' and 'mutating' in member.modifiers}
+def undelivered_writers(scope):
     """Members that change the one undelivered result: its mutating methods, an
     assignment, or an inout pass."""
     write = re.compile(r'\bundelivered\s*(?:\.\s*(?:' + '|'.join(sorted(mutators)) + r')\s*\(|=(?!=))|&\s*(?:self\s*\.\s*)?undelivered\b')
-    return {member for member, code in members(text) if write.search(code) and not re.search(r'\bvar\s+undelivered\b', code)}
+    return {member.name for member in scope.members
+            if any(write.search(code) and not re.search(r'\bvar\s+undelivered\b', code) for _, code in member.lines(code=True))}
 # The scans themselves catch the forms a later edit might use.
-probe = """
+probe = SwiftFile(Path('Probe.swift'), """final class Probe {
     func direct() { clipboardReceipt.clear() }
     func chained() { self?.clipboardReceipt?.clear() }
     func hides() { clipboardReceipt.dismissHUD() }
@@ -83,19 +76,25 @@ probe = """
     init() { undelivered.restore(nil) }
     func assigns() { undelivered = UnresolvedDeliverySlot() }
     func passes() { tidy(&undelivered) }
-"""
+}
+""").type('Probe')
 assert receipt_clear_sites(probe) == {'direct', 'chained', 'hides', 'aliased', 'captured'}, receipt_clear_sites(probe)
 assert {'note', 'dismiss', 'transcriptRemoved', 'restore'} <= mutators, mutators
 assert undelivered_writers(probe) == {'init', 'assigns', 'passes'}, undelivered_writers(probe)
-clear_sites = receipt_clear_sites(source)
-writers = undelivered_writers(source)
+# The scans read AppModel and its extensions, which is everything AppModel.swift declares.
+# Another declaration there would go unscanned, so it stops here until the scans read it too.
+others = [m.name for m in app_model.members if m.kind != 'import' and m.name not in ('AppModel', 'extension AppModel')]
+assert not others, f'AppModel.swift also declares {others}; scan them for receipt and undelivered changes too'
+clear_sites = receipt_clear_sites(model)
+writers = undelivered_writers(model)
 # Launch restores the undelivered result only once capture recovery has settled the draft,
 # so a draft that recovery replaced drops a draft entry instead of showing it.
-launch = source[source.index('    init(preferences: VoicePreferences)'):source.index('\n    }\n', source.index('    init(preferences: VoicePreferences)'))]
+launch = model.select(['init(preferences:)'])[0].code
 assert 'undelivered.restore(' in launch and launch.index('restoreCaptureRecovery()') < launch.index('undelivered.restore('), \
     'launch restores the undelivered result after capture recovery'
-labels = '\n'.join(line for line in source.splitlines() if any(name in line for name in ['var retryCapture', 'var hasCaptureRecovery:', 'var canDiscardCaptureRecovery:', 'var canRecordAgain:', 'var hasSavedRecordings:']))
-request = shortcuts[shortcuts.index('@MainActor\nfinal class DictationRequest'):shortcuts.index('/// Shortcuts owns Record Audio')]
+labels = model.extract(['retryCaptureLabel', 'retryCaptureHelp', 'hasCaptureRecovery', 'canRecordAgain',
+                        'hasSavedRecordings', 'canDiscardCaptureRecovery'])
+request = SwiftFile(PROJECT / 'Sources/LocalVoice/Shortcuts.swift').extract(['DictationRequest'])
 fixture = r'''
 import AppKit
 import AVFoundation
@@ -884,7 +883,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
     }
 }
 '''
-values = core[:core.index('struct StateStore {')]
+values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState'])])
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
@@ -899,4 +898,4 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
                     str(PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
-print('AppModel.swift SHA256:', hashlib.sha256(source.encode()).hexdigest())
+print('AppModel.swift SHA256:', hashlib.sha256(app_model.source.encode()).hexdigest())

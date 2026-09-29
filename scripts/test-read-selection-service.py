@@ -2,6 +2,10 @@
 """Check Services metadata and actual model handoff methods with isolated state."""
 from pathlib import Path
 import plistlib
+import sys
+
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,9 +27,13 @@ print("READ_SELECTION_METADATA_OK: 8 checks passed")
 import subprocess
 import tempfile
 
-model_source = (ROOT / "Sources/LocalVoice/AppModel.swift").read_text()
-start = model_source.index("    func receiveReadingSelection(")
-methods = model_source[start:model_source.index("    func toggleRecording(", start)]
+methods = SwiftFile(ROOT / "Sources/LocalVoice/AppModel.swift").type("AppModel").extract([
+    "receiveReadingSelection", "importReading", "listen(to:)", "canReplaceReading", "replaceWaitsForSave",
+    "replaceReadingWithSelection", "keepCurrentReading", "readingLimitMessage", "applyReadingSelection",
+    "endReadingForNewText",
+    # What the selected provider can read, and the reason copied text is refused (#173).
+    "readingProviderName", "ReadingRejection", "readingRejection", "copiedTextRefusal",
+])
 harness = r'''
 import AppKit
 
@@ -220,9 +228,7 @@ assert button_action("Sources/LocalVoice/CaptureHistoryView.swift", "Read aloud"
     "History's Read aloud must go through importReading"
 assert button_action("Sources/LocalVoice/DemoLibraryView.swift", "Read aloud") == "model.importReading(item.content, from: .savedText)", \
     "Library's Read aloud must go through importReading"
-home = (ROOT / "Sources/LocalVoice/WorkbenchHome.swift").read_text()
-tile = home[home.index("    private func readClipboard()"):]
-tile = tile[:tile.index("\n    }\n")]
+tile = SwiftFile(ROOT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHomePage").select(["readClipboard"])[0].code
 assert "model.listen(to: text)" in tile and "speechText" not in tile, "Home's Read tile must replace through listen(to:)"
 assert "self?.model.receiveReadingSelection(selection)" in (ROOT / "Sources/LocalVoice/main.swift").read_text(), \
     "the Service must hand its selection to the import owner"
@@ -231,21 +237,21 @@ assert "self?.model.receiveReadingSelection(selection)" in (ROOT / "Sources/Loca
 # Read editor's binding is the person typing. Any other write or binding fails.
 WRITE = re.compile(r"(?<!var )(?<!let )\bspeechText\s*(\+=|=(?!=))|\bspeechText\.(append|insert|remove|replace)")
 BINDING = re.compile(r"\$\w*\.?speechText\b")
-# A member is the declaration a line belongs to: any non-blank line at four
-# spaces or less that is not a comment or a closing brace starts a new one, so
-# a write in a property or type after an allowed method is not the method's.
-DECLARATION = re.compile(r"^ {0,4}(?! )(?!//)(?!\})\S")
-ALLOWED_WRITERS = ("    init(preferences:", "    func listen(to text: String)", "    private func applyReadingSelection(")
+# A write belongs to the AppModel member whose whole declaration holds it, read
+# by name, so a write in a property or type after an allowed method is not the method's.
+ALLOWED_WRITERS = {"init(preferences:)", "listen(to:)", "applyReadingSelection(_:)"}
 
 
 def draft_writes(root: Path) -> list:
     found = []
     for path in sorted((root / "Sources").rglob("*.swift")):
-        member = ""
+        allowed = set()
+        if path.name == "AppModel.swift":
+            for member in SwiftFile(path).type("AppModel").members:
+                if member.selector in ALLOWED_WRITERS:
+                    allowed.update(range(member.first_line, member.last_line + 1))
         for number, line in enumerate(path.read_text().splitlines(), 1):
-            if DECLARATION.match(line):
-                member = line
-            if WRITE.search(line) and not (path.name == "AppModel.swift" and member.startswith(ALLOWED_WRITERS)):
+            if WRITE.search(line) and number not in allowed:
                 found.append(f"{path.relative_to(root)}:{number}: {line.strip()}")
             for _ in BINDING.finditer(line):
                 if not (path.name == "Views.swift" and "editor(text: $model.speechText," in line):
