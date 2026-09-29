@@ -7,9 +7,12 @@ python3 - "$PROJECT_DIR" "$CHECK_DIR" <<'PY'
 from pathlib import Path
 import sys
 project, checks = map(Path, sys.argv[1:])
-source = (project / "Sources/LocalVoice/ReadbackModel.swift").read_text()
-types = source[source.index("enum ReadbackSectionStatus"):source.index("enum ReadbackHandoffTarget")]
-store = source[source.index("enum ReadbackStore {"):source.index("struct ReadbackScreenshot")]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(project / "scripts"))
+from swift_extract import SwiftFile
+source = SwiftFile(project / "Sources/LocalVoice/ReadbackModel.swift")
+types = source.extract(["ReadbackSectionStatus", "ReadbackSection", "ReadbackManifest", "ReadbackError", "ReadbackHandoffBrief"])
+store = source.extract(["ReadbackStore"])
 (checks / "ReadbackStore.swift").write_text("import Foundation\n" + types + "\n" + store)
 PY
 swiftc -swift-version 5 -module-cache-path "$CHECK_DIR/ModuleCache" \

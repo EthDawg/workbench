@@ -31,8 +31,8 @@ final class ToolbarGeometryTests: XCTestCase {
             XCTAssertEqual(frame.size, ToolbarLayout.mark)
             XCTAssertEqual(NSPoint(x: frame.midX, y: frame.midY), ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen), anchor.rawValue)
         }
-        XCTAssertEqual(ToolbarLayout.standardWidth, 248)
-        XCTAssertEqual(ToolbarLayout.accessoryStandardWidth, 340)
+        XCTAssertEqual(ToolbarLayout.standardWidth, 160)
+        XCTAssertEqual(ToolbarLayout.accessoryStandardWidth, 252)
     }
 
     /// Each dock's slot is exactly the shared floating-control geometry's frame for that anchor,

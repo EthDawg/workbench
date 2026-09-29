@@ -71,6 +71,12 @@ public enum ToolbarShortcut: Equatable, Sendable {
         if case .assigned = self { return true }
         return false
     }
+    /// Gesture words are part of the hint, so a release is never described as a press.
+    public static func actionHint(key: String, holdToStart: Bool = false, releaseToFinish: Bool = false) -> String {
+        if releaseToFinish { return "Release " + key }
+        return holdToStart ? "Hold " + key : key
+    }
+
     /// The key as a hover hint. An off or failed binding is omitted rather than
     /// shown as text nobody can act on.
     public var hintKey: String? {
@@ -185,9 +191,6 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// All seven tools, for the launcher's chooser: which one is chosen, which have live
     /// work, and their keys (#134).
     public var choices: [ToolbarToolChoice]
-    /// Every label another tool would show right now. The action keeps the widest of them,
-    /// so choosing another tool never moves More or the accessory.
-    public var minimumTitles: [String]
     /// The chosen tool's one accessory, when it applies (#134 part B). None unless given: the
     /// host decides it from the live state, with `ToolbarAccessory.offered(for:selectedPersonaCopy:)`.
     public var accessory: ToolbarAccessory?
@@ -205,7 +208,7 @@ public struct ToolbarViewState: Equatable, Sendable {
     public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
                 mode: ToolbarMode = .dictate, actionTitle: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
-                choices: [ToolbarToolChoice]? = nil, minimumTitles: [String]? = nil, isBusy: Bool = false,
+                choices: [ToolbarToolChoice]? = nil, isBusy: Bool = false,
                 status: ToolbarStatus = .idle, showsAccessory: Bool = true, accessory: ToolbarAccessory? = nil,
                 accessoryDescription: String? = nil) {
         self.name = name
@@ -216,12 +219,17 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.isActionEnabled = isActionEnabled
         self.actionHint = actionHint
         self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }
-        self.minimumTitles = minimumTitles ?? ToolbarNextAction.idleVerbs
         self.accessory = accessory
         self.accessoryDescription = accessoryDescription
         self.showsAccessory = showsAccessory
         self.isBusy = isBusy
         self.status = status
+    }
+
+    /// The native hover hint and VoiceOver help share the action and its usable key.
+    public var actionHelp: String {
+        guard let hint = actionHint, !hint.isEmpty else { return actionTitle }
+        return actionTitle + " · " + hint
     }
 
     /// The same state at another dock, for fixtures.

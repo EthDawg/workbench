@@ -1,6 +1,6 @@
 # Menu rows keep their own capability
 
-Quality refinement for [#134](https://github.com/EthDawg/workbench/issues/134), based on `main` at `e698f53ddc55fbaed3b65497455fa2783e14c8f7`. The source and evidence belong to this commit.
+Quality refinement for [#134](https://github.com/EthDawg/workbench/issues/134), based on `main` at `e698f53ddc55fbaed3b65497455fa2783e14c8f7`. This records the initial standalone evidence. [PR #214](https://github.com/EthDawg/workbench/pull/214) carries the current combined source and its fresh verification.
 
 ## Behavior
 
@@ -10,7 +10,7 @@ New starts use the existing owner admission. Capture next respects audio and scr
 
 Rows retain their capability symbols; the existing accent marks their own live work. A button's identity follows its operation, and commit checks reject an operation that has ended or become unavailable. No new entry, preference, storage or background job was added.
 
-## Checks run
+## Initial checks run
 
 On arm64 macOS 26.5.1 (25F80):
 
@@ -39,8 +39,12 @@ This is source and synthetic render evidence. The installed Preview was not laun
 
 The stale-operation checks prove the admission guard. They do not prove a genuine held mouse-button sequence in SwiftUI. The integration owner still needs to confirm in the signed installed Preview that holding Stop, Hide or End while its operation completes, then releasing, cannot start new work. Verify the same transition from Home's Persona button, keyboard access, and that ending one live capability preserves the others. Copy build details must identify the accepted build.
 
-## Integration with the current toolbar work
+## Earlier integration check
 
 A temporary source combination of this implementation (`5aa24a8`), #211 at `c1d72fa`, and the hover correction #213 at `7e594ca` built successfully. Its focused suite passed **169 control checks plus the same 76 supporting checks**. Three extra assertions exercised delivery waiting on drawing: Dictate waits and is disabled, Draw offers Stop drawing, and the shared toolbar still offers its contextual Stop drawing. The standalone branch's 152 checks also passed after the final source adjustment.
 
-Source files merge automatically with the inspected #211. Two adjacent prose edits in `docs/workbench.md` and `site/guide/index.html` need both paragraphs retained: this PR's own-capability menu behavior and #211's single-host voice behavior. One check introduced by #211 assumes the old menu behavior; update that waiting-for-drawing check to assert the three outcomes above. That exact resolution was used for the combined build and checks. Keep #211's `waitingForDrawing` and timer transport facts. No changes to #211 or the installed app were made by this verification.
+At those inspected heads, source files merged automatically with #211. Two adjacent prose edits in `docs/workbench.md` and `site/guide/index.html` needed both paragraphs retained: this PR's own-capability menu behavior and #211's single-host voice behavior. One check introduced by #211 assumed the old menu behavior; the combined check asserted the three outcomes above. That exact resolution was used for the combined build and checks. #211's `waitingForDrawing` and timer transport facts were retained. No changes to #211 or the installed app were made by this verification.
+
+## Current integration status
+
+The menu/Home refinement and initial hover correction reached main through #219 (`2cd0139`), together with the contextual accessories and timer fixes. PR #214 remains the single integration path for the remaining pill refinement from #213: a quiet resting handle, content-fit action width, native motion and precise shortcut hints. It incorporates current main, preserves Draw's Tools and the other contextual accessories, and resolves their source, test and guide overlaps. Current build, surface and CI results are recorded in the PR; the installed acceptance limits above still apply.

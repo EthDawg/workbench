@@ -15,54 +15,50 @@ import hashlib
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import wave
 
+sys.dont_write_bytecode = True
+from swift_extract import SwiftFile
+
 
 PROJECT = Path(__file__).resolve().parents[1]
 SOURCES = PROJECT / "Sources/LocalVoice"
-source = (SOURCES / "AppModel.swift").read_text()
 
-
-def extract(start: str, end: str) -> str:
-    begin = source.index(start)
-    return source[begin:source.index(end, begin)].rstrip()
-
-
-methods = "\n".join([
-    extract("    var followAlongText: String?", "\n    func makeReadingPlayer("),
-    extract("    var canSeekReading: Bool", "\n    func listen()"),
-    extract("    func cancelReading()", "\n    @Published private(set) var readingGenerationActive"),
-    extract("    func listen()", "\n    func saveAudio()"),
-    extract("    func saveAudio(to destination: URL)", "\n    func stopPlayback()"),
-    extract("    func stopPlayback()", "\n    nonisolated func audioRecorderEncodeErrorDidOccur"),
+model = SwiftFile(SOURCES / "AppModel.swift").type("AppModel")
+methods = model.extract([
+    # Listen, pause, seek and the reading's own failure.
+    "followAlongText", "canSeekReading", "seekReading", "skipReading", "listen()", "followPlayback",
+    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:)",
+    "cancelReading", "stopPlayback", "ReadingFailure", "canRetryReading", "retryReading", "reportReadingFailure",
+    "dismissReadingFailure", "report", "dismissError", "clearReadingFailure", "readingPlayerDidFinish",
     # The one owner of text arriving in Read, with the step that ends the old reading.
-    extract("    private func invalidateAudio()", "\n    func cancelReading()"),
-    extract("    func receiveReadingSelection(", "\n    func toggleRecording("),
+    "invalidateAudio", "receiveReadingSelection", "importReading", "listen(to:)", "canReplaceReading",
+    "replaceWaitsForSave", "replaceReadingWithSelection", "keepCurrentReading", "readingLimitMessage",
+    "applyReadingSelection", "endReadingForNewText",
+    # What the selected provider can read, and the reason copied text is refused (#173).
+    "readingProviderName", "ReadingRejection", "readingRejection", "copiedTextRefusal",
 ])
 # The checks drive the private playback step directly instead of waiting for timers.
 exposed = methods.replace("    private func ", "    func ")
 # Home's Read tile shows only what the tile itself reported (#173). Its tags, however they are
 # spelled, appear nowhere in Sources but listen(to:), once each; Attention.swift only declares
 # and reads them. The Speko key doors, which these checks cannot drive, report untagged.
-def member(signature: str) -> str:
-    begin = source.index(signature)
-    return source[begin:source.index("\n    }\n", begin)]
-tile_start = source.index("    func listen(to text: String) {")
-tile_end = source.index("\n    }\n", tile_start)
+tile = model.select(["listen(to:)"])[0]
 tags = []
 for path in sorted((PROJECT / "Sources").rglob("*.swift")):
     if path.name == "Attention.swift":
         continue
     for found in re.finditer(r"\bhomeReadTile\w*", path.read_text()):
-        inside = path == SOURCES / "AppModel.swift" and tile_start <= found.start() < tile_end
+        inside = path == SOURCES / "AppModel.swift" and tile.at <= found.start() < tile.end
         tags.append((path.relative_to(PROJECT).as_posix(), found.group(), inside))
 assert all(inside for _, _, inside in tags) and sorted(tag for _, tag, _ in tags) == ["homeReadTileMeeting", "homeReadTileRefused"], \
     f"only listen(to:) tags its reports, its refusal and its meeting wait once each: {tags}"
-for door in ("    func saveSpekoKey(", "    func removeSpekoKey("):
-    body = member(door)
-    assert "report(" in body and "from:" not in body, door.strip() + " reports on Read without the tile's tag"
+for door in ("saveSpekoKey", "removeSpekoKey"):
+    body = model.select([door])[0].code
+    assert "report(" in body and "from:" not in body, door + " reports on Read without the tile's tag"
 
 
 def write_audio(path: Path, seconds: int = 45) -> None:

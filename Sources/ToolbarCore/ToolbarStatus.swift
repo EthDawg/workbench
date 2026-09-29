@@ -1,5 +1,5 @@
-/// What the compact rest shows (#134). At rest the toolbar is one small mark in every
-/// state; this is the only thing about it that changes with the work. One status, derived
+/// The toolbar's status (#134). Its complete words remain available at rest, while
+/// the look chooses which states need a visible compact signal. One status, derived
 /// from the operation owners through the host's projection, `ToolbarActivity`. It decides
 /// the indicator and its accessible description and nothing else: never the tier, focus or
 /// the collapse deadline. Nothing here is stored, so it is recomputed from the owners at launch.
@@ -10,7 +10,7 @@
 public struct ToolbarActivity: Hashable, Sendable {
     /// What is recording through the microphone.
     public enum Capture: String, CaseIterable, Hashable, Sendable { case dictation, narration, meeting }
-    /// Work that runs on its own and shows the capability's symbol.
+    /// Other live work, named in the complete accessible status and revealed controls.
     public enum Live: String, CaseIterable, Hashable, Sendable { case drawing, presenting, persona, timer, inserting, snapAndTalk }
 
     public var capture: Capture?
@@ -48,7 +48,7 @@ public struct ToolbarActivity: Hashable, Sendable {
 }
 
 public extension ToolbarActivity.Live {
-    /// The capability symbol the mark shows for this work, shared with the rest of the toolbar.
+    /// The canonical capability symbol, shared with the revealed toolbar.
     var symbol: String {
         switch self {
         case .drawing: return ToolbarMode.draw.symbol
@@ -71,13 +71,13 @@ public extension ToolbarActivity.Live {
 }
 
 public struct ToolbarStatus: Equatable, Sendable {
-    /// One shape each, so shape and words carry the meaning and colour never does alone.
+    /// The highest-priority state; the view may keep ordinary live work visually quiet.
     public enum Indicator: Equatable, Sendable {
         case idle
         /// A recording dot with the owner's level, or a still level outline without one.
         case capture
         case playback, processing, failure, pendingDelivery, unsavedCapture, paused
-        /// The capability's own symbol.
+        /// Ordinary live work; its words remain available even when the mark is quiet.
         case live(ToolbarActivity.Live)
     }
 

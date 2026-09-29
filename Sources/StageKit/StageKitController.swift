@@ -254,6 +254,9 @@ public final class StageKitController: ObservableObject {
         AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, imageURL: imageURL, title: title))
     }
     public var isDrawing: Bool { coordinator.isDrawing }
+    public enum ShortcutGesture { case press, hold, release }
+    /// Only presentation metadata; shortcut execution stays with the coordinator.
+    public var penShortcutGesture: ShortcutGesture? { coordinator.penShortcutGesture }
     public var drawingActivationTitle: String { coordinator.settings.value.activation.rawValue }
     public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }

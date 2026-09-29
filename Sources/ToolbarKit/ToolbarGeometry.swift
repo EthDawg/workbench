@@ -9,17 +9,25 @@ import ToolbarCore
 public enum ToolbarLayout {
     /// The compact rest: its pointer target, and the whole resting window.
     public static let mark = NSSize(width: 48, height: 28)
-    /// The idle mark, a capsule inside the target.
+    /// The quiet handle, inside the larger pointer target. Tool identity appears on reveal.
     public static let markCapsule = NSSize(width: 48, height: 8)
-    /// A status glyph raises the mark's visible height to this, inside the same target.
+    /// Make room for a recording, transport or recovery signal without moving the target.
+    static func restingCapsuleHeight(for indicator: ToolbarStatus.Indicator) -> CGFloat {
+        switch indicator {
+        case .idle, .live: return markCapsule.height
+        default: return 20
+        }
+    }
+    /// The box for a resting status glyph or voice signal.
     public static let statusHeight: CGFloat = 12
     /// A badge on the capture signal or the launcher: a fixed square, whatever its symbol's metrics.
     public static let badge: CGFloat = 7
     public static let rowHeight: CGFloat = 40
     public static let controlHeight: CGFloat = 32
     public static let launcherWidth: CGFloat = 48
-    /// 144 points, plus the 8 the launcher's end does not need as padding.
-    public static let primaryMinimum: CGFloat = 152
+    /// A short verb keeps a generous target without reserving other tools' labels.
+    public static let primaryMinimum: CGFloat = 64
+    public static let primaryHorizontalInset: CGFloat = 12
     public static let accessoryWidth: CGFloat = 88
     public static let moreWidth: CGFloat = 32
     public static let gap: CGFloat = 4
@@ -32,7 +40,7 @@ public enum ToolbarLayout {
     public static let dockSlot = NSSize(width: 48, height: 40)
     /// A dock keeps the row this far inside the visible display.
     public static let dockInset: CGFloat = 16
-    /// 248 points without an accessory, 340 with one, at standard text.
+    /// Minimum row widths: 160 points without an accessory, 252 with one. Longer labels grow.
     public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + gap + moreWidth + padding
     public static let accessoryStandardWidth: CGFloat = standardWidth + accessoryWidth + gap
     /// The accessory waits in More unless the row with it fits the display less this.

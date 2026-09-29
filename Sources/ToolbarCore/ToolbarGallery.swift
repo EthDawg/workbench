@@ -64,7 +64,6 @@ public enum ToolbarGallery {
                                 isActionEnabled: action.isEnabled,
                                 actionHint: action.hint(key: action.operation.keyMode.flatMap(exampleKey)),
                                 choices: ToolbarNextAction.choices(for: live, key: exampleKey),
-                                minimumTitles: ToolbarNextAction.titles(across: live),
                                 isBusy: live.isLive(live.mode),
                                 status: .resolve(activity ?? Self.activity(live)),
                                 accessory: ToolbarAccessory.offered(for: live, selectedPersonaCopy: personaCopy),

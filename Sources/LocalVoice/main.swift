@@ -135,15 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.updateRecordingUI()
         }
         stage.onEditShortcuts = { [weak self] in self?.navigate("shortcuts") }
-        stage.onBeginActivity = { [weak self] in
-            guard let self else { return }
-            self.closeControls()
-            self.presenterPanel?.hide()
-            self.model.previewingPanel = false
-            self.model.dismissCaptureFailure()
-            self.model.clipboardReceipt.dismissHUD()
-            self.window?.orderOut(nil)
-        }
+        stage.onBeginActivity = { [weak self] in self?.beginStageActivity() }
         stage.validateExternalShortcut = { [weak self] code, modifiers in
             guard let self else { return nil }
             for entry in self.voiceShortcutEntries() {
@@ -505,6 +497,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
         panelLeave.watch { [weak self] in self?.closeControls() }
+    }
+    /// Starting independent Stage work hides preparation surfaces. It does not
+    /// dismiss another capability's pending result or its recovery controls.
+    func beginStageActivity() {
+        closeControls()
+        presenterPanel?.hide()
+        model.previewingPanel = false
+        window?.orderOut(nil)
     }
     func closeControls() { popover.performClose(nil); finishEditing() }
     /// Every way the panel closes ends here: the editor and its recorder end

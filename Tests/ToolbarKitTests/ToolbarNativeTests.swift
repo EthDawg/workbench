@@ -37,10 +37,10 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    /// The compact mark's drawn capsule: 8 points high at idle and 12 while work runs, inside the
-    /// fixed 48 × 28 target, with the shared voice trace and the timer badge fitting inside it
-    /// (#134, #209). The warning badge sits on the capsule's corner (below).
-    @MainActor func testTheCompactMarkIsEightHighAtIdleAndTwelveWhileWorking() throws {
+    /// Ordinary work shares the quiet handle; recording and recovery remain visible.
+    /// Drawn bounds prove no live-tool glyph escapes the thin capsule and the hit target
+    /// stays generous. Capture badges retain their separate bounds checks below.
+    @MainActor func testTheCompactMarkDistinguishesQuietWorkFromSignalsWithoutMovingItsTarget() throws {
         _ = NSApplication.shared
         func drawn(_ status: ToolbarStatus) throws -> (width: Int, height: Int, size: NSSize) {
             let view = NSHostingView(rootView: ToolbarCompactMark(status: status).environment(\.colorScheme, .light))
@@ -58,15 +58,18 @@ final class ToolbarNativeTests: XCTestCase {
             func points(_ pixels: Set<Int>) -> Int { pixels.isEmpty ? 0 : Int((CGFloat(pixels.max()! - pixels.min()! + 1) / perPoint).rounded()) }
             return (points(columns), points(rows), view.fittingSize)
         }
-        let idle = try drawn(.idle)
-        XCTAssertEqual(idle.size, ToolbarLayout.mark)
-        XCTAssertEqual(idle.height, 8, "the idle capsule")
-        XCTAssertEqual(idle.width, 48)
+        for status in [ToolbarStatus.idle] + ToolbarActivity.Live.allCases.map({ .resolve(ToolbarActivity(live: [$0])) }) {
+            let quiet = try drawn(status)
+            XCTAssertEqual(quiet.size, ToolbarLayout.mark, status.description)
+            XCTAssertEqual(quiet.height, 8, "a quiet handle, without a tiny tool glyph: \(status.description)")
+            XCTAssertEqual(quiet.width, 48)
+        }
         for activity in [ToolbarActivity(capture: .dictation, level: 0.6), ToolbarActivity(capture: .narration, level: 0.3, stopsSoon: true),
-                         ToolbarActivity(processing: true), ToolbarActivity(live: [.timer])] {
+                         ToolbarActivity(processing: true), ToolbarActivity(playback: true), ToolbarActivity(paused: true),
+                         ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true), ToolbarActivity(unsavedCapture: true)] {
             let working = try drawn(.resolve(activity))
             XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
-            XCTAssertEqual(working.height, 12, "the active capsule: \(activity)")
+            XCTAssertEqual(working.height, 20, "the active capsule: \(activity)")
             XCTAssertEqual(working.width, 48, "nothing is drawn beyond the capsule: \(activity)")
         }
     }
@@ -136,20 +139,20 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(idle.button.accessibilityValue() as? String, "Dictate")
     }
 
-    /// The standard row is 248 points, 340 with its accessory, at standard text.
+    /// Short actions keep their target without reserving space for other tools.
     @MainActor func testTheStandardRowWidths() {
         _ = NSApplication.shared
-        let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .dictate))).fittingSize
-        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present, accessory: .prompts))).fittingSize
+        let plain = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "plain", tier: .revealed, mode: .draw))).fittingSize
         XCTAssertEqual(plain, NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight))
-        XCTAssertEqual(accessory, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight))
+        let accessory = NSHostingView(rootView: ToolbarRow(state: ToolbarViewState(name: "prompts", tier: .revealed, mode: .present, accessory: .prompts))).fittingSize
         var waiting = ToolbarViewState(name: "prompts-in-more", tier: .revealed, mode: .present, accessory: .prompts)
         waiting.showsAccessory = false
-        XCTAssertEqual(NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width, ToolbarLayout.standardWidth,
-                       "an accessory that does not fit waits in More and takes no room")
+        let without = NSHostingView(rootView: ToolbarRow(state: waiting)).fittingSize.width
+        XCTAssertEqual(accessory.width - without, ToolbarLayout.accessoryWidth + ToolbarLayout.gap, accuracy: 0.5)
+        XCTAssertLessThan(without, 200, "short verbs should not carry a 152-point action floor")
     }
 
-    /// Each accessory takes the one accessory slot, 340 points with it at standard text, and says
+    /// Each accessory takes the one accessory slot beside the content-sized action, and says
     /// what it is: a chevron only on those that open a list, VoiceOver hearing the title without it,
     /// or the description when there is one, which the tooltip shows too (#134 part B).
     @MainActor func testEachAccessoryTakesItsSlotAndSaysWhatItIs() throws {
@@ -158,7 +161,11 @@ final class ToolbarNativeTests: XCTestCase {
             for description in [nil, "Appearance of the selected persona, hidden"] {
                 let state = ToolbarViewState(name: "accessory", tier: .revealed, mode: accessory.mode, accessory: accessory, accessoryDescription: description)
                 let view = laidOut(ToolbarRow(state: state))
-                XCTAssertEqual(view.fittingSize, NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight), "\(accessory)")
+                var without = state; without.accessory = nil
+                let plain = laidOut(ToolbarRow(state: without)).fittingSize
+                XCTAssertEqual(view.fittingSize.width - plain.width, ToolbarLayout.accessoryWidth + ToolbarLayout.gap,
+                               accuracy: 0.5, "one fixed accessory slot: \(accessory)")
+                XCTAssertEqual(view.fittingSize.height, ToolbarLayout.rowHeight)
                 let found = buttons(view).filter { $0.accessibilityIdentifier() == "toolbar.accessory" }
                 let button = try XCTUnwrap(found.first, "\(accessory)")
                 XCTAssertEqual(found.count, 1, "one accessory: \(accessory)")
@@ -311,6 +318,20 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertTrue(buttons(view).isEmpty, "no control is reachable at rest but the target")
     }
 
+    @MainActor func testQuietLiveWorkRetainsItsAccessibleStatusAndRevealAction() throws {
+        _ = NSApplication.shared
+        var reveals = 0
+        let status = ToolbarStatus.resolve(ToolbarActivity(live: [.drawing, .presenting, .timer]))
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "quiet-live", tier: .resting, mode: .draw, status: status),
+                                      revealFromRest: { reveals += 1 }))
+        func all(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(all) }
+        let target = try XCTUnwrap(all(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
+        XCTAssertEqual(target.accessibilityValue() as? String, "Drawing, Presenting, Timer running")
+        XCTAssertTrue(target.accessibilityPerformPress())
+        XCTAssertEqual(reveals, 1)
+        XCTAssertEqual(view.fittingSize, ToolbarLayout.mark)
+    }
+
     /// A real window with the row in it, invisible and taking no pointer, for pressing its
     /// controls through their own mouse handling.
     @MainActor private func shown<V: View>(_ root: V) -> (NSPanel, NSHostingView<V>) {
@@ -405,7 +426,7 @@ final class ToolbarNativeTests: XCTestCase {
             let state = ToolbarViewState(name: "jump", tier: .revealed, anchor: anchor, mode: .draw)
             let exact = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize.width
             let settled = try inset(state, width: exact, pinned: true)
-            for stale in [exact + 60, max(400, exact + 1)] {
+            for stale in [48, 72, exact - 30, exact + 60, max(400, exact + 1)] {
                 XCTAssertEqual(try inset(state, width: stale, pinned: true), settled, accuracy: 0.5,
                                "\(anchor.rawValue): the launcher moved in a \(Int(stale))-point window")
             }
@@ -436,14 +457,53 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(width("Capture next · 10"), width("Capture next · 99"), accuracy: 0.5)
     }
 
-    /// Choosing another idle tool changes only the verb. The primary keeps the width of the
-    /// widest label, so More never moves under a pointer on its way there.
-    @MainActor func testChoosingAnotherIdleToolNeverMovesMore() {
-        _ = NSApplication.shared
-        let widths = ToolbarGallery.modes.filter { $0.tier == .revealed && $0.accessoryTitle == nil }
-            .map { NSHostingView(rootView: ToolbarRow(state: $0)).fittingSize.width }
-        XCTAssertGreaterThan(widths.count, 1)
-        for width in widths { XCTAssertEqual(width, widths[0], accuracy: 0.5, "\(widths)") }
+    /// Dynamic width belongs to one open interaction. It can grow, but only a
+    /// collapse permits shrinking, so a changing Stop/Start cannot pull More away.
+    @MainActor func testActionWidthFitsTheVerbAndOnlyShrinksAfterCollapse() {
+        var state = ToolbarViewState(name: "width", tier: .revealed, mode: .draw, actionTitle: "Draw")
+        let view = laidOut(ToolbarRow(state: state))
+        let short = view.fittingSize.width
+        state.actionTitle = "End presentation"
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        let long = view.fittingSize.width
+        XCTAssertGreaterThan(long, short + 25)
+        state.actionTitle = "Draw"
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.fittingSize.width, long, accuracy: 0.5)
+        state.tier = .resting
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.fittingSize, ToolbarLayout.mark)
+        state.tier = .revealed
+        view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(view.fittingSize.width, short, accuracy: 0.5)
+    }
+
+    @MainActor func testActionAndMoreHintsNameTheirActualControl() throws {
+        let state = ToolbarViewState(name: "hint", tier: .revealed, mode: .draw, actionTitle: "Draw", actionHint: "Hold ⌥D")
+        let view = laidOut(ToolbarRow(state: state))
+        let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" })
+        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" })
+        XCTAssertEqual(primary.toolTip, "Draw · Hold ⌥D")
+        XCTAssertEqual(primary.accessibilityHelp(), primary.toolTip)
+        XCTAssertEqual(more.toolTip, "Options for Draw")
+        var noKey = state; noKey.actionHint = nil
+        view.rootView = ToolbarRow(state: noKey); view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(primary.toolTip, "Draw")
+    }
+
+    func testRevealChromeFollowsTheWindowWithNoSecondClock() {
+        for scale in [CGFloat(1), 1.35] {
+            let row = ToolbarLayout.rowHeight * scale
+            XCTAssertEqual(ToolbarRevealVisuals.progress(viewportHeight: 28, rowHeight: row), 0)
+            XCTAssertEqual(ToolbarRevealVisuals.progress(viewportHeight: row, rowHeight: row), 1)
+            let halfway = ToolbarRevealVisuals.progress(viewportHeight: (28 + row) / 2, rowHeight: row)
+            XCTAssertEqual(halfway, 0.5, accuracy: 0.001)
+            for (indicator, rest) in [(ToolbarStatus.Indicator.idle, CGFloat(8)), (.live(.presenting), 8), (.capture, 20), (.failure, 20)] {
+                XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: 0, rowHeight: row, indicator: indicator), rest)
+                XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: halfway, rowHeight: row, indicator: indicator), (rest + row) / 2)
+                XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: 1, rowHeight: row, indicator: indicator), row)
+            }
+        }
     }
 
     @MainActor func testImmediateRetargetSettlesSynchronouslyAtRequestedDestination() {

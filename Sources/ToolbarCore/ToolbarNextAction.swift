@@ -157,17 +157,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         }
     }
 
-    /// The label every mode would show for this live state. The primary keeps
-    /// the widest of them, so choosing another tool never moves More or the
-    /// accessory beside it.
-    public static func titles(across live: ToolbarLiveState) -> [String] {
-        ToolbarMode.allCases.map { mode in
-            var other = live; other.mode = mode
-            return resolve(other).title
-        }
-    }
-
-    /// Every verb a mode can start with: the floor when nothing is live.
+    /// Every verb a mode can start with, for the wording budget.
     public static let idleVerbs: [String] = ["Record again", "Capture"] + ToolbarMode.allCases.map {
         title(.start($0), live: ToolbarLiveState(mode: $0))
     }
