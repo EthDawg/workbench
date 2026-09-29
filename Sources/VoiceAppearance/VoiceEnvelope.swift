@@ -23,8 +23,8 @@ public struct VoiceSample: Equatable, Sendable {
 /// clock, so the same code runs on screen and in the checks, for every surface
 /// that shows a voice. A voice brings it up at once; the end of speech settles
 /// it within a fraction of a second; a raised voice lights it further. The
-/// Persona outline and the toolbar's voice trace both read this, and differ
-/// only in geometry.
+/// Persona outline and the toolbar's voice trace share this state model, with
+/// a calmer speaker response and a quicker input response.
 ///
 /// Targets, measured from when samples are received: visible within 150 ms of
 /// the first voice, back to rest within 500 ms of the last.
@@ -47,6 +47,10 @@ public struct VoiceEnvelope: Equatable, Sendable {
     /// nil for a source that says itself when it stops, such as a recorder
     /// whose owner clears its level when capture ends.
     public let starvation: Double?
+    /// The input trace follows syllables promptly so the speaker can see what
+    /// the microphone hears. A Persona outline stays calmer for its audience.
+    public enum Response: Sendable { case speaker, input }
+    public let response: Response
     /// 0 at rest, 1 while a voice is present.
     public private(set) var presence = 0.0
     /// 0 soft ... 0.5 usual ... 1 raised, eased.
@@ -57,7 +61,9 @@ public struct VoiceEnvelope: Equatable, Sendable {
     private var lastReceipt: Double?
     private var clock: Double?
 
-    public init(starvation: Double? = VoiceEnvelope.starvation) { self.starvation = starvation }
+    public init(starvation: Double? = VoiceEnvelope.starvation, response: Response = .speaker) {
+        self.starvation = starvation; self.response = response
+    }
 
     /// How lit it is: 0 at rest, about 0.75 for a usual voice, 1 raised.
     public var intensity: Double { presence * (0.5 + 0.5 * loudness) }
@@ -92,7 +98,9 @@ public struct VoiceEnvelope: Equatable, Sendable {
             return abs(next - goal) < 0.002 ? goal : next
         }
         presence = ease(presence, speaking ? 1 : 0, up: Self.rise, down: Self.fall)
-        loudness = ease(loudness, loudnessTarget, up: Self.louder, down: Self.softer)
+        loudness = ease(loudness, loudnessTarget,
+                        up: response == .input ? 0.035 : Self.louder,
+                        down: response == .input ? 0.09 : Self.softer)
         if !speaking && presence == 0 { loudness = 0; loudnessTarget = 0 }
         let lit = intensity
         switch visible {
@@ -104,20 +112,19 @@ public struct VoiceEnvelope: Equatable, Sendable {
     }
 
     /// Back to rest at once.
-    public mutating func reset() { self = VoiceEnvelope(starvation: starvation) }
+    public mutating func reset() { self = VoiceEnvelope(starvation: starvation, response: response) }
 }
 
 /// A recorder's own level as voice samples. The recorders meter their average
-/// power over 55 dB as 0...1; sound from about −44 dBFS up counts as a voice,
-/// held through the gaps between words for as long as the Persona analyser
-/// holds it, and its loudness runs from soft at that threshold, through a
-/// usual voice around −28 dBFS, to raised from about −11 dBFS. The recorder
-/// keeps its metering; this only reads the level it already publishes.
+/// power over 55 dB as 0...1. This is input feedback, not a speech detector:
+/// soft sound above about −52 dBFS should still move when the recorder can
+/// retain it. Quiet input stays a line; sound rises quickly and keeps the
+/// short gaps between words. It only reads the recorder's existing meter.
 public struct VoiceMeter: Equatable, Sendable {
     /// Where a voice begins on the recorder's 0...1 scale.
-    public static let voiceAt = 0.2
+    public static let voiceAt = 0.06
     /// Where a usual and a raised voice sit on that scale.
-    public static let usualAt = 0.5, raisedAt = 0.8
+    public static let usualAt = 0.35, raisedAt = 0.75
     private var heardAt: Double?
 
     public init() {}

@@ -70,7 +70,7 @@ public final class VoiceTraceView: NSView {
     public var increaseContrast = false { didSet { if increaseContrast != oldValue { needsDisplay = true } } }
     /// Measurement only: when the visible state changes, at which display time.
     public var onVisibleChange: ((VoiceEnvelope.Visible, CFTimeInterval) -> Void)?
-    public private(set) var envelope = VoiceEnvelope(starvation: nil)
+    public private(set) var envelope = VoiceEnvelope(starvation: nil, response: .input)
     private var meter = VoiceMeter()
     private var reading: Double?
     private var link: CADisplayLink?

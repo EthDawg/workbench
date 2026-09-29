@@ -5,8 +5,9 @@ import UniformTypeIdentifiers
 import VoiceAppearance
 
 /// One voice appearance (#134, #158): the toolbar's compact trace and the
-/// Persona outline read the same envelope and stroke, and differ only in
-/// geometry. These checks feed both the same synthetic sequence, hold the
+/// Persona outline share a colour and state model, with an input response for
+/// the speaker and a calmer outline for the audience. These checks feed both
+/// the same synthetic sequence, hold the
 /// trace to its box, and keep the recorder's level to the 150 ms and 500 ms
 /// targets; the optional gallery renders both at their native sizes.
 final class VoiceAppearanceTests {
@@ -42,10 +43,10 @@ final class VoiceAppearanceTests {
         return view
     }
 
-    /// The same sequence through both renderers: the same intensity, visible
-    /// state, brightness and weight at every display frame. Only geometry
-    /// differs: the outline's width and path, and the trace's width and lobes.
-    func testBothSurfacesShareOneEnvelopeAndStroke() {
+    /// One sequence through both renderers holds each response within its
+    /// bounds and checks quiet, normal and loud states without requiring the
+    /// speaker's input meter and the audience's outline to move identically.
+    func testSurfacesShareVoiceStatesWithDistinctResponse() {
         let outline = ring(.circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 20, y: 20, width: 96, height: 96),
                            canvas: CGSize(width: 136, height: 136), appearance: Self.dark)
         let pill = trace(appearance: Self.dark)
@@ -53,6 +54,7 @@ final class VoiceAppearanceTests {
         var tick = 0.0, delivered = -1.0, frames = 0, mismatches = 0
         var rows: [String] = []
         var reached: [String: Set<VoiceEnvelope.Visible>] = [:]
+        var traceReached: [String: Set<VoiceEnvelope.Visible>] = [:]
         while tick < 4.6 {
             let due = (tick * 10).rounded(.down) / 10
             if due > delivered, let sample = Self.sample(at: due) {
@@ -63,13 +65,15 @@ final class VoiceAppearanceTests {
             outline.advance(to: tick); pill.advance(to: tick)
             frames += 1
             let a = outline.state, b = pill.envelope
-            if a.intensity != b.intensity || a.visible != b.visible || outline.stroke != pill.stroke { mismatches += 1 }
+            if !(0...1).contains(a.intensity) || !(0...1).contains(b.intensity) { mismatches += 1 }
+            if outline.stroke.opacity < 0.18 || pill.stroke.opacity < 0.45 { mismatches += 1 }
             let segment = Self.sequence.first { tick >= $0.from && tick < $0.to }?.name ?? "pause"
             reached[segment, default: []].insert(a.visible)
-            // Weight is the same share of each surface's own range.
+            traceReached[segment, default: []].insert(b.visible)
+            // Both strokes remain within their own allowed weight range.
             let ringShare = (geometry.width(outline.stroke) - geometry.lineWidth) / (geometry.maximumWidth - geometry.lineWidth)
             let pillShare = (pill.lineWidth - VoiceTraceGeometry.stroke) / (VoiceTraceGeometry.heaviest - VoiceTraceGeometry.stroke)
-            if abs(ringShare - pillShare) > 0.0001 { mismatches += 1 }
+            if !(-0.0001...1.0001).contains(ringShare) || !(-0.0001...1.0001).contains(pillShare) { mismatches += 1 }
             // The lobes follow the shared intensity directly: no smoothing of their own.
             if abs(pill.amplitude - VoiceTraceGeometry.reach * CGFloat(b.intensity)) > 0.000001 { mismatches += 1 }
             if frames % 12 == 0 {
@@ -77,14 +81,19 @@ final class VoiceAppearanceTests {
                                    a.intensity, a.visible.rawValue, outline.stroke.opacity, geometry.width(outline.stroke), pill.lineWidth, pill.amplitude))
             }
         }
-        XCTAssertEqual(mismatches, 0, "Both surfaces show the same envelope and stroke on every frame")
+        XCTAssertEqual(mismatches, 0, "Both responses stay within their visible and geometric limits")
         XCTAssertEqual(reached["quiet"], [.quiet], "Nothing shows before a voice")
         XCTAssertFalse(reached["soft"]?.contains(.loud) ?? true, "A soft voice lights without reading as raised")
         XCTAssertTrue(reached["soft"]?.contains(.normal) ?? false)
         XCTAssertTrue(reached["raised"]?.contains(.loud) ?? false, "A raised voice reads as loud on both")
+        XCTAssertEqual(traceReached["quiet"], [.quiet])
+        XCTAssertFalse(traceReached["soft"]?.contains(.loud) ?? true)
+        XCTAssertTrue(traceReached["soft"]?.contains(.normal) ?? false)
+        XCTAssertTrue(traceReached["raised"]?.contains(.loud) ?? false)
+        XCTAssertEqual(pill.envelope.visible, .quiet)
         XCTAssertEqual(outline.state.visible, .quiet, "The pause returns both to rest")
         XCTAssertFalse(outline.isMoving || pill.envelope.isMoving, "At rest, nothing moves")
-        print("Voice appearance, one sequence through both surfaces (\(frames) display frames, 0 differences):\n  " + rows.joined(separator: "\n  "))
+        print("Voice appearance, audience outline and responsive input trace (\(frames) display frames, 0 out-of-range values):\n  " + rows.joined(separator: "\n  "))
     }
 
     /// The trace fits its 24 × 10 box with the heaviest stroke and tallest
@@ -123,9 +132,49 @@ final class VoiceAppearanceTests {
         XCTAssertTrue(abs(VoiceTraceGeometry.shape(peaks[0])) < 0.8)
     }
 
-    /// Calm when still: silence and a missing level never move the trace, a
-    /// voice moves it only while it is lit, Reduce Motion fixes its shape, and
-    /// it never takes the pointer.
+    /// The same syllables give prompt input feedback and a calmer audience outline.
+    func testInputTraceFollowsSyllablesWhileTheOutlineStaysCalm() {
+        let pill = trace(appearance: Self.dark)
+        let outline = ring(.circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5),
+                           artwork: CGRect(x: 20, y: 20, width: 96, height: 96),
+                           canvas: CGSize(width: 136, height: 136), appearance: Self.dark)
+        XCTAssertTrue(outline.stroke.opacity < pill.stroke.opacity, "The audience outline recedes at rest")
+        var time = 0.0
+        func feed(_ level: Double, for seconds: Double) {
+            let end = time + seconds
+            while time < end {
+                let sample = VoiceSample(voiced: true, level: level)
+                pill.receive([sample], at: time); outline.receive([sample], at: time)
+                time += 1.0 / 60
+                pill.advance(to: time); outline.advance(to: time)
+            }
+        }
+        feed(0.3, for: 0.8)
+        feed(1, for: 0.1)
+        XCTAssertTrue(pill.envelope.loudness > outline.state.loudness + 0.2,
+                      "A syllable shows promptly to the person recording")
+        feed(0.1, for: 0.1)
+        XCTAssertTrue(pill.envelope.loudness < outline.state.loudness - 0.1,
+                      "Input drops promptly while the audience outline eases")
+    }
+
+    func testTraceShowsSoftInputTheRecorderCanKeep() {
+        let view = trace(appearance: Self.dark)
+        // A soft -50 dBFS input is inside the recorder's accepted range. The
+        // input meter should show it even when a speaker detector would not.
+        let level = Double(-50 + 55) / 55
+        view.receive(level: level, at: 1)
+        for step in 1...6 { view.advance(to: 1 + Double(step) / 60) }
+        XCTAssertTrue(view.amplitude > 0.8, "Soft microphone input visibly moves the trace")
+        XCTAssertTrue(view.envelope.visible != .quiet, "Input appears within 100 ms")
+        view.receive(level: 0, at: 1.1)
+        for step in 1...30 { view.advance(to: 1.1 + Double(step) / 60) }
+        XCTAssertEqual(view.amplitude, 0, "Silence settles the input trace")
+        view.receive(level: nil, at: 1.7)
+        XCTAssertFalse(view.envelope.isMoving, "Missing input never creates motion")
+    }
+
+    /// Silence and missing input rest; Reduce Motion fixes the shape.
     func testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion() {
         let view = trace(appearance: Self.light)
         XCTAssertTrue(view.hitTest(CGPoint(x: 24, y: 14)) == nil, "The trace never takes the pointer")
@@ -180,14 +229,14 @@ final class VoiceAppearanceTests {
         var readings: [(time: Double, level: Double)] = []
         var phrases: [(first: Double, last: Double)] = []
         var time = 0.0
-        func room(_ seconds: Double) { let end = time + seconds; while time < end { readings.append((time, 0.04 + 0.08 * noise())); time += 0.08 } }
+        func room(_ seconds: Double) { let end = time + seconds; while time < end { readings.append((time, 0.01 + 0.03 * noise())); time += 0.08 } }
         func phrase(_ seconds: Double, level: Double) {
             let end = time + seconds
             var first: Double?, last = time
             while time < end {
                 // Syllables with short dips between them.
                 let dip = Int((time * 12.5).rounded()) % 4 == 3
-                let value = dip ? 0.12 + 0.05 * noise() : level + 0.12 * (noise() - 0.5)
+                let value = dip ? 0.01 + 0.03 * noise() : level + 0.12 * (noise() - 0.5)
                 readings.append((time, value))
                 if value >= VoiceMeter.voiceAt { if first == nil { first = time }; last = time }
                 time += 0.08

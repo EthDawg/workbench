@@ -2,8 +2,8 @@ import AppKit
 
 /// Workbench's one stroke character for a voice: a fine, rounded line in the
 /// Workbench accent, quiet at rest, that speech brightens and weights a little
-/// and a raised voice lights further. Every voice surface maps the shared
-/// `VoiceEnvelope` through these same values; only its geometry differs.
+/// and a raised voice lights further. The input trace stays legible at rest;
+/// the audience-facing outline recedes more quietly between phrases.
 public enum VoiceStyle {
     /// How a stroke reads at one moment.
     public struct Stroke: Equatable, Sendable {
@@ -31,6 +31,20 @@ public enum VoiceStyle {
         // weights a little more and glows.
         let voice = min(1, max(0, intensity / 0.75)), raised = min(1, max(0, (intensity - 0.75) / 0.25))
         return Stroke(opacity: rest + (1 - rest) * voice, weight: (voice + raised) / 2, glow: raised)
+    }
+
+    public static func outlineRestOpacity(increaseContrast: Bool) -> Double { increaseContrast ? 0.55 : 0.18 }
+
+    /// A Persona is watched by the audience. Its quiet outline recedes so
+    /// speaking is a clear change, while keeping the same accent and stroke.
+    /// The recorder's trace stays legible at rest for the person recording.
+    public static func outlineStroke(_ envelope: VoiceEnvelope, reduceMotion: Bool, increaseContrast: Bool) -> Stroke {
+        var result = stroke(envelope, reduceMotion: reduceMotion, increaseContrast: increaseContrast)
+        let rest = restOpacity(increaseContrast: increaseContrast)
+        let lit = (result.opacity - rest) / (1 - rest)
+        let quiet = outlineRestOpacity(increaseContrast: increaseContrast)
+        result.opacity = quiet + (1 - quiet) * lit
+        return result
     }
 
     /// The voice colour over content Workbench does not own, such as a

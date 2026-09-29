@@ -330,7 +330,7 @@ did not finish is a failure until the person copies it again or sets it aside.
 
 | Status | The mark shows |
 | --- | --- |
-| Capture | The shared voice trace (#209): a red recording dot and a short trace of three shallow lobes in the voice colour, from the recording owner's own level through the shared envelope; a thin still line in silence or with no level (a meeting), and a still shape with Reduce Motion. Its badges, each 7 points and both when both apply (#211): a timer beside the trace in the last ten seconds before the 5-minute limit, and a warning on the capsule's corner, like a badge on an icon, for another job that needs attention. Revealed, the launcher carries the same signal in place of its symbol |
+| Capture | The shared voice trace (#209): a red recording dot and a short trace of three shallow lobes in the voice colour, from the recording owner's own level through the input response, including soft sound the recorder can retain; a thin still line in silence or with no level (a meeting), and a still shape with Reduce Motion. Its badges, each 7 points and both when both apply (#211): a timer beside the trace in the last ten seconds before the 5-minute limit, and a warning on the capsule's corner, like a badge on an icon, for another job that needs attention. Revealed, the launcher carries the same signal in place of its symbol |
 | Playback | A speaker |
 | Processing | An ellipsis |
 | Failure | A warning triangle |

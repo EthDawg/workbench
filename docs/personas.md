@@ -40,6 +40,8 @@ Present keeps **Full screen**, **Window**, **Connection & audio…** and **More*
 
 ## React to my voice
 
+The audience sees a quiet continuous outline that brightens with speech. It keeps the shared voice accent and a calmer response than the recording pill, which gives the speaker immediate feedback about microphone input. No extra style choice is needed.
+
 **React to my voice** puts a quiet outline around the shown persona that brightens as you speak, so the audience can see who is talking, like the floating profile a streamer uses. Turn it on in **Persona** or in the live **Persona Overlay** menu. It is off by default and remembered.
 
 - **Quiet at rest, lit while you speak.** While you are quiet it is a thin, still line just outside the artwork. A voice brightens it and widens it a little, outward only, so it never covers the artwork or moves it; a raised voice widens it a little more and adds a soft glow. Nothing travels around it. With Reduce Motion its width holds still and only its brightness says a voice is heard.
