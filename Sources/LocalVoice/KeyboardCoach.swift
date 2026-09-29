@@ -50,7 +50,7 @@ enum ShortcutConflict {
         if let owner = systemUse(candidate) {
             return "\(candidate.label) is commonly used for \(owner). Choose another combination to keep that Mac control available."
         }
-        return GlobalShortcutRule.problem(label: candidate.label, modifiers: candidate.modifiers)
+        return GlobalShortcutRule.problem(label: candidate.label, keyCode: candidate.keyCode, modifiers: candidate.modifiers)
     }
 
     /// A small, explicit policy for familiar Mac controls. macOS does not expose a complete

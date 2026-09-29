@@ -363,6 +363,7 @@ public final class StageKitController: ObservableObject {
         let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers, enabled: enabled)
         if enabled {
             guard modifiers & UInt32(controlKey | optionKey) != 0 else { return "Include Control or Option." }
+            if let message = GlobalShortcutRule.problem(label: shortcut.label, keyCode: keyCode, modifiers: modifiers) { return message }
             if let message = coordinator.validateExternalShortcut?(keyCode, modifiers) { return message }
             if let conflict = Action.allCases.first(where: { $0 != action && coordinator.settings.value.shortcut(for: $0) == shortcut }) {
                 return "That shortcut belongs to \(conflict.title). Choose another combination."

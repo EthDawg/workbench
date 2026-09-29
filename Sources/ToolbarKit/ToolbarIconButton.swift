@@ -96,7 +96,7 @@ class ToolbarIconButton: NSButton {
     private let schedule: (TimeInterval, DispatchWorkItem) -> Void
     private var revision = 0
     private var shownText: String?
-    static let dwell: TimeInterval = 0.18
+    nonisolated static let dwell: TimeInterval = 0.18
     static let handoffGrace: TimeInterval = 0.08
 
     init(schedule: @escaping (TimeInterval, DispatchWorkItem) -> Void = { delay, work in

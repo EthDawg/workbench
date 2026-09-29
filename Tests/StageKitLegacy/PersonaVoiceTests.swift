@@ -515,7 +515,7 @@ final class PersonaVoiceTests {
             ring.advance(to: clock + 5 + Double(step + 1) / 60)
         }
         let softRim = paths()[0].opacity
-        XCTAssertEqual(Double(softRim), 0.7, accuracy: 0.001, "The whole outline shows voice presence with Reduce Motion")
+        XCTAssertTrue(abs(Double(softRim) - 0.7) < 0.001, "The whole outline shows voice presence with Reduce Motion")
         for step in 0...40 {
             ring.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021)], at: clock + 6 + Double(step) / 60)
             ring.advance(to: clock + 6 + Double(step + 1) / 60)

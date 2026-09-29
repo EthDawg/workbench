@@ -817,6 +817,9 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         guard shortcut.modifiers & UInt32(controlKey | optionKey) != 0 else {
             post("Include Control or Option with your shortcut.", on: .keyboard); return
         }
+        if let message = GlobalShortcutRule.problem(label: shortcut.label, keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) {
+            post(message, on: .keyboard); return
+        }
         if let conflict = Action.allCases.first(where: { $0 != action && settings.value.shortcut(for: $0) == shortcut }) {
             post("That shortcut belongs to \(conflict.title). Choose another combination.", on: .keyboard); return
         }

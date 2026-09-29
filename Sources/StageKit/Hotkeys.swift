@@ -12,8 +12,11 @@ public struct GlobalShortcutCombination: Hashable {
 /// belongs to the app in front, so Workbench never takes one.
 public enum GlobalShortcutRule {
     public static func allows(modifiers: UInt32) -> Bool { modifiers & UInt32(controlKey | optionKey) != 0 }
-    public static func problem(label: String, modifiers: UInt32) -> String? {
-        allows(modifiers: modifiers) ? nil : "\(label) belongs to the app you're using. Choose a combination with Control or Option."
+    public static func problem(label: String, keyCode: UInt32, modifiers: UInt32) -> String? {
+        if keyCode == UInt32(kVK_ANSI_S), modifiers == UInt32(controlKey | cmdKey) {
+            return "\(label) is reserved for Workbench’s sidebar. Choose another combination."
+        }
+        return allows(modifiers: modifiers) ? nil : "\(label) belongs to the app you're using. Choose a combination with Control or Option."
     }
 }
 
@@ -80,7 +83,7 @@ final class HotkeyManager {
         for (index, action) in Action.allCases.enumerated() {
             let shortcut = preferences.shortcut(for: action)
             guard shortcut.enabled else { continue }
-            if let problem = GlobalShortcutRule.problem(label: shortcut.label, modifiers: shortcut.modifiers) { failures[action] = problem; continue }
+            if let problem = GlobalShortcutRule.problem(label: shortcut.label, keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { failures[action] = problem; continue }
             let id = UInt32(index + 1)
             var reference: EventHotKeyRef?
             let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: signature, id: id),
