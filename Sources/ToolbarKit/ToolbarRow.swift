@@ -66,12 +66,12 @@ public struct ToolbarRow: View {
     /// When set, the accessory opens the host's own surface anchored to the
     /// button instead of popping up `makeAccessoryMenu`'s menu.
     private let openAccessory: ((NSView) -> Void)?
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.toolbarViewport) private var viewport
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
     /// Tab and Shift-Tab between the row's controls (#223).
     @State private var keyCycle = ToolbarKeyCycle()
+    @State private var hints = ToolbarHintController()
 
     /// `press` latches the next action when the button goes down and returns what to do if
     /// the press ends as a click; nil when there is nothing to do. `action` is the plain form.
@@ -102,8 +102,8 @@ public struct ToolbarRow: View {
     }
 
     // Let the capsule make room before controls appear. The same curve reverses
-    // on close, so text disappears before the shrinking edge can cut through it.
-    private var controlOpacity: CGFloat { max(0, min(1, (revealProgress - 0.5) * 2)) }
+    // on close, so glyphs disappear before the shrinking edge can cut through them.
+    private var controlOpacity: CGFloat { ToolbarRevealVisuals.glyphOpacity(progress: revealProgress) }
     private var symbolSize: CGFloat { 12 + (15 * scale - 12) * revealProgress }
 
     public var body: some View {
@@ -126,8 +126,10 @@ public struct ToolbarRow: View {
             if state.tier == .resting { Rectangle().fill(Color.black.opacity(0.012)) }
         }
         .tint(accent)
+        .environment(\.colorScheme, .dark)
         .environment(\.controlActiveState, .active)
         .onExitCommand(perform: escape)
+        .onDisappear { hints.hide() }
         .transaction { $0.animation = nil }
     }
 
@@ -139,7 +141,7 @@ public struct ToolbarRow: View {
             let height = ToolbarRevealVisuals.capsuleHeight(progress: revealProgress, rowHeight: ToolbarLayout.rowHeight * scale, indicator: state.status.indicator)
             Capsule(style: .circular).fill(mask ? AnyShapeStyle(Color.white) : chromeFill)
                 .overlay {
-                    if !mask { Capsule(style: .circular).strokeBorder(.primary.opacity(0.14), lineWidth: 1) }
+                    if !mask { Capsule(style: .circular).strokeBorder(.white.opacity(0.14), lineWidth: 1) }
                 }
                 .frame(width: size.width, height: height)
                 .overlay(alignment: state.anchor.contentAlignment) {
@@ -154,7 +156,7 @@ public struct ToolbarRow: View {
     }
 
     private var chromeFill: AnyShapeStyle {
-        reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.regularMaterial)
+        AnyShapeStyle(Color(white: 0.055))
     }
 
     /// The compact rest: the same 48 × 28 target in every state, whatever it shows.
@@ -184,38 +186,37 @@ public struct ToolbarRow: View {
 
     /// Opens the tool's options, from More, a right-click on the launcher or the compact rest.
     private var menuOpener: (NSView) -> Void {
-        { [makeMenu, menuBegan, menuEnded] view in
+        { [makeMenu, menuBegan, menuEnded, hints] view in
+            hints.hide()
             let menu = makeMenu()
             guard menuBegan(menu) else { return }
-            defer { menuEnded() }
+            defer { (view as? ToolbarIconButton)?.reconcileHover(); menuEnded() }
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
         }
     }
 
     @ViewBuilder private var accessory: some View {
         if let accessory = state.accessory, state.shownAccessory != nil {
-            ToolbarAccessoryButton(title: accessory.title, opensList: accessory.opensList, description: state.accessoryDescription,
-                                   fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
-                                   began: menuBegan, ended: menuEnded, escape: escape, keyCycle: keyCycle)
+            ToolbarAccessoryButton(title: accessory.title, symbol: accessory.symbol, opensList: accessory.opensList, description: state.accessoryDescription,
+                                   fontSize: 16 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
+                                   began: menuBegan, ended: menuEnded, escape: escape, keyCycle: keyCycle, hints: hints)
                 .frame(width: ToolbarLayout.accessoryWidth * scale, height: ToolbarLayout.controlHeight * scale)
                 .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
         }
     }
 
     private var primary: some View {
-        ToolbarPrimary(title: state.actionTitle, help: state.actionHelp, isEnabled: state.isActionEnabled,
-                       fontSize: 13 * scale, minimumWidth: ToolbarLayout.primaryMinimum * scale,
-                       accent: accent, press: press, drag: drag, keyCycle: keyCycle)
+        ToolbarPrimary(title: state.actionTitle, symbol: state.actionSymbol, help: state.actionHelp, isEnabled: state.isActionEnabled,
+                       fontSize: 16 * scale, press: press, drag: drag, keyCycle: keyCycle, hints: hints)
             // SwiftUI sets a hosted control's enabled state from its environment once it is in a
             // window, over the one set below, so a disabled action says so here too (#223).
             .disabled(!state.isActionEnabled)
-            .frame(height: ToolbarLayout.controlHeight * scale)
-            .fixedSize()
+            .frame(width: ToolbarLayout.primaryMinimum * scale, height: ToolbarLayout.controlHeight * scale)
             .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
     }
 
     private var more: some View {
-        ToolbarMore(tool: state.mode.title, size: 15 * scale, open: menuOpener, escape: escape, keyCycle: keyCycle)
+        ToolbarMore(tool: state.mode.title, size: 15 * scale, open: menuOpener, escape: escape, keyCycle: keyCycle, hints: hints)
             .frame(width: ToolbarLayout.moreWidth * scale, height: ToolbarLayout.controlHeight * scale)
             .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
     }
@@ -225,8 +226,8 @@ public struct ToolbarRow: View {
     /// capsule opens; a chevron appears beside it. The button itself draws nothing: it is the target, the keyboard
     /// focus and the accessibility element.
     private var launcher: some View {
-        ToolbarLauncher(state: state, accent: accent, open: openChooser, options: menuOpener,
-                        focus: { if state.tier == .revealed { focusButton($0) } }, escape: escape, drag: drag, keyCycle: keyCycle)
+        ToolbarLauncher(state: state, accent: accent, open: { view in hints.hide(); openChooser(view) }, options: menuOpener,
+                        focus: { if state.tier == .revealed { focusButton($0) } }, escape: escape, drag: drag, keyCycle: keyCycle, hints: hints)
             .frame(width: ToolbarLayout.launcherWidth, height: ToolbarLayout.rowHeight * scale)
             .overlay {
                 Group {
@@ -235,7 +236,7 @@ public struct ToolbarRow: View {
                         ToolbarCaptureSignal(status: state.status, accent: accent)
                     } else {
                         Image(systemName: state.mode.symbol).font(.system(size: symbolSize, weight: .medium))
-                            .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
+                            .foregroundStyle(.white)
                             .overlay(alignment: .topTrailing) {
                                 if let glyph = ToolbarResultGlyph(state.status.indicator) {
                                     ToolbarBadge(id: "result", symbol: glyph.name, color: glyph.color, size: ToolbarLayout.badge * scale)
@@ -244,7 +245,7 @@ public struct ToolbarRow: View {
                             }
                             .overlay {
                                 Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold))
-                                    .foregroundStyle(.secondary).offset(x: 12 * scale)
+                                    .foregroundStyle(.white.opacity(0.6)).offset(x: 12 * scale)
                             }
                     }
                 }
@@ -267,7 +268,6 @@ public struct ToolbarCompactMark: View {
     let accent: Color
     let drawsChrome: Bool
     let symbolSize: CGFloat
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(status: ToolbarStatus, accent: Color = .accentColor,
                 drawsChrome: Bool = true, symbolSize: CGFloat = 12) {
@@ -281,17 +281,18 @@ public struct ToolbarCompactMark: View {
             let height = ToolbarLayout.restingCapsuleHeight(for: status.indicator)
             if drawsChrome {
                 Capsule().fill(capsuleFill)
-                    .overlay(Capsule().strokeBorder(.primary.opacity(0.14), lineWidth: 1))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1))
                     .frame(width: ToolbarLayout.markCapsule.width, height: height)
             }
             indicator
         }
         .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
+        .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
     }
 
     private var capsuleFill: AnyShapeStyle {
-        reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.regularMaterial)
+        AnyShapeStyle(Color(white: 0.055))
     }
 
     @ViewBuilder private var indicator: some View {
@@ -299,10 +300,10 @@ public struct ToolbarCompactMark: View {
         case .idle, .live: EmptyView()
         case .capture: ToolbarCaptureSignal(status: status, accent: accent)
         case .playback: symbol("speaker.wave.2.fill", accent)
-        case .processing: symbol("ellipsis", Color.secondary)
+        case .processing: symbol("ellipsis", Color.white.opacity(0.7))
         case .failure, .pendingDelivery, .unsavedCapture:
             if let glyph = ToolbarResultGlyph(status.indicator) { symbol(glyph.name, glyph.color) }
-        case .paused: symbol("pause.fill", Color.secondary)
+        case .paused: symbol("pause.fill", Color.white.opacity(0.7))
         }
     }
 
@@ -320,8 +321,8 @@ struct ToolbarResultGlyph {
     init?(_ indicator: ToolbarStatus.Indicator) {
         switch indicator {
         case .failure: (name, color) = ("exclamationmark.triangle.fill", .orange)
-        case .pendingDelivery: (name, color) = ("doc.on.clipboard", .primary)
-        case .unsavedCapture: (name, color) = ("pencil", .primary)
+        case .pendingDelivery: (name, color) = ("doc.on.clipboard", .white)
+        case .unsavedCapture: (name, color) = ("pencil", .white)
         default: return nil
         }
     }
@@ -423,45 +424,36 @@ final class RestTargetView: NSView {
 /// window, exactly as it does from the launcher, and a click does the action.
 private struct ToolbarPrimary: NSViewRepresentable {
     let title: String
+    let symbol: String
     let help: String
     let isEnabled: Bool
     let fontSize: CGFloat
-    let minimumWidth: CGFloat
-    let accent: Color
     let press: () -> (() -> Void)?
     let drag: ToolbarDragActions
     let keyCycle: ToolbarKeyCycle
+    let hints: ToolbarHintController
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: PrimaryButton, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 36, height: proposal.height ?? 32)
+    }
     func makeNSView(context: Context) -> PrimaryButton {
         let view = PrimaryButton()
-        view.bezelStyle = .rounded
-        view.controlSize = .large
-        view.setContentHuggingPriority(.required, for: .horizontal)
-        view.setContentCompressionResistancePriority(.required, for: .horizontal)
         return view
     }
     func updateNSView(_ view: PrimaryButton, context: Context) {
-        view.title = title
-        view.font = .monospacedDigitSystemFont(ofSize: fontSize, weight: .medium)
-        view.bezelColor = NSColor(accent)
+        view.setSymbol(symbol, size: fontSize)
         view.isEnabled = isEnabled
-        view.toolTip = help
+        view.hints = hints; view.hint = help
         view.setAccessibilityHelp(help)
-        // Fit this verb, then retain the largest width until the row collapses.
-        // Shorter states cannot pull a target away during the same interaction.
-        let natural = PrimaryButton.width(of: title, like: view)
-        view.minimumWidth = max(view.minimumWidth, minimumWidth, natural)
         view.setAccessibilityLabel(title)
         view.setAccessibilityIdentifier("toolbar.primary")
         view.press = press; view.drag = drag
         view.keyCycle = keyCycle; keyCycle.register(view, as: .primary)
         view.invalidateIntrinsicContentSize()
     }
-    final class PrimaryButton: NSButton {
+    final class PrimaryButton: ToolbarIconButton {
         var press: (() -> (() -> Void)?)?
         var drag = ToolbarDragActions()
         var keyCycle: ToolbarKeyCycle?
-        /// Width belongs to this revealed interaction; collapse removes this native view.
-        var minimumWidth: CGFloat = 0
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(runAction) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         @objc private func runAction() { press?()?() }
@@ -472,38 +464,21 @@ private struct ToolbarPrimary: NSViewRepresentable {
             if keyCycle?.handle(event, from: self) == true { return }
             super.keyDown(with: event)
         }
-        override var intrinsicContentSize: NSSize {
-            var size = super.intrinsicContentSize
-            size.width = max(size.width, minimumWidth)
-            return size
-        }
-        /// The exact width this button would have with another title, cached
-        /// per font size because the style never changes.
-        nonisolated(unsafe) private static var widths: [String: CGFloat] = [:]
-        static func width(of title: String, like button: NSButton) -> CGFloat {
-            let key = "\(button.font?.pointSize ?? 0)|\(button.controlSize.rawValue)|\(title)"
-            if let cached = widths[key] { return cached }
-            let probe = NSButton()
-            probe.bezelStyle = button.bezelStyle; probe.controlSize = button.controlSize
-            probe.font = button.font; probe.title = title
-            let label = (title as NSString).size(withAttributes: [.font: button.font ?? NSFont.systemFont(ofSize: 13)]).width
-            let scale = (button.font?.pointSize ?? 13) / 13
-            let width = max(probe.intrinsicContentSize.width, ceil(label) + 2 * ToolbarLayout.primaryHorizontalInset * scale)
-            widths[key] = width
-            return width
-        }
         /// The operation is latched as the button goes down; the click acts on it only if it
         /// still holds when the button comes up. The second click of a double-click does
         /// nothing, so a double-click on Stop never also starts, and one that began on the
         /// compact rest never reaches work.
         override func mouseDown(with event: NSEvent) {
             guard event.clickCount < 2 else { return }
+            dismissHint()
+            highlight(true)
+            defer { highlight(false) }
             // A disabled action still moves the toolbar when dragged, as it did while SwiftUI kept
             // it enabled in the window; a click on it does nothing.
             let commit = isEnabled ? press?() : nil
             trackToolbarDrag(view: self, event: event, actions: drag, click: { commit?() })
         }
-        override func performClick(_ sender: Any?) { if isEnabled { press?()?() } }
+        override func performClick(_ sender: Any?) { dismissHint(); if isEnabled { press?()?() } }
     }
 }
 
@@ -518,6 +493,10 @@ private struct ToolbarLauncher: NSViewRepresentable {
     let escape: () -> Void
     let drag: ToolbarDragActions
     let keyCycle: ToolbarKeyCycle
+    let hints: ToolbarHintController
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: LauncherButton, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 48, height: proposal.height ?? 40)
+    }
     func makeNSView(context: Context) -> LauncherButton {
         let view = LauncherButton()
         view.isBordered = false
@@ -533,8 +512,8 @@ private struct ToolbarLauncher: NSViewRepresentable {
         view.setAccessibilityValue(status ? state.launcherDescription + ". " + state.status.spokenValue : state.launcherDescription)
         view.setAccessibilityHelp("Choose a tool")
         view.setAccessibilityIdentifier("toolbar.launcher")
-        view.toolTip = (status ? state.launcherDescription + ". " + state.status.description : state.launcherDescription)
-            + ". Click to choose a tool; drag to move."
+        view.hints = hints
+        view.hint = "Choose a tool · " + (status ? state.launcherDescription + ". " + state.status.description : state.launcherDescription)
         view.escape = escape; view.drag = drag
         view.keyCycle = keyCycle; keyCycle.register(view, as: .launcher)
         view.open = { [weak view] in if let view { open(view) } }
@@ -543,7 +522,7 @@ private struct ToolbarLauncher: NSViewRepresentable {
     }
 }
 
-final class LauncherButton: NSButton {
+final class LauncherButton: ToolbarIconButton {
     var open: (() -> Void)?
     var options: (() -> Void)?
     var escape: (() -> Void)?
@@ -560,10 +539,13 @@ final class LauncherButton: NSButton {
     /// The second click of a double-click, including one that began on the compact rest, does nothing.
     override func mouseDown(with event: NSEvent) {
         guard event.clickCount < 2 else { return }
+        dismissHint()
+        highlight(true)
+        defer { highlight(false) }
         trackToolbarDrag(view: self, event: event, actions: drag, click: { [weak self] in self?.open?() })
     }
     override func rightMouseDown(with event: NSEvent) { options?() }
-    override func performClick(_ sender: Any?) { open?() }
+    override func performClick(_ sender: Any?) { dismissHint(); open?() }
     override func keyDown(with event: NSEvent) {
         if keyCycle?.handle(event, from: self) == true { return }
         if event.keyCode == 53 { escape?() }
@@ -579,6 +561,10 @@ private struct ToolbarMore: NSViewRepresentable {
     let open: (NSView) -> Void
     let escape: () -> Void
     let keyCycle: ToolbarKeyCycle
+    let hints: ToolbarHintController
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: MoreButton, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 32, height: proposal.height ?? 32)
+    }
     func makeNSView(context: Context) -> MoreButton {
         let view = MoreButton()
         view.isBordered = false
@@ -586,20 +572,18 @@ private struct ToolbarMore: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: MoreButton, context: Context) {
-        view.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: size, weight: .semibold))
-        view.contentTintColor = .labelColor
+        view.setSymbol("ellipsis", size: size)
         view.setAccessibilityLabel("More")
         view.setAccessibilityHelp("Options for " + tool + ", other work and the toolbar")
         view.setAccessibilityIdentifier("toolbar.more")
-        view.toolTip = "Options for " + tool
+        view.hints = hints; view.hint = "Options for " + tool
         view.escape = escape
         view.keyCycle = keyCycle; keyCycle.register(view, as: .more)
         view.open = { [weak view] in if let view { open(view) } }
     }
 }
 
-final class MoreButton: NSButton {
+final class MoreButton: ToolbarIconButton {
     var open: (() -> Void)?
     var escape: (() -> Void)?
     var keyCycle: ToolbarKeyCycle?
@@ -612,7 +596,15 @@ final class MoreButton: NSButton {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func rightMouseDown(with event: NSEvent) { open?() }
-    override func performClick(_ sender: Any?) { open?() }
+    // Menus track the initiating press themselves, as a native popup button does. Do not
+    // nest NSButton's mouse-up tracking around NSMenu in a nonactivating panel.
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled, event.clickCount < 2 else { return }
+        highlight(true)
+        defer { highlight(false); reconcileHover() }
+        dismissHint(); open?()
+    }
+    override func performClick(_ sender: Any?) { dismissHint(); open?() }
     override func keyDown(with event: NSEvent) {
         if keyCycle?.handle(event, from: self) == true { return }
         if event.keyCode == 53 { escape?() }
@@ -629,6 +621,7 @@ final class MoreButton: NSButton {
 /// Escape leaves keyboard interaction.
 private struct ToolbarAccessoryButton: NSViewRepresentable {
     let title: String
+    let symbol: String
     let opensList: Bool
     let description: String?
     let fontSize: CGFloat
@@ -638,30 +631,45 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
     let ended: () -> Void
     let escape: () -> Void
     let keyCycle: ToolbarKeyCycle
+    let hints: ToolbarHintController
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: AccessoryButton, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 36, height: proposal.height ?? 32)
+    }
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
     func updateNSView(_ view: AccessoryButton, context: Context) {
-        view.title = opensList ? title + " ⌄" : title; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
+        view.setSymbol(symbol, size: fontSize)
         view.setAccessibilityLabel(description ?? title); view.setAccessibilityIdentifier("toolbar.accessory")
-        view.toolTip = description
+        view.hints = hints; view.hint = description ?? title
+        view.setAccessibilityHelp(description ?? title)
+        view.opensList = opensList
         view.escape = escape
         view.keyCycle = keyCycle; keyCycle.register(view, as: .accessory)
         view.open = { [weak view] in
             guard let view else { return }
+            view.dismissHint()
             if let openPanel { openPanel(view); return }
             let menu = makeMenu(); guard began(menu) else { return }
-            defer { ended() }
+            defer { view.reconcileHover(); ended() }
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY + 4), in: view)
         }
     }
-    final class AccessoryButton: NSButton {
+    final class AccessoryButton: ToolbarIconButton {
         var open: (() -> Void)?
         var escape: (() -> Void)?
         var keyCycle: ToolbarKeyCycle?
+        var opensList = false
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(openMenu) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override var acceptsFirstResponder: Bool { true }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         @objc private func openMenu() { open?() }
+        override func mouseDown(with event: NSEvent) {
+            guard isEnabled, event.clickCount < 2 else { return }
+            dismissHint()
+            highlight(true)
+            defer { highlight(false); reconcileHover() }
+            if opensList { open?() } else { super.mouseDown(with: event) }
+        }
         override func keyDown(with event: NSEvent) {
             if keyCycle?.handle(event, from: self) == true { return }
             if event.keyCode == 53 { escape?() }

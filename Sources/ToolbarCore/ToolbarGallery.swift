@@ -20,7 +20,7 @@ public enum ToolbarGallery {
         ToolbarTier.allCases.map { tier in
             let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode))
             return ToolbarViewState(name: "mode-\(mode.slug)-\(tier.rawValue)", tier: tier, mode: mode,
-                                    actionTitle: action.title, actionHint: action.hint(key: exampleKey(mode)),
+                                    actionTitle: action.title, actionSymbol: action.symbol, actionHint: action.hint(key: exampleKey(mode)),
                                     choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: mode), key: exampleKey),
                                     accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false))
         }
@@ -60,7 +60,7 @@ public enum ToolbarGallery {
                              activity: ToolbarActivity? = nil, personaCopy: Bool = false,
                              accessoryDescription: String? = nil) -> ToolbarViewState {
         let action = ToolbarNextAction.resolve(live)
-        return ToolbarViewState(name: name, tier: tier, mode: live.mode, actionTitle: action.title,
+        return ToolbarViewState(name: name, tier: tier, mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol,
                                 isActionEnabled: action.isEnabled,
                                 actionHint: action.hint(key: action.operation.keyMode.flatMap(exampleKey)),
                                 choices: ToolbarNextAction.choices(for: live, key: exampleKey),

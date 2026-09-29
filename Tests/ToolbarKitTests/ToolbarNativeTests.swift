@@ -3,6 +3,7 @@ import SwiftUI
 import XCTest
 import ToolbarCore
 import StageKit
+import VoiceAppearance
 @testable import ToolbarKit
 
 final class ToolbarNativeTests: XCTestCase {
@@ -130,7 +131,7 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertTrue(failure.target.contains(badge), "on the launcher's own target: \(badge) in \(failure.target)")
         XCTAssertEqual(badge.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "a 7-point square at standard text")
         XCTAssertEqual(failure.button.accessibilityValue() as? String, "Dictate. Needs attention")
-        XCTAssertEqual(failure.button.toolTip, "Dictate. Needs attention. Click to choose a tool; drag to move.")
+        XCTAssertEqual((failure.button as? ToolbarIconButton)?.hint, "Choose a tool · Dictate. Needs attention")
         let receipt = try launcher(ToolbarActivity(pendingDelivery: true))
         XCTAssertNotNil(receipt.badge, "a result waiting to be delivered is badged too")
         XCTAssertEqual(receipt.button.accessibilityValue() as? String, "Dictate. Result waiting to be delivered")
@@ -169,9 +170,10 @@ final class ToolbarNativeTests: XCTestCase {
                 let found = buttons(view).filter { $0.accessibilityIdentifier() == "toolbar.accessory" }
                 let button = try XCTUnwrap(found.first, "\(accessory)")
                 XCTAssertEqual(found.count, 1, "one accessory: \(accessory)")
-                XCTAssertEqual(button.title, accessory.opensList ? accessory.title + " ⌄" : accessory.title)
+                XCTAssertEqual(button.title, "", "the action is a symbol, with its words in the hint")
+                XCTAssertNotNil(button.image)
                 XCTAssertEqual(button.accessibilityLabel(), description ?? accessory.title)
-                XCTAssertEqual(button.toolTip, description)
+                XCTAssertEqual((button as? ToolbarIconButton)?.hint, description ?? accessory.title)
             }
         }
         var none = ToolbarViewState(name: "none", tier: .revealed, mode: .draw)
@@ -299,6 +301,113 @@ final class ToolbarNativeTests: XCTestCase {
         valid = false
         primary.performClick(nil)
         XCTAssertEqual(presses, 2); XCTAssertEqual(actions, 1, "a press whose operation no longer holds does nothing")
+    }
+
+    /// Exercise AppKit's actual hit-test tree rather than calling an obscured button directly.
+    /// Both a settled row and the production dock wrapper must deliver each visible target.
+    @MainActor func testVisibleControlsOwnTheirHitTargets() throws {
+        for anchor in ToolbarAnchor.allCases {
+            for mode in ToolbarMode.allCases {
+                let state = ToolbarViewState(name: "hit-test", tier: .revealed, anchor: anchor, mode: mode,
+                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: true))
+                let row = ToolbarRow(state: state)
+                let size = NSHostingView(rootView: row).fittingSize
+                let host = NSHostingView(rootView: row.pinnedToDock(anchor))
+                host.frame = NSRect(origin: .zero, size: size)
+                let panel = NSPanel(contentRect: NSRect(x: -19900, y: -19900, width: size.width, height: size.height),
+                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+                panel.isReleasedWhenClosed = false
+                panel.contentView = host
+                panel.orderFrontRegardless()
+                host.layoutSubtreeIfNeeded()
+                for button in buttons(host) {
+                    let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: host)
+                    let hit = host.hitTest(point)
+                    XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,
+                        "\(mode), \(anchor), \(button.accessibilityIdentifier()) intercepted by \(String(describing: hit))")
+                }
+                panel.close()
+            }
+        }
+    }
+
+    @MainActor func testControlsRemainClickableAfterGrowingFromRest() throws {
+        for anchor in ToolbarAnchor.allCases {
+            for mode in ToolbarMode.allCases {
+                var state = ToolbarViewState(name: "hover-hit", tier: .resting, anchor: anchor, mode: mode,
+                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: true))
+                let host = NSHostingView(rootView: ToolbarRow(state: state).pinnedToDock(anchor))
+                host.sizingOptions = []
+                let tracking = ToolbarTrackingView(content: host)
+                tracking.autoresizingMask = [.width, .height]
+                let panel = NSPanel(contentRect: NSRect(x: -19900, y: -19900, width: 48, height: 28),
+                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+                panel.isReleasedWhenClosed = false
+                panel.contentView = tracking
+                panel.orderFrontRegardless()
+                defer { panel.close() }
+                for _ in 0..<3 {
+                    state.tier = .resting
+                    host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
+                    panel.setContentSize(ToolbarLayout.mark)
+                    tracking.layoutSubtreeIfNeeded()
+                    state.tier = .revealed
+                    host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
+                    tracking.layoutSubtreeIfNeeded()
+                    let size = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
+                    for progress in [CGFloat(0.5), 0.9, 1] {
+                        panel.setContentSize(NSSize(width: 48 + (size.width - 48) * progress, height: 28 + (size.height - 28) * progress))
+                        tracking.layoutSubtreeIfNeeded()
+                    }
+                    for button in buttons(host) {
+                        let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: tracking)
+                        let hit = tracking.hitTest(point)
+                        XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,
+                            "\(mode), \(anchor), \(button.accessibilityIdentifier()) after reveal intercepted by \(String(describing: hit))")
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor func testPanelDispatchReachesEveryVisibleActionAfterReveal() throws {
+        for mode in ToolbarMode.allCases {
+            var received: [String] = []
+            var state = ToolbarViewState(name: "dispatch", tier: .revealed, mode: mode,
+                accessory: .offered(for: ToolbarLiveState(mode: mode, captureCount: 2), selectedPersonaCopy: true))
+            func row() -> some View {
+                ToolbarRow(state: state, openAccessory: { _ in received.append("toolbar.accessory") },
+                    action: { received.append("toolbar.primary") }, openChooser: { _ in received.append("toolbar.launcher") },
+                    menuBegan: { _ in received.append("toolbar.more"); return false }).pinnedToDock(.bottom)
+            }
+            let size = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
+            state.tier = .resting
+            let host = NSHostingView(rootView: row())
+            host.sizingOptions = []
+            let tracking = ToolbarTrackingView(content: host)
+            let panel = NSPanel(contentRect: NSRect(x: -19900, y: -19900, width: 48, height: 28),
+                styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.isReleasedWhenClosed = false; panel.isFloatingPanel = true
+            panel.contentView = tracking
+            panel.orderFrontRegardless()
+            defer { panel.close() }
+            state.tier = .revealed; host.rootView = row()
+            tracking.layoutSubtreeIfNeeded()
+            panel.setContentSize(size); tracking.layoutSubtreeIfNeeded()
+            for control in buttons(host) {
+                let point = control.convert(NSPoint(x: control.bounds.midX, y: control.bounds.midY), to: nil)
+                func event(_ type: NSEvent.EventType, number: Int) -> NSEvent {
+                    NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: number, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+                }
+                let before = received.count
+                NSApp.postEvent(event(.leftMouseUp, number: 0), atStart: false)
+                panel.sendEvent(event(.leftMouseDown, number: panel.windowNumber))
+                XCTAssertEqual(received.count, before + 1, "\(mode), \(control.accessibilityIdentifier()) receives a panel-dispatched click")
+                XCTAssertEqual(received.last, control.accessibilityIdentifier())
+                while queuedMouseUp(dequeue: true) {}
+            }
+        }
     }
 
     /// The compact rest is one accessible button: pressing it reveals, and nothing else.
@@ -435,13 +544,16 @@ final class ToolbarNativeTests: XCTestCase {
         }
     }
 
-    @MainActor func testLongPrimaryActionGrowsInsteadOfShrinkingText() {
+    @MainActor func testLongPrimaryWordsRemainInTheHintWithoutMovingTargets() throws {
         let short = ToolbarViewState(name: "short", tier: .revealed, actionTitle: "Dictate")
         var long = short; long.actionTitle = "Finish this much longer action"
         let small = NSHostingView(rootView: ToolbarRow(state: short)).fittingSize
         let large = NSHostingView(rootView: ToolbarRow(state: long)).fittingSize
-        XCTAssertGreaterThan(large.width, small.width + 40)
+        XCTAssertEqual(large.width, small.width)
         XCTAssertEqual(large.height, small.height, accuracy: 1)
+        let primary = try XCTUnwrap(buttons(laidOut(ToolbarRow(state: long))).first { $0.accessibilityIdentifier() == "toolbar.primary" } as? ToolbarIconButton)
+        XCTAssertEqual(primary.accessibilityLabel(), long.actionTitle)
+        XCTAssertEqual(primary.hint, long.actionTitle)
     }
 
     /// A changing count redrew the row. With proportional digits each redraw
@@ -457,16 +569,15 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(width("Capture next · 10"), width("Capture next · 99"), accuracy: 0.5)
     }
 
-    /// Dynamic width belongs to one open interaction. It can grow, but only a
-    /// collapse permits shrinking, so a changing Stop/Start cannot pull More away.
-    @MainActor func testActionWidthFitsTheVerbAndOnlyShrinksAfterCollapse() {
+    /// Start, Stop and a long action all keep the same target, including across a collapse.
+    @MainActor func testChangingActionKeepsTheTargetsSteady() {
         var state = ToolbarViewState(name: "width", tier: .revealed, mode: .draw, actionTitle: "Draw")
         let view = laidOut(ToolbarRow(state: state))
         let short = view.fittingSize.width
         state.actionTitle = "End presentation"
         view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
         let long = view.fittingSize.width
-        XCTAssertGreaterThan(long, short + 25)
+        XCTAssertEqual(long, short)
         state.actionTitle = "Draw"
         view.rootView = ToolbarRow(state: state); view.layoutSubtreeIfNeeded()
         XCTAssertEqual(view.fittingSize.width, long, accuracy: 0.5)
@@ -481,14 +592,15 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testActionAndMoreHintsNameTheirActualControl() throws {
         let state = ToolbarViewState(name: "hint", tier: .revealed, mode: .draw, actionTitle: "Draw", actionHint: "Hold ⌥D")
         let view = laidOut(ToolbarRow(state: state))
-        let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" })
-        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" })
-        XCTAssertEqual(primary.toolTip, "Draw · Hold ⌥D")
-        XCTAssertEqual(primary.accessibilityHelp(), primary.toolTip)
-        XCTAssertEqual(more.toolTip, "Options for Draw")
+        let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" } as? ToolbarIconButton)
+        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" } as? ToolbarIconButton)
+        XCTAssertEqual(primary.hint, "Draw · Hold ⌥D")
+        XCTAssertEqual(primary.accessibilityHelp(), primary.hint)
+        XCTAssertEqual(more.hint, "Options for Draw")
+        XCTAssertNil(primary.toolTip, "the native floating hint has no competing system tooltip")
         var noKey = state; noKey.actionHint = nil
         view.rootView = ToolbarRow(state: noKey); view.layoutSubtreeIfNeeded()
-        XCTAssertEqual(primary.toolTip, "Draw")
+        XCTAssertEqual(primary.hint, "Draw")
     }
 
     func testRevealChromeFollowsTheWindowWithNoSecondClock() {
@@ -551,13 +663,12 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(panel.frame.origin, NSPoint(x: 350, y: 250))
     }
 
-    /// Live work lights the launcher's symbol and its one aggregate dot in the brand accent,
-    /// in both appearances.
-    @MainActor func testBusyLauncherAndDotUseTheSameBrandColourInBothAppearances() throws {
+    /// The black capsule has white glyphs in both appearances. Live work keeps its green dot.
+    @MainActor func testBusyLauncherIsWhiteAndItsDotStaysGreenInBothAppearances() throws {
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try XCTUnwrap(NSAppearance(named: name))
             var expected: NSColor!
-            appearance.performAsCurrentDrawingAppearance {
+            NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
                 expected = WorkbenchPalette.nativeAccent.usingColorSpace(.deviceRGB)
             }
             let busy = ToolbarLiveState(mode: .draw, drawing: true)
@@ -579,13 +690,12 @@ final class ToolbarNativeTests: XCTestCase {
                     let delta = abs(colour.redComponent - expected.redComponent)
                         + abs(colour.greenComponent - expected.greenComponent)
                         + abs(colour.blueComponent - expected.blueComponent)
-                    if delta < 0.04 {
-                        if y < bitmap.pixelsHigh * 3 / 4 { upperMatches += 1 }
-                        else { lowerMatches += 1 }
-                    }
+                    if y < bitmap.pixelsHigh * 3 / 4,
+                       min(colour.redComponent, colour.greenComponent, colour.blueComponent) > 0.92 { upperMatches += 1 }
+                    if y >= bitmap.pixelsHigh * 3 / 4, delta < 0.04 { lowerMatches += 1 }
                 }
             }
-            XCTAssertGreaterThan(upperMatches, 0, "the launcher must render the brand accent in \(name)")
+            XCTAssertGreaterThan(upperMatches, 0, "the launcher renders a white glyph in \(name)")
             XCTAssertGreaterThan(lowerMatches, 0, "the aggregate dot must render the same accent in \(name)")
         }
     }

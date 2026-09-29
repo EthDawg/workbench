@@ -29,6 +29,9 @@ struct ToolbarControlReveal: ViewModifier {
 /// No independent animation curve: the host's window height is the progress.
 enum ToolbarRevealVisuals {
     static let coordinateSpace = "workbench.toolbar.viewport"
+    /// The capsule opens first. White glyphs arrive together during its final fifth, and
+    /// disappear before the closing edge can cut through a control. No second timer.
+    static func glyphOpacity(progress: CGFloat) -> CGFloat { min(1, max(0, (progress - 0.8) / 0.2)) }
     /// Reveal a control after its entire label fits, over the last eight points
     /// of breathing room. The same rule hides it before the edge cuts through it.
     static func controlOpacity(frame: CGRect, viewport: CGSize?, growsLeftward: Bool) -> Double {

@@ -142,6 +142,14 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         case .appearance: return "Appearance"
         }
     }
+    public var symbol: String {
+        switch self {
+        case .review: return "rectangle.stack"
+        case .tools: return "pencil.tip.crop.circle"
+        case .prompts: return "text.bubble"
+        case .appearance: return "person.crop.circle"
+        }
+    }
     /// The tool it belongs to.
     public var mode: ToolbarMode {
         switch self {
@@ -180,10 +188,11 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var tier: ToolbarTier
     public var anchor: ToolbarAnchor
     public var mode: ToolbarMode
-    /// What the one button says: the next action for where you are in the
-    /// journey. Active work replaces the start action rather than adding a
-    /// finish button beside it.
+    /// The command's full words, for its hint and accessible name. Active work replaces
+    /// the start command rather than adding a finish button beside it.
     public var actionTitle: String
+    /// A frozen glyph for the exact operation that is latched on press.
+    public var actionSymbol: String
     public var isActionEnabled: Bool
     /// The assigned key and any count, shown on hover over the action. The row
     /// holds no information-only text.
@@ -206,7 +215,7 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var status: ToolbarStatus
 
     public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
-                mode: ToolbarMode = .dictate, actionTitle: String? = nil,
+                mode: ToolbarMode = .dictate, actionTitle: String? = nil, actionSymbol: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
                 choices: [ToolbarToolChoice]? = nil, isBusy: Bool = false,
                 status: ToolbarStatus = .idle, showsAccessory: Bool = true, accessory: ToolbarAccessory? = nil,
@@ -216,6 +225,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.anchor = anchor
         self.mode = mode
         self.actionTitle = actionTitle ?? mode.title
+        self.actionSymbol = actionSymbol ?? ToolbarOperation.start(mode).symbol
         self.isActionEnabled = isActionEnabled
         self.actionHint = actionHint
         self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }

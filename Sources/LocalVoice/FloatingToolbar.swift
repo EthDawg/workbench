@@ -144,7 +144,7 @@ struct FloatingToolbar: View {
         let hint = [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: controls.rowAnchor,
-            mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
+            mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol, isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: ToolbarNextAction.choices(for: live, key: key),
             isBusy: live.isLive(live.mode),

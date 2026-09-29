@@ -25,10 +25,9 @@ public enum ToolbarLayout {
     public static let rowHeight: CGFloat = 40
     public static let controlHeight: CGFloat = 32
     public static let launcherWidth: CGFloat = 48
-    /// A short verb keeps a generous target without reserving other tools' labels.
-    public static let primaryMinimum: CGFloat = 64
-    public static let primaryHorizontalInset: CGFloat = 12
-    public static let accessoryWidth: CGFloat = 88
+    /// Icon actions keep stable, generous targets; their words live in the hint and VoiceOver.
+    public static let primaryMinimum: CGFloat = 36
+    public static let accessoryWidth: CGFloat = 36
     public static let moreWidth: CGFloat = 32
     public static let gap: CGFloat = 4
     /// At the far end of the row.
@@ -40,7 +39,7 @@ public enum ToolbarLayout {
     public static let dockSlot = NSSize(width: 48, height: 40)
     /// A dock keeps the row this far inside the visible display.
     public static let dockInset: CGFloat = 16
-    /// Minimum row widths: 160 points without an accessory, 252 with one. Longer labels grow.
+    /// Row widths: 132 points without an accessory, 172 with one, at standard scale.
     public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + gap + moreWidth + padding
     public static let accessoryStandardWidth: CGFloat = standardWidth + accessoryWidth + gap
     /// The accessory waits in More unless the row with it fits the display less this.
