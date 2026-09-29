@@ -698,6 +698,16 @@ enum SurfaceGallery {
                               detail: "The reading stopped; the text is editable again and Retry makes new audio.",
                               file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
         model.dismissReadingFailure()
+        // Home's tile refused 50,001 copied characters (#173): the draft stays, and Read says why.
+        let announce = model.announceForAccessibility
+        model.announceForAccessibility = { _ in }
+        model.listen(to: String(repeating: "x", count: 50_001))
+        model.announceForAccessibility = announce
+        (rep, drawn) = try renderPage("speak", in: window)
+        shots.append(try save(rep, id: "state-copied-text-refused", title: "Read, after Home's tile refused copied text, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                              detail: "50,001 copied characters are more than Mac reading accepts: the draft is unchanged, nothing started, and the banner says why.",
+                              file: "page-speak-state-copied-text-refused-\(theme).png", to: output))
+        model.dismissError()
         model.importReading(SurfacePass.history[0].text, from: .transcript)
         defer { model.keepCurrentReading() }
         for (name, size) in SurfaceGallery.sizes {
@@ -1113,6 +1123,14 @@ enum SurfaceGallery {
             model.phase = .recording; model.elapsed = 12; model.paused = true
         }
         model.phase = phase; model.elapsed = 0; model.paused = false
+        // Home's Read tile with copied text Mac reading cannot take (#173): nothing starts, and the
+        // reason shows under the quick starts, where it was clicked.
+        let announce = model.announceForAccessibility
+        model.announceForAccessibility = { _ in }
+        defer { model.announceForAccessibility = announce; model.dismissError() }
+        try shot("read-refused", "Read tile, copied text refused", "50,001 copied characters: the reading draft is unchanged, nothing starts, and the reason shows beside the tile.") { [self] in
+            model.listen(to: String(repeating: "x", count: 50_001))
+        }
         return shots
     }
 
