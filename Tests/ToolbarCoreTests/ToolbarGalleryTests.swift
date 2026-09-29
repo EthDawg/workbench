@@ -77,7 +77,6 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(state.actionTitle, "Draw")
         XCTAssertFalse(state.isBusy)
         XCTAssertEqual(state.choices.filter(\.isLive).map(\.mode), [.present])
-        XCTAssertTrue(state.minimumTitles.contains("End presentation"), "the floor covers the label Present mode would show")
     }
 
     func testTheCountLivesInTheLabelAndTheKeyInTheHint() {

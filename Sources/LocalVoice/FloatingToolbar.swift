@@ -112,19 +112,41 @@ struct FloatingToolbar: View {
         }
     }
 
+    /// Name the actual shortcut gesture. A held recording ends on release; a
+    /// different drawing tool cannot claim that Pen's key will stop it.
+    private func actionKey(_ operation: ToolbarOperation) -> String? {
+        guard let mode = operation.keyMode, let assigned = key(mode) else { return nil }
+        switch mode {
+        case .dictate:
+            let starting: Bool
+            if case .start = operation { starting = true } else { starting = false }
+            return ToolbarShortcut.actionHint(key: assigned, holdToStart: starting && model.preferences.capture == .hold,
+                                              releaseToFinish: !starting && model.captureUsesHoldShortcut)
+        case .draw:
+            guard let gesture = stage.penShortcutGesture else { return nil }
+            return ToolbarShortcut.actionHint(key: assigned, holdToStart: gesture == .hold, releaseToFinish: gesture == .release)
+        case .snapAndTalk:
+            // Without a prepared session the key opens its page, while the
+            // toolbar starts a capture. Do not imply those are the same action.
+            guard readback.sessionURL != nil, readback.permissionsReady,
+                  readback.currentSessionProblem == nil || readback.isRecording else { return nil }
+            return assigned
+        default: return assigned
+        }
+    }
+
     /// What the owners say is going on, for the compact rest's indicator (#134).
     var activity: ToolbarActivity { context.activity(snapAndTalkSequence: controls.snapAndTalkSequence) }
 
     var viewState: ToolbarViewState {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
-        let hint = [elapsed(for: action.operation), action.hint(key: action.operation.keyMode.flatMap(key))].compactMap { $0 }
+        let hint = [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: controls.rowAnchor,
             mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: ToolbarNextAction.choices(for: live, key: key),
-            minimumTitles: ToolbarNextAction.titles(across: live),
             isBusy: live.isLive(live.mode),
             status: .resolve(activity), showsAccessory: controls.accessoryFits,
             accessory: accessory(live), accessoryDescription: accessoryDescription(live))
@@ -154,11 +176,6 @@ struct FloatingToolbar: View {
         return time(seconds) + " of 5:00"
     }
 
-    private var detail: String {
-        if let tool = model.toolbarMode.controlTool { return context.detail(tool) }
-        return "Capture a region of the screen into Snap."
-    }
-
     var body: some View {
         let state = viewState
         let operation = ToolbarNextAction.resolve(live).operation
@@ -175,7 +192,6 @@ struct FloatingToolbar: View {
             .onChange(of: state.choices) { _, choices in controls.chooserChoicesChanged?(choices) }
             .onChange(of: state.status, initial: true) { previous, status in controls.statusChanged(from: previous, to: status) }
             .pinnedToDock(state.anchor)
-            .help(detail)
             .tint(Workbench.accent).workbenchTheme()
     }
 

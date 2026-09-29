@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 import ToolbarCore
 import ToolbarKit
@@ -6,6 +7,10 @@ import StageKit
 
 @main struct ToolbarGalleryRenderer {
     @MainActor static func main() throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--motion" {
+            try renderMotion(to: URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true))
+            return
+        }
         guard CommandLine.arguments.count == 2 else {
             print("Usage: swift run ToolbarGalleryRenderer OUTPUT_DIRECTORY")
             exit(2)

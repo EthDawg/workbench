@@ -30,14 +30,20 @@ public extension View {
     /// Hold toolbar content against its dock whatever size the window is. Apply
     /// outside any measurement of the row, so the row still reports its own size.
     func pinnedToDock(_ anchor: ToolbarAnchor) -> some View {
-        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: anchor.contentAlignment)
+        GeometryReader { geometry in
+            self.environment(\.toolbarViewport, geometry.size)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity,
+                       alignment: anchor.contentAlignment)
+        }
+        .coordinateSpace(name: ToolbarRevealVisuals.coordinateSpace)
     }
 }
 
 /// The production look and the gallery are the same view, fed one frozen value.
 ///
 /// At rest the toolbar is the compact mark in every state (#134): a small capsule whose
-/// indicator says what is running. A click on it only reveals and takes the keyboard; a
+/// signals highlight recording, transport and recovery; tool identity waits for reveal.
+/// A click on it only reveals and takes the keyboard; a
 /// drag moves the toolbar. Revealed, the row is `[tool ▾] [next action] [accessory] [⋯]`,
 /// growing inward from the launcher, which sits exactly where the mark was; on a right-hand
 /// dock the order is reversed. The launcher opens the tool chooser, More holds the tool's
@@ -61,6 +67,8 @@ public struct ToolbarRow: View {
     /// button instead of popping up `makeAccessoryMenu`'s menu.
     private let openAccessory: ((NSView) -> Void)?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.toolbarViewport) private var viewport
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
     /// Tab and Shift-Tab between the row's controls (#223).
     @State private var keyCycle = ToolbarKeyCycle()
@@ -88,9 +96,34 @@ public struct ToolbarRow: View {
     }
     private var scale: CGFloat { textScale * systemScale }
 
+    private var revealProgress: CGFloat {
+        guard !reduceMotion, let viewport else { return state.tier == .resting ? 0 : 1 }
+        return ToolbarRevealVisuals.progress(viewportHeight: viewport.height, rowHeight: ToolbarLayout.rowHeight * scale)
+    }
+
+    // Let the capsule make room before controls appear. The same curve reverses
+    // on close, so text disappears before the shrinking edge can cut through it.
+    private var controlOpacity: CGFloat { max(0, min(1, (revealProgress - 0.5) * 2)) }
+    private var symbolSize: CGFloat { 12 + (15 * scale - 12) * revealProgress }
+
     public var body: some View {
         Group {
-            if state.tier == .resting { compact } else { row }
+            if state.tier == .resting { compact.opacity(1 - controlOpacity) }
+            else { row.opacity(controlOpacity) }
+        }
+        .overlay(alignment: state.anchor.contentAlignment) {
+            if state.tier == .resting, revealProgress > 0 {
+                row.opacity(controlOpacity).allowsHitTesting(false).accessibilityHidden(true)
+            } else if state.tier == .revealed, revealProgress < 1 {
+                compact.opacity(1 - controlOpacity).allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
+        .mask { chrome(mask: true) }
+        .background { chrome() }
+        // The whole resting target receives the pointer, including the clear
+        // space above and below its smaller visible capsule.
+        .background {
+            if state.tier == .resting { Rectangle().fill(Color.black.opacity(0.012)) }
         }
         .tint(accent)
         .environment(\.controlActiveState, .active)
@@ -98,9 +131,35 @@ public struct ToolbarRow: View {
         .transaction { $0.animation = nil }
     }
 
+    /// The dock supplies its current layout bounds synchronously. The chrome and
+    /// mask share those bounds without observing, resizing or animating a window.
+    private func chrome(mask: Bool = false) -> some View {
+        GeometryReader { geometry in
+            let size = viewport ?? geometry.size
+            let height = ToolbarRevealVisuals.capsuleHeight(progress: revealProgress, rowHeight: ToolbarLayout.rowHeight * scale, indicator: state.status.indicator)
+            Capsule(style: .circular).fill(mask ? AnyShapeStyle(Color.white) : chromeFill)
+                .overlay {
+                    if !mask { Capsule(style: .circular).strokeBorder(.primary.opacity(0.14), lineWidth: 1) }
+                }
+                .frame(width: size.width, height: height)
+                .overlay(alignment: state.anchor.contentAlignment) {
+                    // Status badges can sit above the capsule. Mask only the
+                    // unfolding controls; keep the full launcher target visible.
+                    if mask { Rectangle().fill(.white).frame(width: ToolbarLayout.launcherWidth, height: size.height) }
+                }
+                .offset(x: state.anchor.growsLeftward ? geometry.size.width - size.width : 0,
+                        y: (geometry.size.height - height) / 2)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var chromeFill: AnyShapeStyle {
+        reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.regularMaterial)
+    }
+
     /// The compact rest: the same 48 × 28 target in every state, whatever it shows.
     private var compact: some View {
-        ToolbarCompactMark(status: state.status, accent: accent)
+        ToolbarCompactMark(status: state.status, accent: accent, drawsChrome: false, symbolSize: symbolSize)
             .overlay {
                 ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.spokenValue,
                                   reveal: revealFromRest, options: menuOpener, drag: drag)
@@ -119,13 +178,6 @@ public struct ToolbarRow: View {
         // Empty chrome is a handle too: a drag that starts beside or between the controls
         // moves the row. The controls sit above it and keep their own clicks.
         .background { ToolbarDragRegion(drag: drag, showsHandCursor: false) }
-        // A capsule with circular ends for both the fill and its edge: a continuous-corner fill
-        // clamps its radius and would show a sliver of material beyond the stroke at each end.
-        .background {
-            if reduceTransparency { Capsule(style: .circular).fill(Color(nsColor: .windowBackgroundColor)) }
-            else { Capsule(style: .circular).fill(.regularMaterial) }
-        }
-        .overlay { Capsule(style: .circular).strokeBorder(.primary.opacity(0.14), lineWidth: 1) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench floating toolbar")
     }
@@ -146,53 +198,54 @@ public struct ToolbarRow: View {
                                    fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
                                    began: menuBegan, ended: menuEnded, escape: escape, keyCycle: keyCycle)
                 .frame(width: ToolbarLayout.accessoryWidth * scale, height: ToolbarLayout.controlHeight * scale)
+                .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
         }
     }
 
     private var primary: some View {
-        ToolbarPrimary(title: state.actionTitle, hint: state.actionHint, isEnabled: state.isActionEnabled,
-                       fontSize: 13 * scale, minimumWidth: ToolbarLayout.primaryMinimum, minimumTitles: state.minimumTitles,
+        ToolbarPrimary(title: state.actionTitle, help: state.actionHelp, isEnabled: state.isActionEnabled,
+                       fontSize: 13 * scale, minimumWidth: ToolbarLayout.primaryMinimum * scale,
                        accent: accent, press: press, drag: drag, keyCycle: keyCycle)
             // SwiftUI sets a hosted control's enabled state from its environment once it is in a
             // window, over the one set below, so a disabled action says so here too (#223).
             .disabled(!state.isActionEnabled)
             .frame(height: ToolbarLayout.controlHeight * scale)
             .fixedSize()
+            .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
     }
 
     private var more: some View {
-        ToolbarMore(size: 15 * scale, open: menuOpener, escape: escape, keyCycle: keyCycle)
+        ToolbarMore(tool: state.mode.title, size: 15 * scale, open: menuOpener, escape: escape, keyCycle: keyCycle)
             .frame(width: ToolbarLayout.moreWidth * scale, height: ToolbarLayout.controlHeight * scale)
+            .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
     }
 
     /// The launcher's target is fixed at 48 points, the compact mark's width, so the two share
-    /// one centre on screen at every text size; its symbol and chevron grow inside it, centred
-    /// together on that centre. The button itself draws nothing: it is the target, the keyboard
+    /// one centre on screen at every text size. Its symbol stays on that centre as the
+    /// capsule opens; a chevron appears beside it. The button itself draws nothing: it is the target, the keyboard
     /// focus and the accessibility element.
     private var launcher: some View {
         ToolbarLauncher(state: state, accent: accent, open: openChooser, options: menuOpener,
-                        focus: focusButton, escape: escape, drag: drag, keyCycle: keyCycle)
+                        focus: { if state.tier == .revealed { focusButton($0) } }, escape: escape, drag: drag, keyCycle: keyCycle)
             .frame(width: ToolbarLayout.launcherWidth, height: ToolbarLayout.rowHeight * scale)
             .overlay {
-                // While something records, the launcher carries the compact mark's capture signal in
-                // place of the tool's symbol and chevron, so opening the row never hides it (#134 T4).
-                // The shared trace keeps its size at every text size, so it fits the 48-point target;
-                // the launcher still opens the chooser, and its words still name the tool.
-                HStack(spacing: 2 * (state.status.indicator == .capture ? 1 : scale)) {
+                Group {
+                    // Recording keeps the same voice trace and badges in both tiers.
                     if state.status.indicator == .capture {
                         ToolbarCaptureSignal(status: state.status, accent: accent)
                     } else {
-                        Image(systemName: state.mode.symbol).font(.system(size: 15 * scale, weight: .medium))
+                        Image(systemName: state.mode.symbol).font(.system(size: symbolSize, weight: .medium))
                             .foregroundStyle(state.isBusy ? AnyShapeStyle(accent) : AnyShapeStyle(Color.primary))
                             .overlay(alignment: .topTrailing) {
-                                // A waiting result keeps its status on the launcher while the row is
-                                // open, the mark's glyph as a badge on the tool's symbol (#211 F1).
                                 if let glyph = ToolbarResultGlyph(state.status.indicator) {
                                     ToolbarBadge(id: "result", symbol: glyph.name, color: glyph.color, size: ToolbarLayout.badge * scale)
                                         .offset(x: 5 * scale, y: -4 * scale)
                                 }
                             }
-                        Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(.secondary)
+                            .overlay {
+                                Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold))
+                                    .foregroundStyle(.secondary).offset(x: 12 * scale)
+                            }
                     }
                 }
                 .allowsHitTesting(false).accessibilityHidden(true)
@@ -206,25 +259,32 @@ public struct ToolbarRow: View {
     }
 }
 
-/// The compact rest's look (#134): a 48 × 8 capsule at idle; with work, a 48 × 12 capsule
-/// carrying one 12-point indicator. The whole 48 × 28 target is faintly filled so it takes
-/// the pointer, while everything outside the panel stays click-through.
+/// The compact rest's look: a quiet 48 × 8 handle, with a taller capsule only for a
+/// recording, transport or recovery signal. The whole 48 × 28 target is faintly filled
+/// so it takes the pointer, while everything outside the panel stays click-through.
 public struct ToolbarCompactMark: View {
     let status: ToolbarStatus
     let accent: Color
+    let drawsChrome: Bool
+    let symbolSize: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    public init(status: ToolbarStatus, accent: Color = .accentColor) { self.status = status; self.accent = accent }
+    public init(status: ToolbarStatus, accent: Color = .accentColor,
+                drawsChrome: Bool = true, symbolSize: CGFloat = 12) {
+        self.status = status; self.accent = accent; self.drawsChrome = drawsChrome; self.symbolSize = symbolSize
+    }
 
     public var body: some View {
         ZStack {
             // A fill the eye cannot see, so the whole target, not only the capsule, is the window's.
             Rectangle().fill(Color.black.opacity(0.012))
-            let height = status.indicator == .idle ? ToolbarLayout.markCapsule.height : ToolbarLayout.statusHeight
-            Capsule().fill(capsuleFill)
-                .overlay(Capsule().strokeBorder(.primary.opacity(0.3), lineWidth: 1))
-                .frame(width: ToolbarLayout.markCapsule.width, height: height)
-                .overlay { indicator }
+            let height = ToolbarLayout.restingCapsuleHeight(for: status.indicator)
+            if drawsChrome {
+                Capsule().fill(capsuleFill)
+                    .overlay(Capsule().strokeBorder(.primary.opacity(0.14), lineWidth: 1))
+                    .frame(width: ToolbarLayout.markCapsule.width, height: height)
+            }
+            indicator
         }
         .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
         .accessibilityHidden(true)
@@ -236,19 +296,18 @@ public struct ToolbarCompactMark: View {
 
     @ViewBuilder private var indicator: some View {
         switch status.indicator {
-        case .idle: EmptyView()
+        case .idle, .live: EmptyView()
         case .capture: ToolbarCaptureSignal(status: status, accent: accent)
         case .playback: symbol("speaker.wave.2.fill", accent)
         case .processing: symbol("ellipsis", Color.secondary)
         case .failure, .pendingDelivery, .unsavedCapture:
             if let glyph = ToolbarResultGlyph(status.indicator) { symbol(glyph.name, glyph.color) }
         case .paused: symbol("pause.fill", Color.secondary)
-        case .live(let work): symbol(work.symbol, accent)
         }
     }
 
     private func symbol(_ name: String, _ style: Color) -> some View {
-        Image(systemName: name).font(.system(size: 9, weight: .semibold)).foregroundStyle(style)
+        Image(systemName: name).font(.system(size: symbolSize, weight: .medium)).foregroundStyle(style)
             .frame(width: ToolbarLayout.statusHeight, height: ToolbarLayout.statusHeight)
     }
 }
@@ -364,11 +423,10 @@ final class RestTargetView: NSView {
 /// window, exactly as it does from the launcher, and a click does the action.
 private struct ToolbarPrimary: NSViewRepresentable {
     let title: String
-    let hint: String?
+    let help: String
     let isEnabled: Bool
     let fontSize: CGFloat
     let minimumWidth: CGFloat
-    let minimumTitles: [String]
     let accent: Color
     let press: () -> (() -> Void)?
     let drag: ToolbarDragActions
@@ -386,10 +444,12 @@ private struct ToolbarPrimary: NSViewRepresentable {
         view.font = .monospacedDigitSystemFont(ofSize: fontSize, weight: .medium)
         view.bezelColor = NSColor(accent)
         view.isEnabled = isEnabled
-        view.toolTip = hint
-        // The hint (a recording's elapsed time, a count, the key) is VoiceOver's help too (#134 T4).
-        view.setAccessibilityHelp(hint)
-        view.minimumWidth = max(minimumWidth, minimumTitles.map { PrimaryButton.width(of: $0, like: view) }.max() ?? 0)
+        view.toolTip = help
+        view.setAccessibilityHelp(help)
+        // Fit this verb, then retain the largest width until the row collapses.
+        // Shorter states cannot pull a target away during the same interaction.
+        let natural = PrimaryButton.width(of: title, like: view)
+        view.minimumWidth = max(view.minimumWidth, minimumWidth, natural)
         view.setAccessibilityLabel(title)
         view.setAccessibilityIdentifier("toolbar.primary")
         view.press = press; view.drag = drag
@@ -400,8 +460,7 @@ private struct ToolbarPrimary: NSViewRepresentable {
         var press: (() -> (() -> Void)?)?
         var drag = ToolbarDragActions()
         var keyCycle: ToolbarKeyCycle?
-        /// The widest label any tool would show sets the floor, so choosing another tool
-        /// never moves More or the accessory beside it.
+        /// Width belongs to this revealed interaction; collapse removes this native view.
         var minimumWidth: CGFloat = 0
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(runAction) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -427,7 +486,9 @@ private struct ToolbarPrimary: NSViewRepresentable {
             let probe = NSButton()
             probe.bezelStyle = button.bezelStyle; probe.controlSize = button.controlSize
             probe.font = button.font; probe.title = title
-            let width = probe.intrinsicContentSize.width
+            let label = (title as NSString).size(withAttributes: [.font: button.font ?? NSFont.systemFont(ofSize: 13)]).width
+            let scale = (button.font?.pointSize ?? 13) / 13
+            let width = max(probe.intrinsicContentSize.width, ceil(label) + 2 * ToolbarLayout.primaryHorizontalInset * scale)
             widths[key] = width
             return width
         }
@@ -513,6 +574,7 @@ final class LauncherButton: NSButton {
 
 /// More: the tool's options, the work running elsewhere, and the toolbar's own items.
 private struct ToolbarMore: NSViewRepresentable {
+    let tool: String
     let size: CGFloat
     let open: (NSView) -> Void
     let escape: () -> Void
@@ -528,9 +590,9 @@ private struct ToolbarMore: NSViewRepresentable {
             .withSymbolConfiguration(.init(pointSize: size, weight: .semibold))
         view.contentTintColor = .labelColor
         view.setAccessibilityLabel("More")
-        view.setAccessibilityHelp("Options for this tool, other work and the toolbar")
+        view.setAccessibilityHelp("Options for " + tool + ", other work and the toolbar")
         view.setAccessibilityIdentifier("toolbar.more")
-        view.toolTip = "More"
+        view.toolTip = "Options for " + tool
         view.escape = escape
         view.keyCycle = keyCycle; keyCycle.register(view, as: .more)
         view.open = { [weak view] in if let view { open(view) } }
