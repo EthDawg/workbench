@@ -527,6 +527,7 @@ final class PersonaEditorSession: ObservableObject, Identifiable {
     @Published private(set) var canRetry = true
     /// Saved, added or cancelled: the editor can close.
     private(set) var isFinished = false
+    private(set) var committedID: UUID?
 
     init(_ subject: Subject) {
         self.subject = subject
@@ -546,15 +547,18 @@ final class PersonaEditorSession: ObservableObject, Identifiable {
 
     /// Save, or Add persona. Returns whether the editor can close. An Add that
     /// finds the persona already saved, as a second press would, is done.
-    @discardableResult func commit(to library: PersonaLibrary) -> Bool {
+    @discardableResult func commit(to library: PersonaLibrary, replacing original: SavedPersona? = nil) -> Bool {
         guard !isFinished else { return true }
         switch subject {
         case .saved(let persona):
             guard library.updateAppearance(persona.id, appearance: appearance, card: style) else { return false }
+            committedID = persona.id
         case .new(var draft):
             draft.card = style; draft.appearance = appearance
-            do { try library.add(draft) }
-            catch PersonaError.alreadyAdded {}
+            do {
+                committedID = try original.map { try library.replacePortrait(draft, replacing: $0).id } ?? library.add(draft).id
+            }
+            catch PersonaError.alreadyAdded { committedID = draft.id }
             catch PersonaError.libraryUnavailable {
                 failure = "Couldn’t add this persona: the saved personas are missing, unreadable or from a newer Workbench."
                     + " Reopen Workbench, then add the portrait again."
@@ -597,7 +601,11 @@ struct PersonaEditorHolder {
 struct PersonaCardEditor: View {
     @ObservedObject var library: PersonaLibrary
     @ObservedObject var session: PersonaEditorSession
+    var replacing: SavedPersona? = nil
+    var confirmationTitle: String? = nil
+    var onSave: ((UUID) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    private var saveTitle: String { confirmationTitle ?? (session.isNew ? "Add persona" : "Save") }
     private var framing: Binding<PersonaFraming> {
         Binding(get: { session.appearance.currentFraming }, set: { session.appearance.framing = $0 })
     }
@@ -633,7 +641,7 @@ struct PersonaCardEditor: View {
                 Text("Shows the picture exactly as imported, including its transparency and any text in it.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Text(session.isNew ? "Nothing is saved until you choose Add persona."
+            Text(session.isNew ? "Nothing is saved until you choose \(saveTitle)."
                                : "A card already shown keeps its look until you choose Update shown card. Scenes keep their existing copy until you use the persona again.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let failure = session.failure {
@@ -642,7 +650,12 @@ struct PersonaCardEditor: View {
             HStack {
                 Button("Cancel") { session.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(session.isNew ? "Add persona" : "Save") { if session.commit(to: library) { dismiss() } }
+                Button(saveTitle) {
+                    if session.commit(to: library, replacing: replacing) {
+                        if let id = session.committedID { onSave?(id) }
+                        dismiss()
+                    }
+                }
                     .keyboardShortcut(.defaultAction)
                     .disabled(library.isReadOnly || !session.canRetry || (try? session.style.validated()) == nil
                               || (try? session.appearance.validated()) == nil)

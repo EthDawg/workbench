@@ -13,8 +13,8 @@ enum HomeJourneyChecks {
         let fresh = HomeJourney()
         try check(fresh.showsGuide && fresh.offersSkip && !fresh.offersGuide, "nothing saved shows the guide and offers Skip for now")
         try check(fresh.sections == [.guide, .quickStart, .recentWork], "nothing saved shows the guide, the quick starts and Recent work")
-        try check(HomeJourney.quickStarts(showsGuide: true, dictationLive: false, readingLive: false) == [.read, .snap],
-                  "the guide's Start dictating replaces the Dictate tile, and Read and Snap share the row")
+        try check(HomeJourney.quickStarts(showsGuide: true, dictationLive: false, readingLive: false) == [.snap, .snapAndTalk],
+                  "the guide's Start dictating replaces the Dictate tile; Snap and Snap & Talk stay reachable")
 
         // The gate: other saved work never ends the guide, and stays listed below it.
         for (name, journey) in [("a loaded Snap & Talk session", HomeJourney(hasSession: true)), ("iPhone photos", HomeJourney(photos: 2)),
@@ -22,15 +22,15 @@ enum HomeJourneyChecks {
             try check(journey.showsGuide && journey.offersSkip && !journey.hasDictated, "\(name) without a dictation still gets the guide")
             try check(journey.sections.prefix(3) == [.guide, .quickStart, .recentWork], "\(name) stays below the guide and Recent work")
         }
-        try check(HomeJourney(hasSession: true, photos: 1).sections == [.guide, .quickStart, .recentWork, .continueSession, .fromIPhone],
-                  "a loaded session, then photos saved from iPhone, come after Recent work")
+        try check(HomeJourney(hasSession: true, photos: 1).sections == [.guide, .quickStart, .recentWork, .fromIPhone],
+                  "a loaded session uses its workflow card instead of creating a duplicate section")
 
         // A dictation ends first use, including one saved before this state existed.
         let dictated = HomeJourney(transcripts: 1)
         try check(!dictated.showsGuide && !dictated.offersSkip && !dictated.offersGuide, "after a dictation Home offers neither the guide nor the way back")
         try check(dictated.sections == [.quickStart, .recentWork], "after a dictation Home shows the quick starts and recent work")
-        try check(HomeJourney.quickStarts(showsGuide: false, dictationLive: false, readingLive: false) == [.dictate, .read, .snap],
-                  "idle, the quick starts are Dictate, Read and Snap, in that order")
+        try check(HomeJourney.quickStarts(showsGuide: false, dictationLive: false, readingLive: false) == [.dictate, .snap, .snapAndTalk],
+                  "the strongest workflows lead in order: Dictate, Snap and Snap & Talk")
         try check(dictated.guideToSave == .completed && HomeJourney(transcripts: 1, guide: .skipped).guideToSave == .completed,
                   "a dictation in History is recorded as completed, even after Skip for now")
         try check(HomeJourney(transcripts: 1, guide: .completed).guideToSave == nil && HomeJourney(hasSession: true, photos: 4).guideToSave == nil,
@@ -66,16 +66,23 @@ enum HomeJourneyChecks {
         try check(HomeJourney(hasCurrentWork: true).sections.first == .currentWork
                   && HomeJourney(transcripts: 1, hasCurrentWork: true).sections == [.currentWork, .quickStart, .recentWork],
                   "current work renders above the guide and the quick starts")
-        try check(HomeJourney.quickStarts(showsGuide: false, dictationLive: true, readingLive: false) == [.read, .snap]
-                  && HomeJourney.quickStarts(showsGuide: false, dictationLive: false, readingLive: true) == [.dictate, .snap]
-                  && HomeJourney.quickStarts(showsGuide: true, dictationLive: true, readingLive: true) == [.snap],
-                  "a tile whose operation is already current work steps aside; Snap stays")
-        let order: [HomeJourney.Section] = [.currentWork, .guide, .firstResult, .quickStart, .recentWork, .continueSession, .fromIPhone]
+        try check(HomeJourney.quickStarts(showsGuide: false, dictationLive: true, readingLive: false) == [.snap, .snapAndTalk]
+                  && HomeJourney.quickStarts(showsGuide: false, dictationLive: false, readingLive: true) == [.dictate, .snap, .snapAndTalk]
+                  && HomeJourney.quickStarts(showsGuide: true, dictationLive: true, readingLive: true) == [.snap, .snapAndTalk],
+                  "an active dictation steps aside while saved-session preparation stays reachable")
+        let order: [HomeJourney.Section] = [.currentWork, .guide, .firstResult, .quickStart, .recentWork, .fromIPhone]
         for journey in [HomeJourney(transcripts: 1, hasCurrentWork: true, hasSession: true, photos: 2),
                         HomeJourney(hasCurrentWork: true, hasSession: true, photos: 2), landed, fresh] {
             let positions = journey.sections.map { order.firstIndex(of: $0)! }
             try check(positions == positions.sorted(), "Home keeps its fixed order: \(journey.sections)")
         }
+
+        let frames = HomeGreetingSequence.frames
+        try check(frames.contains { $0.text == HomeGreetingSequence.welcome && $0.milliseconds >= 600 },
+                  "the greeting types Welcome back and holds it briefly")
+        try check(frames.contains { $0.text.isEmpty } && frames.last?.text == HomeGreetingSequence.settled,
+                  "the greeting erases before settling on one action-oriented line")
+        try check(frames.reduce(0) { $0 + $1.milliseconds } < 3_000, "the one-time greeting finishes within three seconds")
 
         // Persisted with the Dictate preferences: survives relaunch, keeps older files and reads a newer value safely.
         var preferences = VoicePreferences()

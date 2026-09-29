@@ -511,6 +511,28 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
     }
 
+    /// Replace one explicitly chosen profile portrait while keeping its identity and groups.
+    /// The earlier image stays available to saved scenes and already shown copies. A failed
+    /// commit removes only the candidate file; the previous record and artwork stay intact.
+    @discardableResult func replacePortrait(_ draft: PersonaPortraitDraft, replacing original: SavedPersona) throws -> SavedPersona {
+        guard writable() else { throw PersonaError.invalidSettings }
+        guard let index = items.firstIndex(where: { $0.id == original.id }), items[index] == original
+        else { throw PersonaError.changedOnDisk }
+        let file = "persona-" + UUID().uuidString + ".png"
+        var replacement = original
+        replacement.image = file; replacement.card = try draft.card.validated()
+        replacement.appearance = try draft.appearance.validated()
+        _ = try replacement.validated()
+        let destination = root.appendingPathComponent(file)
+        try draft.png.write(to: destination, options: .atomic)
+        do {
+            var next = archive; next.items[index] = replacement
+            try commit(next)
+        } catch { try? FileManager.default.removeItem(at: destination); throw error }
+        notice = nil
+        return replacement
+    }
+
     /// Reads the library file again after something else changed it, so an Add
     /// applies to what is saved now. Nothing is written. A missing, unreadable,
     /// invalid or newer file stays untouched, the library keeps what it had, and

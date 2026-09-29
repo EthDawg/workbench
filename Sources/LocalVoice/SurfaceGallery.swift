@@ -272,6 +272,7 @@ enum SurfaceGallery {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
             try state.apply()
@@ -307,7 +308,10 @@ enum SurfaceGallery {
         let dictateStates = try renderDictateStates(to: output)
         if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += dictateStates.shots }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
-        if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)] }
+        if let home = pages.firstIndex(where: { $0.route == "home" }) {
+            pages[home].shots += try renderHomeStates(to: output) + renderHomeChrome(to: output)
+                + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)]
+        }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
         let checks = try dictateStates.checks + review.checks + checkToolbarVisibility() + header.checks
@@ -1080,6 +1084,57 @@ enum SurfaceGallery {
     }
 
     // MARK: Home states
+
+    /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
+    /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
+        var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
+        guard let homeIndex = pages.firstIndex(where: { $0.route == "home" }) else { throw VoiceError.message("Home is missing from the page record.") }
+        for (name, size) in SurfaceGallery.sizes {
+            let window = homeWindow(size: size)
+            defer { window.contentViewController = nil; window.close() }
+            let (rep, drawn) = try renderPage("home", in: window)
+            pages[homeIndex].shots.append(try save(rep, id: name, title: "Expanded sidebar, " + name,
+                detail: "Actual Home at \(Int(drawn.width)) × \(Int(drawn.height)) pt, with synthetic saved work.",
+                file: "page-home-\(name)-\(theme).png", to: output))
+        }
+        pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
+            + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
+        let review = try checkHomeReview(to: output)
+        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: pages, entries: entries(), menus: [], checks: review.checks)
+    }
+
+    /// Both sidebar widths and the local-profile sheet, without ordering a window on screen,
+    /// opening a camera or touching a real preference domain.
+    func renderHomeChrome(to output: URL) throws -> [SurfaceGallery.Shot] {
+        var shots: [SurfaceGallery.Shot] = []
+        let kept = model.page
+        defer { model.page = kept }
+        for (name, size) in SurfaceGallery.sizes {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.page = "home"
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                readback: sessionReadback, snap: snap, sidebarCollapsed: true))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame)
+            shots.append(try save(try snapshot(frame), id: "collapsed-" + name, title: "Collapsed sidebar, " + name,
+                detail: "A loaded Snap & Talk session continues from its workflow card. Every icon keeps a tooltip and accessible name.",
+                file: "page-home-collapsed-\(name)-\(theme).png", to: output))
+        }
+        let host = NSHostingView(rootView: stage.localProfileView)
+        let window = offscreenWindow(size: NSSize(width: 470, height: 370), styleMask: [.borderless])
+        window.contentView = host
+        defer { window.contentView = nil; window.close() }
+        host.setFrameSize(host.fittingSize); window.setContentSize(host.fittingSize); settle(host)
+        shots.append(try save(try snapshot(host), id: "profile", title: "Local profile", detail: "Photo choice is explicit; opening this sheet requests no access.",
+                             file: "home-profile-\(theme).png", to: output))
+        return shots
+    }
 
     /// The first-dictation journey (#15): the guide beside earlier Snaps, the
     /// ordinary Home after Skip for now with its way back, and the guide's result
@@ -2598,12 +2653,15 @@ enum SurfaceGallery {
         }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
         // Home (#134 H1): three quick starts that act, Recent work's reviews, a loaded session and saved photos.
-        list += [action(home, "Quick start · Dictate", "Starts dictating"), action(home, "Quick start · Read", "Reads the clipboard aloud"),
-                 action(home, "Quick start · Snap", "Captures a region, saved in History"),
+        list += [action(home, "Dictate · Start dictating", "Starts dictating"), action(home, "Read the clipboard aloud", "Reads the clipboard aloud"),
+                 action(home, "Snap · Capture a region", "Captures a region, saved in History"),
+                 page(home, "Snap & Talk · Open or continue", "readback"),
+                 action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+                 action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
                  E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
                  action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
-                 page(home, "Open History", "history"), page(home, "Continue Snap & Talk · Open session", "readback"),
+                 page(home, "Open History", "history"),
                  page(home, "Saved from iPhone, when photos are in Library", "photos"),
                  page(home, "Current work · Open Dictate, for a kept capture without a retry", "dictate"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
