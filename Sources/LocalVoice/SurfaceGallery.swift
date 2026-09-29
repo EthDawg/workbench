@@ -1808,6 +1808,7 @@ enum SurfaceGallery {
         try checkRecordingInTheHost(host: host, controls: controls, bottom: bottom, expect: expect, settle: settle, at: at, compact: compact)
         checkResultsInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         checkAccessoriesInTheHost(host: host, controls: controls, expect: expect, settle: settle)
+        checkKeyboardTraversalInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
         for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
@@ -2069,6 +2070,52 @@ enum SurfaceGallery {
     /// Persona only with a live copy, which the gallery never shows over the Mac. Tools holds Draw's
     /// drawing choices; Persona's More opens Persona's page instead; and with a session open,
     /// Snap & Talk's Review opens that session's review.
+    /// Keyboard entry's traversal in the production host (#223). The gallery never takes the
+    /// person's keyboard: the toolbar's keyboard hold stands in for Focus floating toolbar, and the
+    /// host's own focus closure gives the launcher the window's focus, as that command does; the
+    /// window is never made key. Tab and Shift-Tab go through the window's event dispatch to
+    /// whatever is first responder, and the focus is read after every key: Draw's row with Tools,
+    /// Read's with no accessory, and Draw's at a right-hand dock, drawn mirrored.
+    func checkKeyboardTraversalInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
+                                         expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
+        func focused() -> String {
+            guard let responder = host.window?.firstResponder else { return "nothing" }
+            guard let view = responder as? NSView, view.accessibilityIdentifier().hasPrefix("toolbar.") else { return "\(type(of: responder))" }
+            return String(view.accessibilityIdentifier().dropFirst("toolbar.".count))
+        }
+        func tab(backward: Bool) {
+            guard let window = host.window else { return }
+            let characters = backward ? "\u{19}" : "\t"
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: backward ? .shift : [], timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                    isARepeat: false, keyCode: 48) else { continue }
+                window.sendEvent(event)
+            }
+        }
+        defer { controls.endKeyboardInteraction(); controls.choosePosition?(.bottom); model.toolbarMode = .dictate; settle(.resting) }
+        let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "more", "launcher"]),
+                                                              (.read, .bottom, ["primary", "more", "launcher"]),
+                                                              (.draw, .right, ["primary", "accessory", "more", "launcher"])]
+        for (mode, anchor, cycle) in rows {
+            model.toolbarMode = mode
+            controls.choosePosition?(anchor)
+            controls.focusToolbar(); settle(.revealed)
+            controls.focusFirstControl?()
+            let start = focused()
+            var forward: [String] = [], backward: [String] = []
+            for _ in cycle { tab(backward: false); forward.append(focused()) }
+            controls.focusFirstControl?()
+            for _ in cycle { tab(backward: true); backward.append(focused()) }
+            let reverse = cycle.dropLast().reversed() + ["launcher"]
+            expect("Tab and Shift-Tab from the launcher: \(mode.title) at \(anchor.title.lowercased())", [
+                start == "launcher" ? nil : "keyboard entry left \(start) focused, not the launcher",
+                forward == cycle ? nil : "Tab went to \(forward), not \(cycle)",
+                backward == reverse ? nil : "Shift-Tab went to \(backward), not \(reverse)"])
+            controls.endKeyboardInteraction(); settle(.resting)
+        }
+    }
+
     func checkAccessoriesInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
                                    expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }

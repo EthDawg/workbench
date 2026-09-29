@@ -62,6 +62,8 @@ public struct ToolbarRow: View {
     private let openAccessory: ((NSView) -> Void)?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
+    /// Tab and Shift-Tab between the row's controls (#223).
+    @State private var keyCycle = ToolbarKeyCycle()
 
     /// `press` latches the next action when the button goes down and returns what to do if
     /// the press ends as a click; nil when there is nothing to do. `action` is the plain form.
@@ -142,7 +144,7 @@ public struct ToolbarRow: View {
         if let accessory = state.accessory, state.shownAccessory != nil {
             ToolbarAccessoryButton(title: accessory.title, opensList: accessory.opensList, description: state.accessoryDescription,
                                    fontSize: 12 * scale, makeMenu: makeAccessoryMenu, openPanel: openAccessory,
-                                   began: menuBegan, ended: menuEnded, escape: escape)
+                                   began: menuBegan, ended: menuEnded, escape: escape, keyCycle: keyCycle)
                 .frame(width: ToolbarLayout.accessoryWidth * scale, height: ToolbarLayout.controlHeight * scale)
         }
     }
@@ -150,13 +152,16 @@ public struct ToolbarRow: View {
     private var primary: some View {
         ToolbarPrimary(title: state.actionTitle, hint: state.actionHint, isEnabled: state.isActionEnabled,
                        fontSize: 13 * scale, minimumWidth: ToolbarLayout.primaryMinimum, minimumTitles: state.minimumTitles,
-                       accent: accent, press: press, drag: drag)
+                       accent: accent, press: press, drag: drag, keyCycle: keyCycle)
+            // SwiftUI sets a hosted control's enabled state from its environment once it is in a
+            // window, over the one set below, so a disabled action says so here too (#223).
+            .disabled(!state.isActionEnabled)
             .frame(height: ToolbarLayout.controlHeight * scale)
             .fixedSize()
     }
 
     private var more: some View {
-        ToolbarMore(size: 15 * scale, open: menuOpener, escape: escape)
+        ToolbarMore(size: 15 * scale, open: menuOpener, escape: escape, keyCycle: keyCycle)
             .frame(width: ToolbarLayout.moreWidth * scale, height: ToolbarLayout.controlHeight * scale)
     }
 
@@ -166,7 +171,7 @@ public struct ToolbarRow: View {
     /// focus and the accessibility element.
     private var launcher: some View {
         ToolbarLauncher(state: state, accent: accent, open: openChooser, options: menuOpener,
-                        focus: focusButton, escape: escape, drag: drag)
+                        focus: focusButton, escape: escape, drag: drag, keyCycle: keyCycle)
             .frame(width: ToolbarLayout.launcherWidth, height: ToolbarLayout.rowHeight * scale)
             .overlay {
                 // While something records, the launcher carries the compact mark's capture signal in
@@ -367,6 +372,7 @@ private struct ToolbarPrimary: NSViewRepresentable {
     let accent: Color
     let press: () -> (() -> Void)?
     let drag: ToolbarDragActions
+    let keyCycle: ToolbarKeyCycle
     func makeNSView(context: Context) -> PrimaryButton {
         let view = PrimaryButton()
         view.bezelStyle = .rounded
@@ -387,11 +393,13 @@ private struct ToolbarPrimary: NSViewRepresentable {
         view.setAccessibilityLabel(title)
         view.setAccessibilityIdentifier("toolbar.primary")
         view.press = press; view.drag = drag
+        view.keyCycle = keyCycle; keyCycle.register(view, as: .primary)
         view.invalidateIntrinsicContentSize()
     }
     final class PrimaryButton: NSButton {
         var press: (() -> (() -> Void)?)?
         var drag = ToolbarDragActions()
+        var keyCycle: ToolbarKeyCycle?
         /// The widest label any tool would show sets the floor, so choosing another tool
         /// never moves More or the accessory beside it.
         var minimumWidth: CGFloat = 0
@@ -401,6 +409,10 @@ private struct ToolbarPrimary: NSViewRepresentable {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         /// Tab from the launcher reaches the action.
         override var acceptsFirstResponder: Bool { true }
+        override func keyDown(with event: NSEvent) {
+            if keyCycle?.handle(event, from: self) == true { return }
+            super.keyDown(with: event)
+        }
         override var intrinsicContentSize: NSSize {
             var size = super.intrinsicContentSize
             size.width = max(size.width, minimumWidth)
@@ -424,8 +436,10 @@ private struct ToolbarPrimary: NSViewRepresentable {
         /// nothing, so a double-click on Stop never also starts, and one that began on the
         /// compact rest never reaches work.
         override func mouseDown(with event: NSEvent) {
-            guard isEnabled, event.clickCount < 2 else { return }
-            let commit = press?()
+            guard event.clickCount < 2 else { return }
+            // A disabled action still moves the toolbar when dragged, as it did while SwiftUI kept
+            // it enabled in the window; a click on it does nothing.
+            let commit = isEnabled ? press?() : nil
             trackToolbarDrag(view: self, event: event, actions: drag, click: { commit?() })
         }
         override func performClick(_ sender: Any?) { if isEnabled { press?()?() } }
@@ -442,6 +456,7 @@ private struct ToolbarLauncher: NSViewRepresentable {
     let focus: (NSButton) -> Void
     let escape: () -> Void
     let drag: ToolbarDragActions
+    let keyCycle: ToolbarKeyCycle
     func makeNSView(context: Context) -> LauncherButton {
         let view = LauncherButton()
         view.isBordered = false
@@ -460,6 +475,7 @@ private struct ToolbarLauncher: NSViewRepresentable {
         view.toolTip = (status ? state.launcherDescription + ". " + state.status.description : state.launcherDescription)
             + ". Click to choose a tool; drag to move."
         view.escape = escape; view.drag = drag
+        view.keyCycle = keyCycle; keyCycle.register(view, as: .launcher)
         view.open = { [weak view] in if let view { open(view) } }
         view.options = { [weak view] in if let view { options(view) } }
         focus(view)
@@ -471,6 +487,7 @@ final class LauncherButton: NSButton {
     var options: (() -> Void)?
     var escape: (() -> Void)?
     var drag = ToolbarDragActions()
+    var keyCycle: ToolbarKeyCycle?
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         target = self; action = #selector(openChooser)
@@ -487,6 +504,7 @@ final class LauncherButton: NSButton {
     override func rightMouseDown(with event: NSEvent) { options?() }
     override func performClick(_ sender: Any?) { open?() }
     override func keyDown(with event: NSEvent) {
+        if keyCycle?.handle(event, from: self) == true { return }
         if event.keyCode == 53 { escape?() }
         else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
         else { super.keyDown(with: event) }
@@ -498,6 +516,7 @@ private struct ToolbarMore: NSViewRepresentable {
     let size: CGFloat
     let open: (NSView) -> Void
     let escape: () -> Void
+    let keyCycle: ToolbarKeyCycle
     func makeNSView(context: Context) -> MoreButton {
         let view = MoreButton()
         view.isBordered = false
@@ -513,6 +532,7 @@ private struct ToolbarMore: NSViewRepresentable {
         view.setAccessibilityIdentifier("toolbar.more")
         view.toolTip = "More"
         view.escape = escape
+        view.keyCycle = keyCycle; keyCycle.register(view, as: .more)
         view.open = { [weak view] in if let view { open(view) } }
     }
 }
@@ -520,6 +540,7 @@ private struct ToolbarMore: NSViewRepresentable {
 final class MoreButton: NSButton {
     var open: (() -> Void)?
     var escape: (() -> Void)?
+    var keyCycle: ToolbarKeyCycle?
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         target = self; action = #selector(openMenu)
@@ -531,6 +552,7 @@ final class MoreButton: NSButton {
     override func rightMouseDown(with event: NSEvent) { open?() }
     override func performClick(_ sender: Any?) { open?() }
     override func keyDown(with event: NSEvent) {
+        if keyCycle?.handle(event, from: self) == true { return }
         if event.keyCode == 53 { escape?() }
         else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
         else { super.keyDown(with: event) }
@@ -553,12 +575,14 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
     let began: (NSMenu) -> Bool
     let ended: () -> Void
     let escape: () -> Void
+    let keyCycle: ToolbarKeyCycle
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
     func updateNSView(_ view: AccessoryButton, context: Context) {
         view.title = opensList ? title + " ⌄" : title; view.isBordered = false; view.font = .systemFont(ofSize: fontSize)
         view.setAccessibilityLabel(description ?? title); view.setAccessibilityIdentifier("toolbar.accessory")
         view.toolTip = description
         view.escape = escape
+        view.keyCycle = keyCycle; keyCycle.register(view, as: .accessory)
         view.open = { [weak view] in
             guard let view else { return }
             if let openPanel { openPanel(view); return }
@@ -570,16 +594,52 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
     final class AccessoryButton: NSButton {
         var open: (() -> Void)?
         var escape: (() -> Void)?
+        var keyCycle: ToolbarKeyCycle?
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(openMenu) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override var acceptsFirstResponder: Bool { true }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         @objc private func openMenu() { open?() }
         override func keyDown(with event: NSEvent) {
+            if keyCycle?.handle(event, from: self) == true { return }
             if event.keyCode == 53 { escape?() }
             else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
             else { super.keyDown(with: event) }
         }
+    }
+}
+
+/// The revealed row's keyboard cycle (#223). Tab moves the focus from the launcher to the next
+/// action, the accessory and More, and round to the launcher; Shift-Tab goes the other way. The
+/// order is the same at every dock, whichever way the row is drawn, and a control that is absent,
+/// hidden or disabled is passed over. The row moves the focus itself: AppKit's key-view loop
+/// leaves buttons out while Full Keyboard Access is off (`canBecomeKeyView` is false for each),
+/// so Tab there never left the launcher.
+final class ToolbarKeyCycle {
+    enum Slot: CaseIterable { case launcher, primary, accessory, more }
+    private final class Entry {
+        weak var button: NSButton?
+        init(_ button: NSButton) { self.button = button }
+    }
+    private var entries: [Slot: Entry] = [:]
+    init() {}
+
+    @MainActor func register(_ button: NSButton, as slot: Slot) {
+        if entries[slot]?.button !== button { entries[slot] = Entry(button) }
+    }
+
+    /// Takes Tab or Shift-Tab, alone or with Control, and moves the focus from `button` to the
+    /// next control in the cycle that can take it. Any other key is left to the button.
+    @MainActor func handle(_ event: NSEvent, from button: NSButton) -> Bool {
+        let held = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        guard event.keyCode == 48, held.isSubset(of: [.shift, .control]) else { return false }
+        guard let window = button.window else { return true }
+        let cycle = Slot.allCases.compactMap { entries[$0]?.button }.filter { control in
+            control === button || (control.window === window && control.isEnabled && !control.isHiddenOrHasHiddenAncestor)
+        }
+        guard let index = cycle.firstIndex(where: { $0 === button }), cycle.count > 1 else { return true }
+        window.makeFirstResponder(cycle[(index + (held.contains(.shift) ? cycle.count - 1 : 1)) % cycle.count])
+        return true
     }
 }
 

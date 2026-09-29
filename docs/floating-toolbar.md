@@ -226,7 +226,13 @@ Position… close one another, and hover never opens any of them. Each holds the
 row open while it is up, as a native menu does, and a crossing between the row
 and it is one interaction.
 
-**Focus.** The chooser, the Prompts picker and Position… take the keyboard
+**Focus.** Keyboard entry gives the launcher the keyboard. Tab then moves to the
+next action, the accessory, More and back to the launcher, and Shift-Tab goes the
+other way, in that order at every dock, the mirrored right-hand row included; a
+control that is absent, waiting in More or disabled is passed over. The row moves
+the focus itself (`ToolbarKeyCycle`), so the cycle is the same whether Full
+Keyboard Access is on or off: AppKit's own key-view loop leaves buttons out while
+it is off (#223). The chooser, the Prompts picker and Position… take the keyboard
 without making Workbench the active app, and each keeps the field that was in
 front before it took the keyboard. A choice returns the keyboard to the launcher;
 the first Escape closes the picker and the second leaves keyboard interaction. A
