@@ -147,7 +147,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         let enabled: Bool
         switch operation {
         case .wait: enabled = false
-        case .start: enabled = live.mayStart
+        case .start, .captureNext: enabled = live.mayStart
         default: enabled = true
         }
         var detail: String?

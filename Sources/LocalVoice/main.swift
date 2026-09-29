@@ -198,6 +198,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 guard let self else { return }
                 if self.stage.isPresenting { self.stage.endDeviceScene() }
                 else { self.model.toolbarMode = .present; self.stage.presentSelectedScene() }
+            }, capture: { [weak self] tool, kind in
+                guard let self, let mode = SnapCapture.Mode(rawValue: kind.rawValue) else { return }
+                if tool == .snap { self.toolbarSnapCapture(mode) }
+                else if tool == .snapAndTalk { self.toolbarSnap(mode) }
             })
         capturePanel.independentScreenCapture = { [weak snap] in snap?.isCapturing == true }
         // The toolbar's mode follows every door, not only the closures above.
@@ -539,8 +543,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.toolbarMode = .dictate
         model.toggleRecording(target: target)
     }
-    /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
-    /// used mode, so the toolbar captures a region.
+    /// Snap mode's start: one standalone capture into Snap. Source choices are per capture;
+    /// the existing shortcut and generic starts retain their region default.
     func toolbarSnapCapture(_ mode: SnapCapture.Mode = .region) {
         // From the panel, a cancelled capture returns to the app it was opened
         // over. Read before closing: closing the panel expires its field.
@@ -549,7 +553,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         closeControls()
         Task { await snap.capture(mode, origin: origin) }
     }
-    func toolbarSnap() {
+    func toolbarSnap(_ mode: SnapCapture.Mode = .screen) {
         if readback.isRecording { readback.stopNarration(); return }
         model.toolbarMode = .snapAndTalk
         readback.refreshPermissionState()
@@ -557,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             navigate("readback"); return
         }
         closeControls(); window.orderOut(nil)
-        Task { await readback.toggleCapture() }
+        Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }
     func updateRecordingUI() {
         let receipt = model.clipboardReceipt.receipt

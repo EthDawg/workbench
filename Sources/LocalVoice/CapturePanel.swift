@@ -221,6 +221,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
          dictate: @escaping () -> Void, snap: @escaping () -> Void,
          snapCapture: @escaping () -> Void = {},
          draw: @escaping () -> Void, present: @escaping () -> Void,
+         capture: @escaping (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in },
          controls suppliedControls: CaptureHUDControls? = nil) {
         let controls = suppliedControls ?? CaptureHUDControls()
         self.controls = controls
@@ -274,7 +275,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
-            stage: stage, controls: controls, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present))
+            stage: stage, controls: controls, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture,
+            draw: draw, present: present, capture: capture))
         hosting.sizingOptions = []
         hosting.autoresizingMask = [.width, .height]
         let tracking = ToolbarTrackingView(content: hosting)

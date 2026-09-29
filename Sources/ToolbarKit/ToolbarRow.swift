@@ -52,6 +52,7 @@ public extension View {
 public struct ToolbarRow: View {
     public let state: ToolbarViewState
     private let press: () -> (() -> Void)?
+    private let pressCapture: (ToolbarCaptureKind) -> (() -> Void)?
     private let openChooser: (NSView) -> Void
     private let makeMenu: () -> NSMenu
     private let menuBegan: (NSMenu) -> Bool
@@ -80,6 +81,7 @@ public struct ToolbarRow: View {
                 openAccessory: ((NSView) -> Void)? = nil,
                 action: @escaping () -> Void = {},
                 press: (() -> (() -> Void)?)? = nil,
+                pressCapture: @escaping (ToolbarCaptureKind) -> (() -> Void)? = { _ in nil },
                 openChooser: @escaping (NSView) -> Void = { _ in },
                 makeMenu: @escaping () -> NSMenu = { NSMenu() },
                 menuBegan: @escaping (NSMenu) -> Bool = { _ in true }, menuEnded: @escaping () -> Void = {},
@@ -88,6 +90,7 @@ public struct ToolbarRow: View {
                 drag: ToolbarDragActions = ToolbarDragActions()) {
         self.state = state; self.textScale = textScale; self.accent = accent
         self.press = press ?? { action }
+        self.pressCapture = pressCapture
         self.openChooser = openChooser; self.makeMenu = makeMenu
         self.menuBegan = menuBegan; self.menuEnded = menuEnded; self.focusButton = focusButton
         self.escape = escape; self.revealFromRest = revealFromRest; self.drag = drag
@@ -172,8 +175,8 @@ public struct ToolbarRow: View {
 
     private var row: some View {
         HStack(spacing: ToolbarLayout.gap * scale) {
-            if state.anchor.growsLeftward { more; accessory; primary; launcher }
-            else { launcher; primary; accessory; more }
+            if state.anchor.growsLeftward { more; accessory; captureOrPrimary; launcher }
+            else { launcher; captureOrPrimary; accessory; more }
         }
         .padding(state.anchor.growsLeftward ? .leading : .trailing, ToolbarLayout.padding * scale)
         .frame(minHeight: ToolbarLayout.rowHeight * scale).fixedSize()
@@ -213,6 +216,24 @@ public struct ToolbarRow: View {
             .disabled(!state.isActionEnabled)
             .frame(width: ToolbarLayout.primaryMinimum * scale, height: ToolbarLayout.controlHeight * scale)
             .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
+    }
+
+    @ViewBuilder private var captureOrPrimary: some View {
+        if state.captureChoices.isEmpty {
+            primary
+        } else {
+            // Keep Region, Window, Screen in reading order at either dock. Each target uses
+            // the primary's native focus, hover hint, drag threshold and latched press.
+            ForEach(state.captureChoices, id: \.self) { kind in
+                ToolbarPrimary(title: kind.title, symbol: kind.symbol, help: state.captureHelp(kind),
+                               isEnabled: state.isActionEnabled, fontSize: 16 * scale,
+                               press: { pressCapture(kind) }, drag: drag, keyCycle: keyCycle, hints: hints,
+                               identifier: "toolbar.capture." + kind.rawValue, slot: .capture(kind))
+                    .disabled(!state.isActionEnabled)
+                    .frame(width: ToolbarLayout.primaryMinimum * scale, height: ToolbarLayout.controlHeight * scale)
+                    .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
+            }
+        }
     }
 
     private var more: some View {
@@ -432,6 +453,8 @@ private struct ToolbarPrimary: NSViewRepresentable {
     let drag: ToolbarDragActions
     let keyCycle: ToolbarKeyCycle
     let hints: ToolbarHintController
+    var identifier = "toolbar.primary"
+    var slot: ToolbarKeyCycle.Slot = .primary
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: PrimaryButton, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 36, height: proposal.height ?? 32)
     }
@@ -445,9 +468,9 @@ private struct ToolbarPrimary: NSViewRepresentable {
         view.hints = hints; view.hint = help
         view.setAccessibilityHelp(help)
         view.setAccessibilityLabel(title)
-        view.setAccessibilityIdentifier("toolbar.primary")
+        view.setAccessibilityIdentifier(identifier)
         view.press = press; view.drag = drag
-        view.keyCycle = keyCycle; keyCycle.register(view, as: .primary)
+        view.keyCycle = keyCycle; keyCycle.register(view, as: slot)
         view.invalidateIntrinsicContentSize()
     }
     final class PrimaryButton: ToolbarIconButton {
@@ -686,7 +709,10 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
 /// leaves buttons out while Full Keyboard Access is off (`canBecomeKeyView` is false for each),
 /// so Tab there never left the launcher.
 final class ToolbarKeyCycle {
-    enum Slot: CaseIterable { case launcher, primary, accessory, more }
+    enum Slot: Hashable, CaseIterable {
+        case launcher, primary, capture(ToolbarCaptureKind), accessory, more
+        static var allCases: [Self] { [.launcher, .primary] + ToolbarCaptureKind.allCases.map(Self.capture) + [.accessory, .more] }
+    }
     private final class Entry {
         weak var button: NSButton?
         init(_ button: NSButton) { self.button = button }

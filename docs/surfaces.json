@@ -2655,6 +2655,34 @@
     "note": "Existing contextual \"Position\" label inside timer; shared wording, not a separate capability."
   },
   {
+    "id": "ToolbarCore.ToolbarCaptureKind.ToolbarCaptureKind.title.region",
+    "surface": "floating toolbar capture sources",
+    "label": "Region",
+    "case": "region",
+    "kind": "option",
+    "belongsTo": "snap",
+    "note": "Direct Region capture in the revealed Snap and prepared Snap & Talk row. Reuses Snap's selector; narration starts only after selection. Requested hover quality refinement."
+  },
+  {
+    "id": "ToolbarCore.ToolbarCaptureKind.ToolbarCaptureKind.title.screen",
+    "surface": "floating toolbar capture sources",
+    "label": "Screen",
+    "case": "screen",
+    "kind": "option",
+    "belongsTo": "snap",
+    "note": "Direct capture of the pointer's screen in the revealed Snap and prepared Snap & Talk row. The existing screen capture owner and shortcut default are retained."
+  },
+  {
+    "id": "ToolbarCore.ToolbarCaptureKind.ToolbarCaptureKind.title.window",
+    "surface": "floating toolbar capture sources",
+    "label": "Window",
+    "case": "window",
+    "kind": "option",
+    "belongsTo": "snap",
+    "aliasOf": "snap",
+    "note": "Direct Window capture in the revealed Snap and prepared Snap & Talk row. Same capture-source wording as Snap's page; distinct from the application Window menu."
+  },
+  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelDictationRequest",
     "surface": "floating toolbar next action",
     "label": "Cancel request",

@@ -324,6 +324,11 @@ enum SurfaceGallery {
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
+            let (shots, host) = try renderToolbarHost(to: output)
+            return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: shots, host: host, pickers: [], pickerHost: [],
+                pages: [], entries: [], menus: [])
+        }
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
             try state.apply()
@@ -1585,10 +1590,15 @@ enum SurfaceGallery {
     func renderToolbarHost(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [SurfaceGallery.HostCheck]) {
         // The host places its window on a screen; a Mac with none renders nothing rather than a false flag.
         guard NSScreen.main != nil else { return ([], []) }
+        // A prepared session exercises the complete Region/Window/Screen + Review row,
+        // whose measured width must reach the production window as Snap's does.
+        let readback = sessionReadback
+        var captureDispatches: [String] = []
         let defaults = try SurfaceGallery.isolatedDefaults("Toolbar", home: home)
         let controls = CaptureHUDControls(defaults: defaults)
         let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
-                                          dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+                                          dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {},
+                                          capture: { tool, kind in captureDispatches.append(tool.rawValue + ":" + kind.rawValue) }, controls: controls)
         guard let panel = host.window, let content = panel.contentView else { throw VoiceError.message("The toolbar host has no window.") }
         panel.alphaValue = 0; panel.ignoresMouseEvents = true
         panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
@@ -1620,6 +1630,17 @@ enum SurfaceGallery {
                 settle(twin, seconds: 0.2)
                 let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
                 var problems: [String] = []
+                if tier == .revealed, mode == .snap || mode == .snapAndTalk {
+                    func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+                    let before = captureDispatches.count
+                    for kind in ToolbarCaptureKind.allCases {
+                        let button = buttons(content).first { $0.accessibilityIdentifier() == "toolbar.capture." + kind.rawValue }
+                        if let button { button.performClick(nil) }
+                        else { problems.append("missing direct capture choice: " + kind.title) }
+                    }
+                    let expected = ToolbarCaptureKind.allCases.map { mode.rawValue + ":" + $0.rawValue }
+                    if Array(captureDispatches.dropFirst(before)) != expected { problems.append("capture sources did not reach their named owner and source") }
+                }
                 if controls.toolbar.state.tier != tier {
                     problems.append("the toolbar did not settle \(tier == .resting ? "at rest" : "revealed") (in a local run, a pointer inside the invisible panel can hold it)")
                 }

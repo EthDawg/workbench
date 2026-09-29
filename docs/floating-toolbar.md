@@ -8,6 +8,18 @@ permission to preserve a bug.
 
 ## Role and content
 
+**Capture where it matters.** When Snap is ready, the revealed row offers Region,
+Window and Screen directly in place of its generic action. A prepared Snap & Talk
+session offers the same three sources beside Review. They use the capsule's native
+white icons, stable targets and hover hints; the hint explains whether selection
+opens the Snap editor or begins narration. Only Region in Snap and Screen in Snap
+& Talk claim the existing shortcut. Sources stay in Region, Window, Screen reading
+order at either dock, and Tab reaches each before Review and More. An unprepared
+session keeps its setup door. Active input replaces sources with its existing Stop,
+Pause or Cancel. Admission is checked on both press and release, and a changed
+session or operation invalidates a held capture click. Selection never changes a
+shortcut default. Escape saves nothing and starts no microphone.
+
 The floating toolbar is the shared live control surface for Snap & Talk, Draw,
 Present and Persona Overlay, and it carries dictation, narration and reading
 too (#134 T4). Desktop pages own preparation and saved libraries. The compact

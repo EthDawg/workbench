@@ -121,10 +121,10 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
 }
 
 /// The one contextual accessory beside the next action (#134 part B): what the chosen tool offers
-/// most often, when it applies. Dictate, Read and Snap have none in this increment; their options
-/// stay in the menu-bar panel and on their pages.
+/// most often, when it applies. Dictate, Read and Snap have no accessory; Snap's source
+/// actions replace its primary, while its editing stays on its page.
 public enum ToolbarAccessory: String, CaseIterable, Sendable {
-    /// Snap & Talk: the open session's review. The count stays with Capture next.
+    /// Snap & Talk: the open session's review. Its help carries the capture count.
     case review
     /// Draw: the drawing choices.
     case tools
@@ -197,6 +197,8 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// The assigned key and any count, shown on hover over the action. The row
     /// holds no information-only text.
     public var actionHint: String?
+    /// Direct source actions replace the generic capture button when capture is the next step.
+    public var captureChoices: [ToolbarCaptureKind]
     /// All seven tools, for the launcher's chooser: which one is chosen, which have live
     /// work, and their keys (#134).
     public var choices: [ToolbarToolChoice]
@@ -219,7 +221,7 @@ public struct ToolbarViewState: Equatable, Sendable {
                 isActionEnabled: Bool = true, actionHint: String? = nil,
                 choices: [ToolbarToolChoice]? = nil, isBusy: Bool = false,
                 status: ToolbarStatus = .idle, showsAccessory: Bool = true, accessory: ToolbarAccessory? = nil,
-                accessoryDescription: String? = nil) {
+                accessoryDescription: String? = nil, captureChoices: [ToolbarCaptureKind] = []) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
@@ -228,6 +230,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.actionSymbol = actionSymbol ?? ToolbarOperation.start(mode).symbol
         self.isActionEnabled = isActionEnabled
         self.actionHint = actionHint
+        self.captureChoices = captureChoices
         self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }
         self.accessory = accessory
         self.accessoryDescription = accessoryDescription
@@ -240,6 +243,13 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var actionHelp: String {
         guard let hint = actionHint, !hint.isEmpty else { return actionTitle }
         return actionTitle + " · " + hint
+    }
+
+    public func captureHelp(_ kind: ToolbarCaptureKind) -> String {
+        var parts = [kind.title, kind.help(in: mode)]
+        if mode == .snapAndTalk { parts.append(actionTitle) }
+        if kind.usesShortcut(in: mode), let actionHint, !actionHint.isEmpty { parts.append(actionHint) }
+        return parts.joined(separator: " · ")
     }
 
     /// The same state at another dock, for fixtures.

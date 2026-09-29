@@ -35,15 +35,48 @@ final class ToolbarInteractionTests: XCTestCase {
             XCTAssertNotNil(NSImage(systemSymbolName: state.actionSymbol, accessibilityDescription: nil), state.name)
             let (panel, view) = host(ToolbarRow(state: state))
             defer { panel.close() }
-            let primary = try XCTUnwrap(descendants(view).first { $0.accessibilityIdentifier() == "toolbar.primary" } as? ToolbarIconButton)
-            XCTAssertEqual(primary.title, "")
-            XCTAssertNotNil(primary.image, state.name)
-            XCTAssertEqual(primary.accessibilityLabel(), state.actionTitle)
-            XCTAssertEqual(primary.hint, state.actionHelp)
-            XCTAssertFalse(primary.needsPanelToBecomeKey, "pointer use preserves the destination field")
+            let commands = state.captureChoices.isEmpty
+                ? [("toolbar.primary", state.actionTitle, state.actionHelp)]
+                : state.captureChoices.map { ("toolbar.capture." + $0.rawValue, $0.title, state.captureHelp($0)) }
+            for (identifier, title, help) in commands {
+                let primary = try XCTUnwrap(descendants(view).first { $0.accessibilityIdentifier() == identifier } as? ToolbarIconButton)
+                XCTAssertEqual(primary.title, "")
+                XCTAssertNotNil(primary.image, state.name)
+                XCTAssertEqual(primary.accessibilityLabel(), title)
+                XCTAssertEqual(primary.hint, help)
+                XCTAssertEqual(primary.isEnabled, state.isActionEnabled)
+                XCTAssertFalse(primary.needsPanelToBecomeKey, "pointer use preserves the destination field")
+            }
         }
         for accessory in ToolbarAccessory.allCases {
             XCTAssertNotNil(NSImage(systemSymbolName: accessory.symbol, accessibilityDescription: nil), accessory.title)
+        }
+    }
+
+    @MainActor func testCaptureSourcesDispatchTheirOwnChoiceAndJoinTheKeyboardCycle() throws {
+        for anchor in [ToolbarAnchor.left, .right] {
+            var selected: [ToolbarCaptureKind] = []
+            let state = ToolbarViewState(name: "capture", tier: .revealed, anchor: anchor, mode: .snapAndTalk,
+                accessory: .review, captureChoices: ToolbarCaptureKind.allCases)
+            let (panel, view) = host(ToolbarRow(state: state, pressCapture: { kind in { selected.append(kind) } }))
+            defer { panel.close() }
+            let controls = descendants(view).compactMap { $0 as? NSButton }
+            XCTAssertNil(controls.first { $0.accessibilityIdentifier() == "toolbar.primary" }, "no duplicate generic capture")
+            let tab = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: panel.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48))
+            let ids = ["toolbar.launcher"] + ToolbarCaptureKind.allCases.map { "toolbar.capture." + $0.rawValue } + ["toolbar.accessory", "toolbar.more"]
+            for (index, identifier) in ids.enumerated() {
+                let button = try XCTUnwrap(controls.first { $0.accessibilityIdentifier() == identifier })
+                XCTAssertTrue(panel.makeFirstResponder(button))
+                button.keyDown(with: tab)
+                XCTAssertEqual((panel.firstResponder as? NSButton)?.accessibilityIdentifier(), ids[(index + 1) % ids.count])
+            }
+            for kind in ToolbarCaptureKind.allCases {
+                let button = try XCTUnwrap(controls.first { $0.accessibilityIdentifier() == "toolbar.capture." + kind.rawValue })
+                button.performClick(nil)
+            }
+            XCTAssertEqual(selected, [.region, .window, .screen])
+            try record(view, name: "capture-sources-" + anchor.rawValue)
         }
     }
 
