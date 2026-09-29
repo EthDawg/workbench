@@ -566,10 +566,15 @@ final class PersonaEditorSession: ObservableObject, Identifiable {
                 return false
             }
             catch {
+                if original != nil, (error as? PersonaError) == .changedOnDisk {
+                    failure = "The saved persona changed while this photo preview was open. Your existing artwork is preserved. Cancel this preview and reopen Workbench to review the persona before replacing its photo."
+                    canRetry = false
+                    return false
+                }
                 let reason = (error as? PersonaError) == .changedOnDisk
-                    ? "Couldn’t add this persona: the saved personas changed on disk again while it was being added."
-                    : "Couldn’t add this persona. " + error.localizedDescription
-                failure = reason + " Your picture and changes are kept here, so you can choose Add persona again."
+                    ? "Couldn’t save this persona: the saved personas changed on disk again while it was being saved."
+                    : "Couldn’t save this persona. " + error.localizedDescription
+                failure = reason + " Your picture and changes are kept here, so you can try saving again."
                 return false
             }
         }

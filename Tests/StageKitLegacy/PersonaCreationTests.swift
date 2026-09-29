@@ -384,6 +384,7 @@ final class PersonaCreationTests {
         let before = try snapshot(f)
         XCTAssertFalse(editor.commit(to: f.library, replacing: original))
         XCTAssertFalse(editor.isFinished)
+        XCTAssertFalse(editor.canRetry, "A changed saved persona requires reopening, not repeatedly trying the stale replacement")
         XCTAssertTrue(editor.committedID == nil)
         XCTAssertNotNil(editor.failure)
         XCTAssertEqual(try snapshot(f), before, "A failed profile save removes its candidate image only and keeps external changes")
