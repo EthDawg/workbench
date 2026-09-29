@@ -6,6 +6,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Workbench</title>
         <item>
+            <title>2.3.1</title>
+            <pubDate>Tue, 29 Sep 2026 14:42:10 +1000</pubDate>
+            <sparkle:version>20260929044112</sparkle:version>
+            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench 2.3.1</h2>
+<p>A calmer Mac toolbar and clearer navigation, with fixes for captured work, reading and Persona controls.</p>
+<ul>
+<li>A quiet resting handle, compact contextual controls and Tab / Shift-Tab navigation.</li>
+<li>Recording, playback and results share one floating host. Starting independent activities preserves pending dictation recovery and clipboard receipts.</li>
+<li>A smaller Home with current work and recent History, pinned Settings and one Floating toolbar switch.</li>
+<li>Clearer Persona selection and shown states, portrait drafts and Circle / Card / Original appearance.</li>
+<li>Read preserves its draft when copied text is rejected, and timer menus act only on the step they displayed.</li>
+</ul>
+<p>For Apple Silicon Macs running macOS 14 or later. Your saved work stays in this edition's library.</p>
+]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.1/Workbench.zip" length="71020601" type="application/octet-stream" sparkle:edSignature="AI9FBpzsFp529+9VkYa44BKsHG8n5+NigZYLY8sya1WBGHg96wYXtDAHG/ADudhT5yoWe5K4nvwzFmzXGb9NCg=="/>
+        </item>
+        <item>
             <title>2.3.0</title>
             <pubDate>Mon, 28 Sep 2026 13:52:52 +1000</pubDate>
             <sparkle:version>20260928035156</sparkle:version>
@@ -47,24 +67,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.2.0+20260927101737/Workbench.zip" length="68628002" type="application/octet-stream" sparkle:edSignature="vHccsYHFlMCUQra0bIcrODqC776qNkCfx0oXGm7zt/O8+xFK2ZP6wIpD7SmF7G+SM5I5ApkjcjLvg/6MyXmdDA=="/>
         </item>
-        <item>
-            <title>2.2.0</title>
-            <pubDate>Sat, 26 Sep 2026 07:57:46 +1000</pubDate>
-            <sparkle:version>20260925215646</sparkle:version>
-            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Team packs, ready to use</h2>
-<p>Add an optional private GitHub pack for your team's skills, scenes, personas and workspace appearance. Compatible pack updates preserve existing sessions and personal copies. Everyday Workbench tools remain account-free.</p>
-<h2>Hand off selected transcripts</h2>
-<p>Choose captures from Recent transcripts, mark them as your instructions or reference material, and optionally include a Snap &amp; Talk session. Workbench prepares the folder and prompt for your chosen assistant.</p>
-<p>Existing branded sessions remain usable. New company content comes from your team's private pack. <a href="https://workbench-mac.vercel.app/guide/#servicenow-pack">Read the team guide</a>.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.2.0/Workbench.zip" length="67346634" type="application/octet-stream" sparkle:edSignature="KoqcDDdlT0A6EYRk7p0DAb57y+LVtDvGNKFBXDbgNrqyBLw78wpcoUpjvLGAsfvXu455xoYz30NuI4KdciZ1Aw=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: KyaebImR3IyzVgZFq8XYqk2tMO9n840s4AGZqFoP116OJjqnZsr7GXn1Sh7u+q0XGm6J3x77DUUrdVXL3FhuDQ==
-length: 5750
+edSignature: pfxl8uILQFCG2SsXJqyiY/a5q4QJSfAXZAzuJV5RQLMNasHsOtyoUXA6PKxo38Z5JmBQ1WsM6YlUaW7qaMqzCg==
+length: 5877
 -->
