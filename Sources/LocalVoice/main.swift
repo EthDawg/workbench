@@ -504,7 +504,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         closeControls()
         presenterPanel?.hide()
         model.previewingPanel = false
-        model.clipboardReceipt.dismissHUD()
         window?.orderOut(nil)
     }
     func closeControls() { popover.performClose(nil); finishEditing() }

@@ -180,6 +180,7 @@ struct CaptureSettings {
     static var copies: [String] = []
     static var copyFails = false
     static let copiedMessage = "Copied. Paste with ⌘V."
+    static func copiedDetail(_ failure: FailureKind?) -> String { "Synthetic delivery detail" }
     typealias Target = String
     static func capture() -> String? { "Frontmost fixture field" }
     static func copy(_ text: String) -> Int? { copies.append(text); return copyFails ? nil : copies.count }
@@ -191,12 +192,20 @@ struct CaptureSettings {
     }
     static func release() { let c = continuation; continuation = nil; c?.resume() }
 }
-@MainActor final class ClipboardReceipt {
+@MainActor final class ReceiptSpy {
+    final class Clock { var now = 0.0 }
+    let clock: Clock
+    let actual: ClipboardReceiptModel
     var receipts = 0
-    var hidden = false
-    func clear() {}
-    func dismissHUD() { hidden = true }
-    func record(outcome: TextDelivery.Outcome, wordCount: Int) { receipts += 1 }
+    init() {
+        let clock = Clock(); self.clock = clock
+        actual = ClipboardReceiptModel(clipboardChangeCount: { 1 }, now: { clock.now }, automaticallySchedules: false)
+    }
+    func clear() { actual.clear() }
+    func dismissHUD() { actual.dismissHUD() }
+    func record(outcome: TextDelivery.Outcome, wordCount: Int) {
+        receipts += 1; actual.record(outcome: outcome, wordCount: wordCount)
+    }
 }
 enum AudioRenderer { static func remove(_ url: URL?) {} }
 @MainActor final class AuxiliaryCaptureWork {
@@ -227,7 +236,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var startedAttempts: [UUID] = []
     func startRecording(_ attempt: UUID) async { startedAttempts.append(attempt) }
     let engine = Engine(), cleanupEngine = Cleanup(), store = StateStore()
-    let clipboardReceipt = ClipboardReceipt(), shortcutRequest = DictationRequest()
+    let clipboardReceipt = ReceiptSpy(), shortcutRequest = DictationRequest()
     let meetings = AuxiliaryCaptureWork(), handoffJobs = AuxiliaryCaptureWork()
     let captureRecovery: CaptureRecoveryStore
     var captureStateWriter: ((SavedState) throws -> Void)?
@@ -318,6 +327,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let wav = wave()
         let independent = CaptureHarness(directory: folder("stage-preserves-failure"))
         let retainedAudio = try independent.makeRecording(wav)
+        let retainedJournal = try Data(contentsOf: folder("stage-preserves-failure").appendingPathComponent("pending.json"))
+        independent.canRetry = true
         independent.captureFailure = "Synthetic dictation failure"
         independent.transcript = "Existing draft"
         independent.previewingPanel = true
@@ -326,8 +337,26 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(independent.captureFailure == "Synthetic dictation failure", "starting independent Stage work preserves the dictation result")
         try check(independent.recordURL == retainedAudio && (try Data(contentsOf: retainedAudio)) == wav && independent.transcript == "Existing draft",
                   "the same Stage start preserves recording bytes, recovery reference and draft")
-        try check(independent.clipboardReceipt.hidden && !independent.previewingPanel && stageShell.closes == 1 && stageShell.presenterPanel?.hides == 1 && stageShell.window?.hides == 1,
+        try check(!independent.previewingPanel && stageShell.closes == 1 && stageShell.presenterPanel?.hides == 1 && stageShell.window?.hides == 1,
                   "starting Stage work still hides the preparation surfaces")
+        try check(independent.hasCaptureRecovery && independent.canRetry && independent.retryCaptureLabel == "Retry transcription"
+                  && (try Data(contentsOf: folder("stage-preserves-failure").appendingPathComponent("pending.json"))) == retainedJournal,
+                  "Stage start retains the exact recording journal and its Retry action")
+        for (outcome, duration) in [(TextDelivery.Outcome(), 8.0),
+                                    (TextDelivery.Outcome(clipboardChangeCount: nil, wasPasted: true), 4.0),
+                                    (TextDelivery.Outcome(clipboardChangeCount: nil, failure: .copyFailed), 8.0)] {
+            let receipt = independent.clipboardReceipt
+            receipt.record(outcome: outcome, wordCount: 3)
+            let id = receipt.actual.receipt!.id, event = receipt.actual.lifetime!.event
+            receipt.clock.now += 1
+            stageShell.beginStageActivity()
+            try check(receipt.actual.isHUDVisible && receipt.actual.receipt?.id == id && receipt.actual.lifetime?.event == event
+                      && receipt.actual.lifetime?.remaining(at: receipt.clock.now) == duration - 1,
+                      "Stage start preserves the actual receipt and its remaining time")
+            receipt.clock.now += duration
+            receipt.actual.expireHUD(event)
+            try check(!receipt.actual.isHUDVisible, "the preserved receipt still ends at its own deadline")
+        }
         independent.dismissCaptureFailure()
         try check(independent.captureFailure == nil && (try Data(contentsOf: retainedAudio)) == wav,
                   "explicit Dismiss still clears the result without deleting retained audio")
@@ -935,7 +964,7 @@ with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as tem
                     str(swift), str(PROJECT / 'Sources/LocalVoice/TextPrimitives.swift'), str(PROJECT / 'Sources/LocalVoice/CaptureRecovery.swift'), str(PROJECT / 'Sources/LocalVoice/DrawingDeliveryGate.swift'),
                     str(PROJECT / 'Sources/LocalVoice/CaptureCue.swift'), str(PROJECT / 'Sources/LocalVoice/Attention.swift'),
                     str(PROJECT / 'Sources/LocalVoice/NoticeLifetime.swift'), str(PROJECT / 'Sources/LocalVoice/FeedbackCoach.swift'),
-                    str(PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift'),
+                    str(PROJECT / 'Sources/LocalVoice/DeliveryOutcome.swift'), str(PROJECT / 'Sources/LocalVoice/ClipboardReceipt.swift'),
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(directory / 'data')], check=True)
 print('AppModel.swift SHA256:', hashlib.sha256(app_model.source.encode()).hexdigest())
