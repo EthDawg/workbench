@@ -140,25 +140,16 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(failures, 0)
     }
 
-    /// A result waiting with its own controls never takes the pointer's reveal from live work
-    /// (#220): the next action addresses live work exactly when input-consuming work, or the
-    /// chosen tool's own session or ending, is live, and otherwise starts the chosen tool.
-    func testLiveWorkKeepsTheRowFromAWaitingResult() {
+    /// Only input-consuming work holds a waiting result back from the pointer's reveal (#220, #222):
+    /// exactly the global work the next action puts first, never the chosen tool's own session.
+    func testOnlyInputConsumingWorkHoldsAResultBack() {
         var failures = 0
         Self.product { live in
-            if ToolbarNextAction.resolve(live).addressesLiveWork != (Self.inputLive(live) || Self.ownLive(live)) { failures += 1 }
+            if live.consumesInput != Self.inputLive(live) { failures += 1 }
+            // A tool's own session claims its label, yet holds no result back.
+            if Self.ownLive(live) && !Self.inputLive(live) && live.consumesInput { failures += 1 }
         }
         XCTAssertEqual(failures, 0)
-        // The collision QA found: a reading preparing, playing or paused keeps its row in every tool,
-        // and with nothing live but a timer the start verb, Record again included, leaves it to the result.
-        for mode in ToolbarMode.allCases {
-            for reading in [ToolbarLiveState.Reading.preparing, .playing, .paused] {
-                XCTAssertTrue(ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, reading: reading)).addressesLiveWork, "\(mode), reading \(reading)")
-            }
-            XCTAssertTrue(ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, narrating: true)).addressesLiveWork, "\(mode), narrating")
-            XCTAssertFalse(ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, canRecordAgain: true, timer: .running)).addressesLiveWork,
-                           "\(mode) with nothing live but a timer")
-        }
     }
 
     func testTheTimerNeverClaimsTheLabel() {

@@ -63,16 +63,21 @@ pointer or the pin. At rest a result is only the mark's warning or clipboard sta
 The pointer's reveal, a dwell or a click on the mark, shows the result's view in
 place of the row, grown inward from the same centre; a result that arrives while the
 row is open waits for the next reveal rather than replacing the row under the
-pointer. Live work keeps the row as well: while the next action addresses a reading
-preparing, playing or paused, a narration, a recording or its processing, an
-insertion, drawing or the chosen tool's own session, the reveal shows that row, the
-result keeps the mark's warning and its section in More, and the next reveal after
-the work ends shows the result again (#220). Keyboard entry, Window › Focus
-floating toolbar, reveals the launcher row instead, with the launcher focused and
-keeping the result's status, the mark's glyph as a badge on the tool's symbol and
-its words in VoiceOver's value, and More opens with the result's own section: its
-title, a failure's reason, and Copy again, Retry,
-Record again, Open Workbench, Review and Dismiss as its view offers them (#211).
+pointer. Input-consuming work keeps the row from an older result: the result that
+was pending when an insertion, dictation, a screen capture, narration, drawing or a
+reading preparing, playing or paused began stays out of the pointer's reveal while
+that work lasts, so the reveal shows the work's own row, the result keeps the mark's
+warning and its section in More, and the next reveal after the work ends shows the
+result again. A result that arrives during the work, a failure set again in the same
+words included, is revealed as any new result is, and the chosen tool's own sessions,
+a presentation, personas, Snap & Talk between captures or a meeting transcription,
+hold nothing back. A result already revealed under the pointer, or held open by a
+hold, keeps its place as such work begins, until the pointer or the hold lets go
+(#220, #222). Keyboard entry, Window › Focus floating toolbar, reveals the launcher
+row instead, with the launcher focused and keeping the result's status, the mark's
+glyph as a badge on the tool's symbol and its words in VoiceOver's value, and More
+opens with the result's own section: its title, a failure's reason, and Copy again,
+Retry, Record again, Open Workbench, Review and Dismiss as its view offers them (#211).
 Record again, there and in its view, only ever starts a recording: one begun since,
 by the shortcut say, is left alone. A result's view takes the keyboard on its first
 command when the keyboard comes to it, and Escape leaves from it as from the row. At
@@ -606,11 +611,17 @@ receipt's own controls too; Position… closing onto a receipt waiting on a kept
 row must leave the launcher row with the keyboard back; and at the right-hand dock
 no action of a dictation failure, the receipt or a stopped reading may sit over the
 mark the pointer came from, by the frames each view reports for its actions (#211).
-With an older dictation failure, a receipt or an undelivered one waiting, a reading
-preparing, playing or paused must keep its own row under the pointer's reveal, with
-Cancel, Pause reading or Resume reading, the result's warning on the mark and its
-section in More, and the next reveal after the reading ends must show the result
-again; a narration, a newer recording and its processing must hold it back too (#220).
+With an older dictation failure, a receipt or an undelivered one pending as a reading
+begins, the reading preparing, playing or paused must keep its own row under the
+pointer's reveal, with Cancel, Pause reading or Resume reading, the result's warning
+on the mark and its section in More, and the next reveal after the reading ends must
+show the result again; the same results arriving during the reading, and a failure
+set again in the same words, must be revealed; a held receipt must stay held when the
+dictation failure's slot is cleared; and a result revealed under the pointer, or on a
+kept-open row under a hold, must keep its place as a reading starts until that lets
+go. At the selection seam a narration must hold back only an older result, and a
+presentation, a Persona set, a meeting transcription and a Snap & Talk session none
+(#220, #222).
 Revealed with nothing live, only Draw and Present must show an accessory, Tools and
 Prompts; Tools must hold Draw's drawing choices, Persona's More must open Persona's
 page, and with a session open Snap & Talk's Review must open that session's review.
