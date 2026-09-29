@@ -514,6 +514,7 @@ struct WorkbenchHomePage: View {
                 let persona = personaControl
                 liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
                     Button(persona.rowTitle) { perform(persona) }.help(persona.help)
+                        .id(persona.operation).disabled(!persona.isEnabled)
                 }
             }
             if stage.hasActiveTimer {
@@ -534,6 +535,8 @@ struct WorkbenchHomePage: View {
     }
     /// Does exactly what the Persona label names, through the switch the panel and toolbar use.
     private func perform(_ persona: HomePersonaControl) {
+        let state = WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snap).state
+        guard persona.isAdmitted(in: state) else { return }
         WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: meetings) { _ in stage.togglePersona() }
             .perform(persona.operation)
     }
@@ -667,6 +670,13 @@ struct WorkbenchHomePage: View {
             if tools.contains(.snap) && !snap.screenAccessGranted {
                 Text("Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            // Why the Read tile did nothing, beside it (#173): only the tile's own problem, gone as
+            // soon as anything replaces or clears it, and a meeting wait only while the meeting runs.
+            // Read's banner shows every Read problem.
+            if tools.contains(.read), let notice = Attention.besideHomeReadTile(model.attention, meetingBusy: meetings.isBusy) {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }
     }

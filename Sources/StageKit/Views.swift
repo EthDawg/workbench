@@ -290,9 +290,10 @@ struct ControlCenter: View {
                 Toggle("Play a chime when time is up", isOn: $settings.value.timerChime)
             }.font(.system(size: 12)).surface()
             HStack {
-                // One transport action for the current state: Start, Pause, Resume or Restart.
-                let transport = app.timerTransport
-                Button { app.performTimerTransport() } label: { Label(transport == .idle ? "Start break" : transport.title, systemImage: transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
+                // One transport action for the current state: Start, Pause, Resume or Restart, and
+                // only the one it shows (#174).
+                let transport = TimerTransportAction(app)
+                Button { transport() } label: { Label(transport.transport == .idle ? "Start break" : transport.transport.title, systemImage: transport.transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
                 Button("Reset") { app.resetTimer() }.controlSize(.large)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .timer).label)
             }
@@ -495,7 +496,8 @@ struct BreakTimerView: View {
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 18) {
-                    Button { app.performTimerTransport() } label: { Label(app.timerTransport.title, systemImage: app.timerTransport.symbol) }
+                    let transport = TimerTransportAction(app)
+                    Button { transport() } label: { Label(transport.transport.title, systemImage: transport.transport.symbol) }
                     Button("Reset") { app.resetTimer() }
                     Menu {
                         ForEach(FloatingControlAnchor.allCases) { anchor in

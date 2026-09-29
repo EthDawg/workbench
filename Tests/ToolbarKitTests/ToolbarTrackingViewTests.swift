@@ -20,11 +20,13 @@ final class ToolbarTrackingViewTests: XCTestCase {
         let tracking: ToolbarTrackingView
         let clock = ManualClock()
         var events: [ToolbarEvent] = []
-        var pointer = NSPoint(x: 150.5, y: 118.25)
-        static let outside = NSPoint(x: 400.5, y: 400.25)
+        var pointer = NSPoint(x: -19849.5, y: -19881.75)
+        static let outside = NSPoint(x: -19600.5, y: -19600.25)
         init() {
             _ = NSApplication.shared
-            panel = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 140, height: 36),
+            // A visible but offscreen nonactivating host exercises native containment
+            // without covering the user's desktop or taking focus.
+            panel = NSPanel(contentRect: NSRect(x: -19900, y: -19900, width: 140, height: 36),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isReleasedWhenClosed = false
             let content = NSView(frame: NSRect(x: 0, y: 0, width: 140, height: 36))
@@ -59,7 +61,7 @@ final class ToolbarTrackingViewTests: XCTestCase {
         fixture.enter(); fixture.leave()
         XCTAssertNil(fixture.clock.pending)
         XCTAssertEqual(fixture.events, [], "the core never learned of the entry, so there is no exit to report")
-        fixture.pointer = NSPoint(x: 160.5, y: 120.25)
+        fixture.pointer = NSPoint(x: -19839.5, y: -19879.75)
         fixture.enter()
         XCTAssertEqual(fixture.clock.starts, 2, "a fresh entry starts a fresh wait")
         fixture.clock.fire()
@@ -105,7 +107,70 @@ final class ToolbarTrackingViewTests: XCTestCase {
         XCTAssertEqual(fixture.events, [])
     }
 
-    func testTheRevealDelayIsShorterThanTheGrace() {
+    @MainActor func testSuspendingTrackingCancelsPendingReveal() {
+        let fixture = Fixture(); defer { fixture.close() }
+        fixture.tracking.isRestingSized = { true }
+        fixture.enter()
+        let staleDeadline = fixture.clock.pending
+        fixture.tracking.acceptsCrossings = false
+        XCTAssertNil(fixture.clock.pending, "resize and drag cancel the old geometry's hover intent")
+        staleDeadline?()
+        XCTAssertEqual(fixture.events, [], "even an already-queued expiry cannot reveal while suspended")
+    }
+
+    @MainActor func testCancelledDeadlineCannotConsumeANewerDwell() {
+        let fixture = Fixture(); defer { fixture.close() }
+        fixture.tracking.isRestingSized = { true }
+        fixture.enter()
+        let staleDeadline = fixture.clock.pending
+        fixture.leave()
+        fixture.pointer = NSPoint(x: -19839.5, y: -19879.75)
+        fixture.enter()
+        staleDeadline?()
+        XCTAssertEqual(fixture.events, [], "a previous entry must not shorten the new dwell")
+        fixture.clock.fire()
+        XCTAssertEqual(fixture.events, [.pointerEntered], "the new entry still reveals once at its own deadline")
+    }
+
+    @MainActor func testAMissedExitStillAllowsTheNextEntryToReveal() {
+        let fixture = Fixture(); defer { fixture.close() }
+        fixture.tracking.isRestingSized = { true }
+        fixture.enter()
+        fixture.pointer = Fixture.outside
+        fixture.clock.fire()
+        fixture.pointer = NSPoint(x: -19839.5, y: -19879.75)
+        fixture.enter()
+        XCTAssertEqual(fixture.clock.starts, 2, "a swallowed exit cannot leave the pill stuck closed")
+        XCTAssertEqual(fixture.events, [])
+        fixture.clock.fire()
+        XCTAssertEqual(fixture.events, [.pointerEntered])
+    }
+
+    @MainActor func testRemovingTheTrackingViewCancelsItsDwell() {
+        let fixture = Fixture(); defer { fixture.close() }
+        fixture.tracking.isRestingSized = { true }
+        fixture.enter()
+        let staleDeadline = fixture.clock.pending
+        fixture.tracking.removeFromSuperview()
+        XCTAssertNil(fixture.clock.pending)
+        staleDeadline?()
+        XCTAssertEqual(fixture.events, [])
+    }
+
+    @MainActor func testResumingTrackingReconcilesOnceAtTheNewGeometry() {
+        let fixture = Fixture(); defer { fixture.close() }
+        fixture.tracking.isRestingSized = { true }
+        fixture.enter()
+        let staleDeadline = fixture.clock.pending
+        fixture.tracking.acceptsCrossings = false
+        fixture.tracking.acceptsCrossings = true
+        fixture.tracking.settle()
+        staleDeadline?()
+        XCTAssertEqual(fixture.events, [.pointerEntered], "only the host's final containment check reveals")
+        XCTAssertNil(fixture.clock.pending)
+    }
+
+    @MainActor func testTheRevealDelayIsShorterThanTheGrace() {
         XCTAssertEqual(ToolbarTrackingView.revealDelay, 0.12)
         XCTAssertLessThan(ToolbarTrackingView.revealDelay, 0.45)
     }

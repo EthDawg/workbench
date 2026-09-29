@@ -47,3 +47,17 @@ struct WorkbenchSectionTitle: View {
     init(_ title: String) { self.title = title }
     var body: some View { Text(title).font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader) }
 }
+
+private struct PageSectionFramesKey: EnvironmentKey {
+    static let defaultValue: ((String, CGRect) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Checks read where a page laid out a named section and its visible scroll area, in window
+    /// coordinates, from here; nil in the app. Dictate reports "dictate.options" and
+    /// "dictate.visible", so the surface gallery can see Settings' Dictate options… land (#134).
+    var pageSectionFrames: ((String, CGRect) -> Void)? {
+        get { self[PageSectionFramesKey.self] }
+        set { self[PageSectionFramesKey.self] = newValue }
+    }
+}
