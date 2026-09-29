@@ -13,4 +13,4 @@ Prepared for the next accepted Mac release. These are draft notes; no new public
 
 ## Acceptance boundary
 
-Use the integration verification record for test results and native limits. Publish these notes with the exact accepted signed archive and matching update feed only through the shared release workflow.
+Use the [integration verification record](../verification/2026-09-29-mac-experience/README.md) for test results and native limits. Publish these notes with the exact accepted signed archive and matching update feed only through the shared release workflow.
