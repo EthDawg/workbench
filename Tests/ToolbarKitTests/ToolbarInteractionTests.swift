@@ -172,27 +172,49 @@ final class ToolbarInteractionTests: XCTestCase {
         XCTAssertEqual(try image(), resting)
     }
 
-    /// The recorder's value passes through the frozen row into the actual native trace in both
-    /// tiers. Only those real samples move it; silence returns it to a line.
+    /// The recorder's samples reach the native trace in both tiers. Check both native drawing
+    /// modes explicitly: SwiftUI's read-only accessibility environment otherwise inherits the
+    /// CI machine's settings. Reduce Motion holds its shape while opacity follows the samples.
     @MainActor func testRecordingSamplesReachTheHostedTraceInBothTiers() throws {
         for tier in ToolbarTier.allCases {
-            var state = ToolbarViewState(name: "meter", tier: tier, actionTitle: "Stop", actionSymbol: "stop.fill",
-                status: .resolve(ToolbarActivity(capture: .dictation, level: 0)))
-            let (panel, view) = host(ToolbarRow(state: state, accent: WorkbenchPalette.accent))
-            defer { panel.close() }
-            let trace = try XCTUnwrap(descendants(view).compactMap { $0 as? VoiceTraceView }.first)
-            XCTAssertEqual(trace.amplitude, 0)
-            state.status = .resolve(ToolbarActivity(capture: .dictation, level: 0.8))
-            view.rootView = ToolbarRow(state: state, accent: WorkbenchPalette.accent); view.layoutSubtreeIfNeeded()
-            trace.advance(to: CACurrentMediaTime() + 0.1)
-            XCTAssertGreaterThan(trace.amplitude, 1, "the real sample reaches the native drawing in \(tier)")
-            try record(view, name: "recording-\(tier.rawValue)")
-            XCTAssertNil(trace.hitTest(.zero), "the recording trace never takes the launcher's clicks")
-            state.status = .resolve(ToolbarActivity(capture: .dictation, level: 0))
-            view.rootView = ToolbarRow(state: state, accent: WorkbenchPalette.accent); view.layoutSubtreeIfNeeded()
-            let start = CACurrentMediaTime()
-            for tick in 1...12 { trace.advance(to: start + Double(tick) * 0.1) }
-            XCTAssertLessThan(trace.amplitude, 0.1, "silence becomes still without an invented wiggle")
+            for reduceMotion in [false, true] {
+                var state = ToolbarViewState(name: "meter", tier: tier, actionTitle: "Stop", actionSymbol: "stop.fill",
+                    status: .resolve(ToolbarActivity(capture: .dictation, level: 0)))
+                let (panel, view) = host(ToolbarRow(state: state, accent: WorkbenchPalette.accent))
+                defer { panel.close() }
+                let trace = try XCTUnwrap(descendants(view).compactMap { $0 as? VoiceTraceView }.first)
+                func setDrawingMode() {
+                    trace.reduceMotion = reduceMotion
+                    trace.increaseContrast = false
+                }
+                setDrawingMode()
+                XCTAssertEqual(trace.amplitude, reduceMotion ? 1.5 : 0)
+                XCTAssertEqual(trace.stroke.opacity, 0.45, accuracy: 0.001)
+                state.status = .resolve(ToolbarActivity(capture: .dictation, level: 0.8))
+                view.rootView = ToolbarRow(state: state, accent: WorkbenchPalette.accent); view.layoutSubtreeIfNeeded()
+                setDrawingMode()
+                trace.advance(to: CACurrentMediaTime() + 0.1)
+                XCTAssertGreaterThan(trace.stroke.opacity, 0.8, "the real sample visibly brightens the trace in \(tier)")
+                if reduceMotion {
+                    XCTAssertEqual(trace.amplitude, 1.5, "Reduce Motion keeps the shape still")
+                    XCTAssertEqual(trace.lineWidth, 1.5, "Reduce Motion keeps its weight still")
+                } else {
+                    XCTAssertGreaterThan(trace.amplitude, 1, "the real sample reaches the native drawing in \(tier)")
+                }
+                try record(view, name: "recording-\(tier.rawValue)\(reduceMotion ? "-reduce-motion" : "")")
+                XCTAssertNil(trace.hitTest(.zero), "the recording trace never takes the launcher's clicks")
+                state.status = .resolve(ToolbarActivity(capture: .dictation, level: 0))
+                view.rootView = ToolbarRow(state: state, accent: WorkbenchPalette.accent); view.layoutSubtreeIfNeeded()
+                setDrawingMode()
+                let start = CACurrentMediaTime()
+                for tick in 1...12 { trace.advance(to: start + Double(tick) * 0.1) }
+                XCTAssertEqual(trace.stroke.opacity, 0.45, accuracy: 0.01, "silence returns the trace to its quiet brightness")
+                if reduceMotion {
+                    XCTAssertEqual(trace.amplitude, 1.5)
+                } else {
+                    XCTAssertLessThan(trace.amplitude, 0.1, "silence becomes still without an invented wiggle")
+                }
+            }
         }
     }
 }
