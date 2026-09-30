@@ -6,7 +6,7 @@ These are local interaction models using synthetic data. They run no microphone,
 
 ## What is implemented
 
-The desktop candidate implements grouped navigation, visible Meetings, safe Home workspace doors, focused Dictate and Read pages, their settings sheets, exact meeting-result review, and the focused Snap & Talk session workspace. [Candidate evidence](../verification/2026-09-30-desktop-cohesion/README.md) separates source checks, native renders and installed acceptance.
+The desktop candidate implements grouped navigation, visible Meetings, safe Home workspace doors, focused Dictate and Read pages, their settings sheets, exact meeting-result review, and the focused Snap & Talk session workspace. [Initial candidate evidence](../verification/2026-09-30-desktop-cohesion/README.md) and the [Snap & Talk completion record](../verification/2026-09-30-snaptalk-cohesion/README.md) separate source checks, native renders and installed acceptance.
 
 The desktop study also depicts existing Snap, Draw, Present, Persona, History and Library journeys in a simplified form. It models representative states and controls; it does not reproduce every native menu, permission flow, provider option or visual detail. Changing the study does not change the app.
 
