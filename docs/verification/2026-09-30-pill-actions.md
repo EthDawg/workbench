@@ -162,3 +162,27 @@ The parent integrates the retained Snap editor, durable delivery/History review,
 meeting-original review and Library adapters with this branch. No overlapping PR
 or installer is created by this worker. After the clean handoff, branch edits
 freeze unless review identifies a concrete correction.
+
+## Combined Settings follow-through
+
+The combined full gallery exposed an obsolete check that treated every General
+`NSSwitch` as the visibility control. General now has independent Floating toolbar
+and Keep open rows. The check selects each real native switch by its labelled
+row's measured frame, using the existing optional gallery callback (nil in the
+app), and still requires exactly one matching control. Offscreen SwiftUI does not
+materialize the labelled accessibility proxy, so raw switch order or value is
+not used to guess the owner.
+
+Exercising both controls found a real relocation defect: the ordinary toolbar
+event path rejects input while hidden or suspended, which also rejected Settings'
+Keep open change. `ToolbarSession.setKeepsOpen` now updates the same saved
+preference without activating a hidden surface, scheduling grace, or replaying
+menu work. Visible changes retain the normal reducer. Late hidden pointer/menu
+events still use the protected event path.
+
+The focused session suite passes 11 tests, including hidden preference changes,
+normal visible behavior, persistence and rejected late events. The bounded native
+Home/Settings pass passes 40 renders / 154 entries / zero flags in both appearances.
+It now runs the visibility door, click/Space, named control and preference
+independence checks as well. The complete combined gallery, fresh signed package,
+installed acceptance and final CI remain in issue #134's integration receipt.

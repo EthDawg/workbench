@@ -1007,23 +1007,35 @@ enum SurfaceGallery {
     // MARK: Floating toolbar visibility
 
     /// The floating toolbar's one switch from its doors (#134 H3): the panel's header switch,
-    /// Settings › General's switch, the Window menu and the toolbar's own More › Hide toolbar
-    /// read and change the one saved preference, and each shows what the others did. More's item
-    /// is read from the menu the toolbar builds when More opens, and chosen as a menu chooses it.
+    /// Settings › General's switch, the Window menu and the toolbar’s context menu › Hide toolbar
+    /// read and change the one saved preference, and each shows what the others did. The context item
+    /// is read from the menu the toolbar builds when its context menu opens, and chosen as a menu chooses it.
     /// The panel header's whole 32 point row is the switch's target, and the switch is its one
     /// accessibility element. Which surface shows over live work is CaptureHUDChecks' (#155).
     func checkToolbarVisibility() throws -> [String] {
         let kept = model.floatingToolbarVisible
         defer { model.floatingToolbarVisible = kept }
         func switches(in view: NSView) -> [NSSwitch] { (view as? NSSwitch).map { [$0] } ?? view.subviews.flatMap(switches) }
+        func visibilitySwitches(in view: NSView) -> [NSSwitch] { switches(in: view).filter { $0.accessibilityLabel() == "Floating toolbar" } }
+        func isOn(_ element: NSSwitch) -> Bool { element.state == .on }
         let panelHost = NSHostingView(rootView: quickPanel(readback).background(Color(nsColor: .windowBackgroundColor)))
         let panelWindow = offscreenWindow(size: panelHost.fittingSize, styleMask: [.borderless])
         panelWindow.contentView = panelHost
         defer { panelWindow.contentView = nil; panelWindow.close() }
-        let settingsWindow = homeWindow(size: SurfaceGallery.sizes[0].size)
+        // Offscreen SwiftUI does not materialize its labelled accessibility proxy. Use
+        // the actual labelled row's reported frame, never switch order or bound value.
+        var settingsFrames: [String: CGRect] = [:]
+        let settingsWindow = homeWindow(size: SurfaceGallery.sizes[0].size, sectionFrames: { settingsFrames[$0] = $1 })
         defer { settingsWindow.contentViewController = nil; settingsWindow.close() }
         model.page = "settings"
         let settingsFrame = settingsWindow.contentView?.superview ?? settingsWindow.contentView!
+        func settingsSwitches(_ name: String) -> [NSSwitch] {
+            guard let region = settingsFrames[name], let root = settingsWindow.contentView else { return [] }
+            return switches(in: root).filter { region.insetBy(dx: -1, dy: -1).contains($0.convert($0.bounds, to: root)) }
+        }
+        guard let settingsControls = model.toolbarControls else { throw VoiceError.message("General has no toolbar settings owner.") }
+        let keptOpen = settingsControls.toolbar.state.keepsOpen
+        defer { settingsControls.toolbar.setKeepsOpen(keptOpen) }
         let windowMenu = shell.makeMainMenu().main.items.compactMap(\.submenu).first { $0.title == "Window" }
         guard let item = windowMenu?.items.first(where: { $0.action == #selector(AppDelegate.toggleFloatingToolbar) }) else {
             throw VoiceError.message("The Window menu has no floating toolbar item.")
@@ -1031,37 +1043,38 @@ enum SurfaceGallery {
         func agree(_ visible: Bool, after door: String) throws {
             settle(panelHost, seconds: 0.15); settle(settingsFrame, seconds: 0.15)
             _ = shell.validateMenuItem(item)
-            let panel = switches(in: panelHost), settings = switches(in: settingsFrame)
+            let panel = visibilitySwitches(in: panelHost), settings = settingsSwitches("settings.toolbar.visibility")
             guard model.floatingToolbarVisible == visible, panel.count == 1, settings.count == 1,
-                  (panel[0].state == .on) == visible, (settings[0].state == .on) == visible,
-                  item.title == AppDelegate.floatingToolbarTitle(visible: visible) else {
+                  isOn(panel[0]) == visible, isOn(settings[0]) == visible,
+                  item.title == AppDelegate.floatingToolbarTitle(visible: visible),
+                  settingsControls.toolbar.state.keepsOpen == keptOpen else {
                 throw VoiceError.message("After \(door), the floating toolbar's doors disagree: saved \(model.floatingToolbarVisible), "
-                    + "panel \(panel.map(\.state.rawValue)), Settings \(settings.map(\.state.rawValue)), Window \(item.title).")
+                    + "panel \(panel.map(isOn)), Settings \(settings.map(isOn)), measured rows \(settingsFrames), Window \(item.title).")
             }
         }
         model.floatingToolbarVisible = true
         try agree(true, after: "turning it on")
-        switches(in: panelHost).first?.performClick(nil)
+        visibilitySwitches(in: panelHost).first?.performClick(nil)
         try agree(false, after: "the panel's switch")
-        switches(in: settingsFrame).first?.performClick(nil)
+        settingsSwitches("settings.toolbar.visibility").first?.performClick(nil)
         try agree(true, after: "Settings' switch")
         NSApp.sendAction(item.action!, to: shell, from: item)
         try agree(false, after: "the Window menu")
         NSApp.sendAction(item.action!, to: shell, from: item)
         try agree(true, after: "the Window menu again")
-        // The fourth door, the toolbar's own More › Hide toolbar (#134 T4, H3): the item as More
+        // The fourth door, the toolbar’s context menu › Hide toolbar (#134 T4, H3): the item as the context menu
         // builds it for a toolbar that is showing, chosen as a menu chooses it.
         let controls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarVisibility", home: home))
         let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                                       meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
                                       dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
         guard let hide = toolbar.toolbarContextMenu().items.first(where: { $0.title == "Hide toolbar" }), let action = hide.action else {
-            throw VoiceError.message("The toolbar's More has no Hide toolbar.")
+            throw VoiceError.message("The toolbar's context menu has no Hide toolbar.")
         }
         NSApp.sendAction(action, to: hide.target, from: hide)
-        try agree(false, after: "the toolbar's More › Hide toolbar")
-        switches(in: panelHost).first?.performClick(nil)
-        try agree(true, after: "the panel's switch, after More › Hide toolbar")
+        try agree(false, after: "the toolbar’s context menu › Hide toolbar")
+        visibilitySwitches(in: panelHost).first?.performClick(nil)
+        try agree(true, after: "the panel's switch, after context-menu Hide toolbar")
 
         // The header's whole switch row is one control (#134 review): a click on the words, beside
         // them, above or below them or on the switch toggles once, and a click just outside the
@@ -1107,10 +1120,21 @@ enum SurfaceGallery {
                                                    charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49)!)
         }
         try agree(!before, after: "Space on the focused switch")
-        return ["The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
+        let visibilityBeforeKeepOpen = model.floatingToolbarVisible
+        let keepOpenSwitches = settingsSwitches("settings.toolbar.keepOpen")
+        guard keepOpenSwitches.count == 1 else { throw VoiceError.message("General needs one named Keep open switch beside its separate visibility switch.") }
+        settingsSwitches("settings.toolbar.keepOpen").first?.performClick(nil)
+        settle(settingsFrame, seconds: 0.15)
+        guard settingsControls.toolbar.state.keepsOpen != keptOpen, model.floatingToolbarVisible == visibilityBeforeKeepOpen else {
+            throw VoiceError.message("Keep open did not change its own preference independently of toolbar visibility.")
+        }
+        settingsSwitches("settings.toolbar.keepOpen").first?.performClick(nil)
+        try agree(visibilityBeforeKeepOpen, after: "restoring Keep open")
+        return ["Keep open and Floating toolbar are separately named controls; changing either preserves the other preference.",
+                "The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
-                "The toolbar's own More › Hide toolbar, as More builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+                "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
     }
 
     /// The panel header's switch rows under `view`.
@@ -1404,7 +1428,7 @@ enum SurfaceGallery {
             throw VoiceError.message("Visiting Home or History changed the pending recording or its recovery controls.")
         }
         return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
-            pages: pages, entries: entries(), menus: [], checks: review.checks + [
+            pages: pages, entries: entries(), menus: [], checks: try review.checks + checkToolbarVisibility() + [
                 "Home and History visits preserve the pending recording and its journal byte for byte; Retry and explicit Discard remain available on Dictate."])
     }
 

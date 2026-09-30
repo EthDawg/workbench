@@ -11,14 +11,16 @@ struct ToolbarSettingsView: View {
 }
 
 private struct ToolbarSettingsControls: View {
+    @Environment(\.pageSectionFrames) private var sectionFrames
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             WorkbenchSectionTitle("Floating toolbar")
             Toggle("Keep open", isOn: Binding(get: { controls.toolbar.state.keepsOpen }, set: {
-                controls.toolbar.send(.keepOpenChanged($0))
+                controls.toolbar.setKeepsOpen($0)
             })).toggleStyle(.switch)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("settings.toolbar.keepOpen", $0) }
             Button("Position floating toolbar…") { model.showPanelPreview() }
                 .disabled(model.phase != .idle)
             Text("Drag the toolbar to move it, or choose a position and reset it here. Hiding it leaves your work running.")

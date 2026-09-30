@@ -112,6 +112,50 @@ final class ToolbarSessionTests: XCTestCase {
         XCTAssertEqual(restored.state.tier, .revealed)
     }
 
+    @MainActor func testSettingsKeepOpenPersistsWhileHiddenWithoutActivatingOrReplayingEvents() {
+        let (session, clock, defaults, domain) = fixture()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        var shown: [ToolbarTier] = []
+        session.show = { shown.append($0) }
+        session.setKeepsOpen(true)
+        XCTAssertFalse(session.isActive)
+        XCTAssertTrue(session.state.keepsOpen)
+        XCTAssertTrue(defaults.bool(forKey: ToolbarSession.keepOpenKey))
+        XCTAssertEqual(session.state.tier, .resting)
+        XCTAssertTrue(shown.isEmpty)
+        XCTAssertNil(clock.pending)
+        XCTAssertEqual(clock.starts, 0)
+        session.send(.keepOpenChanged(false))
+        session.send(.pointerEntered)
+        XCTAssertTrue(session.state.keepsOpen, "late hidden menu and pointer callbacks stay rejected")
+        session.activate()
+        XCTAssertEqual(session.state.tier, .revealed)
+        session.suspend(); shown.removeAll()
+        session.setKeepsOpen(false)
+        XCTAssertFalse(session.isActive)
+        XCTAssertFalse(session.state.keepsOpen)
+        XCTAssertFalse(defaults.bool(forKey: ToolbarSession.keepOpenKey))
+        XCTAssertTrue(shown.isEmpty)
+        XCTAssertNil(clock.pending)
+        let restored = ToolbarSession(defaults: defaults, clock: ManualClock())
+        restored.activate()
+        XCTAssertEqual(restored.state.tier, .resting)
+    }
+
+    @MainActor func testSettingsKeepOpenUsesNormalTransportWhileTheToolbarIsVisible() {
+        let (session, clock, defaults, domain) = fixture()
+        defer { defaults.removePersistentDomain(forName: domain) }
+        session.activate()
+        session.setKeepsOpen(true)
+        XCTAssertEqual(session.state.tier, .revealed)
+        XCTAssertTrue(defaults.bool(forKey: ToolbarSession.keepOpenKey))
+        session.setKeepsOpen(false)
+        XCTAssertNotNil(clock.pending)
+        clock.fire()
+        XCTAssertEqual(session.state.tier, .resting)
+        XCTAssertFalse(defaults.bool(forKey: ToolbarSession.keepOpenKey))
+    }
+
     @MainActor func testLegacyClickToExpandDoesNotOptIntoKeepOpen() {
         let (_, _, defaults, domain) = fixture()
         defer { defaults.removePersistentDomain(forName: domain) }

@@ -6,6 +6,7 @@ import ServiceManagement
 import ImageIO
 
 struct WorkbenchHome: View {
+    @Environment(\.pageSectionFrames) private var sectionFrames
     @ObservedObject var model: AppModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var keyboard: KeyboardCoachModel
@@ -337,6 +338,7 @@ struct WorkbenchHome: View {
                         WorkbenchAppearancePicker().fixedSize()
                         Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
                             .help(WorkbenchHome.floatingToolbarHelp)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("settings.toolbar.visibility", $0) }
                     }
                     ToolbarSettingsView(model: model)
                     Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in

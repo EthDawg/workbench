@@ -645,3 +645,5 @@ The current candidate and native limits are recorded in
 The earlier [menu refinement verification](verification/2026-09-24-menu-refinement.md) remains historical evidence.
 The [earlier toolbar verification](verification/2026-09-23-durable-toolbar.md)
 remains historical evidence for its own source revision.
+
+Settings can change **Keep open** while the toolbar is hidden or suspended. The same preference is saved without revealing the toolbar or interrupting active work; the next normal return to the tools surface uses that choice.

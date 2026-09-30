@@ -69,6 +69,18 @@ import ToolbarCore
         apply(event)
     }
 
+    /// Settings can change this saved choice while the toolbar is hidden or suspended.
+    /// Keep transient pointer/menu events gated by send; a preference edit never reveals
+    /// a hidden surface, starts grace or replays a menu action.
+    public func setKeepsOpen(_ on: Bool) {
+        if isActive { send(.keepOpenChanged(on)); return }
+        guard state.keepsOpen != on else { return }
+        let (changed, _) = ToolbarState.reduce(state, .keepOpenChanged(on))
+        let (suspended, _) = ToolbarState.reduce(changed, .surfaceLeftTools)
+        state = suspended
+        defaults.set(on, forKey: Self.keepOpenKey)
+    }
+
     /// The view must obtain admission immediately before entering native tracking.
     @discardableResult public func beginMenu(_ menu: NSMenu) -> Bool {
         guard isActive else { return false }
