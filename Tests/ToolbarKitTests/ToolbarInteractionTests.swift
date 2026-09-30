@@ -184,6 +184,135 @@ final class ToolbarInteractionTests: XCTestCase {
         }
     }
 
+    @MainActor func testHintsKeepOneRailForShortAndLongTextAtEveryEdge() {
+        let screen = NSRect(x: -1440, y: -200, width: 1440, height: 900)
+        for anchor in ToolbarAnchor.allCases {
+            let target = ToolbarGeometry.frame(size: NSSize(width: 252, height: 40), position: .docked(anchor), screen: screen)
+            let short = ToolbarHintController.frame(size: NSSize(width: 72, height: 29), target: target, visible: screen)
+            let long = ToolbarHintController.frame(size: NSSize(width: 324, height: 65), target: target, visible: screen)
+            XCTAssertEqual(short.midX, long.midX)
+            XCTAssertEqual(short.minY > target.maxY, long.minY > target.maxY)
+            if short.minY > target.maxY { XCTAssertEqual(short.minY, long.minY) }
+            else { XCTAssertEqual(short.maxY, long.maxY) }
+            XCTAssertTrue(screen.contains(short)); XCTAssertTrue(screen.contains(long))
+        }
+    }
+
+    @MainActor func testHintsCannotAppearWhileControlsAreMoving() {
+        var scheduled: [DispatchWorkItem] = []
+        let hints = ToolbarHintController { _, work in scheduled.append(work) }
+        let button = ToolbarIconButton(frame: .zero)
+        button.hint = "Region · Select a region"; button.hints = hints
+        button.setHovered(true)
+        hints.isReady = false
+        scheduled.forEach { $0.perform() }
+        XCTAssertNil(hints.source); XCTAssertNil(hints.panel)
+        button.setHovered(true)
+        XCTAssertNil(hints.source)
+    }
+
+    @MainActor func testCollapsedTargetHasNoVisibleHazeOutsideItsCapsule() throws {
+        for anchor in ToolbarAnchor.allCases {
+            let state = ToolbarViewState(name: "clear-rest", tier: .resting, anchor: anchor)
+            let view = NSHostingView(rootView: ToolbarRow(state: state))
+            view.frame = NSRect(origin: .zero, size: ToolbarLayout.mark); view.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let scale = CGFloat(bitmap.pixelsHigh) / ToolbarLayout.mark.height
+            var outsideAlpha: CGFloat = 0
+            for y in 0..<bitmap.pixelsHigh where abs((CGFloat(y) + 0.5) / scale - 14) > 5 {
+                for x in 0..<bitmap.pixelsWide { outsideAlpha = max(outsideAlpha, bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) }
+            }
+            XCTAssertLessThanOrEqual(outsideAlpha, 1.0 / 255, "\(anchor): the clear target leaked paint around the 8-point capsule")
+            let target = try XCTUnwrap(descendants(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
+            XCTAssertEqual(target.bounds.size, ToolbarLayout.mark)
+        }
+    }
+
+    /// WindowServer decides routing before NSView.hitTest. An on-screen query is needed
+    /// to prove that the almost clear padding still belongs to the native window.
+    @MainActor func testCollapsedPaddingReceivesNativeWindowHits() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["TOOLBAR_WINDOW_HIT_TESTS"] == "1",
+                          "Run explicitly: briefly shows a synthetic nonactivating toolbar; sends no input.")
+        let app = NSApplication.shared
+        let policy = app.activationPolicy()
+        app.setActivationPolicy(.prohibited); app.finishLaunching()
+        defer { app.setActivationPolicy(policy) }
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        let (panel, view) = host(ToolbarRow(state: .init(name: "native-hit", tier: .resting)))
+        defer { panel.close() }
+        panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
+        panel.setFrameOrigin(NSPoint(x: screen.minX + 80, y: screen.maxY - 100))
+        panel.orderFrontRegardless(); view.layoutSubtreeIfNeeded(); panel.display()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.08))
+        for x in [CGFloat(1), 24, 47] {
+            for y in [CGFloat(1), 5, 14, 23, 27] {
+                let point = panel.convertPoint(toScreen: CGPoint(x: x, y: y))
+                XCTAssertEqual(NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0), panel.windowNumber,
+                               "the full 48 × 28 target must receive the hit, including padding at \(x), \(y)")
+            }
+        }
+        XCTAssertFalse(panel.isKeyWindow); XCTAssertFalse(panel.isMainWindow)
+    }
+
+    @MainActor func testCaptureButtonsWaitUntilTheWholeRowIsOpen() throws {
+        for anchor in [ToolbarAnchor.bottom, .left, .right] {
+            let state = ToolbarViewState(name: "opening", tier: .revealed, anchor: anchor, mode: .snapAndTalk,
+                accessory: .review, captureChoices: ToolbarCaptureKind.allCases)
+            let full = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
+            for (size, ready) in [(ToolbarLayout.mark, false), (NSSize(width: 130, height: 36), false), (full, true)] {
+                var captures = 0, popups = 0
+                let row = ToolbarRow(state: state, openAccessory: { _ in popups += 1 },
+                    pressCapture: { _ in { captures += 1 } }, openChooser: { _ in popups += 1 },
+                    makeMenu: { popups += 1; return NSMenu() }, menuBegan: { _ in false }).pinnedToDock(anchor)
+                let view = NSHostingView(rootView: row)
+                let panel = NSPanel(contentRect: NSRect(origin: NSPoint(x: -19900, y: -19900), size: size),
+                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+                panel.isReleasedWhenClosed = false; panel.contentView = view
+                defer { panel.close() }
+                view.frame = NSRect(origin: .zero, size: size); panel.orderFrontRegardless(); view.layoutSubtreeIfNeeded()
+                let commands = descendants(view).compactMap { $0 as? NSButton }.filter { $0.accessibilityIdentifier().hasPrefix("toolbar.capture.") }
+                XCTAssertEqual(commands.count, 3)
+                for command in commands {
+                    XCTAssertEqual(command.isEnabled, ready, "\(anchor), \(size)")
+                    command.performClick(nil)
+                }
+                XCTAssertEqual(captures, ready ? 3 : 0, "invisible controls cannot start a capture")
+                let returnKey = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: panel.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+                for control in descendants(view).compactMap({ $0 as? NSButton }) where ["toolbar.launcher", "toolbar.more", "toolbar.accessory"].contains(control.accessibilityIdentifier()) {
+                    XCTAssertEqual(control.isEnabled, ready)
+                    control.performClick(nil); control.keyDown(with: returnKey)
+                }
+                XCTAssertEqual(popups > 0, ready, "keyboard and accessibility cannot open controls from moving geometry")
+            }
+        }
+    }
+
+    @MainActor func testMouseUpContributesTheFinalDragPosition() {
+        _ = NSApplication.shared
+        let button = LauncherButton(frame: NSRect(x: 0, y: 0, width: 48, height: 40))
+        let panel = NSPanel(contentRect: NSRect(x: -19900, y: -19900, width: 48, height: 40),
+            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false; panel.contentView = button; panel.orderFrontRegardless()
+        defer { panel.close() }
+        let origin = panel.frame.origin
+        var ended: NSPoint?, moved = 0, opened = 0
+        button.open = { opened += 1 }
+        button.drag = .init(move: { moved += 1 }, end: { ended = panel.frame.origin })
+        func event(_ type: NSEvent.EventType, point: NSPoint) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        NSApp.postEvent(event(.leftMouseUp, point: NSPoint(x: 34, y: 15)), atStart: true)
+        button.mouseDown(with: event(.leftMouseDown, point: NSPoint(x: 24, y: 20)))
+        XCTAssertEqual(ended?.x, origin.x + 10)
+        // Allow one point for native event coordinate rounding on the vertical axis.
+        XCTAssertEqual(ended?.y ?? .infinity, origin.y - 5, accuracy: 1)
+        XCTAssertEqual(moved, 1); XCTAssertEqual(opened, 0)
+    }
+
     @MainActor func testHoverOnlyChangesTheButtonsBackground() throws {
         let (panel, host) = host(ToolbarRow(state: .init(name: "hover", tier: .revealed)))
         defer { panel.close() }

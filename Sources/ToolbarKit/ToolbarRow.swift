@@ -17,12 +17,10 @@ public struct ToolbarDragActions {
 }
 
 public extension ToolbarAnchor {
-    /// Where content sits inside its window: against the growth edge, where the launcher is,
-    /// and centred on the launcher vertically. The window is sometimes briefly the wrong
-    /// size, placed before new content has been measured or while it animates. Content
-    /// centred in the window would then move the launcher out from under the pointer.
+    /// Keep content on the same reference as the native window during measurement and
+    /// animation: centred at top/bottom, or against the inward growth edge at the sides.
     var contentAlignment: Alignment {
-        Alignment(horizontal: growsLeftward ? .trailing : .leading, vertical: .center)
+        Alignment(horizontal: growsFromCentre ? .center : growsLeftward ? .trailing : .leading, vertical: .center)
     }
 }
 
@@ -45,8 +43,8 @@ public extension View {
 /// signals highlight recording, transport and recovery; tool identity waits for reveal.
 /// A click on it only reveals and takes the keyboard; a
 /// drag moves the toolbar. Revealed, the row is `[tool ▾] [next action] [accessory] [⋯]`,
-/// growing inward from the launcher, which sits exactly where the mark was; on a right-hand
-/// dock the order is reversed. The launcher opens the tool chooser, More holds the tool's
+/// growing from the mark's centre at top/bottom/free positions and inward at side/corner
+/// docks; on a right-hand dock the order is reversed. The launcher opens the tool chooser, More holds the tool's
 /// options and the work running elsewhere, and a right-click anywhere on the tool opens
 /// those options.
 public struct ToolbarRow: View {
@@ -97,6 +95,12 @@ public struct ToolbarRow: View {
         self.makeAccessoryMenu = makeAccessoryMenu
         self.openAccessory = openAccessory
     }
+    private var interactionDrag: ToolbarDragActions {
+        ToolbarDragActions(begin: { hints.isReady = false; drag.begin() }, move: drag.move,
+            end: { drag.end(); hints.isReady = controlsReady },
+            cancel: { drag.cancel(); hints.isReady = controlsReady }, isCancelled: drag.isCancelled)
+    }
+
     private var scale: CGFloat { textScale * systemScale }
 
     private var revealProgress: CGFloat {
@@ -107,12 +111,20 @@ public struct ToolbarRow: View {
     // Let the capsule make room before controls appear. The same curve reverses
     // on close, so glyphs disappear before the shrinking edge can cut through them.
     private var controlOpacity: CGFloat { ToolbarRevealVisuals.glyphOpacity(progress: revealProgress) }
+    private var controlsReady: Bool {
+        let actions = max(1, state.captureChoices.count)
+        let accessory = state.shownAccessory == nil ? 0 : 1
+        let width = ToolbarLayout.launcherWidth + scale * (CGFloat(actions) * ToolbarLayout.primaryMinimum
+            + CGFloat(accessory) * ToolbarLayout.accessoryWidth + ToolbarLayout.moreWidth + ToolbarLayout.padding
+            + CGFloat(actions + accessory + 1) * ToolbarLayout.gap)
+        return state.tier == .revealed && revealProgress >= 0.999 && (viewport.map { abs($0.width - width) < 1 } ?? true)
+    }
     private var symbolSize: CGFloat { 12 + (15 * scale - 12) * revealProgress }
 
     public var body: some View {
         Group {
             if state.tier == .resting { compact.opacity(1 - controlOpacity) }
-            else { row.opacity(controlOpacity) }
+            else { row.opacity(controlOpacity).allowsHitTesting(controlsReady).disabled(!controlsReady) }
         }
         .overlay(alignment: state.anchor.contentAlignment) {
             if state.tier == .resting, revealProgress > 0 {
@@ -121,18 +133,21 @@ public struct ToolbarRow: View {
                 compact.opacity(1 - controlOpacity).allowsHitTesting(false).accessibilityHidden(true)
             }
         }
-        .mask { chrome(mask: true) }
-        .background { chrome() }
-        // The whole resting target receives the pointer, including the clear
-        // space above and below its smaller visible capsule.
-        .background {
-            if state.tier == .resting { Rectangle().fill(Color.black.opacity(0.012)) }
+        .mask {
+            // At rest the recording warning may sit just outside its capsule. The mask
+            // contributes no paint; only the transition needs to clip unfolding glyphs.
+            if state.tier == .resting && revealProgress == 0 { Color.white }
+            else { chrome(mask: true) }
         }
+        .background { chrome() }
+        .contentShape(Rectangle())
         .tint(accent)
         .environment(\.colorScheme, .dark)
         .environment(\.controlActiveState, .active)
         .onExitCommand(perform: escape)
         .onDisappear { hints.hide() }
+        .onChange(of: controlsReady, initial: true) { _, ready in hints.isReady = ready }
+        .onChange(of: state.anchor) { _, _ in hints.hide() }
         .transaction { $0.animation = nil }
     }
 
@@ -147,12 +162,8 @@ public struct ToolbarRow: View {
                     if !mask { Capsule(style: .circular).strokeBorder(.white.opacity(0.14), lineWidth: 1) }
                 }
                 .frame(width: size.width, height: height)
-                .overlay(alignment: state.anchor.contentAlignment) {
-                    // Status badges can sit above the capsule. Mask only the
-                    // unfolding controls; keep the full launcher target visible.
-                    if mask { Rectangle().fill(.white).frame(width: ToolbarLayout.launcherWidth, height: size.height) }
-                }
-                .offset(x: state.anchor.growsLeftward ? geometry.size.width - size.width : 0,
+                .offset(x: state.anchor.growsFromCentre ? (geometry.size.width - size.width) / 2
+                            : state.anchor.growsLeftward ? geometry.size.width - size.width : 0,
                         y: (geometry.size.height - height) / 2)
         }
         .allowsHitTesting(false)
@@ -167,10 +178,9 @@ public struct ToolbarRow: View {
         ToolbarCompactMark(status: state.status, accent: accent, drawsChrome: false, symbolSize: symbolSize)
             .overlay {
                 ToolbarRestTarget(label: "Workbench floating toolbar, \(state.mode.title)", status: state.status.spokenValue,
-                                  reveal: revealFromRest, options: menuOpener, drag: drag)
+                                  reveal: revealFromRest, options: menuOpener, drag: interactionDrag)
             }
             .frame(width: ToolbarLayout.mark.width, height: ToolbarLayout.mark.height)
-            .help(state.mode.title + " · " + state.status.description + ". Click to show the toolbar; drag to move.")
     }
 
     private var row: some View {
@@ -182,7 +192,7 @@ public struct ToolbarRow: View {
         .frame(minHeight: ToolbarLayout.rowHeight * scale).fixedSize()
         // Empty chrome is a handle too: a drag that starts beside or between the controls
         // moves the row. The controls sit above it and keep their own clicks.
-        .background { ToolbarDragRegion(drag: drag, showsHandCursor: false) }
+        .background { ToolbarDragRegion(drag: interactionDrag, showsHandCursor: false) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench floating toolbar")
     }
@@ -210,7 +220,7 @@ public struct ToolbarRow: View {
 
     private var primary: some View {
         ToolbarPrimary(title: state.actionTitle, symbol: state.actionSymbol, help: state.actionHelp, isEnabled: state.isActionEnabled,
-                       fontSize: 16 * scale, press: press, drag: drag, keyCycle: keyCycle, hints: hints)
+                       fontSize: 16 * scale, press: press, drag: interactionDrag, keyCycle: keyCycle, hints: hints)
             // SwiftUI sets a hosted control's enabled state from its environment once it is in a
             // window, over the one set below, so a disabled action says so here too (#223).
             .disabled(!state.isActionEnabled)
@@ -227,7 +237,7 @@ public struct ToolbarRow: View {
             ForEach(state.captureChoices, id: \.self) { kind in
                 ToolbarPrimary(title: kind.title, symbol: kind.symbol, help: state.captureHelp(kind),
                                isEnabled: state.isActionEnabled, fontSize: 16 * scale,
-                               press: { pressCapture(kind) }, drag: drag, keyCycle: keyCycle, hints: hints,
+                               press: { pressCapture(kind) }, drag: interactionDrag, keyCycle: keyCycle, hints: hints,
                                identifier: "toolbar.capture." + kind.rawValue, slot: .capture(kind))
                     .disabled(!state.isActionEnabled)
                     .frame(width: ToolbarLayout.primaryMinimum * scale, height: ToolbarLayout.controlHeight * scale)
@@ -248,7 +258,7 @@ public struct ToolbarRow: View {
     /// focus and the accessibility element.
     private var launcher: some View {
         ToolbarLauncher(state: state, accent: accent, open: { view in hints.hide(); openChooser(view) }, options: menuOpener,
-                        focus: { if state.tier == .revealed { focusButton($0) } }, escape: escape, drag: drag, keyCycle: keyCycle, hints: hints)
+                        focus: { if state.tier == .revealed { focusButton($0) } }, escape: escape, drag: interactionDrag, keyCycle: keyCycle, hints: hints)
             .frame(width: ToolbarLayout.launcherWidth, height: ToolbarLayout.rowHeight * scale)
             .overlay {
                 Group {
@@ -282,8 +292,9 @@ public struct ToolbarRow: View {
 }
 
 /// The compact rest's look: a quiet 48 × 8 handle, with a taller capsule only for a
-/// recording, transport or recovery signal. The whole 48 × 28 target is faintly filled
-/// so it takes the pointer, while everything outside the panel stays click-through.
+/// recording, transport or recovery signal. The native target owns the full 48 × 28
+/// bounds. One imperceptible native fill retains WindowServer hit routing; the compact
+/// view itself paints only its capsule and signal, with no native window shadow.
 public struct ToolbarCompactMark: View {
     let status: ToolbarStatus
     let accent: Color
@@ -297,8 +308,6 @@ public struct ToolbarCompactMark: View {
 
     public var body: some View {
         ZStack {
-            // A fill the eye cannot see, so the whole target, not only the capsule, is the window's.
-            Rectangle().fill(Color.black.opacity(0.012))
             let height = ToolbarLayout.restingCapsuleHeight(for: status.indicator)
             if drawsChrome {
                 Capsule().fill(capsuleFill)
@@ -434,6 +443,13 @@ final class RestTargetView: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        // WindowServer passes clicks through alpha-zero pixels, regardless of NSView's
+        // hitTest. One 8-bit alpha step keeps the generous target without the previous
+        // stacked 1.2% rectangles or a shadow around their bounds.
+        NSColor.black.withAlphaComponent(0.004).setFill()
+        bounds.fill()
+    }
     override func mouseDown(with event: NSEvent) {
         trackToolbarDrag(view: self, event: event, actions: drag, clickAnywhere: true, click: { [weak self] in self?.reveal?() })
     }
@@ -479,7 +495,7 @@ private struct ToolbarPrimary: NSViewRepresentable {
         var keyCycle: ToolbarKeyCycle?
         override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(runAction) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        @objc private func runAction() { press?()?() }
+        @objc private func runAction() { if isEnabled { press?()?() } }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         /// Tab from the launcher reaches the action.
         override var acceptsFirstResponder: Bool { true }
@@ -556,23 +572,23 @@ final class LauncherButton: ToolbarIconButton {
         target = self; action = #selector(openChooser)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    @objc private func openChooser() { open?() }
+    @objc private func openChooser() { if isEnabled { open?() } }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     /// The second click of a double-click, including one that began on the compact rest, does nothing.
     override func mouseDown(with event: NSEvent) {
-        guard event.clickCount < 2 else { return }
+        guard isEnabled, event.clickCount < 2 else { return }
         dismissHint()
         highlight(true)
         defer { highlight(false) }
         trackToolbarDrag(view: self, event: event, actions: drag, click: { [weak self] in self?.open?() })
     }
-    override func rightMouseDown(with event: NSEvent) { options?() }
-    override func performClick(_ sender: Any?) { dismissHint(); open?() }
+    override func rightMouseDown(with event: NSEvent) { if isEnabled { options?() } }
+    override func performClick(_ sender: Any?) { guard isEnabled else { return }; dismissHint(); open?() }
     override func keyDown(with event: NSEvent) {
         if keyCycle?.handle(event, from: self) == true { return }
         if event.keyCode == 53 { escape?() }
-        else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
+        else if isEnabled, [36, 49, 76, 125].contains(event.keyCode) { open?() }
         else { super.keyDown(with: event) }
     }
 }
@@ -615,10 +631,10 @@ final class MoreButton: ToolbarIconButton {
         target = self; action = #selector(openMenu)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    @objc private func openMenu() { open?() }
+    @objc private func openMenu() { if isEnabled { open?() } }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func rightMouseDown(with event: NSEvent) { open?() }
+    override func rightMouseDown(with event: NSEvent) { if isEnabled { open?() } }
     // Menus track the initiating press themselves, as a native popup button does. Do not
     // nest NSButton's mouse-up tracking around NSMenu in a nonactivating panel.
     override func mouseDown(with event: NSEvent) {
@@ -627,11 +643,11 @@ final class MoreButton: ToolbarIconButton {
         defer { highlight(false); reconcileHover() }
         dismissHint(); open?()
     }
-    override func performClick(_ sender: Any?) { dismissHint(); open?() }
+    override func performClick(_ sender: Any?) { guard isEnabled else { return }; dismissHint(); open?() }
     override func keyDown(with event: NSEvent) {
         if keyCycle?.handle(event, from: self) == true { return }
         if event.keyCode == 53 { escape?() }
-        else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
+        else if isEnabled, [36, 49, 76, 125].contains(event.keyCode) { open?() }
         else { super.keyDown(with: event) }
     }
 }
@@ -685,7 +701,7 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override var acceptsFirstResponder: Bool { true }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        @objc private func openMenu() { open?() }
+        @objc private func openMenu() { if isEnabled { open?() } }
         override func mouseDown(with event: NSEvent) {
             guard isEnabled, event.clickCount < 2 else { return }
             dismissHint()
@@ -696,7 +712,7 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
         override func keyDown(with event: NSEvent) {
             if keyCycle?.handle(event, from: self) == true { return }
             if event.keyCode == 53 { escape?() }
-            else if [36, 49, 76, 125].contains(event.keyCode) { open?() }
+            else if isEnabled, [36, 49, 76, 125].contains(event.keyCode) { open?() }
             else { super.keyDown(with: event) }
         }
     }
@@ -782,16 +798,16 @@ private final class DragRegion: NSView {
         if !dragging && ToolbarDrag.isDrag(from: start, to: point) {
             actions.begin(); origin = window.frame.origin; dragging = true
         }
+        if dragging {
+            window.setFrameOrigin(NSPoint(x: origin.x + point.x - start.x, y: origin.y + point.y - start.y))
+            actions.move()
+        }
         if next.type == .leftMouseUp {
             endedNormally = true
             if !dragging && (clickAnywhere || (view.window === window && view.bounds.contains(view.convert(next.locationInWindow, from: nil)))) {
                 click?()
             }
             break
-        }
-        if dragging {
-            window.setFrameOrigin(NSPoint(x: origin.x + point.x - start.x, y: origin.y + point.y - start.y))
-            actions.move()
         }
     }
 }

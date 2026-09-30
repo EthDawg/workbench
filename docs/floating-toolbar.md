@@ -125,7 +125,7 @@ The routine no-speech cue keeps its own view at the toolbar's place for under tw
 seconds, held by hover or VoiceOver, then the mark again (#156).
 
 **The coaching card** (#134 T5) shows above what the toolbar shows with a 12-point
-gap, or below it when the display has no room above, centred on the launcher and
+gap, or below it when the display has no room above, centred on the resting mark and
 never expanding the row or moving the mark. It fades in over 160 ms, at once with
 Reduce Motion. It is its own panel, sized to the
 card, so the gap passes clicks through. The host allows it
@@ -138,13 +138,13 @@ narration starts; and fades it out in 160 ms, or at once with Reduce Motion.
 
 Revealed, the toolbar is a black 40-point capsule: `[tool ▾] [action icon]
 [accessory icon] [⋯]`, reversed on a right-hand anchor. At standard text its
-width is 132 points, or 172 with an accessory. The launcher's 48-point target
-stays anchored, followed by 4-point gaps, 36-point primary and accessory targets,
+width is 132 points, or 172 with an accessory. The launcher has a 48-point target,
+followed by 4-point gaps, 36-point primary and accessory targets,
 a 32-point More target and 8 points of padding at the far end. The action icons
 are white; hover adds a grey inset background without moving any target. Larger
 text scales the controls. When the accessory does not fit the display less 24
-points, it waits in More. The launcher and compact mark share one fixed centre,
-and the row grows inward from it. Full command names stay in the hint and
+points, it waits in More. At top, bottom and free positions, the row opens equally around the compact mark.
+At side and corner docks, the launcher stays at the inward growth edge. Full command names stay in the hint and
 accessible name, including capture counts and the exact Stop, Pause or Resume.
 
 The next action is the label for where you are in the journey, from one pure
@@ -166,7 +166,12 @@ followed by its usable shortcut, for example `Draw · Hold ⌥D` or
 `Stop · Release ⌥Space`. Hold and Release reflect the actual capture or drawing
 session. A mouse-latched hold drawing, another drawing tool, or an unprepared
 Snap & Talk session omits a key that would perform a different action. Disabled
-and failed bindings are omitted. There is no competing whole-row tooltip.
+and failed bindings are omitted. There is no competing whole-row tooltip. Hints
+share one rail centred on the entire row, above it when there is room and below
+at the top of the screen. Space for the longest hint determines the rail's
+position, so moving between short and long hints cannot shift its centre or
+change sides. The compact mark has no separate native tooltip. Hints are
+click-through and close on actions, moves, resizing and collapse.
 
 `ToolbarModeFollower` in the host watches every owner and makes a capability
 the mode the moment it goes from not live to live, whichever door started it;
@@ -175,8 +180,7 @@ not a start, so a restored Snap & Talk session does not move the mode.
 
 **The launcher** shows the current tool's symbol with a chevron. The symbol is
 shared with the menu bar, desktop navigation and chooser; no separate icon asset
-set is introduced. It appears as the handle opens, centred on the same fixed
-point, with the chevron beside it. A cog is reserved for Settings: the tool and chevron make choosing a
+set is introduced. It appears as the handle opens, with the chevron beside it. A cog is reserved for Settings: the tool and chevron make choosing a
 tool visible here. More stays at the inward end, with the hint `Options for Draw`
 (or the selected tool's name). A click, Space,
 Return or Down opens the chooser. When work is live in any tool, the launcher
@@ -226,11 +230,12 @@ the pointer.
 
 The primary keeps one stable icon target through action changes. The icon comes
 from the exact latched operation: Stop, Pause, Play, Hide or the start capability.
-A noninteractive text panel appears above the hovered or focused target, below
-at a top edge, and names the action with its usable key and any capture count.
+A noninteractive text panel uses one stable position above the row, below
+at a top edge, and names the hovered or focused action with its usable key and any capture count.
 It ignores clicks and never takes focus. A 180 ms dwell avoids flashes; an 80 ms
-exit grace lets movement to an adjacent button crossfade the same panel over
-120 ms. Menus, actions, collapse and detach dismiss it immediately. Reduce
+exit grace bridges adjacent buttons. The first hint fades in over 120 ms; later
+words replace it without moving the panel's centre or its edge nearest the row.
+Menus, actions, movement, collapse and detach dismiss it immediately. Reduce
 Motion presents the text without fading. Disabled or unassigned shortcut
 combinations are omitted; the toolbar has no shortcut editor. Keep open is an
 explicit persistent preference.
@@ -285,10 +290,11 @@ the frame changes in one 160 ms ease-out animation with no bounce, and the side
 the row grows toward never changes during an interaction. The visible capsule,
 mask and content read the host's current layout bounds during that animation;
 there is no second animation clock or asynchronous size observer. The quiet
-handle grows into the row and its tool symbol appears at the anchored centre;
-recording and result signals keep that same centre through the transition. White glyphs fade in together during the final fifth of expansion, after each
-target fits, and disappear before the closing edge reaches them. The
-launcher remains anchored even while the host is smaller than its content.
+handle grows into the row around its centre at top, bottom and free positions;
+side and corner positions keep their inward edge. White glyphs fade in together
+during the final fifth, after each target fits, and disappear before the closing
+edge reaches them. Controls accept clicks only when the row has reached its full
+size. Hints stay hidden through resizing, collapse and dragging.
 Reduce Motion changes the frame and content at once and holds the voice trace still.
 
 Hide toolbar hides the tools in every mode, including while drawing, presenting or
@@ -369,25 +375,27 @@ its session stays started until it is reset.
 
 ## Placement
 
-The toolbar goes where you put it (#163). A press on the compact mark, the
-launcher, the next action or the row's empty chrome becomes a move after 4
-points; below that it is a click, and the click does what it always does. More
-and the accessory are ordinary controls and never start a move. While you drag,
-the eight named docks show as guides. The one within 16 points of the launcher's
-slot is highlighted, and releasing there docks the toolbar. Releasing anywhere
-else leaves it right there, kept whole inside the visible display it covers most.
+The toolbar goes where you put it. A press on the compact mark, launcher,
+primary action or empty chrome becomes a move after four points. More and the
+accessory keep their normal button behaviour. During dragging, a quiet guide
+outlines the display's usable edges and highlights the exact landing frame.
+The same geometry chooses the guide and the released position.
 
-The position is the launcher's centre, which the compact mark shares (#134). A
-docked launcher sits at the centre of its dock's 48 × 40 slot, the shared
-floating-control geometry 16 points in from the display's edges, and the row
-grows inward from it. A free row grows toward the middle of the display it was
-released on, so near an edge it expands inward. That side is decided once, on
-release, and kept with the position. So revealing, collapsing, choosing another
-tool or a live label that widens the row never moves the launcher, and nothing
-but a new placement turns the row round. The toolbar sizes to its content and
-has no resize handles. A recording, a result or the cue is the same toolbar at the
-same position, so dragging it moves that one position (#134 T4). Position
-floating toolbar… on the Dictate page opens Position… at the toolbar.
+A window edge within sixteen points of a guide attaches there. This works along
+the whole top, bottom, left or right edge, including a release beyond the usable
+screen. Nearby corners and edge centres attract within the same distance. Along
+an edge, the toolbar keeps its display identity and position as a fraction of that
+edge, so a display resolution change preserves the placement. A release in the interior stays free.
+Dragging chooses the display under the pointer.
+
+Top, bottom and free positions expand evenly around the resting mark's centre.
+Side and corner positions grow inward. The final frame stays on the usable
+screen; a position close to a corner may need horizontal clamping. Named docks
+keep a sixteen-point inset for the expanded standard row. The compact target is
+48 × 28, with a crisp 48 × 8 idle capsule and transparent space around it. The
+tools window has no native shadow. A recording, result or cue uses this same
+position. Position floating toolbar… on Dictate opens the existing placement
+control beside it.
 
 Position… in More opens one compact control with the eight docks and
 Reset position, which docks at bottom centre. It is the keyboard and precise way
@@ -398,22 +406,18 @@ Reset or Escape gives the keyboard back to the toolbar, so a second Escape retur
 to the field it came from; opened by pointer, it takes the keyboard nowhere. A
 drag or a menu on the toolbar closes it.
 
-The choice persists through `CapturePanelController`: a dock by name, or a free
-position (`ToolbarFreePosition`) as the launcher's centre and side
-(`capturePanelLauncher.v1`). #163's record of a glyph edge, centre and side, and
-the compact mark's origin and size, are written beside it for an earlier build.
-Earlier saves come back where they were left: #163's glyph edge becomes the
-launcher centre 18 points inside it, and a save with only a resting element's
-origin and size gets its side decided once, where it was left. When the glyph
-copy no longer matches the launcher record, an earlier build has moved the
-toolbar since, and that move wins. A migrated save is written back in this
-build's terms at once. The compact rest adds no preference of its own. The
-position survives collapse and reveal, every
-update and relaunch. If its display is removed, the toolbar comes back whole on
-the display in use; the saved position is kept, so it returns when that display
-does. The drag threshold, snap distance and recovery are StageKit's
-`FloatingControlPlacement`, for Persona overlays to share with their own
-per-copy state.
+The choice persists through `CapturePanelController`: a named dock or a free
+position in `capturePanelLauncher.v1`. An edge attachment adds `edge`, `fraction`
+and `displayID` to that existing record. The absolute centre and legacy direction
+remain alongside it for older builds. The glyph-edge
+record and compact origin/size are still written for downgrade compatibility.
+An older build's later move wins when its glyph-edge copy changes. Earlier saves
+retain their resting mark's place and use the new centred expansion in free
+space. Named docks retain their display in `capturePanelDockDisplay.v1`, with a
+copy of the legacy anchor and frame so a later move by an older build still wins.
+Display removal recovers a reachable frame while retaining the saved
+position. The four-point drag threshold and sixteen-point snap distance match
+the other floating controls; the toolbar owns its continuous edge attachment.
 
 ## The three layers
 
@@ -524,31 +528,26 @@ The core cannot be right if the host feeds it fiction.
   delivers exactly one `graceElapsed`. The production Task exits on cancellation
   and checks cancellation before delivery on the main actor. A callback from a
   cancelled deadline must never be delivered into a later deadline.
-- **One animation.** `NSAnimationContext` on the window frame. The content does
-  not animate its own size at the same time.
+- **One animation.** `ToolbarWindowMotion` updates origin and size together on
+  one cancellable frame clock over 160 ms. An interrupted motion begins at the
+  actual visible frame. Reduce Motion moves directly to the final frame. The
+  content does not animate its own size at the same time.
 - **Hover intent belongs to its geometry.** Suspending tracking for a resize,
   drag or surface change cancels the pending reveal dwell. Only the host's final
   pointer reconciliation may reveal at the new geometry; an old dwell cannot
   shorten a later entry. If AppKit misses an exit, the next real entry starts a
   fresh dwell rather than leaving the pill unresponsive.
-- **The row grows inward from the launcher's centre**, which the compact mark
-  shares, so nothing under a pointer on it moves as the row opens, widens or
-  closes, and a right-hand dock does not run off the display.
-  `ToolbarGeometry.frame(size:position:screen:)` puts the window's growth edge 24
-  points from that centre for any width: the mark's own edge at rest, and the end
-  of the launcher's fixed 48-point target when revealed.
-  `ToolbarAnchor.growsLeftward` gives a dock's side; a free position
-  (`ToolbarPosition.free`) grows toward the side decided when it was released and
-  draws its row for that side (`CaptureHUDControls.rowAnchor`). An update compares
-  the window with the frame of the position the toolbar actually has, so it never
-  pulls a free toolbar back to a dock.
+- **One reference point, one growth policy.** `ToolbarGeometry` centres top,
+  bottom and free rows on the resting mark. Side and corner rows grow inward.
+  SwiftUI alignment, clipping, native window motion, hints and dragging use the
+  same policy. A mode change sizes around that reference, and a free position
+  remains free. Edge fractions belong to the placement owner.
 - **The window is the row's size.** `FloatingToolbar` reports the row with
   `onGeometryChange`. Before sizing the tools, the host lays the row out
   (`layoutSubtreeIfNeeded`), so the report for the tier, mode and labels about to
   show arrives first. A reveal, a count crossing 9→10 or a mode switch goes
   straight to the right frame, and a drag keeps its window until release. At rest
-  the window is the compact mark's fixed 48 × 28, so no dock ever centres on a
-  measured width and an open row is never re-centred under the pointer. Do not
+  the window is the compact mark's fixed 48 × 28; at full size it is the measured row. Do not
   measure with a preference written from a background
   `GeometryReader`: once the row held conditional content, that report never
   arrived, and every window kept a seed size (#152).
@@ -557,9 +556,9 @@ The core cannot be right if the host feeds it fiction.
 
 ## The look and acceptance
 
-The compact mark and the launcher keep one centre on screen while the row grows
-inward from it. Scaled native icons and readable hints support larger type, and
-the launcher's target stays 48 points wide at every size so that centre holds. At
+The compact mark is the placement reference. The row opens symmetrically in the
+interior and at top/bottom docks, and inward at a side or corner. Scaled native
+icons and readable hints support larger type; the launcher retains a 48-point target. At
 rest the status glyph says what is running; revealed, the launcher's one dot says
 work is live somewhere and the chooser's labelled dots say where. Changing status
 must not substitute a different menu-bar brand icon. The capsule stays opaque in every appearance. Reduce Motion removes the frame animation and holds the voice trace
@@ -626,7 +625,7 @@ gallery's other flags are reported without failing it too. A Mac with no display
 renders no host states and has nothing to fail.
 
 The gallery also releases the same host at free positions on each half of the
-display and near a dock, and reads the launcher's centre after an update, a reveal
+display and near an edge, and reads the placement reference after an update, a reveal
 and a collapse, while choosing Present widens the row (released just left of the
 middle and on the right half), in a new host as after a relaunch, in new hosts
 reading each earlier build's save and a later move by one, at the right-hand dock,
@@ -639,13 +638,13 @@ put fails the run. It renders Position… and the chooser in both themes.
 
 The same host then carries dictation, its processing and its results, docked at
 bottom centre (#134 T4). Dictating and transcribing must rest as the 48 × 28 mark on
-the launcher's centre with their statuses; a new failure or receipt must change only
+the resting reference with their statuses; a new failure or receipt must change only
 the mark's status, reveal its own controls grown from the same centre, and survive a
 collapse, and one that arrives while the row is open must wait, a kept-open row too
 while a hold is on it, until it lets go; the no-speech cue must show at the
 toolbar's place and give way to the mark; a Stop pressed through the recording's
 completion must start nothing; and the coaching card must sit 12 points above the
-mark, or below it at a top dock, centred on the launcher, with nothing of the
+mark, or below it at a top dock, centred on the resting reference, with nothing of the
 toolbar's in the gap and the mark unmoved. Each fails the run. Then, with the
 toolbar's keyboard hold standing in for the keyboard, which the gallery never takes:
 keyboard entry onto a waiting receipt must keep the launcher row, whose launcher
@@ -674,8 +673,8 @@ hold it, and the StageKit suite checks the copy it acts on, whether it is hidden
 and which real Persona menus already hold its Appearance.
 The floating shots render the no-speech cue, the reading that stopped, the receipt
 with its ring and the coaching card. `ToolbarPlacementTests` covers the 4-point
-threshold, the 16-point snap zone, inward growth, a width change that must not move
-the launcher or turn the row round, earlier saves, clamping and recovery.
+threshold, continuous edge snapping, centred and inward growth, stable placement
+through width changes, earlier saves, clamping and recovery.
 `--check-floating-toolbar` checks the chooser's placement and focus rules and every
 earlier save's migration without a window.
 

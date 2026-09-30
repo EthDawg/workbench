@@ -187,7 +187,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private var resultHold = ToolbarResultHold<FloatingResult.Identity>()
     private var positioning = false
     private var dragging = false
-    private let snapGuide = FloatingControlGuideController()
+    private let snapGuide = ToolbarSnapGuide(accent: NSColor(Workbench.accent))
     private var observations = Set<AnyCancellable>()
     private var surface: FloatingToolbarSurface = .hidden
     private var keyboardTarget: TextDelivery.Target?
@@ -200,6 +200,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// `controls.anchor`. Only a person's placement changes it: a frame recovered onto
     /// another display, or a dictation panel dragged to a dock, is shown but never saved over it.
     private var freePosition: ToolbarFreePosition?
+    private var dockedDisplayID: String?
     private let positionControl = ToolbarPositionPanel()
     private let chooser = ToolbarChooserPanel()
     /// The one-time coaching card, above the toolbar's place (#134 T5).
@@ -233,7 +234,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let saved = Self.savedPosition(UserDefaults.standard, screens: NSScreen.screens.map(\.visibleFrame),
                                        preferred: NSScreen.main?.visibleFrame)
         switch saved.position {
-        case .docked(let anchor): controls.anchor = FloatingControlAnchor(rawValue: anchor.rawValue) ?? .bottom
+        case .docked(let anchor):
+            controls.anchor = FloatingControlAnchor(rawValue: anchor.rawValue) ?? .bottom
+            dockedDisplayID = Self.savedDockDisplay(UserDefaults.standard)
         case .free(let free): controls.anchor = nil; freePosition = free
         }
         // A position read from an earlier build's keys is saved in this build's terms at once.
@@ -272,7 +275,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         panel.hidesOnDeactivate = false
         panel.isMovable = true
-        panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
+        panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
             stage: stage, controls: controls, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture,
@@ -453,7 +456,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             return
         }
         let host = motion.target ?? window.frame
-        let launcher = ToolbarGeometry.launcherCentre(inWindow: host, growsLeftward: controls.rowAnchor.growsLeftward)
+        let launcher = ToolbarGeometry.restingCentre(inWindow: host, anchor: controls.rowAnchor)
         if !coachPanel.show(coach, host: host, launcherX: launcher.x, level: window.level), !coach.isPresented {
             coach.drop(card.id)
         }
@@ -584,13 +587,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let savedSize = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString) ?? size
         let previous = restoreSaved ? saved.map { NSRect(origin: $0, size: savedSize) } : window.frame
         if surface == .tools { placeTools(previous: previous, preferred: preferred, animated: animated); return }
-        // The cue shows at the toolbar's own place, growing inward from the launcher's centre.
+        // The cue shares the toolbar's resting reference and growth policy.
         setFrame(toolbarFrame(size: size, screen: toolsScreen(previous: previous, preferred: preferred)))
     }
 
-    /// Puts the tools where they rest: the row is drawn for the side it grows from and
-    /// measured, then the window goes around it, its launcher on the launcher's centre
-    /// (#152, #163, #134). The accessory waits in More when the row with it would not fit.
+    /// Draw and measure the row for its centre or inward edge, then place its native
+    /// window on that same reference (#152, #163, #134). The accessory waits in More
+    /// when the row with it would not fit.
     private func placeTools(previous: NSRect?, preferred: NSRect, animated: Bool) {
         let screen = toolsScreen(previous: previous, preferred: preferred)
         let rowAnchor = ToolbarGeometry.rowAnchor(toolsPosition)
@@ -614,14 +617,29 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     private func toolsScreen(previous: NSRect?, preferred: NSRect) -> NSRect {
         let screens = NSScreen.screens.map(\.visibleFrame)
         if case .free(let free) = toolsPosition {
+            if let attachment = free.attachment, attachment.displayID != nil {
+                let displays = Dictionary(NSScreen.screens.map { (Self.displayID($0), $0.visibleFrame) }, uniquingKeysWith: { first, _ in first })
+                return attachment.screen(in: displays, fallback: preferred)
+            }
             return FloatingControlPlacement.screen(for: ToolbarGeometry.slot(around: free.centre), screens: screens, preferred: preferred)
         }
-        return CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: controls.restingSize),
+        if let dockedDisplayID {
+            return NSScreen.screens.first { Self.displayID($0) == dockedDisplayID }?.visibleFrame ?? preferred
+        }
+        let resolved = CaptureHUDGeometry.screen(for: previous ?? NSRect(origin: preferred.origin, size: controls.restingSize),
             screens: screens, preferred: preferred)
+        dockedDisplayID = NSScreen.screens.first { $0.visibleFrame == resolved }.map(Self.displayID)
+        return resolved
     }
 
     private func toolbarFrame(size: NSSize, screen: NSRect) -> NSRect {
         ToolbarGeometry.frame(size: size, position: toolsPosition, screen: screen)
+    }
+
+    private static func displayID(_ screen: NSScreen) -> String {
+        let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+        if let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() { return CFUUIDCreateString(nil, uuid) as String }
+        return String(id)
     }
 
     /// Where `place` puts the tools at `size`: at their dock or their free position, never
@@ -645,6 +663,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     }
 
     private func choosePosition(_ anchor: FloatingControlAnchor) {
+        dockedDisplayID = window?.screen.map(Self.displayID)
         controls.anchor = anchor; freePosition = nil
         guard let window else { return }
         place(size: surface == .tools ? controls.preferredToolbarSize : (motion.target?.size ?? window.frame.size),
@@ -657,7 +676,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         tracking?.acceptsCrossings = false
         controls.toolbarSize = frame.size
         savePosition(frame)
-        motion.move(window, to: frame, animated: animated)
+        motion.move(window, to: frame, animated: animated, anchor: controls.rowAnchor)
     }
 
     private func savePosition(_ destination: NSRect? = nil) {
@@ -676,8 +695,32 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
         UserDefaults.standard.set(NSStringFromPoint(frame.origin), forKey: positionKey)
         UserDefaults.standard.set(NSStringFromSize(frame.size), forKey: sizeKey)
-        if let anchor = controls.anchor { UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey) }
-        else { UserDefaults.standard.removeObject(forKey: anchorKey) }
+        if let anchor = controls.anchor {
+            UserDefaults.standard.set(anchor.rawValue, forKey: anchorKey)
+            if let dockedDisplayID {
+                UserDefaults.standard.set(Self.dockDisplayRecord(dockedDisplayID, anchor: anchor.rawValue, frame: frame),
+                                          forKey: "capturePanelDockDisplay.v1")
+            }
+        } else {
+            UserDefaults.standard.removeObject(forKey: anchorKey)
+            UserDefaults.standard.removeObject(forKey: "capturePanelDockDisplay.v1")
+        }
+    }
+
+    /// The legacy anchor and frame remain authoritative after a downgrade. A later
+    /// manual placement in an older build invalidates only this display affinity.
+    static func dockDisplayRecord(_ id: String, anchor: String, frame: NSRect) -> [String: String] {
+        ["id": id, "anchor": anchor, "origin": NSStringFromPoint(frame.origin), "size": NSStringFromSize(frame.size)]
+    }
+    static func savedDockDisplay(_ defaults: UserDefaults) -> String? {
+        guard let record = defaults.dictionary(forKey: "capturePanelDockDisplay.v1") as? [String: String],
+              let id = record["id"], !id.isEmpty,
+              let anchor = record["anchor"], ToolbarAnchor(rawValue: anchor) != nil,
+              let origin = record["origin"], let size = record["size"],
+              anchor == defaults.string(forKey: "capturePanelAnchor.v2"),
+              origin == defaults.string(forKey: "capturePanelOrigin.v1"),
+              size == defaults.string(forKey: "capturePanelSize.v1") else { return nil }
+        return id
     }
 
     /// The saved position, in the order the builds wrote it: a dock by name; this build's
@@ -720,14 +763,24 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let position = ToolbarFreePosition(glyphEdge: edge, centreY: centre, growsLeftward: leftward)
         return position.isFinite ? position : nil
     }
-    /// The #134 record: the launcher's centre and side.
+    /// Preserve the #134 centre/direction record, with optional edge/display attachment.
     static func launcherRecord(_ position: ToolbarFreePosition) -> [String: Any] {
-        ["x": Double(position.centre.x), "y": Double(position.centre.y), "growsLeftward": position.growsLeftward]
+        var record: [String: Any] = ["x": Double(position.centre.x), "y": Double(position.centre.y), "growsLeftward": position.growsLeftward]
+        if let attachment = position.attachment {
+            record["edge"] = attachment.edge.rawValue; record["fraction"] = Double(attachment.fraction)
+            record["displayID"] = attachment.displayID
+        }
+        return record
     }
     static func launcherPosition(_ record: [String: Any]?) -> ToolbarFreePosition? {
         guard let record, let x = (record["x"] as? NSNumber)?.doubleValue, let y = (record["y"] as? NSNumber)?.doubleValue,
               let leftward = record["growsLeftward"] as? Bool else { return nil }
-        let position = ToolbarFreePosition(centre: CGPoint(x: x, y: y), growsLeftward: leftward)
+        let attachment: ToolbarEdgeAttachment?
+        if let edge = (record["edge"] as? String).flatMap(ToolbarEdge.init(rawValue:)),
+           let fraction = (record["fraction"] as? NSNumber)?.doubleValue, fraction.isFinite, (0...1).contains(fraction) {
+            attachment = ToolbarEdgeAttachment(edge: edge, fraction: fraction, displayID: record["displayID"] as? String)
+        } else { attachment = nil }
+        let position = ToolbarFreePosition(centre: CGPoint(x: x, y: y), growsLeftward: leftward, attachment: attachment)
         return position.isFinite ? position : nil
     }
 
@@ -764,6 +817,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.openChooser = nil; controls.chooserChoicesChanged = nil; controls.revealFromRest = nil
         positionControl.close(); chooser.close()
         controls.suspendToolbar(); cancelDragging(); releaseKeyboardFocus()
+        snapGuide.shutdown()
         motion.settled = nil
         if let window { motion.finish(window) }
         tracking?.acceptsCrossings = false; tracking?.event = nil
@@ -775,35 +829,33 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// shared position, as the tools do (#134 T4).
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
-        let slot = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
-        let screen = FloatingControlPlacement.screen(for: slot, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        snapGuide.show(controlFrame: slot, visibleFrame: screen,
-                       activeAnchor: FloatingControlPlacement.snapAnchor(for: slot, in: screen), below: window)
+        snapGuide.show(frame: window.frame, screen: preferred,
+                       candidate: ToolbarGeometry.releasedPosition(frame: window.frame, screen: preferred), below: window)
     }
 
     func finishDragging() {
         defer { cancelDragging() }
         guard dragging, let window else { return }
-        releaseTools(atLauncher: ToolbarGeometry.launcherCentre(inWindow: window.frame, growsLeftward: controls.rowAnchor.growsLeftward))
+        releaseTools(frame: window.frame)
     }
 
-    /// The tools released with their launcher at `centre` (#163, #134): within the snap
-    /// distance of a named dock they dock there; anywhere else they rest right there, kept
-    /// whole on the display they cover most, growing toward its middle from then on. The
-    /// drag's release and the gallery's check use it.
+    /// Synthetic placement checks release the compact reference slot at this point;
+    /// real dragging releases the full visible frame through the same geometry.
     func releaseTools(atLauncher centre: CGPoint) {
-        guard let preferred = preferredScreen else { return }
-        let slot = ToolbarGeometry.slot(around: centre)
-        let screen = FloatingControlPlacement.screen(for: slot, screens: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
-        if let anchor = FloatingControlPlacement.snapAnchor(for: slot, in: screen) {
-            controls.anchor = anchor; freePosition = nil
-        } else {
-            // The side is decided here, once, and kept: a later change of width never turns it round.
-            let kept = FloatingControlGeometry.clamp(slot, to: screen, inset: 0)
-            controls.anchor = nil
-            freePosition = ToolbarFreePosition(releasedAt: CGPoint(x: kept.midX, y: kept.midY), on: screen)
+        releaseTools(frame: ToolbarGeometry.slot(around: centre))
+    }
+
+    private func releaseTools(frame: NSRect) {
+        guard let screen = preferredScreen else { return }
+        switch ToolbarGeometry.releasedPosition(frame: frame, screen: screen) {
+        case .docked(let anchor):
+            dockedDisplayID = NSScreen.screens.first { $0.visibleFrame == screen }.map(Self.displayID)
+            controls.anchor = FloatingControlAnchor(rawValue: anchor.rawValue); freePosition = nil
+        case .free(var free):
+            free.attachment?.displayID = NSScreen.screens.first { $0.visibleFrame == screen }.map(Self.displayID)
+            controls.anchor = nil; freePosition = free; dockedDisplayID = nil
         }
-        if surface == .tools { placeTools(previous: slot, preferred: preferred, animated: true) } else { savePosition() }
+        if surface == .tools { placeTools(previous: screen, preferred: screen, animated: true) } else { savePosition() }
     }
 
     /// Position…: the named docks and a reset, beside the toolbar, from the keyboard or pointer.

@@ -14,7 +14,7 @@ extension ToolbarGalleryRenderer {
         NSApp.appearance = NSAppearance(named: .aqua)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var report: [[String: Any]] = []
-        for anchor in [ToolbarAnchor.left, .right] {
+        for anchor in ToolbarAnchor.allCases {
             let live = anchor == .right
             var state = ToolbarViewState(name: "motion", tier: .resting, anchor: anchor,
                 mode: live ? .present : .draw, actionTitle: live ? "End presentation" : "Draw",
@@ -22,6 +22,11 @@ extension ToolbarGalleryRenderer {
                 actionHint: live ? "⌥Q" : "⌥D", isBusy: live,
                 status: live ? .resolve(ToolbarActivity(live: [.presenting])) : .idle,
                 accessory: live ? .prompts : .tools)
+            if anchor.growsFromCentre {
+                let mode: ToolbarMode = anchor == .top ? .snap : .snapAndTalk
+                state = ToolbarGallery.captureSources.first { $0.mode == mode }!
+                state.anchor = anchor; state.tier = .resting
+            }
             func content() -> AnyView {
                 AnyView(ToolbarRow(state: state, accent: WorkbenchPalette.accent)
                     .pinnedToDock(anchor).environment(\.colorScheme, .light))
@@ -48,12 +53,13 @@ extension ToolbarGalleryRenderer {
             CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
             var frames: [[String: Any]] = []
             for index in 0..<66 {
-                if index == 9 || index == 39 {
-                    state.tier = index == 9 ? .revealed : .resting
+                if [9, 11, 13, 39].contains(index) {
+                    state.tier = index == 9 || index == 13 ? .revealed : .resting
                     host.rootView = content(); host.layoutSubtreeIfNeeded()
                     let size = state.tier == .resting ? ToolbarLayout.mark : full
-                    let x = anchor.growsLeftward ? origin.x + ToolbarLayout.mark.width - size.width : origin.x
-                    motion.move(panel, to: CGRect(x: x, y: origin.y + (28 - size.height) / 2, width: size.width, height: size.height), animated: true)
+                    let x = anchor.growsFromCentre ? origin.x + (ToolbarLayout.mark.width - size.width) / 2
+                        : anchor.growsLeftward ? origin.x + ToolbarLayout.mark.width - size.width : origin.x
+                    motion.move(panel, to: CGRect(x: x, y: origin.y + (28 - size.height) / 2, width: size.width, height: size.height), animated: true, anchor: anchor)
                 }
                 RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0 / 30))
                 host.layoutSubtreeIfNeeded()
@@ -65,7 +71,8 @@ extension ToolbarGalleryRenderer {
                 else { throw NSError(domain: "ToolbarMotion", code: 3) }
                 context.scaleBy(x: 2, y: 2)
                 context.setFillColor(CGColor(gray: 0.96, alpha: 1)); context.fill(CGRect(origin: .zero, size: canvas))
-                let x: CGFloat = anchor.growsLeftward ? 20 + full.width - panel.frame.width : 20
+                let x: CGFloat = anchor.growsFromCentre ? (canvas.width - panel.frame.width) / 2
+                    : anchor.growsLeftward ? 20 + full.width - panel.frame.width : 20
                 context.draw(pixels, in: CGRect(x: x, y: (canvas.height - panel.frame.height) / 2,
                                               width: panel.frame.width, height: panel.frame.height))
                 guard let image = context.makeImage() else { throw NSError(domain: "ToolbarMotion", code: 4) }
@@ -74,10 +81,24 @@ extension ToolbarGalleryRenderer {
                     let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])!
                     try png.write(to: directory.appendingPathComponent("\(anchor.rawValue)-\(index).png"))
                 }
-                var sample: [String: Any] = ["frame": index, "tier": state.tier.rawValue, "width": panel.frame.width, "height": panel.frame.height]
+                let reference = ToolbarGeometry.restingCentre(inWindow: panel.frame, anchor: anchor)
+                guard abs(reference.x - (origin.x + 24)) <= 0.5, abs(reference.y - (origin.y + 14)) <= 0.5 else {
+                    throw NSError(domain: "ToolbarMotion", code: 7, userInfo: [NSLocalizedDescriptionKey: "\(anchor): reference \(reference) moved from \(origin.x + 24), \(origin.y + 14) in frame \(index), window \(panel.frame)"])
+                }
+                if index > 55 {
+                    let scale = CGFloat(bitmap.pixelsHigh) / host.bounds.height
+                    for y in 0..<bitmap.pixelsHigh where abs((CGFloat(y) + 0.5) / scale - 14) > 5 {
+                        for x in 0..<bitmap.pixelsWide where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 1.0 / 255 {
+                            throw NSError(domain: "ToolbarMotion", code: 8, userInfo: [NSLocalizedDescriptionKey: "Collapsed pixels leaked after animation at \(anchor), frame \(index)"])
+                        }
+                    }
+                }
+                var sample: [String: Any] = ["frame": index, "tier": state.tier.rawValue, "width": panel.frame.width, "height": panel.frame.height,
+                    "referenceX": reference.x, "referenceY": reference.y]
                 if let target = launcher(in: host) {
                     let bounds = target.convert(target.bounds, to: host)
-                    let inset = anchor.growsLeftward ? host.bounds.width - bounds.midX : bounds.midX
+                    let inset = anchor.growsFromCentre ? bounds.midX - (host.bounds.width - full.width) / 2
+                        : anchor.growsLeftward ? host.bounds.width - bounds.midX : bounds.midX
                     guard abs(inset - ToolbarLayout.launcherInset) <= 0.5 else {
                         throw NSError(domain: "ToolbarMotion", code: 6,
                                       userInfo: [NSLocalizedDescriptionKey: "Launcher moved at frame \(index): \(inset)"])
@@ -92,6 +113,6 @@ extension ToolbarGalleryRenderer {
         }
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
             .write(to: directory.appendingPathComponent("motion.json"))
-        print("TOOLBAR_MOTION_GALLERY_OK: two native offscreen sequences; inspect motion.json for sampled window interpolation")
+        print("TOOLBAR_MOTION_GALLERY_OK: eight native offscreen sequences, including interrupted expansion and collapse; inspect motion.json for sampled window interpolation")
     }
 }

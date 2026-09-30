@@ -96,6 +96,20 @@ class ToolbarIconButton: NSButton {
     private let schedule: (TimeInterval, DispatchWorkItem) -> Void
     private var revision = 0
     private var shownText: String?
+    private weak var hoveredSource: ToolbarIconButton?
+    private weak var observedWindow: NSWindow?
+    private var observers: [NSObjectProtocol] = []
+    var isReady = true {
+        didSet {
+            guard isReady != oldValue else { return }
+            if !isReady { hide() }
+            else if let button = hoveredSource, let window = button.window,
+                    (window.isKeyWindow && window.firstResponder === button) ||
+                    button.bounds.contains(button.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)) {
+                show(from: button)
+            }
+        }
+    }
     nonisolated static let dwell: TimeInterval = 0.18
     static let handoffGrace: TimeInterval = 0.08
 
@@ -106,6 +120,8 @@ class ToolbarIconButton: NSButton {
     }
 
     func show(from button: ToolbarIconButton, delay: TimeInterval = dwell) {
+        hoveredSource = button
+        guard isReady else { return }
         guard !button.hint.isEmpty else { return }
         pendingHide?.cancel(); pendingHide = nil
         pending?.cancel(); revision += 1
@@ -126,8 +142,9 @@ class ToolbarIconButton: NSButton {
         present(button)
     }
     /// Briefly bridge the gap between adjacent targets. A new enter cancels this hide
-    /// and crossfades the existing panel. Actions, collapse and detachment use hide().
+    /// and updates the existing panel. Actions, collapse and detachment use hide().
     func leave(from button: ToolbarIconButton) {
+        if hoveredSource === button { hoveredSource = nil }
         guard source === button else { return }
         pending?.cancel(); pending = nil
         pendingHide?.cancel(); revision += 1
@@ -151,35 +168,32 @@ class ToolbarIconButton: NSButton {
     }
 
     private func present(_ button: ToolbarIconButton) {
-        guard let parent = button.window, parent.isVisible, !button.isHiddenOrHasHiddenAncestor,
+        guard isReady, let parent = button.window, parent.isVisible, !button.isHiddenOrHasHiddenAncestor,
               let visible = parent.screen?.visibleFrame else { return }
-        if shownText == button.hint, panel?.isVisible == true { return }
         let label = ToolbarHintLabel(text: button.hint, size: max(11, button.symbolSize * 0.75))
         let host = NSHostingView(rootView: label)
         let size = host.fittingSize
-        let target = parent.convertToScreen(button.convert(button.bounds, to: nil))
-        let frame = Self.frame(size: size, target: target, visible: visible)
+        let frame = Self.frame(size: size, target: parent.frame, visible: visible)
+        if shownText == button.hint, panel?.isVisible == true, panel?.frame == frame { return }
+        if observedWindow !== parent {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observedWindow = parent
+            observers = [NSWindow.didMoveNotification, NSWindow.didResizeNotification, NSWindow.willCloseNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: parent, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.hide() }
+                }
+            }
+        }
         let panel = self.panel ?? {
             let window = Self.makePanel(frame: frame)
             self.panel = window
             return window
         }()
         let wasVisible = panel.isVisible
-        let previous = panel.contentView
         let fades = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        // Two text layers share one click-through panel for a short crossfade when the
-        // pointer moves to the next action. This animation never changes toolbar geometry.
-        if wasVisible, fades, let previous {
-            let container = NSView(frame: NSRect(origin: .zero, size: frame.size))
-            previous.removeFromSuperview(); previous.frame = container.bounds
-            host.frame = container.bounds; host.alphaValue = 0
-            container.addSubview(previous); container.addSubview(host)
-            panel.contentView = container
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.12
-                previous.animator().alphaValue = 0; host.animator().alphaValue = 1
-            } completionHandler: { [weak previous] in previous?.removeFromSuperview() }
-        } else { panel.contentView = host }
+        // Replace the words on one rail. Resizing an old text layer during a crossfade
+        // made adjacent hints rewrap and jump before the new label had settled.
+        panel.contentView = host
         shownText = button.hint
         panel.setFrame(frame, display: true)
         panel.level = NSWindow.Level(rawValue: parent.level.rawValue + 1)
@@ -203,16 +217,21 @@ class ToolbarIconButton: NSButton {
         return window
     }
 
-    /// Prefer above; at a top dock move below. Neither edge can run off the display.
+    /// All buttons share the row's rail. Reserve space for the longest hint before
+    /// clamping its centre and choosing its side, so short/long text cannot move it.
     static func frame(size: NSSize, target: NSRect, visible: NSRect) -> NSRect {
         let inset: CGFloat = 8, gap: CGFloat = 8
         let width = min(size.width, max(1, visible.width - 2 * inset))
         let height = min(size.height, max(1, visible.height - 2 * inset))
-        let above = target.maxY + gap + height <= visible.maxY - inset
-        return NSRect(x: min(max(target.midX - width / 2, visible.minX + inset), visible.maxX - inset - width),
+        let railWidth = min(324, max(1, visible.width - 2 * inset))
+        let centre = min(max(target.midX, visible.minX + inset + railWidth / 2), visible.maxX - inset - railWidth / 2)
+        let above = target.maxY + gap + max(height, 90) <= visible.maxY - inset
+        return NSRect(x: centre - width / 2,
             y: min(max(above ? target.maxY + gap : target.minY - gap - height, visible.minY + inset), visible.maxY - inset - height),
             width: width, height: height)
     }
+
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 }
 
 private final class ToolbarHintPanel: NSPanel {

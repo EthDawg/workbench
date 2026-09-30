@@ -7,7 +7,7 @@ import ToolbarCore
 final class ToolbarGeometryTests: XCTestCase {
     /// The compact rest and the revealed row share one launcher centre at every dock (#134):
     /// nothing under a pointer on that centre moves as the row opens or widens.
-    func testEveryAnchorKeepsTheLauncherCentreAcrossBothTiers() {
+    func testEveryAnchorKeepsItsCentreOrInwardEdgeAcrossBothTiers() {
         for screen in [NSRect(x: 0, y: 0, width: 1440, height: 900),
                        NSRect(x: -1920, y: -300, width: 1920, height: 1080)] {
             for anchor in ToolbarAnchor.allCases {
@@ -17,7 +17,7 @@ final class ToolbarGeometryTests: XCTestCase {
                              NSSize(width: ToolbarLayout.accessoryStandardWidth, height: ToolbarLayout.rowHeight)] {
                     let frame = ToolbarGeometry.frame(size: size, position: position, screen: screen)
                     XCTAssertTrue(screen.contains(frame), "\(anchor) \(size)")
-                    XCTAssertEqual(ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: anchor.growsLeftward), centre, "\(anchor) \(size)")
+                    XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: anchor), centre, "\(anchor) \(size)")
                 }
             }
         }

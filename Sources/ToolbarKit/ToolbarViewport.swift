@@ -21,7 +21,7 @@ struct ToolbarControlReveal: ViewModifier {
         content.visualEffect { effect, geometry in
             effect.opacity(ToolbarRevealVisuals.controlOpacity(
                 frame: geometry.frame(in: .named(ToolbarRevealVisuals.coordinateSpace)),
-                viewport: viewport, growsLeftward: anchor.growsLeftward))
+                viewport: viewport, growsLeftward: anchor.growsLeftward, growsFromCentre: anchor.growsFromCentre))
         }
     }
 }
@@ -34,9 +34,10 @@ enum ToolbarRevealVisuals {
     static func glyphOpacity(progress: CGFloat) -> CGFloat { min(1, max(0, (progress - 0.8) / 0.2)) }
     /// Reveal a control after its entire label fits, over the last eight points
     /// of breathing room. The same rule hides it before the edge cuts through it.
-    static func controlOpacity(frame: CGRect, viewport: CGSize?, growsLeftward: Bool) -> Double {
+    static func controlOpacity(frame: CGRect, viewport: CGSize?, growsLeftward: Bool, growsFromCentre: Bool = false) -> Double {
         guard let viewport else { return 1 }
-        let clearance = growsLeftward ? frame.minX : viewport.width - frame.maxX
+        let clearance = growsFromCentre ? min(frame.minX, viewport.width - frame.maxX)
+            : growsLeftward ? frame.minX : viewport.width - frame.maxX
         return Double(min(1, max(0, clearance / ToolbarLayout.padding)))
     }
 

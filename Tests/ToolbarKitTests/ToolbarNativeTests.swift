@@ -115,6 +115,32 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertLessThanOrEqual(attention.maxY, (ToolbarLayout.mark.height - ToolbarLayout.statusHeight) / 2, "the warning sits on the capsule's corner")
     }
 
+    @MainActor func testCollapsedRecordingWarningIsNotClippedByTheRevealMask() throws {
+        _ = NSApplication.shared
+        let status = ToolbarStatus.resolve(ToolbarActivity(capture: .narration, level: 0.4, failure: true))
+        func warningPixels<V: View>(_ content: V) throws -> Int {
+            let view = laidOut(content.environment(\.colorScheme, .dark))
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            var pixels = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide {
+                    guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                    if color.alphaComponent > 0.2, color.redComponent > 0.8,
+                       color.greenComponent > 0.3, color.blueComponent < 0.3 { pixels += 1 }
+                }
+            }
+            return pixels
+        }
+        let completeBadge = try warningPixels(ToolbarCompactMark(status: status))
+        XCTAssertGreaterThan(completeBadge, 4)
+        for anchor in ToolbarAnchor.allCases {
+            let state = ToolbarViewState(name: "recording-warning", tier: .resting, anchor: anchor, status: status)
+            XCTAssertEqual(try warningPixels(ToolbarRow(state: state)), completeBadge,
+                           "the complete warning remains visible at \(anchor)")
+        }
+    }
+
     /// A result waiting for the person keeps its status on the launcher while the row is open
     /// (#211 F1): the mark's glyph as a badge on the tool's symbol, and its words in VoiceOver's
     /// value and the tooltip. With nothing waiting, nothing is added.
@@ -529,7 +555,8 @@ final class ToolbarNativeTests: XCTestCase {
             view.layoutSubtreeIfNeeded()
             let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
             let frame = launcher.convert(launcher.bounds, to: view)
-            return state.anchor.growsLeftward ? view.bounds.maxX - frame.maxX : frame.minX
+            return state.anchor.growsFromCentre ? frame.midX - view.bounds.midX
+                : state.anchor.growsLeftward ? view.bounds.maxX - frame.maxX : frame.minX
         }
         for anchor in ToolbarAnchor.allCases {
             let state = ToolbarViewState(name: "jump", tier: .revealed, anchor: anchor, mode: .draw)
@@ -539,8 +566,9 @@ final class ToolbarNativeTests: XCTestCase {
                 XCTAssertEqual(try inset(state, width: stale, pinned: true), settled, accuracy: 0.5,
                                "\(anchor.rawValue): the launcher moved in a \(Int(stale))-point window")
             }
-            XCTAssertGreaterThan(abs(try inset(state, width: exact + 60, pinned: false) - settled), 20,
+            if !anchor.growsFromCentre { XCTAssertGreaterThan(abs(try inset(state, width: exact + 60, pinned: false) - settled), 20,
                                  "\(anchor.rawValue): an unpinned row no longer moves, so this test no longer reproduces the jump")
+            }
         }
     }
 

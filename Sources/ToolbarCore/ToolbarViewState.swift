@@ -105,6 +105,8 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
     /// This is the whole of the side-dock geometry; the old build special-cased
     /// a tall pill and a taller hover frame to keep a decorative capsule fully visible.
     public var growsLeftward: Bool { self == .topRight || self == .right || self == .bottomRight }
+    /// Top and bottom open equally on either side of the resting mark.
+    public var growsFromCentre: Bool { self == .top || self == .bottom }
 
     public var slug: String {
         switch self {

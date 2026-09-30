@@ -327,7 +327,7 @@ enum SurfaceGallery {
         if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
             let (shots, host) = try renderToolbarHost(to: output)
             return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: shots, host: host, pickers: [], pickerHost: [],
-                pages: [], entries: [], menus: [])
+                pages: [], entries: [], menus: [], placement: try checkToolbarPlacement())
         }
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
@@ -1781,11 +1781,10 @@ enum SurfaceGallery {
     }
 
     /// Free placement through the production host (#163, #134), with its panel invisible. Every
-    /// position is compared at the launcher's centre, which the compact rest and the revealed row
-    /// share. A release away from every dock rests right there through an update, a reveal and a
-    /// collapse, on either half of the display; a row that widens moves neither its launcher nor
-    /// its side; a release within the snap distance of a dock docks and one just beyond stays
-    /// free; a new host, as after a relaunch, restores the free position, and earlier builds'
+    /// position is compared at its resting reference. A release in the interior rests there
+    /// through an update, a reveal and a collapse, on either half of the display; wider rows
+    /// preserve their centre or inward edge. A release near an edge attaches there; a new host,
+    /// as after a relaunch, restores the position, and earlier builds'
     /// saves come back where they were left; Reset position docks at bottom centre. The chooser
     /// opens inside the display at larger text from a bottom-right and a top-left dock.
     func checkToolbarPlacement() throws -> [SurfaceGallery.PlacementCheck] {
@@ -1809,7 +1808,7 @@ enum SurfaceGallery {
             waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
         }
         func launcher() -> CGPoint {
-            ToolbarGeometry.launcherCentre(inWindow: host.window?.frame ?? .zero, growsLeftward: controls.rowAnchor.growsLeftward)
+            ToolbarGeometry.restingCentre(inWindow: host.window?.frame ?? .zero, anchor: controls.rowAnchor)
         }
         func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
         /// What a failing step saw, so a failure on a runner can be read from its log alone: the
@@ -1842,9 +1841,8 @@ enum SurfaceGallery {
                                ("right", CGPoint(x: screen.minX + screen.width * 0.7, y: screen.minY + screen.height * 0.6))] {
             let centre = CGPoint(x: centre.x.rounded(), y: centre.y.rounded())
             host.releaseTools(atLauncher: centre); settle(.resting)
-            let leftward = side == "right"
             expect("Released free on the \(side), at rest", [free(centre), at(centre, "at rest"), compact("at rest"),
-                controls.rowAnchor.growsLeftward == leftward ? nil : "the row would grow \(leftward ? "rightward, off" : "leftward, away from") the near edge"])
+                controls.rowAnchor.growsFromCentre ? nil : "the free row does not expand from its centre"])
             // An update while free must not pull the toolbar back to a dock.
             model.floatingToolbarVisible = true; host.update(model: model); settle(.resting)
             expect("Free on the \(side), after an update", [free(centre), at(centre, "after an update")])
@@ -1917,7 +1915,7 @@ enum SurfaceGallery {
             defaults.set(["glyphEdge": Double(edge), "centreY": Double(edgeY), "growsLeftward": true], forKey: "capturePanelFreePosition.v1")
         }
         expect("A new host reading #163's glyph-edge save", [free(CGPoint(x: edge - 18, y: edgeY)), at(CGPoint(x: edge - 18, y: edgeY), "migrated"),
-            controls.rowAnchor.growsLeftward ? nil : "the save's side, leftward, was lost",
+            controls.rowAnchor.growsFromCentre ? nil : "the saved free position does not expand from its centre",
             UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the migrated position was not saved in this build's terms" : nil])
         let earlier = NSRect(x: (screen.minX + screen.width * 0.65).rounded(), y: (screen.minY + screen.height * 0.3).rounded(), width: 132, height: 36)
         relaunch { defaults in
@@ -1926,7 +1924,7 @@ enum SurfaceGallery {
             defaults.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
         }
         expect("A new host reading an earlier resting-element save", [free(CGPoint(x: earlier.maxX - 18, y: earlier.midY)),
-            controls.rowAnchor.growsLeftward ? nil : "the earlier save on the right half grows rightward",
+            controls.rowAnchor.growsFromCentre ? nil : "the earlier save does not use centred expansion",
             UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the side decided for the earlier save was not saved with it" : nil])
         // An earlier build moved the toolbar after this one saved it: that later move wins.
         let moved = CGPoint(x: (screen.minX + screen.width * 0.25).rounded(), y: (screen.minY + screen.height * 0.55).rounded())
@@ -2003,10 +2001,10 @@ enum SurfaceGallery {
         // a menu's hold: the real pointer is elsewhere, and the host would find it gone and collapse.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
-        /// A result's controls grow inward from the launcher's centre; a display edge may lift them.
+        /// A bottom-centred result grows around its resting reference; a display edge may lift it.
         func grewFromTheCentre(_ what: String) -> String? {
             let frame = host.window?.frame ?? .zero
-            let x = ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: controls.rowAnchor.growsLeftward).x
+            let x = ToolbarGeometry.restingCentre(inWindow: frame, anchor: controls.rowAnchor).x
             return abs(x - bottom.x) > 0.5 ? "\(what): the controls grew from \(Int(x)), not the launcher's centre at \(Int(bottom.x))" : nil
         }
         model.toolbarMode = .dictate
@@ -2110,7 +2108,7 @@ enum SurfaceGallery {
             let above = anchor != .top
             let gap = above ? NSRect(x: frame.minX, y: mark.maxY, width: frame.width, height: frame.minY - mark.maxY)
                             : NSRect(x: frame.minX, y: frame.maxY, width: frame.width, height: mark.minY - frame.maxY)
-            let launcherX = ToolbarGeometry.launcherCentre(inWindow: mark, growsLeftward: controls.rowAnchor.growsLeftward).x
+            let launcherX = ToolbarGeometry.restingCentre(inWindow: mark, anchor: controls.rowAnchor).x
             expect("The coaching card at the \(anchor.title.lowercased()) dock", [
                 requested ? nil : "the host would not let the card show",
                 coach.isPresented ? nil : "the card was never reported presented",
@@ -2841,7 +2839,7 @@ private struct SurfaceIndex {
                 + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
         }
         html += "</table>"
-        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at the launcher's centre, which the compact rest shares, and the chooser opens from three docks (#134).</p>"
+        html += "<h3>Placement</h3><p>The same host released in free space and near an edge, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at its resting reference, and the chooser opens from three docks (#134).</p>"
         if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
         // Both passes' tables: they run at once, so a step can fail in one theme only.
         html += "<table><tr><th>Step</th><th>Light</th><th>Dark</th></tr>" + light.placement.enumerated().map { index, check in
