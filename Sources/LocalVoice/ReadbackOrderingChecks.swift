@@ -68,6 +68,10 @@ enum ReadbackOrderingChecks {
         model.updateTranscript(candidate, for: edited)
         try check(model.transcriptDrafts[edited] == candidate && model.hasUnsavedNarration && !model.canHandOffSession,
                   "a failed text write retains the candidate and blocks handoff of older saved text")
+        let elsewhere = root.deletingLastPathComponent().appendingPathComponent("Another saved session")
+        try check(model.handOffProblem(forEvidence: root) == "Save the edited narration before handing off this session."
+                  && model.handOffProblem(forEvidence: elsewhere) == nil,
+                  "History's Hand off waits for the open session's unsaved edit, as its own Hand off does; other saved folders do not wait")
         model.closeSession(); model.openRecent(root)
         try check(model.sessionURL == root.standardizedFileURL && model.transcriptDrafts[edited] == candidate,
                   "close and reopen cannot silently discard an unsaved edit")
@@ -84,6 +88,7 @@ enum ReadbackOrderingChecks {
         model.retryTranscriptSave(edited)
         try check(!model.hasUnsavedNarration && model.transcriptDrafts[edited] == candidate && model.canHandOffSession,
                   "Retry saves the same candidate and restores handoff readiness")
+        try check(model.handOffProblem(forEvidence: root) == nil, "once saved, History's Hand off can package the open session")
         let metadataURL = root.appendingPathComponent(ReadbackStore.manifestName), heldMetadata = root.appendingPathComponent("manifest-held.json")
         try FileManager.default.moveItem(at: metadataURL, to: heldMetadata)
         model.updateTranscript(candidate + " New edit.", for: edited)
@@ -106,6 +111,7 @@ enum ReadbackOrderingChecks {
                   "restoring a section leaves current review in place and retains its narration")
         model.closeSession()
         try check(model.reviewedSectionID == nil && !model.canHandOffSession, "closing clears review identity and handoff readiness")
+        try check(model.handOffProblem(forEvidence: root) == nil, "a closed session is read as saved from History")
         try check(!model.saveSectionOrder(ids, expectedOrder: moved, session: root), "closing or switching sessions prevents the old sheet from saving")
         print("READBACK_ORDER_CHECKS_OK: \(checks) checks")
     }

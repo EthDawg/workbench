@@ -1176,7 +1176,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         seekReading(to: player.currentTime + seconds)
     }
     func listen() {
-        guard !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
+        // A meeting can start while a reading plays. Pause still pauses it, so the
+        // reading never keeps playing into the meeting; Listen and Resume wait.
+        let pausing = playing && !rendering && phase == .idle
+        guard pausing || !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
         guard !rendering, phase == .idle else { return }
         stopVoicePreview()
         clearReadingFailure()

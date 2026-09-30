@@ -373,6 +373,10 @@ struct HandoffReviewView: View {
     var preferredSkillID: String? = nil
     var selectedSnapTalkSession: URL? = nil
     var initialEvidenceURL: URL? = nil
+    /// Why a Snap & Talk session cannot be packaged yet: its owner is still
+    /// transcribing it or holds an unsaved narration edit. Checked when evidence
+    /// is added and again when the task is prepared.
+    var evidenceProblem: (URL) -> String? = { _ in nil }
     var resolveReviewContext: (() throws -> SnapReviewContext?)? = nil
     var resolveSources: () throws -> [HandoffSourceSnapshot]
     /// Receives the task this review actually prepared or reused, so the host
@@ -514,6 +518,7 @@ struct HandoffReviewView: View {
             }
     }
     private func submit(provider: SubscriptionProvider?) {
+        if let evidenceURL, let waiting = evidenceProblem(evidenceURL) { problem = waiting; return }
         do {
             var latest = try currentSources()
             var latestReview = try resolveReviewContext?()
@@ -546,6 +551,7 @@ struct HandoffReviewView: View {
         catch { problem = error.localizedDescription }
     }
     private func useEvidence(_ url: URL) {
+        if let waiting = evidenceProblem(url) { problem = waiting; return }
         do {
             _ = try HandoffSessionEvidence.snapshots(at: url)
             evidenceURL = url; refreshSources()

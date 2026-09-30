@@ -715,6 +715,24 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         playingA.replaceReadingWithSelection()
         try check(playingA.player == nil && !playingA.playing && playingA.speechText == promptB, "Replace stops a playing reading too")
 
+        // A meeting can start while a reading plays. Pause then still pauses it, from
+        // every door that calls listen(), so the reading never keeps playing into the
+        // meeting; Resume waits for the meeting and says why.
+        let duringMeeting = try await pausedReading(passageA)
+        duringMeeting.listen()
+        try check(duringMeeting.playing, "The reading is playing when the meeting starts")
+        duringMeeting.meetings.isBusy = true
+        duringMeeting.listen()
+        try check(duringMeeting.paused && !duringMeeting.playing && duringMeeting.player?.isPlaying == false
+                  && duringMeeting.status == "Reading paused.", "Pause pauses a reading while a meeting is busy")
+        let heldTime = duringMeeting.playbackTime
+        duringMeeting.listen()
+        try check(duringMeeting.paused && !duringMeeting.playing && duringMeeting.playbackTime == heldTime
+                  && duringMeeting.error?.contains("meeting") == true, "Resume waits for the meeting, keeps the position and says why")
+        duringMeeting.meetings.isBusy = false
+        duringMeeting.listen()
+        try check(duringMeeting.playing, "Resume plays once the meeting is done")
+
         // During generation: Keep current lets it finish; Replace cancels it and drops anything late.
         let generating = ReadingHarness()
         generating.speechText = passageA
@@ -1010,7 +1028,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         }
 
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
+        for harness in [model, busy, duringMeeting, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")

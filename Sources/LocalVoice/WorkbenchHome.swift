@@ -250,6 +250,7 @@ struct WorkbenchHome: View {
                     preferredSkillID: request.transcriptID == nil ? packs.preferredTranscriptSkillID : nil,
                     selectedSnapTalkSession: request.transcriptID == nil ? readback.sessionURL : nil,
                     initialEvidenceURL: request.evidenceURL,
+                    evidenceProblem: { readback.handOffProblem(forEvidence: $0) },
                     resolveReviewContext: {
                         guard request.snapReview else { return nil }
                         guard history.activeSelectionID == request.savedSelectionID else {

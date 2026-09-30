@@ -368,6 +368,19 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         sessionURL != nil && currentSessionProblem == nil && !activeSections.isEmpty
             && !isRecording && !isCapturing && sessionProcessingCount == 0 && !hasUnsavedNarration
     }
+    /// Why a Hand off started from another door, such as History's, must wait
+    /// before it packages `url`, or nil. Only the open session can be mid-work, so
+    /// only it waits, for the same reasons as this page's own Hand off; any other
+    /// chosen folder is read as saved.
+    func handOffProblem(forEvidence url: URL) -> String? {
+        guard let sessionURL, url.standardizedFileURL == sessionURL.standardizedFileURL else { return nil }
+        if hasUnsavedNarration { return "Save the edited narration before handing off this session." }
+        if currentSessionProblem != nil { return "Locate this session folder before handing it off." }
+        guard canHandOffSession else {
+            return activeSections.isEmpty ? "Add a screenshot before handing off this session." : "Finish this session's capture and transcription before handing it off."
+        }
+        return nil
+    }
     @Published private(set) var recentSessionURLs: [URL] = []
     @Published private(set) var unavailableSessions: [String: String] = [:]
     var currentSessionProblem: String? { sessionURL.flatMap { unavailableSessions[$0.standardizedFileURL.path] } }
