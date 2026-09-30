@@ -12,11 +12,13 @@
 
 Based on main b06fbaa. Checks use synthetic data and a separate named pasteboard.
 
-- Toolbar suite: 203 tests, zero failures; two explicitly opt-in on-screen checks skipped.
-- Additional rendered-pixel regression: the chooser icon stays identical across every tool, recovery and recording state.
+- Full Swift suite: 328 tests, zero failures; two explicitly opt-in on-screen checks skipped.
+- Rendered-pixel regression: the chooser icon stays identical across every tool, recovery and recording state.
 - Delivery: 47 checks. Saved Prompts insertion: 19 checks. Parent reran both after integration.
 - Clipboard cue: 32 checks. Feedback ownership and lifetime: 124 checks.
 - Surface registry: 439 entries, passed. Removed obsolete receipt commands.
+- Native surface gallery: 280 renders, 140 entries, zero flags. Toolbar gallery: 344 production-view fixtures.
+- Capture persistence: 154 checks, including saved audio preservation and no popup revival after confirmed insertion.
 
 ## Rendered production views
 
@@ -30,4 +32,4 @@ These are production SwiftUI/AppKit views with synthetic state, not installed ac
 
 ## Native acceptance
 
-Pending signed Preview installation and real Claude desktop input checks. The app-control tool refuses this Mac's ChatGPT app identity, so ChatGPT requires a user check in the installed candidate. No permission reset or extra application identity is part of this change.
+Signed Preview installed in place: version 2.3.1, build 20260930080409, source d677e65131d9a0b89a73a3c507a6a62b4813400b. Real Claude desktop input checks are pending. The app-control tool refuses this Mac's ChatGPT app identity, so ChatGPT requires a user check in the installed candidate. No permission reset or extra application identity is part of this change.
