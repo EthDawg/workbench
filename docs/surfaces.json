@@ -34,31 +34,6 @@
     "note": "Runtime label from Image ( systemName : \"ellipsis\" ); no rendered text assumed."
   },
   {
-    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.review",
-    "surface": "floating toolbar live controls",
-    "label": "Review",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.runtime-772d4201867d",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : \"xmark\" )",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.runtime-7b59630aeb09",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" )",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" ); no rendered text assumed."
-  },
-  {
     "id": "LocalVoice.CapturePanel.DictationResultView.Button.open-workbench",
     "surface": "floating toolbar live controls",
     "label": "Open Workbench",
@@ -259,14 +234,6 @@
     "note": "Quality (#134 T4): the clipboard shelf's Copy again, first in More under the undelivered result's own title once its receipt has gone, so the compact mark's warning reaches its recovery from the toolbar. Only where it cannot lead to a second insertion, as on the shelf."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again.2",
-    "surface": "floating toolbar More menu",
-    "label": "Copy again",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#211 F1): the undelivered words' Copy again under the waiting receipt, which leads More, only where a second copy cannot insert twice; the same owner as its own section's."
-  },
-  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-now",
     "surface": "floating toolbar More menu",
     "label": "Copy now",
@@ -395,14 +362,6 @@
     "kind": "action",
     "belongsTo": "read",
     "note": "Quality (#211 F1): a stopped reading's Retry, as its view offers it, under the reading first in More."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.review",
-    "surface": "floating toolbar More menu",
-    "label": "Review",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#211 F1): the waiting receipt's Review, as its view offers it, first in More: Library for a copied prompt, History for a transcript."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-2a736db79384",

@@ -20,27 +20,14 @@ struct ClipboardReceipt: Identifiable, Equatable {
     enum Source: Equatable { case transcript, prompt }
 }
 
-/// The receipt's floating HUD, timed on its own clock (#134 T5): eight seconds
-/// of visible, unheld time for a copy and four for a confirmed paste. Pinning
-/// and the pointer hold it, and it closes at its own deadline. The HUD's
-/// countdown ring reads this same lifetime. Hiding the HUD or a clipboard
-/// change ends only this presentation: a delivery that did not finish stays
-/// with its owner (`UnresolvedDeliverySlot`).
+/// A brief delivery cue. Confirmed insertion stays quiet; clipboard fallback gives
+/// a useful next step, then disappears. Saved words and unresolved delivery keep
+/// their existing owners when this presentation ends.
 @MainActor
 final class ClipboardReceiptModel: ObservableObject {
     @Published private(set) var receipt: ClipboardReceipt?
     @Published private(set) var isHUDVisible = false
     @Published private(set) var lifetime: NoticeLifetime?
-    @Published var keepVisible = false {
-        didSet {
-            guard oldValue != keepVisible else { return }
-            if isHUDVisible, var lifetime {
-                lifetime.hold(.pinned, keepVisible, at: now())
-                self.lifetime = lifetime
-                scheduleExpiry()
-            }
-        }
-    }
     /// The HUD's view reports the pointer, including one already resting
     /// where the HUD appears, so a receipt that appears under it starts held.
     private(set) var pointerOverHUD = false
@@ -62,12 +49,10 @@ final class ClipboardReceiptModel: ObservableObject {
         expiry = NoticeExpiry(clock: now)
     }
 
-    /// Eight seconds for a copy, four for a confirmed paste, starting now,
-    /// held from the start by a pin or a pointer already over the HUD.
+    /// Three seconds, held only while the person is reading the cue.
     private func freshLifetime(for receipt: ClipboardReceipt) -> NoticeLifetime {
-        var lifetime = NoticeLifetime(duration: receipt.wasPasted ? 4 : 8)
+        var lifetime = NoticeLifetime(duration: 3)
         lifetime.present(at: now())
-        if keepVisible { lifetime.hold(.pinned, true, at: now()) }
         if pointerOverHUD { lifetime.hold(.pointer, true, at: now()) }
         return lifetime
     }
@@ -130,8 +115,8 @@ final class ClipboardReceiptModel: ObservableObject {
                                    canSuggestPaste: ownsClipboard && !outcome.wasPasted && !outcome.pasteWasAttempted
                                        && outcome.failure != .pasteUnconfirmed, source: source)
         observedCount = current
-        lifetime = receipt.map(freshLifetime)
-        isHUDVisible = true
+        isHUDVisible = !outcome.wasPasted
+        lifetime = isHUDVisible ? receipt.map(freshLifetime) : nil
         scheduleExpiry()
         startTimerIfNeeded()
     }
@@ -139,7 +124,6 @@ final class ClipboardReceiptModel: ObservableObject {
     /// Dismissing the transient HUD does not discard a still-owned clipboard shelf.
     func dismissHUD() {
         isHUDVisible = false
-        keepVisible = false
         lifetime = nil
         expiry.cancel()
         if receipt?.isClipboardCurrent != true { clear() }
@@ -158,7 +142,6 @@ final class ClipboardReceiptModel: ObservableObject {
     /// Called on new recording as well as explicit dismissal of the whole receipt.
     func clear() {
         isHUDVisible = false
-        keepVisible = false
         receipt = nil; observedCount = nil; lifetime = nil
         expiry.cancel()
         timer?.invalidate(); timer = nil
@@ -169,7 +152,7 @@ final class ClipboardReceiptModel: ObservableObject {
         guard let receipt else { clear(); return }
         let current = clipboardChangeCount()
         // Even a restored-clipboard receipt has a baseline count: a later copy
-        // dismisses a pinned HUD without claiming ownership of that other content.
+        // dismisses the cue without claiming ownership of that other content.
         if observedCount != current || (receipt.isClipboardCurrent && receipt.clipboardChangeCount != current) {
             clear(); return
         }

@@ -41,9 +41,9 @@ public extension View {
 /// The production look and the gallery are the same view, fed one frozen value.
 ///
 /// At rest the toolbar is the compact mark in every state (#134): a small capsule whose
-/// signals highlight recording, transport and recovery; tool identity waits for reveal.
+/// only visual activity is the recording dot and voice trace; tool identity waits for reveal.
 /// A click on it only reveals and takes the keyboard; a
-/// drag moves the toolbar. Revealed, the row is `[tool ▾] [next action] [accessory] [⋯]`,
+/// drag moves the toolbar. Revealed, the row is `[switch tool] [recording signal] [next action] [accessory] [⋯]`,
 /// horizontal at top/bottom/free/corner positions and vertical at side edges. Right-hand
 /// corners reverse the row; both side columns keep the same top-to-bottom order.
 /// The launcher opens the tool chooser, More holds the tool's
@@ -111,9 +111,11 @@ public struct ToolbarRow: View {
     }
     private var rowLength: CGFloat {
         let actions = max(1, state.captureChoices.count), accessory = state.shownAccessory == nil ? 0 : 1
+        let signal = state.status.indicator == .capture ? 1 : 0
         return ToolbarLayout.launcherWidth + scale * (CGFloat(actions) * ToolbarLayout.primaryMinimum
             + CGFloat(accessory) * ToolbarLayout.accessoryWidth + ToolbarLayout.moreWidth + ToolbarLayout.padding
-            + CGFloat(actions + accessory + 1) * ToolbarLayout.gap)
+            + CGFloat(signal) * ToolbarLayout.captureSignalWidth
+            + CGFloat(actions + accessory + signal + 1) * ToolbarLayout.gap)
     }
     /// A resting handle turning a corner has a different footprint from an opening row.
     /// Derive its ink from the same native frame, without another animation or state owner.
@@ -156,8 +158,7 @@ public struct ToolbarRow: View {
             }
         }
         .mask {
-            // At rest the recording warning may sit just outside its capsule. The mask
-            // contributes no paint; only the transition needs to clip unfolding glyphs.
+            // Only the transition needs to clip unfolding controls.
             if state.tier == .resting && revealProgress == 0 { Color.white }
             else { chrome(mask: true) }
         }
@@ -232,8 +233,8 @@ public struct ToolbarRow: View {
     private var row: some View {
         let layout = vertical ? AnyLayout(VStackLayout(spacing: ToolbarLayout.gap * scale)) : AnyLayout(HStackLayout(spacing: ToolbarLayout.gap * scale))
         return layout {
-            if !vertical && state.anchor.growsLeftward { more; accessory; captureOrPrimary; launcher }
-            else { launcher; captureOrPrimary; accessory; more }
+            if !vertical && state.anchor.growsLeftward { more; accessory; captureOrPrimary; captureSignal; launcher }
+            else { launcher; captureSignal; captureOrPrimary; accessory; more }
         }
         .padding(vertical ? .bottom : state.anchor.growsLeftward ? .leading : .trailing, ToolbarLayout.padding * scale)
         .frame(minWidth: vertical ? ToolbarLayout.rowHeight * scale : nil, minHeight: vertical ? nil : ToolbarLayout.rowHeight * scale).fixedSize()
@@ -303,44 +304,30 @@ public struct ToolbarRow: View {
             .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
     }
 
-    /// The launcher's target is fixed at 48 points, the compact mark's width, so the two share
-    /// one centre on screen at every text size. Its symbol stays on that centre as the
-    /// capsule opens; a chevron appears beside it. The button itself draws nothing: it is the target, the keyboard
-    /// focus and the accessibility element.
+    /// Recording feedback has its own space, so Switch tool never changes identity.
+    @ViewBuilder private var captureSignal: some View {
+        if state.status.indicator == .capture {
+            ToolbarCaptureSignal(status: state.status, accent: accent, vertical: vertical)
+                .frame(width: oriented(ToolbarLayout.captureSignalWidth * scale, ToolbarLayout.controlHeight * scale).width,
+                       height: oriented(ToolbarLayout.captureSignalWidth * scale, ToolbarLayout.controlHeight * scale).height)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+
+    /// One stable chooser icon, including while a tool is recording or has a saved result.
+    /// The native button retains its fixed target, keyboard handling and drag behaviour.
     private var launcher: some View {
         ToolbarLauncher(state: state, accent: accent, open: { view in hints.hide(); openChooser(view) }, options: menuOpener,
                         focus: { if state.tier == .revealed { focusButton($0) } }, escape: escape, drag: interactionDrag, keyCycle: keyCycle, hints: hints)
             .frame(width: oriented(ToolbarLayout.launcherWidth, ToolbarLayout.rowHeight * scale).width,
                    height: oriented(ToolbarLayout.launcherWidth, ToolbarLayout.rowHeight * scale).height)
             .overlay {
-                Group {
-                    // Recording keeps the same voice trace and badges in both tiers.
-                    if state.status.indicator == .capture {
-                        ToolbarCaptureSignal(status: state.status, accent: accent, vertical: vertical)
-                    } else {
-                        Image(systemName: state.mode.symbol).font(.system(size: symbolSize, weight: .medium))
-                            .foregroundStyle(.white)
-                            .overlay(alignment: .topTrailing) {
-                                if let glyph = ToolbarResultGlyph(state.status.indicator) {
-                                    ToolbarBadge(id: "result", symbol: glyph.name, color: glyph.color, size: ToolbarLayout.badge * scale)
-                                        .offset(x: 5 * scale, y: -4 * scale)
-                                }
-                            }
-                            .overlay {
-                                Image(systemName: "chevron.down").font(.system(size: 6 * scale, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.6)).offset(x: 12 * scale)
-                            }
-                    }
-                }
-                .allowsHitTesting(false).accessibilityHidden(true)
-            }
-            .overlay(alignment: .bottom) {
-                // Otherwise one dot says work is live in some tool.
-                if state.status.indicator != .capture && state.hasLiveWork {
-                    Circle().fill(.tint).frame(width: 4, height: 4).padding(.bottom, 6 * scale).allowsHitTesting(false)
-                }
+                Image(systemName: "square.grid.2x2.fill")
+                    .font(.system(size: symbolSize, weight: .medium)).foregroundStyle(.white)
+                    .allowsHitTesting(false).accessibilityHidden(true)
             }
     }
+
 }
 
 /// Native options and accessory menus use the same inboard side as the custom panels.
@@ -352,7 +339,7 @@ public struct ToolbarRow: View {
 }
 
 /// The compact rest's look: a quiet 48 × 8 handle, with a taller capsule only for a
-/// recording, transport or recovery signal. Side edges transpose these dimensions.
+/// recording dot and voice trace. Side edges transpose these dimensions.
 /// The native target owns the full 48 × 28 or 28 × 48
 /// bounds. One imperceptible native fill retains WindowServer hit routing; the compact
 /// view itself paints only its capsule and signal, with no native window shadow.
@@ -390,97 +377,25 @@ public struct ToolbarCompactMark: View {
     }
 
     @ViewBuilder private var indicator: some View {
-        switch status.indicator {
-        case .idle, .live: EmptyView()
-        case .capture: ToolbarCaptureSignal(status: status, accent: accent, vertical: anchor.isVertical)
-        case .playback: symbol("speaker.wave.2.fill", accent)
-        case .processing: symbol("ellipsis", Color.white.opacity(0.7))
-        case .failure, .pendingDelivery, .unsavedCapture:
-            if let glyph = ToolbarResultGlyph(status.indicator) { symbol(glyph.name, glyph.color) }
-        case .paused: symbol("pause.fill", Color.white.opacity(0.7))
-        }
-    }
-
-    private func symbol(_ name: String, _ style: Color) -> some View {
-        Image(systemName: name).font(.system(size: symbolSize, weight: .medium)).foregroundStyle(style)
-            .frame(width: ToolbarLayout.statusHeight, height: ToolbarLayout.statusHeight)
-    }
-}
-
-/// A waiting result's glyph: a failure's warning, a result waiting to be delivered, or an unsaved
-/// capture. The compact mark shows it at rest, and the launcher as a badge while the row is open.
-struct ToolbarResultGlyph {
-    let name: String
-    let color: Color
-    init?(_ indicator: ToolbarStatus.Indicator) {
-        switch indicator {
-        case .failure: (name, color) = ("exclamationmark.triangle.fill", .orange)
-        case .pendingDelivery: (name, color) = ("doc.on.clipboard", .white)
-        case .unsavedCapture: (name, color) = ("pencil", .white)
-        default: return nil
+        if status.indicator == .capture {
+            ToolbarCaptureSignal(status: status, accent: accent, vertical: anchor.isVertical)
         }
     }
 }
 
-/// A badge's glyph in a fixed square, so where it sits never depends on its symbol's metrics
-/// (#211 F4). It reports where it was laid out to checks through `toolbarBadgeFrames`.
-struct ToolbarBadge: View {
-    /// "stopsSoon", "attention" or "result": what checks find it by.
-    let id: String
-    let symbol: String
-    let color: Color
-    var size: CGFloat = ToolbarLayout.badge
-    @Environment(\.toolbarBadgeFrames) private var report
-    var body: some View {
-        Image(systemName: symbol).resizable().scaledToFit().fontWeight(.bold).foregroundStyle(color)
-            .frame(width: size, height: size)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in report?(id, frame) }
-    }
-}
-
-private struct ToolbarBadgeFramesKey: EnvironmentKey {
-    static let defaultValue: ((String, CGRect) -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    /// Checks read each badge's frame, in its hosting view, from here; nil in the app.
-    var toolbarBadgeFrames: ((String, CGRect) -> Void)? {
-        get { self[ToolbarBadgeFramesKey.self] }
-        set { self[ToolbarBadgeFramesKey.self] = newValue }
-    }
-}
-
-/// The capture signal: the shared voice trace, a red recording dot and the recording owner's own
-/// level through the shared envelope and stroke (#134, #209), with its badges. A timer beside the
-/// trace says this recording stops at its limit within seconds; a warning on the capsule's corner
-/// says another job needs attention, like a badge on an icon. Both show when both apply (#211 F4),
-/// each about 7 points, inside the 48 × 28 target, and the words name every state
-/// (`ToolbarStatus.description`). The compact mark shows it at rest and the launcher while the row
-/// is open. The trace keeps still in silence and follows Reduce Motion and Increase Contrast.
+/// A red recording dot and the input's own voice trace. Recovery belongs to the
+/// owning page, so another job can never put a warning or timer icon on this signal.
 struct ToolbarCaptureSignal: View {
     let status: ToolbarStatus
     let accent: Color
     var vertical = false
-    /// The signal's box: the capsule's width less a 2-point margin each side, and its height.
     static let size = CGSize(width: ToolbarLayout.markCapsule.width - 4, height: ToolbarLayout.statusHeight)
     var body: some View {
-        let layout = vertical ? AnyLayout(VStackLayout(spacing: 3)) : AnyLayout(HStackLayout(spacing: 3))
-        return layout {
-            VoiceTrace(level: status.level, accent: accent)
-                .rotationEffect(.degrees(vertical ? 90 : 0))
-                .frame(width: vertical ? VoiceTraceGeometry.size.height : VoiceTraceGeometry.size.width,
-                       height: vertical ? VoiceTraceGeometry.size.width : VoiceTraceGeometry.size.height)
-            if status.badges.contains(.stopsSoon) {
-                ToolbarBadge(id: "stopsSoon", symbol: "timer", color: .orange)
-            }
-        }
-        .frame(width: vertical ? Self.size.height : Self.size.width, height: vertical ? Self.size.width : Self.size.height)
-        .overlay(alignment: .topTrailing) {
-            if status.badges.contains(.attention) {
-                ToolbarBadge(id: "attention", symbol: "exclamationmark.triangle.fill", color: .orange)
-                    .offset(x: vertical ? 6 : 1, y: vertical ? 0 : -7)
-            }
-        }
+        VoiceTrace(level: status.level, accent: accent)
+            .rotationEffect(.degrees(vertical ? 90 : 0))
+            .frame(width: vertical ? VoiceTraceGeometry.size.height : VoiceTraceGeometry.size.width,
+                   height: vertical ? VoiceTraceGeometry.size.width : VoiceTraceGeometry.size.height)
+            .frame(width: vertical ? Self.size.height : Self.size.width, height: vertical ? Self.size.width : Self.size.height)
     }
 }
 
@@ -615,15 +530,12 @@ private struct ToolbarLauncher: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: LauncherButton, context: Context) {
-        view.setAccessibilityLabel("Tool: " + state.mode.title)
-        // A recording, and a result waiting for the person, keep their words on the launcher while
-        // the row is open, as the mark carries them at rest (#134 T4, #211 F1).
-        let status = state.status.indicator == .capture || ToolbarResultGlyph(state.status.indicator) != nil
-        view.setAccessibilityValue(status ? state.launcherDescription + ". " + state.status.spokenValue : state.launcherDescription)
-        view.setAccessibilityHelp("Choose a tool")
+        view.setAccessibilityLabel("Switch tool")
+        view.setAccessibilityValue(state.launcherDescription)
+        view.setAccessibilityHelp("Switch tool")
         view.setAccessibilityIdentifier("toolbar.launcher")
         view.hints = hints
-        view.hint = "Choose a tool · " + (status ? state.launcherDescription + ". " + state.status.description : state.launcherDescription)
+        view.hint = "Switch tool · " + state.launcherDescription
         view.escape = escape; view.drag = drag
         view.keyCycle = keyCycle; keyCycle.register(view, as: .launcher)
         view.open = { [weak view] in if let view { open(view) } }

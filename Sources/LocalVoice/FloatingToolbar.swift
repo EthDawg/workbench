@@ -36,29 +36,26 @@ enum FloatingToolbarSurface: Equatable {
 }
 
 /// A result that keeps its own controls (#134 T4): a dictation that needs attention, a reading
-/// that stopped, or the clipboard receipt. The mark shows it as a status; the person reveals it.
+/// that stopped. Delivery cues have their own brief, button-free presentation.
 enum FloatingResult: Equatable {
-    case dictationFailure, readingFailure, receipt
+    case dictationFailure, readingFailure
 
-    /// The result waiting for the person: the mark's warning and the first section of More say so
-    /// while other work runs. A new recording or its processing sets it aside until it ends.
+    /// The result waiting for the person stays reachable in More while other work runs. A new recording or its processing sets it aside until it ends.
     @MainActor static func pending(_ model: AppModel) -> FloatingResult? {
         guard model.phase == .idle, !model.previewingPanel else { return nil }
         if model.captureFailure != nil { return .dictationFailure }
         if model.readingFailure != nil, !model.rendering, !model.playing, !model.paused { return .readingFailure }
-        if model.clipboardReceipt.isHUDVisible, model.clipboardReceipt.receipt != nil { return .receipt }
         return nil
     }
 
     /// Which result is pending, for the live work's hold (#222). A failure is known by its kind: the
     /// host lets a held one go when its owner sets that slot again, so a new failure in the same
-    /// words is new. A receipt has an identity of its own.
-    enum Identity: Hashable { case dictationFailure, readingFailure, receipt(UUID) }
+    /// words is new.
+    enum Identity: Hashable { case dictationFailure, readingFailure }
     @MainActor func identity(in model: AppModel) -> Identity? {
         switch self {
         case .dictationFailure: return .dictationFailure
         case .readingFailure: return .readingFailure
-        case .receipt: return model.clipboardReceipt.receipt.map { .receipt($0.id) }
         }
     }
 
@@ -398,7 +395,7 @@ struct FloatingToolbar: View {
         }
         if !dictation.isEmpty { sections.append(("Dictate", dictation)) }
         // A delivery that did not finish keeps its recovery here once its receipt has gone (#134 T5).
-        if let unresolved = model.unresolvedDelivery, FloatingResult.pending(model) != .receipt {
+        if let unresolved = model.unresolvedDelivery {
             var items: [NSMenuItem] = []
             if unresolved.offersCopy { items.append(ToolbarMenuAction("Copy again") { model.copyUnresolvedDelivery() }) }
             items.append(ToolbarMenuAction("Dismiss") { model.dismissUnresolvedDelivery() })
@@ -443,12 +440,6 @@ struct FloatingToolbar: View {
             header = "Reading stopped"; dismiss = { model.dismissReadingFailure() }
             items.append(ToolbarMenuAction(failure.message, enabled: false) {})
             items.append(ToolbarMenuAction("Retry", enabled: model.canRetryReading) { model.retryReading() })
-        case .receipt:
-            guard let receipt = receipts.receipt else { return nil }
-            header = receipt.title; dismiss = { receipts.dismissHUD() }
-            // Only where a second copy cannot lead to a second insertion, as its own section says.
-            if model.unresolvedDelivery?.offersCopy == true { items.append(ToolbarMenuAction("Copy again") { model.copyUnresolvedDelivery() }) }
-            items.append(ToolbarMenuAction("Review") { receipts.dismissHUD(); DictationResultView.review(receipt, model: model) })
         }
         items.append(ToolbarMenuAction("Dismiss", run: dismiss))
         return (header, items)
@@ -481,6 +472,7 @@ struct WorkbenchFloatingContent: View {
     @ObservedObject var readback: ReadbackModel
     @ObservedObject var stage: StageKitController
     @ObservedObject var controls: CaptureHUDControls
+    @ObservedObject var receipts: ClipboardReceiptModel
     let snapModel: SnapModel
     let dictate: () -> Void
     let snap: () -> Void
@@ -495,6 +487,8 @@ struct WorkbenchFloatingContent: View {
     var body: some View {
         if let cue = model.captureCue, CapturePanelController.showsCue(model), !readback.isRecording {
             NoSpeechCueHUD(cue: cue, hold: model.holdCaptureCue)
+        } else if CapturePanelController.showsDeliveryCue(model), !readback.isRecording {
+            ClipboardCueHUD(receipts: receipts)
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                             meetings: model.meetings, snapModel: snapModel, receipts: model.clipboardReceipt,
@@ -505,7 +499,7 @@ struct WorkbenchFloatingContent: View {
 
 /// A result's own controls, revealed from the toolbar's place (#134 T4). A result's message is
 /// content, not only commands, so it keeps the view it had: a dictation that needs attention,
-/// a reading that stopped, or the clipboard receipt with its ring. It opens only when the
+/// a reading that stopped. It opens only when the
 /// person reveals the toolbar; revealing, collapsing or choosing a tool never dismisses,
 /// acknowledges or retries it.
 struct FloatingResultView: View {
@@ -515,7 +509,6 @@ struct FloatingResultView: View {
     var body: some View {
         switch result {
         case .dictationFailure: DictationResultView(model: model, controls: controls)
-        case .receipt: DictationResultView(model: model, controls: controls)
         case .readingFailure: ReadingStoppedView(model: model, controls: controls)
         }
     }

@@ -300,12 +300,9 @@ struct WorkbenchControlContext {
         return ToolbarActivity(capture: capture, level: level, playback: model.playing,
             processing: dictationBusy || model.rendering || readback.isCapturing || readback.hasPendingTranscriptions
                 || model.meetings.isStarting || model.meetings.isProcessing || snap?.isCapturing == true,
-            // A delivery that did not finish needs the person until they copy it again or set it
-            // aside, whether or not its receipt is still showing (#134 T5).
-            failure: model.captureFailure != nil || model.readingFailure != nil || model.meetings.hasRecovery || model.unresolvedDelivery != nil,
-            pendingDelivery: model.waitingForDrawing
-                || (model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt?.isClipboardCurrent == true),
-            unsavedCapture: snap?.draft != nil,
+            // Saved recovery and clipboard records remain with their owners. They are not
+            // live activity and must not follow the person into another tool's toolbar.
+            pendingDelivery: model.waitingForDrawing,
             paused: model.paused || timer.paused || stage.isPersonaSessionPaused,
             live: live,
             // The last ten seconds before a dictation or narration stops at its 5-minute limit (#134 T4).
