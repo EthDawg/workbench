@@ -39,6 +39,16 @@ The [host manifest](host-manifest.json) records sizes and placement checks, incl
 
 A bounded Codex review identified destination-axis fitting, narrow popup content and compact-signal recentering gaps. The parent corrected them and ran the checks above. An initial visibility assertion assumed unconverted RGB colors and rejected a visibly intact badge. It now checks the actual sRGB hue and saves a diagnostic PNG on failure. The recorded final run passes.
 
+### CI portability follow-up
+
+[CI run 36662608243](https://github.com/EthDawg/workbench/actions/runs/36662608243) exposed two test assumptions after integration. The drag test queued a mouse-up carrying an offscreen window number; AppKit remapped its coordinates, effectively applying the window origin twice. It now follows the existing native click helper by queuing a windowless mouse-up, while the directly delivered mouse-down retains its window. Exact final-delta and single-move assertions remain.
+
+The warning comparison differed by one thresholded orange pixel at every anchor (29/30 horizontally, 27/28 vertically). It now allows exactly one pixel of rasterization variation and renders the old capsule-clipped reference at every anchor. The test requires that deliberate clipping exceed the tolerance, so the original regression still fails.
+
+Stress runs also exposed an intermittent resize-fixture failure: one native launcher's frame remained at its initial position while its neighbours were placed. The test now completes AppKit's display pass before collecting targets and asserts the full expected control count. The exact native hit-target assertions remain, with no retries or excluded controls.
+
+The focused CI pair and the full toolbar suite passed locally: 203 tests, two explicitly gated on-screen tests skipped, zero failures. A further full-suite stress run increased the resize test from three to 30 cycles per tool and anchor (1,680 reveal cycles); all 203 tests passed with the same two skips. The normal three-cycle count is retained in the committed test. Production source is unchanged by this follow-up. Installed interaction and the CI rerun remain with integration.
+
 ## Installed acceptance
 
 The integration owner is combining this branch with camera and image-workspace changes in PR #229 and owns the single signed Preview install. Follow the [update workflow](../../updating.md), then verify Copy build details before claiming installed acceptance. Source work is ready for integration.

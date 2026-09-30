@@ -132,11 +132,19 @@ final class ToolbarNativeTests: XCTestCase {
             }
             return pixels
         }
-        let completeBadge = try warningPixels(ToolbarCompactMark(status: status))
-        XCTAssertGreaterThan(completeBadge, 4)
         for anchor in ToolbarAnchor.allCases {
             let state = ToolbarViewState(name: "recording-warning", tier: .resting, anchor: anchor, status: status)
-            XCTAssertEqual(try warningPixels(ToolbarRow(state: state)), try warningPixels(ToolbarCompactMark(status: status, anchor: anchor)),
+            let mark = ToolbarCompactMark(status: status, anchor: anchor)
+            let complete = try warningPixels(mark)
+            let clipped = try warningPixels(mark.mask {
+                Capsule().frame(width: anchor.isVertical ? 20 : 48, height: anchor.isVertical ? 48 : 20)
+            })
+            XCTAssertGreaterThan(complete, 4)
+            // The old capsule mask must fail this oracle at every anchor. One
+            // antialiased edge pixel can cross the color cutoff when the native
+            // hit fill and SwiftUI mask composite, as on the CI display.
+            XCTAssertGreaterThan(complete - clipped, 1, "the reference must reproduce warning clipping at \(anchor)")
+            XCTAssertEqual(Double(try warningPixels(ToolbarRow(state: state))), Double(complete), accuracy: 1,
                            "the complete warning remains visible at \(anchor)")
         }
     }
@@ -385,7 +393,12 @@ final class ToolbarNativeTests: XCTestCase {
                         panel.setContentSize(NSSize(width: ToolbarLayout.mark(for: anchor).width + (size.width - ToolbarLayout.mark(for: anchor).width) * progress, height: ToolbarLayout.mark(for: anchor).height + (size.height - ToolbarLayout.mark(for: anchor).height) * progress))
                         tracking.layoutSubtreeIfNeeded()
                     }
-                    for button in buttons(host) {
+                    // NSHostingView can defer representable placement until display.
+                    // Inspect the completed frame, including every expected control.
+                    panel.display()
+                    let controls = buttons(host)
+                    XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
+                    for button in controls {
                         let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: tracking.superview)
                         let hit = tracking.hitTest(point)
                         XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,

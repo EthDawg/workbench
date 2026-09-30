@@ -305,8 +305,11 @@ final class ToolbarInteractionTests: XCTestCase {
         button.drag = .init(move: { moved += 1 }, end: { ended = panel.frame.origin })
         func event(_ type: NSEvent.EventType, point: NSPoint) -> NSEvent {
             NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+                windowNumber: type == .leftMouseUp ? 0 : panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
         }
+        // Keep queued coordinates local, as the native click helper does. AppKit can
+        // remap a posted event carrying a window number through screen coordinates.
+        // The directly delivered mouse-down still identifies its actual window.
         NSApp.postEvent(event(.leftMouseUp, point: NSPoint(x: 34, y: 15)), atStart: true)
         button.mouseDown(with: event(.leftMouseDown, point: NSPoint(x: 24, y: 20)))
         XCTAssertEqual(ended?.x, origin.x + 10)
