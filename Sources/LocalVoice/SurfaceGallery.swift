@@ -104,6 +104,13 @@ enum SurfaceGallery {
             overlay.layer?.isHidden = false
             draw(overlay, in: SurfacePass.unflipped(overlay.bounds, of: overlay, in: root))
         }
+        // CALayer can clear the destination while rendering transparent scroll documents.
+        // Composite the actual window colour behind the completed tree so the exported PNG
+        // has the same backing as the window, including translucent result backgrounds.
+        context.saveGState()
+        context.setBlendMode(.destinationOver)
+        context.setFillColor(background); context.fill(bounds)
+        context.restoreGState()
         guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
         return NSBitmapImageRep(cgImage: image)
     }
