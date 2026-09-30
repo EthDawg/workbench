@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 
 methods = SwiftFile(ROOT / "Sources/LocalVoice/AppModel.swift").type("AppModel").extract([
-    "receiveReadingSelection", "importReading", "listen(to:)", "canReplaceReading", "replaceWaitsForSave",
+    "receiveReadingSelection", "importReading", "importReadingFile(_:)", "listen(to:)", "canReplaceReading", "replaceWaitsForSave",
     "replaceReadingWithSelection", "keepCurrentReading", "readingLimitMessage", "applyReadingSelection",
     "endReadingForNewText",
     # What the selected provider can read, and the reason copied text is refused (#173).
@@ -142,6 +142,41 @@ __METHODS__
         try check(doors.attention?.page == .read, "the import's problem is Read's, so the menu-bar panel opens Read (#134)")
         try check(Attention.besideHomeReadTile(doors.attention, meetingBusy: doors.meetings.isBusy) == nil, "a History or Library Read aloud failure never shows beside Home's Read tile (#173)")
         let emptyDraft = SelectionHarness()
+        let fileRoot = FileManager.default.temporaryDirectory.appendingPathComponent("ReadFileChecks-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: fileRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fileRoot) }
+        let textFile = fileRoot.appendingPathComponent("sample.txt")
+        let fileText = "  A bounded local text file.\nUnicode is preserved: café.  "
+        try Data(fileText.utf8).write(to: textFile)
+        let fileImport = SelectionHarness()
+        fileImport.speechText = "Keep my current reading"; fileImport.playing = true; fileImport.saves = 0
+        fileImport.importReadingFile(nil)
+        try check(fileImport.pendingReadingSelection == nil && fileImport.playing && fileImport.saves == 0, "file cancellation preserves reading and playback")
+        fileImport.importReadingFile(textFile)
+        try check(fileImport.pendingReadingSelection?.origin == .file && fileImport.pendingReadingSelection?.text == fileText
+                  && fileImport.speechText == "Keep my current reading" && fileImport.playing && fileImport.listens == 0,
+                  "file import stages exact text and origin without replacing or starting playback")
+        fileImport.keepCurrentReading()
+        try check(fileImport.pendingReadingSelection == nil && fileImport.playing && fileImport.saves == 0,
+                  "Keep current preserves playback and discards only the file offer")
+        fileImport.savingAudio = true; fileImport.importReadingFile(textFile)
+        try check(fileImport.pendingReadingSelection == nil && fileImport.playing && fileImport.saves == 0,
+                  "file import waits for Save audio without changing its text or playback")
+        fileImport.savingAudio = false
+        for bytes in [Data(), Data(" \n ".utf8), Data([0xff, 0xfe, 0x00]), Data("binary\u{0000}text".utf8), Data(repeating: 65, count: ReadingSelectionImport.maximumCharacters + 1), Data(repeating: 65, count: ReadingSelectionImport.maximumCharacters * 4 + 1)] {
+            try bytes.write(to: textFile)
+            fileImport.importReadingFile(textFile)
+            try check(fileImport.pendingReadingSelection == nil && fileImport.speechText == "Keep my current reading" && fileImport.playing && fileImport.saves == 0,
+                      "empty, invalid and oversized files preserve current text and playback")
+        }
+        fileImport.importReadingFile(fileRoot)
+        try check(fileImport.pendingReadingSelection == nil && fileImport.playing, "a directory is not imported as text")
+        try Data(fileText.utf8).write(to: textFile)
+        fileImport.importReadingFile(textFile); fileImport.replaceReadingWithSelection()
+        try check(fileImport.speechText == fileText && !fileImport.playing && fileImport.listens == 0 && fileImport.pendingReadingSelection == nil,
+                  "explicit file replacement ends old playback and waits for Listen")
+        let originalFile = try Data(contentsOf: textFile)
+        try check(originalFile == Data(fileText.utf8), "import and replacement leave the source file unchanged")
         emptyDraft.playing = true
         emptyDraft.importReading("Saved prompt", from: .savedText)
         try check(emptyDraft.speechText == "Saved prompt" && emptyDraft.invalidations == 1 && !emptyDraft.playing && emptyDraft.listens == 0,

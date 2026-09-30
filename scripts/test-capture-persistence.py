@@ -30,7 +30,7 @@ methods = model.extract([
     'discardRecordingRecovery', 'discardCaptureRecovery', 'showCaptureRecoveryFiles', 'showSavedRecordings',
     # Manual copies and the undelivered result they resolve (#134 T5).
     'copyTranscript', 'deliveryRecords', 'unresolvedDelivery', 'copyTextWithReceipt', 'copyUnresolvedDelivery',
-    'dismissUnresolvedDelivery', 'copyCapture',
+    'dismissUnresolvedDelivery', 'reviewUnresolvedDelivery', 'openHistory', 'copyCapture',
     # Removing a transcript drops an undelivered result that names it (#134 T5 review).
     'removeTranscript',
     # Failures, the routine no-speech cue (#156) and the hold lesson that can take its place (#134 T5).
@@ -230,6 +230,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
 @MainActor final class CaptureHarness {
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var phase = Phase.idle
+    var page = "home", historyDoor: HistoryDoor?
     // The press path and the coach (#134 T5).
     var preferences = FixtureVoicePreferences()
     var coach: FeedbackCoachModel
@@ -879,6 +880,11 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let afterQuit = CaptureHarness(directory: folder("undelivered-relaunch"), state: quitState)
         try check(afterQuit.unresolvedDelivery?.kind == .copyFailed && afterQuit.unresolvedDelivery?.offersCopy == true,
                   "relaunch shows it on the shelf, with Copy again")
+        let beforeReview = afterQuit.transcript
+        afterQuit.reviewUnresolvedDelivery()
+        try check(afterQuit.page == "history" && afterQuit.historyDoor?.transcript == failedID
+                  && afterQuit.historyDoor?.filter == .all && afterQuit.transcript == beforeReview
+                  && afterQuit.unresolvedDelivery != nil, "durable Review opens the exact failed result without replacing the draft or resolving delivery")
         let copiesBefore = TextDelivery.copies.count
         afterQuit.copyUnresolvedDelivery()
         try check(TextDelivery.copies.count == copiesBefore + 1 && TextDelivery.copies.last == afterQuit.history.first(where: { $0.id == failedID })?.text
@@ -934,6 +940,9 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let changedDraft = draft.unresolvedDelivery
         try check(draft.transcript == "Synthetic captured words." && changedDraft?.draftChanged == true && changedDraft?.offersCopy == false,
                   "a new dictation replaced the draft: the shelf says the draft changed and offers Review, not Copy again")
+        draft.reviewUnresolvedDelivery()
+        try check(draft.page == "dictate" && draft.transcript == "Synthetic captured words."
+                  && draft.unresolvedDelivery == changedDraft, "Review of a changed draft opens Dictate without replacing or copying it")
         let copiesAfterChange = TextDelivery.copies.count
         draft.copyUnresolvedDelivery()
         try check(TextDelivery.copies.count == copiesAfterChange && draft.unresolvedDelivery != nil, "Copy again never copies whatever the draft became")
@@ -986,7 +995,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
     }
 }
 '''
-values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState'])])
+values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState']),
+                    SwiftFile(PROJECT / 'Sources/LocalVoice/HistoryView.swift').extract(['HistoryFilter', 'HistoryDoor'])])
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
 fixture = fixture.replace('__STAGE_START__', stage_start)

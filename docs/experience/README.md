@@ -6,25 +6,38 @@ These are local interaction models using synthetic data. They run no microphone,
 
 ## What is implemented
 
-The desktop candidate implements grouped navigation, visible Meetings, safe Home workspace doors, focused Dictate and Read pages, their settings sheets, and exact meeting-result review. [Candidate evidence](../verification/2026-09-30-desktop-cohesion/README.md) separates source checks, native renders and installed acceptance.
+The desktop candidate implements grouped navigation, visible Meetings, safe Home workspace doors, focused Dictate and Read pages, their settings sheets, exact meeting-result review, and the focused Snap & Talk session workspace. [Candidate evidence](../verification/2026-09-30-desktop-cohesion/README.md) separates source checks, native renders and installed acceptance.
 
-The desktop study also depicts existing Snap, Snap & Talk, Draw, Present, Persona, History and Library journeys in a simplified form. It models representative states and controls; it does not reproduce every native menu, permission flow, provider option or visual detail. Changing the study does not change the app.
+The desktop study also depicts existing Snap, Draw, Present, Persona, History and Library journeys in a simplified form. It models representative states and controls; it does not reproduce every native menu, permission flow, provider option or visual detail. Changing the study does not change the app.
 
-The **Floating pill remains a tested interaction proposal**. Its removal of overflow controls and proposed homes for Keep open, live presentation adjustments and live Persona-copy controls are not implemented by the desktop candidate. The native quiet-feedback work is separately recorded in [#230's evidence](../verification/2026-09-30-quiet-toolbar/README.md). The pill's Timer detail view maps to the existing Draw/Timer controls and menu; there is no separate desktop Timer destination or eighth toolbar mode.
+The **Floating pill is being implemented and verified by its separate owner**. The imported study remains synthetic. Its removal of overflow controls and proposed homes for Keep open, live presentation adjustments and live Persona-copy controls are not part of this desktop branch and require the combined integration receipt. The native quiet-feedback work is separately recorded in [#230's evidence](../verification/2026-09-30-quiet-toolbar/README.md). The pill's Timer detail view maps to the existing Draw/Timer controls and menu; there is no separate desktop Timer destination or eighth toolbar mode.
 
 ## Desktop scenarios and owners
 
-| Starting scenarios | Native state owner | Boundary to preserve |
+| Scenario | Native owner and implemented route | Final acceptance to record |
 | --- | --- | --- |
-| [Home](desktop.html#home), [independent work](desktop.html#independent-work) | `WorkbenchHome`, existing activity owners and History's recent projection | Opening a workspace starts nothing. Current work shows actual operations; unfinished retained audio stays with its recovery owner. |
-| [Dictate preparation](desktop.html#dictate-ready), [continue](desktop.html#dictate-continue) | `AppModel`, `CaptureRecoveryStore`, `ContentView`, voice preferences | Drafts survive navigation. Settings has one entry sheet; dictionary remains its own subpage. Result feedback comes from the action that completed. |
-| [Meetings preparation](desktop.html#meeting-ready), [recording](desktop.html#meeting-recording), [processing](desktop.html#meeting-processing) | `MeetingModel` | Choose a valid source, then start explicitly. Microphone-only selection enables the microphone. Timer and presentation remain independent. |
-| [Meeting review](desktop.html#meeting-review), [recovery](desktop.html#meeting-recovery), [retained work](desktop.html#meeting-retained) | `MeetingModel`, committed transcript ID and typed `HistoryDoor` | Review the exact saved result. Failed or cancelled removal preserves it. Unfinished audio is recoverable; successful removal clears its stale completion link. |
-| [Read import](desktop.html#read-import), [active reading](desktop.html#read-active) | `AppModel` reading import, playback and export owners | Keep current preserves text and playback. Replace is explicit. Import never starts playback. Sample save and Cancel illustrate operation outcomes only. |
-| [Snap preparation](desktop.html#snap-ready), [review](desktop.html#snap-review) | `SnapModel`, image workspace and Snap History | Cancel creates no result. Drafts remain reviewable, and originals stay intact. |
-| [Snap & Talk continuation](desktop.html#snap-talk-continue), [recovery](desktop.html#snap-talk-recovery) | Existing Readback session and capture owner | Navigation does not reload the session. Cancelling a capture preserves earlier captures and narration. |
-| [Draw and Timer](desktop.html#draw-timer), [Present](desktop.html#present-active), [Persona](desktop.html#persona-ready) | Existing StageKit annotation, timer, presentation and Persona owners | Stop, hide and end affect their named operation. Browsing assets does not replace live work. |
-| [Library reuse](desktop.html#library-reuse) and History through the sidebar | Existing saved resource, transcript, Snap and handoff owners | Reuse goes through the destination's current draft/selection rules. Completed results and reusable resources retain separate purposes. |
+| [Home](desktop.html#home) | `WorkbenchHome`: grouped sidebar, four safe workspace doors, current work and five recent results | Confirm spacing and navigation on combined Preview |
+| [Dictate preparation](desktop.html#dictate-ready) | `ContentView` / `AppModel`: focused editor, one settings sheet, explicit capture | Settings doors, Done/Escape, original and draft retained |
+| [Dictate continuation](desktop.html#dictate-continue) | `AppModel`: stop/cancel and retained capture; unfinished delivery has durable review/copy/dismiss controls | Capture and real receiver checks; History Open Keep/Replace decision |
+| [Meeting preparation](desktop.html#meeting-ready) | `MeetingModel`: app audio or microphone-only; explicit Start | Native source choice and microphone-only admission |
+| [Meeting recording](desktop.html#meeting-recording) | `MeetingModel` and independent StageKit timer | Stop/transcribe, Stop/keep, independent timer |
+| [Meeting processing](desktop.html#meeting-processing) | `MeetingModel`: cancellable processing with retained recording | Final Preview processing/retry and retained audio |
+| [Meeting review](desktop.html#meeting-review) | Exact committed `HistoryDoor`; recording playback/reveal being integrated by the ship owner | Combined History recording sheet and text export |
+| [Meeting recovery](desktop.html#meeting-recovery) | `MeetingModel` / `MeetingStore` retry retained tracks | Real failed/cancelled path; no unrelated draft replacement |
+| [Read import](desktop.html#read-import) | Bounded native UTF-8 file picker and `AppModel` import admission: Keep current or Replace reading, no automatic playback | Cancel/invalid/oversized input, active reading, both decisions and explicit Save audio guard tested |
+| [Active reading](desktop.html#read-active) | `AppModel`: playback, pause/resume/seek, Save audio and cancellation | Voice & pace, audio output and sample-file save |
+| [Snap preparation](desktop.html#snap-ready) | `SnapModel`: Region/Window/Screen, import, explicit capture | Cancel selection leaves no result |
+| [Snap review](desktop.html#snap-review) | Shared image workspace: original, edit and Save & Copy | Explicit close/discard semantics being integrated by ship owner |
+| [Snap & Talk continuation](desktop.html#snap-talk-continue) | `ReadbackModel` / `ReadbackView`: Sessions, fixed capture/Stop, selected section, Hand off | 39-section layout at minimum/default sizes, all capture sources, navigation preserves review |
+| [Snap & Talk recovery](desktop.html#snap-talk-recovery) | Section owns retained audio/retry; failed narration saves retain the edit with retry/copy/discard | Failed save, background publication, close/reopen and exact original media preservation |
+| [Draw and Timer](desktop.html#draw-timer) | StageKit drawing and timer owners | Drawing tools, countdown and independent stop; pill routes integrated separately |
+| [Present](desktop.html#present-active) | StageKit scene and presentation owners | Device/reconnect, live controls, end one presentation; pill routes integrated separately |
+| [Persona](desktop.html#persona-ready) | StageKit Persona owner: selected and shown are separate | Browse, show/hide, live-copy controls; pill routes integrated separately |
+| [Retained meeting](desktop.html#meeting-retained) | Existing meeting recovery records | Relaunch/retry preserves the recording |
+| [Independent work](desktop.html#independent-work) | Existing activity owners projected by Home | Navigation and Stop affect only the named operation |
+| [Library reuse](desktop.html#library-reuse) | Existing resource owners, shared image preview and Read import admission | Select/reuse, Keep/Replace, original resource and current work preserved |
+
+These rows account for all accepted study scenarios. The source tests and native renders below prove only their named checks. The ship owner records final combined installed acceptance against the exact replacement build. The baseline installed `57fa1ef` receipt does not cover this revision. Snap & Talk sessions remain portable folders reached through Sessions; their captured images enter Snap History. A manual assistant handoff does not automatically create a finished deck or a History result.
 
 The desktop has 20 starting scenarios. The selector's State control can explore additional moments within each workspace. Reset scenario restores its synthetic starting data, including drafts, jobs and results. No state is copied between Desktop and Pill.
 
@@ -47,10 +60,10 @@ If a browser blocks local-file previews, serve this repository's `docs` director
 
 ## Verification and provenance
 
-The desktop worker checked all 20 scenarios at 1024, 736 and 320 pixels and the import, reuse, recovery and sample-save decisions. The integration owner replayed the exported study in the Codex browser, including its real state adapter and URL bridge. This caught and fixed a dialog-closing acknowledgement issue that standalone fragment checks had missed.
+The desktop worker rechecked all 20 scenarios at 1024, 736 and 320 pixels after the Snap & Talk changes: 60 layouts, no horizontal clipping and no browser errors. Interaction checks cover fixed capture/Stop, section selection and narration preservation, Settings dismissal and saved-state acknowledgement, the History Sessions door, and Read import Keep/Replace while playing. Dismissing a reading error retains text and voice; Listen remains available while the conditional Retry action disappears. The integration owner replayed the exported study in the Codex browser, including its real state adapter and URL bridge. This caught and fixed a dialog-closing acknowledgement issue that standalone fragment checks had missed.
 
 The pill owner checked its 14 scenarios and documented the limits in its contract. The integration owner independently replayed the portable recovery link, failed retry and Meeting + Timer path through the shared entry. These are browser checks of sample state.
 
-The imported files preserve the final pill source hash in `sourceSHA256`; `sha256` identifies this repository's portable wrapper with its return link. Its source artifact was `workbench-live-pill.html`. The desktop source artifact was `desktop-journeys.html`, SHA-256 `c7dab6229a6379402a90a92350f6c9ecde6ff468f5d94c36f80e818de70b2fa4`; its exported wrapper is maintained here as `desktop.html`.
+The imported files preserve the final pill source hash in `sourceSHA256`; `sha256` identifies this repository's portable wrapper with its return link. Its source artifact was `workbench-live-pill.html`. The desktop source artifact was `desktop-journeys.html`, SHA-256 `d7a2d1c36bde86a6dac9dd01cb7791d493943827de349a129c04dbf11908d5f6`; its exported wrapper is maintained here as `desktop.html`.
 
 Source renders and the signed candidate package belong in the verification record. An interactive model or passing screenshot does not establish installed acceptance.

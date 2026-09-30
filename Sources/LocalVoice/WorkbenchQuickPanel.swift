@@ -97,7 +97,8 @@ struct WorkbenchQuickPanel: View {
                             },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() },
                             reviewUnresolved: { entry in
-                                if entry.isDraft { open("dictate") } else { model.openHistory(); open("history") }
+                                open(entry.isDraft ? "dictate" : "history")
+                                model.reviewUnresolvedDelivery()
                             },
                             copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                         if receipts.receipt?.isClipboardCurrent != true {

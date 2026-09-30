@@ -107,6 +107,30 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                     dictateHeader
+                    if let delivery = model.unresolvedDelivery {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label(delivery.title, systemImage: delivery.symbolName).font(.headline)
+                            Text(delivery.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            HStack {
+                                Button("Review text") { model.reviewUnresolvedDelivery() }
+                                if delivery.offersCopy { Button("Copy again") { model.copyUnresolvedDelivery() } }
+                                Spacer()
+                                Button("Dismiss") { model.dismissUnresolvedDelivery() }.accessibilityLabel("Dismiss unfinished delivery")
+                            }
+                        }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    if let incoming = model.pendingTranscript {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Open saved transcript?").font(.headline)
+                            Text("Your current draft stays here until you choose Replace draft.").font(.callout).foregroundStyle(.secondary)
+                            Text(incoming.text).font(.callout).lineLimit(3).textSelection(.enabled)
+                            HStack {
+                                Button("Keep current") { model.keepCurrentTranscript() }
+                                Spacer()
+                                Button("Replace draft") { model.replaceDraftWithTranscript() }.disabled(model.phase != .idle)
+                            }
+                        }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }
                     VStack(alignment: .leading, spacing: 16) {
                         captureControls
                         Divider()
@@ -147,6 +171,7 @@ struct ContentView: View {
 
     private var readingHeader: some View {
         WorkbenchPageHeader("speak") {
+            Button("Import text…") { model.importReadingFile() }.disabled(model.savingAudio)
             Button("Voice & pace…") { showReadingSettings = true }
         }
     }

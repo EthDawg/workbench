@@ -877,8 +877,8 @@ enum SurfaceGallery {
         let window = homeWindow(size: SurfaceGallery.sizes[1].size)
         defer { window.contentViewController = nil; window.close() }
         let draft = "An edited Dictate draft that must survive: " + model.transcript
-        let keptDraft = model.transcript, keptSelection = model.historyLibrary.selected
-        defer { model.transcript = keptDraft; model.historyLibrary.setSelected(keptSelection) }
+        let keptDraft = model.transcript, keptRaw = model.rawTranscript, keptPhase = model.phase, keptSelection = model.historyLibrary.selected
+        defer { model.keepCurrentTranscript(); model.phase = keptPhase; model.rawTranscript = keptRaw; model.transcript = keptDraft; model.historyLibrary.setSelected(keptSelection) }
         model.transcript = draft
         let selection: Set<WorkbenchItemReference> = [.init(kind: .transcript, id: SurfacePass.history[0].id)]
         model.historyLibrary.setSelected(selection)
@@ -902,8 +902,26 @@ enum SurfaceGallery {
         let shot = try save(history, id: "state-from-home", title: "History, showing a transcript Home opened, \(Int(size.width)) × \(Int(size.height)) pt",
                             detail: "Home's Recent work opened the oldest synthetic transcript: History shows All, scrolled to it and outlined; the selected transcript stays selected.",
                             file: "page-history-state-from-home-\(theme).png", to: output)
+        model.phase = .idle
+        model.openTranscript(older)
+        guard model.pendingTranscript?.id == older.id, model.transcript == draft, model.rawTranscript == keptRaw,
+              model.saveBeforeUpdate() else { throw VoiceError.message("History Open replaced a different Dictate draft without a decision.") }
+        let persisted = try model.store.load()
+        guard persisted.draft == draft, persisted.rawDraft == keptRaw else { throw VoiceError.message("History review failed to preserve the saved Dictate draft across reload.") }
+        model.keepCurrentTranscript(); model.page = "home"
+        guard model.pendingTranscript == nil, model.transcript == draft else { throw VoiceError.message("Keep current changed the Dictate draft.") }
+        model.phase = .recording; model.openTranscript(older)
+        guard model.pendingTranscript == nil, model.transcript == draft, model.rawTranscript == keptRaw else { throw VoiceError.message("Live dictation admitted an older transcript replacement.") }
+        model.dismissError(); model.phase = .idle; model.openTranscript(older)
+        model.phase = .recording; model.replaceDraftWithTranscript()
+        guard model.transcript == draft, model.pendingTranscript?.id == older.id else { throw VoiceError.message("Replace draft changed a capture that began after review opened.") }
+        model.phase = .idle; model.replaceDraftWithTranscript()
+        guard model.pendingTranscript == nil, model.transcript == older.text, model.rawTranscript == (older.rawText ?? older.text), model.saveBeforeUpdate() else {
+            throw VoiceError.message("Explicit Replace draft did not apply the selected saved transcript and original.")
+        }
         return (["Drawing Home twice leaves History's door unset, the Dictate draft and the shared selection as they were.",
-                 "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept."], shot)
+                 "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept.",
+                 "History Open preserves a different Dictate draft and original in the actual saved store until Replace draft; Keep current, navigation and live capture preserve them, including capture beginning after the decision opens."], shot)
     }
 
     /// Home at 1.35 times its text in the minimum window's content column. SwiftUI's text styles do
@@ -1237,6 +1255,7 @@ enum SurfaceGallery {
         if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
         if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots.append(completed.meeting) }
         if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
         pass.checks += dictate.checks + completed.checks
         pass.menus = menus()
         pass.entries = entries() + menuEntries
@@ -1600,6 +1619,94 @@ enum SurfaceGallery {
 
     // MARK: Fixtures
 
+    /// Valid portable media and a long session exercise the real review layout. No device,
+    /// live data or provider runs. Recording is a presentation-only override in the same view.
+    func renderSnapTalkStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        var shots: [SurfaceGallery.Shot] = []
+        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted"] {
+            let base = home.appendingPathComponent("SnapTalk gallery \(theme) \(state)")
+            let root = try Self.makeSession(in: base, count: 39)
+            var manifest = try ReadbackStore.load(from: root)
+            if state == "processing" { manifest.sections[0].status = .queued }
+            if state == "recovery" {
+                manifest.sections[0].status = .failed
+                manifest.sections[0].failure = "Transcription stopped. Your screenshot and original recording are saved; retry when ready."
+            }
+            try ReadbackStore.save(manifest, at: root)
+            let defaults = try SurfaceGallery.isolatedDefaults("SnapTalk \(state)", home: home)
+            defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+            let session = ReadbackModel(engine: model.engine, defaults: defaults,
+                captureDisplay: { throw ReadbackError.message("The gallery never captures the screen.") },
+                transcribeAudio: { _ in try await Task.sleep(nanoseconds: 3_600_000_000_000); throw CancellationError() },
+                screenAccess: .fixed(true), microphoneAccess: { .authorized })
+            defer { session.shutdown() }
+            if state == "deleted", let id = session.activeSections.last?.id { session.deleteSection(id) }
+            let id = session.activeSections[state == "review" ? 24 : 0].id
+            session.reviewSection(id)
+            if state == "unsaved" {
+                session.transcriptWriter = { _, _ in throw ReadbackError.message("The session folder is temporarily read-only.") }
+                session.updateTranscript("This unsaved edit stays available to copy or retry. The screenshot and original narration remain intact.", for: id)
+            }
+            if state == "review" {
+                session.updateTranscript(Array(repeating: "Show the workspace first, then explain what changes on this screen. Keep the screenshot paired with its narration and review the wording before sharing.", count: 10).joined(separator: "\n\n"), for: id)
+            }
+            var moved: URL?
+            if state == "unavailable" {
+                let destination = base.appendingPathComponent("Moved session")
+                try FileManager.default.moveItem(at: root, to: destination); moved = destination
+                session.refreshSessionAvailability()
+            }
+            defer { if let moved { try? FileManager.default.moveItem(at: moved, to: root) } }
+            let sizes = ["review", "recording"].contains(state) ? SurfaceGallery.sizes : [SurfaceGallery.sizes[1]]
+            for (name, size) in sizes {
+                final class Frames { var capture: CGRect? }
+                let frames = Frames()
+                let measure: (String, CGRect) -> Void = { if $0 == "readback.capture-controls" { frames.capture = $1 } }
+                let sheet: ReadbackView.Sheet? = state == "settings" ? .settings : state == "sessions" ? .sessions : state == "deleted" ? .deleted : nil
+                let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .fullSizeContentView], hostsSheets: sheet != nil)
+                window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+                model.page = "readback"
+                if state == "recording" || sheet != nil {
+                    window.contentViewController = NSHostingController(rootView: ReadbackView(model: session, initialSheet: sheet,
+                        capturePresentation: state == "recording" ? .init(recording: true, elapsed: 74) : nil).workbenchTheme().environment(\.pageSectionFrames, measure))
+                    window.setContentSize(NSSize(width: size.width - 215, height: size.height))
+                } else {
+                    window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: session, snap: snap).environment(\.pageSectionFrames, measure))
+                    window.setContentSize(size)
+                }
+                if sheet != nil { window.alphaValue = 0; window.ignoresMouseEvents = true; window.orderFront(nil) }
+                let frame = window.contentView?.superview ?? window.contentView!
+                settle(frame, seconds: 0.6)
+                guard let transport = frames.capture, transport.height >= 40, transport.maxY < 300 else {
+                    throw VoiceError.message("Snap & Talk's fixed capture controls did not fit near the top of the workspace.")
+                }
+                if state == "review" {
+                    session.reviewSection(session.activeSections.last!.id); settle(frame)
+                    guard frames.capture == transport else { throw VoiceError.message("Reviewing another section moved the capture controls.") }
+                    session.reviewSection(id); settle(frame)
+                }
+                let target: NSView
+                if sheet != nil {
+                    guard let content = window.attachedSheet?.contentView else { throw VoiceError.message("Snap & Talk \(state) did not attach its native sheet.") }
+                    target = content; settle(content)
+                } else { target = frame }
+                shots.append(try save(try snapshot(target), id: "session-\(state)-\(name)", title: "Snap & Talk · \(state) · \(name)",
+                    detail: "39 sections with valid synthetic PNG and WAV files. Selected section and drafts belong to the real session model; recording is visual state only, with no recorder.",
+                    file: "page-readback-session-\(state)-\(name)-\(theme).png", to: output))
+                if let attached = window.attachedSheet {
+                    let done = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: attached.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+                    guard attached.performKeyEquivalent(with: done) else { throw VoiceError.message("Snap & Talk \(state) Done is unavailable.") }
+                    settle(frame)
+                    guard window.attachedSheet == nil else { throw VoiceError.message("Snap & Talk \(state) Done did not close its sheet.") }
+                }
+                window.contentViewController = nil; window.close()
+                guard session.reviewedSectionID == id else { throw VoiceError.message("Snap & Talk rendering or settings moved the reviewed section.") }
+            }
+        }
+        return shots
+    }
+
     static let history: [Transcript] = [
         Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000001")!, date: Date(timeIntervalSince1970: 1_789_546_320),
                    text: "Send Sam the revised agenda before the Thursday review and ask which slides need the new numbers.", seconds: 9, cleanupMethod: "Light cleanup"),
@@ -1609,19 +1716,44 @@ enum SurfaceGallery {
                    text: "The demo starts with the overview, then the workspace, then the finished deck.", seconds: 7, cleanupMethod: "Original")]
 
     /// A three-section Snap & Talk session in the temporary home, opened only as a recent session.
-    static func makeSession(in home: URL) throws -> URL {
+    static func makeSession(in home: URL, count: Int = 3) throws -> URL {
         let root = home.appendingPathComponent("Snap & Talk/Synthetic walkthrough", isDirectory: true)
         var manifest = try ReadbackStore.create(at: root, title: "Synthetic walkthrough")
-        for (index, title) in ["Start with the overview", "Choose the right workspace", "Share the finished work"].enumerated() {
-            let id = UUID(uuidString: "5D1C0A1E-0000-4000-8000-00000000010\(index)")!
+        let titles = ["Start with the overview", "Choose the right workspace", "Share the finished work"]
+        for index in 0..<count {
+            let title = titles[index % titles.count]
+            let id = UUID()
             let directory = "items/\(id.uuidString.lowercased())"
             try ReadbackStore.createPrivateDirectory(root.appendingPathComponent(directory))
             let section = ReadbackSection(id: id, capturedAt: Date(timeIntervalSince1970: 1_789_546_320 + Double(index * 60)), displayName: "Synthetic display",
                 directory: directory, screenshot: directory + "/screen.png", audio: directory + "/narration.wav",
                 originalTranscript: directory + "/narration-original.txt", transcript: directory + "/narration.txt", status: .ready, failure: nil, deletedAt: nil)
-            for path in [section.screenshot, section.audio!, section.originalTranscript!, section.transcript!] {
-                try ReadbackStore.writePrivate(Data(title.utf8), to: root.appendingPathComponent(path))
+            let image = NSImage(size: NSSize(width: 960, height: 540))
+            image.lockFocus()
+            NSColor(calibratedRed: 0.94, green: 0.96, blue: 0.95, alpha: 1).setFill()
+            NSRect(x: 0, y: 0, width: 960, height: 540).fill()
+            NSColor.white.setFill(); NSBezierPath(roundedRect: NSRect(x: 48, y: 48, width: 864, height: 444), xRadius: 16, yRadius: 16).fill()
+            ("SYNTHETIC WALKTHROUGH · \(index + 1)" as NSString).draw(at: NSPoint(x: 88, y: 438), withAttributes: [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.gray])
+            (title as NSString).draw(in: NSRect(x: 88, y: 300, width: 770, height: 96), withAttributes: [.font: NSFont.systemFont(ofSize: 42, weight: .semibold), .foregroundColor: NSColor.black])
+            for row in 0..<3 {
+                NSColor(calibratedRed: 0.84 - Double(row) * 0.04, green: 0.91, blue: 0.88, alpha: 1).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 88, y: 108 + row * 54, width: 680 - row * 100, height: 28), xRadius: 6, yRadius: 6).fill()
             }
+            image.unlockFocus()
+            let bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!
+            try ReadbackStore.writePrivate(bitmap.representation(using: .png, properties: [:])!, to: root.appendingPathComponent(section.screenshot))
+            let narration = "\(title). This screen explains the next step in the walkthrough. Keep the important detail visible, review the narration, and share the complete session when it is ready."
+            for path in [section.originalTranscript!, section.transcript!] {
+                try ReadbackStore.writePrivate(Data(narration.utf8), to: root.appendingPathComponent(path))
+            }
+            let audioSettings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            let audio = try AVAudioFile(forWriting: root.appendingPathComponent(section.audio!), settings: audioSettings,
+                                        commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: 4_000)!
+            buffer.frameLength = 4_000
+            for frame in 0..<4_000 { buffer.floatChannelData![0][frame] = 0 }
+            try audio.write(from: buffer)
             manifest.sections.append(section)
         }
         try ReadbackStore.save(manifest, at: root)

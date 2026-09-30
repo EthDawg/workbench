@@ -920,6 +920,22 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.Views.ContentView.Button.import-text",
+    "surface": "read page",
+    "label": "Import text…",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality: imports one bounded local plain-text file through Read’s existing Keep current / Replace reading owner; no playback or new destination."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.review-text",
+    "surface": "dictate page",
+    "label": "Review text",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: durable delivery recovery uses its existing typed draft or History record; opens review without replacing the draft."
+  },
+  {
     "id": "LocalVoice.Views.ContentView.Button.settings",
     "surface": "dictate page",
     "label": "Settings…",

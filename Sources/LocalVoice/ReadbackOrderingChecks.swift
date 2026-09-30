@@ -13,6 +13,13 @@ enum ReadbackOrderingChecks {
         defer { fixture.cleanUp() }
         let model = fixture.model, root = fixture.root, ids = model.activeSections.map(\.id)
         let before = try fixture.snapshot()
+        try check(model.reviewedSectionID == ids.first, "opening a session selects its first active section")
+        model.reviewSection(ids[3])
+        let selectedDraft = model.transcriptDrafts[ids[3]]
+        model.reviewSection(UUID())
+        try check(model.reviewedSectionID == ids[3] && model.transcriptDrafts[ids[3]] == selectedDraft,
+                  "selection rejects a foreign identity and preserves the narration draft")
+        try check(model.canHandOffSession && model.sessionProcessingCount == 0, "a saved ready session offers handoff")
         let order = ReadbackSectionOrder(ids: ids)
         try check(order.moving(ids[0], to: ids.count) == Array(ids.dropFirst()) + [ids[0]], "first row can move after the final row")
         try check(order.moving(ids.last!, to: 0) == [ids.last!] + Array(ids.dropLast()), "last row can move before the first")
@@ -44,6 +51,8 @@ enum ReadbackOrderingChecks {
         latest.sections[0].failure = "Synthetic latest metadata"
         try ReadbackStore.save(latest, at: root)
         try check(model.saveSectionOrder(moved, expectedOrder: ids, session: root), "intentional complete order saves")
+        try check(model.reviewedSectionID == ids[3] && model.transcriptDrafts[ids[3]] == selectedDraft,
+                  "reordering and fresh metadata keep the reviewed identity and its draft")
         let saved = try ReadbackStore.load(from: root)
         try check(saved.sections.filter { $0.deletedAt == nil }.map(\.id) == moved, "saved order survives reload")
         try check(saved.sections.first(where: { $0.id == ids[0] })?.failure == "Synthetic latest metadata", "ordering merges the latest section metadata")
@@ -54,7 +63,49 @@ enum ReadbackOrderingChecks {
         try check(!model.saveSectionOrder(ids, expectedOrder: ids, session: root), "stale sheets cannot overwrite a newer order")
         let afterStale = try Data(contentsOf: root.appendingPathComponent(ReadbackStore.manifestName))
         try check(afterStale == afterSaveManifest, "stale order rejection leaves the saved manifest unchanged")
+        let edited = ids[3], candidate = "Keep this manually edited narration through a failed save."
+        model.transcriptWriter = { _, _ in throw ReadbackError.message("Synthetic text write refusal") }
+        model.updateTranscript(candidate, for: edited)
+        try check(model.transcriptDrafts[edited] == candidate && model.hasUnsavedNarration && !model.canHandOffSession,
+                  "a failed text write retains the candidate and blocks handoff of older saved text")
+        model.closeSession(); model.openRecent(root)
+        try check(model.sessionURL == root.standardizedFileURL && model.transcriptDrafts[edited] == candidate,
+                  "close and reopen cannot silently discard an unsaved edit")
+        let publishedOrder = Array(moved.reversed())
+        try check(model.saveSectionOrder(publishedOrder, expectedOrder: moved, session: root), "another section's updated manifest can still publish")
+        try check(model.transcriptDrafts[edited] == candidate && model.hasUnsavedNarration,
+                  "background publication preserves the unsaved candidate")
+        model.transcriptWriter = nil
+        model.transcriptManifestWriter = { _, _ in throw ReadbackError.message("Synthetic manifest write refusal") }
+        model.retryTranscriptSave(edited)
+        try check(model.transcriptDrafts[edited] == candidate && model.hasUnsavedNarration,
+                  "a manifest write refusal retains the edit after the text write")
+        model.transcriptManifestWriter = nil
+        model.retryTranscriptSave(edited)
+        try check(!model.hasUnsavedNarration && model.transcriptDrafts[edited] == candidate && model.canHandOffSession,
+                  "Retry saves the same candidate and restores handoff readiness")
+        let metadataURL = root.appendingPathComponent(ReadbackStore.manifestName), heldMetadata = root.appendingPathComponent("manifest-held.json")
+        try FileManager.default.moveItem(at: metadataURL, to: heldMetadata)
+        model.updateTranscript(candidate + " New edit.", for: edited)
+        try check(model.hasUnsavedNarration && model.transcriptDrafts[edited] == candidate + " New edit.",
+                  "an unreadable manifest reports failure without losing the latest keystrokes")
+        try FileManager.default.moveItem(at: heldMetadata, to: metadataURL)
+        model.retryTranscriptSave(edited)
+        let savedEdit = try ReadbackStore.load(from: root).sections.first { $0.id == edited }!
+        try check(ReadbackStore.readText(root: root, relative: savedEdit.transcript) == candidate + " New edit." && !model.hasUnsavedNarration,
+                  "a restored folder saves and reloads the exact retained edit")
+        let protected = try fixture.snapshot().filter { $0.key.hasSuffix("screen.png") || $0.key.hasSuffix("narration.wav") || $0.key.hasSuffix("narration-original.txt") }
+        try check(protected == before.filter { $0.key.hasSuffix("screen.png") || $0.key.hasSuffix("narration.wav") || $0.key.hasSuffix("narration-original.txt") },
+                  "failed saves and retry preserve every screenshot, audio recording and original transcription")
+        model.reviewSection(edited)
+        model.deleteSection(ids[3])
+        try check(model.reviewedSectionID == publishedOrder.first && !model.activeSections.contains(where: { $0.id == ids[3] }),
+                  "deleting the reviewed section selects an existing active section")
+        model.restoreSection(ids[3])
+        try check(model.reviewedSectionID == publishedOrder.first && model.transcriptDrafts[ids[3]] == candidate + " New edit.",
+                  "restoring a section leaves current review in place and retains its narration")
         model.closeSession()
+        try check(model.reviewedSectionID == nil && !model.canHandOffSession, "closing clears review identity and handoff readiness")
         try check(!model.saveSectionOrder(ids, expectedOrder: moved, session: root), "closing or switching sessions prevents the old sheet from saving")
         print("READBACK_ORDER_CHECKS_OK: \(checks) checks")
     }

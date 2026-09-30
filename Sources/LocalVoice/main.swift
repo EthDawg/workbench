@@ -626,6 +626,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if readback?.hasUnsavedNarration == true {
+            readback.reviewUnsavedNarration(); model?.page = "readback"; showWindow()
+            return .terminateCancel
+        }
         guard WorkbenchUpdates.shared.canTerminate(saveSession: { model?.saveBeforeUpdate() == true }) else { return .terminateCancel }
         if terminationPending { return .terminateLater }
         guard CaptureImagePreview.shared.canTerminate() else { return .terminateCancel }
