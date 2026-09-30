@@ -17,7 +17,7 @@ The [interactive studies](../../experience/index.html) provide repeatable synthe
 
 The checked desktop source is `e756aae`, based on `main` at `b06fbaa`. Subsequent documentation commits retain the same native implementation. This branch is the combined desktop review candidate; component PRs remain open and unmerged.
 
-- [#230](https://github.com/EthDawg/workbench/pull/230): quiet toolbar/paste source through `62f8ba5` is a merge ancestor. Its later evidence correction `45276a6` is included as `225fe5e`.
+- [#230](https://github.com/EthDawg/workbench/pull/230): quiet toolbar/paste source through `62f8ba5`, the corrected installed receipt `45276a6` and the motion-gallery correction `326e046` are merge ancestors. The earlier evidence cherry-pick `225fe5e` is retained in history.
 - [#231](https://github.com/EthDawg/workbench/pull/231): recovery/sidebar source and evidence through `be49223` are merge ancestors. The current desktop contract takes precedence over that component's earlier eleven-destination screenshots.
 - `878f7cc` integrates the bounded Dictate/Read worker; `a09d7de` integrates its isolated gallery checks. `2cdd8a3` completes operation-specific result feedback; `328c43e` isolates the capture fixture's Accessibility input; `e756aae` corrects transparent screenshot compositing.
 
