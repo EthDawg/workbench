@@ -274,10 +274,17 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private var permissionRequest: Task<Bool, Never>?
     private var transcriptionTask: Task<Void, Never>?
     private var transcriptionID: UUID?
+    var toolbarCaptureIdentity: String {
+        [recordingAttempt, transcriptionID, captureRecovery.pending?.id].compactMap { $0?.uuidString }.joined(separator: ":")
+    }
+    var toolbarReadingIdentity: String {
+        [readingGenerationID, playbackID].compactMap { $0?.uuidString }.joined(separator: ":")
+    }
     private var persistWork: DispatchWorkItem?
     var onPhaseChange: (() -> Void)?
     var onShortcutsChanged: (() -> Void)?
     var onEditShortcut: ((UInt32) -> Void)?
+    @Published var toolbarControls: CaptureHUDControls?
     var onShowEditor: ((String) -> Void)?
     var onShowAnnotationMenu: (() -> Void)?
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?

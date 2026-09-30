@@ -60,15 +60,15 @@ final class ToolbarKeyWindowTraversalTests: XCTestCase {
                 }
                 RunLoop.main.run(until: Date().addingTimeInterval(0.05))
             }
-            let count = state.accessory == nil ? 3 : 4
+            let count = state.accessory == nil ? 2 : 3
             var path: [String] = []
             for _ in 0..<count { tab(backward: false); path.append(focused()) }
             XCTAssertTrue(panel.makeFirstResponder(launcher))
             for _ in 0..<count { tab(backward: true); path.append(focused()) }
             runs[name] = path
         }
-        XCTAssertEqual(runs["Draw with Tools"], ["primary", "accessory", "more", "launcher", "more", "accessory", "primary", "launcher"])
-        XCTAssertEqual(runs["Read, no accessory"], ["primary", "more", "launcher", "more", "primary", "launcher"])
-        XCTAssertEqual(runs["Draw at the right-hand dock"], ["primary", "accessory", "more", "launcher", "more", "accessory", "primary", "launcher"])
+        XCTAssertEqual(runs["Draw with Tools"], ["primary", "accessory", "launcher", "accessory", "primary", "launcher"])
+        XCTAssertEqual(runs["Read, no accessory"], ["primary", "launcher", "primary", "launcher"])
+        XCTAssertEqual(runs["Draw at the right-hand dock"], ["primary", "accessory", "launcher", "accessory", "primary", "launcher"])
     }
 }

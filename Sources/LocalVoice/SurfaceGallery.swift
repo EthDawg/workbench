@@ -284,6 +284,7 @@ enum SurfaceGallery {
 @MainActor private final class SurfacePass {
     let theme: String
     let home: URL
+    private var toolbarSettingsControls: CaptureHUDControls?
     let model: AppModel
     let stage: StageKitController
     let readback: ReadbackModel
@@ -336,6 +337,8 @@ enum SurfaceGallery {
             try file.write(from: buffer)
         }
         model = AppModel(preferences: preferences)
+        toolbarSettingsControls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarSettings", home: home))
+        model.toolbarControls = toolbarSettingsControls
         // Before anything reads the app's lazy meeting owner, which would list live audio processes.
         let support = Workbench.supportDirectory(component: "Meetings")
         meetings = SurfacePass.syntheticMeetings(support)
@@ -1011,7 +1014,7 @@ enum SurfaceGallery {
         let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                                       meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
                                       dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
-        guard let hide = toolbar.moreMenu().items.first(where: { $0.title == "Hide toolbar" }), let action = hide.action else {
+        guard let hide = toolbar.toolbarContextMenu().items.first(where: { $0.title == "Hide toolbar" }), let action = hide.action else {
             throw VoiceError.message("The toolbar's More has no Hide toolbar.")
         }
         NSApp.sendAction(action, to: hide.target, from: hide)
@@ -1252,8 +1255,11 @@ enum SurfaceGallery {
             model.meetings = kept.meetings; model.history = kept.history
             model.historyLibrary.setSelected(kept.selection); model.page = kept.page; model.historyDoor = nil
         }
-        let root = Workbench.supportDirectory(component: "Meetings (completed gallery)")
-        guard root.resolvingSymlinksInPath().path.hasPrefix(home.resolvingSymlinksInPath().path + "/") else {
+        // A fresh direct child of the already verified home avoids comparing macOS's
+        // Data-volume aliases for a path whose final components do not exist yet.
+        let root = home.appendingPathComponent("Completed meeting fixture", isDirectory: true)
+        guard root.deletingLastPathComponent().standardizedFileURL == home.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: root.path) else {
             throw VoiceError.message("A completed meeting fixture must stay inside the verified temporary home.")
         }
         let date = Date(timeIntervalSince1970: 1_789_400_000)
@@ -1328,12 +1334,24 @@ enum SurfaceGallery {
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         guard let homeIndex = pages.firstIndex(where: { $0.route == "home" }) else { throw VoiceError.message("Home is missing from the page record.") }
         for (name, size) in SurfaceGallery.sizes {
+            // Match a preceding toolbar-host fixture's teardown, then verify that
+            // desktop rendering retains this pass's actual settings owner.
+            model.toolbarControls = nil
             let window = homeWindow(size: size)
             defer { window.contentViewController = nil; window.close() }
+            guard let owner = toolbarSettingsControls, model.toolbarControls === owner else {
+                throw VoiceError.message("General lost the retained toolbar settings owner.")
+            }
             let (rep, drawn) = try renderPage("home", in: window)
             pages[homeIndex].shots.append(try save(rep, id: name, title: "Expanded sidebar, " + name,
                 detail: "Actual Home at \(Int(drawn.width)) × \(Int(drawn.height)) pt, with synthetic saved work.",
                 file: "page-home-\(name)-\(theme).png", to: output))
+            if let settings = pages.firstIndex(where: { $0.route == "settings" }) {
+                let (general, _) = try renderPage("settings", in: window)
+                pages[settings].shots.append(try save(general, id: "toolbar-" + name, title: "General toolbar controls, " + name,
+                    detail: "The same retained toolbar owner supplies Keep open and Position after another fixture closes its host.",
+                    file: "page-settings-toolbar-\(name)-\(theme).png", to: output))
+            }
         }
         pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
             + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
@@ -2482,10 +2500,6 @@ enum SurfaceGallery {
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
             ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
-        // More's section carries the result's title; a receipt's is read as it was recorded.
-        func header(_ kind: FloatingResult) -> String {
-            kind == .dictationFailure ? "Dictation needs attention" : model.clipboardReceipt.receipt?.title ?? "a receipt"
-        }
         let readings: [(state: String, start: () -> Void, action: String)] = [
             ("preparing", { self.model.rendering = true }, "Cancel"),
             ("playing", { self.model.playing = true }, "Pause reading"),
@@ -2501,7 +2515,8 @@ enum SurfaceGallery {
                     let warning = controls.status.description
                     reveal()
                     let row = !controls.revealsResult, reads = primary(), goesOn = model.rendering || model.playing || model.paused
-                    let more = toolbar.moreMenu().items.map(\.title), section = header(result.kind)
+                    let commands = toolbar.chooserCommands.map { $0.value.title }
+                    let recovery = toolbar.chooserChoices.contains { $0.detail?.contains("attention") == true || $0.detail?.contains("stopped") == true }
                     collapse()
                     endReading(); settle(.resting)
                     reveal()
@@ -2513,8 +2528,8 @@ enum SurfaceGallery {
                         reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
                         goesOn ? nil : "revealing ended the reading",
                         warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
-                        more.contains(section) ? nil : "More lost the result's commands (\(section))",
-                        reading.state == "preparing" || more.contains("Stop reading") ? nil : "More has no Stop reading",
+                        recovery ? nil : "The chooser lost the result's recovery route",
+                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
                         back ? nil : "once the reading ended the pointer's reveal did not show the result"]
                 })
                 // Arriving during the reading: revealed as any new result, with the reading still reachable.
@@ -2524,13 +2539,13 @@ enum SurfaceGallery {
                     reveal()
                     let shown = controls.revealsResult, over = primary()
                     collapse()
-                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.moreMenu().items.map(\.title)
+                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.chooserCommands.map { $0.value.title }
                     result.clear(); endReading(); settle(.resting)
                     return [
                         shown ? nil : "the pointer's reveal held a new result back",
                         over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
                         entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "More has no Stop reading"]
+                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading"]
                 })
             }
         }
@@ -2666,9 +2681,9 @@ enum SurfaceGallery {
             }
         }
         defer { controls.endKeyboardInteraction(); controls.choosePosition?(.bottom); model.toolbarMode = .dictate; settle(.resting) }
-        let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "more", "launcher"]),
-                                                              (.read, .bottom, ["primary", "more", "launcher"]),
-                                                              (.draw, .right, ["primary", "accessory", "more", "launcher"])]
+        let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "launcher"]),
+                                                              (.read, .bottom, ["primary", "launcher"]),
+                                                              (.draw, .right, ["primary", "accessory", "launcher"])]
         for (mode, anchor, cycle) in rows {
             model.toolbarMode = mode
             controls.choosePosition?(anchor)
@@ -2718,14 +2733,14 @@ enum SurfaceGallery {
         let tools = plain.accessoryMenu(.tools).items.map(\.title), drawing = stage.makeAnnotationMenu(includeSettings: false).items.map(\.title)
         expect("Draw's Tools", [!tools.isEmpty && tools == drawing ? nil : "Tools lists \(tools), not Draw's drawing choices \(drawing)"])
         model.toolbarMode = .persona
-        let more = plain.moreMenu(), before = opened.count
-        let door = more.items.firstIndex { $0.title == "Open Persona…" }
-        if let door, let action = more.items[door].action { NSApp.sendAction(action, to: more.items[door].target, from: more.items[door]) }
+        let chooser = ToolbarChooserModel(choices: plain.chooserChoices)
+        chooser.openTool = { self.model.onShowEditor?($0.page) }
+        let before = routes.count
+        chooser.openTool(.persona)
         expect("Persona with no live copy", [
             plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to change",
-            door == nil ? "More has no Open Persona…" : nil,
-            door == nil || Array(opened.dropFirst(before)) == ["personas"] ? nil : "Open Persona… opened \(Array(opened.dropFirst(before)))",
-            more.items.contains { $0.title == ToolbarAccessory.appearance.title } ? "More offers Appearance with no copy to change" : nil])
+            Array(routes.dropFirst(before)) == ["personas"] ? nil : "The chooser's Open Persona route failed"])
+        routes.removeAll()
         model.toolbarMode = .snapAndTalk
         let session = toolbar(sessionReadback), review = session.accessory(session.live)
         session.accessoryPanel(review)?(NSView())
@@ -2740,6 +2755,9 @@ enum SurfaceGallery {
     /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
     /// lay out their named sections (`pageSectionFrames`), and no other window's.
     func homeWindow(size: NSSize, hostsSheets: Bool = false, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
+        // A preceding toolbar-host fixture closes its controller. Restore this pass's
+        // retained settings owner before rendering desktop pages, as the live app has one.
+        if model.toolbarControls == nil { model.toolbarControls = toolbarSettingsControls }
         let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], hostsSheets: hostsSheets)
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
         window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)
@@ -2876,6 +2894,15 @@ enum SurfaceGallery {
         let panel = "Menu-bar panel", home = "Home page", menu = "App menus", other = "Keys and handoffs"
         // Rows and their Options are named by the panel's own tools, as the toolbar and sidebar are (#134).
         var list: [E] = [action(panel, "Floating toolbar switch", "Shows or hides the floating toolbar between actions, as Settings and the Window menu do")]
+        list += ToolbarMode.allCases.map { page("Floating toolbar chooser", "Open " + $0.title + "…", $0.page) }
+        list += [action("Floating toolbar chooser", "Activity commands", "Each visible command acts on its named owner and operation; choosing a tool starts nothing"),
+                 action("Floating toolbar", "Choose Persona / Next Persona / Next set", "Selects or advances the frozen live cards or prepared sets"),
+                 action("Floating toolbar", "View", "Current presentation window, source and motion controls"),
+                 action("Settings · General", "Keep open / Position…", "Uses the toolbar's existing preference and placement owner"),
+                 action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
+                 action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
+                 action("Present workspace", "Switch to Browser Tab…", "Opens the existing Switch to panel"),
+                 action("Present workspace", "Saved Prompts…", "The same picker and delivery owner as the pill's Prompts")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {

@@ -28,7 +28,6 @@ public enum ToolbarLayout {
     /// Icon actions keep stable, generous targets; their words live in the hint and VoiceOver.
     public static let primaryMinimum: CGFloat = 36
     public static let accessoryWidth: CGFloat = 36
-    public static let moreWidth: CGFloat = 32
     public static let gap: CGFloat = 4
     /// At the far end of the row.
     public static let padding: CGFloat = 8
@@ -39,17 +38,17 @@ public enum ToolbarLayout {
     public static let dockSlot = NSSize(width: 48, height: 40)
     /// A dock keeps the row this far inside the visible display.
     public static let dockInset: CGFloat = 8
-    /// Row widths: 132 points without an accessory, 172 with one, at standard scale.
-    public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + gap + moreWidth + padding
+    /// Row widths: 96 points alone, 136 with one contextual control, 176 with two.
+    public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + padding
     public static let accessoryStandardWidth: CGFloat = standardWidth + accessoryWidth + gap
-    /// The accessory waits in More unless the row with it fits the display less this.
+    /// Contextual controls fit together when the row fits the display less this.
     public static let accessoryScreenMargin: CGFloat = 24
 
     /// Predict the destination row before a drag commits its orientation. Preview and
-    /// release use the same measurement, including large text and an accessory in More.
+    /// release use the same measurement, including large text and omitted contextual controls.
     public static func fittedRow(_ horizontal: NSSize, accessoryAvailable: Bool, accessoryShown: Bool,
-                                 anchor: ToolbarAnchor, screen: NSRect) -> (size: NSSize, accessoryFits: Bool) {
-        let accessory = (accessoryWidth + gap) * horizontal.height / rowHeight
+                                 anchor: ToolbarAnchor, screen: NSRect, accessoryCount: Int = 1) -> (size: NSSize, accessoryFits: Bool) {
+        let accessory = CGFloat(accessoryCount) * (accessoryWidth + gap) * horizontal.height / rowHeight
         let without = horizontal.width - (accessoryShown ? accessory : 0)
         let withAccessory = without + (accessoryAvailable ? accessory : 0)
         let fits = withAccessory <= (anchor.isVertical ? screen.height : screen.width) - accessoryScreenMargin

@@ -43,12 +43,11 @@ public extension View {
 /// At rest the toolbar is the compact mark in every state (#134): a small capsule whose
 /// only visual activity is the recording dot and voice trace; tool identity waits for reveal.
 /// A click on it only reveals and takes the keyboard; a
-/// drag moves the toolbar. Revealed, the row is `[switch tool] [recording signal] [next action] [accessory] [⋯]`,
+/// drag moves the toolbar. Revealed, the row is `[switch tool] [recording signal] [next action] [contextual controls]`,
 /// horizontal at top/bottom/free/corner positions and vertical at side edges. Right-hand
 /// corners reverse the row; both side columns keep the same top-to-bottom order.
-/// The launcher opens the tool chooser, More holds the tool's
-/// options and the work running elsewhere, and a right-click anywhere on the tool opens
-/// those options.
+/// The launcher opens tools and their activity commands. Contextual controls act on
+/// their named owner; a right-click opens only toolbar settings.
 public struct ToolbarRow: View {
     public let state: ToolbarViewState
     private let press: () -> (() -> Void)?
@@ -67,6 +66,8 @@ public struct ToolbarRow: View {
     /// When set, the accessory opens the host's own surface anchored to the
     /// button instead of popping up `makeAccessoryMenu`'s menu.
     private let openAccessory: ((NSView) -> Void)?
+    private let makeViewMenu: () -> NSMenu
+    private let pressQuick: () -> (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.toolbarViewport) private var viewport
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
@@ -79,6 +80,8 @@ public struct ToolbarRow: View {
     public init(state: ToolbarViewState, textScale: CGFloat = 1, accent: Color = .accentColor,
                 makeAccessoryMenu: @escaping () -> NSMenu = { NSMenu() },
                 openAccessory: ((NSView) -> Void)? = nil,
+                makeViewMenu: @escaping () -> NSMenu = { NSMenu() },
+                pressQuick: @escaping () -> (() -> Void)? = { nil },
                 action: @escaping () -> Void = {},
                 press: (() -> (() -> Void)?)? = nil,
                 pressCapture: @escaping (ToolbarCaptureKind) -> (() -> Void)? = { _ in nil },
@@ -96,6 +99,7 @@ public struct ToolbarRow: View {
         self.escape = escape; self.revealFromRest = revealFromRest; self.drag = drag
         self.makeAccessoryMenu = makeAccessoryMenu
         self.openAccessory = openAccessory
+        self.makeViewMenu = makeViewMenu; self.pressQuick = pressQuick
     }
     private var interactionDrag: ToolbarDragActions {
         ToolbarDragActions(begin: { hints.isReady = false; drag.begin() }, move: drag.move,
@@ -110,12 +114,12 @@ public struct ToolbarRow: View {
         ToolbarLayout.oriented(CGSize(width: width, height: height), for: state.anchor)
     }
     private var rowLength: CGFloat {
-        let actions = max(1, state.captureChoices.count), accessory = state.shownAccessory == nil ? 0 : 1
+        let actions = max(1, state.captureChoices.count), accessory = state.showsAccessory ? state.accessoryCount : 0
         let signal = state.status.indicator == .capture ? 1 : 0
         return ToolbarLayout.launcherWidth + scale * (CGFloat(actions) * ToolbarLayout.primaryMinimum
-            + CGFloat(accessory) * ToolbarLayout.accessoryWidth + ToolbarLayout.moreWidth + ToolbarLayout.padding
+            + CGFloat(accessory) * ToolbarLayout.accessoryWidth + ToolbarLayout.padding
             + CGFloat(signal) * ToolbarLayout.captureSignalWidth
-            + CGFloat(actions + accessory + signal + 1) * ToolbarLayout.gap)
+            + CGFloat(actions + accessory + signal) * ToolbarLayout.gap)
     }
     /// A resting handle turning a corner has a different footprint from an opening row.
     /// Derive its ink from the same native frame, without another animation or state owner.
@@ -233,8 +237,8 @@ public struct ToolbarRow: View {
     private var row: some View {
         let layout = vertical ? AnyLayout(VStackLayout(spacing: ToolbarLayout.gap * scale)) : AnyLayout(HStackLayout(spacing: ToolbarLayout.gap * scale))
         return layout {
-            if !vertical && state.anchor.growsLeftward { more; accessory; captureOrPrimary; captureSignal; launcher }
-            else { launcher; captureSignal; captureOrPrimary; accessory; more }
+            if !vertical && state.anchor.growsLeftward { quickControl; accessory; captureOrPrimary; captureSignal; launcher }
+            else { launcher; captureSignal; captureOrPrimary; accessory; quickControl }
         }
         .padding(vertical ? .bottom : state.anchor.growsLeftward ? .leading : .trailing, ToolbarLayout.padding * scale)
         .frame(minWidth: vertical ? ToolbarLayout.rowHeight * scale : nil, minHeight: vertical ? nil : ToolbarLayout.rowHeight * scale).fixedSize()
@@ -245,7 +249,7 @@ public struct ToolbarRow: View {
         .accessibilityLabel("Workbench floating toolbar")
     }
 
-    /// Opens the tool's options, from More, a right-click on the launcher or the compact rest.
+    /// Opens toolbar settings from a right-click on the launcher or compact rest.
     private var menuOpener: (NSView) -> Void {
         { [makeMenu, menuBegan, menuEnded, hints, anchor = state.anchor] view in
             hints.hide()
@@ -297,11 +301,24 @@ public struct ToolbarRow: View {
         }
     }
 
-    private var more: some View {
-        ToolbarMore(tool: state.mode.title, size: 15 * scale, open: menuOpener, escape: escape, keyCycle: keyCycle, hints: hints)
-            .frame(width: oriented(ToolbarLayout.moreWidth * scale, ToolbarLayout.controlHeight * scale).width,
-                   height: oriented(ToolbarLayout.moreWidth * scale, ToolbarLayout.controlHeight * scale).height)
+    @ViewBuilder private var quickControl: some View {
+        if let control = state.quickControl, state.showsAccessory {
+            Group {
+                if control == .presentationView {
+                    ToolbarAccessoryButton(title: control.title, symbol: control.symbol, opensList: true, description: nil,
+                        fontSize: 16 * scale, makeMenu: makeViewMenu, openPanel: nil,
+                        began: menuBegan, ended: menuEnded, escape: escape, keyCycle: keyCycle, hints: hints,
+                        anchor: state.anchor, identifier: "toolbar.view", slot: .quick)
+                } else {
+                    ToolbarPrimary(title: control.title, symbol: control.symbol, help: control.title, isEnabled: true,
+                        fontSize: 16 * scale, press: pressQuick, drag: interactionDrag, keyCycle: keyCycle, hints: hints,
+                        identifier: "toolbar.next-persona", slot: .quick)
+                }
+            }
+            .frame(width: oriented(ToolbarLayout.accessoryWidth * scale, ToolbarLayout.controlHeight * scale).width,
+                   height: oriented(ToolbarLayout.accessoryWidth * scale, ToolbarLayout.controlHeight * scale).height)
             .modifier(ToolbarControlReveal(viewport: viewport, anchor: state.anchor))
+        }
     }
 
     /// Recording feedback has its own space, so Switch tool never changes identity.
@@ -576,70 +593,10 @@ final class LauncherButton: ToolbarIconButton {
     }
 }
 
-/// More: the tool's options, the work running elsewhere, and the toolbar's own items.
-private struct ToolbarMore: NSViewRepresentable {
-    let tool: String
-    let size: CGFloat
-    let open: (NSView) -> Void
-    let escape: () -> Void
-    let keyCycle: ToolbarKeyCycle
-    let hints: ToolbarHintController
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: MoreButton, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? 32, height: proposal.height ?? 32)
-    }
-    func makeNSView(context: Context) -> MoreButton {
-        let view = MoreButton()
-        view.isBordered = false
-        view.imagePosition = .imageOnly
-        return view
-    }
-    func updateNSView(_ view: MoreButton, context: Context) {
-        view.setSymbol("ellipsis", size: size)
-        view.setAccessibilityLabel("More")
-        view.setAccessibilityHelp("Options for " + tool + ", other work and the toolbar")
-        view.setAccessibilityIdentifier("toolbar.more")
-        view.hints = hints; view.hint = "Options for " + tool
-        view.escape = escape
-        view.keyCycle = keyCycle; keyCycle.register(view, as: .more)
-        view.open = { [weak view] in if let view { open(view) } }
-    }
-}
-
-final class MoreButton: ToolbarIconButton {
-    var open: (() -> Void)?
-    var escape: (() -> Void)?
-    var keyCycle: ToolbarKeyCycle?
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        target = self; action = #selector(openMenu)
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    @objc private func openMenu() { if isEnabled { open?() } }
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func rightMouseDown(with event: NSEvent) { if isEnabled { open?() } }
-    // Menus track the initiating press themselves, as a native popup button does. Do not
-    // nest NSButton's mouse-up tracking around NSMenu in a nonactivating panel.
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled, event.clickCount < 2 else { return }
-        highlight(true)
-        defer { highlight(false); reconcileHover() }
-        dismissHint(); open?()
-    }
-    override func performClick(_ sender: Any?) { guard isEnabled else { return }; dismissHint(); open?() }
-    override func keyDown(with event: NSEvent) {
-        if keyCycle?.handle(event, from: self) == true { return }
-        if event.keyCode == 53 { escape?() }
-        else if isEnabled, [36, 49, 76, 125].contains(event.keyCode) { open?() }
-        else { super.keyDown(with: event) }
-    }
-}
-
-/// The chosen tool's one accessory (#134 part B). One that opens a list, a menu or the picker
+/// The chosen tool's contextual menu control. One that opens a list, a menu or the picker
 /// carries a chevron; Review goes straight to the session's review and carries none. VoiceOver
-/// hears its title without the chevron, or its description when it has one ("Appearance of the
-/// selected persona, hidden"), which the tooltip shows too. It answers the keyboard as the
-/// launcher and More do: Space, Return, Enter or Down opens it, a menu only with admission, and
+/// hears its title or current-owner description, which the tooltip shows too. It answers
+/// the keyboard as the launcher does: Space, Return, Enter or Down opens it, a menu only with admission, and
 /// Escape leaves keyboard interaction.
 private struct ToolbarAccessoryButton: NSViewRepresentable {
     let title: String
@@ -655,18 +612,20 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
     let keyCycle: ToolbarKeyCycle
     let hints: ToolbarHintController
     let anchor: ToolbarAnchor
+    var identifier = "toolbar.accessory"
+    var slot: ToolbarKeyCycle.Slot = .accessory
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: AccessoryButton, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 36, height: proposal.height ?? 32)
     }
     func makeNSView(context: Context) -> AccessoryButton { AccessoryButton() }
     func updateNSView(_ view: AccessoryButton, context: Context) {
         view.setSymbol(symbol, size: fontSize)
-        view.setAccessibilityLabel(description ?? title); view.setAccessibilityIdentifier("toolbar.accessory")
+        view.setAccessibilityLabel(description ?? title); view.setAccessibilityIdentifier(identifier)
         view.hints = hints; view.hint = description ?? title
         view.setAccessibilityHelp(description ?? title)
         view.opensList = opensList
         view.escape = escape
-        view.keyCycle = keyCycle; keyCycle.register(view, as: .accessory)
+        view.keyCycle = keyCycle; keyCycle.register(view, as: slot)
         view.open = { [weak view] in
             guard let view else { return }
             view.dismissHint()
@@ -703,15 +662,15 @@ private struct ToolbarAccessoryButton: NSViewRepresentable {
 }
 
 /// The revealed row's keyboard cycle (#223). Tab moves the focus from the launcher to the next
-/// action, the accessory and More, and round to the launcher; Shift-Tab goes the other way. The
+/// action, contextual controls, and round to the launcher; Shift-Tab goes the other way. The
 /// order is the same at every dock, whichever way the row is drawn, and a control that is absent,
 /// hidden or disabled is passed over. The row moves the focus itself: AppKit's key-view loop
 /// leaves buttons out while Full Keyboard Access is off (`canBecomeKeyView` is false for each),
 /// so Tab there never left the launcher.
 final class ToolbarKeyCycle {
     enum Slot: Hashable, CaseIterable {
-        case launcher, primary, capture(ToolbarCaptureKind), accessory, more
-        static var allCases: [Self] { [.launcher, .primary] + ToolbarCaptureKind.allCases.map(Self.capture) + [.accessory, .more] }
+        case launcher, primary, capture(ToolbarCaptureKind), accessory, quick
+        static var allCases: [Self] { [.launcher, .primary] + ToolbarCaptureKind.allCases.map(Self.capture) + [.accessory, .quick] }
     }
     private final class Entry {
         weak var button: NSButton?

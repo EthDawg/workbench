@@ -183,7 +183,7 @@ struct WorkbenchHome: View {
                 case "meeting": MeetingWorkspaceView(model: model.meetings, engineName: model.modelMessage,
                     openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
-                case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { stage.scenesView }
+                case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
                 case "personas": stage.personasView
                 case _ where Self.destination(model.page).page == "library": library
                 case _ where Self.destination(model.page).page == "settings": settings
@@ -314,6 +314,7 @@ struct WorkbenchHome: View {
                         Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
                             .help(WorkbenchHome.floatingToolbarHelp)
                     }
+                    ToolbarSettingsView(model: model)
                     Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
                         do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
                         catch { loginError = error.localizedDescription }

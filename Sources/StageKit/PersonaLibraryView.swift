@@ -108,7 +108,11 @@ struct PersonaLibraryView: View {
             if !preparingPresentation {
                 Text(onChoose == nil ? "Show a persona card over your apps, or arrange several cards together." : "Choose a persona card to place in this scene.")
                     .font(.callout).foregroundStyle(.secondary)
-                if onChoose == nil { overlayActions; shownPanel }
+                if onChoose == nil {
+                    overlayActions
+                    if library.sessionState.phase == .idle { shownPanel }
+                    else { PersonaLiveSettings(library: library, generation: library.liveControlsGeneration) }
+                }
                 ViewThatFits(in: .horizontal) {
                     HStack { groupPicker; groupActions }
                     VStack(alignment: .leading, spacing: 8) { groupPicker; groupActions }
@@ -333,6 +337,11 @@ struct PersonaLibraryView: View {
     @ViewBuilder private var shownPanel: some View {
         if let shown = library.shownIdentity {
             VStack(alignment: .leading, spacing: 10) {
+                if let copy = library.selectedLiveCopy, let shape = library.liveShape(of: copy) {
+                    Picker("Live appearance", selection: Binding(get: { shape }, set: { library.setLiveShape($0, for: copy) })) {
+                        ForEach(PersonaAppearance.Shape.allCases) { Text($0.title).tag($0) }
+                    }.pickerStyle(.segmented)
+                }
                 // Narrow windows put the actions under the name.
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .center, spacing: 12) { shownName(shown); Spacer(minLength: 8); shownActions(shown) }

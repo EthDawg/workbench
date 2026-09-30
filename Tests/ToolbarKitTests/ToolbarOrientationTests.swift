@@ -53,7 +53,7 @@ final class ToolbarOrientationTests: XCTestCase {
                     $0.convert($0.bounds, to: host).minY < $1.convert($1.bounds, to: host).minY
                 }
                 XCTAssertEqual(buttons.map { $0.accessibilityIdentifier() },
-                    ["toolbar.launcher", "toolbar.capture.region", "toolbar.capture.window", "toolbar.capture.screen", "toolbar.accessory", "toolbar.more"])
+                    ["toolbar.launcher", "toolbar.capture.region", "toolbar.capture.window", "toolbar.capture.screen", "toolbar.accessory"])
                 for button in buttons {
                     XCTAssertTrue(button.isEnabled)
                     XCTAssertTrue(host.bounds.contains(button.convert(button.bounds, to: host)))

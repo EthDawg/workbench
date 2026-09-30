@@ -5,6 +5,9 @@ import ToolbarCore
 /// The capsule's native target. Hover changes its ink, never its size or hit region.
 /// The toolbar's outer tracking view remains the only source of reducer crossings.
 class ToolbarIconButton: NSButton {
+    // NSButton's optical insets depend on the symbol. The pill owns an exact target
+    // rectangle; a tall microphone or stacked card must not enlarge it outside the host.
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0) }
     var hints: ToolbarHintController?
     var hint = "" {
         didSet { if hint != oldValue { hints?.refresh(from: self) } }

@@ -694,7 +694,7 @@ class SurfaceTests(unittest.TestCase):
             body = []
             for scope in {s for s in scopes if s}:
                 parts = scope.split('.')
-                kind = 'enum' if parts[0] in ('ToolbarMode', 'ToolbarAccessory', 'ToolbarCaptureKind', 'Action') else 'struct'
+                kind = 'enum' if parts[0] in ('ToolbarMode', 'ToolbarAccessory', 'ToolbarCaptureKind', 'ToolbarQuickControl', 'Action') else 'struct'
                 inner = f'func {parts[1]}() {{}}' if len(parts) > 1 else ''
                 body.append(f'{kind} {parts[0]} {{ {inner} }}')
             if relative.endswith('WorkbenchHome.swift'):

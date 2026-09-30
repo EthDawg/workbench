@@ -14,7 +14,7 @@ final class ToolbarNextActionTests: XCTestCase {
         let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .paused))
         XCTAssertEqual(paused.symbol, "play.fill")
         let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, dictation: .processing))
-        XCTAssertEqual(waiting.symbol, "ellipsis")
+        XCTAssertEqual(waiting.symbol, "hourglass")
         XCTAssertFalse(waiting.isEnabled)
     }
 

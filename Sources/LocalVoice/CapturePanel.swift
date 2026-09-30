@@ -33,6 +33,7 @@ final class CaptureHUDControls: ObservableObject {
     private var measuredRowSize = NSSize(width: ToolbarLayout.standardWidth, height: ToolbarLayout.rowHeight)
     private var measuredRowHasAccessory = false
     private var measuredRowOffersAccessory = false
+    private var measuredAccessoryCount = 1
     private var measuredResultSize = NSSize(width: 320, height: 100)
     /// The resting hit target follows its edge; status never changes its size.
     var restingSize: NSSize { ToolbarLayout.mark(for: rowAnchor) }
@@ -53,7 +54,7 @@ final class CaptureHUDControls: ObservableObject {
     }
     func fittedRow(for anchor: ToolbarAnchor, screen: NSRect) -> (size: NSSize, accessoryFits: Bool) {
         ToolbarLayout.fittedRow(measuredRowSize, accessoryAvailable: measuredRowOffersAccessory,
-                               accessoryShown: measuredRowHasAccessory, anchor: anchor, screen: screen)
+                               accessoryShown: measuredRowHasAccessory, anchor: anchor, screen: screen, accessoryCount: measuredAccessoryCount)
     }
     /// Whether the row has reported its size for `tier`. Until it has, the seed size above is what
     /// the window gets, which is how a host can sit under a row that draws wider than it.
@@ -66,7 +67,7 @@ final class CaptureHUDControls: ObservableObject {
         toolbar.releaseHolds = { [weak self] in self?.cancelDrag?(); self?.releaseKeyboardFocus?() }
     }
     func reportSize(_ size: NSSize, tier: ToolbarTier, anchor: ToolbarAnchor, isResult: Bool,
-                    accessoryAvailable: Bool, accessoryShown: Bool) {
+                    accessoryAvailable: Bool, accessoryShown: Bool, accessoryCount: Int = 1) {
         guard tier == toolbar.state.tier, anchor == rowAnchor, isResult == revealsResult,
               size.width > 0, size.height > 0 else { return }
         let size = NSSize(width: ceil(size.width), height: ceil(size.height))
@@ -77,6 +78,7 @@ final class CaptureHUDControls: ObservableObject {
             else {
                 measuredRowSize = ToolbarLayout.oriented(size, for: anchor)
                 measuredRowOffersAccessory = accessoryAvailable; measuredRowHasAccessory = accessoryShown
+                measuredAccessoryCount = accessoryCount
             }
             rowMeasured = true
         }
@@ -167,12 +169,15 @@ final class CaptureHUDControls: ObservableObject {
     var openChooser: ((NSView, [ToolbarToolChoice]) -> Void)?
     /// The chooser's rows changed while it may be open.
     var chooserChoicesChanged: (([ToolbarToolChoice]) -> Void)?
+    var chooserActivities = ToolbarChooserActivities()
+    var chooserActivitiesChanged: ((ToolbarChooserActivities) -> Void)?
+    var chooserPerform: ((ToolbarChooserAction) -> Void)?
     /// A click on the compact rest: reveal and take the keyboard, never work.
     var revealFromRest: (() -> Void)?
     /// The Snap & Talk session whose sequence was started in this launch. A session restored
     /// at launch is idle until it is used; closing or switching sessions ends the sequence.
     @Published var snapAndTalkSequence: URL?
-    /// The accessory fits the row on this display; when it does not, it waits in More.
+    /// The contextual controls fit together; their workspace homes remain reachable when omitted.
     @Published var accessoryFits = true
 
     /// What the compact rest shows now, as the row last rendered it.
@@ -253,6 +258,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: panel)
         self.model = model
+        model.toolbarControls = controls
         self.readback = readback; self.stage = stage; self.snapModel = snapModel
         let saved = Self.savedPosition(UserDefaults.standard, screens: NSScreen.screens.map(\.visibleFrame),
                                        preferred: NSScreen.main?.visibleFrame)
@@ -276,6 +282,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         controls.menuWillBegin = { [weak self] in self?.positionControl.close(); self?.chooser.close() }
         controls.openChooser = { [weak self] launcher, choices in self?.openChooser(from: launcher, choices: choices) }
         controls.chooserChoicesChanged = { [weak self] choices in self?.chooser.refresh(choices) }
+        controls.chooserActivitiesChanged = { [weak self] activities in self?.chooser.refreshActivities(activities) }
         controls.revealFromRest = { [weak self] in self?.revealFromRest() }
         controls.releaseKeyboardFocus = { [weak self] in self?.releaseKeyboardFocus() }
         panel.escape = { [weak controls] in controls?.endKeyboardInteraction() }
@@ -850,6 +857,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         coachPanel.hide()
         controls.resize = nil; controls.choosePosition = nil; controls.showPosition = nil
         controls.openChooser = nil; controls.chooserChoicesChanged = nil; controls.revealFromRest = nil
+        controls.chooserActivitiesChanged = nil; controls.chooserPerform = nil
+        if model?.toolbarControls === controls { model?.toolbarControls = nil }
         positionControl.close(); chooser.close()
         controls.suspendToolbar(); cancelDragging(); releaseKeyboardFocus()
         snapGuide.shutdown()
@@ -928,8 +937,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// keyboard to the launcher with that field; anything else leaves the keyboard where the
     /// person put it. Choosing changes only the remembered tool.
     private func openChooser(from launcher: NSView, choices: [ToolbarToolChoice]) {
-        if chooser.isShown { chooser.close(); return }
-        guard surface == .tools, controls.toolbar.isActive, let window, let launcherWindow = launcher.window else { return }
+        if chooser.isShown { chooser.close(); controls.chooserPerform = nil; return }
+        guard surface == .tools, controls.toolbar.isActive, let window, let launcherWindow = launcher.window else {
+            controls.chooserPerform = nil; return
+        }
         positionControl.close()
         let panel = window as? CapturePanel
         let target = panel?.allowsKeyboardFocus == true && panel?.isKeyWindow == true ? keyboardTarget : TextDelivery.capture()
@@ -937,9 +948,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         let frame = launcherWindow.convertToScreen(launcher.convert(launcher.bounds, to: nil))
         chooser.show(from: frame, view: launcher, level: window.level, growsLeftward: controls.rowAnchor.growsLeftward, choices: choices,
             anchor: controls.rowAnchor, toolbar: window.frame,
+            activities: controls.chooserActivities,
+            perform: controls.chooserPerform ?? { _ in },
+            openTool: { [weak self] in self?.model?.onShowEditor?($0.page) },
             choose: { [weak self] mode in self?.model?.toolbarMode = mode },
             closed: { [weak self] reason in
                 guard let self else { return }
+                self.controls.chooserPerform = nil
                 self.controls.menuDidClose?()
                 if reason.returnsKeyboardToLauncher { self.returnKeyboardToToolbar(target: target) }
             })
@@ -1223,7 +1238,7 @@ struct CapturePositionMenu: View {
                 Button("Reset position") { controls.choosePosition?(.bottom) }
             }
         } label: {
-            Image(systemName: "ellipsis").frame(width: 28, height: 32)
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right").frame(width: 28, height: 32)
         }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .accessibilityLabel("Toolbar position").help("Position")
     }

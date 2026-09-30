@@ -283,12 +283,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
     @Published private(set) var activeGroupID: UUID?
     @Published private(set) var liveSelection: PersonaLiveSelection?
     @Published private(set) var preparedGroupIDs: [UUID] = []
-    @Published private(set) var sessionState = PersonaSessionViewState()
+    @Published private(set) var sessionState = PersonaSessionViewState() {
+        didSet {
+            if oldValue.currentGroupID != sessionState.currentGroupID || oldValue.phase != sessionState.phase { toolbarCycleRevision = UUID() }
+        }
+    }
     @Published var selectedID: UUID? { didSet { if !applyingArchive { select(previous: oldValue) } } }
     @Published var notice: String?
     /// Live persona keys for help text, set by the shortcut owner.
     @Published var shortcutHint: String?
-    @Published private(set) var overlayVisible = false { didSet { updateVoice() } }
+    @Published private(set) var overlayVisible = false { didSet { if oldValue != overlayVisible { toolbarCycleRevision = UUID() }; updateVoice() } }
     /// React to my voice: a quiet outline around the shown persona that
     /// brightens as the presenter speaks. Off by default and remembered. It
     /// listens only while the persona it frames is showing, measures loudness
@@ -328,7 +332,11 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// The frozen candidates behind the floating card, and the few decoded images it keeps.
     private(set) var cardDeck: PersonaCardDeck?
     /// The floating card on screen: its copy identity and the frozen source it shows.
-    @Published private(set) var shownCard: PersonaShownCard?
+    @Published private(set) var shownCard: PersonaShownCard? {
+        didSet {
+            if oldValue?.source.id != shownCard?.source.id || oldValue?.copyID != shownCard?.copyID { toolbarCycleRevision = UUID() }
+        }
+    }
     /// Decoded images the floating card may keep, counting a pending replacement.
     /// The same 256 MB as a prepared session; checks lower it.
     var cardImageBudget = PersonaSessionController.maximumImageBytes
@@ -341,6 +349,8 @@ final class PersonaLibrary: NSObject, ObservableObject {
     private var liveLabels: [UUID: String] { cardDeck?.labels ?? [:] }
     private var session: PersonaSessionController?
     private var overlayGeneration = UUID()
+    private var toolbarCycleRevision = UUID()
+    var liveControlsGeneration: UUID { overlayGeneration }
     private let sessionPanelFactory: (() -> any PersonaSessionDisplaying)?
     private let sessionHUDEnabled: Bool
     private let voiceAccess: PersonaVoiceAccess?
@@ -1286,6 +1296,24 @@ final class PersonaLibrary: NSObject, ObservableObject {
         }
         hud?.show(items: candidates, selectedID: current, locked: overlayLocked, width: overlayWidth, near: overlay?.window?.frame)
     }
+    /// Uses the frozen live deck, never the library's current selection.
+    var toolbarCycle: StageKitController.PersonaCycle? {
+        if sessionState.phase != .idle {
+            guard sessionState.phase != .paused, let id = sessionState.currentGroupID else { return nil }
+            return .init(generation: overlayGeneration, revision: toolbarCycleRevision, selection: id,
+                         title: sessionState.groups.first(where: { $0.id == id })?.label ?? "Choose set",
+                         isSet: true, canAdvance: sessionState.groups.count > 1)
+        }
+        guard overlayVisible, let id = displayedID else { return nil }
+        return .init(generation: overlayGeneration, revision: toolbarCycleRevision, selection: id, title: displayedLabel ?? "Choose Persona",
+                     isSet: false, canAdvance: (liveSelection?.candidateIDs.count ?? 1) > 1)
+    }
+    func stepToolbarPersona(expected: StageKitController.PersonaCycle, offset: Int) {
+        guard toolbarCycle == expected, expected.canAdvance else { return }
+        if expected.isSet { performOverlayAction(.stepGroup(offset)) }
+        else { stepQuickPersona(offset) }
+    }
+
     func makeControlsMenu() -> NSMenu {
         let menu = NSMenu(title: "Persona Overlay"); menu.autoenablesItems = false
         let generation = overlayGeneration

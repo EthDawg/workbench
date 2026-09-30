@@ -43,6 +43,8 @@ final class PersonaWorkspaceTests {
         let result = launch.request(.prepared(groupIDs: [group], softReveal: false), from: .workspace, in: library)
         XCTAssertNotNil(result); try result?.get()
         XCTAssertEqual(library.sessionState.phase, .active)
+        XCTAssertTrue(library.toolbarCycle?.isSet == true, "a prepared set uses set switching, never single-card cycling")
+        XCTAssertFalse(library.toolbarCycle?.canAdvance ?? true, "one prepared set has no Next set")
         XCTAssertTrue(launch.pending == nil)
         XCTAssertEqual(launches, 1)
         let ids = library.sessionState.instances.map(\.id)
@@ -52,6 +54,7 @@ final class PersonaWorkspaceTests {
         let arranged = library.sessionState.instances.map(\.placement)
         try library.togglePersonaVisibility().get()
         XCTAssertEqual(library.sessionState.phase, .paused)
+        XCTAssertTrue(library.toolbarCycle == nil, "a hidden set resumes before switching")
         try library.togglePersonaVisibility().get()
         XCTAssertEqual(library.sessionState.phase, .active)
         XCTAssertEqual(library.sessionState.instances.map(\.placement), arranged)
@@ -159,7 +162,7 @@ final class PersonaWorkspaceTests {
     func testOffscreenWorkspaceLayouts() throws {
         guard let output = ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] else { return }
         try MainActor.assumeIsolated {
-            let (root, library, _) = try fixture()
+            let (root, library, group) = try fixture()
             defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
             let directory = URL(fileURLWithPath: output)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -174,6 +177,14 @@ final class PersonaWorkspaceTests {
             }
             for (name, size) in [("persona-small", CGSize(width: 620, height: 650)), ("persona-normal", CGSize(width: 834, height: 730))] {
                 try render(PersonaLibraryView(library: library, mode: .workspace), size: size, to: directory.appendingPathComponent(name + ".png"))
+            }
+            library.usesSharedControls = true
+            try library.startOverlaySession(groupIDs: [group], initialGroupID: group)
+            for paused in [false, true] {
+                if paused { library.pauseOverlaySession() }
+                let name = paused ? "persona-live-set-hidden" : "persona-live-set-active"
+                try render(PersonaLibraryView(library: library, mode: .workspace), size: CGSize(width: 620, height: 730),
+                    to: directory.appendingPathComponent(name + ".png"))
             }
         }
     }

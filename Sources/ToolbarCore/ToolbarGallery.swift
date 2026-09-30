@@ -72,19 +72,19 @@ public enum ToolbarGallery {
                                 captureChoices: ToolbarCaptureKind.offered(for: live))
     }
 
-    /// Each tool's one accessory where it applies (#134 part B): Snap & Talk's Review once a
-    /// session is open, Draw's Tools, Present's Prompts, and Persona's Appearance for the selected
-    /// live copy, a hidden one included, which its words say. Dictate, Read and Snap have none.
+    /// Applicable contextual controls: Review, Tools, Prompts and View, plus Persona selection
+    /// and Next. Hidden artwork and one-choice sets omit inapplicable cycling.
     public static let accessories: [ToolbarViewState] = [
         live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 2), name: "accessory-snap-and-talk-review",
              activity: ToolbarActivity(live: [.snapAndTalk])),
         live(ToolbarLiveState(mode: .draw, drawing: true), name: "accessory-draw-tools"),
-        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-appearance", personaCopy: true,
-             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: false)),
-        live(ToolbarLiveState(mode: .persona, persona: .sessionHidden), name: "accessory-persona-appearance-hidden", personaCopy: true,
-             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: true)),
-        live(ToolbarLiveState(mode: .persona, persona: .shown), name: "accessory-persona-appearance-right", personaCopy: true,
-             accessoryDescription: ToolbarAccessory.appearanceDescription(copyHidden: false)).anchored(.right)
+        ToolbarViewState(name: "accessory-persona-cycle", tier: .revealed, mode: .persona, actionTitle: "Hide persona",
+             accessory: .personaPicker, accessoryDescription: "Choose Persona · Front desk", quickControl: .nextPersona),
+        ToolbarViewState(name: "accessory-persona-hidden", tier: .revealed, mode: .persona, actionTitle: "Show persona"),
+        ToolbarViewState(name: "accessory-persona-set-right", tier: .revealed, anchor: .right, mode: .persona,
+             accessory: .personaPicker, accessoryDescription: "Choose set · Set 1", quickControl: .nextSet),
+        ToolbarViewState(name: "accessory-present-view", tier: .revealed, mode: .present, actionTitle: "End presentation",
+             accessory: .prompts, quickControl: .presentationView)
     ]
 
     /// Work in progress. Input-consuming work takes the button whatever the
@@ -123,7 +123,7 @@ public enum ToolbarGallery {
 
     /// Dictation, narration and reading in the same host as the tools (#134 T4). At rest each is
     /// the compact mark with its status; revealed, the row's next action is its Stop, Pause or
-    /// Resume, the launcher carries the capture signal, and the rest of its commands are in More.
+    /// Resume, the launcher carries the capture signal, and the rest of its commands are in the chooser.
     public static let recording: [ToolbarViewState] = [
         live(ToolbarLiveState(mode: .dictate, dictation: .recording), name: "recording-dictation",
              activity: ToolbarActivity(capture: .dictation, level: 0.55)),
@@ -141,7 +141,7 @@ public enum ToolbarGallery {
         live(ToolbarLiveState(mode: .present, dictation: .recording, presenting: true), name: "recording-dictation-in-present",
              activity: ToolbarActivity(capture: .dictation, level: 0.3, live: [.presenting])),
         // Dictated words waiting for drawing to end: Stop drawing delivers them, Copy now is in
-        // More, and the mark says a result is waiting (#211 F5).
+        // the chooser; the resting handle remains quiet (#211 F5).
         live(ToolbarLiveState(mode: .dictate, dictation: .waitingForDrawing, drawing: true), name: "recording-waiting-for-drawing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing"),
         live(ToolbarLiveState(mode: .dictate, dictation: .processing), name: "recording-processing-resting", tier: .resting),
@@ -183,7 +183,19 @@ public enum ToolbarGallery {
     /// presentation and personas run.
     public static let choosers: [(name: String, choices: [ToolbarToolChoice])] = [
         ("chooser-idle", ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate), key: exampleKey)),
-        ("chooser-live", ToolbarNextAction.choices(for: ToolbarLiveState(mode: .draw, presenting: true, persona: .session), key: exampleKey))
+        ("chooser-live", ToolbarNextAction.choices(for: ToolbarLiveState(mode: .draw, presenting: true, persona: .session), key: exampleKey).map {
+            var choice = $0
+            if choice.mode == .present { choice.actions = [.init("present.end", "End presentation")] }
+            if choice.mode == .persona { choice.detail = "2 overlays"; choice.actions = [.init("persona.hide", "Hide"), .init("persona.end", "End Persona")] }
+            return choice
+        }),
+        ("chooser-recovery", ToolbarNextAction.choices(for: ToolbarLiveState(mode: .read, reading: .playing, drawing: true), key: exampleKey).map {
+            var choice = $0
+            if choice.mode == .dictate { choice.detail = "Recording kept for recovery"; choice.actions = [.init("dictate.retry", "Retry transcription"), .init("dictate.review", "Review recordings")] }
+            if choice.mode == .read { choice.actions = [.init("read.pause", "Pause reading"), .init("read.stop", "Stop reading")] }
+            if choice.mode == .draw { choice.actions = [.init("draw.stop", "Stop drawing")] }
+            return choice
+        })
     ]
 
     /// Everything, in a stable order.
