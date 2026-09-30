@@ -19,12 +19,24 @@ from swift_extract import SwiftFile
 
 PROJECT = Path(__file__).resolve().parents[1]
 model = SwiftFile(PROJECT / "Sources/LocalVoice/AppModel.swift").type("AppModel")
-methods = model.extract(["canCancelCurrentCapture", "cancelCurrentCapture", "cleanCurrentDraft"])
+methods = model.extract(["canCancelCurrentCapture", "cancelCurrentCapture", "cleanCurrentDraft", "exportTranscript", "useOriginal"])
 transcript = model.extract(["transcript"])
 
 fixture = r'''
 import Foundation
 import Combine
+
+@MainActor final class NSSavePanel {
+    enum ContentType { case plainText }
+    enum Response { case OK, cancel }
+    static var response = Response.OK
+    static var destination: URL?
+    static var whileOpen: (() -> Void)?
+    var allowedContentTypes: [ContentType] = []
+    var nameFieldStringValue = ""
+    var url: URL? { Self.destination }
+    func runModal() -> Response { Self.whileOpen?(); return Self.response }
+}
 
 struct CleanupResult { let text: String; let method: String }
 struct FixtureSettings {
@@ -61,6 +73,9 @@ enum TextRules {
     }
 }
 @MainActor final class AppModelCleanupHarness {
+    var rememberedCorrection: String?
+    var reportedError: String?
+    func fail(_ message: String) { reportedError = message }
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var phase: Phase = .idle
     var transcriptionTask: Task<Void, Never>?
@@ -159,7 +174,8 @@ struct CheckFailure: Error, CustomStringConvertible {
         try check(finished(delayed), "Delayed cancellation must release the gate after unwinding")
 
         let edited = AppModelCleanupHarness()
-        edited.cleanCurrentDraft()
+        var editedOutcome: String?
+        edited.cleanCurrentDraft { editedOutcome = $0 }
         try await waitForEngine(edited)
         let editedTask = edited.transcriptionTask
         edited.transcript = "Newer user edit"
@@ -169,9 +185,12 @@ struct CheckFailure: Error, CustomStringConvertible {
         try check(edited.transcript == "Newer user edit" && edited.rawTranscript == "Previously retained original"
                   && edited.cleanupMethod == "Previous method", "Editing mid-cleanup must preserve the new draft, original and method")
         try check(edited.persistenceCalls == savesAfterEdit && finished(edited), "Discarded cleanup must not save over the user's edit or hold the gate")
+        try check(editedOutcome == "Your draft changed during cleanup. Your latest text was kept.",
+                  "cleanup reports the kept edit through its own completion")
 
         let success = AppModelCleanupHarness()
-        success.cleanCurrentDraft()
+        var completedOutcomes: [String] = []
+        success.cleanCurrentDraft { completedOutcomes.append($0) }
         try await waitForEngine(success)
         let successTask = success.transcriptionTask
         success.cleanupEngine.release()
@@ -179,6 +198,29 @@ struct CheckFailure: Error, CustomStringConvertible {
         try check(success.transcript == "Replacement from engine" && success.rawTranscript == "Draft before cleanup"
                   && success.cleanupMethod == "Fixture natural", "The positive control must apply successful cleanup and preserve its original")
         try check(success.persistenceCalls > 0 && finished(success), "Successful cleanup must persist and release the gate")
+        success.status = "Finished reading."
+        try check(completedOutcomes == ["Fixture natural · original retained"],
+                  "unrelated status cannot replace a cleanup's completed outcome")
+
+        let saveFolder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: saveFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: saveFolder) }
+        let saveURL = saveFolder.appendingPathComponent("Transcript.txt")
+        NSSavePanel.destination = saveURL
+        let firstSave = success.exportTranscript(), secondSave = success.exportTranscript()
+        try check(firstSave == "Transcript saved." && secondSave == firstSave,
+                  "each successful save reports completion even when its text is unchanged")
+        let savedBytes = try Data(contentsOf: saveURL)
+        NSSavePanel.response = .cancel
+        NSSavePanel.whileOpen = { success.status = "Finished reading." }
+        try check(success.exportTranscript() == nil && (try Data(contentsOf: saveURL)) == savedBytes,
+                  "cancelling Save text cannot borrow another operation's status or change the file")
+        NSSavePanel.whileOpen = nil; NSSavePanel.response = .OK
+        NSSavePanel.destination = saveFolder.appendingPathComponent("missing/Transcript.txt")
+        try check(success.exportTranscript() == nil && success.reportedError != nil,
+                  "failed text export reports its error without a success result")
+        try check(success.useOriginal() == "Original transcript restored." && success.useOriginal() == "Original transcript restored.",
+                  "each explicit original restore has its own completion")
         print(String(format: "CLEAN_DRAFT_CHECKS_OK: %d checks in %.3fs", count, Date().timeIntervalSince(start)))
     }
 }

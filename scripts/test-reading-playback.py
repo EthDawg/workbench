@@ -31,7 +31,7 @@ model = SwiftFile(SOURCES / "AppModel.swift").type("AppModel")
 methods = model.extract([
     # Listen, pause, seek and the reading's own failure.
     "followAlongText", "canSeekReading", "seekReading", "skipReading", "listen()", "followPlayback",
-    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:)",
+    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:completion:)",
     "cancelReading", "stopPlayback", "ReadingFailure", "canRetryReading", "retryReading", "reportReadingFailure",
     "dismissReadingFailure", "report", "dismissError", "clearReadingFailure", "readingPlayerDidFinish",
     # The one owner of text arriving in Read, with the step that ends the old reading.
@@ -776,7 +776,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         saving.speechText = passageA
         renders = MacSpeechRenderer.created.count
         let savePath = scratch.appendingPathComponent("Saved reading.m4a")
-        saving.saveAudio(to: savePath)
+        var saveResults: [String] = []
+        saving.saveAudio(to: savePath) { saveResults.append($0) }
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         let savingRender = MacSpeechRenderer.created.last!
         try check(saving.savingAudio && saving.readingGenerationActive && !saving.canReplaceReading, "Save audio is making its audio")
@@ -791,6 +792,10 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         await saving.readingTask?.value
         try check(!saving.savingAudio && AudioRenderer.exports.last?.destination == savePath && saving.status == "Audio saved to Saved reading.m4a.",
                   "The save finishes with A's audio")
+        saving.saveAudio(to: savePath) { saveResults.append($0) }
+        await saving.readingTask?.value
+        try check(saveResults == ["Audio saved to Saved reading.m4a.", "Audio saved to Saved reading.m4a."],
+                  "saving the same cached audio twice reports both completed exports")
         saving.replaceReadingWithSelection()
         try check(saving.speechText == promptB && saving.pendingReadingSelection == nil, "Replace goes ahead once the save is done")
 
@@ -807,10 +812,12 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let cancelSave = ReadingHarness()
         cancelSave.speechText = passageA
         renders = MacSpeechRenderer.created.count
-        cancelSave.saveAudio(to: savePath)
+        var cancelledSaveResults: [String] = []
+        cancelSave.saveAudio(to: savePath) { cancelledSaveResults.append($0) }
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         cancelSave.cancelReading()
         try check(!cancelSave.savingAudio && cancelSave.canReplaceReading && !cancelSave.rendering, "Cancel generation ends a save, so it no longer holds Replace")
+        try check(cancelledSaveResults.isEmpty, "cancelled audio export never reports a successful save")
 
         // Listen's generation has not begun yet: Replace still cancels it cleanly.
         let preListen = ReadingHarness()

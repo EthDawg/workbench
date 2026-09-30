@@ -20,8 +20,8 @@ struct ContentView: View {
     @State private var confirmingRecoveryDiscard = false
     @State private var dictateResult: String?
     @State private var readingResult: String?
-    @State private var awaitingCleanup = false
-    @State private var audioSaveStartingStatus: String?
+    @State private var dictateActionID = UUID()
+    @State private var readingActionID = UUID()
     @Environment(\.pageSectionFrames) private var sectionFrames
 
     /// A problem stays on the workspace that owns it. Read's typed playback failure already
@@ -64,7 +64,7 @@ struct ContentView: View {
                 Text("Your unedited words are kept so you can check any cleanup.").foregroundStyle(.secondary)
                 ScrollView { Text(model.rawTranscript).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(minHeight: 240)
                 HStack {
-                    Button("Restore original") { performDictateAction(model.useOriginal); showOriginal = false }
+                    Button("Restore original") { dictateActionID = UUID(); dictateResult = model.useOriginal(); showOriginal = false }
                     Spacer()
                     Button("Done") { showOriginal = false }.keyboardShortcut(.defaultAction)
                 }
@@ -90,19 +90,10 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshPermissions() }
         .onChange(of: model.page) { _, _ in
-            dictateResult = nil; readingResult = nil; awaitingCleanup = false; audioSaveStartingStatus = nil
+            dictateResult = nil; readingResult = nil; dictateActionID = UUID(); readingActionID = UUID()
         }
         .onChange(of: model.phase) { _, phase in
             if phase != .idle { dictateResult = nil }
-            else if awaitingCleanup {
-                awaitingCleanup = false
-                if model.attention?.page != .dictate { dictateResult = model.status }
-            }
-        }
-        .onChange(of: model.savingAudio) { _, saving in
-            guard !saving, let startingStatus = audioSaveStartingStatus else { return }
-            audioSaveStartingStatus = nil
-            if model.status != startingStatus, model.attention?.page != .read { readingResult = model.status }
         }
         .modifier(CorrectionSelectionObserver(transcript: model.transcript,
             active: model.page == "dictate" && !showCorrection && !showOriginal && !showDictateSettings,
@@ -234,10 +225,13 @@ struct ContentView: View {
         Menu("More") {
             Button("Clean text") {
                 dictateResult = nil
-                model.cleanCurrentDraft()
-                awaitingCleanup = model.phase == .cleaning
+                let invocation = UUID(); dictateActionID = invocation
+                model.cleanCurrentDraft { result in
+                    guard dictateActionID == invocation, model.page == "dictate" else { return }
+                    dictateResult = result
+                }
             }.disabled(model.transcript.isEmpty || model.phase != .idle)
-            Button("Save text…") { performDictateAction(model.exportTranscript) }.disabled(model.transcript.isEmpty)
+            Button("Save text…") { dictateActionID = UUID(); dictateResult = nil; dictateResult = model.exportTranscript() }.disabled(model.transcript.isEmpty)
             Button("Save prompt") { model.savePrompt(model.transcript) }.disabled(model.transcript.isEmpty)
             Divider()
             Button("Original…") { showOriginal = true }.disabled(model.rawTranscript.isEmpty)
@@ -401,24 +395,19 @@ struct ContentView: View {
             Spacer()
             Button {
                 readingResult = nil
-                let startingStatus = model.status
-                model.saveAudio()
-                if model.savingAudio { audioSaveStartingStatus = startingStatus }
+                let invocation = UUID(); readingActionID = invocation
+                model.saveAudio { result in
+                    guard readingActionID == invocation, model.page == "speak" else { return }
+                    readingResult = result
+                }
             } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }
                 .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.renderingAhead || model.speechText.count > model.readingLimit)
                 .help("Save an M4A file for QuickTime, Music or sharing.")
         }.controlSize(.large)
     }
 
-    /// Capture feedback only for the explicit operation in this visit. A cancelled save leaves
-    /// status unchanged and shows nothing; another workspace's old status is never borrowed.
-    private func performDictateAction(_ action: () -> Void) {
-        dictateResult = nil
-        let previous = model.status
-        action()
-        if model.status != previous, model.attention?.page != .dictate { dictateResult = model.status }
-    }
-
+    /// These synchronous transport/import actions complete in this call. File exports and
+    /// cleanup report their own outcomes instead of sampling a shared status after a wait.
     private func performReadingAction(_ action: () -> Void) {
         readingResult = nil
         let previous = model.status

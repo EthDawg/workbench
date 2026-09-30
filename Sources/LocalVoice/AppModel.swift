@@ -951,7 +951,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         previewingPanel = true; onPhaseChange?()
     }
     func closePanelPreview() { previewingPanel = false; onPhaseChange?() }
-    func cleanCurrentDraft() {
+    func cleanCurrentDraft(completion: ((String) -> Void)? = nil) {
         guard phase == .idle, !transcript.isEmpty else { return }
         let original = transcript
         let revision = draftRevision
@@ -971,13 +971,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let cleaned = await cleanupEngine.clean(original, style: settings.preferences.cleanup, configuration: settings.cleanup)
             guard transcriptionID == invocation else { return }
             guard !Task.isCancelled else {
-                status = "Cleanup cancelled. Your draft was kept."; return
+                status = "Cleanup cancelled. Your draft was kept."; completion?(status); return
             }
             guard revision == draftRevision else {
-                status = "Your draft changed during cleanup. Your latest text was kept."; return
+                status = "Your draft changed during cleanup. Your latest text was kept."; completion?(status); return
             }
             rawTranscript = original; transcript = TextRules.apply(cleaned.text, replacements: settings.replacements)
             cleanupMethod = cleaned.method; status = cleaned.method + " · original retained"; persist()
+            completion?(status)
         }
         onPhaseChange?()
     }
@@ -985,7 +986,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         rememberedCorrection = nil
         transcript = item.text; rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"; page = "dictate"; persist()
     }
-    func useOriginal() { rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"; status = "Original transcript restored."; persist() }
+    @discardableResult func useOriginal() -> String {
+        rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"
+        status = "Original transcript restored."; persist()
+        return status
+    }
     /// Set up automatic paste: the first click may show macOS's request; later
     /// clicks open Privacy & Security › Accessibility, so none is a dead end.
     func requestAccessibility() {
@@ -998,11 +1003,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
     func openMicrophoneSettings() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
-    func exportTranscript() {
+    func exportTranscript() -> String? {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.plainText]; panel.nameFieldStringValue = "Transcript.txt"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try transcript.write(to: url, atomically: true, encoding: .utf8); status = "Transcript saved." }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        do { try transcript.write(to: url, atomically: true, encoding: .utf8); status = "Transcript saved."; return status }
         catch { fail(error.localizedDescription) }
+        return nil
     }
     func exportCapture(_ item: Transcript, version: TranscriptExportVersion) {
         let panel = NSSavePanel()
@@ -1262,15 +1268,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         audio = track
     }
     var canSaveAudio: Bool { !rendering && !renderingAhead && !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    func saveAudio() {
+    func saveAudio(completion: ((String) -> Void)? = nil) {
         guard canSaveAudio else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        saveAudio(to: destination)
+        saveAudio(to: destination, completion: completion)
     }
     /// The save the person chose. Replace and Home's Read tile wait for it
     /// rather than cancel it; only Cancel generation ends it early.
-    func saveAudio(to destination: URL) {
+    func saveAudio(to destination: URL, completion: ((String) -> Void)? = nil) {
         guard canSaveAudio else { return }
         let generationID = UUID()
         readingGenerationID = generationID
@@ -1292,6 +1298,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 status = "Audio saved to \(destination.lastPathComponent)."
+                completion?(status)
             } catch {
                 if !(error is CancellationError), readingGenerationID == generationID { report(error.localizedDescription, on: .read) }
             }
