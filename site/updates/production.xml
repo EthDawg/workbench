@@ -7,6 +7,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>Workbench</title>
         <item>
             <title>2.3.1</title>
+            <pubDate>Wed, 30 Sep 2026 15:48:25 +1000</pubDate>
+            <sparkle:version>20260930054504</sparkle:version>
+            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench 2.3.1</h2>
+<p>Open Workbench and pick up where you left off.</p>
+<ul>
+<li><strong>A clearer place to start.</strong> Home brings Dictate, Snap, Snap &amp; Talk and recent work together. Continue an explanation from its card, or collapse the sidebar for more room.</li>
+<li><strong>Make images say more.</strong> View and edit images in one resizable workspace. Add text, crop to a slide shape, move marks, rotate, undo, copy and export while keeping the original.</li>
+<li><strong>Capture from the toolbar.</strong> Choose Region, Window or Screen directly in Snap and a prepared Snap &amp; Talk session. The floating controls stay upright at screen edges, reveal clear icons and show shortcut hints.</li>
+<li><strong>Put yourself in the picture.</strong> Choose a photo for your local Me profile, adjust its appearance and use it as a Persona when you present. Your previous scene artwork stays intact.</li>
+</ul>
+<p>Choose Settings → Workbench updates when you’re ready. Your saved work stays in this edition’s library.</p>
+<p><strong>Image compatibility.</strong> Images saved with text or rotation use Snap format 2 and need this update or a newer release. The first promotion keeps the previous metadata as a backup; original and earlier rendered image files are preserved.</p>
+]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.1+20260930054504/Workbench.zip" length="71415995" type="application/octet-stream" sparkle:edSignature="3iglQYvA4delWp3CNE+/u7WwGayZNei4K/9diIg2NP1hjn/HqmR0SwHTQW8YgybuqnFEzNeXT2+c6BENLKzwAQ=="/>
+        </item>
+        <item>
+            <title>2.3.1</title>
             <pubDate>Tue, 29 Sep 2026 14:42:10 +1000</pubDate>
             <sparkle:version>20260929044112</sparkle:version>
             <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
@@ -46,30 +66,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.0/Workbench.zip" length="69018501" type="application/octet-stream" sparkle:edSignature="qbA6D5xckonGLaAYpw5td73/ZDLCHgKrRLZUOvq2HwLlTTVVTymLftEp7L6GchXsH7FWIgWu33EI65EVE+cPBw=="/>
         </item>
-        <item>
-            <title>2.2.0</title>
-            <pubDate>Sun, 27 Sep 2026 20:18:38 +1000</pubDate>
-            <sparkle:version>20260927101737</sparkle:version>
-            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Workbench 2.2.0 — September 27 update</h2>
-<p>Build 20260927101737 adds meeting transcription, reusable selections and reviewed AI handoffs.</p>
-<ul>
-<li>Snap has its own menu-panel row above Snap &amp; Talk. Turn saved Snaps into narrated sections while preserving originals and notes.</li>
-<li>Search transcript details, save selections and review transcript/Snap handoffs before running them with Codex or Claude Code.</li>
-<li>Choose a source and Start to transcribe a meeting. Optional detection is off by default; offers never start recording.</li>
-<li>Removing a completed meeting transcript clearly asks before deleting both its text and saved audio. Cancel keeps both.</li>
-<li>Clearer Persona hide/show controls, imported-persona navigation and a Connections sheet that returns to your handoff.</li>
-</ul>
-<p>Developer ID signed and notarized by Apple. Existing Stable saved work is preserved; Preview keeps a separate library.</p>
-<p>Automated and bounded native checks passed. Routed calls and headphone/two-sided audio, broad keyboard/click-through behavior, external-display/USB combinations and first installation on another Mac remain unverified. Test your intended call route before relying on its recording.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.2.0+20260927101737/Workbench.zip" length="68628002" type="application/octet-stream" sparkle:edSignature="vHccsYHFlMCUQra0bIcrODqC776qNkCfx0oXGm7zt/O8+xFK2ZP6wIpD7SmF7G+SM5I5ApkjcjLvg/6MyXmdDA=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: pfxl8uILQFCG2SsXJqyiY/a5q4QJSfAXZAzuJV5RQLMNasHsOtyoUXA6PKxo38Z5JmBQ1WsM6YlUaW7qaMqzCg==
-length: 5877
+edSignature: bCt4P3SGTrrGmHUi6MMx2NDZnre8iwc42ARqTikM0vQAQoART9Lhv+XO26BPuFCC/H/QLTDolaoD4VQ+Y4ELCw==
+length: 5944
 -->
