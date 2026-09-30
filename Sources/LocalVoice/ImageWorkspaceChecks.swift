@@ -74,8 +74,9 @@ enum ImageWorkspaceChecks {
         editor.showingOriginal = true
         try check(editor.displayEdit == SnapEdit() && editor.draft.edit == cropped, "Original compares without changing edits")
         editor.showingOriginal = false
-        preview.step(1); preview.show(images[1])
-        try check(preview.editing === editor && preview.index == 0, "navigation and other open requests cannot discard an edit")
+        preview.step(1)
+        try check(preview.editing === editor && preview.isShowingEditor && preview.index == 0,
+                  "collection navigation does not replace an active editor")
         preview.approveDiscard = { false }; preview.cancelEditing()
         try check(preview.editing === editor && snap.draft != nil, "Keep draft refuses explicit Discard without losing edits")
         try check(!preview.canTerminate() && preview.editing === editor, "Keep editing refuses Quit without losing the draft")
@@ -165,9 +166,67 @@ enum ImageWorkspaceChecks {
         try check(preview.panel == nil && preview.editing === preservedEditor && snap.draft?.id == preservedDraft?.id
                   && snap.draft?.originalPNG == preservedDraft?.originalPNG && snap.draft?.edit == preservedDraft?.edit,
                   "the window close button preserves the original and edited saved-image draft")
-        preview.show(images[1], over: owner)
-        try check(preview.panel != nil && preview.editing === preservedEditor && snap.draft?.id == preservedDraft?.id,
-                  "another image-open door resumes the same hidden draft instead of replacing it")
+        guard let draftA = preservedDraft, let editorA = preservedEditor else { throw VoiceError.message("The pending draft was lost") }
+        let undoA = editorA.undoStack, redoA = editorA.redoStack
+        let libraryURL = root.appendingPathComponent("Library image B.png")
+        try secondPNG.write(to: libraryURL)
+        let resource = DemoResource(kind: .file, title: "Library image B", content: libraryURL.path)
+        let sessionURL = root.appendingPathComponent("Readback preview", isDirectory: true)
+        try fm.createDirectory(at: sessionURL.appendingPathComponent("items/b"), withIntermediateDirectories: true)
+        try secondPNG.write(to: sessionURL.appendingPathComponent("items/b/screen.png"))
+        let section = ReadbackSection(id: UUID(), capturedAt: Date(timeIntervalSince1970: 1_789_546_320), displayName: "Synthetic display B",
+            directory: "items/b", screenshot: "items/b/screen.png", audio: nil, originalTranscript: nil, transcript: nil,
+            status: .ready, failure: nil, deletedAt: nil)
+        let sessionImage = CaptureImagePreviewItem.section(section, number: 1, session: sessionURL)
+        let doors: [(name: String, source: CaptureImagePreviewItem.Source, show: () -> Void)] = [
+            ("saved Snap", images[1].source, { preview.show(images[1], over: owner, collection: images) }),
+            ("Snap & Talk", sessionImage.source, { preview.show(sessionImage, over: owner) }),
+            ("Library", .generated(resource.id), { preview.showLibrary([resource], selected: resource.id) })]
+        for door in doors {
+            preview.close()
+            door.show(); try await settle(preview)
+            guard let viewing = preview.model, case .shown(let loaded) = viewing.state else {
+                throw VoiceError.message("IMAGE_WORKSPACE_CHECK_FAILED: opening image B after closing draft A displays the requested image B")
+            }
+            try check(viewing.item.source == door.source && loaded.sourceBytes == secondPNG && !preview.isShowingEditor,
+                      "\(door.name) opens image B with its exact bytes while draft A is suspended")
+            try check(preview.editing === editorA && snap.draft?.id == draftA.id && snap.draft?.originalPNG == draftA.originalPNG
+                      && snap.draft?.edit == draftA.edit && editorA.undoStack == undoA && editorA.redoStack == redoA,
+                      "viewing \(door.name) image B preserves draft A, its original, edits and undo state")
+            if door.name == "saved Snap" {
+                preview.step(-1); try await settle(preview)
+                try check(preview.model?.item == images[0] && preview.model?.isShowingImage == true,
+                          "read-only collection navigation works while draft A is suspended")
+                preview.step(1); try await settle(preview)
+            }
+            let viewingPanel = preview.panel
+            preview.beginEditing()
+            try check(preview.model?.item.source == door.source && preview.model?.notice?.contains(draftA.title) == true
+                      && preview.model?.reviewPendingDraft != nil && preview.panel === viewingPanel && !preview.isShowingEditor
+                      && snap.draft?.id == draftA.id,
+                      "Edit image B stays on B and names the unfinished draft with an explicit Review action")
+            if let output, door.name == "Library" {
+                preview.panel?.setContentSize(NSSize(width: 900, height: 620)); try await settle(preview)
+                try render(preview.panel!, to: output.appendingPathComponent("image-preview-pending-draft.png"))
+            }
+            preview.model?.reviewPendingDraft?()
+            try check(preview.isShowingEditor && preview.panel === viewingPanel && preview.editing === editorA
+                      && editorA.draft.id == draftA.id && editorA.draft.originalPNG == draftA.originalPNG
+                      && editorA.draft.edit == draftA.edit && editorA.undoStack == undoA,
+                      "explicit Review returns to draft A in the same host without replacing it")
+            // A new thumbnail request also suspends an editor that is still on screen.
+            door.show(); try await settle(preview)
+            try check(preview.model?.item.source == door.source && preview.model?.isShowingImage == true && !preview.isShowingEditor,
+                      "a new \(door.name) image request shows B even when draft A's editor was visible")
+            preview.close(); snap.reviewDraft()
+            try check(preview.isShowingEditor && preview.editing === editorA && snap.draft?.id == draftA.id
+                      && editorA.draft.originalPNG == draftA.originalPNG && editorA.draft.edit == draftA.edit
+                      && editorA.undoStack == undoA && editorA.redoStack == redoA,
+                      "closing image B then Snap Review restores draft A and its exact undo state")
+        }
+        try check(try Data(contentsOf: libraryURL) == secondPNG
+                  && Data(contentsOf: sessionURL.appendingPathComponent(section.screenshot)) == secondPNG,
+                  "independent preview and refused editing leave Library and Snap & Talk images unchanged")
         preview.approveDiscard = { true }; preview.cancelEditing()
         try check(preview.panel == nil && snap.draft == nil, "only explicit Discard resolves the resumed draft")
         // Send real AppKit pointer/key events to the canvas. A geometry-only test would miss
@@ -235,7 +294,7 @@ enum ImageWorkspaceChecks {
         for _ in 0..<40 {
             preview.panel?.contentView?.layoutSubtreeIfNeeded()
             try await Task.sleep(nanoseconds: 15_000_000)
-            if preview.editing != nil { continue }
+            if preview.isShowingEditor { continue }
             if case .loading = preview.model?.state { continue }
             break
         }
