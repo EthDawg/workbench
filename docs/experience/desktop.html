@@ -1,0 +1,2953 @@
+<!doctype html>
+<html lang="en" data-visualize-standalone>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Desktop Journeys</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<nav aria-label="Experience studies" style="margin:0 0 12px;font:14px/1.5 -apple-system,system-ui,sans-serif"><a style="color:inherit" href="index.html">← Experience studies</a></nav>
+<iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Desktop Journeys" data-srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Desktop Journeys&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 10px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: var(--cursor-interaction, pointer);
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+.widget {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  color: var(--foreground);
+  background: var(--background);
+}
+
+#widget &gt; :not(.card, .widget, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled=&quot;true&quot;]):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Shared preview chrome; product styles stay inside each variant. */
+.viz-dotted-background {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 0.8px,
+    transparent 0.8px
+  );
+  background-position: center;
+  background-size: 16px 16px;
+}
+
+.viz-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.viz-carousel:has(&gt; .viz-carousel-controls) {
+  min-height: calc(60px + var(--viz-carousel-picker-height, 0px));
+  padding-bottom: 60px;
+}
+
+.viz-carousel &gt; [data-variant][hidden] {
+  display: none !important;
+}
+
+.viz-carousel &gt; [data-variant] {
+  isolation: isolate;
+}
+
+.viz-carousel-controls {
+  --viz-carousel-hover: light-dark(
+    color-mix(in srgb, var(--foreground) 5.4%, transparent),
+    color-mix(in srgb, var(--foreground) 7.8%, transparent)
+  );
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  /* Leave room for the host&#x27;s design-controls launcher at the trailing edge. */
+  max-width: calc(100% - 96px);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Match the settings dropdown chrome independently of the content font size. */
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+.viz-carousel-controls button,
+.viz-carousel-picker &gt; summary {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  -webkit-app-region: no-drag;
+  border: 0;
+  border-radius: 14px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viz-carousel-controls &gt; button,
+.viz-carousel-picker &gt; summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.viz-carousel-controls &gt; button {
+  --icon-size: 16px;
+  width: 30px;
+  padding: 0;
+}
+
+.viz-carousel-picker &gt; summary {
+  padding-inline: 12px;
+}
+
+.viz-carousel-controls .viz-carousel-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.viz-carousel-controls &gt; button &gt; svg,
+.viz-carousel-controls .viz-carousel-caret,
+.viz-carousel-count {
+  opacity: 0.5;
+}
+
+.viz-carousel-controls &gt; button::before,
+.viz-carousel-picker &gt; summary::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 12px;
+  content: &quot;&quot;;
+  pointer-events: none;
+}
+
+.viz-carousel-controls &gt; button:hover::before,
+.viz-carousel-picker &gt; summary:hover::before {
+  background: var(--viz-carousel-hover);
+}
+
+.viz-carousel-controls &gt; button,
+.viz-carousel-controls [data-lucide],
+.viz-carousel-controls .lucide {
+  flex-shrink: 0;
+}
+
+.viz-carousel-picker {
+  min-width: 0;
+}
+
+.viz-carousel-picker &gt; summary {
+  min-width: 0;
+  list-style: none;
+}
+
+.viz-carousel-picker &gt; summary::-webkit-details-marker {
+  display: none;
+}
+
+.viz-carousel-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.viz-carousel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-carousel-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 25%));
+}
+
+.viz-carousel-options &gt; button {
+  width: 100%;
+  min-height: 28px;
+  justify-content: flex-start;
+  padding: 4px 8px;
+  font-size: var(--font-size-small);
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.viz-carousel-options &gt; [aria-current=&quot;true&quot;],
+.viz-carousel-options &gt; button:hover {
+  background: var(--viz-carousel-hover);
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled=&quot;true&quot;] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible,
+.viz-carousel-controls :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .viz-carousel:has(&gt; .viz-carousel-controls) {
+    min-height: calc(76px + var(--viz-carousel-picker-height, 0px));
+    padding-bottom: 76px;
+  }
+
+  .btn,
+  .nav-link,
+  .viz-carousel-controls button,
+  .viz-carousel-picker &gt; summary,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type=&quot;file&quot;]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type=&quot;color&quot;] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type=&quot;date&quot;],
+    [type=&quot;datetime-local&quot;],
+    [type=&quot;month&quot;],
+    [type=&quot;time&quot;],
+    [type=&quot;week&quot;]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: &quot;&quot;;
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;script type=&quot;application/json&quot; id=&quot;codex-visualization-widget-state&quot;&gt;__CODEX_VISUALIZATION_WIDGET_STATE__&lt;/script&gt;
+&lt;script&gt;(() =&gt; {
+  const root = document.documentElement;
+  const mediaQuery = globalThis.matchMedia(&quot;(prefers-color-scheme: dark)&quot;);
+  const apply = Reflect.apply;
+  const isArray = Array.isArray;
+  const hasOwn = Object.hasOwn;
+  const parentWindow = globalThis.parent;
+  const stringify = JSON.stringify;
+  const parse = JSON.parse;
+  const encode = TextEncoder.prototype.encode.bind(new TextEncoder());
+  const initialStateElement = document.getElementById(
+    &quot;codex-visualization-widget-state&quot;,
+  );
+  const initialGlobals = parse(initialStateElement?.textContent ?? &quot;{}&quot;);
+  initialStateElement?.remove();
+  /** @type {Record&lt;string, unknown&gt; | null} */
+  let state = initialGlobals.widgetState ?? null;
+  const statePersistence = initialGlobals.statePersistence ?? &quot;none&quot;;
+  let nextStateRequestId = 0;
+  /** @type {Map&lt;number, { resolve: () =&gt; void; reject: (error: Error) =&gt; void; timeout: ReturnType&lt;typeof globalThis.setTimeout&gt;; serializedState: string }&gt;} */
+  const pendingStateWrites = new Map();
+  const persistenceError = () =&gt;
+    Object.assign(
+      new Error(&quot;The host could not persist the widget state update&quot;),
+      {
+        code: -32000,
+        data: { code: &quot;widget_state_persistence_failed&quot;, retryable: false },
+      },
+    );
+  /**
+   * @param {object} prototype
+   * @param {string} property
+   */
+  const getPrototypeGetter = (prototype, property) =&gt; {
+    // oxlint-disable-next-line typescript/unbound-method -- invoked through captured Reflect.apply
+    const getter = Object.getOwnPropertyDescriptor(prototype, property)?.get;
+    if (getter == null) {
+      throw new Error(`Missing ${property} getter`);
+    }
+    return getter;
+  };
+  const getMessageData = getPrototypeGetter(MessageEvent.prototype, &quot;data&quot;);
+  const getMessagePorts = getPrototypeGetter(MessageEvent.prototype, &quot;ports&quot;);
+  const getMessageSource = getPrototypeGetter(MessageEvent.prototype, &quot;source&quot;);
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const addHostMessageListener = MessagePort.prototype.addEventListener;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const postHostMessage = MessagePort.prototype.postMessage;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const startHostPort = MessagePort.prototype.start;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const stopMessagePropagation = Event.prototype.stopImmediatePropagation;
+  /** @type {MessagePort | null} */
+  let hostPort = null;
+  const postToHost = (type, payload) =&gt; {
+    if (hostPort != null) {
+      apply(postHostMessage, hostPort, [{ type, ...payload }]);
+    }
+  };
+  const openExternal = ({ href }) =&gt; {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost(&quot;open-external&quot;, { href });
+    }
+  };
+  const sendFollowUpMessage = ({ context, prompt, title }) =&gt; {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost(&quot;follow-up&quot;, { context, prompt, title });
+    }
+    return Promise.resolve();
+  };
+  /**
+   * @param {Record&lt;string, unknown&gt; | ((previous: Record&lt;string, unknown&gt; | null) =&gt; Record&lt;string, unknown&gt;)} next
+   * @returns {Promise&lt;void&gt;}
+   */
+  const setWidgetState = async (next) =&gt; {
+    const nextState = typeof next === &quot;function&quot; ? next(state) : next;
+    if (
+      nextState == null ||
+      typeof nextState !== &quot;object&quot; ||
+      isArray(nextState)
+    ) {
+      throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+    }
+    const inputState = stringify(
+      nextState,
+      (_key, /** @type {unknown} */ value) =&gt; {
+        if (
+          typeof value === &quot;undefined&quot; ||
+          typeof value === &quot;function&quot; ||
+          typeof value === &quot;symbol&quot; ||
+          (typeof value === &quot;number&quot; &amp;&amp; !Number.isFinite(value))
+        ) {
+          throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+        }
+        return value;
+      },
+    );
+    const parsedState = parse(inputState);
+    if (
+      parsedState == null ||
+      typeof parsedState !== &quot;object&quot; ||
+      isArray(parsedState)
+    ) {
+      throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+    }
+    const storedState = {
+      modelContent: null,
+      privateContent: null,
+      ...parsedState,
+    };
+    const serializedState = stringify(storedState);
+    if (encode(serializedState).length &gt; 16 * 1024) {
+      throw new TypeError(
+        &quot;Widget state must be a JSON object of at most 16 KiB&quot;,
+      );
+    }
+    if (
+      hasOwn(storedState, &quot;imageIds&quot;) &amp;&amp;
+      (!isArray(storedState.imageIds) ||
+        storedState.imageIds.some(
+          (/** @type {unknown} */ id) =&gt; typeof id !== &quot;string&quot;,
+        ))
+    ) {
+      throw new TypeError(&quot;Widget state imageIds must be an array of strings&quot;);
+    }
+    if (storedState.imageIds?.length &gt; 0) {
+      throw Object.assign(
+        new TypeError(&quot;Visualization state does not support image attachments&quot;),
+        { code: -32602, data: { code: &quot;images_unsupported&quot; } },
+      );
+    }
+    state = storedState;
+    globalThis.openai.widgetState = state;
+    globalThis.dispatchEvent(
+      new CustomEvent(&quot;openai:set_globals&quot;, {
+        detail: { globals: { widgetState: state } },
+      }),
+    );
+    if (statePersistence === &quot;none&quot;) {
+      throw persistenceError();
+    }
+    const id = ++nextStateRequestId;
+    return new Promise((resolve, reject) =&gt; {
+      const timeout = globalThis.setTimeout(() =&gt; {
+        pendingStateWrites.delete(id);
+        reject(persistenceError());
+      }, 30_000);
+      pendingStateWrites.set(id, { resolve, reject, timeout, serializedState });
+      postToHost(&quot;widget-state-write&quot;, { id, state: serializedState });
+    });
+  };
+  const syncTheme = () =&gt; {
+    const theme = mediaQuery.matches ? &quot;dark&quot; : &quot;light&quot;;
+    root.dataset.theme = theme;
+    globalThis.openai = {
+      ...globalThis.openai,
+      openExternal,
+      sendFollowUpMessage,
+      setWidgetState,
+      theme,
+      visualizationStyleVariables: {},
+      visualizationTheme: theme,
+      widgetState: state,
+      statePersistence,
+      stateModelContext: &quot;none&quot;,
+    };
+    globalThis.dispatchEvent(
+      new CustomEvent(&quot;openai:set_globals&quot;, {
+        detail: { globals: globalThis.openai },
+      }),
+    );
+  };
+  const sendHeight = () =&gt; {
+    postToHost(&quot;height&quot;, {
+      height: Math.ceil(
+        Math.max(
+          document.body.scrollHeight,
+          document.body.getBoundingClientRect().height,
+        ),
+      ),
+    });
+  };
+
+  globalThis.addEventListener(
+    &quot;message&quot;,
+    (event) =&gt; {
+      const data = apply(getMessageData, event, []);
+      const ports = apply(getMessagePorts, event, []);
+      const source = apply(getMessageSource, event, []);
+      if (
+        hostPort != null ||
+        source !== parentWindow ||
+        typeof data !== &quot;object&quot; ||
+        data?.type !== &quot;codex-visualization-initialize&quot; ||
+        !isArray(ports) ||
+        ports.length !== 1
+      ) {
+        return;
+      }
+      apply(stopMessagePropagation, event, []);
+      const nextHostPort = ports[0];
+      try {
+        apply(addHostMessageListener, nextHostPort, [
+          &quot;message&quot;,
+          (event) =&gt; {
+            const data = apply(getMessageData, event, []);
+            if (typeof data === &quot;object&quot; &amp;&amp; data?.type === &quot;measure&quot;) {
+              sendHeight();
+            } else if (
+              typeof data === &quot;object&quot; &amp;&amp;
+              data?.type === &quot;widget-state-result&quot;
+            ) {
+              /** @type {unknown} */
+              const id = data.id;
+              if (typeof id !== &quot;number&quot;) {
+                return;
+              }
+              const pending = pendingStateWrites.get(id);
+              if (pending != null) {
+                pendingStateWrites.delete(id);
+                globalThis.clearTimeout(pending.timeout);
+                if (data.ok === true) {
+                  pending.resolve();
+                } else {
+                  pending.reject(persistenceError());
+                }
+              }
+            }
+          },
+        ]);
+        apply(startHostPort, nextHostPort, []);
+      } catch {
+        return;
+      }
+      hostPort = nextHostPort;
+      for (const [id, { serializedState }] of pendingStateWrites) {
+        postToHost(&quot;widget-state-write&quot;, { id, state: serializedState });
+      }
+      sendHeight();
+    },
+    { capture: true },
+  );
+  document.currentScript?.remove();
+  mediaQuery.addEventListener(&quot;change&quot;, syncTheme);
+  globalThis.addEventListener(&quot;click&quot;, (event) =&gt; {
+    if (event.defaultPrevented) {
+      return;
+    }
+    let element = null;
+    if (event.target instanceof globalThis.Element) {
+      element = event.target;
+    } else if (event.target instanceof globalThis.Node) {
+      element = event.target.parentElement;
+    }
+    const link = element?.closest(&quot;a[href]&quot;);
+    const href = link?.getAttribute(&quot;href&quot;);
+    if (href == null) {
+      return;
+    }
+    if (href.startsWith(&quot;#&quot;)) {
+      let id;
+      try {
+        id = decodeURIComponent(href.slice(1));
+      } catch {
+        return;
+      }
+      const target = id.length === 0 ? root : document.getElementById(id);
+      if (
+        target == null ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      event.preventDefault();
+      postToHost(&quot;scroll-to&quot;, {
+        top: target.getBoundingClientRect().top + globalThis.scrollY,
+      });
+      return;
+    }
+    event.preventDefault();
+    openExternal({ href });
+  });
+  new ResizeObserver(sendHeight).observe(document.body);
+  syncTheme();
+})();
+&lt;/script&gt;
+&lt;div id=&quot;wb-desktop-journeys&quot; aria-label=&quot;Workbench desktop journeys&quot;&gt;
+  &lt;div class=&quot;wb-lab&quot; aria-label=&quot;Design preview controls&quot;&gt;
+    &lt;div&gt;&lt;strong&gt;Design preview · synthetic state&lt;/strong&gt;&lt;span id=&quot;wb-lab-detail&quot;&gt;Explore the desktop journeys. No recording, paste, audio or AI runs.&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;wb-lab-controls&quot;&gt;&lt;label&gt;Scenario &lt;select id=&quot;wb-scenario&quot; aria-label=&quot;Scenario&quot;&gt;&lt;/select&gt;&lt;/label&gt;&lt;label&gt;State &lt;select id=&quot;wb-model-state&quot; aria-label=&quot;Journey state&quot;&gt;&lt;/select&gt;&lt;/label&gt;&lt;button type=&quot;button&quot; class=&quot;wb-lab-reset cursor-interaction&quot; data-action=&quot;reset-scenario&quot;&gt;Reset scenario&lt;/button&gt;&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;wb-window&quot;&gt;
+    &lt;header class=&quot;wb-titlebar&quot;&gt;&lt;div class=&quot;wb-traffic&quot; aria-hidden=&quot;true&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;span&gt;&lt;/span&gt;&lt;/div&gt;&lt;span&gt;Workbench&lt;/span&gt;&lt;button class=&quot;wb-icon-button cursor-interaction&quot; data-action=&quot;toggle-sidebar&quot; aria-label=&quot;Toggle sidebar&quot; data-tooltip=&quot;Toggle sidebar&quot;&gt;&lt;i data-lucide=&quot;panel-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;/header&gt;
+    &lt;div class=&quot;wb-body&quot;&gt;
+      &lt;nav id=&quot;wb-sidebar&quot; class=&quot;wb-sidebar&quot; aria-label=&quot;Workbench&quot;&gt;&lt;/nav&gt;
+      &lt;main id=&quot;wb-content&quot; class=&quot;wb-content&quot;&gt;&lt;/main&gt;
+    &lt;/div&gt;
+    &lt;div id=&quot;wb-overlay&quot; class=&quot;wb-overlay&quot; hidden&gt;&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div id=&quot;wb-live&quot; class=&quot;wb-sr&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;style&gt;
+#wb-desktop-journeys{
+  --wb-ink:light-dark(#263735,#e6eeeb);--wb-secondary:light-dark(#687773,#a0b0aa);
+  --wb-window:light-dark(#f8faf9,#19231f);--wb-panel:light-dark(#ffffff,#202e27);
+  --wb-sidebar:light-dark(#edf3ef,#16231d);--wb-line:light-dark(#dce5df,#33463b);
+  --wb-soft:light-dark(#edf3ef,#28382f);--wb-mint:light-dark(#d5eee1,#284b3a);
+  --wb-green:light-dark(#24614a,#a7dbc0);--wb-primary:light-dark(#2d5946,#b6e1c8);
+  --wb-on-primary:light-dark(#ffffff,#153823);--wb-warning:light-dark(#795423,#e2c69a);
+  --wb-warning-bg:light-dark(#f7f0e3,#42382a);--wb-shadow:light-dark(#1c3c2420,#00000050);
+  --wb-selected:light-dark(#dceade,#304a37);--wb-pad:28px;
+  font:400 13px/1.45 -apple-system,BlinkMacSystemFont,&quot;SF Pro Text&quot;,&quot;Segoe UI&quot;,sans-serif;
+  color:var(--wb-ink);color-scheme:light dark;width:100%;background:transparent;
+}
+#wb-desktop-journeys *{box-sizing:border-box}
+#wb-desktop-journeys button,#wb-desktop-journeys input,#wb-desktop-journeys select,#wb-desktop-journeys textarea{font:inherit;color:inherit}
+#wb-desktop-journeys button{cursor:inherit}
+#wb-desktop-journeys button:disabled{opacity:.45;cursor:default}
+#wb-desktop-journeys button,#wb-desktop-journeys select{touch-action:manipulation}
+#wb-desktop-journeys h1,#wb-desktop-journeys h2,#wb-desktop-journeys h3,#wb-desktop-journeys p{margin:0}
+#wb-desktop-journeys h1{font-size:25px;font-weight:600;letter-spacing:-.65px;line-height:1.2}
+#wb-desktop-journeys h2{font-size:14px;font-weight:600;letter-spacing:-.1px}
+#wb-desktop-journeys h3{font-size:13px;font-weight:600}
+#wb-desktop-journeys strong{font-weight:600}
+#wb-desktop-journeys svg{flex-shrink:0}
+#wb-desktop-journeys .wb-lab{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 0 13px;font-size:12px;color:var(--wb-secondary);flex-wrap:wrap}
+#wb-desktop-journeys .wb-lab strong{display:block;color:var(--wb-ink);font-size:12px;margin-bottom:2px}
+#wb-desktop-journeys .wb-lab label{display:flex;align-items:center;gap:8px;white-space:nowrap}
+#wb-desktop-journeys .wb-lab-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#wb-desktop-journeys .wb-lab .wb-lab-reset{background:transparent;border:0;padding:6px 0;color:var(--wb-secondary);font-size:12px;text-decoration:underline;text-underline-offset:3px}
+#wb-desktop-journeys .wb-lab select{background:var(--wb-panel);border:1px solid var(--wb-line);border-radius:6px;padding:5px 26px 5px 8px;max-width:140px;font-size:12px}
+#wb-desktop-journeys .wb-lab select#wb-scenario{max-width:200px}
+#wb-desktop-journeys i[data-lucide]{font-style:normal;width:16px;height:16px;display:inline-grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:400;line-height:1}
+#wb-desktop-journeys i[data-lucide]:empty::before{content:&quot;◫&quot;}
+#wb-desktop-journeys .wb-window{border:1px solid var(--wb-line);border-radius:14px;background:var(--wb-window);box-shadow:0 9px 28px var(--wb-shadow);position:relative;overflow:clip}
+#wb-desktop-journeys .wb-titlebar{min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 13px;border-bottom:1px solid var(--wb-line);background:var(--wb-window);font-weight:500}
+#wb-desktop-journeys .wb-traffic{display:flex;gap:7px;width:60px}
+#wb-desktop-journeys .wb-traffic span{width:10px;height:10px;border-radius:50%;background:var(--wb-line)}
+#wb-desktop-journeys .wb-titlebar&gt;.wb-icon-button{width:60px;justify-content:flex-end}
+#wb-desktop-journeys .wb-body{display:grid;grid-template-columns:176px minmax(0,1fr);min-height:696px}
+#wb-desktop-journeys .wb-sidebar{padding:16px 9px 12px;background:var(--wb-sidebar);display:flex;flex-direction:column;gap:15px;border-right:1px solid var(--wb-line)}
+#wb-desktop-journeys .wb-nav-group{display:grid;gap:3px}
+#wb-desktop-journeys .wb-nav-heading{font-size:11px;color:var(--wb-secondary);padding:0 10px 4px;letter-spacing:.35px;font-weight:500}
+#wb-desktop-journeys .wb-nav-item{display:flex;gap:10px;align-items:center;width:100%;border:0;background:transparent;border-radius:7px;padding:8px 10px;text-align:left;min-height:34px}
+#wb-desktop-journeys .wb-nav-item:hover{background:var(--wb-soft)}
+#wb-desktop-journeys .wb-nav-item[aria-current=&quot;page&quot;]{background:var(--wb-selected);color:var(--wb-ink);font-weight:600}
+#wb-desktop-journeys .wb-nav-item svg{width:16px;height:16px}
+#wb-desktop-journeys .wb-nav-name{flex:1;white-space:nowrap}
+#wb-desktop-journeys .wb-nav-dot{width:6px;height:6px;border-radius:100%;background:var(--wb-green);flex-shrink:0}
+#wb-desktop-journeys .wb-nav-dot.is-recovery{background:var(--wb-warning)}
+#wb-desktop-journeys .wb-settings-nav{margin-top:auto;padding-top:14px}
+#wb-desktop-journeys .wb-content{padding:var(--wb-pad);min-width:0}
+#wb-desktop-journeys .wb-page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:25px}
+#wb-desktop-journeys .wb-page-header p{color:var(--wb-secondary);margin-top:7px}
+#wb-desktop-journeys .wb-header-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+#wb-desktop-journeys .wb-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:var(--wb-panel);border:1px solid var(--wb-line);padding:7px 12px;border-radius:7px;min-height:33px;text-decoration:none;font-weight:500;white-space:normal}
+#wb-desktop-journeys .wb-btn:hover{background:var(--wb-soft)}
+#wb-desktop-journeys .wb-btn.wb-primary{background:var(--wb-primary);border-color:transparent;color:var(--wb-on-primary)}
+#wb-desktop-journeys .wb-btn.wb-primary:hover{filter:brightness(1.07)}
+#wb-desktop-journeys .wb-btn.wb-ghost{background:transparent;border-color:transparent;color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-btn.wb-ghost:hover{background:var(--wb-soft)}
+#wb-desktop-journeys .wb-btn svg{width:15px;height:15px}
+#wb-desktop-journeys .wb-icon-button{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;background:transparent;border:0;border-radius:6px}
+#wb-desktop-journeys .wb-icon-button:hover{background:var(--wb-soft)}
+#wb-desktop-journeys .wb-icon-button svg{width:16px;height:16px}
+#wb-desktop-journeys .wb-home-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-bottom:25px}
+#wb-desktop-journeys .wb-action-card{display:flex;gap:13px;align-items:center;padding:18px 16px;border:1px solid var(--wb-line);background:var(--wb-panel);border-radius:10px;text-align:left;min-height:97px;transition:border-color .12s,background .12s}
+#wb-desktop-journeys .wb-action-card:hover{border-color:var(--wb-green);background:var(--wb-soft)}
+#wb-desktop-journeys .wb-action-icon{width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:var(--wb-mint);color:var(--wb-green);flex-shrink:0}
+#wb-desktop-journeys .wb-action-icon svg{width:18px;height:18px}
+#wb-desktop-journeys .wb-action-card strong{display:block;font-size:14px;margin-bottom:3px}
+#wb-desktop-journeys .wb-action-card small{display:block;font-size:12px;color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-section{margin-top:25px}
+#wb-desktop-journeys .wb-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+#wb-desktop-journeys .wb-section-heading .wb-btn{min-height:26px;padding:3px 0}
+#wb-desktop-journeys .wb-list{display:grid}
+#wb-desktop-journeys .wb-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--wb-line);padding:12px 1px;min-height:54px}
+#wb-desktop-journeys .wb-row:last-child{border-bottom:0}
+#wb-desktop-journeys button.wb-row:hover{background:var(--wb-soft);border-radius:6px}
+#wb-desktop-journeys .wb-row-icon{width:29px;height:29px;display:grid;place-items:center;color:var(--wb-secondary);flex-shrink:0}
+#wb-desktop-journeys .wb-row-icon svg{width:17px;height:17px}
+#wb-desktop-journeys .wb-row-copy{flex:1;min-width:0}
+#wb-desktop-journeys .wb-row-copy strong{display:block;font-weight:500}
+#wb-desktop-journeys .wb-row-copy small{display:block;font-size:12px;color:var(--wb-secondary);margin-top:2px}
+#wb-desktop-journeys .wb-row-tail{font-size:12px;color:var(--wb-secondary);white-space:nowrap}
+#wb-desktop-journeys .wb-row-tail svg{width:14px;height:14px}
+#wb-desktop-journeys .wb-empty{color:var(--wb-secondary);font-size:12px;padding:12px 0}
+#wb-desktop-journeys .wb-live-row{background:var(--wb-soft);border-radius:8px;padding:11px 13px;margin-bottom:7px;border:0}
+#wb-desktop-journeys .wb-live-row .wb-row-icon{color:var(--wb-green)}
+#wb-desktop-journeys .wb-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+#wb-desktop-journeys .wb-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#wb-desktop-journeys .wb-editor{display:block;width:100%;min-height:306px;resize:vertical;padding:22px;background:var(--wb-panel);border:1px solid var(--wb-line);border-radius:10px;line-height:1.65;font-size:15px}
+#wb-desktop-journeys .wb-editor::placeholder{color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-editor.wb-short-editor{min-height:157px;font-size:14px}
+#wb-desktop-journeys .wb-editor-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:13px}
+#wb-desktop-journeys .wb-secondary{color:var(--wb-secondary);font-size:12px}
+#wb-desktop-journeys .wb-state-line{display:flex;align-items:center;gap:8px;color:var(--wb-secondary);font-size:12px}
+#wb-desktop-journeys .wb-state-line svg{width:14px;height:14px}
+#wb-desktop-journeys .wb-state-dot{width:7px;height:7px;border-radius:50%;background:var(--wb-green)}
+#wb-desktop-journeys .wb-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#wb-desktop-journeys .wb-field{display:flex;flex-direction:column;gap:7px;min-width:0}
+#wb-desktop-journeys .wb-field&gt;span{font-weight:500;font-size:12px}
+#wb-desktop-journeys .wb-field select,#wb-desktop-journeys .wb-field input,#wb-desktop-journeys .wb-field textarea{width:100%;background:var(--wb-panel);border:1px solid var(--wb-line);border-radius:7px;padding:9px 10px;min-height:37px}
+#wb-desktop-journeys .wb-field textarea{min-height:83px;resize:vertical;line-height:1.5}
+#wb-desktop-journeys .wb-check-line{display:flex;align-items:center;gap:8px;font-size:12px;margin:-5px 0 24px;min-height:25px}
+#wb-desktop-journeys .wb-check-line input{accent-color:var(--wb-primary);width:15px;height:15px;margin:0}
+#wb-desktop-journeys .wb-preparation{border:1px solid var(--wb-line);border-radius:11px;padding:22px;background:var(--wb-panel)}
+#wb-desktop-journeys .wb-preparation .wb-fields{margin:20px 0 25px}
+#wb-desktop-journeys .wb-lead-icon{width:43px;height:43px;display:grid;place-items:center;border-radius:12px;background:var(--wb-mint);color:var(--wb-green);margin-bottom:17px}
+#wb-desktop-journeys .wb-lead-icon svg{width:21px;height:21px}
+#wb-desktop-journeys .wb-preparation h2{font-size:18px;font-weight:600;margin-bottom:6px}
+#wb-desktop-journeys .wb-preparation p{color:var(--wb-secondary);max-width:440px}
+#wb-desktop-journeys .wb-capture-stage{background:var(--wb-panel);border:1px solid var(--wb-line);border-radius:11px;padding:22px;margin-bottom:16px}
+#wb-desktop-journeys .wb-big-status{font-size:36px;font-weight:500;letter-spacing:-1px;font-variant-numeric:tabular-nums;margin:24px 0 12px}
+#wb-desktop-journeys .wb-wave{display:flex;align-items:center;gap:4px;height:40px;margin:18px 0 23px}
+#wb-desktop-journeys .wb-wave span{width:4px;background:var(--wb-green);opacity:.65;border-radius:3px}
+#wb-desktop-journeys .wb-notice{display:flex;align-items:flex-start;gap:12px;padding:15px;background:var(--wb-warning-bg);color:var(--wb-warning);border-radius:9px;margin-bottom:18px}
+#wb-desktop-journeys .wb-notice&gt;svg{width:18px;height:18px;margin-top:2px}
+#wb-desktop-journeys .wb-notice p{font-size:12px;margin-top:4px}
+#wb-desktop-journeys .wb-notice .wb-actions{margin-top:12px}
+#wb-desktop-journeys .wb-admission{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px;background:var(--wb-soft);border-radius:8px;font-size:12px;margin:0 0 18px}
+#wb-desktop-journeys .wb-reading-choice{padding:18px;background:var(--wb-soft);border:1px solid var(--wb-line);border-radius:10px;margin-bottom:17px}
+#wb-desktop-journeys .wb-reading-choice p{color:var(--wb-secondary);font-size:12px;margin:7px 0 13px}
+#wb-desktop-journeys .wb-reading-result{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:13px;font-size:12px;color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-finished{padding:23px;border:1px solid var(--wb-line);border-radius:10px;background:var(--wb-panel)}
+#wb-desktop-journeys .wb-finished h2{font-size:18px;margin-bottom:7px}
+#wb-desktop-journeys .wb-finished p{color:var(--wb-secondary);margin-bottom:20px}
+#wb-desktop-journeys .wb-check{background:var(--wb-mint);color:var(--wb-green);width:34px;height:34px;display:grid;place-items:center;border-radius:50%;margin-bottom:18px}
+#wb-desktop-journeys .wb-check svg{width:18px;height:18px}
+#wb-desktop-journeys .wb-transcript{border:1px solid var(--wb-line);border-radius:10px;padding:21px;background:var(--wb-panel);margin:18px 0}
+#wb-desktop-journeys .wb-transcript p{font-size:14px;line-height:1.7;margin-bottom:18px;white-space:pre-wrap}
+#wb-desktop-journeys .wb-transcript p:last-child{margin-bottom:0}
+#wb-desktop-journeys .wb-transcript time{display:block;color:var(--wb-secondary);font-size:11px;margin-bottom:5px}
+#wb-desktop-journeys .wb-back{margin:-8px 0 18px}
+#wb-desktop-journeys .wb-segment{display:flex;gap:3px;background:var(--wb-soft);padding:3px;border-radius:8px;flex-wrap:wrap}
+#wb-desktop-journeys .wb-segment button{padding:6px 11px;border:0;border-radius:5px;background:transparent;color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-segment button[aria-pressed=&quot;true&quot;]{background:var(--wb-panel);color:var(--wb-ink);box-shadow:0 1px 3px var(--wb-shadow)}
+#wb-desktop-journeys .wb-sample-screen{position:relative;background:var(--wb-soft);border:1px solid var(--wb-line);border-radius:10px;padding:22px;min-height:250px;display:grid;place-items:center;overflow:hidden}
+#wb-desktop-journeys .wb-sample-document{width:100%;max-width:460px;padding:21px 23px;background:var(--wb-panel);border-radius:6px;box-shadow:0 8px 20px var(--wb-shadow);min-width:0}
+#wb-desktop-journeys .wb-sample-document h3{font-size:16px;margin:5px 0 18px}
+#wb-desktop-journeys .wb-sample-document p{font-size:12px;color:var(--wb-secondary);margin:10px 0}
+#wb-desktop-journeys .wb-sample-line{height:7px;border-radius:3px;background:var(--wb-line);margin:10px 0;width:100%}
+#wb-desktop-journeys .wb-sample-line:nth-of-type(2){width:82%}
+#wb-desktop-journeys .wb-sample-line:nth-of-type(3){width:91%}
+#wb-desktop-journeys .wb-selection{outline:2px solid var(--wb-green);outline-offset:7px}
+#wb-desktop-journeys .wb-screen-caption{position:absolute;bottom:9px;right:12px;font-size:11px;color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-capture-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:16px}
+#wb-desktop-journeys .wb-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+#wb-desktop-journeys .wb-timer-strip{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;background:var(--wb-soft);border-radius:8px;margin-top:17px;flex-wrap:wrap}
+#wb-desktop-journeys .wb-timer-strip&gt;span{display:flex;align-items:center;gap:8px}
+#wb-desktop-journeys .wb-timer-strip svg{width:16px;height:16px}
+#wb-desktop-journeys .wb-drawing-board{position:relative;touch-action:none}
+#wb-desktop-journeys .wb-drawing-board canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#wb-desktop-journeys .wb-visual{min-height:224px;background:linear-gradient(158deg,light-dark(#cce5d8,#274e3b),light-dark(#adcfc9,#355b56));border-radius:10px;position:relative;overflow:hidden;display:grid;place-items:center}
+#wb-desktop-journeys .wb-visual::before{content:&quot;&quot;;position:absolute;width:85%;height:140%;border-radius:48%;background:light-dark(#e7f1d590,#87986130);transform:rotate(-24deg);left:44%;top:8%}
+#wb-desktop-journeys .wb-visual::after{content:&quot;&quot;;position:absolute;width:87%;height:130%;border-radius:48%;background:light-dark(#83aea56b,#142f2f77);transform:rotate(20deg);right:36%;top:47%}
+#wb-desktop-journeys .wb-visual-label{z-index:1;color:light-dark(#244b40,#dcefe3);font-size:12px;align-self:end;margin:0 0 16px;padding:5px 9px;background:light-dark(#f4f9eeaa,#1b3129aa);border-radius:6px}
+#wb-desktop-journeys .wb-persona-head{width:60px;height:66px;border-radius:45% 45% 42% 42%;background:light-dark(#36624e,#9abdaa);position:relative;margin-top:-45px;z-index:1}
+#wb-desktop-journeys .wb-persona-head::after{content:&quot;&quot;;position:absolute;width:134px;height:104px;border-radius:55% 55% 10% 10%;left:-37px;top:73px;background:light-dark(#36624e,#9abdaa)}
+#wb-desktop-journeys .wb-library-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#wb-desktop-journeys .wb-library-card{background:var(--wb-panel);border:1px solid var(--wb-line);border-radius:10px;padding:9px;text-align:left;min-width:0}
+#wb-desktop-journeys .wb-library-card .wb-visual{min-height:156px}
+#wb-desktop-journeys .wb-library-card .wb-sample-screen{min-height:156px;padding:13px}
+#wb-desktop-journeys .wb-library-card .wb-sample-document{padding:12px}
+#wb-desktop-journeys .wb-library-card strong{display:block;margin:11px 5px 2px}
+#wb-desktop-journeys .wb-library-card small{display:block;margin:0 5px 5px;font-size:12px;color:var(--wb-secondary)}
+#wb-desktop-journeys .wb-settings-section{margin:22px 0}
+#wb-desktop-journeys .wb-settings-section h2{margin-bottom:8px}
+#wb-desktop-journeys .wb-overlay[hidden]{display:none}
+#wb-desktop-journeys .wb-overlay{position:absolute;inset:44px 0 0;z-index:10;display:flex;justify-content:flex-end;background:light-dark(#15231c20,#00000044)}
+#wb-desktop-journeys .wb-scrim{position:absolute;inset:0;border:0;background:transparent;width:100%;height:100%}
+#wb-desktop-journeys .wb-sheet{position:relative;background:var(--wb-panel);width:min(425px,100%);padding:24px;box-shadow:-8px 0 25px var(--wb-shadow);align-self:stretch;border-left:1px solid var(--wb-line)}
+#wb-desktop-journeys .wb-sheet-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px}
+#wb-desktop-journeys .wb-sheet-header h2{font-size:18px}
+#wb-desktop-journeys .wb-sheet .wb-field{margin:0 0 20px}
+#wb-desktop-journeys .wb-sheet .wb-field small{color:var(--wb-secondary);font-size:12px}
+#wb-desktop-journeys .wb-sheet .wb-menu-item{display:flex;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:13px 7px;border-radius:6px;width:100%;min-height:43px}
+#wb-desktop-journeys .wb-sheet .wb-menu-item:hover{background:var(--wb-soft)}
+#wb-desktop-journeys .wb-sheet .wb-menu-item svg{width:16px;height:16px}
+#wb-desktop-journeys .wb-sheet hr{border:0;border-top:1px solid var(--wb-line);margin:16px 0}
+#wb-desktop-journeys .wb-sheet-note{font-size:12px;color:var(--wb-secondary);margin:18px 0!important}
+#wb-desktop-journeys .wb-playback{display:flex;align-items:center;gap:14px;padding:18px;background:var(--wb-soft);border-radius:8px;margin:20px 0}
+#wb-desktop-journeys .wb-playback-track{flex:1;height:4px;background:var(--wb-line);border-radius:3px}
+#wb-desktop-journeys .wb-playback-track span{display:block;background:var(--wb-green);height:4px;width:24%;border-radius:3px}
+#wb-desktop-journeys .wb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+#wb-desktop-journeys[data-collapsed=&quot;true&quot;] .wb-body{grid-template-columns:59px minmax(0,1fr)}
+#wb-desktop-journeys[data-collapsed=&quot;true&quot;] .wb-sidebar{padding-left:7px;padding-right:7px}
+#wb-desktop-journeys[data-collapsed=&quot;true&quot;] .wb-nav-name,#wb-desktop-journeys[data-collapsed=&quot;true&quot;] .wb-nav-heading{display:none}
+#wb-desktop-journeys[data-collapsed=&quot;true&quot;] .wb-nav-item{justify-content:center;padding:10px 7px;position:relative}
+#wb-desktop-journeys[data-collapsed=&quot;true&quot;] .wb-nav-dot{position:absolute;right:3px;top:7px}
+@media(max-width:760px){#wb-desktop-journeys{--wb-pad:21px}#wb-desktop-journeys .wb-body{grid-template-columns:155px minmax(0,1fr)}#wb-desktop-journeys .wb-action-card{padding:14px 12px;gap:10px}#wb-desktop-journeys .wb-action-icon{width:31px;height:31px}#wb-desktop-journeys .wb-home-actions{gap:9px}#wb-desktop-journeys .wb-row-tail.wb-hide-small{display:none}}
+@media(max-width:620px){#wb-desktop-journeys{--wb-pad:19px}#wb-desktop-journeys .wb-body{grid-template-columns:56px minmax(0,1fr)}#wb-desktop-journeys .wb-sidebar{padding-left:6px;padding-right:6px}#wb-desktop-journeys .wb-nav-name,#wb-desktop-journeys .wb-nav-heading{display:none}#wb-desktop-journeys .wb-nav-item{justify-content:center;padding:10px 7px;position:relative}#wb-desktop-journeys .wb-nav-dot{position:absolute;right:2px;top:7px}#wb-desktop-journeys .wb-page-header{gap:12px}#wb-desktop-journeys .wb-header-actions .wb-btn{padding:6px 8px}#wb-desktop-journeys .wb-fields,#wb-desktop-journeys .wb-split{grid-template-columns:1fr}#wb-desktop-journeys .wb-preparation{padding:18px}#wb-desktop-journeys .wb-sheet{width:min(390px,100%)}}
+@media(max-width:450px){#wb-desktop-journeys{--wb-pad:14px}#wb-desktop-journeys .wb-home-actions,#wb-desktop-journeys .wb-library-grid{grid-template-columns:1fr}#wb-desktop-journeys .wb-action-card{min-height:79px}#wb-desktop-journeys .wb-page-header{flex-wrap:wrap;margin-bottom:20px}#wb-desktop-journeys .wb-page-header h1{font-size:23px}#wb-desktop-journeys .wb-header-actions{justify-content:flex-start}#wb-desktop-journeys .wb-editor{padding:15px;min-height:290px}#wb-desktop-journeys .wb-sample-screen{padding:17px 12px;min-height:220px}#wb-desktop-journeys .wb-sample-document{padding:15px 12px}#wb-desktop-journeys .wb-row{gap:7px}#wb-desktop-journeys .wb-row-tail{white-space:normal;text-align:right}#wb-desktop-journeys .wb-sheet{padding:20px}#wb-desktop-journeys .wb-lab{gap:9px}#wb-desktop-journeys .wb-capture-stage{padding:17px}#wb-desktop-journeys .wb-transcript{padding:16px}}
+@media(pointer:coarse){#wb-desktop-journeys .wb-btn,#wb-desktop-journeys .wb-nav-item,#wb-desktop-journeys .wb-icon-button,#wb-desktop-journeys .wb-segment button{min-height:44px}#wb-desktop-journeys input,#wb-desktop-journeys textarea,#wb-desktop-journeys select{font-size:16px}#wb-desktop-journeys .wb-lab select{font-size:16px;max-width:175px}}
+@media(prefers-reduced-motion:reduce){#wb-desktop-journeys *{transition:none!important}}
+&lt;/style&gt;
+&lt;script&gt;
+(function(){
+  &quot;use strict&quot;;
+  const root=document.getElementById(&quot;wb-desktop-journeys&quot;);
+  const pageNode=document.getElementById(&quot;wb-content&quot;);
+  const sidebar=document.getElementById(&quot;wb-sidebar&quot;);
+  const overlay=document.getElementById(&quot;wb-overlay&quot;);
+  const selector=document.getElementById(&quot;wb-model-state&quot;);
+  const scenarioSelector=document.getElementById(&quot;wb-scenario&quot;);
+  const labDetail=document.getElementById(&quot;wb-lab-detail&quot;);
+  const live=document.getElementById(&quot;wb-live&quot;);
+  const journeyIds=[&quot;dictate&quot;,&quot;meetings&quot;,&quot;read&quot;,&quot;snap&quot;,&quot;snaptalk&quot;,&quot;draw&quot;,&quot;present&quot;,&quot;persona&quot;];
+  const navigation=[[&quot;&quot;,&quot;home&quot;,&quot;Home&quot;,&quot;house&quot;],[&quot;Voice&quot;,&quot;dictate&quot;,&quot;Dictate&quot;,&quot;mic&quot;],[&quot;&quot;,&quot;meetings&quot;,&quot;Meetings&quot;,&quot;video&quot;],[&quot;&quot;,&quot;read&quot;,&quot;Read&quot;,&quot;headphones&quot;],[&quot;Screen&quot;,&quot;snap&quot;,&quot;Snap&quot;,&quot;camera&quot;],[&quot;&quot;,&quot;snaptalk&quot;,&quot;Snap &amp; Talk&quot;,&quot;message-square&quot;],[&quot;&quot;,&quot;draw&quot;,&quot;Draw&quot;,&quot;pencil&quot;],[&quot;&quot;,&quot;present&quot;,&quot;Present&quot;,&quot;monitor&quot;],[&quot;&quot;,&quot;persona&quot;,&quot;Persona&quot;,&quot;user-round&quot;],[&quot;Saved&quot;,&quot;history&quot;,&quot;History&quot;,&quot;history&quot;],[&quot;&quot;,&quot;library&quot;,&quot;Library&quot;,&quot;images&quot;]];
+  const labels={home:&quot;Home&quot;,dictate:&quot;Dictate&quot;,dictionary:&quot;Dictionary&quot;,meetings:&quot;Meetings&quot;,read:&quot;Read&quot;,snap:&quot;Snap&quot;,snaptalk:&quot;Snap &amp; Talk&quot;,draw:&quot;Draw&quot;,present:&quot;Present&quot;,persona:&quot;Persona&quot;,history:&quot;History&quot;,library:&quot;Library&quot;,settings:&quot;Settings&quot;};
+  const icons={dictate:&quot;mic&quot;,meetings:&quot;video&quot;,read:&quot;headphones&quot;,snap:&quot;camera&quot;,snaptalk:&quot;message-square&quot;,draw:&quot;pencil&quot;,present:&quot;monitor&quot;,persona:&quot;user-round&quot;,timer:&quot;timer&quot;};
+  const sampleDictation=&quot;Let&#x27;s keep the first release focused. Make the main action easy to find, put the details within reach, and keep every result in one place.&quot;;
+  const sampleRead=&quot;A good workspace makes the next step clear. Start with one job, keep the useful controls close, and return to your work without losing your place.&quot;;
+  const sampleTranscript=&quot;Let&#x27;s begin with the decisions we need to make today. The first is the desktop flow, from starting a job to finding its result.\n\nThe next step is to review the meeting transcript and keep the recording available if anything needs attention.\n\nWe&#x27;ll try the complete journey before we call it finished.&quot;;
+  const seedHistory=[
+    {id:&quot;sample-meeting&quot;,kind:&quot;meetings&quot;,title:&quot;Product check-in&quot;,meta:&quot;14 min · Today, 9:32&quot;,text:sampleTranscript,status:&quot;finished&quot;},
+    {id:&quot;sample-dictation&quot;,kind:&quot;dictate&quot;,title:&quot;A note for later&quot;,meta:&quot;34 words · Today, 8:54&quot;,text:sampleDictation,status:&quot;finished&quot;},
+    {id:&quot;sample-snap&quot;,kind:&quot;snap&quot;,title:&quot;A screen detail&quot;,meta:&quot;Image · Yesterday, 16:12&quot;,text:&quot;&quot;,status:&quot;finished&quot;},
+    {id:&quot;sample-talk&quot;,kind:&quot;snaptalk&quot;,title:&quot;A screen explanation&quot;,meta:&quot;Image + text · Yesterday, 15:06&quot;,text:&quot;Keep the useful controls near the thing they change. The primary action belongs at the top of this workspace.&quot;,status:&quot;finished&quot;},
+    {id:&quot;sample-outline&quot;,kind:&quot;dictate&quot;,title:&quot;Project outline&quot;,meta:&quot;28 words · Yesterday, 11:20&quot;,text:&quot;The next step is to review the complete desktop journey, then try it with a small example.&quot;,status:&quot;finished&quot;}
+  ];
+  function defaults(){return{
+    version:2,page:&quot;home&quot;,sheet:null,scenario:&quot;home&quot;,selectedHistory:null,selectedAsset:&quot;mint&quot;,presentAsset:&quot;mint&quot;,personaAsset:&quot;persona&quot;,resultOverrides:{},retained:{},
+    journeys:{dictate:&quot;prepare&quot;,meetings:&quot;prepare&quot;,read:&quot;prepare&quot;,snap:&quot;prepare&quot;,snaptalk:&quot;prepare&quot;,draw:&quot;prepare&quot;,present:&quot;prepare&quot;,persona:&quot;prepare&quot;},
+    drafts:{dictate:&quot;&quot;,read:sampleRead,snaptalk:&quot;&quot;},settings:{delivery:&quot;Paste automatically&quot;,style:&quot;Natural&quot;,activation:&quot;Toggle&quot;,voice:&quot;System voice&quot;,pace:&quot;1×&quot;},dictionaryDraft:{heard:&quot;&quot;,written:&quot;&quot;},dictionaryRules:[{heard:&quot;work bench&quot;,written:&quot;Workbench&quot;}],readingPending:null,readingNotice:&quot;&quot;,readingSaveName:&quot;Reading.m4a&quot;,readingSampleSaveCount:0,
+    meetingApp:&quot;Zoom&quot;,includeMic:true,microphone:&quot;Built-in microphone&quot;,capture:&quot;Region&quot;,display:&quot;Built-in display&quot;,pen:&quot;Pen&quot;,
+    timer:{state:&quot;prepare&quot;,minutes:&quot;10&quot;},runs:{dictate:1,meetings:1,snap:1,snaptalk:1},
+    history:seedHistory.map(function(x){return Object.assign({},x)}),
+    assets:[{id:&quot;mint&quot;,name:&quot;Soft mint&quot;,kind:&quot;Image&quot;},{id:&quot;persona&quot;,name:&quot;Example persona&quot;,kind:&quot;Persona&quot;}],
+    strokes:[],recordingPlaying:false,collapsed:false,roomy:false
+  }}
+  function restore(snapshot){
+    const fresh=defaults();const incoming=snapshot&amp;&amp;snapshot.privateContent;
+    if(!incoming||incoming.version!==2)return fresh;
+    [&quot;page&quot;,&quot;scenario&quot;,&quot;selectedHistory&quot;,&quot;selectedAsset&quot;,&quot;presentAsset&quot;,&quot;personaAsset&quot;,&quot;meetingApp&quot;,&quot;microphone&quot;,&quot;capture&quot;,&quot;display&quot;,&quot;pen&quot;,&quot;readingNotice&quot;,&quot;readingSaveName&quot;].forEach(function(k){if(typeof incoming[k]===&quot;string&quot;||incoming[k]===null)fresh[k]=incoming[k]});
+    if(!labels[fresh.page])fresh.page=&quot;home&quot;;
+    [&quot;journeys&quot;,&quot;drafts&quot;,&quot;settings&quot;,&quot;timer&quot;,&quot;runs&quot;,&quot;resultOverrides&quot;,&quot;retained&quot;,&quot;dictionaryDraft&quot;].forEach(function(k){if(incoming[k]&amp;&amp;typeof incoming[k]===&quot;object&quot;)Object.assign(fresh[k],incoming[k])});
+    [&quot;history&quot;,&quot;assets&quot;,&quot;strokes&quot;,&quot;dictionaryRules&quot;].forEach(function(k){if(Array.isArray(incoming[k]))fresh[k]=incoming[k]});
+    fresh.history=fresh.history.filter(function(item){return item.status===&quot;finished&quot;});
+    if(incoming.readingPending&amp;&amp;typeof incoming.readingPending.text===&quot;string&quot;&amp;&amp;typeof incoming.readingPending.origin===&quot;string&quot;)fresh.readingPending=incoming.readingPending;
+    if(Number.isInteger(incoming.readingSampleSaveCount))fresh.readingSampleSaveCount=incoming.readingSampleSaveCount;
+    fresh.collapsed=Boolean(incoming.collapsed);fresh.roomy=Boolean(incoming.roomy);
+    if(typeof incoming.includeMic===&quot;boolean&quot;)fresh.includeMic=incoming.includeMic;
+    fresh.sheet=null;return fresh;
+  }
+  let state=restore(window.openai&amp;&amp;window.openai.widgetState);
+  let lastPublishedState=&quot;&quot;;
+  const design={collapsed:state.collapsed,roomy:state.roomy};
+  function esc(value){return String(value==null?&quot;&quot;:value).replace(/[&amp;&lt;&gt;&quot;&#x27;]/g,function(c){return{&quot;&amp;&quot;:&quot;&amp;amp;&quot;,&quot;&lt;&quot;:&quot;&amp;lt;&quot;,&quot;&gt;&quot;:&quot;&amp;gt;&quot;,&#x27;&quot;&#x27;:&quot;&amp;quot;&quot;,&quot;&#x27;&quot;:&quot;&amp;#39;&quot;}[c]})}
+  const glyphs={house:&quot;⌂&quot;,mic:&quot;♩&quot;,video:&quot;▣&quot;,headphones:&quot;♫&quot;,camera:&quot;▣&quot;,&quot;message-square&quot;:&quot;▤&quot;,pencil:&quot;✎&quot;,monitor:&quot;▱&quot;,&quot;user-round&quot;:&quot;♙&quot;,history:&quot;◷&quot;,images:&quot;▧&quot;,&quot;settings-2&quot;:&quot;⚙&quot;,&quot;sliders-horizontal&quot;:&quot;☷&quot;,timer:&quot;◴&quot;,play:&quot;▷&quot;,pause:&quot;Ⅱ&quot;,square:&quot;□&quot;,check:&quot;✓&quot;,x:&quot;×&quot;,plus:&quot;+&quot;,&quot;arrow-left&quot;:&quot;←&quot;,&quot;arrow-up-right&quot;:&quot;↗&quot;,&quot;chevron-right&quot;:&quot;›&quot;,&quot;rotate-ccw&quot;:&quot;↻&quot;,copy:&quot;▱&quot;,ellipsis:&quot;···&quot;,&quot;folder-open&quot;:&quot;▱&quot;,&quot;triangle-alert&quot;:&quot;△&quot;,keyboard:&quot;⌨&quot;,share:&quot;↑&quot;,&quot;file-text&quot;:&quot;▤&quot;,&quot;audio-lines&quot;:&quot;≋&quot;,&quot;shield-check&quot;:&quot;◇&quot;,&quot;sun-moon&quot;:&quot;◐&quot;,&quot;undo-2&quot;:&quot;↶&quot;,&quot;loader-circle&quot;:&quot;◌&quot;};
+  function icon(name){return &#x27;&lt;i data-lucide=&quot;&#x27;+name+&#x27;&quot; aria-hidden=&quot;true&quot;&gt;&#x27;+(glyphs[name]||&quot;◫&quot;)+&quot;&lt;/i&gt;&quot;}
+  function btn(label,action,param,kind,iconName,disabled){return &#x27;&lt;button type=&quot;button&quot; class=&quot;wb-btn cursor-interaction &#x27;+(kind||&quot;&quot;)+&#x27;&quot; data-action=&quot;&#x27;+action+&#x27;&quot;&#x27;+(param?&#x27; data-value=&quot;&#x27;+esc(param)+&#x27;&quot;&#x27;:&quot;&quot;)+(disabled?&quot; disabled&quot;:&quot;&quot;)+&#x27;&gt;&#x27;+(iconName?icon(iconName):&quot;&quot;)+esc(label)+&quot;&lt;/button&gt;&quot;}
+  function row(title,subtitle,action,param,iconName,tail,extra){return &#x27;&lt;button type=&quot;button&quot; class=&quot;wb-row cursor-interaction &#x27;+(extra||&quot;&quot;)+&#x27;&quot; data-action=&quot;&#x27;+action+&#x27;&quot; data-value=&quot;&#x27;+esc(param||&quot;&quot;)+&#x27;&quot;&gt;&lt;span class=&quot;wb-row-icon&quot;&gt;&#x27;+icon(iconName||&quot;chevron-right&quot;)+&#x27;&lt;/span&gt;&lt;span class=&quot;wb-row-copy&quot;&gt;&lt;strong&gt;&#x27;+esc(title)+&#x27;&lt;/strong&gt;&#x27;+(subtitle?&quot;&lt;small&gt;&quot;+esc(subtitle)+&quot;&lt;/small&gt;&quot;:&quot;&quot;)+&#x27;&lt;/span&gt;&lt;span class=&quot;wb-row-tail&quot;&gt;&#x27;+(tail?esc(tail):icon(&quot;chevron-right&quot;))+&quot;&lt;/span&gt;&lt;/button&gt;&quot;}
+  function field(label,key,value,options,scope){return &#x27;&lt;label class=&quot;wb-field&quot;&gt;&lt;span&gt;&#x27;+esc(label)+&#x27;&lt;/span&gt;&lt;select data-field=&quot;&#x27;+key+&#x27;&quot; data-scope=&quot;&#x27;+(scope||&quot;root&quot;)+&#x27;&quot;&gt;&#x27;+options.map(function(o){return&#x27;&lt;option&#x27;+(o===value?&quot; selected&quot;:&quot;&quot;)+&#x27;&gt;&#x27;+esc(o)+&quot;&lt;/option&gt;&quot;}).join(&quot;&quot;)+&quot;&lt;/select&gt;&lt;/label&gt;&quot;}
+  function header(title,subtitle,actions){return &#x27;&lt;div class=&quot;wb-page-header&quot;&gt;&lt;div&gt;&lt;h1&gt;&#x27;+esc(title)+&#x27;&lt;/h1&gt;&#x27;+(subtitle?&quot;&lt;p&gt;&quot;+esc(subtitle)+&quot;&lt;/p&gt;&quot;:&quot;&quot;)+&#x27;&lt;/div&gt;&#x27;+(actions?&#x27;&lt;div class=&quot;wb-header-actions&quot;&gt;&#x27;+actions+&quot;&lt;/div&gt;&quot;:&quot;&quot;)+&quot;&lt;/div&gt;&quot;}
+  function status(text){return&#x27;&lt;span class=&quot;wb-state-line&quot;&gt;&lt;span class=&quot;wb-state-dot&quot;&gt;&lt;/span&gt;&#x27;+esc(text)+&quot;&lt;/span&gt;&quot;}
+  function wave(){return&#x27;&lt;div class=&quot;wb-wave&quot; aria-label=&quot;Sample audio level&quot;&gt;&#x27;+[10,17,25,14,31,37,24,16,29,38,21,15,30,36,20,12,24,33,19,10].map(function(n){return&#x27;&lt;span style=&quot;height:&#x27;+n+&#x27;px&quot;&gt;&lt;/span&gt;&#x27;}).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;}
+  function screen(selected,draw){return&#x27;&lt;div class=&quot;wb-sample-screen&#x27;+(draw?&quot; wb-drawing-board&quot;:&quot;&quot;)+&#x27;&quot;&gt;&lt;div class=&quot;wb-sample-document&#x27;+(selected?&quot; wb-selection&quot;:&quot;&quot;)+&#x27;&quot;&gt;&lt;span class=&quot;wb-secondary&quot;&gt;Project notes&lt;/span&gt;&lt;h3&gt;Make the next step clear.&lt;/h3&gt;&lt;p&gt;One workspace. One primary action.&lt;/p&gt;&lt;div class=&quot;wb-sample-line&quot;&gt;&lt;/div&gt;&lt;div class=&quot;wb-sample-line&quot;&gt;&lt;/div&gt;&lt;div class=&quot;wb-sample-line&quot;&gt;&lt;/div&gt;&lt;/div&gt;&#x27;+(draw?&#x27;&lt;canvas id=&quot;wb-drawing-canvas&quot; aria-label=&quot;Draw on the synthetic screen&quot;&gt;&lt;/canvas&gt;&#x27;:&quot;&quot;)+&#x27;&lt;span class=&quot;wb-screen-caption&quot;&gt;Sample screen&lt;/span&gt;&lt;/div&gt;&#x27;}
+  function visual(persona){return&#x27;&lt;div class=&quot;wb-visual&quot;&gt;&#x27;+(persona?&#x27;&lt;div class=&quot;wb-persona-head&quot;&gt;&lt;/div&gt;&#x27;:&#x27;&lt;span class=&quot;wb-visual-label&quot;&gt;Soft mint&lt;/span&gt;&#x27;)+&quot;&lt;/div&gt;&quot;}
+  function save(){
+    state.collapsed=design.collapsed;state.roomy=design.roomy;
+    const persisted=JSON.parse(JSON.stringify(state));
+    persisted.sheet=null;
+    persisted.strokes=persisted.strokes.slice(-3).map(function(s){return{pen:s.pen,points:s.points.slice(0,60)}});
+    Object.keys(persisted.drafts).forEach(function(k){persisted.drafts[k]=persisted.drafts[k].slice(0,1800)});
+    if(persisted.readingPending)persisted.readingPending={text:persisted.readingPending.text.slice(0,1800),origin:persisted.readingPending.origin.slice(0,100)};
+    persisted.readingSaveName=persisted.readingSaveName.slice(0,100);
+    persisted.dictionaryRules=persisted.dictionaryRules.slice(0,8).map(function(rule){return{heard:rule.heard.slice(0,80),written:rule.written.slice(0,80)}});
+    persisted.dictionaryDraft={heard:persisted.dictionaryDraft.heard.slice(0,80),written:persisted.dictionaryDraft.written.slice(0,80)};
+    persisted.history=persisted.history.slice(0,9).map(function(h){h.text=(h.text||&quot;&quot;).slice(0,1800);return h});
+    const byteSize=function(value){return new TextEncoder().encode(JSON.stringify(value)).length};
+    while(byteSize(persisted)&gt;12500&amp;&amp;persisted.history.length&gt;1)persisted.history.pop();
+    if(byteSize(persisted)&gt;12500)persisted.strokes=[];
+    if(byteSize(persisted)&gt;12500){
+      Object.keys(persisted.drafts).forEach(function(k){persisted.drafts[k]=persisted.drafts[k].slice(0,650)});
+      persisted.history.forEach(function(h){h.text=h.text.slice(0,650)});
+    }
+    const snapshot={modelContent:{page:labels[state.page],scenario:state.scenario,journeys:state.journeys,timer:state.timer.state,sidebar:design.collapsed?&quot;collapsed&quot;:&quot;expanded&quot;,spacing:design.roomy?&quot;roomy&quot;:&quot;compact&quot;,synthetic:true},privateContent:persisted};
+    lastPublishedState=JSON.stringify(snapshot);
+    if(window.openai&amp;&amp;window.openai.setWidgetState)window.openai.setWidgetState(snapshot).catch(function(){});
+  }
+  function announce(message){labDetail.textContent=message;live.textContent=message}
+  function go(page,id){
+    state.page=page;state.sheet=null;
+    if(page===&quot;history&quot;)state.selectedHistory=id||null;
+    render();save();
+  }
+  function activeJobs(){
+    const jobs=journeyIds.filter(function(id){return[&quot;active&quot;,&quot;paused&quot;,&quot;processing&quot;].indexOf(state.journeys[id])&gt;=0}).map(function(id){
+      const s=state.journeys[id];const statusText=s===&quot;active&quot;?(id===&quot;meetings&quot;?&quot;Recording&quot;:id===&quot;dictate&quot;?&quot;Listening&quot;:id===&quot;read&quot;?&quot;Reading&quot;:id===&quot;snap&quot;?&quot;Selecting&quot;:&quot;In progress&quot;):s===&quot;processing&quot;?&quot;Processing&quot;:s===&quot;paused&quot;?&quot;Paused&quot;:&quot;Needs attention&quot;;
+      return{id:id,title:labels[id],detail:statusText,icon:icons[id]};
+    });
+    if(state.timer.state===&quot;active&quot;||state.timer.state===&quot;paused&quot;)jobs.push({id:&quot;timer&quot;,title:&quot;Timer&quot;,detail:state.timer.minutes+&quot;:00 · &quot;+(state.timer.state===&quot;active&quot;?&quot;Running&quot;:&quot;Paused&quot;),icon:&quot;timer&quot;});
+    return jobs;
+  }
+  function home(){
+    const cards=[[&quot;dictate&quot;,&quot;Dictate&quot;,&quot;Speak into any app&quot;],[&quot;meetings&quot;,&quot;Meetings&quot;,&quot;Transcribe a meeting or call&quot;],[&quot;snap&quot;,&quot;Snap&quot;,&quot;Capture something on screen&quot;],[&quot;snaptalk&quot;,&quot;Snap &amp; Talk&quot;,&quot;Explain something on screen&quot;]];
+    const jobs=activeJobs();
+    return header(&quot;Home&quot;,&quot;What would you like to do?&quot;)+&#x27;&lt;div class=&quot;wb-home-actions&quot;&gt;&#x27;+cards.map(function(c){return&#x27;&lt;button type=&quot;button&quot; class=&quot;wb-action-card cursor-interaction&quot; data-action=&quot;nav&quot; data-value=&quot;&#x27;+c[0]+&#x27;&quot;&gt;&lt;span class=&quot;wb-action-icon&quot;&gt;&#x27;+icon(icons[c[0]])+&#x27;&lt;/span&gt;&lt;span&gt;&lt;strong&gt;&#x27;+c[1]+&quot;&lt;/strong&gt;&lt;small&gt;&quot;+c[2]+&quot;&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&quot;}).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;+(jobs.length?&#x27;&lt;section class=&quot;wb-section&quot;&gt;&lt;div class=&quot;wb-section-heading&quot;&gt;&lt;h2&gt;In progress&lt;/h2&gt;&lt;/div&gt;&#x27;+jobs.map(function(j){return row(j.title,j.detail,&quot;resume&quot;,j.id,j.icon,&quot;&quot;,&quot;wb-live-row&quot;)}).join(&quot;&quot;)+&quot;&lt;/section&gt;&quot;:&quot;&quot;)+&#x27;&lt;section class=&quot;wb-section&quot;&gt;&lt;div class=&quot;wb-section-heading&quot;&gt;&lt;h2&gt;Recent&lt;/h2&gt;&#x27;+btn(&quot;History&quot;,&quot;nav&quot;,&quot;history&quot;,&quot;wb-ghost&quot;,&quot;arrow-up-right&quot;)+&#x27;&lt;/div&gt;&lt;div class=&quot;wb-list&quot;&gt;&#x27;+state.history.filter(function(item){return item.status===&quot;finished&quot;}).slice(0,5).map(historyRow).join(&quot;&quot;)+&quot;&lt;/div&gt;&lt;/section&gt;&quot;;
+  }
+  function historyRow(item){return row(item.title,(item.status===&quot;recovery&quot;?&quot;Needs attention · &quot;:&quot;&quot;)+labels[item.kind]+&quot; · &quot;+item.meta,&quot;history&quot;,item.id,icons[item.kind])}
+  function resultId(id){return(state.retained[id]&amp;&amp;state.retained[id].id)||state.resultOverrides[id]||&quot;current-&quot;+id+&quot;-&quot;+(state.runs[id]||1)}
+  function retainWork(id){
+    if(![&quot;dictate&quot;,&quot;meetings&quot;,&quot;snaptalk&quot;].includes(id))return;
+    if(!state.retained[id])state.retained[id]={id:resultId(id),kind:id,title:id===&quot;meetings&quot;?&quot;New meeting&quot;:id===&quot;dictate&quot;?&quot;New dictation&quot;:&quot;New Snap &amp; Talk&quot;};
+  }
+  function ensureResult(id,recovery){
+    if([&quot;dictate&quot;,&quot;meetings&quot;,&quot;snap&quot;,&quot;snaptalk&quot;].indexOf(id)&lt;0)return;
+    if(recovery){retainWork(id);return}
+    const key=resultId(id);const existing=state.history.find(function(x){return x.id===key});
+    const item={id:key,kind:id,title:(state.retained[id]&amp;&amp;state.retained[id].title)||{dictate:&quot;New dictation&quot;,meetings:&quot;New meeting&quot;,snap:&quot;New Snap&quot;,snaptalk:&quot;New Snap &amp; Talk&quot;}[id],meta:&quot;Just now&quot;,status:&quot;finished&quot;,text:id===&quot;dictate&quot;?(state.drafts.dictate||sampleDictation):id===&quot;meetings&quot;?sampleTranscript:id===&quot;snaptalk&quot;?(state.drafts.snaptalk||&quot;Keep the primary action close to the content. Move the settings into a sheet so the workspace stays clear.&quot;):&quot;&quot;};
+    if(existing){item.title=existing.title;Object.assign(existing,item)}else state.history.unshift(item);
+    state.resultOverrides[id]=key;delete state.retained[id];
+    state.history=state.history.slice(0,13);
+  }
+  function recovery(id,title,message,actionLabel,action,value){
+    return &#x27;&lt;div class=&quot;wb-notice&quot; role=&quot;status&quot;&gt;&#x27;+icon(&quot;triangle-alert&quot;)+&#x27;&lt;div&gt;&lt;strong&gt;&#x27;+esc(title)+&#x27;&lt;/strong&gt;&lt;p&gt;&#x27;+esc(message)+&#x27;&lt;/p&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(actionLabel,action||&quot;retry&quot;,value||id,&quot;&quot;,&quot;rotate-ccw&quot;)+&quot;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&quot;;
+  }
+  function dictate(){
+    const s=state.journeys.dictate;
+    const main=s===&quot;active&quot;?btn(&quot;Stop dictating&quot;,&quot;stop&quot;,&quot;dictate&quot;,&quot;wb-primary&quot;,&quot;square&quot;):s===&quot;processing&quot;?btn(&quot;Processing…&quot;,&quot;noop&quot;,null,&quot;&quot;,&quot;loader-circle&quot;,true):btn(s===&quot;finished&quot;?&quot;Dictate again&quot;:&quot;Start dictating&quot;,&quot;start&quot;,&quot;dictate&quot;,&quot;wb-primary&quot;,&quot;mic&quot;,s===&quot;recovery&quot;);
+    let content=header(&quot;Dictate&quot;,&quot;&quot;,btn(&quot;Settings&quot;,&quot;sheet&quot;,&quot;dictate&quot;,&quot;wb-ghost&quot;,&quot;sliders-horizontal&quot;));
+    if(s===&quot;recovery&quot;)content+=recovery(&quot;dictate&quot;,&quot;Dictation needs attention&quot;,&quot;Your recording is retained. Retry when the service is available.&quot;,&quot;Retry transcription&quot;);
+    content+=&#x27;&lt;div class=&quot;wb-toolbar&quot;&gt;&#x27;+main+status(s===&quot;active&quot;?&quot;Listening&quot;:s===&quot;processing&quot;?&quot;Transcribing&quot;:s===&quot;finished&quot;?&quot;Ready to use&quot;:&quot;Ready when you are&quot;)+&#x27;&lt;/div&gt;&lt;textarea class=&quot;wb-editor&quot; aria-label=&quot;Dictation text&quot; data-field=&quot;dictate&quot; data-scope=&quot;drafts&quot; placeholder=&quot;Your words will appear here.&quot;&gt;&#x27;+esc(state.drafts.dictate)+&#x27;&lt;/textarea&gt;&lt;div class=&quot;wb-editor-footer&quot;&gt;&lt;span class=&quot;wb-secondary&quot;&gt;&#x27;+(state.drafts.dictate.trim()?state.drafts.dictate.trim().split(/\s+/).length+&quot; words&quot;:&quot;&quot;)+&#x27;&lt;/span&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Copy&quot;,&quot;design-copy&quot;,&quot;dictation&quot;,&quot;&quot;,&quot;copy&quot;,!state.drafts.dictate.trim())+btn(&quot;More&quot;,&quot;sheet&quot;,&quot;dictate-more&quot;,&quot;wb-ghost&quot;,&quot;ellipsis&quot;,!state.drafts.dictate.trim())+&quot;&lt;/div&gt;&lt;/div&gt;&quot;;
+    return content;
+  }
+  function meetings(){
+    const s=state.journeys.meetings;let content=header(&quot;Meetings&quot;,&quot;Transcribe a meeting or call.&quot;);
+    if(s===&quot;recovery&quot;)content+=recovery(&quot;meetings&quot;,&quot;Unfinished recording&quot;,&quot;The recording is kept here. Retry when you&#x27;re ready to transcribe it.&quot;,&quot;Retry saved recording&quot;);
+    if(s===&quot;prepare&quot;||s===&quot;recovery&quot;)return content+&#x27;&lt;section class=&quot;wb-preparation&quot;&gt;&lt;div class=&quot;wb-lead-icon&quot;&gt;&#x27;+icon(&quot;video&quot;)+&#x27;&lt;/div&gt;&lt;h2&gt;Ready for your next call&lt;/h2&gt;&lt;p&gt;Choose the audio you want to capture.&lt;/p&gt;&lt;div class=&quot;wb-fields&quot;&gt;&#x27;+field(&quot;Audio source&quot;,&quot;meetingApp&quot;,state.meetingApp,[&quot;Zoom&quot;,&quot;Microsoft Teams&quot;,&quot;Google Chrome&quot;,&quot;FaceTime&quot;,&quot;Microphone only&quot;])+((state.includeMic||state.meetingApp===&quot;Microphone only&quot;)?field(&quot;Microphone&quot;,&quot;microphone&quot;,state.microphone,[&quot;Built-in microphone&quot;,&quot;External microphone&quot;]):&quot;&quot;)+&#x27;&lt;/div&gt;&#x27;+(state.meetingApp===&quot;Microphone only&quot;?&quot;&quot;:&#x27;&lt;label class=&quot;wb-check-line&quot;&gt;&lt;input type=&quot;checkbox&quot; data-field=&quot;includeMic&quot; data-scope=&quot;root&quot;&#x27;+(state.includeMic?&quot; checked&quot;:&quot;&quot;)+&#x27;&gt;Include my microphone&lt;/label&gt;&#x27;)+btn(&quot;Start meeting&quot;,&quot;start&quot;,&quot;meetings&quot;,&quot;wb-primary&quot;,&quot;mic&quot;)+&quot;&lt;/section&gt;&quot;;
+    if(s===&quot;active&quot;)return content+&#x27;&lt;section class=&quot;wb-capture-stage&quot;&gt;&#x27;+status(&quot;Recording · &quot;+state.meetingApp)+&#x27;&lt;div class=&quot;wb-big-status&quot;&gt;12:48&lt;/div&gt;&lt;p class=&quot;wb-secondary&quot;&gt;&#x27;+esc(state.meetingApp===&quot;Microphone only&quot;?state.microphone:&quot;App audio&quot;+(state.includeMic?&quot; + &quot;+state.microphone:&quot; only&quot;))+&#x27;&lt;/p&gt;&#x27;+wave()+&#x27;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Stop &amp; transcribe&quot;,&quot;stop&quot;,&quot;meetings&quot;,&quot;wb-primary&quot;,&quot;square&quot;)+btn(&quot;Stop &amp; keep for later&quot;,&quot;keep-meeting&quot;,null,&quot;wb-ghost&quot;)+&#x27;&lt;/div&gt;&lt;/section&gt;&#x27;;
+    if(s===&quot;processing&quot;)return content+&#x27;&lt;section class=&quot;wb-capture-stage&quot;&gt;&lt;div class=&quot;wb-lead-icon&quot;&gt;&#x27;+icon(&quot;audio-lines&quot;)+&#x27;&lt;/div&gt;&lt;h2&gt;Preparing your transcript&lt;/h2&gt;&lt;p class=&quot;wb-secondary&quot; style=&quot;margin:9px 0 22px&quot;&gt;Your recording is kept here while the transcript is prepared.&lt;/p&gt;&#x27;+btn(&quot;Stop processing&quot;,&quot;keep-meeting&quot;,null,&quot;&quot;,&quot;square&quot;)+&#x27;&lt;/section&gt;&#x27;;
+    return content+&#x27;&lt;section class=&quot;wb-finished&quot;&gt;&lt;div class=&quot;wb-check&quot;&gt;&#x27;+icon(&quot;check&quot;)+&#x27;&lt;/div&gt;&lt;h2&gt;Your transcript is ready&lt;/h2&gt;&lt;p&gt;Review this meeting in History.&lt;/p&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Review transcript&quot;,&quot;history&quot;,resultId(&quot;meetings&quot;),&quot;wb-primary&quot;,&quot;file-text&quot;)+btn(&quot;New meeting&quot;,&quot;prepare&quot;,&quot;meetings&quot;,&quot;wb-ghost&quot;,&quot;plus&quot;)+&quot;&lt;/div&gt;&lt;/section&gt;&quot;;
+  }
+  function read(){
+    const s=state.journeys.read;let content=header(&quot;Read&quot;,&quot;&quot;,btn(&quot;Import text…&quot;,&quot;sheet&quot;,&quot;read-import&quot;,&quot;wb-ghost&quot;,&quot;file-text&quot;)+btn(&quot;Voice &amp; pace&quot;,&quot;sheet&quot;,&quot;read&quot;,&quot;wb-ghost&quot;,&quot;sliders-horizontal&quot;));
+    if(s===&quot;recovery&quot;)content+=recovery(&quot;read&quot;,&quot;This voice is unavailable&quot;,&quot;Your text is still here. Choose an available voice to continue.&quot;,&quot;Choose a voice&quot;,&quot;sheet&quot;,&quot;read&quot;);
+    if(state.readingPending)content+=&#x27;&lt;section class=&quot;wb-reading-choice&quot;&gt;&lt;h2&gt;Replace this reading?&lt;/h2&gt;&lt;p&gt;&#x27;+esc(state.readingPending.origin)+&#x27; is ready. Your current reading stays here until you replace it.&lt;/p&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Replace reading&quot;,&quot;replace-reading&quot;,null,&quot;wb-primary&quot;,&quot;arrow-right&quot;)+btn(&quot;Keep current&quot;,&quot;keep-reading&quot;,null,&quot;&quot;,&quot;check&quot;)+&#x27;&lt;/div&gt;&lt;/section&gt;&lt;p class=&quot;wb-secondary&quot; style=&quot;margin-bottom:8px&quot;&gt;Current reading&lt;/p&gt;&#x27;;
+    content+=&#x27;&lt;textarea class=&quot;wb-editor&quot; aria-label=&quot;Text to read&quot; data-field=&quot;read&quot; data-scope=&quot;drafts&quot; placeholder=&quot;Add the text you want to hear.&quot;&gt;&#x27;+esc(state.drafts.read)+&#x27;&lt;/textarea&gt;&lt;div class=&quot;wb-editor-footer&quot;&gt;&lt;span class=&quot;wb-secondary&quot;&gt;&#x27;+esc(state.settings.voice)+&quot; · &quot;+esc(state.settings.pace)+&#x27;&lt;/span&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;;
+    if(s===&quot;active&quot;||s===&quot;paused&quot;)content+=btn(s===&quot;active&quot;?&quot;Pause&quot;:&quot;Resume&quot;,&quot;pause-read&quot;,null,&quot;wb-primary&quot;,s===&quot;active&quot;?&quot;pause&quot;:&quot;play&quot;)+btn(&quot;Stop&quot;,&quot;finish&quot;,&quot;read&quot;,&quot;&quot;,&quot;square&quot;);
+    else content+=btn(s===&quot;finished&quot;?&quot;Listen again&quot;:&quot;Listen&quot;,&quot;start&quot;,&quot;read&quot;,&quot;wb-primary&quot;,&quot;play&quot;,!state.drafts.read.trim());
+    content+=btn(&quot;Save audio…&quot;,&quot;sheet&quot;,&quot;read-save&quot;,&quot;&quot;,&quot;download&quot;,!state.drafts.read.trim());
+    content+=&quot;&lt;/div&gt;&lt;/div&gt;&quot;;
+    if(state.readingNotice)content+=&#x27;&lt;div class=&quot;wb-reading-result&quot; role=&quot;status&quot;&gt;&lt;span&gt;&#x27;+esc(state.readingNotice)+&#x27;&lt;/span&gt;&lt;button type=&quot;button&quot; class=&quot;wb-icon-button cursor-interaction&quot; data-action=&quot;clear-reading-notice&quot; aria-label=&quot;Dismiss reading result&quot;&gt;&#x27;+icon(&quot;x&quot;)+&quot;&lt;/button&gt;&lt;/div&gt;&quot;;
+    if(s===&quot;active&quot;||s===&quot;paused&quot;)content+=&#x27;&lt;div class=&quot;wb-playback&quot;&gt;&lt;span class=&quot;wb-secondary&quot;&gt;0:26&lt;/span&gt;&lt;div class=&quot;wb-playback-track&quot;&gt;&lt;span&gt;&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;wb-secondary&quot;&gt;1:48&lt;/span&gt;&lt;/div&gt;&#x27;;
+    return content;
+  }
+  function offerReading(text,origin){
+    state.page=&quot;read&quot;;state.sheet=null;state.readingNotice=&quot;&quot;;
+    if(text===state.drafts.read){state.readingPending=null;state.readingNotice=origin+&quot; already matches this reading.&quot;}
+    else if(state.drafts.read.trim()||[&quot;active&quot;,&quot;paused&quot;].includes(state.journeys.read))state.readingPending={text:text,origin:origin};
+    else{state.drafts.read=text;state.readingPending=null;state.journeys.read=&quot;prepare&quot;;state.readingNotice=origin+&quot; is ready. Choose Listen when you&#x27;re ready.&quot;}
+    render();save();announce(&quot;Imported or reused text is staged locally. No playback, generation or sending starts.&quot;);
+  }
+  function snap(talk){
+    const id=talk?&quot;snaptalk&quot;:&quot;snap&quot;,s=state.journeys[id];
+    let content=header(labels[id],talk?&quot;Capture a detail, then explain it.&quot;:&quot;Choose what to capture.&quot;);
+    if(s===&quot;recovery&quot;)content+=recovery(id,talk?&quot;The explanation needs attention&quot;:&quot;Capture needs attention&quot;,talk?&quot;Your image is retained. Retry the text without taking another Snap.&quot;:&quot;Review screen access, then try again.&quot;,talk?&quot;Retry transcription&quot;:&quot;Review access&quot;,talk?&quot;retry&quot;:&quot;sheet&quot;,talk?id:&quot;permissions&quot;);
+    if(s===&quot;prepare&quot;||s===&quot;recovery&quot;){
+      content+=&#x27;&lt;div class=&quot;wb-toolbar&quot;&gt;&lt;div class=&quot;wb-segment&quot; aria-label=&quot;Capture area&quot;&gt;&#x27;+[&quot;Region&quot;,&quot;Window&quot;,&quot;Screen&quot;].map(function(x){return&#x27;&lt;button type=&quot;button&quot; class=&quot;cursor-interaction&quot; data-action=&quot;capture-choice&quot; data-value=&quot;&#x27;+x+&#x27;&quot; aria-pressed=&quot;&#x27;+(state.capture===x)+&#x27;&quot;&gt;&#x27;+x+&quot;&lt;/button&gt;&quot;}).join(&quot;&quot;)+&#x27;&lt;/div&gt;&lt;/div&gt;&#x27;+screen(false,false)+&#x27;&lt;div class=&quot;wb-capture-actions&quot;&gt;&#x27;+btn(talk?&quot;Start Snap &amp; Talk&quot;:&quot;Take Snap&quot;,&quot;start&quot;,id,&quot;wb-primary&quot;,talk?&quot;mic&quot;:&quot;camera&quot;,talk&amp;&amp;s===&quot;recovery&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else if(s===&quot;active&quot;){
+      content+=&#x27;&lt;div class=&quot;wb-toolbar&quot;&gt;&#x27;+status(talk?&quot;Capture selected · Listening&quot;:&quot;Select a &quot;+state.capture.toLowerCase())+(talk?&quot;&quot;:btn(&quot;Cancel&quot;,&quot;prepare&quot;,id,&quot;wb-ghost&quot;,&quot;x&quot;))+&quot;&lt;/div&gt;&quot;+screen(true,false);
+      if(talk)content+=wave();
+      content+=&#x27;&lt;div class=&quot;wb-capture-actions&quot;&gt;&#x27;+btn(talk?&quot;Stop speaking&quot;:&quot;Capture selection&quot;,talk?&quot;stop&quot;:&quot;finish&quot;,id,&quot;wb-primary&quot;,talk?&quot;square&quot;:&quot;camera&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else if(s===&quot;processing&quot;){
+      content+=screen(false,false)+&#x27;&lt;div class=&quot;wb-toolbar&quot; style=&quot;margin-top:17px&quot;&gt;&#x27;+status(&quot;Preparing your explanation&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else{
+      content+=screen(false,false);
+      if(talk)content+=&#x27;&lt;textarea class=&quot;wb-editor wb-short-editor&quot; style=&quot;margin-top:14px&quot; aria-label=&quot;Screen explanation&quot; data-field=&quot;snaptalk&quot; data-scope=&quot;drafts&quot;&gt;&#x27;+esc(state.drafts.snaptalk)+&#x27;&lt;/textarea&gt;&#x27;;
+      content+=&#x27;&lt;div class=&quot;wb-editor-footer&quot;&gt;&#x27;+btn(talk?&quot;New Snap &amp; Talk&quot;:&quot;New Snap&quot;,&quot;prepare&quot;,id,&quot;wb-ghost&quot;,&quot;plus&quot;)+&#x27;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(talk?&quot;Copy text&quot;:&quot;Copy image&quot;,&quot;design-copy&quot;,talk?&quot;explanation&quot;:&quot;image&quot;,&quot;&quot;,&quot;copy&quot;)+btn(&quot;More&quot;,&quot;sheet&quot;,id+&quot;-more&quot;,&quot;wb-ghost&quot;,&quot;ellipsis&quot;)+&quot;&lt;/div&gt;&lt;/div&gt;&quot;;
+    }
+    return content;
+  }
+  function timerStrip(){return&#x27;&lt;div class=&quot;wb-timer-strip&quot;&gt;&lt;span&gt;&#x27;+icon(&quot;timer&quot;)+&#x27;&lt;strong&gt;Timer&lt;/strong&gt;&lt;span class=&quot;wb-secondary&quot;&gt;&#x27;+(state.timer.state===&quot;prepare&quot;?&quot;Ready&quot;:state.timer.minutes+&quot;:00 · &quot;+(state.timer.state===&quot;active&quot;?&quot;Running&quot;:state.timer.state===&quot;paused&quot;?&quot;Paused&quot;:&quot;Finished&quot;))+&#x27;&lt;/span&gt;&lt;/span&gt;&#x27;+btn(state.timer.state===&quot;prepare&quot;?&quot;Set timer&quot;:&quot;Open timer&quot;,&quot;sheet&quot;,&quot;timer&quot;,&quot;wb-ghost&quot;,&quot;chevron-right&quot;)+&quot;&lt;/div&gt;&quot;}
+  function draw(){
+    const s=state.journeys.draw;let content=header(&quot;Draw&quot;,&quot;Mark up what’s on your screen.&quot;);
+    if(s===&quot;recovery&quot;)content+=recovery(&quot;draw&quot;,&quot;Drawing needs attention&quot;,&quot;Your selected tool is kept. Review screen access to continue.&quot;,&quot;Review access&quot;,&quot;sheet&quot;,&quot;permissions&quot;);
+    if(s===&quot;finished&quot;)content+=&#x27;&lt;section class=&quot;wb-finished&quot;&gt;&lt;div class=&quot;wb-check&quot;&gt;&#x27;+icon(&quot;check&quot;)+&#x27;&lt;/div&gt;&lt;h2&gt;Drawing ended&lt;/h2&gt;&lt;p&gt;Start a new drawing or capture your screen.&lt;/p&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Start drawing&quot;,&quot;start&quot;,&quot;draw&quot;,&quot;wb-primary&quot;,&quot;pencil&quot;)+btn(&quot;Take a Snap&quot;,&quot;nav&quot;,&quot;snap&quot;,&quot;&quot;,&quot;camera&quot;)+&quot;&lt;/div&gt;&lt;/section&gt;&quot;;
+    else{
+      content+=&#x27;&lt;div class=&quot;wb-toolbar&quot;&gt;&#x27;+(s===&quot;active&quot;?&#x27;&lt;div class=&quot;wb-segment&quot; aria-label=&quot;Drawing tool&quot;&gt;&#x27;+[&quot;Pen&quot;,&quot;Highlighter&quot;,&quot;Eraser&quot;].map(function(x){return&#x27;&lt;button type=&quot;button&quot; class=&quot;cursor-interaction&quot; data-action=&quot;pen&quot; data-value=&quot;&#x27;+x+&#x27;&quot; aria-pressed=&quot;&#x27;+(state.pen===x)+&#x27;&quot;&gt;&#x27;+x+&quot;&lt;/button&gt;&quot;}).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;:&#x27;&lt;span class=&quot;wb-secondary&quot;&gt;Your drawing tools stay within reach.&lt;/span&gt;&#x27;)+(s===&quot;active&quot;?btn(&quot;Done&quot;,&quot;finish&quot;,&quot;draw&quot;,&quot;wb-primary&quot;,&quot;check&quot;):btn(&quot;Start drawing&quot;,&quot;start&quot;,&quot;draw&quot;,&quot;wb-primary&quot;,&quot;pencil&quot;))+&quot;&lt;/div&gt;&quot;+screen(false,s===&quot;active&quot;);
+      if(s===&quot;active&quot;)content+=&#x27;&lt;div class=&quot;wb-editor-footer&quot;&gt;&#x27;+btn(&quot;Undo&quot;,&quot;undo&quot;,null,&quot;wb-ghost&quot;,&quot;undo-2&quot;,!state.strokes.length)+btn(&quot;Take a Snap&quot;,&quot;nav&quot;,&quot;snap&quot;,&quot;wb-ghost&quot;,&quot;camera&quot;)+&quot;&lt;/div&gt;&quot;;
+    }
+    return content+timerStrip();
+  }
+  function presentation(persona){
+    const id=persona?&quot;persona&quot;:&quot;present&quot;,s=state.journeys[id],name=labels[id];
+    const chosen=state.assets.find(function(x){return x.id===(persona?state.personaAsset:state.presentAsset)})||state.assets[0];
+    let content=header(name,persona?&quot;Choose the Persona you want on screen.&quot;:&quot;Set the scene for your presentation.&quot;);
+    if(s===&quot;recovery&quot;)content+=recovery(id,name+&quot; needs attention&quot;,&quot;Your selection is kept. Review it before starting again.&quot;,&quot;Review selection&quot;,&quot;sheet&quot;,&quot;asset&quot;);
+    content+=chosen.kind===&quot;Snap&quot;?screen(false,false):visual(chosen.kind===&quot;Persona&quot;);
+    if(s===&quot;active&quot;){
+      content+=&#x27;&lt;div class=&quot;wb-editor-footer&quot;&gt;&#x27;+status(persona?&quot;Persona is on&quot;:&quot;Presenting · &quot;+state.display)+&#x27;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Change image&quot;,&quot;library-for&quot;,id,&quot;wb-ghost&quot;,&quot;images&quot;)+btn(persona?&quot;Hide Persona&quot;:&quot;End presentation&quot;,&quot;finish&quot;,id,&quot;wb-primary&quot;,&quot;square&quot;)+&quot;&lt;/div&gt;&lt;/div&gt;&quot;;
+    }else{
+      content+=&#x27;&lt;div class=&quot;wb-editor-footer&quot;&gt;&lt;span class=&quot;wb-secondary&quot;&gt;&#x27;+esc(chosen.name)+(s===&quot;finished&quot;?&quot; · &quot;+(persona?&quot;Hidden&quot;:&quot;Presentation ended&quot;):&quot;&quot;)+&#x27;&lt;/span&gt;&#x27;+btn(&quot;Choose from Library&quot;,&quot;library-for&quot;,id,&quot;wb-ghost&quot;,&quot;images&quot;)+&#x27;&lt;/div&gt;&lt;div class=&quot;wb-fields&quot; style=&quot;margin:22px 0&quot;&gt;&#x27;+(persona?&quot;&quot;:field(&quot;Display&quot;,&quot;display&quot;,state.display,[&quot;Built-in display&quot;,&quot;External display&quot;]))+&#x27;&lt;/div&gt;&#x27;+btn(persona?&quot;Show Persona&quot;:&quot;Present&quot;,&quot;start&quot;,id,&quot;wb-primary&quot;,persona?&quot;user-round&quot;:&quot;monitor&quot;);
+    }
+    return content;
+  }
+  function history(){
+    const item=state.history.find(function(x){return x.id===state.selectedHistory});
+    if(!item)return header(&quot;History&quot;,&quot;Your captured work, ready to return to.&quot;)+&#x27;&lt;div class=&quot;wb-list&quot;&gt;&#x27;+state.history.filter(function(item){return item.status===&quot;finished&quot;}).map(historyRow).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;;
+    let content=&#x27;&lt;div class=&quot;wb-back&quot;&gt;&#x27;+btn(&quot;History&quot;,&quot;nav&quot;,&quot;history&quot;,&quot;wb-ghost&quot;,&quot;arrow-left&quot;)+&quot;&lt;/div&gt;&quot;+header(item.title,labels[item.kind]+&quot; · &quot;+item.meta,btn(&quot;More&quot;,&quot;sheet&quot;,&quot;history-more&quot;,&quot;wb-ghost&quot;,&quot;ellipsis&quot;));
+    if(item.kind===&quot;snap&quot;||item.kind===&quot;snaptalk&quot;)content+=screen(false,false);
+    if(item.text){
+      content+=&#x27;&lt;div class=&quot;wb-transcript&quot;&gt;&#x27;+item.text.split(&quot;\n\n&quot;).map(function(p,index){return&#x27;&lt;p&gt;&#x27;+(item.kind===&quot;meetings&quot;?&quot;&lt;time&gt;&quot;+[&quot;00:12&quot;,&quot;02:08&quot;,&quot;09:36&quot;][index%3]+&quot;&lt;/time&gt;&quot;:&quot;&quot;)+esc(p)+&quot;&lt;/p&gt;&quot;}).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;;
+    }
+    content+=&#x27;&lt;div class=&quot;wb-editor-footer&quot;&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+(item.kind===&quot;meetings&quot;?btn(&quot;Recording&quot;,&quot;sheet&quot;,&quot;recording&quot;,&quot;wb-ghost&quot;,&quot;headphones&quot;):btn(&quot;Open workspace&quot;,&quot;nav&quot;,item.kind,&quot;wb-ghost&quot;,&quot;arrow-up-right&quot;))+&#x27;&lt;/div&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(item.kind===&quot;snap&quot;?&quot;Copy image&quot;:&quot;Copy text&quot;,&quot;design-copy&quot;,item.kind===&quot;snap&quot;?&quot;image&quot;:&quot;text&quot;,&quot;&quot;,&quot;copy&quot;)+&quot;&lt;/div&gt;&lt;/div&gt;&quot;;
+    return content;
+  }
+  function library(){
+    return header(&quot;Library&quot;,&quot;Reusable images and Personas.&quot;,btn(&quot;Add image&quot;,&quot;sheet&quot;,&quot;import&quot;,&quot;wb-ghost&quot;,&quot;plus&quot;))+(state.libraryDestination?&#x27;&lt;div class=&quot;wb-toolbar&quot;&gt;&lt;span class=&quot;wb-secondary&quot;&gt;Choose an image for &#x27;+esc(labels[state.libraryDestination])+&quot;&lt;/span&gt;&quot;+btn(&quot;Cancel&quot;,&quot;nav&quot;,state.libraryDestination,&quot;wb-ghost&quot;,&quot;x&quot;)+&quot;&lt;/div&gt;&quot;:&quot;&quot;)+&#x27;&lt;div class=&quot;wb-library-grid&quot;&gt;&#x27;+state.assets.map(function(a){return&#x27;&lt;button type=&quot;button&quot; class=&quot;wb-library-card cursor-interaction&quot; data-action=&quot;asset&quot; data-value=&quot;&#x27;+esc(a.id)+&#x27;&quot;&gt;&#x27;+(a.kind===&quot;Snap&quot;?screen(false,false):visual(a.kind===&quot;Persona&quot;))+&quot;&lt;strong&gt;&quot;+esc(a.name)+&quot;&lt;/strong&gt;&lt;small&gt;&quot;+esc(a.kind)+&quot;&lt;/small&gt;&lt;/button&gt;&quot;}).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;;
+  }
+  function settings(){
+    return header(&quot;Settings&quot;,&quot;&quot;)+&#x27;&lt;section class=&quot;wb-settings-section&quot;&gt;&lt;h2&gt;Voice&lt;/h2&gt;&#x27;+row(&quot;Dictate&quot;,&quot;Delivery, text style, activation and dictionary&quot;,&quot;sheet&quot;,&quot;dictate&quot;,&quot;mic&quot;)+row(&quot;Read&quot;,&quot;Voice and pace&quot;,&quot;sheet&quot;,&quot;read&quot;,&quot;headphones&quot;)+&#x27;&lt;/section&gt;&lt;section class=&quot;wb-settings-section&quot;&gt;&lt;h2&gt;Access&lt;/h2&gt;&#x27;+row(&quot;Permissions&quot;,&quot;Microphone, screen and accessibility&quot;,&quot;sheet&quot;,&quot;permissions&quot;,&quot;shield-check&quot;)+&#x27;&lt;/section&gt;&lt;section class=&quot;wb-settings-section&quot;&gt;&lt;h2&gt;Workbench&lt;/h2&gt;&#x27;+row(&quot;Keyboard shortcuts&quot;,&quot;Start familiar actions from any app&quot;,&quot;sheet&quot;,&quot;shortcuts&quot;,&quot;keyboard&quot;)+row(&quot;Appearance&quot;,&quot;Use your Mac’s appearance&quot;,&quot;sheet&quot;,&quot;appearance&quot;,&quot;sun-moon&quot;)+&quot;&lt;/section&gt;&quot;;
+  }
+  function dictionary(){
+    return &#x27;&lt;div class=&quot;wb-back&quot;&gt;&#x27;+btn(&quot;Back to Dictate&quot;,&quot;nav&quot;,&quot;dictate&quot;,&quot;wb-ghost&quot;,&quot;arrow-left&quot;)+&#x27;&lt;/div&gt;&#x27;+header(&quot;Dictionary&quot;,&quot;Names and spellings for future dictations.&quot;)+&#x27;&lt;div class=&quot;wb-preparation&quot;&gt;&lt;div class=&quot;wb-fields&quot;&gt;&lt;label class=&quot;wb-field&quot;&gt;&lt;span&gt;Heard&lt;/span&gt;&lt;input data-field=&quot;heard&quot; data-scope=&quot;dictionaryDraft&quot; placeholder=&quot;e.g. work bench&quot; value=&quot;&#x27;+esc(state.dictionaryDraft.heard)+&#x27;&quot;&gt;&lt;/label&gt;&lt;label class=&quot;wb-field&quot;&gt;&lt;span&gt;Write instead&lt;/span&gt;&lt;input data-field=&quot;written&quot; data-scope=&quot;dictionaryDraft&quot; placeholder=&quot;e.g. Workbench&quot; value=&quot;&#x27;+esc(state.dictionaryDraft.written)+&#x27;&quot;&gt;&lt;/label&gt;&lt;/div&gt;&#x27;+btn(&quot;Add&quot;,&quot;add-rule&quot;,null,&quot;wb-primary&quot;,&quot;plus&quot;,!state.dictionaryDraft.heard.trim()||!state.dictionaryDraft.written.trim())+&#x27;&lt;/div&gt;&lt;div class=&quot;wb-list&quot; style=&quot;margin-top:18px&quot;&gt;&#x27;+state.dictionaryRules.map(function(rule){return &#x27;&lt;div class=&quot;wb-row&quot;&gt;&lt;span class=&quot;wb-row-copy&quot;&gt;&lt;strong&gt;&#x27;+esc(rule.heard)+&#x27; → &#x27;+esc(rule.written)+&#x27;&lt;/strong&gt;&lt;/span&gt;&lt;/div&gt;&#x27;}).join(&quot;&quot;)+&quot;&lt;/div&gt;&quot;;
+  }
+  function menuItem(label,action,value,iconName){return&#x27;&lt;button type=&quot;button&quot; class=&quot;wb-menu-item cursor-interaction&quot; data-action=&quot;&#x27;+action+&#x27;&quot;&#x27;+(value?&#x27; data-value=&quot;&#x27;+esc(value)+&#x27;&quot;&#x27;:&quot;&quot;)+&#x27;&gt;&#x27;+icon(iconName||&quot;chevron-right&quot;)+esc(label)+&quot;&lt;/button&gt;&quot;}
+  function sheetContent(){
+    const kind=state.sheet;
+    let title=&quot;&quot;,body=&quot;&quot;;
+    if(kind===&quot;dictate&quot;){
+      title=&quot;Dictate settings&quot;;body=field(&quot;Delivery&quot;,&quot;delivery&quot;,state.settings.delivery,[&quot;Paste automatically&quot;,&quot;Copy to clipboard&quot;],&quot;settings&quot;)+field(&quot;Text style&quot;,&quot;style&quot;,state.settings.style,[&quot;Natural&quot;,&quot;Light cleanup&quot;,&quot;Original&quot;],&quot;settings&quot;)+field(&quot;Activation&quot;,&quot;activation&quot;,state.settings.activation,[&quot;Toggle&quot;,&quot;Hold&quot;],&quot;settings&quot;)+&#x27;&lt;hr&gt;&lt;div class=&quot;wb-row&quot;&gt;&lt;span class=&quot;wb-row-copy&quot;&gt;&lt;strong&gt;Dictionary&lt;/strong&gt;&lt;small&gt;Names and spellings for future dictations.&lt;/small&gt;&lt;/span&gt;&lt;/div&gt;&#x27;+btn(&quot;Your dictionary&quot;,&quot;nav&quot;,&quot;dictionary&quot;,&quot;&quot;,&quot;book-open&quot;);
+    }else if(kind===&quot;read&quot;){
+      title=&quot;Voice &amp; pace&quot;;body=field(&quot;Voice&quot;,&quot;voice&quot;,state.settings.voice,[&quot;System voice&quot;,&quot;English — Australia&quot;,&quot;English — United States&quot;],&quot;settings&quot;)+field(&quot;Pace&quot;,&quot;pace&quot;,state.settings.pace,[&quot;0.75×&quot;,&quot;1×&quot;,&quot;1.25×&quot;,&quot;1.5×&quot;,&quot;2×&quot;],&quot;settings&quot;);
+    }else if(kind===&quot;read-import&quot;){
+      title=&quot;Import text&quot;;body=&#x27;&lt;p class=&quot;wb-secondary&quot;&gt;Sample source · project-notes.txt&lt;/p&gt;&lt;div class=&quot;wb-transcript&quot;&gt;&lt;p&gt;&#x27;+esc(sampleDictation)+&#x27;&lt;/p&gt;&lt;/div&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Use sample text&quot;,&quot;import-reading&quot;,null,&quot;wb-primary&quot;,&quot;file-text&quot;)+btn(&quot;Cancel&quot;,&quot;close-sheet&quot;,null,&quot;&quot;,&quot;x&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else if(kind===&quot;read-save&quot;){
+      title=&quot;Save audio&quot;;body=&#x27;&lt;p class=&quot;wb-secondary&quot;&gt;Sample save in this design preview. No audio is generated and no file is written.&lt;/p&gt;&lt;label class=&quot;wb-field&quot; style=&quot;margin-top:22px&quot;&gt;&lt;span&gt;Filename&lt;/span&gt;&lt;input data-field=&quot;readingSaveName&quot; data-scope=&quot;root&quot; maxlength=&quot;100&quot; value=&quot;&#x27;+esc(state.readingSaveName)+&#x27;&quot;&gt;&lt;/label&gt;&lt;div class=&quot;wb-actions&quot;&gt;&#x27;+btn(&quot;Save sample&quot;,&quot;save-reading-sample&quot;,null,&quot;wb-primary&quot;,&quot;download&quot;)+btn(&quot;Cancel&quot;,&quot;close-sheet&quot;,null,&quot;&quot;,&quot;x&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else if(kind===&quot;permissions&quot;){
+      title=&quot;Permissions&quot;;body=row(&quot;Microphone&quot;,&quot;For dictation and your side of a call&quot;,&quot;os-settings&quot;,&quot;Microphone&quot;,&quot;mic&quot;,&quot;Review&quot;)+row(&quot;Screen &amp; system audio&quot;,&quot;For captures and meeting app audio&quot;,&quot;os-settings&quot;,&quot;Screen &amp; System Audio Recording&quot;,&quot;monitor&quot;,&quot;Review&quot;)+row(&quot;Accessibility&quot;,&quot;For pasting into another app&quot;,&quot;os-settings&quot;,&quot;Accessibility&quot;,&quot;keyboard&quot;,&quot;Review&quot;)+&#x27;&lt;p class=&quot;wb-sheet-note&quot;&gt;Access is managed in macOS System Settings.&lt;/p&gt;&#x27;;
+    }else if(kind===&quot;timer&quot;){
+      title=&quot;Timer&quot;;body=field(&quot;Duration&quot;,&quot;minutes&quot;,state.timer.minutes,[&quot;5&quot;,&quot;10&quot;,&quot;15&quot;,&quot;25&quot;,&quot;45&quot;],&quot;timer&quot;)+&#x27;&lt;div class=&quot;wb-big-status&quot;&gt;&#x27;+esc(state.timer.minutes)+&#x27;:00&lt;/div&gt;&lt;p class=&quot;wb-secondary&quot;&gt;&#x27;+(state.timer.state===&quot;active&quot;?&quot;Running&quot;:state.timer.state===&quot;paused&quot;?&quot;Paused&quot;:state.timer.state===&quot;finished&quot;?&quot;Finished&quot;:&quot;Ready&quot;)+&#x27;&lt;/p&gt;&lt;div class=&quot;wb-actions&quot; style=&quot;margin-top:24px&quot;&gt;&#x27;+(state.timer.state===&quot;active&quot;?btn(&quot;Pause&quot;,&quot;timer-pause&quot;,null,&quot;wb-primary&quot;,&quot;pause&quot;)+btn(&quot;Stop&quot;,&quot;timer-stop&quot;,null,&quot;&quot;,&quot;square&quot;):state.timer.state===&quot;paused&quot;?btn(&quot;Resume&quot;,&quot;timer-start&quot;,null,&quot;wb-primary&quot;,&quot;play&quot;)+btn(&quot;Stop&quot;,&quot;timer-stop&quot;,null,&quot;&quot;,&quot;square&quot;):btn(&quot;Start timer&quot;,&quot;timer-start&quot;,null,&quot;wb-primary&quot;,&quot;play&quot;))+&#x27;&lt;/div&gt;&lt;p class=&quot;wb-sheet-note&quot;&gt;The timer stays active as you move between workspaces.&lt;/p&gt;&#x27;;
+    }else if(kind===&quot;recording&quot;){
+      title=&quot;Retained recording&quot;;body=&#x27;&lt;p class=&quot;wb-secondary&quot;&gt;Original meeting audio&lt;/p&gt;&lt;div class=&quot;wb-playback&quot;&gt;&#x27;+btn(state.recordingPlaying?&quot;Pause&quot;:&quot;Play&quot;,&quot;recording-play&quot;,null,&quot;&quot;,state.recordingPlaying?&quot;pause&quot;:&quot;play&quot;)+&#x27;&lt;span class=&quot;wb-secondary&quot;&gt;0:00 / 14:00&lt;/span&gt;&lt;/div&gt;&#x27;+menuItem(&quot;Reveal recording&quot;,&quot;design-action&quot;,&quot;Reveal the retained recording in Finder&quot;,&quot;folder-open&quot;);
+    }else if(kind===&quot;asset&quot;){
+      const asset=state.assets.find(function(x){return x.id===state.selectedAsset})||state.assets[0];title=asset.name;body=(asset.kind===&quot;Snap&quot;?screen(false,false):visual(asset.kind===&quot;Persona&quot;))+&#x27;&lt;div class=&quot;wb-actions&quot; style=&quot;margin-top:20px&quot;&gt;&#x27;+btn(&quot;Use in Present&quot;,&quot;use-asset&quot;,&quot;present&quot;,&quot;wb-primary&quot;,&quot;monitor&quot;)+btn(&quot;Use in Persona&quot;,&quot;use-asset&quot;,&quot;persona&quot;,&quot;&quot;,&quot;user-round&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else if(kind===&quot;import&quot;){
+      title=&quot;Add to Library&quot;;body=&#x27;&lt;p class=&quot;wb-secondary&quot;&gt;Choose a local image to reuse in Present or Persona.&lt;/p&gt;&lt;div style=&quot;margin-top:24px&quot;&gt;&#x27;+btn(&quot;Choose image…&quot;,&quot;design-action&quot;,&quot;Open the native image picker&quot;,&quot;&quot;,&quot;folder-open&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else if(kind===&quot;shortcuts&quot;){
+      title=&quot;Keyboard shortcuts&quot;;body=navigation.filter(function(n){return[&quot;dictate&quot;,&quot;snap&quot;,&quot;snaptalk&quot;,&quot;draw&quot;].indexOf(n[1])&gt;=0}).map(function(n){return row(n[2],&quot;Use your configured shortcut&quot;,&quot;design-action&quot;,&quot;Edit the &quot;+n[2]+&quot; shortcut&quot;,n[3],&quot;Edit&quot;)}).join(&quot;&quot;);
+    }else if(kind===&quot;appearance&quot;){
+      title=&quot;Appearance&quot;;body=&#x27;&lt;div class=&quot;wb-row&quot;&gt;&lt;span class=&quot;wb-row-copy&quot;&gt;&lt;strong&gt;Follow system appearance&lt;/strong&gt;&lt;small&gt;Workbench matches your Mac.&lt;/small&gt;&lt;/span&gt;&#x27;+icon(&quot;check&quot;)+&quot;&lt;/div&gt;&quot;;
+    }else{
+      title=&quot;More&quot;;
+      const item=kind===&quot;history-more&quot;?state.history.find(function(x){return x.id===state.selectedHistory}):null;
+      const source=item?item.kind:kind===&quot;dictate-more&quot;?&quot;dictate&quot;:kind===&quot;snap-more&quot;?&quot;snap&quot;:&quot;snaptalk&quot;;
+      if(!item&amp;&amp;state.history.some(function(h){return h.id===resultId(source)&amp;&amp;h.status===&quot;finished&quot;}))body+=menuItem(&quot;Show in History&quot;,&quot;show-current&quot;,source,&quot;history&quot;);
+      if(source===&quot;dictate&quot;||source===&quot;meetings&quot;||source===&quot;snaptalk&quot;)body+=menuItem(&quot;Read this text&quot;,&quot;reuse-read&quot;,item?item.id:source,&quot;headphones&quot;);
+      if(source===&quot;snap&quot;||source===&quot;snaptalk&quot;)body+=menuItem(&quot;Save image to Library&quot;,&quot;save-asset&quot;,item?item.id:source,&quot;images&quot;)+menuItem(&quot;Open Draw&quot;,&quot;nav&quot;,&quot;draw&quot;,&quot;pencil&quot;);
+      body+=menuItem(&quot;Export…&quot;,&quot;design-action&quot;,source===&quot;snap&quot;?&quot;Open image export&quot;:&quot;Open text export&quot;,&quot;share&quot;);
+    }
+    return &#x27;&lt;button type=&quot;button&quot; class=&quot;wb-scrim cursor-interaction&quot; data-action=&quot;close-sheet&quot; aria-label=&quot;Close sheet&quot;&gt;&lt;/button&gt;&lt;section class=&quot;wb-sheet&quot; role=&quot;dialog&quot; aria-modal=&quot;true&quot; aria-labelledby=&quot;wb-sheet-title&quot;&gt;&lt;div class=&quot;wb-sheet-header&quot;&gt;&lt;h2 id=&quot;wb-sheet-title&quot;&gt;&#x27;+esc(title)+&#x27;&lt;/h2&gt;&lt;button type=&quot;button&quot; class=&quot;wb-icon-button cursor-interaction&quot; data-action=&quot;close-sheet&quot; aria-label=&quot;Close sheet&quot;&gt;&#x27;+icon(&quot;x&quot;)+&quot;&lt;/button&gt;&lt;/div&gt;&quot;+body+&quot;&lt;/section&gt;&quot;;
+  }
+  function renderSidebar(){
+    let markup=&quot;&quot;;navigation.forEach(function(n,index){
+      if(n[0]||index===0){if(index&gt;0)markup+=&quot;&lt;/div&gt;&quot;;markup+=&#x27;&lt;div class=&quot;wb-nav-group&quot;&gt;&#x27;+(n[0]?&#x27;&lt;div class=&quot;wb-nav-heading&quot;&gt;&#x27;+n[0]+&quot;&lt;/div&gt;&quot;:&quot;&quot;)}
+      const s=state.journeys[n[1]],active=[&quot;active&quot;,&quot;paused&quot;,&quot;processing&quot;,&quot;recovery&quot;].indexOf(s)&gt;=0;
+      markup+=&#x27;&lt;button type=&quot;button&quot; class=&quot;wb-nav-item cursor-interaction&quot; data-action=&quot;nav&quot; data-value=&quot;&#x27;+n[1]+&#x27;&quot; aria-label=&quot;&#x27;+n[2]+(active?&quot;, &quot;+s:&quot;&quot;)+&#x27;&quot; data-tooltip=&quot;&#x27;+n[2]+(active?&quot; · &quot;+s:&quot;&quot;)+&#x27;&quot; data-tooltip-placement=&quot;right&quot;&#x27;+(state.page===n[1]||(state.page===&quot;dictionary&quot;&amp;&amp;n[1]===&quot;dictate&quot;)?&#x27; aria-current=&quot;page&quot;&#x27;:&quot;&quot;)+&#x27;&gt;&#x27;+icon(n[3])+&#x27;&lt;span class=&quot;wb-nav-name&quot;&gt;&#x27;+n[2]+&quot;&lt;/span&gt;&quot;+(active?&#x27;&lt;span class=&quot;wb-nav-dot&#x27;+(s===&quot;recovery&quot;?&quot; is-recovery&quot;:&quot;&quot;)+&#x27;&quot;&gt;&lt;/span&gt;&#x27;:&quot;&quot;)+&quot;&lt;/button&gt;&quot;;
+    });markup+=&#x27;&lt;/div&gt;&lt;div class=&quot;wb-settings-nav&quot;&gt;&lt;button type=&quot;button&quot; class=&quot;wb-nav-item cursor-interaction&quot; data-action=&quot;nav&quot; data-value=&quot;settings&quot; aria-label=&quot;Settings&quot; data-tooltip=&quot;Settings&quot; data-tooltip-placement=&quot;right&quot;&#x27;+(state.page===&quot;settings&quot;?&#x27; aria-current=&quot;page&quot;&#x27;:&quot;&quot;)+&#x27;&gt;&#x27;+icon(&quot;settings-2&quot;)+&#x27;&lt;span class=&quot;wb-nav-name&quot;&gt;Settings&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;&#x27;;
+    sidebar.innerHTML=markup;
+  }
+  function renderSelector(){
+    const enabled=journeyIds.indexOf(state.page)&gt;=0;
+    let choices=[&quot;prepare&quot;,&quot;active&quot;,&quot;finished&quot;,&quot;recovery&quot;];
+    if([&quot;dictate&quot;,&quot;meetings&quot;,&quot;snaptalk&quot;].indexOf(state.page)&gt;=0)choices.splice(2,0,&quot;processing&quot;);
+    if(state.page===&quot;read&quot;)choices.splice(2,0,&quot;paused&quot;);
+    selector.disabled=!enabled;selector.innerHTML=(enabled?choices:[&quot;overview&quot;]).map(function(s){return&#x27;&lt;option value=&quot;&#x27;+s+&#x27;&quot;&#x27;+(state.journeys[state.page]===s?&quot; selected&quot;:&quot;&quot;)+&#x27;&gt;&#x27;+s.charAt(0).toUpperCase()+s.slice(1)+&quot;&lt;/option&gt;&quot;}).join(&quot;&quot;);
+    scenarioSelector.innerHTML=Object.keys(scenarios).map(function(id){return&#x27;&lt;option value=&quot;&#x27;+id+&#x27;&quot;&#x27;+(state.scenario===id?&quot; selected&quot;:&quot;&quot;)+&#x27;&gt;&#x27;+esc(scenarios[id].label)+&quot;&lt;/option&gt;&quot;}).join(&quot;&quot;);
+  }
+  function render(){
+    root.dataset.collapsed=String(design.collapsed);root.style.setProperty(&quot;--wb-pad&quot;,design.roomy?&quot;34px&quot;:&quot;&quot;);
+    renderSidebar();renderSelector();
+    const renderers={home:home,dictate:dictate,dictionary:dictionary,meetings:meetings,read:read,snap:function(){return snap(false)},snaptalk:function(){return snap(true)},draw:draw,present:function(){return presentation(false)},persona:function(){return presentation(true)},history:history,library:library,settings:settings};
+    pageNode.innerHTML=renderers[state.page]();
+    const blocker=audioBlocker(state.page);
+    if(state.retained[state.page]&amp;&amp;state.journeys[state.page]===&quot;recovery&quot;)pageNode.querySelectorAll(&#x27;button[data-action=&quot;start&quot;]&#x27;).forEach(function(b){b.disabled=true});
+    if(blocker){
+      pageNode.querySelectorAll(&#x27;button[data-action=&quot;start&quot;],button[data-action=&quot;retry&quot;]&#x27;).forEach(function(b){b.disabled=true});
+      const notice=document.createElement(&quot;div&quot;);notice.className=&quot;wb-admission&quot;;notice.innerHTML=&#x27;&lt;span&gt;Finish &#x27;+esc(labels[blocker])+&#x27; before starting &#x27;+esc(labels[state.page])+&#x27;.&lt;/span&gt;&#x27;+btn(&quot;Open &quot;+labels[blocker],&quot;nav&quot;,blocker,&quot;wb-ghost&quot;,&quot;arrow-up-right&quot;);
+      const heading=pageNode.querySelector(&quot;.wb-page-header&quot;);if(heading)heading.after(notice);
+    }
+    overlay.hidden=!state.sheet;overlay.innerHTML=state.sheet?sheetContent():&quot;&quot;;
+    pageNode.inert=Boolean(state.sheet);sidebar.inert=Boolean(state.sheet);
+    if(globalThis.lucide)globalThis.lucide.createIcons({attrs:{width:16,height:16}});
+    setupCanvas();
+  }
+  function audioBlocker(id){
+    const audio=[&quot;dictate&quot;,&quot;meetings&quot;,&quot;read&quot;,&quot;snaptalk&quot;];
+    if(!audio.includes(id))return null;
+    return audio.find(function(other){return other!==id&amp;&amp;[&quot;active&quot;,&quot;paused&quot;,&quot;processing&quot;].includes(state.journeys[other])})||null;
+  }
+  function setJourney(id,value){
+    if(!journeyIds.includes(id))return;
+    const blocker=audioBlocker(id);
+    if(blocker&amp;&amp;[&quot;active&quot;,&quot;processing&quot;].includes(value)){render();announce(&quot;Finish &quot;+labels[blocker]+&quot; before starting &quot;+labels[id]+&quot;. Existing work is unchanged.&quot;);return}
+    const previous=state.journeys[id];
+    if(value===&quot;active&quot;&amp;&amp;previous===&quot;recovery&quot;&amp;&amp;state.retained[id]){render();announce(&quot;Retry the retained recording before beginning another &quot;+labels[id]+&quot; job. Existing work is kept.&quot;);return}
+    if(value===&quot;active&quot;&amp;&amp;(previous===&quot;finished&quot;||previous===&quot;prepare&quot;)){if(state.history.some(function(x){return x.id===resultId(id)}))state.runs[id]=(state.runs[id]||1)+1;delete state.resultOverrides[id]}
+    state.journeys[id]=value;
+    if(value===&quot;active&quot;&amp;&amp;id===&quot;dictate&quot;&amp;&amp;!state.drafts.dictate)state.drafts.dictate=&quot;Let&#x27;s keep the first release focused.&quot;;
+    if(value===&quot;finished&quot;){
+      if(id===&quot;dictate&quot;&amp;&amp;!state.drafts.dictate)state.drafts.dictate=sampleDictation;
+      if(id===&quot;snaptalk&quot;&amp;&amp;!state.drafts.snaptalk)state.drafts.snaptalk=&quot;Keep the primary action close to the content. Move the settings into a sheet so the workspace stays clear.&quot;;
+      ensureResult(id,false);
+    }
+    if(value===&quot;recovery&quot;&amp;&amp;id!==&quot;snap&quot;)ensureResult(id,true);
+    if(value===&quot;processing&quot;){
+      retainWork(id);
+    }
+    render();save();announce(&quot;Viewing the &quot;+labels[id]+&quot; &quot;+value+&quot; state. This is synthetic work.&quot;);
+  }
+  selector.addEventListener(&quot;change&quot;,function(){setJourney(state.page,selector.value)});
+  scenarioSelector.addEventListener(&quot;change&quot;,function(){
+    const key=scenarioSelector.value;applyScenario(key,true);
+    if(window.location.hash!==&quot;#&quot;+key)window.location.hash=key;
+  });
+  root.addEventListener(&quot;input&quot;,function(event){
+    const el=event.target;if(!el.dataset||!el.dataset.field)return;
+    const scope=el.dataset.scope,key=el.dataset.field;
+    if(scope===&quot;root&quot;)state[key]=el.type===&quot;checkbox&quot;?el.checked:el.value;else if(state[scope])state[scope][key]=el.value;
+    save();
+    if(scope===&quot;drafts&quot;){
+      if(key===&quot;read&quot;)state.readingNotice=&quot;&quot;;
+      if(key===&quot;read&quot;){const saveAudio=pageNode.querySelector(&#x27;button[data-action=&quot;sheet&quot;][data-value=&quot;read-save&quot;]&#x27;);if(saveAudio)saveAudio.disabled=!el.value.trim()}
+      pageNode.querySelectorAll(&#x27;button[data-action=&quot;design-copy&quot;],button[data-action=&quot;start&quot;],button[data-value=&quot;dictate-more&quot;]&#x27;).forEach(function(b){if((key===&quot;dictate&quot;&amp;&amp;b.dataset.action!==&quot;start&quot;)||(key===&quot;read&quot;&amp;&amp;b.dataset.action===&quot;start&quot;))b.disabled=!el.value.trim()});
+      const counter=pageNode.querySelector(&quot;.wb-editor-footer&gt;.wb-secondary&quot;);
+      if(counter&amp;&amp;key===&quot;dictate&quot;)counter.textContent=el.value.trim()?el.value.trim().split(/\s+/).length+&quot; words&quot;:&quot;&quot;;
+    }
+    if(scope===&quot;dictionaryDraft&quot;){const add=pageNode.querySelector(&#x27;button[data-action=&quot;add-rule&quot;]&#x27;);if(add)add.disabled=!state.dictionaryDraft.heard.trim()||!state.dictionaryDraft.written.trim()}
+  });
+  root.addEventListener(&quot;change&quot;,function(event){
+    const el=event.target;if(!el.dataset||!el.dataset.field)return;
+    const scope=el.dataset.scope,key=el.dataset.field;
+    if(scope===&quot;root&quot;)state[key]=el.type===&quot;checkbox&quot;?el.checked:el.value;else if(state[scope])state[scope][key]=el.value;
+    if(key===&quot;meetingApp&quot;&amp;&amp;state.meetingApp===&quot;Microphone only&quot;)state.includeMic=true;
+    if(scope===&quot;timer&quot;||key===&quot;meetingApp&quot;||key===&quot;includeMic&quot;)render();save();
+  });
+  root.addEventListener(&quot;click&quot;,function(event){
+    const target=event.target.closest(&quot;button[data-action]&quot;);if(!target||!root.contains(target)||target.disabled)return;
+    const a=target.dataset.action,v=target.dataset.value;
+    if(a===&quot;reset-scenario&quot;){applyScenario(state.scenario,true);return}
+    if(a===&quot;add-rule&quot;){if(state.dictionaryDraft.heard.trim()&amp;&amp;state.dictionaryDraft.written.trim()){state.dictionaryRules.push({heard:state.dictionaryDraft.heard.trim(),written:state.dictionaryDraft.written.trim()});state.dictionaryDraft={heard:&quot;&quot;,written:&quot;&quot;};render();save()}return}
+    if(a===&quot;keep-meeting&quot;){setJourney(&quot;meetings&quot;,&quot;recovery&quot;);return}
+    if(a===&quot;nav&quot;){if(v!==&quot;library&quot;)state.libraryDestination=null;go(v);return}
+    if(a===&quot;history&quot;){go(&quot;history&quot;,v);return}
+    if(a===&quot;resume&quot;){if(v===&quot;timer&quot;){state.page=&quot;draw&quot;;state.sheet=&quot;timer&quot;;render();save()}else go(v);return}
+    if(a===&quot;toggle-sidebar&quot;){design.collapsed=!design.collapsed;render();save();return}
+    if(a===&quot;sheet&quot;){state.sheet=v;if(v===&quot;read-save&quot;)state.readingNotice=&quot;&quot;;render();const close=overlay.querySelector(&#x27;section button[data-action=&quot;close-sheet&quot;]&#x27;);if(close)close.focus();save();return}
+    if(a===&quot;close-sheet&quot;){state.sheet=null;render();save();return}
+    if(a===&quot;start&quot;||a===&quot;stop&quot;||a===&quot;finish&quot;||a===&quot;prepare&quot;||a===&quot;retry&quot;){
+      const next=a===&quot;start&quot;?&quot;active&quot;:a===&quot;stop&quot;?&quot;processing&quot;:a===&quot;finish&quot;?&quot;finished&quot;:a===&quot;retry&quot;?&quot;processing&quot;:&quot;prepare&quot;;
+      state.sheet=null;setJourney(v,next);return;
+    }
+    if(a===&quot;pause-read&quot;){setJourney(&quot;read&quot;,state.journeys.read===&quot;active&quot;?&quot;paused&quot;:&quot;active&quot;);return}
+    if(a===&quot;capture-choice&quot;){state.capture=v;render();save();return}
+    if(a===&quot;pen&quot;){state.pen=v;render();save();return}
+    if(a===&quot;undo&quot;){state.strokes.pop();render();save();return}
+    if(a===&quot;timer-start&quot;||a===&quot;timer-pause&quot;||a===&quot;timer-stop&quot;){state.timer.state=a===&quot;timer-start&quot;?&quot;active&quot;:a===&quot;timer-pause&quot;?&quot;paused&quot;:&quot;finished&quot;;render();save();announce(&quot;Viewing the Timer &quot;+state.timer.state+&quot; state. The preview clock does not count down.&quot;);return}
+    if(a===&quot;library-for&quot;){state.libraryDestination=v;go(&quot;library&quot;);return}
+    if(a===&quot;asset&quot;){state.selectedAsset=v;if(state.libraryDestination){const dest=state.libraryDestination;state[dest+&quot;Asset&quot;]=v;state.libraryDestination=null;go(dest)}else{state.sheet=&quot;asset&quot;;render();save()}return}
+    if(a===&quot;use-asset&quot;){state[v+&quot;Asset&quot;]=state.selectedAsset;go(v);return}
+    if(a===&quot;show-current&quot;){const item=state.history.find(function(h){return h.id===resultId(v)&amp;&amp;h.status===&quot;finished&quot;});if(item)go(&quot;history&quot;,item.id);return}
+    if(a===&quot;reuse-read&quot;){const item=state.history.find(function(x){return x.id===v});offerReading(item?item.text:state.drafts[v]||sampleDictation,item?item.title:labels[v]+&quot; text&quot;);return}
+    if(a===&quot;import-reading&quot;){offerReading(sampleDictation,&quot;project-notes.txt&quot;);return}
+    if(a===&quot;keep-reading&quot;){state.readingPending=null;state.readingNotice=&quot;Current reading kept.&quot;;render();save();announce(&quot;Current text and playback state were kept. Imported text was not used.&quot;);return}
+    if(a===&quot;replace-reading&quot;){if(state.readingPending){const chosen=state.readingPending;state.drafts.read=chosen.text;state.readingPending=null;state.journeys.read=&quot;prepare&quot;;state.readingNotice=chosen.origin+&quot; is ready. Choose Listen when you&#x27;re ready.&quot;;render();save();announce(&quot;Reading replaced locally. Nothing plays or is sent until you explicitly choose Listen or Save audio.&quot;);}return}
+    if(a===&quot;clear-reading-notice&quot;){state.readingNotice=&quot;&quot;;render();save();return}
+    if(a===&quot;save-reading-sample&quot;){state.readingSampleSaveCount+=1;state.readingNotice=&quot;Sample save complete · &quot;+(state.readingSaveName.trim()||&quot;Reading.m4a&quot;);state.sheet=null;render();save();announce(&quot;Sample save completed in the design model. No audio was generated and no file was written.&quot;);return}
+    if(a===&quot;save-asset&quot;){const assetId=&quot;saved-&quot;+v;if(!state.assets.some(function(x){return x.id===assetId}))state.assets.push({id:assetId,name:&quot;Saved screen detail&quot;,kind:&quot;Snap&quot;});state.selectedAsset=assetId;go(&quot;library&quot;);announce(&quot;Synthetic image added to Library. Its captured result remains in History.&quot;);return}
+    if(a===&quot;recording-play&quot;){state.recordingPlaying=!state.recordingPlaying;render();announce(&quot;Recording playback is a design state. No audio plays.&quot;);return}
+    if(a===&quot;design-copy&quot;){announce(&quot;Design action: copy &quot;+v+&quot;. The preview does not change your clipboard.&quot;);return}
+    if(a===&quot;os-settings&quot;){announce(&quot;Design destination: macOS System Settings → Privacy &amp; Security → &quot;+v+&quot;.&quot;);return}
+    if(a===&quot;design-action&quot;){announce(&quot;Design action: &quot;+v+&quot;. No native action runs in this preview.&quot;);return}
+  });
+  root.addEventListener(&quot;keydown&quot;,function(event){
+    if(!state.sheet)return;
+    if(event.key===&quot;Escape&quot;){state.sheet=null;render();save()}
+    if(event.key===&quot;Tab&quot;){
+      const controls=Array.from(overlay.querySelectorAll(&quot;section button:not(:disabled),section input,section select,section textarea&quot;));
+      if(!controls.length)return;const first=controls[0],last=controls[controls.length-1];
+      if(event.shiftKey&amp;&amp;document.activeElement===first){event.preventDefault();last.focus()}
+      else if(!event.shiftKey&amp;&amp;document.activeElement===last){event.preventDefault();first.focus()}
+    }
+  });
+  function setupCanvas(){
+    const canvas=document.getElementById(&quot;wb-drawing-canvas&quot;);if(!canvas)return;
+    const bounds=canvas.getBoundingClientRect();const ratio=Math.min(window.devicePixelRatio||1,2);const ctx=canvas.getContext(&quot;2d&quot;);
+    canvas.width=Math.max(1,Math.round(bounds.width*ratio));canvas.height=Math.max(1,Math.round(bounds.height*ratio));
+    const primaryControl=root.querySelector(&quot;.wb-btn.wb-primary&quot;);
+    const drawColor=primaryControl?getComputedStyle(primaryControl).backgroundColor:getComputedStyle(root).color;
+    function paint(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      state.strokes.forEach(function(stroke){
+        if(stroke.points.length&lt;2)return;ctx.beginPath();ctx.lineCap=&quot;round&quot;;ctx.lineJoin=&quot;round&quot;;ctx.lineWidth=(stroke.pen===&quot;Highlighter&quot;?14:3)*ratio;ctx.globalAlpha=stroke.pen===&quot;Highlighter&quot;?.3:1;
+        ctx.strokeStyle=drawColor;
+        stroke.points.forEach(function(p,index){const x=p[0]*canvas.width,y=p[1]*canvas.height;if(index)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke();
+      });ctx.globalAlpha=1;
+    }
+    paint();let drawing=null;
+    canvas.addEventListener(&quot;pointerdown&quot;,function(event){
+      if(state.pen===&quot;Eraser&quot;){state.strokes.pop();paint();save();return}
+      drawing={pen:state.pen,points:[]};state.strokes.push(drawing);state.strokes=state.strokes.slice(-5);canvas.setPointerCapture(event.pointerId);addPoint(event);
+    });
+    function addPoint(event){if(!drawing)return;const r=canvas.getBoundingClientRect();const p=[Math.round((event.clientX-r.left)/r.width*1000)/1000,Math.round((event.clientY-r.top)/r.height*1000)/1000];if(drawing.points.length&lt;85)drawing.points.push(p);paint()}
+    canvas.addEventListener(&quot;pointermove&quot;,addPoint);
+    function end(){if(!drawing)return;drawing=null;save();const undo=pageNode.querySelector(&#x27;button[data-action=&quot;undo&quot;]&#x27;);if(undo)undo.disabled=!state.strokes.length}
+    canvas.addEventListener(&quot;pointerup&quot;,end);canvas.addEventListener(&quot;pointercancel&quot;,end);
+  }
+  const scenarios={
+    &quot;home&quot;:{label:&quot;Home · Overview&quot;,page:&quot;home&quot;},
+    &quot;dictate-ready&quot;:{label:&quot;Dictate · Prepare&quot;,page:&quot;dictate&quot;},
+    &quot;dictate-continue&quot;:{label:&quot;Dictate · Continue&quot;,page:&quot;dictate&quot;,status:&quot;active&quot;},
+    &quot;meeting-ready&quot;:{label:&quot;Meeting · Prepare&quot;,page:&quot;meetings&quot;},
+    &quot;meeting-recording&quot;:{label:&quot;Meeting · Work&quot;,page:&quot;meetings&quot;,status:&quot;active&quot;,timer:true},
+    &quot;meeting-processing&quot;:{label:&quot;Meeting · Processing&quot;,page:&quot;meetings&quot;,status:&quot;processing&quot;},
+    &quot;meeting-review&quot;:{label:&quot;Meeting · Review&quot;,page:&quot;meetings&quot;,status:&quot;finished&quot;,review:true},
+    &quot;meeting-recovery&quot;:{label:&quot;Meeting · Recovery&quot;,page:&quot;meetings&quot;,status:&quot;recovery&quot;},
+    &quot;read-import&quot;:{label:&quot;Read · Import decision&quot;,page:&quot;read&quot;,import:true},
+    &quot;read-active&quot;:{label:&quot;Read · Work&quot;,page:&quot;read&quot;,status:&quot;active&quot;},
+    &quot;snap-ready&quot;:{label:&quot;Snap · Prepare&quot;,page:&quot;snap&quot;},
+    &quot;snap-review&quot;:{label:&quot;Snap · Review&quot;,page:&quot;snap&quot;,status:&quot;finished&quot;,review:true},
+    &quot;snap-talk-continue&quot;:{label:&quot;Snap &amp; Talk · Continue&quot;,page:&quot;snaptalk&quot;,status:&quot;active&quot;},
+    &quot;snap-talk-recovery&quot;:{label:&quot;Snap &amp; Talk · Recovery&quot;,page:&quot;snaptalk&quot;,status:&quot;recovery&quot;},
+    &quot;draw-timer&quot;:{label:&quot;Draw · Active timer&quot;,page:&quot;draw&quot;,status:&quot;active&quot;,timer:true},
+    &quot;present-active&quot;:{label:&quot;Present · Work&quot;,page:&quot;present&quot;,status:&quot;active&quot;},
+    &quot;persona-ready&quot;:{label:&quot;Persona · Prepare&quot;,page:&quot;persona&quot;},
+    &quot;meeting-retained&quot;:{label:&quot;Meeting · Retained work&quot;,page:&quot;meetings&quot;,status:&quot;recovery&quot;},
+    &quot;independent-work&quot;:{label:&quot;Independent work&quot;,page:&quot;home&quot;,jobs:true},
+    &quot;library-reuse&quot;:{label:&quot;Library · Reuse&quot;,page:&quot;library&quot;}
+  };
+  function applyScenario(id,persist){
+    const scenario=scenarios[id]||scenarios.home;
+    const key=scenarios[id]?id:&quot;home&quot;;
+    state=defaults();state.scenario=key;state.page=scenario.page;
+    if(scenario.empty)state.drafts.read=&quot;&quot;;
+    if(scenario.import)state.readingPending={text:sampleDictation,origin:&quot;project-notes.txt&quot;};
+    if(scenario.timer)state.timer.state=&quot;active&quot;;
+    if(scenario.jobs){state.journeys.meetings=&quot;active&quot;;state.journeys.present=&quot;active&quot;;state.journeys.persona=&quot;active&quot;;state.timer.state=&quot;active&quot;}
+    if(scenario.selected)state.selectedHistory=scenario.selected;
+    if(scenario.status){
+      const p=scenario.page;state.journeys[p]=scenario.status;
+      if(p===&quot;dictate&quot;)state.drafts.dictate=scenario.status===&quot;active&quot;?&quot;Let&#x27;s keep the first release focused.&quot;:sampleDictation;
+      if(p===&quot;snaptalk&quot;&amp;&amp;scenario.status===&quot;finished&quot;)state.drafts.snaptalk=&quot;Keep the useful controls near the content they change.&quot;;
+      if(scenario.status===&quot;finished&quot;)ensureResult(p,false);
+      if([&quot;recovery&quot;,&quot;processing&quot;].includes(scenario.status)){retainWork(p);if(p===&quot;meetings&quot;)state.retained[p].title=&quot;Planning call&quot;}
+      if(scenario.review){state.page=&quot;history&quot;;state.selectedHistory=resultId(p)}
+    }
+    root.dataset.scenarioId=key;
+    render();if(persist)save();announce(&quot;Scenario: &quot;+scenario.label+&quot;. Synthetic content; no native action runs.&quot;);
+    if(window.parent!==window)window.parent.postMessage({type:&quot;wb:scenario-changed&quot;,scenario:key},&quot;*&quot;);
+  }
+  window.addEventListener(&quot;hashchange&quot;,function(){const key=window.location.hash.slice(1);if(scenarios[key]&amp;&amp;key!==state.scenario)applyScenario(key,true)});
+  window.addEventListener(&quot;message&quot;,function(event){if(event.data&amp;&amp;event.data.type===&quot;wb:scenario&quot;&amp;&amp;scenarios[event.data.scenario])applyScenario(event.data.scenario,false)});
+  window.addEventListener(&quot;openai:set_globals&quot;,function(event){
+    const snapshot=event.detail&amp;&amp;event.detail.globals&amp;&amp;event.detail.globals.widgetState;
+    // The host echoes optimistic saves. Preserve local sheets during that acknowledgement.
+    if(snapshot&amp;&amp;JSON.stringify(snapshot)!==lastPublishedState){state=restore(snapshot);design.collapsed=state.collapsed;design.roomy=state.roomy;render()}
+  });
+  const initialScenario=window.location.hash.slice(1);
+  if(scenarios[initialScenario])applyScenario(initialScenario,false);else render();
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:root,onChange:function(){render();save()}});
+    tweak.addToggle(design,&quot;collapsed&quot;,{label:&quot;Collapsed sidebar&quot;});
+    tweak.addToggle(design,&quot;roomy&quot;,{label:&quot;Roomier content&quot;});
+  }
+})();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+  let lastPointerWasTouch = false;
+  let pinnedByTouch = false;
+
+  const getTrigger = (event) =&gt; {
+    for (const target of event.composedPath()) {
+      if (target?.nodeType === Node.ELEMENT_NODE) {
+        const trigger = target.closest(&quot;[data-tooltip]&quot;);
+        if (trigger) return trigger;
+      }
+    }
+    return null;
+  };
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    pinnedByTouch = false;
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handlePointer = (event) =&gt; {
+    lastPointerWasTouch =
+      event.type === &quot;pointerdown&quot; &amp;&amp; event.pointerType === &quot;touch&quot;;
+  };
+  const handleTouchClick = (event) =&gt; {
+    const isTouch = event.pointerType === &quot;touch&quot; || lastPointerWasTouch;
+    lastPointerWasTouch = false;
+    if (!isTouch || event.detail === 0) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (
+      trigger == null ||
+      !trigger.isConnected ||
+      getContent(trigger).length === 0 ||
+      (pinnedByTouch &amp;&amp; activeTrigger === trigger)
+    ) {
+      if (pinnedByTouch) {
+        closeTooltip();
+      }
+      return;
+    }
+    openTooltip(trigger);
+    pinnedByTouch = activeTrigger === trigger;
+    window.setTimeout(() =&gt; {
+      if (activeTrigger === trigger &amp;&amp; !trigger.isConnected) {
+        closeTooltip(false);
+      }
+    }, 0);
+  };
+  const handleLeave = (event) =&gt; {
+    if (pinnedByTouch) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    lastPointerWasTouch = false;
+    const trigger = getTrigger(event);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handlers = {
+    pointerover: handlePointerOpen,
+    pointerdown: handlePointer,
+    pointercancel: handlePointer,
+    click: handleTouchClick,
+    pointerout: handleLeave,
+    focusin: handleFocusIn,
+    focusout: handleLeave,
+    keydown: handleKeyDown,
+    contextmenu: handleContextMenu,
+  };
+  const roots = new Map();
+  const handledEvents = new WeakSet();
+  const handleEvent = (event) =&gt; {
+    if (handledEvents.has(event)) return;
+    handledEvents.add(event);
+    handlers[event.type](event);
+  };
+  const discoverRoots = (node) =&gt; {
+    if (node.shadowRoot) listen(node.shadowRoot);
+    for (const element of node.querySelectorAll(&quot;*&quot;)) {
+      if (element.shadowRoot) listen(element.shadowRoot);
+    }
+  };
+  const listen = (root) =&gt; {
+    if (roots.has(root)) return;
+    for (const type of Object.keys(handlers)) root.addEventListener(type, handleEvent);
+    const observer = new window.MutationObserver((records) =&gt; {
+      for (const { addedNodes } of records) {
+        for (const node of addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) discoverRoots(node);
+        }
+      }
+      for (const [root, cleanup] of roots) {
+        if (root.host &amp;&amp; !root.host.isConnected) {
+          cleanup();
+          roots.delete(root);
+        }
+      }
+      if (activeTrigger &amp;&amp; !activeTrigger.isConnected) closeTooltip(false);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    roots.set(root, () =&gt; {
+      observer.disconnect();
+      for (const type of Object.keys(handlers)) root.removeEventListener(type, handleEvent);
+    });
+    discoverRoots(root);
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    lastPointerWasTouch = false;
+    for (const cleanup of roots.values()) cleanup();
+    roots.clear();
+    tooltip = null;
+  };
+
+  // Events between children of one shadow root never reach the document.
+  listen(document);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-tabs&quot;&gt;
+(() =&gt; {
+  const selector = &#x27;.nav[role=&quot;tablist&quot;] [role=&quot;tab&quot;]&#x27;;
+  const disabled = &#x27;:disabled,[aria-disabled=&quot;true&quot;]&#x27;;
+  const selectTab = (selected) =&gt; {
+    const panelId = selected.getAttribute(&quot;aria-controls&quot;);
+    for (const tab of selected.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;)) {
+      const active = tab === selected;
+      tab.classList.toggle(&quot;active&quot;, active);
+      tab.setAttribute(&quot;aria-selected&quot;, String(active));
+      const id = tab.getAttribute(&quot;aria-controls&quot;);
+      const panel = id &amp;&amp; document.getElementById(id);
+      if (panel != null) {
+        panel.hidden = id !== panelId;
+        if (!panel.hidden &amp;&amp; selected.id) {
+          panel.setAttribute(&quot;aria-labelledby&quot;, selected.id);
+        }
+      }
+    }
+  };
+  const interact = (event) =&gt; {
+    const tab = event.target?.closest?.(selector);
+    if (event.defaultPrevented || tab == null || tab.matches(disabled)) {
+      return;
+    }
+    if (event.type === &quot;click&quot;) {
+      selectTab(tab);
+      return;
+    }
+    const tabs = Array.from(
+      tab.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;),
+    ).filter((candidate) =&gt; !candidate.matches(disabled));
+    const current = tabs.indexOf(tab);
+    let next;
+    if (event.key === &quot;ArrowRight&quot; || event.key === &quot;ArrowDown&quot;) {
+      next = (current + 1) % tabs.length;
+    } else if (event.key === &quot;ArrowLeft&quot; || event.key === &quot;ArrowUp&quot;) {
+      next = (current + tabs.length - 1) % tabs.length;
+    } else if (event.key === &quot;Home&quot;) {
+      next = 0;
+    } else if (event.key === &quot;End&quot;) {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next].focus();
+    selectTab(tabs[next]);
+  };
+
+  for (const list of document.querySelectorAll(&#x27;.nav[role=&quot;tablist&quot;]&#x27;)) {
+    const selected =
+      list.querySelector(&#x27;[role=&quot;tab&quot;][aria-selected=&quot;true&quot;]&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;].active&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;]&#x27;);
+    if (selected != null) {
+      selectTab(selected);
+    }
+  }
+  document.addEventListener(&quot;click&quot;, interact);
+  document.addEventListener(&quot;keydown&quot;, interact);
+  window.addEventListener(&quot;pagehide&quot;, () =&gt; {
+    document.removeEventListener(&quot;click&quot;, interact);
+    document.removeEventListener(&quot;keydown&quot;, interact);
+  }, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-carousel&quot;&gt;
+  (() =&gt; {
+    for (const root of document.querySelectorAll(&quot;.viz-carousel&quot;)) {
+      const panels = Array.from(
+        root.querySelectorAll(&quot;:scope &gt; [data-variant]&quot;),
+      );
+      if (panels.length === 0) {
+        continue;
+      }
+      root.setAttribute(&quot;role&quot;, &quot;group&quot;);
+      panels.forEach((panel, index) =&gt; {
+        panel.hidden = index !== 0;
+        panel.setAttribute(&quot;role&quot;, &quot;group&quot;);
+        if (!panel.hasAttribute(&quot;aria-label&quot;)) {
+          panel.setAttribute(&quot;aria-label&quot;, panel.dataset.variant);
+        }
+      });
+      root.dataset.activeVariant = panels[0].dataset.variant;
+      if (panels.length === 1) {
+        continue;
+      }
+
+      const controls = document.createElement(&quot;div&quot;);
+      controls.className = &quot;viz-carousel-controls&quot;;
+      // Portable copy of the settings dropdown&#x27;s legacy glyph; no 14px icon-package preset matches it.
+      // https://github.com/openai/openai/blob/master/codex/codex-apps/webview/src/icons/chevron.svg
+      controls.innerHTML = `
+      &lt;button type=&quot;button&quot; class=&quot;viz-carousel-previous cursor-interaction&quot;&gt;&lt;i data-lucide=&quot;chevron-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+      &lt;details class=&quot;viz-carousel-picker&quot;&gt;
+        &lt;summary class=&quot;cursor-interaction&quot;&gt;
+          &lt;span class=&quot;viz-carousel-count tabular-nums&quot;&gt;&lt;/span&gt;
+          &lt;span class=&quot;viz-carousel-name&quot;&gt;&lt;/span&gt;
+          &lt;svg class=&quot;viz-carousel-caret&quot; width=&quot;14&quot; height=&quot;14&quot; viewBox=&quot;0 0 20 21&quot; fill=&quot;none&quot; aria-hidden=&quot;true&quot; focusable=&quot;false&quot;&gt;
+            &lt;path d=&quot;M15.2793 7.71101C15.539 7.45131 15.961 7.45131 16.2207 7.71101C16.4804 7.97071 16.4804 8.39272 16.2207 8.65242L10.4707 14.4024C10.211 14.6621 9.78902 14.6621 9.52932 14.4024L3.77932 8.65242L3.69436 8.54792C3.52385 8.28979 3.55205 7.93828 3.77932 7.71101C4.00659 7.48374 4.3581 7.45554 4.61623 7.62605L4.72073 7.71101L10 12.9903L15.2793 7.71101Z&quot; fill=&quot;currentColor&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;0.6&quot; /&gt;
+          &lt;/svg&gt;
+        &lt;/summary&gt;
+        &lt;div class=&quot;viz-carousel-options&quot;&gt;&lt;/div&gt;
+      &lt;/details&gt;
+      &lt;button type=&quot;button&quot; class=&quot;viz-carousel-next cursor-interaction&quot;&gt;&lt;i data-lucide=&quot;chevron-right&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;`;
+      const previous = controls.querySelector(&quot;.viz-carousel-previous&quot;);
+      const next = controls.querySelector(&quot;.viz-carousel-next&quot;);
+      const picker = controls.querySelector(&quot;.viz-carousel-picker&quot;);
+      const summary = picker.querySelector(&quot;summary&quot;);
+      const count = controls.querySelector(&quot;.viz-carousel-count&quot;);
+      const name = controls.querySelector(&quot;.viz-carousel-name&quot;);
+      const options = controls.querySelector(&quot;.viz-carousel-options&quot;);
+      const status = document.createElement(&quot;span&quot;);
+      status.className = &quot;sr-only&quot;;
+      status.setAttribute(&quot;role&quot;, &quot;status&quot;);
+      status.setAttribute(&quot;aria-live&quot;, &quot;polite&quot;);
+      status.setAttribute(&quot;aria-atomic&quot;, &quot;true&quot;);
+      previous.setAttribute(
+        &quot;aria-label&quot;,
+        root.dataset.previousLabel ?? &quot;Previous variant&quot;,
+      );
+      next.setAttribute(&quot;aria-label&quot;, root.dataset.nextLabel ?? &quot;Next variant&quot;);
+
+      let active = 0;
+      const choices = panels.map((panel, index) =&gt; {
+        const choice = document.createElement(&quot;button&quot;);
+        choice.type = &quot;button&quot;;
+        choice.className = &quot;cursor-interaction&quot;;
+        choice.textContent = panel.dataset.variant;
+        choice.addEventListener(&quot;click&quot;, () =&gt; {
+          select(index);
+          summary.focus();
+        });
+        options.appendChild(choice);
+        return choice;
+      });
+      const select = (index) =&gt; {
+        const changed = active !== index;
+        active = index;
+        panels.forEach((panel, position) =&gt; {
+          panel.hidden = position !== active;
+          choices[position].setAttribute(
+            &quot;aria-current&quot;,
+            String(position === active),
+          );
+        });
+        root.dataset.activeVariant = panels[active].dataset.variant;
+        count.textContent = `${active + 1} / ${panels.length}`;
+        name.textContent = panels[active].dataset.variant;
+        picker.open = false;
+        if (changed) {
+          status.textContent = `${count.textContent}: ${name.textContent}`;
+        }
+      };
+      previous.addEventListener(&quot;click&quot;, () =&gt;
+        select((active + panels.length - 1) % panels.length),
+      );
+      next.addEventListener(&quot;click&quot;, () =&gt;
+        select((active + 1) % panels.length),
+      );
+      picker.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+        if (event.key === &quot;Escape&quot; &amp;&amp; picker.open) {
+          event.preventDefault();
+          picker.open = false;
+          summary.focus();
+        }
+      });
+      const dismiss = (event) =&gt; {
+        if (!picker.contains(event.target)) {
+          picker.open = false;
+        }
+      };
+      const sizePicker = () =&gt; {
+        root.style.setProperty(
+          &quot;--viz-carousel-picker-height&quot;,
+          `${picker.open ? options.offsetHeight : 0}px`,
+        );
+      };
+      picker.addEventListener(&quot;toggle&quot;, sizePicker);
+      window.addEventListener(&quot;resize&quot;, sizePicker);
+      document.addEventListener(&quot;pointerdown&quot;, dismiss);
+      window.addEventListener(
+        &quot;pagehide&quot;,
+        () =&gt; {
+          document.removeEventListener(&quot;pointerdown&quot;, dismiss);
+          window.removeEventListener(&quot;resize&quot;, sizePicker);
+        },
+        { once: true },
+      );
+      root.append(controls, status);
+      select(0);
+    }
+  })();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<script>(() => {
+  const frame = document.getElementById("codex-visualization");
+  if (!(frame instanceof HTMLIFrameElement)) {
+    return;
+  }
+  let viewportHeight = globalThis.innerHeight;
+  const storageKey = `codex:visualization-widget-state-v2:${JSON.stringify([
+    globalThis.location.pathname,
+    globalThis.location.search,
+  ])}`;
+  const parseState = (serializedState) => {
+    if (
+      typeof serializedState !== "string" ||
+      new TextEncoder().encode(serializedState).length > 16 * 1024
+    ) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    /** @type {unknown} */
+    const state = JSON.parse(serializedState);
+    if (
+      state == null ||
+      typeof state !== "object" ||
+      Array.isArray(state) ||
+      ("imageIds" in state &&
+        (!Array.isArray(state.imageIds) || state.imageIds.length > 0))
+    ) {
+      throw new TypeError("Widget state must be a JSON object");
+    }
+    const storedState = { modelContent: null, privateContent: null, ...state };
+    const canonicalState = JSON.stringify(
+      storedState,
+      (_key, /** @type {unknown} */ value) => {
+        if (typeof value === "number" && !Number.isFinite(value)) {
+          throw new TypeError("Widget state must contain finite numbers");
+        }
+        return value;
+      },
+    );
+    if (new TextEncoder().encode(canonicalState).length > 16 * 1024) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    return storedState;
+  };
+  let storage = null;
+  let state = null;
+  try {
+    const localStorage = globalThis.localStorage;
+    const probeKey = `${storageKey}:probe`;
+    localStorage.setItem(probeKey, "1");
+    localStorage.removeItem(probeKey);
+    storage = localStorage;
+    const savedState = storage.getItem(storageKey);
+    if (savedState != null) {
+      try {
+        state = parseState(savedState);
+      } catch {
+        // Invalid saved state does not disable future writes.
+      }
+    }
+  } catch {
+    storage = null;
+  }
+  const initialGlobals = {
+    widgetState: state,
+    statePersistence: storage == null ? "none" : "local",
+  };
+
+  const channel = new MessageChannel();
+  channel.port1.addEventListener("message", (event) => {
+    const data = event.data;
+    if (typeof data !== "object" || data == null) {
+      return;
+    }
+    if (data.type === "widget-state-write") {
+      if (!Number.isSafeInteger(data.id) || data.id <= 0) {
+        return;
+      }
+      let ok = false;
+      try {
+        if (storage != null) {
+          const state = parseState(data.state);
+          storage.setItem(storageKey, JSON.stringify(state));
+          ok = true;
+        }
+      } catch {
+        // Storage denial, quota limits, and invalid state return a failed receipt.
+      }
+      channel.port1.postMessage({
+        type: "widget-state-result",
+        id: data.id,
+        ok,
+      });
+      return;
+    }
+    if (data.type === "height") {
+      const height = data.height;
+      if (
+        typeof height === "number" &&
+        Number.isFinite(height) &&
+        height >= 0 &&
+        height <= 10_000
+      ) {
+        frame.style.height = Math.ceil(height) + "px";
+      }
+      return;
+    }
+    if (data.type === "scroll-to") {
+      const top = data.top;
+      if (
+        typeof top === "number" &&
+        Number.isFinite(top) &&
+        top >= 0 &&
+        globalThis.navigator.userActivation?.isActive === true
+      ) {
+        globalThis.scrollTo({
+          top: Math.ceil(
+            globalThis.scrollY + frame.getBoundingClientRect().top + top,
+          ),
+        });
+      }
+      return;
+    }
+    if (data.type === "open-external") {
+      const rawHref = data.href;
+      if (typeof rawHref !== "string") {
+        return;
+      }
+      let href;
+      try {
+        const url = new URL(rawHref, document.baseURI);
+        if (url.protocol !== "https:") {
+          return;
+        }
+        href = url.href;
+      } catch {
+        return;
+      }
+      if (globalThis.navigator.userActivation?.isActive === true) {
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.rel = "noopener noreferrer";
+        anchor.target = "_blank";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      return;
+    }
+    if (data.type === "follow-up") {
+      const prompt = data.prompt;
+      if (
+        typeof prompt !== "string" ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      const title = data.title;
+      globalThis.prompt(typeof title === "string" ? title : prompt, prompt);
+    }
+  });
+  channel.port1.start();
+  const srcdoc = frame.dataset.srcdoc;
+  if (srcdoc == null) {
+    return;
+  }
+  globalThis.addEventListener("resize", () => {
+    const height = Number.parseFloat(frame.style.height);
+    if (!Number.isFinite(height) || height <= viewportHeight) {
+      frame.style.removeProperty("height");
+    }
+    viewportHeight = globalThis.innerHeight;
+    channel.port1.postMessage({ type: "measure" });
+  });
+  frame.addEventListener(
+    "load",
+    () => {
+      frame.contentWindow?.postMessage(
+        { type: "codex-visualization-initialize" },
+        "*",
+        [channel.port2],
+      );
+    },
+    { once: true },
+  );
+  // Match the trusted bootstrap element, not the same text in an authored title.
+  frame.srcdoc = srcdoc.replace(
+    '<script type="application/json" id="codex-visualization-widget-state">__CODEX_VISUALIZATION_WIDGET_STATE__<\/script>',
+    () =>
+      '<script type="application/json" id="codex-visualization-widget-state">' +
+      JSON.stringify(initialGlobals).replaceAll("<", "\\u003c") +
+      "<\/script>",
+  );
+  delete frame.dataset.srcdoc;
+})();
+</script>
+<script>(() => {
+  const frame = document.getElementById('codex-visualization');
+  const valid = id => /^[a-z][a-z-]{1,60}$/.test(id);
+  const send = () => {
+    const scenario = location.hash.slice(1);
+    if (valid(scenario)) frame.contentWindow?.postMessage({type:'wb:scenario',scenario}, '*');
+  };
+  frame.addEventListener('load', send);
+  window.addEventListener('hashchange', send);
+  window.addEventListener('message', event => {
+    if (event.source === frame.contentWindow && event.data?.type === 'wb:scenario-changed' && valid(event.data.scenario)) {
+      history.replaceState(null, '', '#' + event.data.scenario);
+    }
+  });
+})();</script>
+
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Workbench experience studies</title>
+  <style>
+    :root { color-scheme: light dark; font: 15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color: light-dark(#24382e,#e1eee6); background: light-dark(#f6f8f6,#16201a); }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: clamp(22px,5vw,64px); }
+    main { max-width: 1000px; margin: auto; }
+    h1 { font-size: clamp(28px,4vw,42px); line-height: 1.15; letter-spacing: -.8px; margin: 8px 0 16px; }
+    h2 { margin: 0 0 8px; font-size: 22px; }
+    p { max-width: 72ch; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; }
+    .studies { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin: 32px 0; }
+    article { background: light-dark(#fff,#213027); border: 1px solid light-dark(#d5dfd7,#405448); padding: 26px; border-radius: 14px; }
+    article p { min-height: 70px; }
+    a { color: light-dark(#245c3f,#b9dfc9); text-underline-offset: 3px; }
+    .open { display: inline-block; padding: 10px 16px; border-radius: 7px; background: light-dark(#315e45,#bfdfca); color: light-dark(#fff,#163122); font-weight: 600; text-decoration: none; }
+    li { margin: 8px 0; }
+    footer { border-top: 1px solid light-dark(#d5dfd7,#405448); margin-top: 32px; padding-top: 20px; font-size: 13px; }
+    @media(max-width:650px) { .studies { grid-template-columns: 1fr; } article p { min-height: 0; } }
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Workbench · Experience studies</p>
+  <h1>Try the complete journey.</h1>
+  <p>Reusable, synthetic studies of the desktop and floating pill. Choose a scenario, follow its controls, then reset to the same starting state. Nothing records, pastes into another app, saves a real recording or calls a provider.</p>
+  <div class="studies">
+    <article>
+      <h2>Desktop</h2>
+      <p>Prepare work, use focused controls, and return to completed results. Voice, Screen and Saved organise the workspaces.</p>
+      <a class="open" href="desktop.html#home">Explore desktop</a>
+      <ul>
+        <li><a href="desktop.html#dictate-ready">Dictate: prepare and finish</a></li>
+        <li><a href="desktop.html#meeting-review">Meetings: review the exact result</a></li>
+        <li><a href="desktop.html#meeting-recovery">Meetings: keep and retry audio</a></li>
+        <li><a href="desktop.html#read-import">Read: keep or replace an existing draft</a></li>
+        <li><a href="desktop.html#snap-talk-continue">Snap &amp; Talk: continue a session</a></li>
+      </ul>
+    </article>
+    <article>
+      <h2>Floating pill</h2>
+      <p>Choose a tool, control live work and recover without losing earlier work. Proposed control relocations are labelled inside the study.</p>
+      <a class="open" href="pill.html">Explore pill</a>
+      <ul>
+        <li><a href="pill.html#recovery-pending">A retained recording</a></li>
+      </ul>
+    </article>
+  </div>
+  <footer>
+    <p>These studies simplify visual details and model selected journeys. Their samples are independent of Workbench's saved data. <a href="README.md">Scenario and source-owner map</a> · <a href="../workbench.md">Product contract</a> · <a href="../verification/2026-09-30-desktop-cohesion/README.md">Source and installed acceptance</a></p>
+  </footer>
+</main>
+</body>
+</html>

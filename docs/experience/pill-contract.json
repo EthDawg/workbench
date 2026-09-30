@@ -1,0 +1,314 @@
+{
+  "version": 2,
+  "status": "tested interaction proposal; native overflow removal not implemented",
+  "sourceBaseline": "b06fbaa944e6b624641f2fb5557f83329c1c263d",
+  "quietToolbarBaseline": "62f8ba5b9f41de7549d0877719baa89a402fdb34",
+  "entryPointProtocol": {
+    "hash": "#<scenario-id>",
+    "parentMessage": {
+      "type": "workbench-pill-journey",
+      "id": "recovery-pending"
+    },
+    "selectionEvent": {
+      "type": "workbench-pill-scenario-changed",
+      "id": "recovery-pending"
+    }
+  },
+  "scenarios": [
+    {
+      "name": "Present + Persona",
+      "id": "present-and-persona",
+      "url": "pill.html#present-and-persona"
+    },
+    {
+      "name": "First use",
+      "id": "first-use",
+      "url": "pill.html#first-use"
+    },
+    {
+      "name": "Single Persona",
+      "id": "single-persona",
+      "url": "pill.html#single-persona"
+    },
+    {
+      "name": "Persona hidden",
+      "id": "persona-hidden",
+      "url": "pill.html#persona-hidden"
+    },
+    {
+      "name": "Prepared Persona set",
+      "id": "prepared-persona-set",
+      "url": "pill.html#prepared-persona-set"
+    },
+    {
+      "name": "Dictate + Draw",
+      "id": "dictate-and-draw",
+      "url": "pill.html#dictate-and-draw"
+    },
+    {
+      "name": "Recovery pending",
+      "id": "recovery-pending",
+      "url": "pill.html#recovery-pending"
+    },
+    {
+      "name": "Read + Draw",
+      "id": "read-and-draw",
+      "url": "pill.html#read-and-draw"
+    },
+    {
+      "name": "Snap",
+      "id": "snap",
+      "url": "pill.html#snap"
+    },
+    {
+      "name": "Snap & Talk",
+      "id": "snap-and-talk",
+      "url": "pill.html#snap-and-talk"
+    },
+    {
+      "name": "Device disconnected",
+      "id": "device-disconnected",
+      "url": "pill.html#device-disconnected"
+    },
+    {
+      "name": "Meeting + Timer",
+      "id": "meeting-and-timer",
+      "url": "pill.html#meeting-and-timer"
+    },
+    {
+      "name": "Timer finished",
+      "id": "timer-finished",
+      "url": "pill.html#timer-finished"
+    },
+    {
+      "name": "Toolbar hidden",
+      "id": "toolbar-hidden",
+      "url": "pill.html#toolbar-hidden"
+    }
+  ],
+  "actionMap": [
+    {
+      "oldAction": "Switch tool",
+      "stateOwner": "ToolbarMode + existing activity owners",
+      "proposedHome": "Fixed seven-row chooser; selection changes mode only",
+      "invariant": "Stable grid icon; independent stop/hide/resume/end buttons retain owner identity"
+    },
+    {
+      "oldAction": "Cancel dictation request, recording or transcription",
+      "stateOwner": "AppModel capture lifecycle",
+      "proposedHome": "Dictate row while active; Dictate workspace",
+      "invariant": "Reuse native cancellation semantics; do not infer cancellation from tool switching"
+    },
+    {
+      "oldAction": "Copy now while drawing",
+      "stateOwner": "AppModel waiting delivery",
+      "proposedHome": "Dictate row and primary action",
+      "invariant": "Copy resolves waiting insertion; ending Draw must not insert a second time"
+    },
+    {
+      "oldAction": "Retry, Record again, Open Workbench, Dismiss dictation failure",
+      "stateOwner": "CaptureRecoveryStore + AppModel",
+      "proposedHome": "Review on Dictate row; retained recordings in Dictate",
+      "invariant": "Hide message preserves audio; Record again archives earlier audio; failed retry stays recoverable"
+    },
+    {
+      "oldAction": "Copy again, Review, Dismiss delivery receipt",
+      "stateOwner": "UnresolvedDelivery + ClipboardReceipt",
+      "proposedHome": "Dictate result/workspace and History for completed records",
+      "invariant": "Use quiet copy feedback from 62f8ba5; only offer copy when duplicate insertion is impossible. Copy during an already active meeting must preserve recording signal and Stop."
+    },
+    {
+      "oldAction": "Reading cancel, pause, resume, stop, retry and dismiss",
+      "stateOwner": "AppModel playback",
+      "proposedHome": "Read row; detailed controls and retained text in Read",
+      "invariant": "Controls remain reachable while Draw holds the primary"
+    },
+    {
+      "oldAction": "Open Dictate, Read or Snap",
+      "stateOwner": "Existing desktop route callbacks",
+      "proposedHome": "Chooser footer Open selected tool; Workbench menu",
+      "invariant": "Open only; no automatic capture"
+    },
+    {
+      "oldAction": "Unsaved Snap review",
+      "stateOwner": "SnapModel draft",
+      "proposedHome": "Snap row Review and Snap editor",
+      "invariant": "Leaving the editor preserves the draft; explicit Save or Discard resolves it"
+    },
+    {
+      "oldAction": "Snap & Talk Review and Cancel",
+      "stateOwner": "Readback session owner",
+      "proposedHome": "Snap & Talk row and workspace",
+      "invariant": "Cancel only current capture; prior sections remain; saved session review works"
+    },
+    {
+      "oldAction": "Drawing controls",
+      "stateOwner": "StageKit annotation owner",
+      "proposedHome": "Existing Tools accessory and Draw workspace",
+      "invariant": "No replacement state owner; keep the full native annotation tool menu"
+    },
+    {
+      "oldAction": "Present source, reconnect, connection help",
+      "stateOwner": "DemoPresentation + capture source owner",
+      "proposedHome": "Conditional View panel and live Presentation section",
+      "invariant": "Device controls only for device scenes; reconnect never fabricates source availability"
+    },
+    {
+      "oldAction": "Match Device Proportions, Full Screen, Window Size, Window Position",
+      "stateOwner": "Current DemoPresentation and live window",
+      "proposedHome": "View for full screen/window; live Presentation section for detailed adjustments",
+      "invariant": "Proposed desktop relocation must target the live presentation, not saved scene preparation"
+    },
+    {
+      "oldAction": "Pause/resume background motion",
+      "stateOwner": "Current DemoPresentation scene",
+      "proposedHome": "View panel only when scene supports motion",
+      "invariant": "No motion controls for a still scene"
+    },
+    {
+      "oldAction": "Show presentation window",
+      "stateOwner": "Current presentation window",
+      "proposedHome": "View and Present workspace",
+      "invariant": "Bring the existing window forward"
+    },
+    {
+      "oldAction": "End Preview & Open QuickTime / iPhone Mirroring",
+      "stateOwner": "DemoPresentation teardown + supported native app launcher",
+      "proposedHome": "Source & connection help",
+      "invariant": "End capture and release Workbench presentation before external app launch; sample only depicts the handoff boundary"
+    },
+    {
+      "oldAction": "End Presentation",
+      "stateOwner": "DemoPresentation owner",
+      "proposedHome": "Primary and Present row",
+      "invariant": "Independent floating Persona and Timer continue; scene-embedded artwork belongs to Present"
+    },
+    {
+      "oldAction": "Saved Prompts",
+      "stateOwner": "Existing prompt picker and insertion destination",
+      "proposedHome": "Present prompt accessory; management in saved prompts owner",
+      "invariant": "Capture target deliberately; insert/copy only; never send automatically"
+    },
+    {
+      "oldAction": "Switch to Browser Tab",
+      "stateOwner": "Existing browser presenter",
+      "proposedHome": "Presentation workspace",
+      "invariant": "Preserve running presentation; use explicit browser destination"
+    },
+    {
+      "oldAction": "Choose Persona and Next/Previous",
+      "stateOwner": "Frozen PersonaCardDeck / shown card",
+      "proposedHome": "Visible single-copy card picker + Next; keyboard Previous/Next",
+      "invariant": "Hide preserves frozen card; Show again does not advance; no cycle for one candidate"
+    },
+    {
+      "oldAction": "Choose prepared set",
+      "stateOwner": "Prepared Persona session",
+      "proposedHome": "Set picker + Next set",
+      "invariant": "Do not conflate set switching with cycling a single card"
+    },
+    {
+      "oldAction": "Choose overlay; size, lock, position, appearance",
+      "stateOwner": "Selected live PersonaCopy",
+      "proposedHome": "Live-copy section in Persona",
+      "invariant": "Proposed consolidated destination edits only the selected copy; saved library selection is separate"
+    },
+    {
+      "oldAction": "Replace shown/selected; update shown appearance",
+      "stateOwner": "Frozen live copy and saved library versions",
+      "proposedHome": "Persona live-copy section",
+      "invariant": "Explicit replacement/update; library selection alone never changes a shown copy"
+    },
+    {
+      "oldAction": "Show again, hide, end; hide all/resume set",
+      "stateOwner": "Persona overlay/session owner",
+      "proposedHome": "Primary visibility action, Persona row, Persona workspace",
+      "invariant": "Hidden is retained; End is explicit"
+    },
+    {
+      "oldAction": "Bring forward/send backward; remove/add overlay; save layout",
+      "stateOwner": "Prepared session selected copy and saved set",
+      "proposedHome": "Persona selected-copy section",
+      "invariant": "Preserve other copies and originals; Save layout deliberately updates the prepared set"
+    },
+    {
+      "oldAction": "Persona voice response",
+      "stateOwner": "Persona microphone/voice owner",
+      "proposedHome": "Persona copy controls",
+      "invariant": "Prototype changes sample status only; actual microphone permission/audio acceptance remains native"
+    },
+    {
+      "oldAction": "Stop transcribing meeting and meeting recovery",
+      "stateOwner": "MeetingModel (Sources/LocalVoice/MeetingModel.swift)",
+      "proposedHome": "Dictate-associated Meetings row and existing Meetings page",
+      "invariant": "No eighth toolbar mode; retained meeting audio remains recoverable. Copying an earlier result during an active meeting preserves its recording signal and Stop control."
+    },
+    {
+      "oldAction": "Timer pause, resume, end, restart",
+      "stateOwner": "StageKit TimerStep owner",
+      "proposedHome": "Separate Timer row when present; Timer workspace through menu",
+      "invariant": "No Timer toolbar mode; transport action is the step shown, not a generic toggle"
+    },
+    {
+      "oldAction": "Position and Reset",
+      "stateOwner": "Existing toolbar placement owner",
+      "proposedHome": "Toolbar settings with keyboard controls; optional context shortcut",
+      "invariant": "Proposed consolidated home; current alternate Position door exists on Dictate"
+    },
+    {
+      "oldAction": "Keep open",
+      "stateOwner": "Toolbar reducer keepsOpen",
+      "proposedHome": "Toolbar settings and toolbar context shortcut",
+      "invariant": "Proposed relocation: currently user action exists only in More"
+    },
+    {
+      "oldAction": "Hide toolbar / restore",
+      "stateOwner": "Saved floatingToolbarVisible preference and protected live host",
+      "proposedHome": "Toolbar settings; existing Workbench menu/Window restore door",
+      "invariant": "Hide never stops jobs; capture/playback safety controls remain reachable Preserve stationary-pointer and VoiceOver holds from 62f8ba5; those native interactions are not established by this canvas."
+    },
+    {
+      "oldAction": "Settings and shortcut editing",
+      "stateOwner": "Existing desktop settings/menu-bar shortcut owner",
+      "proposedHome": "Workbench menu",
+      "invariant": "Do not turn the tool chooser into another general settings menu"
+    }
+  ],
+  "verified": [
+    "All 14 scenario roots render at 320px with no horizontal overflow; normal width also checked at 736px.",
+    "Persona cycles, hides and shows the same frozen card; ending Present preserves independent Persona.",
+    "Single candidate omits cycling; empty preparation leads to a prepared sample collection and live copy.",
+    "Prepared-set replace/hide affects only selected copy; saved layout survives cycling to another set and back.",
+    "Failed retry retains audio; hiding message retains retry; Record again preserves earlier audio after cancelling the new recording.",
+    "Successful retry with blocked insertion exposes Copy and completed History review.",
+    "Copy now during Draw does not cause insertion when Draw ends.",
+    "Read pause survives Draw ending; failed playback keeps text and retries through preparation.",
+    "Snap cancel saves nothing; unsaved capture remains reachable after leaving; Save creates a reviewable sample record.",
+    "Snap & Talk cancellation preserves earlier captures; saved session can be reviewed.",
+    "Device reconnect remains disconnected until sample availability changes; preparing another scene does not change the live presentation.",
+    "Still scene removes device and motion controls; Full screen/Window changes the rendered preview.",
+    "Meeting and Timer transports are independent; finishing Present preserves an active Timer.",
+    "Hidden toolbar restores through Workbench menu; collapsed mark contains no SVG/icon; Keep open disables collapse.",
+    "Keyboard arrows, typeahead, Enter and Escape operate chooser without starting selected work.",
+    "Drawing pointer input creates a mark and Undo removes it.",
+    "Exported #recovery-pending loads that scenario; changing scenarios updates the exported URL.",
+    "No JavaScript console errors in browser checks; extracted script passes syntax check.",
+    "Hidden toolbar preference retains active playback controls; dismissing reading failure retains text and retry.",
+    "Copying Earlier dictation from History during Meeting + Timer preserves the sample recording signal and Stop transcribing meeting control; Meetings opens the active owner."
+  ],
+  "limits": [
+    "No native app source, installer or live data was changed by this task.",
+    "Sample devices, transcripts, capture previews, clipboard, saved records and external handoffs are local simulation only.",
+    "Browser drag automation did not produce a stroke; direct pointer input and Undo were verified. Native drawing, drag/docking and hit geometry still need installed acceptance.",
+    "Native microphone/Accessibility permissions, physical device capture, multi-display full screen, global shortcuts, native external-app launch and real paste delivery are not validated by this canvas.",
+    "Desktop live-copy, live-presentation and Keep open destinations are proposed relocations requiring implementation and registry/contract updates.",
+    "The full native annotation menu and platform-specific capture permissions are retained in their owners; this study models representative drawing and capture journeys, not every native setting.",
+    "The native Copy-during-active-meeting, stationary-pointer and VoiceOver-hold fixes belong to PR #230 at 62f8ba5 with evidence commit 45276a6. Canvas checks do not substitute for its installed keyboard/VoiceOver acceptance."
+  ],
+  "quietToolbarEvidenceCommit": "45276a6",
+  "sourceArtifact": "workbench-live-pill.html",
+  "sourcePortablePreview": "workbench-live-pill-preview.html",
+  "sourceSHA256": "523cb0a0d56b5701be842ff1ff061c1092e0f71b1022ab3c535aca87495b567f",
+  "artifact": "pill.html",
+  "sha256": "b95945760a4487523a415e5cebb6ef43b08478e8cca003ca1bab8c96f533706b"
+}
