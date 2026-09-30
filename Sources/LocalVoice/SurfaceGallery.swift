@@ -919,9 +919,32 @@ enum SurfaceGallery {
         guard model.pendingTranscript == nil, model.transcript == older.text, model.rawTranscript == (older.rawText ?? older.text), model.saveBeforeUpdate() else {
             throw VoiceError.message("Explicit Replace draft did not apply the selected saved transcript and original.")
         }
+        let retainedOriginal = "Original narration remains available after clearing the displayed draft.\nKeep these exact words."
+        model.rawTranscript = retainedOriginal; model.transcript = ""
+        model.openTranscript(older)
+        guard model.pendingTranscript?.id == older.id, model.transcript.isEmpty, model.rawTranscript == retainedOriginal else {
+            throw VoiceError.message("History Open replaced a retained original after the displayed draft was cleared.")
+        }
+        model.keepCurrentTranscript(); model.page = "home"
+        guard model.pendingTranscript == nil, model.transcript.isEmpty, model.rawTranscript == retainedOriginal,
+              model.saveBeforeUpdate() else { throw VoiceError.message("Keep current failed to retain the cleared draft and its original.") }
+        let clearedState = try model.store.load()
+        guard clearedState.draft.isEmpty, clearedState.rawDraft == retainedOriginal else {
+            throw VoiceError.message("The cleared draft's original did not survive saved-state reload.")
+        }
+        _ = model.useOriginal()
+        guard model.transcript == retainedOriginal else { throw VoiceError.message("Original could not restore the retained words after Keep current.") }
+        model.transcript = ""; model.openTranscript(older); model.replaceDraftWithTranscript()
+        guard model.pendingTranscript == nil, model.transcript == older.text, model.rawTranscript == (older.rawText ?? older.text),
+              model.saveBeforeUpdate() else { throw VoiceError.message("Explicit Replace did not replace the cleared draft and its original.") }
+        let replacedState = try model.store.load()
+        guard replacedState.draft == older.text, replacedState.rawDraft == (older.rawText ?? older.text) else {
+            throw VoiceError.message("Explicit replacement of a cleared draft did not survive saved-state reload.")
+        }
         return (["Drawing Home twice leaves History's door unset, the Dictate draft and the shared selection as they were.",
                  "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept.",
-                 "History Open preserves a different Dictate draft and original in the actual saved store until Replace draft; Keep current, navigation and live capture preserve them, including capture beginning after the decision opens."], shot)
+                 "History Open preserves a different Dictate draft and original in the actual saved store until Replace draft; Keep current, navigation and live capture preserve them, including capture beginning after the decision opens.",
+                 "Clearing the displayed draft keeps its original behind the same Keep/Replace decision. Keep and saved-state reload preserve it, Original restores it, and explicit Replace commits the selected transcript and original."], shot)
     }
 
     /// Home at 1.35 times its text in the minimum window's content column. SwiftUI's text styles do

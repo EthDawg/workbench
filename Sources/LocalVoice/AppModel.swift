@@ -1012,7 +1012,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             return
         }
         page = "dictate"
-        if !transcript.isEmpty && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
+        if (!transcript.isEmpty || !rawTranscript.isEmpty) && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
             pendingTranscript = item
             return
         }
