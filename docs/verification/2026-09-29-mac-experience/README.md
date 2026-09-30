@@ -6,10 +6,10 @@
 
 The combined candidate includes profile camera recovery, the shared image workspace, direct Snap / Snap & Talk capture choices, and toolbar edge orientation. Camera, image and toolbar work had separate writers and worktrees; this chat alone integrated the changes and updated the shared Preview.
 
-### Installed source
+### Initial combined installed acceptance
 
 - **Workbench Preview 2.3.1, build 20260930031442**, clean source **bd6d2ba1063397ce498e97027af891c5fa859d90**. Native Copy build details was pasted into a local test document and matched the installed bundle. The existing path, `com.ethdawg.workbench.preview` identity and `GHVAAH9P5Z` signing team were retained through `scripts/install.sh --no-open`.
-- Detailed image editing and camera recovery checks first ran on build **20260930023227**, source **f3992dcf4851bb847d0aa41ebf7c0421297ccad3**. The final build adds toolbar orientation; image and camera implementation is unchanged. Image reopening, navigation, archive/copy behavior and capture integration were checked again on the final build.
+- Detailed image editing and camera recovery checks first ran on build **20260930023227**, source **f3992dcf4851bb847d0aa41ebf7c0421297ccad3**. Build 20260930031442 adds toolbar orientation; image and camera implementation is unchanged. Image reopening, navigation, archive/copy behavior and capture integration were checked again on that build.
 - Stable, public binaries, update feeds and the deployed website were not part of this install. The receipt below for 29 September describes an earlier candidate.
 
 ### Combined checks
@@ -18,7 +18,11 @@ At `bd6d2ba`, `bash scripts/test.sh` passed: **327 Swift package tests** (two ga
 
 The focused toolbar run passed **203 tests**, production controls passed **190 checks**, and the motion renderer passed **18 sequences**. The surface registry classified **444 entries**. The signed installer passed its packaged resource checks. Existing keychain deprecation warnings remain unrelated to this change.
 
-CI run [36662608243](https://github.com/EthDawg/workbench/actions/runs/36662608243) exposed runner-specific drag-coordinate and warning-pixel assertions after local success. Follow-up `4129f61` corrects queued test-event coordinates, allows one pixel of rendering variation while requiring a deliberately clipped reference to fail, and completes the native display pass before hit testing. It changes tests and their receipt only; the installed production implementation remains identical. The final CI result is recorded on PR #229; a local pass alone does not satisfy that gate.
+CI run [36662608243](https://github.com/EthDawg/workbench/actions/runs/36662608243) exposed runner-specific drag-coordinate and warning-pixel assertions after local success. Follow-up `4129f61` corrects queued test-event coordinates and allows one pixel of rendering variation while requiring a deliberately clipped reference to fail. Its display-only synchronization was insufficient: the integration rerun caught an occasional stale launcher hit target.
+
+Follow-up `9d78bad` fixes production interaction readiness. Capture buttons now retain their parent's disabled state until expansion completes; the fading row cannot receive input during collapse. The deterministic native test synchronizes each simulated frame, and a separate test follows the real animation clock through immediate and animated completion for all seven tools at eight anchors. The worker passed 1,680 reveal/collapse cycles and 112 real-clock completions. The integration owner reran all **204 toolbar tests with both native gates enabled: zero skips and zero failures**. Production controls and motion checks also passed with the worker's final fix.
+
+The detailed installed journeys below describe the two identified builds above. The signed install, native build-details readback and final CI result for the subsequent readiness fix are recorded on [PR #229](https://github.com/EthDawg/workbench/pull/229). A local pass alone does not satisfy that CI gate.
 
 ### Installed acceptance
 
