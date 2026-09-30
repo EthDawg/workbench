@@ -294,7 +294,9 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             case .overlayPrevious: demoScenes.personas.performOverlayAction(.stepGroup(-1))
             case .overlayVisibility: demoScenes.personas.performOverlayAction(.pauseResume)
             // End releases the one floating card too; Hide is what keeps it for Show again.
-            case .overlayEnd: demoScenes.personas.endOverlaySession()
+            // Like the shared End door, it ends the live source: a live camera, not
+            // the card the camera replaced and keeps for Show again.
+            case .overlayEnd: demoScenes.personas.endLivePersona()
             default: break
             }
             return

@@ -269,13 +269,14 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     }
     private var archiveURL: URL { root.appendingPathComponent("scenes.json") }
     private var snapshotURL: URL { root.appendingPathComponent("desktop-restore.json") }
-    /// `personaPanels` stands in for prepared overlay windows in checks.
+    /// `personaPanels` stands in for prepared overlay windows in checks, and
+    /// `personaCamera` for the live camera.
     init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true, personaVoice: PersonaVoiceAccess? = nil,
-         personaPanels: (() -> any PersonaSessionDisplaying)? = nil) {
+         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil) {
         self.root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
         self.systemIntegrationEnabled = systemIntegrationEnabled
         self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason, sessionPanelFactory: personaPanels,
-                                       sessionHUDEnabled: personaPanels == nil, voice: personaVoice)
+                                       sessionHUDEnabled: personaPanels == nil, voice: personaVoice, camera: personaCamera)
         super.init()
         // Persona's camera keeps clear of the device a presentation is showing.
         personas.camera.deviceInUse = { [weak self] in self?.heldDeviceID }

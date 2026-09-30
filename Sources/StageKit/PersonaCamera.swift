@@ -43,11 +43,15 @@ struct PersonaCameraList: Equatable {
 enum PersonaCameraFailure: Equatable {
     case access(ProfileCameraIssue)
     case inUse(camera: String, owner: String)
+    /// The chosen camera has gone while others remain. None of them is opened in its place.
+    case missing(camera: String?)
 
     var message: String {
         switch self {
         case .inUse(let camera, let owner):
             return "“\(camera)” is already in use by \(owner). End that use or choose another camera, then start the camera again."
+        case .missing(let camera):
+            return (camera.map { "“\($0)”" } ?? "The chosen camera") + " isn’t connected. Choose another camera, or reconnect it, then start the camera again."
         case .access(let issue):
             switch issue {
             case .denied: return "Camera access is off. Allow Workbench in Camera settings, then start the camera again."
@@ -235,15 +239,20 @@ final class PersonaLiveCamera: ObservableObject {
         let token = request
         visit = UUID()
         let cameras = list()
-        sources = cameras.devices.map { ProfileCameraSource(id: $0.id, name: $0.name) }
         let target = deviceID ?? preparedID ?? selectedID
-        // An unknown or absent camera is left to the session, which reports that
-        // none is available with the same words as every other start.
+        let targetName = sources.first { $0.id == target }?.name
+        sources = cameras.devices.map { ProfileCameraSource(id: $0.id, name: $0.name) }
+        // With no camera at all, the session reports that none is available with
+        // the same words as every other start.
         if let chosen = cameras.chosen(target) {
             selectedID = chosen.id; preparedID = chosen.id
             if let owner = owner(of: chosen) {
                 fail(.inUse(camera: chosen.name, owner: owner)); return
             }
+        } else if target != nil, !cameras.devices.isEmpty {
+            // The chosen camera has gone, but others remain. Say which one is
+            // missing and let the person choose; never open another in its place.
+            fail(.missing(camera: targetName)); return
         } else if let deviceID {
             selectedID = deviceID
         }

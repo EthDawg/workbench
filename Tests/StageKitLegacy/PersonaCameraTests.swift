@@ -295,9 +295,11 @@ final class PersonaCameraTests {
             // camera. Keep the failed choice until the person chooses A.
             f.capture.starts.last?.1(.failed(.interrupted))
             f.offer(PersonaCameraList(devices: [PersonaCameraDevice(id: "built-in", name: "Built-in camera", inUseByAnotherApp: false)], preferredID: "built-in"))
-            f.library.retryCamera(); f.permissionRequests.last?(.authorized)
-            XCTAssertEqual(f.capture.starts.last?.0, "studio", "Retry never silently substitutes another camera")
-            f.capture.starts.last?.1(.failed(.unavailable))
+            let asked = f.permissionRequests.count, opened = f.capture.starts.count
+            f.library.retryCamera()
+            XCTAssertEqual(f.camera.state, .failed(.missing(camera: "Studio Cam")), "Retry names the camera that has gone")
+            XCTAssertEqual(f.capture.starts.count, opened, "Retry never silently substitutes another camera")
+            XCTAssertEqual(f.permissionRequests.count, asked, "A camera that is not there asks for nothing")
             XCTAssertEqual(f.camera.sources.count, 1)
             XCTAssertTrue(f.camera.offersSourceChoice, "The remaining camera is reachable even though only one is available")
             XCTAssertFalse(f.camera.preparedSourceAvailable)
@@ -691,6 +693,98 @@ final class PersonaCameraTests {
                     try data.write(to: directory.appendingPathComponent("persona-camera-\(name)-\(appearance == .aqua ? "light" : "dark").png"))
                 }
             }
+        }
+    }
+    /// A hidden bubble whose camera has gone while another remains says which
+    /// camera is missing, next to the list that offers the one that is there.
+    /// Show camera again opens nothing in its place and asks for no access; only
+    /// an explicit choice starts the remaining camera.
+    func testShowAgainAfterTheChosenCameraHasGoneNamesItAndOpensNoOther() {
+        MainActor.assumeIsolated {
+            let f = Fixture(); defer { f.cleanup() }
+            f.offer(PersonaCameraList(devices: [PersonaCameraDevice(id: "built-in", name: "Built-in camera", inUseByAnotherApp: false),
+                                                PersonaCameraDevice(id: "desk", name: "Desk camera", inUseByAnotherApp: false)],
+                                      preferredID: "built-in"))
+            f.live()
+            f.library.hideCamera()
+            XCTAssertEqual(f.camera.state, .hidden(.chosen))
+            // The lid closes or the camera is unplugged while hidden; another remains.
+            f.offer(PersonaCameraList(devices: [PersonaCameraDevice(id: "desk", name: "Desk camera", inUseByAnotherApp: false)],
+                                      preferredID: "desk"))
+            let asked = f.permissionRequests.count, opened = f.capture.starts.count
+            f.library.showCameraAgain()
+            XCTAssertEqual(f.camera.state, .failed(.missing(camera: "Built-in camera")))
+            XCTAssertEqual(f.permissionRequests.count, asked, "Nothing is asked for a camera that is not there")
+            XCTAssertEqual(f.capture.starts.count, opened, "The desk camera is not opened in its place")
+            XCTAssertFalse(f.bubble.shown)
+            XCTAssertTrue(f.camera.explanation.contains("Built-in camera"))
+            XCTAssertFalse(f.camera.explanation.contains("No camera is available"), "Another camera is listed, so none-available is untrue")
+            XCTAssertTrue(f.library.notice == f.camera.explanation, "The notice gives the same reason")
+            XCTAssertTrue(f.camera.offersSourceChoice && !f.camera.preparedSourceAvailable, "The list offers the camera that is there")
+            XCTAssertTrue(f.camera.failure?.offersRetry == true)
+
+            // With no camera at all, the words stay the session's own.
+            f.offer(PersonaCameraList(devices: [], preferredID: nil))
+            f.library.retryCamera(); f.permissionRequests.last?(.authorized)
+            f.capture.starts.last?.1(.failed(.unavailable))
+            XCTAssertEqual(f.camera.state, .failed(.access(.unavailable)))
+
+            // Choosing the remaining camera, then Try again, opens exactly that one.
+            f.offer(PersonaCameraList(devices: [PersonaCameraDevice(id: "desk", name: "Desk camera", inUseByAnotherApp: false)],
+                                      preferredID: "desk"))
+            f.capture.starts.last?.1(.sources([ProfileCameraSource(id: "desk", name: "Desk camera")], selected: nil))
+            f.library.retryCamera()
+            f.camera.prepareDevice("desk")
+            f.library.retryCamera(); f.permissionRequests.last?(.authorized)
+            XCTAssertEqual(f.capture.starts.last?.0, "desk")
+            f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.state, .live)
+        }
+    }
+
+    /// The End presentation overlays shortcut, through the app's own hotkey
+    /// route, ends whichever source is live, as the shared End door does. With
+    /// the camera live it ends the camera and keeps the card the camera replaced
+    /// for Show again, instead of discarding that hidden card and leaving the
+    /// camera running.
+    func testEndOverlaysShortcutEndsTheLiveCameraAndKeepsTheReplacedCard() throws {
+        try MainActor.assumeIsolated {
+            let f = Fixture(); defer { f.cleanup() }
+            // A suite named by a path keeps its plist in this folder, not in ~/Library/Preferences.
+            let settings = SettingsStore(defaults: UserDefaults(suiteName: f.root.appendingPathComponent("settings").path)!)
+            for action in Action.allCases {
+                var shortcut = action.defaultShortcut; shortcut.enabled = false
+                settings.value.shortcuts[action.rawValue] = shortcut
+            }
+            let app = AppCoordinator(settings: settings, archiveURL: f.root.appendingPathComponent("boards.json"), embedded: true)
+            let scenes = DemoScenes(root: f.root.appendingPathComponent("scenes"), systemIntegrationEnabled: false, personaCamera: f.camera)
+            app.demoScenes = scenes
+            defer { scenes.shutdown() }
+            let library = scenes.personas
+            library.usesSharedControls = true
+            let url = f.root.appendingPathComponent("synthetic.png")
+            try Fixture.png().write(to: url)
+            let card = try library.addImage(url, name: "Private Alpha", card: PersonaCardStyle(label: "Site lead"))
+            library.selectedID = card.id
+            app.handleHotkey(.personaToggle, down: true)
+            let copy = library.shownCard?.copyID
+            XCTAssertTrue(copy != nil && library.artworkVisible)
+
+            library.startCamera(); f.permissionRequests.last?(.authorized); f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.state, .live)
+            XCTAssertTrue(library.hasHiddenCard, "The camera keeps the card it replaced")
+            let stops = f.capture.stops
+            app.handleHotkey(.overlayEnd, down: true)
+            XCTAssertEqual(f.camera.state, .off, "End ends the source that is live")
+            XCTAssertTrue(f.capture.stops > stops, "The camera is released")
+            XCTAssertFalse(f.bubble.shown)
+            XCTAssertEqual(library.liveSource, .artwork)
+            XCTAssertTrue(library.hasHiddenCard && library.shownCard?.copyID == copy, "The replaced card is kept for Show again")
+            app.handleHotkey(.personaToggle, down: true)
+            XCTAssertTrue(library.artworkVisible && library.shownCard?.copyID == copy, "Show again brings back that exact card")
+            // With artwork live, the shortcut still releases the card, as before.
+            app.handleHotkey(.overlayEnd, down: true)
+            XCTAssertTrue(library.shownCard == nil && !library.overlayVisible)
         }
     }
 }
