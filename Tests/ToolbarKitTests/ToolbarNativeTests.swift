@@ -260,8 +260,8 @@ final class ToolbarNativeTests: XCTestCase {
                 .sorted { $0.convert($0.bounds, to: view).minX < $1.convert($1.bounds, to: view).minX }
                 .map { $0.accessibilityIdentifier() }
         }
-        XCTAssertEqual(order(.bottom), ["toolbar.launcher", "toolbar.primary", "toolbar.accessory", "toolbar.more"])
-        XCTAssertEqual(order(.bottomRight), ["toolbar.more", "toolbar.accessory", "toolbar.primary", "toolbar.launcher"])
+        XCTAssertEqual(order(.bottom), ["toolbar.launcher", "toolbar.primary", "toolbar.accessory"])
+        XCTAssertEqual(order(.bottomRight), ["toolbar.accessory", "toolbar.primary", "toolbar.launcher"])
     }
 
     /// The row holds no mode strip any more: the launcher is the one way to another tool.
@@ -282,11 +282,11 @@ final class ToolbarNativeTests: XCTestCase {
     @MainActor func testMoreOpensTheOptionsWithAdmission() throws {
         _ = NSApplication.shared
         var admissionRequests = 0, endings = 0
-        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "more", tier: .revealed),
+        let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "view", tier: .revealed, mode: .present, quickControl: .presentationView),
             menuBegan: { _ in admissionRequests += 1; return false }, menuEnded: { endings += 1 }))
-        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" })
+        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.view" })
         XCTAssertTrue(more.acceptsFirstResponder)
-        XCTAssertEqual(more.accessibilityLabel(), "More")
+        XCTAssertEqual(more.accessibilityLabel(), "View")
         more.performClick(nil)
         XCTAssertEqual(admissionRequests, 1)
         XCTAssertEqual(endings, 0, "rejected native activation never enters menu tracking")
@@ -371,14 +371,14 @@ final class ToolbarNativeTests: XCTestCase {
                         panel.setContentSize(NSSize(width: ToolbarLayout.mark(for: anchor).width + (size.width - ToolbarLayout.mark(for: anchor).width) * progress, height: ToolbarLayout.mark(for: anchor).height + (size.height - ToolbarLayout.mark(for: anchor).height) * progress))
                         renderFrame()
                         let controls = buttons(host)
-                        XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
+                        XCTAssertEqual(controls.count, 1 + max(1, state.captureChoices.count) + (state.showsAccessory ? state.accessoryCount : 0))
                         for button in controls {
                             XCTAssertEqual(button.isEnabled, progress == 1,
                                 "\(mode), \(anchor), \(button.accessibilityIdentifier()) at reveal progress \(progress)")
                         }
                     }
                     let controls = buttons(host)
-                    XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
+                    XCTAssertEqual(controls.count, 1 + max(1, state.captureChoices.count) + (state.showsAccessory ? state.accessoryCount : 0))
                     for button in controls {
                         let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: tracking.superview)
                         let hit = tracking.hitTest(point)
@@ -428,7 +428,7 @@ final class ToolbarNativeTests: XCTestCase {
                     let motion = ToolbarWindowMotion()
                     motion.settled = {
                         let controls = self.buttons(host)
-                        XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
+                        XCTAssertEqual(controls.count, 1 + max(1, state.captureChoices.count) + (state.showsAccessory ? state.accessoryCount : 0))
                         for button in controls {
                             XCTAssertTrue(button.isEnabled,
                                 "\(mode), \(anchor), \(button.accessibilityIdentifier()) is enabled at native completion (animated: \(animated))")
@@ -667,14 +667,14 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(view.fittingSize.width, short, accuracy: 0.5)
     }
 
-    @MainActor func testActionAndMoreHintsNameTheirActualControl() throws {
-        let state = ToolbarViewState(name: "hint", tier: .revealed, mode: .draw, actionTitle: "Draw", actionHint: "Hold ⌥D")
+    @MainActor func testActionAndToolsHintsNameTheirActualControl() throws {
+        let state = ToolbarViewState(name: "hint", tier: .revealed, mode: .draw, actionTitle: "Draw", actionHint: "Hold ⌥D", accessory: .tools)
         let view = laidOut(ToolbarRow(state: state))
         let primary = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.primary" } as? ToolbarIconButton)
-        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.more" } as? ToolbarIconButton)
+        let more = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.accessory" } as? ToolbarIconButton)
         XCTAssertEqual(primary.hint, "Draw · Hold ⌥D")
         XCTAssertEqual(primary.accessibilityHelp(), primary.hint)
-        XCTAssertEqual(more.hint, "Options for Draw")
+        XCTAssertEqual(more.hint, "Tools")
         XCTAssertNil(primary.toolTip, "the native floating hint has no competing system tooltip")
         var noKey = state; noKey.actionHint = nil
         view.rootView = ToolbarRow(state: noKey); view.layoutSubtreeIfNeeded()
@@ -804,7 +804,7 @@ final class ToolbarNativeTests: XCTestCase {
             let size = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), textScale: scale)).fittingSize
             XCTAssertEqual(size.width, ToolbarChooserLayout.width * scale, accuracy: 0.5, "at \(scale)")
             // Rows of 48.6 points at larger text land on whole pixels.
-            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 7, scale: scale), accuracy: 1, "at \(scale)")
+            XCTAssertEqual(size.height, ToolbarChooserLayout.height(rows: 7, scale: scale) + 45 * scale, accuracy: 1, "at \(scale)")
         }
         let short = NSHostingView(rootView: ToolbarChooserView(model: ToolbarChooserModel(choices: choices), available: 150)).fittingSize
         XCTAssertEqual(short.height, 150, accuracy: 0.5, "a short display scrolls the list rather than clipping it")

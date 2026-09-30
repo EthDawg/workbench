@@ -24,6 +24,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private let migrationFailure: String?
     @Published var tool = DrawingTool.pen
     @Published var isDrawing = false
+    private(set) var drawingGeneration = UUID()
     @Published var pointerEnabled = false
     @Published var boards: [String: BoardStyle] = [:]
     @Published var timerText = "05:00"
@@ -228,6 +229,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         let wasDrawing = isDrawing
         onBeginActivity?()
         for canvas in canvases.values { canvas.finishStroke(); canvas.commitText() }
+        if !wasDrawing { drawingGeneration = UUID() }
         tool = selected; isDrawing = true; self.latched = latched
         activeDisplayID = currentID
         let leavingControls = mainWindow?.isVisible == true || quickControlsVisible

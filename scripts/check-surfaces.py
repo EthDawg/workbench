@@ -113,8 +113,13 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
 #             calls a closure the host injected into the view; nothing is followed
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
-    # More: the tool's options, the work running elsewhere and the toolbar's own items (#134).
-    ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar More menu', 'controls'),
+    ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar context menu', 'controls'),
+    ('LocalVoice/ToolbarActivityActions.swift', 'FloatingToolbar', 'floating toolbar activity chooser', 'controls'),
+    ('LocalVoice/PresentWorkspaceView.swift', 'PresentWorkspaceView', 'Present workspace', 'page'),
+    ('LocalVoice/PresentWorkspaceView.swift', 'PresentPromptButton', 'Present workspace', 'controls'),
+    ('StageKit/PersonaLiveSettings.swift', 'PersonaLiveSettings', 'Persona live copies', 'controls'),
+    ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.shownPanel', 'Persona live copy', 'controls'),
+    ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
     ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
     # The same window's live controls: the no-speech cue, and a result's own controls, which the
@@ -199,6 +204,7 @@ CATALOGUES = [
     # The floating toolbar's next action, one title per operation and start verb.
     ('ToolbarCore/ToolbarNextAction.swift', 'ToolbarNextAction.title'),
     ('ToolbarCore/ToolbarCaptureKind.swift', 'ToolbarCaptureKind'),
+    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarQuickControl'),
 ]
 OFFER_NAME = re.compile(r'\b(?:struct|class)\s+(\w*Offer\w*|\w+Cue)\b')
 OFFER_TYPES = ['FounderIntroductionCard']
@@ -209,9 +215,9 @@ ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 # first argument is its accessible name. PanelSwitch is the panel header's switch row.
 CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
     Stepper Slider Link NativeControlMenu PanelSwitch ToolbarMenuAction StageMenuAction
-    NSMenuItem NSButton addItem addSubmenu card workspaceCard command actionItem action CapturePreviewButton'''.split())
+    NSMenuItem NSButton addItem addSubmenu card workspaceCard command actionItem action CapturePreviewButton StageLiveMenu submenu'''.split())
 # Label-taking helpers, counted only in the file that declares them.
-HELPERS = {'card', 'workspaceCard', 'command', 'actionItem', 'action'}
+HELPERS = {'card', 'workspaceCard', 'command', 'actionItem', 'action', 'submenu'}
 IDENT = r'[A-Za-z_$][\w$]*'
 KEYWORDS = set('''return in let var case try await if guard else where for while
     switch throw defer do catch is as some any'''.split())
@@ -1014,6 +1020,8 @@ class Inventory:
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
                 self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
+            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'PresentWorkspaceView' and literal([swift.tokens[i + 3]]):
+                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Present workspace', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':
@@ -1068,6 +1076,10 @@ class Inventory:
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
                 self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar capture sources', identity=case, case=case)
+        swift, ranges = self.owner(*CATALOGUES[8], kinds=('enum',))
+        for start, end in ranges[:1]:
+            for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
+                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar contextual actions', identity=case, case=case)
         # Stage shortcuts: every Action case, titled as the shortcut list shows it.
         swift, ranges = self.owner(*CATALOGUES[3], kinds=('enum',))
         for start, end in ranges[:1]:

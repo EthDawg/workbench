@@ -94,7 +94,7 @@ public enum ToolbarOperation: Hashable, Sendable {
         case .hidePersona, .pauseOverlays: return "eye.slash"
         case .resumeOverlays: return "eye"
         case .captureNext: return "viewfinder"
-        case .wait: return "ellipsis"
+        case .wait: return "hourglass"
         case .start(let mode): return mode == .dictate ? "mic.fill" : mode.symbol
         }
     }
@@ -130,7 +130,7 @@ public enum ToolbarOperation: Hashable, Sendable {
 /// never read differently: what is consuming your input now, then the cheapest
 /// to undo, then the mode's own session steps and endings, then its start verb.
 /// Work that runs in another mode never claims the label; its chooser row says
-/// it is live and More offers its finish item.
+/// it is live and its chooser row offers its finish item.
 public struct ToolbarNextAction: Equatable, Sendable {
     public var title: String
     public var symbol: String
@@ -186,7 +186,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         switch live.dictation {
         case .requesting: return .cancelDictationRequest
         case .recording: return .stopDictation
-        // Words waiting for drawing to end: stopping drawing is what delivers them, and More has
+        // Words waiting for drawing to end: stopping drawing is what delivers them, and the Dictate chooser row has
         // Copy now (#211 F5). Drawing that has already ended is a moment's processing.
         case .waitingForDrawing where live.drawing: return .finishDrawing
         case .processing, .cancelling, .waitingForDrawing: return .wait

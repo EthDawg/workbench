@@ -46,6 +46,7 @@ enum PromptFieldReturn {
 @MainActor
 final class PromptInsertion: ObservableObject {
     @Published private(set) var running = false
+    private(set) var operationIdentity = UUID()
     /// The latest delivery, named by its prompt and destination (#159).
     @Published private(set) var lastAttempt: PromptAttempt?
     private var task: Task<Void, Never>?
@@ -68,6 +69,7 @@ final class PromptInsertion: ObservableObject {
                                         result: "Choose a readable destination text field, then open Prompts again. Nothing was inserted.")
             return
         }
+        operationIdentity = UUID()
         running = true
         lastAttempt = PromptAttempt(prompt: title, destination: destinationName, result: "Inserting…", finished: false)
         if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in

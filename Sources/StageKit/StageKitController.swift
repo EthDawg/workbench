@@ -137,6 +137,8 @@ public final class StageKitController: ObservableObject {
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }
     }
+    public func endPersona() { coordinator.demoScenes.personas.endOverlaySession() }
+    public var personaSessionIdentity: UUID { coordinator.demoScenes.personas.liveControlsGeneration }
     public func makePersonaMenu(includePreparation: Bool = false) -> NSMenu {
         let menu = coordinator.demoScenes.personas.makeControlsMenu()
         if includePreparation {
@@ -146,6 +148,28 @@ public final class StageKitController: ObservableObject {
         return menu
     }
     public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
+    public func makePresentationViewMenu() -> NSMenu { coordinator.demoScenes.makeViewMenu() }
+    public struct PersonaCycle: Equatable {
+        let generation: UUID
+        let revision: UUID
+        let selection: UUID
+        public let title: String
+        public let isSet: Bool
+        public let canAdvance: Bool
+    }
+    public var personaCycle: PersonaCycle? { coordinator.demoScenes.personas.toolbarCycle }
+    public var personaCycleNotice: String? { coordinator.demoScenes.personas.cardFeedback ?? coordinator.demoScenes.personas.sessionState.feedback }
+    public func stepPersona(expected: PersonaCycle, offset: Int = 1) {
+        coordinator.demoScenes.personas.stepToolbarPersona(expected: expected, offset: offset)
+    }
+    public func makePersonaPickerMenu() -> NSMenu {
+        let source = makePersonaMenu()
+        let title = personaCycle?.isSet == true ? "Choose Set" : "Choose Persona"
+        guard let item = source.items.first(where: { $0.title == title }), let menu = item.submenu else { return NSMenu() }
+        item.submenu = nil
+        if let notice = personaCycleNotice { menu.insertItem(StageMenuAction(notice, enabled: false) {}, at: 0) }
+        return menu
+    }
     /// One live persona copy, named exactly: the one floating card, or one copy of
     /// a prepared set. Capture it when a control is drawn, so a later choice
     /// changes that copy and never another (#169, #134).
@@ -183,19 +207,15 @@ public final class StageKitController: ObservableObject {
     /// The panel row starts and stops the timer; the overlay keeps pause and reset.
     public func startTimer() { coordinator.startTimer() }
     public func stopTimer() { coordinator.resetTimer(); coordinator.hideTimer() }
-    /// The panel's persona options: the set, the persona, add, hide or show,
-    /// the layout and End. Selection-scoped adjustments (size, lock, position, appearance,
-    /// replace, order, remove) stay in the HUD and toolbar menus.
+    /// The panel retains the live-copy adjustments as an alternate home to the Persona
+    /// workspace. Feedback already shown by the panel is not repeated in its menu.
     public func makePersonaPanelMenu() -> NSMenu {
         let library = coordinator.demoScenes.personas
         let menu = library.makeControlsMenu()
         // The panel already shows these in its own feedback line.
         let feedback = library.sessionState.feedback ?? library.cardFeedback
-        let selectionScoped = ["Lock Artwork · Clicks Pass Through", "Position Artwork", "Appearance", "Replace Selected", "Hide Selected",
-                               "Show Selected", "Bring Forward", "Send Backward", "Remove Selected"]
         for item in menu.items {
-            let dropped = item.view != nil || (feedback != nil && item.title == feedback)
-                || selectionScoped.contains(item.title)
+            let dropped = (feedback != nil && item.title == feedback)
                 || (!item.isEnabled && item.submenu == nil && item.title.hasSuffix("first."))
             if dropped { menu.removeItem(item) }
         }
@@ -284,12 +304,14 @@ public final class StageKitController: ObservableObject {
         return AnyView(PersonaImageImportView(library: library, draft: draft))
     }
     public var isDrawing: Bool { coordinator.isDrawing }
+    public var drawingIdentity: UUID? { isDrawing ? coordinator.drawingGeneration : nil }
     public enum ShortcutGesture { case press, hold, release }
     /// Only presentation metadata; shortcut execution stays with the coordinator.
     public var penShortcutGesture: ShortcutGesture? { coordinator.penShortcutGesture }
     public var drawingActivationTitle: String { coordinator.settings.value.activation.rawValue }
     public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
+    public var presentationIdentity: UUID? { coordinator.demoScenes.presentationIdentity }
     public var hasActivePersonaSession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
     public var isPersonaSessionPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
     public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }

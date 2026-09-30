@@ -437,6 +437,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var meter: Timer?
     private var peakPower: Float = -160
     private var recordingContext: RecordingContext?
+    /// Every take has a unique pending file, including a re-recording of the same section.
+    var narrationIdentity: String? { isRecording ? recordingContext?.pendingURL.absoluteString : nil }
     private var queue: [Job] = []
     private var processor: Task<Void, Never>?
     private var activeJob: Job?

@@ -582,6 +582,8 @@ enum MeetingChecks {
             history = TranscriptHistory.adding(transcript, to: history)
         }
         await model.start()
+        let firstRecording = model.recordingIdentity
+        try expect(firstRecording != nil, "the live recording has an operation identity")
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
         model.selectAudioSource(nil)
@@ -620,7 +622,11 @@ enum MeetingChecks {
         _ = try model.removeCompletedRecording(for: activeID) { history.removeAll { $0.id == activeID } }
         try expect(model.completedTranscriptID == nil && history.isEmpty && !model.hasRecording(for: activeID),
                    "removing the completed transcript also removes its workspace completion link")
-        await model.start(); await model.stop()
+        await model.start()
+        try expect(model.recordingIdentity != firstRecording, "a replacement recording has its own generation")
+        await model.stop(expected: firstRecording)
+        try expect(model.isRecording, "a held Stop cannot finish a replacement recording")
+        await model.stop()
         try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID != nil,
                    "a subsequent completed meeting gets its own review link")
         let subsequentID = model.completedTranscriptID!

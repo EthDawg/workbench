@@ -53,6 +53,7 @@ final class MeetingModel: ObservableObject {
     private let captureFactory: () -> MeetingCapture
     private let startupNoticeDelayNanoseconds: UInt64
     private var generation = UUID()
+    var recordingIdentity: UUID? { isRecording ? generation : nil }
     private var operation: Task<Void, Never>?
     private var watcher: Task<Void, Never>?
     private var detectionTask: Task<Void, Never>?
@@ -227,8 +228,8 @@ final class MeetingModel: ObservableObject {
         }
     }
 
-    func stop() async {
-        guard isRecording else { return }
+    func stop(expected: UUID? = nil) async {
+        guard isRecording, expected == nil || recordingIdentity == expected else { return }
         await finishCapture(process: true)
     }
 

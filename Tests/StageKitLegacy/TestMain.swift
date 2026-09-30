@@ -48,6 +48,16 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-layout-only"] {
+            guard ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] != nil else { exit(2) }
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.prohibited)
+            NSApp.finishLaunching()
+            do { try PersonaWorkspaceTests().testOffscreenWorkspaceLayouts() }
+            catch { assertionFailures += 1; print("FAIL offscreen Persona/Present layouts: \(error)") }
+            print("1 tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-workspace-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)

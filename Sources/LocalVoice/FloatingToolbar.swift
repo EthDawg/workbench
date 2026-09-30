@@ -40,7 +40,7 @@ enum FloatingToolbarSurface: Equatable {
 enum FloatingResult: Equatable {
     case dictationFailure, readingFailure
 
-    /// The result waiting for the person stays reachable in More while other work runs. A new recording or its processing sets it aside until it ends.
+    /// The result waiting for the person stays reachable in the chooser while other work runs. A new recording or its processing sets it aside until it ends.
     @MainActor static func pending(_ model: AppModel) -> FloatingResult? {
         guard model.phase == .idle, !model.previewingPanel else { return nil }
         if model.captureFailure != nil { return .dictationFailure }
@@ -62,7 +62,7 @@ enum FloatingResult: Equatable {
     /// The result the pointer's reveal shows in place of the row (#220, #222): the pending one,
     /// unless it was already pending when the input-consuming work now live began. The row of a
     /// reading preparing, playing or paused, a narration, a recording, drawing or an insertion then
-    /// stays under the pointer, and the result keeps the mark's warning and More's first section
+    /// stays under the pointer, and the result keeps its recovery with its owner
     /// until the next reveal after that work ends. A result that arrives during the work, or over
     /// the chosen tool's own session, is revealed as any new result is.
     @MainActor static func revealed(_ model: AppModel, hold: ToolbarResultHold<Identity>) -> FloatingResult? {
@@ -102,7 +102,7 @@ struct FloatingToolbar: View {
 
     /// The assigned key for a mode, or nil when it is off or failed: an
     /// unusable binding is omitted rather than shown as text nobody can use.
-    private func key(_ mode: ToolbarMode) -> String? {
+    func key(_ mode: ToolbarMode) -> String? {
         guard let tool = mode.controlTool else { return nil }
         switch context.shortcut(tool) {
         case "Shortcut off", "Shortcut unavailable", nil: return nil
@@ -144,26 +144,39 @@ struct FloatingToolbar: View {
             anchor: controls.rowAnchor, isFloating: controls.isFloating,
             mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol, isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
-            choices: ToolbarNextAction.choices(for: live, key: key),
+            choices: chooserChoices,
             isBusy: live.isLive(live.mode),
             status: .resolve(activity), showsAccessory: controls.accessoryFits,
             accessory: accessory(live), accessoryDescription: accessoryDescription(live),
-            captureChoices: ToolbarCaptureKind.offered(for: live))
+            captureChoices: ToolbarCaptureKind.offered(for: live), quickControl: quickControl)
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
-    /// Draw's Tools, Present's Prompts, and Persona's Appearance while a live copy is selected.
+    /// Draw's Tools, Present's Prompts, and Persona's frozen picker while artwork is shown.
     func accessory(_ live: ToolbarLiveState) -> ToolbarAccessory? {
-        ToolbarAccessory.offered(for: live, selectedPersonaCopy: live.mode == .persona && stage.selectedPersonaCopy != nil)
+        if live.mode == .persona { return stage.personaCycle == nil ? nil : .personaPicker }
+        return ToolbarAccessory.offered(for: live, selectedPersonaCopy: live.mode == .persona && stage.selectedPersonaCopy != nil)
     }
-    /// Appearance says whose appearance it changes, and that the copy is hidden when it is: the one
-    /// floating card kept for Show again, or a set's copy while the set or the copy is hidden.
+    var quickControl: ToolbarQuickControl? {
+        if live.mode == .present, stage.isPresenting { return .presentationView }
+        if live.mode == .persona, let cycle = stage.personaCycle, cycle.canAdvance {
+            return cycle.isSet ? .nextSet : .nextPersona
+        }
+        return nil
+    }
+    func pressQuick() -> (() -> Void)? {
+        guard let cycle = stage.personaCycle, cycle.canAdvance else { return nil }
+        return { stage.stepPersona(expected: cycle) }
+    }
+    /// The current frozen Persona label or the exact session capture count.
     func accessoryDescription(_ live: ToolbarLiveState) -> String? {
+        if live.mode == .persona, let cycle = stage.personaCycle {
+            return (cycle.isSet ? "Choose set · " : "Choose Persona · ") + cycle.title
+        }
         if accessory(live) == .review, let count = live.captureCount {
             return "Review Snap & Talk · \(count) " + (count == 1 ? "capture" : "captures")
         }
-        guard accessory(live) == .appearance, let copy = stage.selectedPersonaCopy else { return nil }
-        return ToolbarAccessory.appearanceDescription(copyHidden: stage.isPersonaCopyHidden(copy))
+        return nil
     }
 
     /// A recording's elapsed time against its 5-minute limit, for the Stop that ends it (#134 T4).
@@ -187,15 +200,18 @@ struct FloatingToolbar: View {
             // row held conditional content, so every window kept its seed size.
             .onGeometryChange(for: ToolbarMeasurement.self) {
                 ToolbarMeasurement(tier: state.tier, anchor: state.anchor, isResult: controls.revealsResult,
-                                   accessoryAvailable: state.accessory != nil, accessoryShown: state.shownAccessory != nil, size: $0.size)
+                                   accessoryAvailable: state.accessoryCount > 0, accessoryShown: state.showsAccessory,
+                                   accessoryCount: state.accessoryCount, size: $0.size)
             } action: { measurement in
                 controls.reportSize(measurement.size, tier: measurement.tier, anchor: measurement.anchor, isResult: measurement.isResult,
-                                    accessoryAvailable: measurement.accessoryAvailable, accessoryShown: measurement.accessoryShown)
+                                    accessoryAvailable: measurement.accessoryAvailable, accessoryShown: measurement.accessoryShown,
+                                    accessoryCount: measurement.accessoryCount)
             }
             // Each change of the next action is a new generation, so a press latched on the
             // old one cannot act on the new one (#134).
             .onChange(of: operation, initial: true) { _, operation in controls.pressGate.shown(operation) }
             .onChange(of: state.choices) { _, choices in controls.chooserChoicesChanged?(choices) }
+            .onChange(of: chooserActivities) { _, activities in controls.chooserActivitiesChanged?(activities) }
             .onChange(of: state.status, initial: true) { previous, status in controls.statusChanged(from: previous, to: status) }
             .pinnedToDock(state.anchor, isFloating: state.isFloating)
             .tint(Workbench.accent).workbenchTheme()
@@ -210,9 +226,14 @@ struct FloatingToolbar: View {
         } else {
             ToolbarRow(state: state, accent: Workbench.accent,
                 makeAccessoryMenu: { accessoryMenu(state.accessory) }, openAccessory: accessoryPanel(state.accessory),
+                makeViewMenu: stage.makePresentationViewMenu, pressQuick: pressQuick,
                 press: pressPrimary, pressCapture: pressCapture,
-                openChooser: { launcher in controls.openChooser?(launcher, state.choices) },
-                makeMenu: moreMenu, menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
+                openChooser: { launcher in
+                    controls.chooserActivities = chooserActivities
+                    controls.chooserPerform = performChooserAction
+                    controls.openChooser?(launcher, chooserChoices)
+                },
+                makeMenu: toolbarContextMenu, menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
                 focusButton: { button in
                     controls.focusFirstControl = { [weak button] in
                         guard let button else { return }
@@ -246,25 +267,24 @@ struct FloatingToolbar: View {
     }
 
     /// The accessory that opens a place or a panel: Review opens the session's review, and Prompts
-    /// the one Saved Prompts picker. Tools and Appearance open their menus instead.
+    /// the one Saved Prompts picker. Tools and Persona selection open their menus instead.
     func accessoryPanel(_ accessory: ToolbarAccessory?) -> ((NSView) -> Void)? {
         switch accessory {
         case .review?: return { _ in model.onShowEditor?("readback") }
         case .prompts?: return { button in openPrompts(anchor: button, destination: controls.promptDestination?()) }
-        case .tools?, .appearance?, nil: return nil
+        case .tools?, .personaPicker?, nil: return nil
         }
     }
-    /// Tools is the drawing choices, as Draw's own menu holds them; Appearance is Circle, Card and
-    /// Original for the copy selected when the menu opens, and only that copy.
+    /// Existing drawing choices or frozen Persona choices, retained by their live owners.
     func accessoryMenu(_ accessory: ToolbarAccessory?) -> NSMenu {
         switch accessory {
         case .tools?: return stage.makeAnnotationMenu(includeSettings: false)
-        case .appearance?: return ToolbarAccessoryMenus.appearance(stage)
+        case .personaPicker?: return stage.makePersonaPickerMenu()
         case .review?, .prompts?, nil: return NSMenu()
         }
     }
 
-    /// One Saved Prompts picker for the accessory and More (#159). It
+    /// One Saved Prompts picker for the pill and workspace (#159). It
     /// freezes the field that was in front when it was asked for.
     private func openPrompts(anchor: NSView? = nil, frame: NSRect? = nil, destination: TextDelivery.Target?) {
         let context = PromptPickerController.Context(resources: model.library.resources, delivery: promptInsertion,
@@ -290,81 +310,9 @@ struct FloatingToolbar: View {
         }.perform(operation)
     }
 
-    /// More (#134): the tool's own options, then the work running elsewhere, then the
-    /// toolbar's own items. The next action is the row's primary, not repeated here. Dictate,
-    /// Read and Snap are start and stop on the row: their preparation stays in Workbench, one
-    /// door away. A right-click on the launcher or the compact rest opens the same menu.
-    /// Internal so the host checks can read its items, such as Hide toolbar, the fourth door to the
-    /// one visibility switch.
-    func moreMenu() -> NSMenu {
-        let menu = NSMenu(title: "More"); menu.autoenablesItems = false
-        let live = self.live
-        let action = ToolbarNextAction.resolve(live)
-        let mode = live.mode
-        // A waiting result's own commands come first (#211 F1), then what the live work can do
-        // besides the next action (#134 T4): the recording's Cancel and Copy now, narration's
-        // Cancel, and reading's own commands.
-        var owner = liveCommands(action: action)
-        if let result = resultCommands() { owner.insert(result, at: 0) }
-        for (index, section) in owner.enumerated() {
-            if index > 0 { menu.addItem(.separator()) }
-            menu.addItem(.sectionHeader(title: section.title))
-            section.items.forEach(menu.addItem)
-        }
-        if !owner.isEmpty { menu.addItem(.separator()) }
-        switch mode {
-        case .dictate:
-            menu.addItem(ToolbarMenuAction("Open Dictate…") { model.onShowEditor?("dictate") })
-        case .read:
-            menu.addItem(ToolbarMenuAction("Open Read…") { model.onShowEditor?("speak") })
-        case .snap:
-            menu.addItem(ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") })
-        case .snapAndTalk:
-            menu.addItem(ToolbarMenuAction("Review Snap & Talk · \(readback.activeSections.count) Captures…") { model.onShowEditor?("readback") })
-        case .draw:
-            Self.inline(stage.makeAnnotationMenu(includeSettings: false), into: menu)
-        case .present:
-            Self.inline(stage.makePresentationMenu(), into: menu)
-            // The picker opens once this menu has closed, for the field in front now.
-            let destination = controls.promptDestination?(), toolbarFrame = NSApp.currentEvent?.window?.frame
-            menu.addItem(ToolbarMenuAction("Saved Prompts…") {
-                controls.toolbar.afterMenuTracking { if let toolbarFrame { openPrompts(frame: toolbarFrame, destination: destination) } }
-            })
-            menu.addItem(ToolbarMenuAction("Switch to Browser Tab…") { model.onShowPresenter?() })
-        case .persona:
-            Self.inline(stage.makePersonaMenu(), into: menu)
-            // With no live copy to change, the tool's door to its preparation; with one, Appearance
-            // waits here when the row has no room for it and Persona's menu has none (#134 part B).
-            if stage.selectedPersonaCopy == nil {
-                menu.addItem(ToolbarMenuAction("Open Persona…") { stage.showPersonas() })
-            } else if ToolbarAccessoryMenus.moreNeedsAppearance(menu, accessoryFits: controls.accessoryFits, hasCopy: true) {
-                let appearance = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
-                appearance.submenu = ToolbarAccessoryMenus.appearance(stage)
-                menu.addItem(appearance)
-            }
-        }
-        // Work running in another tool is never a dead end: whatever the compact mark shows has
-        // its finish, resume or door under Active work, worded as that tool's own label would be.
-        // The timer's step as More shows it: its item performs that step and only that (#174).
-        let timerStep = stage.timerStep
-        let active: [NSMenuItem] = ToolbarActiveWork.items(activeWorkFacts(action: action, timer: timerStep.transport)).map { item in
-            switch item {
-            case .stopDrawing: return ToolbarMenuAction("Stop drawing") { stage.finishDrawing() }
-            case .endPresentation: return ToolbarMenuAction("End presentation") { stage.endDeviceScene() }
-            case .persona(let title): return ToolbarMenuAction(title) { stage.togglePersona() }
-            case .stopTranscribing: return ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } }
-            case .meetingRecovery:
-                return ToolbarMenuAction("Meetings…") { model.page = "meeting"; model.onShowEditor?("meeting") }
-            case .snapDraft: return ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") }
-            case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport(expected: timerStep) }
-            }
-        }
-        if !active.isEmpty {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
-            menu.addItem(.sectionHeader(title: "Active work"))
-            active.forEach(menu.addItem)
-        }
-        menu.addItem(.separator())
+    /// A context click is only a shortcut to the toolbar's own settings.
+    func toolbarContextMenu() -> NSMenu {
+        let menu = NSMenu(title: "Floating toolbar"); menu.autoenablesItems = false
         // One command in place of the eight-item submenu: the named docks and a reset, for
         // the keyboard and precise placement (#163). Dragging is the everyday way to move.
         menu.addItem(ToolbarMenuAction("Position…") { controls.toolbar.afterMenuTracking { controls.showPosition?() } })
@@ -374,81 +322,6 @@ struct FloatingToolbar: View {
         menu.addItem(ToolbarMenuAction("Hide toolbar") { model.floatingToolbarVisible = false })
         menu.addItem(ToolbarMenuAction("Settings…") { model.onShowEditor?("settings") })
         return menu
-    }
-
-    /// What the owners say for More's Active work section, read when More opens.
-    func activeWorkFacts(action: ToolbarNextAction, timer: TimerTransport? = nil) -> ToolbarActiveWork.Facts {
-        let live = self.live
-        return ToolbarActiveWork.Facts(mode: live.mode, nextAction: action.operation, drawing: live.drawing, presenting: live.presenting,
-            persona: live.persona, meetingRecording: live.meetingRecording,
-            meetingRecovery: meetings.hasRecovery && !meetings.isBusy, snapDraft: snapModel.draft != nil, timer: timer ?? stage.timerTransport)
-    }
-
-    /// The commands a live recording, narration or reading keeps besides its next action, each
-    /// under its capability's name. Cancel discards; Stop keeps what it made.
-    private func liveCommands(action: ToolbarNextAction) -> [(title: String, items: [NSMenuItem])] {
-        var sections: [(title: String, items: [NSMenuItem])] = []
-        var dictation: [NSMenuItem] = []
-        if model.waitingForDrawing { dictation.append(ToolbarMenuAction("Copy now") { model.copyWaitingDelivery() }) }
-        if model.phase != .idle, model.canCancelCurrentCapture, action.operation != .cancelDictationRequest {
-            dictation.append(ToolbarMenuAction("Cancel") { model.cancelCurrentCapture() })
-        }
-        if !dictation.isEmpty { sections.append(("Dictate", dictation)) }
-        // A delivery that did not finish keeps its recovery here once its receipt has gone (#134 T5).
-        if let unresolved = model.unresolvedDelivery {
-            var items: [NSMenuItem] = []
-            if unresolved.offersCopy { items.append(ToolbarMenuAction("Copy again") { model.copyUnresolvedDelivery() }) }
-            items.append(ToolbarMenuAction("Dismiss") { model.dismissUnresolvedDelivery() })
-            sections.append((unresolved.title, items))
-        }
-        if readback.isRecording {
-            sections.append(("Snap & Talk", [ToolbarMenuAction("Cancel") { readback.cancelNarration() }]))
-        }
-        // Reading keeps its own next action here while drawing or an insertion holds the primary,
-        // preparing included, and Stop reading throughout (#211 F6).
-        let reading = ToolbarReadingCommands.operations(primary: action.operation, reading: live.reading).map { operation -> NSMenuItem in
-            switch operation {
-            case .cancelReading: return ToolbarMenuAction("Cancel") { perform(.cancelReading) }
-            case .pauseReading: return ToolbarMenuAction("Pause reading") { perform(.pauseReading) }
-            case .resumeReading: return ToolbarMenuAction("Resume reading") { perform(.resumeReading) }
-            default: return ToolbarMenuAction("Stop reading") { model.stopPlayback() }
-            }
-        }
-        if !reading.isEmpty { sections.append(("Read", reading)) }
-        return sections
-    }
-
-    /// The waiting result's own commands, first in More (#211 F1). Keyboard entry keeps the
-    /// launcher row rather than showing the result's view, so what that view offers is here too,
-    /// under its title, with a failure's reason: the same commands on the same owners.
-    private func resultCommands() -> (title: String, items: [NSMenuItem])? {
-        guard let result = FloatingResult.pending(model) else { return nil }
-        var items: [NSMenuItem] = []
-        let header: String, dismiss: () -> Void
-        switch result {
-        case .dictationFailure:
-            guard let failure = model.captureFailure else { return nil }
-            header = "Dictation needs attention"; dismiss = { model.dismissCaptureFailure() }
-            items.append(ToolbarMenuAction(failure, enabled: false) {})
-            if model.canRetry { items.append(ToolbarMenuAction(model.retryCaptureLabel) { model.retryTranscription() }) }
-            if model.canRecordAgain { items.append(ToolbarMenuAction("Record again") { model.recordAgain() }) }
-            else if !model.canRetry || model.hasCaptureRecovery {
-                items.append(ToolbarMenuAction("Open Workbench") { model.dismissCaptureFailure(); model.onShowEditor?("dictate") })
-            }
-        case .readingFailure:
-            guard let failure = model.readingFailure else { return nil }
-            header = "Reading stopped"; dismiss = { model.dismissReadingFailure() }
-            items.append(ToolbarMenuAction(failure.message, enabled: false) {})
-            items.append(ToolbarMenuAction("Retry", enabled: model.canRetryReading) { model.retryReading() })
-        }
-        items.append(ToolbarMenuAction("Dismiss", run: dismiss))
-        return (header, items)
-    }
-
-    /// Move a builder's items into this menu, so the mode's options sit at the
-    /// top level instead of behind a wrapper named after the mode.
-    private static func inline(_ source: NSMenu, into menu: NSMenu) {
-        for item in source.items { source.removeItem(item); menu.addItem(item) }
     }
 
     static func shortcutLabel(_ shortcut: VoiceShortcut, failure: String?) -> String {
@@ -464,6 +337,7 @@ private struct ToolbarMeasurement: Equatable {
     var isResult: Bool
     var accessoryAvailable: Bool
     var accessoryShown: Bool
+    var accessoryCount: Int
     var size: CGSize
 }
 
@@ -517,7 +391,7 @@ struct FloatingResultView: View {
 
 /// A reading that stopped because its audio could not be read keeps the reason, Retry and
 /// Dismiss until the person does one of them. Pausing, resuming and stopping a live reading
-/// are the toolbar row's next action and More (#134 T4); editing and voices stay in Workbench.
+/// are the toolbar row's next action and chooser (#134 T4); editing and voices stay in Workbench.
 /// It grows from the launcher's centre like the row, so at a right-hand dock it is mirrored:
 /// the reason sits over the mark the pointer came from, and Retry and Dismiss away from it
 /// (#211 F3).

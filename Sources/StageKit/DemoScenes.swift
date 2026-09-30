@@ -237,6 +237,8 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var sceneSync: MacSceneSync?
     private var window: NSWindow?
     private var presentation: DemoPresentation?
+    var liveSettingsView: AnyView? { presentation.map { AnyView($0.liveSettingsView) } }
+    func makeViewMenu() -> NSMenu { presentation?.makeViewMenu() ?? NSMenu() }
     var usesSharedControls = false
     var onFocusSharedControls: (() -> Void)?
     let desktopMotion = MainActor.assumeIsolated { DesktopMotionController() }
@@ -244,6 +246,7 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     var onBeginPresentation: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
     var isPresenting: Bool { presentation != nil }
+    var presentationIdentity: UUID? { presentation?.sessionIdentity }
     @Published private(set) var myDevice: DeviceViewport?
     @Published private(set) var savedLogos: [SavedSceneLogo] = []
     @Published private(set) var starterPreferences = StarterPreferences()
