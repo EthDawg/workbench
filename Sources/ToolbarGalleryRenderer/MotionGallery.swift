@@ -119,15 +119,17 @@ extension ToolbarGalleryRenderer {
     }
 
     /// Change edge while resting and while open, reverse midway, then settle. The compact
-    /// case includes recording and both badges so a clean idle animation cannot mask clipping.
+    /// cases retain stale recovery state: recording must keep its dot without a warning,
+    /// while the quiet handle must stay free of pictograms throughout the same motion.
     @MainActor private static func renderOrientationMotion(to directory: URL) throws -> [[String: Any]] {
         var report: [[String: Any]] = []
         let screen = NSRect(x: -19800, y: -19800, width: 360, height: 320)
         for (from, to, floating) in [(ToolbarAnchor.bottom, ToolbarAnchor.left, false), (.left, .top, false), (.top, .right, false),
                                      (.right, .bottomRight, false), (.left, .bottom, true)] {
-            for tier in ToolbarTier.allCases {
+            for (tier, recording) in [(ToolbarTier.resting, true), (.resting, false), (.revealed, false)] {
                 var state = ToolbarViewState(name: "edge-change", tier: tier, anchor: from, mode: .snapAndTalk,
-                    status: tier == .resting ? .resolve(ToolbarActivity(capture: .narration, level: 0.6, failure: true, stopsSoon: true)) : .idle,
+                    status: tier == .resting ? .resolve(ToolbarActivity(capture: recording ? .narration : nil,
+                        level: 0.6, failure: true, pendingDelivery: true, unsavedCapture: true, stopsSoon: true)) : .idle,
                     accessory: .review, captureChoices: ToolbarCaptureKind.allCases)
                 func content() -> AnyView { AnyView(ToolbarRow(state: state, accent: WorkbenchPalette.accent).pinnedToDock(state.anchor, isFloating: state.isFloating)) }
                 func destination() -> NSRect {
@@ -143,6 +145,7 @@ extension ToolbarGalleryRenderer {
                 defer { panel.close() }
                 let motion = ToolbarWindowMotion()
                 let name = "edge-\(from.rawValue)-\(floating ? "free" : to.rawValue)-\(tier.rawValue)"
+                    + (tier == .resting && !recording ? "-quiet" : "")
                 guard let gif = CGImageDestinationCreateWithURL(directory.appendingPathComponent(name + ".gif") as CFURL,
                     "com.compuserve.gif" as CFString, 42, nil) else { throw NSError(domain: "ToolbarMotion", code: 10) }
                 CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
@@ -160,8 +163,9 @@ extension ToolbarGalleryRenderer {
                     RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0 / 30)); host.layoutSubtreeIfNeeded()
                     guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { throw NSError(domain: "ToolbarMotion", code: 12) }
                     host.cacheDisplay(in: host.bounds, to: bitmap)
+                    var signalPixels: [String: Int] = [:]
                     if tier == .resting {
-                        var red = 0, orange = 0
+                        var red = 0, orange = 0, bright = 0
                         for y in 0..<bitmap.pixelsHigh { for x in 0..<bitmap.pixelsWide {
                             guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), color.alphaComponent > 0.4 else { continue }
                             // The system colors include a blue component after profile conversion.
@@ -170,11 +174,15 @@ extension ToolbarGalleryRenderer {
                                abs(color.greenComponent - color.blueComponent) < 0.14 { red += 1 }
                             if color.redComponent > 0.6, color.greenComponent > 0.35,
                                color.greenComponent - color.blueComponent > 0.17 { orange += 1 }
+                            // The quiet capsule and its subtle border are dark. Any bright
+                            // ink would expose a tool, result, warning or recording pictogram.
+                            if max(color.redComponent, color.greenComponent, color.blueComponent) > 0.4 { bright += 1 }
                         } }
-                        guard red > 2, orange > 4 else {
+                        signalPixels = ["recordingPixels": red, "warningPixels": orange, "brightPixels": bright]
+                        guard orange == 0, recording ? red > 2 : bright == 0 else {
                             try bitmap.representation(using: .png, properties: [:])?.write(to: directory.appendingPathComponent(name + "-signal-failure.png"))
                             throw NSError(domain: "ToolbarMotion", code: 13,
-                                userInfo: [NSLocalizedDescriptionKey: "\(name) frame \(index): recording or warning signal disappeared (red \(red), orange \(orange))"])
+                                userInfo: [NSLocalizedDescriptionKey: "\(name) frame \(index): expected \(recording ? "recording dot without warnings" : "quiet handle without pictograms") (red \(red), orange \(orange), bright \(bright))"])
                         }
                     }
                     guard let pixels = bitmap.cgImage,
@@ -192,7 +200,7 @@ extension ToolbarGalleryRenderer {
                     if index > 24, panel.frame != destination() { throw NSError(domain: "ToolbarMotion", code: 15,
                         userInfo: [NSLocalizedDescriptionKey: "Orientation change did not settle at its requested edge"]) }
                     frames.append(["frame": index, "anchor": state.anchor.rawValue, "width": panel.frame.width, "height": panel.frame.height,
-                                   "x": panel.frame.minX, "y": panel.frame.minY])
+                                   "x": panel.frame.minX, "y": panel.frame.minY, "signalPixels": signalPixels])
                 }
                 guard CGImageDestinationFinalize(gif) else { throw NSError(domain: "ToolbarMotion", code: 16) }
                 report.append(["file": name + ".gif", "frames": frames])
