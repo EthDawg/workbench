@@ -369,7 +369,8 @@ final class ToolbarNativeTests: XCTestCase {
         for anchor in ToolbarAnchor.allCases {
             for mode in ToolbarMode.allCases {
                 var state = ToolbarViewState(name: "hover-hit", tier: .resting, anchor: anchor, mode: mode,
-                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: true))
+                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: true),
+                    captureChoices: mode == .snap || mode == .snapAndTalk ? ToolbarCaptureKind.allCases : [])
                 let host = NSHostingView(rootView: ToolbarRow(state: state).pinnedToDock(anchor))
                 host.sizingOptions = []
                 let tracking = ToolbarTrackingView(content: host)
@@ -380,22 +381,32 @@ final class ToolbarNativeTests: XCTestCase {
                 panel.contentView = tracking
                 panel.orderFrontRegardless()
                 defer { panel.close() }
+                // The AppKit layout/display calls can return before SwiftUI commits
+                // native representable frames. Advance its synchronous test renderer
+                // once per simulated frame; never poll or retry a failed hit test.
+                func renderFrame() {
+                    tracking.layoutSubtreeIfNeeded()
+                    host._renderForTest(interval: 0)
+                }
                 for _ in 0..<3 {
                     state.tier = .resting
                     host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
                     panel.setContentSize(ToolbarLayout.mark(for: anchor))
-                    tracking.layoutSubtreeIfNeeded()
+                    renderFrame()
                     state.tier = .revealed
                     host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
-                    tracking.layoutSubtreeIfNeeded()
+                    renderFrame()
                     let size = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
                     for progress in [CGFloat(0.5), 0.9, 1] {
                         panel.setContentSize(NSSize(width: ToolbarLayout.mark(for: anchor).width + (size.width - ToolbarLayout.mark(for: anchor).width) * progress, height: ToolbarLayout.mark(for: anchor).height + (size.height - ToolbarLayout.mark(for: anchor).height) * progress))
-                        tracking.layoutSubtreeIfNeeded()
+                        renderFrame()
+                        let controls = buttons(host)
+                        XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
+                        for button in controls {
+                            XCTAssertEqual(button.isEnabled, progress == 1,
+                                "\(mode), \(anchor), \(button.accessibilityIdentifier()) at reveal progress \(progress)")
+                        }
                     }
-                    // NSHostingView can defer representable placement until display.
-                    // Inspect the completed frame, including every expected control.
-                    panel.display()
                     let controls = buttons(host)
                     XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
                     for button in controls {
@@ -404,6 +415,59 @@ final class ToolbarNativeTests: XCTestCase {
                         XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,
                             "\(mode), \(anchor), \(button.accessibilityIdentifier()) after reveal intercepted by \(String(describing: hit))")
                     }
+                    state.tier = .resting
+                    host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
+                    renderFrame()
+                    let closing = buttons(host)
+                    XCTAssertEqual(closing.count, controls.count, "the closing overlay still paints every control")
+                    for button in closing {
+                        XCTAssertFalse(button.isEnabled,
+                            "\(mode), \(anchor), \(button.accessibilityIdentifier()) cannot act while closing")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Exercise immediate and timer-driven reveals. Production admits pointer crossings at
+    /// completion, so inspect enabled states and hits here without forcing a test render.
+    @MainActor func testNativeMotionCompletionDeliversEveryVisibleHitTarget() async throws {
+        for animated in [false, true] {
+            for anchor in ToolbarAnchor.allCases {
+                for mode in ToolbarMode.allCases {
+                    var state = ToolbarViewState(name: "motion-hit", tier: .resting, anchor: anchor, mode: mode,
+                        accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: true),
+                        captureChoices: mode == .snap || mode == .snapAndTalk ? ToolbarCaptureKind.allCases : [])
+                    let host = NSHostingView(rootView: ToolbarRow(state: state).pinnedToDock(anchor))
+                    host.sizingOptions = []
+                    let tracking = ToolbarTrackingView(content: host)
+                    tracking.autoresizingMask = [.width, .height]
+                    let panel = NSPanel(contentRect: NSRect(origin: NSPoint(x: -19900, y: -19900), size: ToolbarLayout.mark(for: anchor)),
+                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+                    panel.isReleasedWhenClosed = false; panel.contentView = tracking
+                    panel.orderFrontRegardless(); tracking.layoutSubtreeIfNeeded()
+                    defer { panel.close() }
+                    state.tier = .revealed
+                    host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
+                    tracking.layoutSubtreeIfNeeded()
+                    let size = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
+                    let complete = expectation(description: "\(mode) at \(anchor) settled")
+                    let motion = ToolbarWindowMotion()
+                    motion.settled = {
+                        let controls = self.buttons(host)
+                        XCTAssertEqual(controls.count, 2 + max(1, state.captureChoices.count) + (state.shownAccessory == nil ? 0 : 1))
+                        for button in controls {
+                            XCTAssertTrue(button.isEnabled,
+                                "\(mode), \(anchor), \(button.accessibilityIdentifier()) is enabled at native completion (animated: \(animated))")
+                            let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: tracking.superview)
+                            let hit = tracking.hitTest(point)
+                            XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,
+                                "\(mode), \(anchor), \(button.accessibilityIdentifier()) at native completion (animated: \(animated)) intercepted by \(String(describing: hit))")
+                        }
+                        complete.fulfill()
+                    }
+                    motion.move(panel, to: NSRect(origin: panel.frame.origin, size: size), animated: animated, anchor: anchor)
+                    await fulfillment(of: [complete], timeout: 2)
                 }
             }
         }

@@ -47,7 +47,17 @@ The warning comparison differed by one thresholded orange pixel at every anchor 
 
 Stress runs also exposed an intermittent resize-fixture failure: one native launcher's frame remained at its initial position while its neighbours were placed. The test now completes AppKit's display pass before collecting targets and asserts the full expected control count. The exact native hit-target assertions remain, with no retries or excluded controls.
 
-The focused CI pair and the full toolbar suite passed locally: 203 tests, two explicitly gated on-screen tests skipped, zero failures. A further full-suite stress run increased the resize test from three to 30 cycles per tool and anchor (1,680 reveal cycles); all 203 tests passed with the same two skips. The normal three-cycle count is retained in the committed test. Production source is unchanged by this follow-up. Installed interaction and the CI rerun remain with integration.
+The focused CI pair and the full toolbar suite passed locally: 203 tests, two explicitly gated on-screen tests skipped, zero failures. A further full-suite stress run increased the resize test from three to 30 cycles per tool and anchor (1,680 reveal cycles); all 203 tests passed with the same two skips. The normal three-cycle count was retained in commit `5870b5b860f2e2af343ddfa841b8f096e64bdd29`. That commit changed tests and verification notes only.
+
+### Native rendering and admission follow-up
+
+An integrated repeat at `4129f61` reproduced the resize fixture failure despite the AppKit display pass: Persona's left-side More target still had an unfinished native frame. AppKit layout/display is insufficient to synchronise this synthetic, uninterrupted sequence of SwiftUI updates. The fixture now calls the SDK's `NSHostingView._renderForTest(interval: 0)` once per simulated frame. This hook is confined to tests. There are no sleeps, assertion retries, skipped controls or writes to SwiftUI-owned child frames; every expected native target must still receive its exact hit.
+
+The stronger fixture also checks native enabled states during expansion and at the start of collapse, including Region, Window and Screen. These checks exposed two production gaps: a primary-button update overwrote the parent's disabled state, and the fading closing row lacked an explicit native disabled state. `ToolbarPrimary` now combines its own enabled value with `context.environment.isEnabled`; the closing overlay is disabled. Both checks failed on the preceding code and pass with these changes.
+
+A separate test uses the real `ToolbarWindowMotion` completion callback, with no test rendering hook, extra layout pass or retry. It checks the full control count, enabled state and every native hit at 112 completions: seven tools at eight anchors, with both immediate and animated placement. Snap and Snap & Talk include all three capture sources. The production completion boundary passes this check; the synthetic fixture explicitly completes rendering instead of guessing that native layout has done so.
+
+The final full toolbar suite passed locally: 204 tests, two explicitly gated on-screen tests skipped, zero failures. A further full-suite run passed with 30 iterations per tool and anchor: 1,680 simulated reveals with closing admission checks, plus the 112 unforced native completions. The committed fixture retains three iterations. The rebuilt source also passed 190 production control checks, 38 picker, 19 insertion, 12 delivery and nine accessibility checks. All 18 native offscreen motion sequences passed again, including interrupted expansion, collapse and edge changes. Installed acceptance of the production admission changes and the integrated CI rerun remain with the integration owner.
 
 ## Installed acceptance
 

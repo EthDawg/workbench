@@ -150,7 +150,7 @@ public struct ToolbarRow: View {
         }
         .overlay(alignment: alignment) {
             if state.tier == .resting, revealProgress > 0 {
-                row.opacity(controlOpacity).allowsHitTesting(false).accessibilityHidden(true)
+                row.opacity(controlOpacity).allowsHitTesting(false).disabled(true).accessibilityHidden(true)
             } else if state.tier == .revealed, revealProgress < 1 {
                 compact.opacity(1 - controlOpacity).allowsHitTesting(false).accessibilityHidden(true)
             }
@@ -549,7 +549,9 @@ private struct ToolbarPrimary: NSViewRepresentable {
     }
     func updateNSView(_ view: PrimaryButton, context: Context) {
         view.setSymbol(symbol, size: fontSize)
-        view.isEnabled = isEnabled
+        // A resize can update this representable while the parent remains disabled.
+        // Preserve that admission gate on every update, not just initial insertion.
+        view.isEnabled = isEnabled && context.environment.isEnabled
         view.hints = hints; view.hint = help
         view.setAccessibilityHelp(help)
         view.setAccessibilityLabel(title)
