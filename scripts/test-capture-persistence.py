@@ -162,6 +162,14 @@ struct CaptureSettings {
         calls += 1; return Result(text: raw.isEmpty ? "" : raw == "um synthetic captured words" ? "Synthetic captured words." : raw, method: "Fixture Light")
     }
 }
+// This harness models ordinary readable fields as strings. They have no
+// opaque-editor observation; TextDeliveryChecks exercises that real owner.
+@MainActor final class FixtureOpaqueEditor {
+    func begin(shortcut: FixtureShortcut) {}
+}
+extension String {
+    @MainActor var opaqueEditor: FixtureOpaqueEditor? { nil }
+}
 @MainActor enum TextDelivery {
     static var calls = 0
     static var delayed = false
