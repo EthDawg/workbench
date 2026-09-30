@@ -46,7 +46,7 @@ final class VoiceHotkeys {
         unregister(); failures = [:]
         for id in VoicePreferences.shortcutIDs where preferences.shortcut(id).enabled {
             let shortcut = preferences.shortcut(id)
-            if let problem = GlobalShortcutRule.problem(label: shortcut.label, modifiers: shortcut.modifiers) { failures[id] = problem; continue }
+            if let problem = GlobalShortcutRule.problem(label: shortcut.label, keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { failures[id] = problem; continue }
             var reference: EventHotKeyRef?
             let code = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: 0x4C564F49, id: id), GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &reference)
             if code == noErr, let reference { references[id] = reference; shortcuts[id] = shortcut }

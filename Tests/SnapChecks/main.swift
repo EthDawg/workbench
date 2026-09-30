@@ -445,4 +445,63 @@ try MainActor.assumeIsolated {
               "a write the store refuses keeps the editor and its reason, ends the showing check and claims nothing")
     model.draft = nil
 }
+
+// Editable text and rotation retain originals, render identically after reopening,
+// and version only records that need the newer editor.
+let v2store = SnapStore(root: directory.appendingPathComponent("text-and-rotation"))
+var modern = try v2store.insert(originalPNG: png, width: 128, height: 80, title: "Comment", source: .imported)
+let modernFolder = v2store.root.appendingPathComponent(modern.id.uuidString.lowercased())
+let oldRecord = try Data(contentsOf: modernFolder.appendingPathComponent("snap.json"))
+let oldRevision = modern.revision
+modern.edit = SnapEdit(marks: [SnapMark(kind: .text, points: [.init(x: 0.05, y: 0.3), .init(x: 0.95, y: 0.9)],
+    colour: "black", text: "Slide note", fontSize: 0.12, background: "white")], rotation: 1)
+let modernPNG = try SnapRendering.render(png, edit: modern.edit)
+let modernSize = try SnapRendering.dimensions(modernPNG)
+try check(modernSize.width == 80 && modernSize.height == 128, "clockwise rotation exchanges output dimensions")
+modern = try v2store.save(modern, renderedPNG: modernPNG)
+let reopenedModern = try SnapStore(root: v2store.root).snapshot(modern.id)
+try check(reopenedModern.originalPNG == png, "text and rotation leave original bytes untouched")
+try check(reopenedModern.item.formatVersion == 2, "new edit semantics declare version two")
+try check(reopenedModern.item.edit == modern.edit && reopenedModern.imagePNG == modernPNG, "text and rotation round-trip with the rendered image")
+try check(try Data(contentsOf: modernFolder.appendingPathComponent("before-v2-\(oldRevision.uuidString.lowercased()).json")) == oldRecord, "the first v2 save retains the exact previous metadata")
+try check(try SnapRendering.render(reopenedModern.originalPNG, edit: reopenedModern.item.edit) == modernPNG, "reopened text renders exactly as saved")
+let legacyEdit = try JSONDecoder().decode(SnapEdit.self, from: Data(#"{"crop":{"x":0,"y":0,"width":1,"height":1},"marks":[]}"#.utf8))
+try check(legacyEdit == SnapEdit(), "v1 records decode with unchanged defaults")
+for turn in 0...3 {
+    let rotated = try SnapRendering.render(png, edit: SnapEdit(rotation: turn))
+    let image = NSBitmapImageRep(data: rotated)!
+    let dims = turn % 2 == 0 ? (128,80) : (80,128)
+    try check(image.pixelsWide == dims.0 && image.pixelsHigh == dims.1, "rotation \(turn) keeps expected dimensions")
+}
+let invalidText = SnapMark(kind: .text, points: [.init(x: 0, y: 0), .init(x: 1, y: 1)], text: "Invalid", fontSize: .nan)
+try rejects("invalid text size") { _ = try SnapRendering.render(png, edit: SnapEdit(marks: [invalidText])) }
+let noteEdit = SnapEdit(marks: [SnapMark(kind: .text, points: [.init(x: 0.1, y: 0.1), .init(x: 0.9, y: 0.9)], colour: "black", text: "Hello", fontSize: 0.18, background: "white")])
+let notePixels = NSBitmapImageRep(data: try SnapRendering.render(png, edit: noteEdit))!
+var blackPixels = 0
+for y in 8..<70 { for x in 14..<114 {
+    let c = notePixels.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+    if c.redComponent < 0.15 && c.greenComponent < 0.15 && c.blueComponent < 0.15 { blackPixels += 1 }
+} }
+try check(blackPixels > 15, "text produces visible glyph pixels inside its comment box")
+for turn in 1...3 {
+    var upright = noteEdit
+    upright.rotation = turn
+    upright.marks[0].textRotation = (4 - turn) % 4
+    let rendered = NSBitmapImageRep(data: try SnapRendering.render(png, edit: upright))!
+    let rotatedSource = try SnapRendering.render(png, edit: SnapEdit(rotation: turn))
+    let reference = NSBitmapImageRep(data: try SnapRendering.render(rotatedSource, edit: noteEdit))!
+    var intersection = 0, union = 0
+    for y in 0..<rendered.pixelsHigh { for x in 0..<rendered.pixelsWide {
+        func ink(_ bitmap: NSBitmapImageRep) -> Bool {
+            let c = bitmap.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+            return c.redComponent < 0.15 && c.greenComponent < 0.15 && c.blueComponent < 0.15
+        }
+        let a = ink(rendered), b = ink(reference)
+        if a && b { intersection += 1 }
+        if a || b { union += 1 }
+    } }
+    try check(union > 15 && Double(intersection) / Double(union) > 0.9, "new text stays upright at image rotation \(turn), matching ordinary horizontal text")
+    try check(try JSONDecoder().decode(SnapEdit.self, from: JSONEncoder().encode(upright)) == upright, "text direction survives save/reopen at rotation \(turn)")
+}
+
 print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")

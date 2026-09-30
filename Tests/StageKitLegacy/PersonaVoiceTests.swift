@@ -508,6 +508,20 @@ final class PersonaVoiceTests {
         XCTAssertEqual(paths().filter { $0.path != nil }.count, 2)
         ring.reset()
         XCTAssertEqual(ring.visible, .quiet); XCTAssertFalse(ring.isMoving)
+        // Reduce Motion keeps both lines equally lit across soft and raised speech.
+        // A loudness-based rim can freeze at its soft level once the style cache settles.
+        for step in 0...40 {
+            ring.receive([PersonaVoiceFrame(level: 0.1, speaking: true, seconds: 0.021)], at: clock + 5 + Double(step) / 60)
+            ring.advance(to: clock + 5 + Double(step + 1) / 60)
+        }
+        let softRim = paths()[0].opacity
+        XCTAssertTrue(abs(Double(softRim) - 0.7) < 0.001, "The whole outline shows voice presence with Reduce Motion")
+        for step in 0...40 {
+            ring.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021)], at: clock + 6 + Double(step) / 60)
+            ring.advance(to: clock + 6 + Double(step + 1) / 60)
+        }
+        XCTAssertEqual(paths()[0].opacity, softRim, "Syllable volume does not animate the reduced-motion rim")
+        ring.reset()
         // Increase Contrast strengthens the resting line and its rim.
         let plainEdge = paths()[0].lineWidth
         ring.increaseContrast = true

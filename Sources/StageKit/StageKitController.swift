@@ -20,6 +20,7 @@ public struct StageShortcutDescriptor: Identifiable, Equatable {
 @MainActor
 public final class StageKitController: ObservableObject {
     private let coordinator: AppCoordinator
+    private let profileDefaults: UserDefaults
     private var observations = Set<AnyCancellable>()
     private var started = false
 
@@ -31,6 +32,12 @@ public final class StageKitController: ObservableObject {
     }
     /// Opens the host’s independent Persona workspace. Scene selection keeps its own sheet.
     public var onOpenPersonas: (() -> Void)?
+    public var onViewImages: (([StageImagePreview], UUID) -> Void)? {
+        didSet {
+            coordinator.demoScenes.onViewImages = onViewImages
+            coordinator.demoScenes.personas.onViewImages = onViewImages
+        }
+    }
     public var onOpenShortcuts: (() -> Void)? {
         didSet { coordinator.onOpenShortcuts = onOpenShortcuts }
     }
@@ -78,6 +85,7 @@ public final class StageKitController: ObservableObject {
     public init(onOpenControls: (() -> Void)? = nil, onOpenScenes: (() -> Void)? = nil,
                 reserving shortcuts: Set<GlobalShortcutCombination> = [], defaults: UserDefaults? = nil) {
         let defaults = defaults ?? Workbench.stageDefaults
+        self.profileDefaults = defaults
         let migrationNotice = Workbench.prepareStageData(defaults: defaults)
         let settings = SettingsStore(defaults: defaults, reserving: shortcuts)
         let coordinator = AppCoordinator(settings: settings, embedded: true, migrationFailure: migrationNotice)
@@ -93,8 +101,9 @@ public final class StageKitController: ObservableObject {
         observe(coordinator)
     }
     /// Checks wrap a coordinator on disposable storage; the app uses the initializer above.
-    init(coordinator: AppCoordinator) {
+    init(coordinator: AppCoordinator, profileDefaults: UserDefaults = .standard) {
         self.coordinator = coordinator
+        self.profileDefaults = profileDefaults
         observe(coordinator)
     }
     private func observe(_ coordinator: AppCoordinator) {
@@ -224,6 +233,16 @@ public final class StageKitController: ObservableObject {
     public var controlsView: AnyView { AnyView(ControlCenter(app: coordinator, settings: coordinator.settings)) }
     public var scenesView: AnyView { AnyView(DemoScenesView(model: coordinator.demoScenes)) }
     public var personasView: AnyView { AnyView(PersonaLibraryView(library: coordinator.demoScenes.personas, mode: .workspace)) }
+    /// The local profile is a reference to an ordinary saved persona. It has no account,
+    /// separate image store or automatic presentation lifecycle.
+    public var localProfileImage: NSImage? {
+        let library = coordinator.demoScenes.personas
+        return LocalPersonaProfile.persona(in: library, defaults: profileDefaults).flatMap { library.renderedImage(for: $0) }
+    }
+    public var localProfileView: AnyView {
+        AnyView(LocalPersonaProfileView(library: coordinator.demoScenes.personas, defaults: profileDefaults,
+            changed: { [weak self] in self?.objectWillChange.send() }, openPersona: { [weak self] in self?.showPersonas() }))
+    }
 
     /// Installing a pack supplies starters; importing explicitly creates a personal copy.
     public func importPackScene(at url: URL) throws {
@@ -350,6 +369,7 @@ public final class StageKitController: ObservableObject {
         let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers, enabled: enabled)
         if enabled {
             guard modifiers & UInt32(controlKey | optionKey) != 0 else { return "Include Control or Option." }
+            if let message = GlobalShortcutRule.problem(label: shortcut.label, keyCode: keyCode, modifiers: modifiers) { return message }
             if let message = coordinator.validateExternalShortcut?(keyCode, modifiers) { return message }
             if let conflict = Action.allCases.first(where: { $0 != action && coordinator.settings.value.shortcut(for: $0) == shortcut }) {
                 return "That shortcut belongs to \(conflict.title). Choose another combination."

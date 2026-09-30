@@ -100,15 +100,21 @@ struct PhotoHandoffView: View {
         .onDisappear { savePanel?.cancel(nil); savePanel = nil; copyTask?.cancel(); copyTask = nil; saving = false }
     }
 
+    private func photoImage(_ photo: HandoffPhoto) -> CaptureImagePreviewItem {
+        .init(title: photo.title, detail: "Saved from " + photo.sourceDevice, source: .file(handoff.fileURL(for: photo), missing: "This photo is not available on this Mac."))
+    }
+
     private func detail(_ photo: HandoffPhoto) -> some View {
         let url = handoff.fileURL(for: photo)
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HandoffThumbnail(url: url, maximumPixels: 1200)
-                    .frame(maxWidth: .infinity).frame(height: 250)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .accessibilityLabel("Preview of " + photo.title)
+                CapturePreviewButton("View " + photo.title, item: { photoImage(photo) }, collection: { handoff.photos.map { photoImage($0) } }) {
+                    HandoffThumbnail(url: url, maximumPixels: 1200)
+                        .frame(maxWidth: .infinity).frame(height: 250)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .accessibilityLabel("Preview of " + photo.title)
+                }
                 HStack {
                     Text(photo.title).font(.title3.weight(.semibold)).textSelection(.enabled)
                     Spacer()

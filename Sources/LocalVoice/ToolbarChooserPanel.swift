@@ -30,7 +30,11 @@ enum ToolbarChooserPlacement {
         (max(0, visible.maxY - edgeMargin - (launcher.maxY + gap)), max(0, launcher.minY - gap - (visible.minY + edgeMargin)))
     }
 
-    static func frame(content: NSSize, launcher: NSRect, visible: NSRect, growsLeftward: Bool) -> NSRect {
+    static func frame(content: NSSize, launcher: NSRect, visible: NSRect, growsLeftward: Bool,
+                      anchor: ToolbarAnchor = .bottom, toolbar: NSRect? = nil) -> NSRect {
+        if anchor.isVertical {
+            return ToolbarGeometry.sidePanelFrame(size: content, toolbar: toolbar ?? launcher, anchor: anchor, visible: visible)
+        }
         let room = room(launcher: launcher, visible: visible)
         let above = content.height <= room.above || room.above >= room.below
         let width = min(content.width, visible.width - 2 * edgeMargin)
@@ -81,6 +85,7 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
     ///   - launcher: the launcher's frame on screen; `view` is the launcher itself, whose
     ///     click only closes an open chooser, so the launcher toggles it.
     func show(from launcherFrame: NSRect, view: NSView?, level: NSWindow.Level, growsLeftward: Bool, choices: [ToolbarToolChoice],
+              anchor: ToolbarAnchor = .bottom, toolbar: NSRect? = nil,
               textScale: CGFloat = 1, choose: @escaping (ToolbarMode) -> Void, closed: @escaping (ToolbarChooserClose) -> Void) {
         close()
         let centre = NSPoint(x: launcherFrame.midX, y: launcherFrame.midY)
@@ -92,12 +97,13 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
         model.dismiss = { [weak self] in self?.close(.escape) }
         let room = ToolbarChooserPlacement.room(launcher: launcherFrame, visible: visible)
         let natural = NSHostingView(rootView: ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent)).fittingSize
+        let frame = ToolbarChooserPlacement.frame(content: natural, launcher: launcherFrame, visible: visible, growsLeftward: growsLeftward,
+                                                  anchor: anchor, toolbar: toolbar)
         let above = natural.height <= room.above || room.above >= room.below
-        let available = above ? room.above : room.below
+        let available = anchor.isVertical ? visible.height - 2 * ToolbarChooserPlacement.edgeMargin : above ? room.above : room.below
         let hosting = ToolbarChooserContent(rootView: ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent,
-                                                                          available: available))
+                                                                          available: available, availableWidth: frame.width))
         hosting.sizingOptions = []
-        let frame = ToolbarChooserPlacement.frame(content: natural, launcher: launcherFrame, visible: visible, growsLeftward: growsLeftward)
         let panel = ToolbarChooserWindow(contentRect: NSRect(origin: .zero, size: frame.size),
                                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Choose a tool"

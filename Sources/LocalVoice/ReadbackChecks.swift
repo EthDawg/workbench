@@ -271,6 +271,7 @@ enum ReadbackChecks {
         try check(captureCount == 2 && switched == before, "closing the session during redo never modifies the previous session")
         try check(model.sessionURL == nil && !model.isRecording && !model.blocksDictation, "session change leaves no hidden recorder or capture reservation")
         print("READBACK_ADMISSION_CHECKS_OK: \(passed) checks")
+        try await ReadbackCaptureChoiceChecks.run()
     }
 
     @MainActor

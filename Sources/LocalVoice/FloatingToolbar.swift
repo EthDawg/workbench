@@ -97,6 +97,7 @@ struct FloatingToolbar: View {
     let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
+    var capture: (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in }
     private var context: WorkbenchControlContext { .init(model: model, readback: readback, stage: stage, snap: snapModel) }
 
     /// The same frozen value the panel's rows read, for the selected mode.
@@ -143,13 +144,14 @@ struct FloatingToolbar: View {
         let action = ToolbarNextAction.resolve(live)
         let hint = [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
-            anchor: controls.rowAnchor,
-            mode: live.mode, actionTitle: action.title, isActionEnabled: action.isEnabled,
+            anchor: controls.rowAnchor, isFloating: controls.isFloating,
+            mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol, isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: ToolbarNextAction.choices(for: live, key: key),
             isBusy: live.isLive(live.mode),
             status: .resolve(activity), showsAccessory: controls.accessoryFits,
-            accessory: accessory(live), accessoryDescription: accessoryDescription(live))
+            accessory: accessory(live), accessoryDescription: accessoryDescription(live),
+            captureChoices: ToolbarCaptureKind.offered(for: live))
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
@@ -160,6 +162,9 @@ struct FloatingToolbar: View {
     /// Appearance says whose appearance it changes, and that the copy is hidden when it is: the one
     /// floating card kept for Show again, or a set's copy while the set or the copy is hidden.
     func accessoryDescription(_ live: ToolbarLiveState) -> String? {
+        if accessory(live) == .review, let count = live.captureCount {
+            return "Review Snap & Talk · \(count) " + (count == 1 ? "capture" : "captures")
+        }
         guard accessory(live) == .appearance, let copy = stage.selectedPersonaCopy else { return nil }
         return ToolbarAccessory.appearanceDescription(copyHidden: stage.isPersonaCopyHidden(copy))
     }
@@ -183,15 +188,19 @@ struct FloatingToolbar: View {
             // The host sizes its window from these reports (#152). A preference written
             // from a background GeometryReader never reached onPreferenceChange once the
             // row held conditional content, so every window kept its seed size.
-            .onGeometryChange(for: ToolbarMeasurement.self) { ToolbarMeasurement(tier: state.tier, size: $0.size) } action: { measurement in
-                controls.reportSize(measurement.size, tier: measurement.tier)
+            .onGeometryChange(for: ToolbarMeasurement.self) {
+                ToolbarMeasurement(tier: state.tier, anchor: state.anchor, isResult: controls.revealsResult,
+                                   accessoryAvailable: state.accessory != nil, accessoryShown: state.shownAccessory != nil, size: $0.size)
+            } action: { measurement in
+                controls.reportSize(measurement.size, tier: measurement.tier, anchor: measurement.anchor, isResult: measurement.isResult,
+                                    accessoryAvailable: measurement.accessoryAvailable, accessoryShown: measurement.accessoryShown)
             }
             // Each change of the next action is a new generation, so a press latched on the
             // old one cannot act on the new one (#134).
             .onChange(of: operation, initial: true) { _, operation in controls.pressGate.shown(operation) }
             .onChange(of: state.choices) { _, choices in controls.chooserChoicesChanged?(choices) }
             .onChange(of: state.status, initial: true) { previous, status in controls.statusChanged(from: previous, to: status) }
-            .pinnedToDock(state.anchor)
+            .pinnedToDock(state.anchor, isFloating: state.isFloating)
             .tint(Workbench.accent).workbenchTheme()
     }
 
@@ -204,7 +213,8 @@ struct FloatingToolbar: View {
         } else {
             ToolbarRow(state: state, accent: Workbench.accent,
                 makeAccessoryMenu: { accessoryMenu(state.accessory) }, openAccessory: accessoryPanel(state.accessory),
-                press: pressPrimary, openChooser: { launcher in controls.openChooser?(launcher, state.choices) },
+                press: pressPrimary, pressCapture: pressCapture,
+                openChooser: { launcher in controls.openChooser?(launcher, state.choices) },
                 makeMenu: moreMenu, menuBegan: controls.beginMenu, menuEnded: controls.endMenu,
                 focusButton: { button in
                     controls.focusFirstControl = { [weak button] in
@@ -222,6 +232,20 @@ struct FloatingToolbar: View {
     /// checks can press it through a completion.
     func pressPrimary() -> (() -> Void)? {
         controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: perform)
+    }
+
+    /// The source and selected tool are fixed at mouse-down. The shared operation generation
+    /// rejects a click after another job starts, even if it finishes before mouse-up.
+    func pressCapture(_ kind: ToolbarCaptureKind) -> (() -> Void)? {
+        let mode = live.mode
+        let sessionID = readback.manifest?.id
+        guard ToolbarCaptureKind.offered(for: live).contains(kind) else { return nil }
+        return controls.pressGate.press({
+            var action = ToolbarNextAction.resolve(live)
+            action.isEnabled = action.isEnabled && live.mode == mode && ToolbarCaptureKind.offered(for: live).contains(kind)
+                && (mode != .snapAndTalk || readback.manifest?.id == sessionID)
+            return action
+        }, perform: { _ in capture(mode, kind) })
     }
 
     /// The accessory that opens a place or a panel: Review opens the session's review, and Prompts
@@ -445,6 +469,10 @@ struct FloatingToolbar: View {
 
 private struct ToolbarMeasurement: Equatable {
     var tier: ToolbarTier
+    var anchor: ToolbarAnchor
+    var isResult: Bool
+    var accessoryAvailable: Bool
+    var accessoryShown: Bool
     var size: CGSize
 }
 
@@ -459,6 +487,7 @@ struct WorkbenchFloatingContent: View {
     let snapCapture: () -> Void
     let draw: () -> Void
     let present: () -> Void
+    var capture: (ToolbarMode, ToolbarCaptureKind) -> Void = { _, _ in }
 
     /// Dictation, narration, reading and their results share the toolbar's host (#134 T4): the
     /// compact mark at rest, the row or a result's controls revealed. Only the routine no-speech
@@ -469,7 +498,7 @@ struct WorkbenchFloatingContent: View {
         } else {
             FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                             meetings: model.meetings, snapModel: snapModel, receipts: model.clipboardReceipt,
-                            dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present)
+                            dictate: dictate, snap: snap, snapCapture: snapCapture, draw: draw, present: present, capture: capture)
         }
     }
 }

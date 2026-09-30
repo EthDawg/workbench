@@ -1,5 +1,4 @@
 import AppKit
-import ObjectiveC
 import SwiftUI
 
 /// `LocalVoice --check-snap-capture` (#151): every Snap door finishes through
@@ -7,8 +6,8 @@ import SwiftUI
 /// window shown, minimised or closed, and with Workbench or another app in
 /// front, a capture opens the editor on the Snap page, a problem shows there,
 /// a cancelled selector puts back what was on screen, and Save & Copy returns
-/// to the app the capture began in. The real Snap page then presents the
-/// editor for the draft. The Snap owner uses a synthetic store, image source,
+/// to the app the capture began in. The shared image window presents the
+/// editor through the same attachment used by AppDelegate. The Snap owner uses a synthetic store, image source,
 /// preferences file and pasteboard in a new temporary folder: nothing captures
 /// the screen, touches the clipboard or reads the person's own Snaps, and the
 /// check window is never on a display. A watchdog on its own thread ends the
@@ -270,75 +269,39 @@ enum SnapCaptureChecks {
         try check(readback.activeSections.count == 2, "saved Snaps can still be added to the session")
     }
 
-    /// The Snap page the host opens presents the editor for the captured draft,
-    /// while Home, where the capture began, does not. SwiftUI asks the window for
-    /// a sheet only while the window is visible, so each check window is ordered
-    /// in far off every display, and sheets are recorded as attached instead of
-    /// shown. A window restored from the Dock returns on a later turn, after the
-    /// draft opened, and the editor must still appear then.
+    /// The production draft host presents one expanded editor regardless of the
+    /// page beneath it, including a capture restored from a minimised window.
     private static func checkEditorExposure(makeSnap: (String) -> SnapModel, watchdog: CheckWatchdog,
                                             check: (Bool, String) throws -> Void) async throws {
-        let sheets = SheetRequests()
-        sheets.start()
-        defer { sheets.stop() }
-        func fixture(_ snap: SnapModel, page: String) -> (NSWindow, CheckRoute) {
-            let route = CheckRoute(); route.page = page
+        for (index, page) in ["home", "snap", "history"].enumerated() {
+            let snap = makeSnap("exposure-\(index)"), route = CheckRoute(); route.page = page
             let window = OffscreenCheckWindow(contentRect: NSRect(x: -30_000, y: -30_000, width: 1_000, height: 720),
-                                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+                styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false; window.alphaValue = 0
-            let hosting = NSHostingController(rootView: ExposureFixture(route: route, snap: snap))
-            hosting.sizingOptions = []
-            window.contentViewController = hosting
-            window.setFrame(NSRect(x: -30_000, y: -30_000, width: 1_000, height: 720), display: false)
-            return (window, route)
-        }
-        let journeys: [(name: String, page: String, onScreen: Bool, returnsLater: Bool)] = [
-            ("from Home with the window on screen", "home", true, false),
-            ("from Home with the window minimised, restored from the Dock", "home", false, true),
-            ("from the Snap page, with the window restored after the draft opened", "snap", true, true)]
-        /// Closes a check window only once no sheet is recorded on it.
-        func close(_ window: NSWindow) {
-            sheets.forget(window)
-            window.contentViewController = nil; window.close()
-        }
-        for (index, journey) in journeys.enumerated() {
-            let name = "the editor for a capture \(journey.name)"
-            watchdog.step("\(name): opening the check window")
-            let snap = makeSnap("exposure-\(index)")
-            let (window, route) = fixture(snap, page: journey.page)
-            defer { watchdog.step("\(name): closing the check window"); close(window) }
-            if journey.onScreen { window.orderFrontRegardless() }
-            try await settle(for: 0.3)
-            let before = sheets.requests
-            try check(!sheets.isAttached(to: window) && window.frame.minX < -20_000, "the check window starts \(journey.name) off every display, with no sheet")
-            let host = SnapCaptureHost(desktop: WindowDesktop(window: window, route: route, returnsLater: journey.returnsLater))
+            let preview = CaptureImagePreview()
+            var presentations = 0
+            preview.present = { panel in
+                presentations += 1
+                (panel as? CaptureImagePreviewPanel)?.constrainsToScreen = false
+                panel.setFrameOrigin(NSPoint(x: -40_000, y: -40_000))
+                panel.contentView?.layoutSubtreeIfNeeded()
+            }
+            preview.attach(to: snap, parent: { window }, stateChanged: {})
+            let host = SnapCaptureHost(desktop: WindowDesktop(window: window, route: route, returnsLater: index == 1))
             host.attach(to: snap) {}
-            watchdog.step("\(name): capture")
+            defer { preview.approveDiscard = { true }; preview.cancelEditing(); window.close() }
+            watchdog.step("the expanded image editor from \(page)")
             await snap.capture(.region)
-            watchdog.step("\(name): waiting for the editor")
-            try await settle(for: 5) { sheets.requests > before }
-            // Long enough for a second presentation to show up.
             try await settle(for: 0.3)
-            try check(route.page == "snap" && snap.draft != nil && window.isVisible && sheets.requests == before + 1 && sheets.isAttached(to: window),
-                      "a capture \(journey.name) opens the Snap page, which presents the editor once")
-            try check(window.frame.minX < -20_000, "the check window stayed off every display")
-            watchdog.step("\(name): cancelling the editor")
-            snap.draft = nil
-            try await settle(for: 3) { !sheets.isAttached(to: window) }
-            try check(!sheets.isAttached(to: window), "cancelling the editor \(journey.name) ends its sheet")
+            try check(route.page == "snap" && preview.editing?.draft.id == snap.draft?.id && preview.panel != nil,
+                      "capture from \(page) opens the shared image editor")
+            let panel = preview.panel, count = presentations
+            await snap.capture(.region)
+            try check(preview.panel === panel && presentations >= count, "a pending capture reuses its editor window")
+            try check((panel?.frame.minX ?? 0) < -20_000, "the editor stays off every display")
+            preview.cancelEditing()
+            try check(snap.draft == nil && preview.panel == nil, "Cancel closes the expanded editor and its draft")
         }
-        // The fixture's own control: a draft while Home shows is never presented.
-        watchdog.step("the control: a draft while Home shows")
-        let snap = makeSnap("exposure-control")
-        let (window, _) = fixture(snap, page: "home")
-        defer { watchdog.step("the control: closing the check window"); close(window) }
-        window.orderFrontRegardless()
-        try await settle(for: 0.3)
-        let before = sheets.requests
-        snap.draft = SnapDraft(originalPNG: try syntheticScreen(), source: .clipboard, title: "Fixture control", notes: "", tags: [], edit: .init())
-        try await settle(for: 0.6)
-        try check(sheets.requests == before, "Home by itself never presents a draft, which is why the host opens the Snap page")
-        snap.draft = nil
     }
 
     /// Lets the main run loop, where SwiftUI updates, run until `done` or the deadline.
@@ -428,94 +391,9 @@ private final class WindowDesktop: SnapCaptureDesktop {
     func activate(_ app: pid_t) {}
 }
 
-/// WorkbenchHome's page switch, reduced to Home and the real Snap page.
-private struct ExposureFixture: View {
-    @ObservedObject var route: CheckRoute
-    let snap: SnapModel
-    var body: some View {
-        if route.page == "snap" { SnapWorkspaceView(model: snap, selectedIDs: .constant([])) }
-        else { Text("Home").frame(maxWidth: .infinity, maxHeight: .infinity) }
-    }
-}
-
 /// AppKit moves a titled window onto a display when it is ordered in; this one stays where it is put.
 private final class OffscreenCheckWindow: NSWindow {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
-}
-
-/// While started, a sheet request to any window is counted and recorded as
-/// attached, and ending it removes the record. The window's sheet, the
-/// sheet's parent and its sheet flag read from that record, so SwiftUI and the
-/// Snap page see an attached sheet while none can appear on a display. The
-/// records are locked and answer only on the main thread; AppKit asking from any
-/// other thread gets its own answer. The original methods return on stop.
-private final class SheetRequests: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-    private var sheets: [ObjectIdentifier: NSWindow] = [:]
-    private var parents: [ObjectIdentifier: NSWindow] = [:]
-    private var saved: [(Method, IMP)] = []
-
-    var requests: Int { lock.withLock { count } }
-    func isAttached(to window: NSWindow) -> Bool { lock.withLock { sheets[ObjectIdentifier(window)] != nil } }
-    /// Drops any record on `window`, so closing it never meets a recorded sheet.
-    func forget(_ window: NSWindow) { end(nil, on: window) }
-
-    private func attach(_ sheet: NSWindow, to parent: NSWindow) {
-        lock.withLock { count += 1; sheets[ObjectIdentifier(parent)] = sheet; parents[ObjectIdentifier(sheet)] = parent }
-    }
-    private func end(_ sheet: NSWindow?, on parent: NSWindow) {
-        lock.withLock {
-            if let recorded = sheets.removeValue(forKey: ObjectIdentifier(parent)) { parents.removeValue(forKey: ObjectIdentifier(recorded)) }
-            if let sheet { parents.removeValue(forKey: ObjectIdentifier(sheet)) }
-        }
-    }
-    private func sheet(on window: NSWindow) -> NSWindow? { lock.withLock { sheets[ObjectIdentifier(window)] } }
-    private func parent(of window: NSWindow) -> NSWindow? { lock.withLock { parents[ObjectIdentifier(window)] } }
-
-    private func replace(_ name: String, with block: Any) -> IMP? {
-        guard let method = class_getInstanceMethod(NSWindow.self, NSSelectorFromString(name)) else { return nil }
-        let original = method_setImplementation(method, imp_implementationWithBlock(block))
-        saved.append((method, original))
-        return original
-    }
-    func start() {
-        let begin: @convention(block) (NSWindow, NSWindow, Any?) -> Void = { [weak self] parent, sheet, _ in self?.attach(sheet, to: parent) }
-        _ = replace("beginSheet:completionHandler:", with: begin)
-        _ = replace("beginCriticalSheet:completionHandler:", with: begin)
-        let end: @convention(block) (NSWindow, NSWindow) -> Void = { [weak self] parent, sheet in self?.end(sheet, on: parent) }
-        _ = replace("endSheet:", with: end)
-        let endReturning: @convention(block) (NSWindow, NSWindow, Int) -> Void = { [weak self] parent, sheet, _ in self?.end(sheet, on: parent) }
-        _ = replace("endSheet:returnCode:", with: endReturning)
-        typealias WindowGetter = @convention(c) (NSWindow, Selector) -> NSWindow?
-        typealias ListGetter = @convention(c) (NSWindow, Selector) -> NSArray
-        typealias FlagGetter = @convention(c) (NSWindow, Selector) -> Bool
-        var attachedSheet: WindowGetter?, sheetParent: WindowGetter?, sheetList: ListGetter?, isSheet: FlagGetter?
-        // Only the main thread, where SwiftUI and the check ask, sees the records.
-        // Any other thread gets AppKit's own answer.
-        let readSheet: @convention(block) (NSWindow) -> NSWindow? = { [weak self] window in
-            (Thread.isMainThread ? self?.sheet(on: window) : nil) ?? attachedSheet?(window, NSSelectorFromString("attachedSheet"))
-        }
-        let readParent: @convention(block) (NSWindow) -> NSWindow? = { [weak self] window in
-            (Thread.isMainThread ? self?.parent(of: window) : nil) ?? sheetParent?(window, NSSelectorFromString("sheetParent"))
-        }
-        let readList: @convention(block) (NSWindow) -> NSArray = { [weak self] window in
-            if Thread.isMainThread, let sheet = self?.sheet(on: window) { return [sheet] as NSArray }
-            return sheetList?(window, NSSelectorFromString("sheets")) ?? []
-        }
-        let readFlag: @convention(block) (NSWindow) -> Bool = { [weak self] window in
-            (Thread.isMainThread && self?.parent(of: window) != nil) || (isSheet?(window, NSSelectorFromString("isSheet")) ?? false)
-        }
-        attachedSheet = replace("attachedSheet", with: readSheet).map { unsafeBitCast($0, to: WindowGetter.self) }
-        sheetParent = replace("sheetParent", with: readParent).map { unsafeBitCast($0, to: WindowGetter.self) }
-        sheetList = replace("sheets", with: readList).map { unsafeBitCast($0, to: ListGetter.self) }
-        isSheet = replace("isSheet", with: readFlag).map { unsafeBitCast($0, to: FlagGetter.self) }
-    }
-    func stop() {
-        for (method, original) in saved.reversed() { method_setImplementation(method, original) }
-        saved.removeAll()
-        lock.withLock { sheets.removeAll(); parents.removeAll() }
-    }
 }
 
 /// Ends a check that stops making progress, naming the step it stopped in and

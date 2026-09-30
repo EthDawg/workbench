@@ -12,6 +12,35 @@ enum WorkbenchControlChecks {
             guard condition else { throw VoiceError.message("Contextual controls: " + name) }
             count += 1
         }
+        do {
+            let suite = "Workbench.ToolbarOrientationChecks." + UUID().uuidString
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let controls = CaptureHUDControls(defaults: defaults)
+            controls.activateToolbar(); controls.focusToolbar()
+            controls.reportSize(NSSize(width: 252, height: 40), tier: .revealed, anchor: .bottom, isResult: false,
+                                accessoryAvailable: true, accessoryShown: true)
+            controls.rowAnchor = .left
+            try check(controls.preferredToolbarSize == NSSize(width: 40, height: 252), "orientation seeds the correct column before a new size report")
+            controls.reportSize(NSSize(width: 400, height: 40), tier: .revealed, anchor: .bottom, isResult: false,
+                                accessoryAvailable: true, accessoryShown: true)
+            try check(controls.preferredToolbarSize == NSSize(width: 40, height: 252), "a delayed horizontal measurement cannot widen a vertical column")
+            let small = NSRect(x: 0, y: 0, width: 800, height: 250)
+            let landing = controls.size(for: .left, screen: small)
+            try check(landing == NSSize(width: 40, height: 212) && !controls.fittedRow(for: .left, screen: small).accessoryFits,
+                      "guide and release both leave Review in More when the destination edge is short")
+            controls.reportSize(landing, tier: .revealed, anchor: .left, isResult: false, accessoryAvailable: true, accessoryShown: false)
+            try check(controls.size(for: .left, screen: small) == landing, "committing the fitted column keeps the preview size")
+            try check(controls.size(for: .bottom, screen: small) == NSSize(width: 252, height: 40), "returning to a long edge restores the contextual accessory")
+            controls.suspendToolbar()
+            controls.resultPending = { true }; controls.activateToolbar(); controls.toolbar.send(.pointerEntered)
+            controls.reportSize(NSSize(width: 320, height: 100), tier: .revealed, anchor: .left, isResult: true,
+                                accessoryAvailable: false, accessoryShown: false)
+            try check(controls.preferredToolbarSize == NSSize(width: 320, height: 100), "side placement keeps a result card horizontal")
+            controls.resultEnded()
+            try check(controls.preferredToolbarSize == landing, "result measurement never overwrites the toolbar column")
+            controls.suspendToolbar()
+        }
         try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "Timer"], "panel rows follow the moments: Dictate, Read, Snap, Snap & Talk, Draw, Present, Persona, Timer")
         try check(WorkbenchControlTool.allCases.contains(.snap) && WorkbenchControlTool(mode: .snap) == .snap && WorkbenchControlTool.timer.mode == nil, "Snap is a real row sharing the toolbar's Snap mode; Timer is a row without a mode")
         try check(VoicePreferences().shortcut(8).enabled == false, "the Snap shortcut (voice.8) starts off")
@@ -389,11 +418,30 @@ enum WorkbenchControlChecks {
             defaults.set(CapturePanelController.launcherRecord(exact), forKey: "capturePanelLauncher.v1")
             defaults.set(CapturePanelController.record(exact), forKey: "capturePanelFreePosition.v1")
             try check(saved() == (.free(exact), false), "a glyph copy that converts back a hair off is not a move")
+            let attached = ToolbarFreePosition(centre: CGPoint(x: 470, y: 61), growsLeftward: false,
+                attachment: ToolbarEdgeAttachment(edge: .bottom, fraction: 0.3, displayID: "synthetic-display"))
+            defaults.set(CapturePanelController.launcherRecord(attached), forKey: "capturePanelLauncher.v1")
+            defaults.set(CapturePanelController.record(attached), forKey: "capturePanelFreePosition.v1")
+            try check(saved() == (.free(attached), false), "the edge and fraction survive a restart beside the downgrade record")
             let moved = ToolbarFreePosition(glyphEdge: 300, centreY: 200, growsLeftward: false)
             defaults.set(CapturePanelController.record(moved), forKey: "capturePanelFreePosition.v1")
             try check(saved() == (.free(moved), true), "a move an earlier build made since wins over this build's older record")
             defaults.set("topRight", forKey: "capturePanelAnchor.v2")
             try check(saved() == (.docked(.topRight), false), "a dock by name wins over any free record")
+            let dockFrame = NSRect(x: 1000, y: 400, width: 132, height: 36)
+            defaults.set(CapturePanelController.dockDisplayRecord("synthetic-display", anchor: "topRight", frame: dockFrame),
+                         forKey: "capturePanelDockDisplay.v1")
+            try check(CapturePanelController.savedDockDisplay(defaults) == "synthetic-display", "a named dock retains its display through relaunch")
+            defaults.set(NSStringFromPoint(NSPoint(x: 500, y: 400)), forKey: "capturePanelOrigin.v1")
+            try check(CapturePanelController.savedDockDisplay(defaults) == nil, "an older build's later move wins over the named dock's saved display")
+            defaults.set(NSStringFromPoint(dockFrame.origin), forKey: "capturePanelOrigin.v1")
+            defaults.set("left", forKey: "capturePanelAnchor.v2")
+            try check(CapturePanelController.savedDockDisplay(defaults) == nil, "an older build's changed dock wins over the display companion")
+            defaults.set("topRight", forKey: "capturePanelAnchor.v2")
+            defaults.set(NSStringFromSize(NSSize(width: 48, height: 28)), forKey: "capturePanelSize.v1")
+            try check(CapturePanelController.savedDockDisplay(defaults) == nil, "a changed legacy frame invalidates stale display affinity")
+            defaults.set(["id": "incomplete"], forKey: "capturePanelDockDisplay.v1")
+            try check(CapturePanelController.savedDockDisplay(defaults) == nil, "an incomplete display companion cannot claim the dock")
         }
         var state = WorkbenchControlState()
         state.presenting = true; state.drawing = true; state.phase = .recording

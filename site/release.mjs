@@ -52,10 +52,10 @@ export function renderPublishedRelease(html, record = currentRelease) {
     CHECKSUM_URL: `${releases}/download/${value.tag}/SHA256SUMS.txt`,
     APP_BUNDLE: `${name}.app`,
     APP_DATA_DIRECTORY: name,
-    RELEASE_STATUS: isPreview ? 'A Preview you can help shape.' : 'Workbench for your Mac.',
+    RELEASE_STATUS: isPreview ? 'Try it. Help shape what’s next.' : 'Small tools. Useful moments.',
     RELEASE_NOTICE: isPreview
       ? 'The current public download is a signed and notarized Preview. A Workbench production release will replace this link only after its package and update feed are verified.'
-      : 'This download is Developer ID signed and notarized by Apple. Its release notes identify the tested workflows and any hardware-specific limits.',
+      : 'Speak a thought. Capture a detail. Keep a good idea moving. This download is Developer ID signed and notarized by Apple.',
     RELEASE_INSTALL_CONTEXT: isPreview
       ? 'Your earlier Voice and StageMark data stays in place. Workbench imports a separate copy for this Preview.'
       : 'Workbench and Workbench Preview keep separate libraries and settings. Installing Workbench does not copy Preview data automatically.',
@@ -63,8 +63,11 @@ export function renderPublishedRelease(html, record = currentRelease) {
       ? 'After checking that your saved work is available in Workbench Preview, you can remove older Voice and StageMark apps from Applications. Keep their saved-data folders.'
       : 'Keep your Preview installation and saved-data folders until you have checked the work you need in Workbench. Replacing the app preserves this edition’s saved work.',
     UPDATE_INSTALL_NOTE: value.feed_url
-      ? 'After this one-time manual installation, Settings → Workbench updates keeps this edition current. Scheduled updates show a quiet reminder and wait for your work.'
+      ? 'After this one-time manual installation, Settings → Workbench updates keeps this edition current. An update waits to restart until your active work finishes.'
       : 'Future Preview updates keep that copy.',
+    UPDATE_QUICK_START: value.feed_url
+      ? 'Open Settings → Workbench updates in the app to review the next update. Your saved work stays with you. Versions without the updater need one manual replacement first.'
+      : 'This version has no automatic updater. Quit the app and replace it in the same Applications folder with the next Preview download.',
     UPDATE_DETAILS: value.feed_url
       ? 'Use Settings → Workbench updates to check for a new version. Automatic checks and background downloads are on by default; both can be changed in Settings, and existing choices are retained. A downloaded update can install on normal Quit or when you explicitly restart an idle app. Active work defers an update-triggered restart. Versions without the updater need one manual replacement first.'
       : 'This published version has no automatic updater. To update, quit Workbench Preview and replace the existing app in the same Applications folder with the next Preview download.',

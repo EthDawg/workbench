@@ -82,6 +82,23 @@ public enum ToolbarOperation: Hashable, Sendable {
     /// Nothing to do but wait; the label says why and is disabled.
     case wait
 
+    /// The live command's glyph, rather than the chosen tool's glyph. A recording in any
+    /// tool shows Stop, and a paused reading shows Play. The words remain its accessible name.
+    public var symbol: String {
+        switch self {
+        case .stopInserting, .stopDictation, .finishNarration, .finishDrawing,
+             .stopReading, .stopMeetingTranscription, .endPresentation: return "stop.fill"
+        case .cancelDictationRequest, .cancelReading: return "xmark"
+        case .pauseReading: return "pause.fill"
+        case .resumeReading: return "play.fill"
+        case .hidePersona, .pauseOverlays: return "eye.slash"
+        case .resumeOverlays: return "eye"
+        case .captureNext: return "viewfinder"
+        case .wait: return "ellipsis"
+        case .start(let mode): return mode == .dictate ? "mic.fill" : mode.symbol
+        }
+    }
+
     /// The capability the operation belongs to, for its symbol.
     public var mode: ToolbarMode? {
         switch self {
@@ -130,7 +147,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         let enabled: Bool
         switch operation {
         case .wait: enabled = false
-        case .start: enabled = live.mayStart
+        case .start, .captureNext: enabled = live.mayStart
         default: enabled = true
         }
         var detail: String?
@@ -138,7 +155,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
             detail = "\(count) " + (count == 1 ? "capture" : "captures")
         }
         if case .captureNext = operation, live.pendingNarration { detail = "saving" }
-        return ToolbarNextAction(title: title(operation, live: live), symbol: (operation.mode ?? live.mode).symbol,
+        return ToolbarNextAction(title: title(operation, live: live), symbol: operation.symbol,
                                  operation: operation, isEnabled: enabled, detail: detail)
     }
 

@@ -4,6 +4,33 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--profile-camera-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let camera = ProfileCameraTests(), creation = PersonaCreationTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("camera permission cancellation and late approval", camera.testPermissionIsExplicitAndLateApprovalCannotReopen),
+                ("camera denied and restricted access", camera.testDeniedAndRestrictedAccessKeepAnExitWithoutOpeningHardware),
+                ("camera timeout retry and stale events", camera.testStartupTimeoutRetryAndLateEvents),
+                ("camera fresh frames and deadline ownership", camera.testOnlyFreshFramesEnableTheShutterAndOldDeadlinesCannotFailNewFrames),
+                ("camera photo handoff and late cancellation", camera.testPhotoHandsOffOnceAfterStoppingAndCancelDropsLatePhoto),
+                ("camera source switch and interruption", camera.testSwitchCameraRejectsOldPhotoAndDisconnectionRequiresExplicitRetry),
+                ("camera photo failure and timeout", camera.testPhotoFailureAndTimeoutLeaveTheProfileUnchanged),
+                ("camera stays in profile host and Cancel preserves library", camera.testProfileKeepsCameraInTheSameHostAndCancelReturnsWithoutSaving),
+                ("camera frame conversion preserves pixels", camera.testFrameConversionKeepsItsSizeAndOrientation),
+                ("camera synthetic layouts", camera.testCameraLayouts),
+                ("profile replacement preserves originals", creation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
+                ("profile save failure preserves draft", creation.testFailedProfileReplacementKeepsDraftAndFiles)
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-workspace-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -127,8 +154,10 @@ struct TestRunner {
                 ("persona voice outline: chimes, beeps and music settle", latency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
                 ("optional Mac voices through the voice outline", latency.testSpokenSentencesFromSay),
                 ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders),
-                ("voice appearance: both surfaces share one envelope and stroke", appearance.testBothSurfacesShareOneEnvelopeAndStroke),
+                ("voice appearance: shared voice states with distinct responses", appearance.testSurfacesShareVoiceStatesWithDistinctResponse),
                 ("voice appearance: trace fits the compact mark and never travels", appearance.testTraceFitsTheCompactMarkAndNeverTravels),
+                ("voice appearance: input follows syllables and outline stays calm", appearance.testInputTraceFollowsSyllablesWhileTheOutlineStaysCalm),
+                ("voice appearance: soft usable input is visible", appearance.testTraceShowsSoftInputTheRecorderCanKeep),
                 ("voice appearance: trace rests when still, fixed with Reduce Motion", appearance.testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion),
                 ("voice appearance: recorder level meets the targets", appearance.testRecorderLevelMeetsTheTargets),
                 ("voice appearance: SwiftUI trace drops into a toolbar row", appearance.testSwiftUITraceDropsIntoAToolbarRow),
@@ -225,6 +254,8 @@ struct TestRunner {
                 ("new portrait repeated cancels leave nothing", creation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
                 ("new portrait Add saves once", creation.testAddSavesOneItemWithOneMembershipOnce),
                 ("new portrait failed Add keeps the draft", creation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+                ("profile reference and replacement keep identity and original artwork", creation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
+                ("profile failed replacement keeps draft and files", creation.testFailedProfileReplacementKeepsDraftAndFiles),
                 ("saved card edit cancel and shown card", creation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
                 ("read-only library makes no draft", creation.testReadOnlyLibraryMakesNoDraft),
                 ("optional offscreen persona editor renders", creation.testOffscreenEditorRenders),
@@ -577,6 +608,18 @@ struct TestRunner {
             ("new portrait repeated cancels leave nothing", personaCreation.testRepeatedCancelsLeaveNoDuplicatesOrFiles),
             ("new portrait Add saves once", personaCreation.testAddSavesOneItemWithOneMembershipOnce),
             ("new portrait failed Add keeps the draft", personaCreation.testFailedAddKeepsTheDraftAndRetryAddsExactlyOne),
+                ("camera permission cancellation and late approval", ProfileCameraTests().testPermissionIsExplicitAndLateApprovalCannotReopen),
+                ("camera denied and restricted access", ProfileCameraTests().testDeniedAndRestrictedAccessKeepAnExitWithoutOpeningHardware),
+                ("camera timeout retry and stale events", ProfileCameraTests().testStartupTimeoutRetryAndLateEvents),
+                ("camera fresh frames and deadline ownership", ProfileCameraTests().testOnlyFreshFramesEnableTheShutterAndOldDeadlinesCannotFailNewFrames),
+                ("camera photo handoff and late cancellation", ProfileCameraTests().testPhotoHandsOffOnceAfterStoppingAndCancelDropsLatePhoto),
+                ("camera source switch and interruption", ProfileCameraTests().testSwitchCameraRejectsOldPhotoAndDisconnectionRequiresExplicitRetry),
+                ("camera photo failure and timeout", ProfileCameraTests().testPhotoFailureAndTimeoutLeaveTheProfileUnchanged),
+                ("camera stays in profile host and Cancel preserves library", ProfileCameraTests().testProfileKeepsCameraInTheSameHostAndCancelReturnsWithoutSaving),
+                ("camera frame conversion preserves pixels", ProfileCameraTests().testFrameConversionKeepsItsSizeAndOrientation),
+                ("camera synthetic layouts", ProfileCameraTests().testCameraLayouts),
+            ("profile reference and replacement keep identity and original artwork", personaCreation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
+            ("profile failed replacement keeps draft and files", personaCreation.testFailedProfileReplacementKeepsDraftAndFiles),
             ("saved card edit cancel and shown card", personaCreation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),
             ("read-only library makes no draft", personaCreation.testReadOnlyLibraryMakesNoDraft),
             ("appearance: new portrait is a Circle and switching keeps everything", personaAppearance.testNewPortraitStartsAsCircleAndSwitchingShapesKeepsEverything),
@@ -717,8 +760,10 @@ struct TestRunner {
             ("persona voice outline lit through a held vowel", personaVoiceLatency.testHeldVowelKeepsTheOutlineLit),
             ("persona voice outline: chimes, beeps and music settle", personaVoiceLatency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
             ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders),
-            ("voice appearance: both surfaces share one envelope and stroke", voiceAppearance.testBothSurfacesShareOneEnvelopeAndStroke),
+            ("voice appearance: shared voice states with distinct responses", voiceAppearance.testSurfacesShareVoiceStatesWithDistinctResponse),
             ("voice appearance: trace fits the compact mark and never travels", voiceAppearance.testTraceFitsTheCompactMarkAndNeverTravels),
+            ("voice appearance: input follows syllables and outline stays calm", voiceAppearance.testInputTraceFollowsSyllablesWhileTheOutlineStaysCalm),
+            ("voice appearance: soft usable input is visible", voiceAppearance.testTraceShowsSoftInputTheRecorderCanKeep),
             ("voice appearance: trace rests when still, fixed with Reduce Motion", voiceAppearance.testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion),
             ("voice appearance: recorder level meets the targets", voiceAppearance.testRecorderLevelMeetsTheTargets),
             ("voice appearance: SwiftUI trace drops into a toolbar row", voiceAppearance.testSwiftUITraceDropsIntoAToolbarRow)

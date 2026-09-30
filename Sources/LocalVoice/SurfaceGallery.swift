@@ -32,6 +32,57 @@ enum SurfaceGallery {
     }
     static let unknownRoute = "surface-gallery-unknown-route"
 
+    /// Draws the window's layer tree, as the screen would. Neither `cacheDisplay` nor a layer render
+    /// of the window reliably includes a scroll view's document (macOS may show it through the
+    /// scroll edge portal), so each visible document is hidden for the window pass and then drawn
+    /// on its own, outer ones first, clipped to its scroll view.
+    @MainActor static func snapshot(_ root: NSView) throws -> NSBitmapImageRep {
+        root.window?.display()
+        let scale = root.window?.backingScaleFactor ?? 2, bounds = root.bounds
+        guard root.layer != nil, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: Int(bounds.width * scale), height: Int(bounds.height * scale), bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            throw VoiceError.message("Could not allocate a render.")
+        }
+        context.scaleBy(x: scale, y: scale)
+        // The window background is not in the layer tree, so paint it first, in the window's appearance.
+        var background = NSColor.windowBackgroundColor.cgColor
+        (root.window?.effectiveAppearance ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
+            background = NSColor.windowBackgroundColor.cgColor
+        }
+        context.setFillColor(background); context.fill(bounds)
+        func draw(_ view: NSView, in rect: NSRect) {
+            guard let layer = view.layer else { return }
+            context.saveGState()
+            context.translateBy(x: rect.minX, y: rect.minY)
+            // A magnified scroll view shows its document scaled, as the image preview does.
+            let scale = CGSize(width: view.bounds.width > 0 ? rect.width / view.bounds.width : 1,
+                               height: view.bounds.height > 0 ? rect.height / view.bounds.height : 1)
+            let magnified = abs(scale.width - 1) > 0.001 || abs(scale.height - 1) > 0.001
+            if magnified { context.scaleBy(x: scale.width, y: scale.height) }
+            if view.isFlipped { context.translateBy(x: 0, y: magnified ? view.bounds.height : rect.height); context.scaleBy(x: 1, y: -1) }
+            layer.render(in: context)
+            context.restoreGState()
+        }
+        func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
+        let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
+        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
+        let opacities = documents.map(\.opacity)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
+        documents.forEach { $0.isHidden = true }
+        draw(root, in: SurfacePass.unflipped(root.bounds, of: root, in: root))
+        for (clip, document) in scrolled {
+            document.layer?.isHidden = false; document.layer?.opacity = 1
+            context.saveGState()
+            context.clip(to: SurfacePass.unflipped(clip.bounds, of: clip, in: root))
+            draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
+            context.restoreGState()
+        }
+        guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
+        return NSBitmapImageRep(cgImage: image)
+    }
+
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
     struct Page: Codable { var route: String; var title: String; var fallsThrough: Bool; var blank = false; var shots: [Shot] }
     /// `ran` marks a destination learned from the app's own code rather than the catalogue.
@@ -272,6 +323,12 @@ enum SurfaceGallery {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
+        if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
+            let (shots, host) = try renderToolbarHost(to: output)
+            return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: shots, host: host, pickers: [], pickerHost: [],
+                pages: [], entries: [], menus: [], placement: try checkToolbarPlacement())
+        }
         var panels: [SurfaceGallery.Shot] = []
         for state in panelStates() {
             try state.apply()
@@ -307,7 +364,10 @@ enum SurfaceGallery {
         let dictateStates = try renderDictateStates(to: output)
         if let dictate = pages.firstIndex(where: { $0.route == "dictate" }) { pages[dictate].shots += dictateStates.shots }
         // Home's first-dictation states come before History's, which add Hand off tasks to recent work.
-        if let home = pages.firstIndex(where: { $0.route == "home" }) { pages[home].shots += try renderHomeStates(to: output) + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)] }
+        if let home = pages.firstIndex(where: { $0.route == "home" }) {
+            pages[home].shots += try renderHomeStates(to: output) + renderHomeChrome(to: output)
+                + [try renderHomeLargerText(to: output), try renderHomeSavedPhotos(to: output)]
+        }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
         let checks = try dictateStates.checks + review.checks + checkToolbarVisibility() + header.checks
@@ -1081,6 +1141,57 @@ enum SurfaceGallery {
 
     // MARK: Home states
 
+    /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
+    /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
+        var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
+        guard let homeIndex = pages.firstIndex(where: { $0.route == "home" }) else { throw VoiceError.message("Home is missing from the page record.") }
+        for (name, size) in SurfaceGallery.sizes {
+            let window = homeWindow(size: size)
+            defer { window.contentViewController = nil; window.close() }
+            let (rep, drawn) = try renderPage("home", in: window)
+            pages[homeIndex].shots.append(try save(rep, id: name, title: "Expanded sidebar, " + name,
+                detail: "Actual Home at \(Int(drawn.width)) × \(Int(drawn.height)) pt, with synthetic saved work.",
+                file: "page-home-\(name)-\(theme).png", to: output))
+        }
+        pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
+            + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
+        let review = try checkHomeReview(to: output)
+        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
+            pages: pages, entries: entries(), menus: [], checks: review.checks)
+    }
+
+    /// Both sidebar widths and the local-profile sheet, without ordering a window on screen,
+    /// opening a camera or touching a real preference domain.
+    func renderHomeChrome(to output: URL) throws -> [SurfaceGallery.Shot] {
+        var shots: [SurfaceGallery.Shot] = []
+        let kept = model.page
+        defer { model.page = kept }
+        for (name, size) in SurfaceGallery.sizes {
+            let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+            window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+            defer { window.contentViewController = nil; window.close() }
+            model.page = "home"
+            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                readback: sessionReadback, snap: snap, sidebarCollapsed: true))
+            window.setContentSize(size)
+            let frame = window.contentView?.superview ?? window.contentView!
+            settle(frame)
+            shots.append(try save(try snapshot(frame), id: "collapsed-" + name, title: "Collapsed sidebar, " + name,
+                detail: "A loaded Snap & Talk session continues from its workflow card. Every icon keeps a tooltip and accessible name.",
+                file: "page-home-collapsed-\(name)-\(theme).png", to: output))
+        }
+        let host = NSHostingView(rootView: stage.localProfileView)
+        let window = offscreenWindow(size: NSSize(width: 470, height: 370), styleMask: [.borderless])
+        window.contentView = host
+        defer { window.contentView = nil; window.close() }
+        host.setFrameSize(host.fittingSize); window.setContentSize(host.fittingSize); settle(host)
+        shots.append(try save(try snapshot(host), id: "profile", title: "Local profile", detail: "Photo choice is explicit; opening this sheet requests no access.",
+                             file: "home-profile-\(theme).png", to: output))
+        return shots
+    }
+
     /// The first-dictation journey (#15): the guide beside earlier Snaps, the
     /// ordinary Home after Skip for now with its way back, and the guide's result
     /// right after a first dictation. Synthetic history only; the pass's own
@@ -1239,14 +1350,22 @@ enum SurfaceGallery {
                                     id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000300")!, createdAt: Date(timeIntervalSince1970: 1_789_546_320))
         let owner = offscreenWindow(size: SurfaceGallery.sizes[0].size, styleMask: [.titled])
         let preview = CaptureImagePreview()
-        preview.present = { _ in }
-        defer { preview.close(); owner.close() }
+        let editorOwner = SnapModel(store: store, desktop: home.appendingPathComponent("Desktop"),
+                                   preferences: try SurfaceGallery.isolatedDefaults("ImageWorkspace", home: home),
+                                   screenshotInbox: home.appendingPathComponent("ImageWorkspace Inbox"), screenAccess: .fixed(false))
+        editorOwner.announce = { _ in }
+        preview.attach(to: editorOwner, parent: { owner }, stateChanged: {})
+        preview.present = { panel in
+            (panel as? CaptureImagePreviewPanel)?.constrainsToScreen = false
+            panel.setFrameOrigin(NSPoint(x: -40_000, y: -40_000))
+        }
+        defer { preview.approveDiscard = { true }; preview.cancelEditing(); preview.close(); owner.close() }
         var shots: [SurfaceGallery.Shot] = []
         func shot(_ id: String, _ title: String, _ detail: String, _ item: CaptureImagePreviewItem, command: CaptureImagePreviewModel.Command? = nil) throws {
             preview.show(item, over: owner)
             guard let panel = preview.panel, let model = preview.model else { throw VoiceError.message("The image preview did not open.") }
             panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
-            panel.setFrame(NSRect(origin: .zero, size: SurfaceGallery.sizes[0].size), display: false)
+            panel.setFrame(NSRect(origin: NSPoint(x: -40_000, y: -40_000), size: SurfaceGallery.sizes[0].size), display: false)
             let frame = panel.contentView?.superview ?? panel.contentView!
             try wait("the preview to load") { if case .loading = model.state { return false }; return true }
             settle(frame)
@@ -1261,6 +1380,25 @@ enum SurfaceGallery {
             transcript: nil, status: .ready, failure: nil, deletedAt: nil)
         try shot("missing", "Image preview, missing file", "A Snap & Talk screenshot whose file is gone from its session folder.",
                  .section(gone, number: 3, session: home.appendingPathComponent("Snap & Talk/Moved session", isDirectory: true)))
+        preview.show(.snap(item, store: store), over: owner)
+        try wait("the editor source to load") { if case .loading = preview.model?.state { return false }; return true }
+        preview.beginEditing()
+        guard let editing = preview.editing, let panel = preview.panel else { throw VoiceError.message("The image editor did not open.") }
+        editing.addText()
+        editing.updateSelected { $0.text = "Start here\nOne image, one workspace"; $0.fontSize = 0.045 }
+        func editorShot(_ id: String, title: String, size: NSSize) throws {
+            panel.setContentSize(size)
+            let frame = panel.contentView?.superview ?? panel.contentView!
+            settle(frame)
+            shots.append(try save(snapshot(frame), id: "image-workspace-\(id)", title: title,
+                detail: "Synthetic image in the shared workspace. The canvas and saved image use the same renderer.",
+                file: "page-snap-workspace-\(id)-\(theme).png", to: output))
+        }
+        try editorShot("text", title: "Image workspace, editable text", size: NSSize(width: 1180, height: 740))
+        editing.tool = .crop; editing.setAspect(.widescreen)
+        try editorShot("crop", title: "Image workspace, 16:9 crop", size: NSSize(width: 1180, height: 740))
+        editing.tool = .select
+        try editorShot("compact", title: "Image workspace, compact", size: NSSize(width: 820, height: 560))
         return shots
     }
 
@@ -1452,10 +1590,15 @@ enum SurfaceGallery {
     func renderToolbarHost(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [SurfaceGallery.HostCheck]) {
         // The host places its window on a screen; a Mac with none renders nothing rather than a false flag.
         guard NSScreen.main != nil else { return ([], []) }
+        // A prepared session exercises the complete Region/Window/Screen + Review row,
+        // whose measured width must reach the production window as Snap's does.
+        let readback = sessionReadback
+        var captureDispatches: [String] = []
         let defaults = try SurfaceGallery.isolatedDefaults("Toolbar", home: home)
         let controls = CaptureHUDControls(defaults: defaults)
         let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
-                                          dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+                                          dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {},
+                                          capture: { tool, kind in captureDispatches.append(tool.rawValue + ":" + kind.rawValue) }, controls: controls)
         guard let panel = host.window, let content = panel.contentView else { throw VoiceError.message("The toolbar host has no window.") }
         panel.alphaValue = 0; panel.ignoresMouseEvents = true
         panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
@@ -1487,6 +1630,17 @@ enum SurfaceGallery {
                 settle(twin, seconds: 0.2)
                 let window = panel.frame.size, wants = twin.fittingSize, preferred = controls.preferredToolbarSize
                 var problems: [String] = []
+                if tier == .revealed, mode == .snap || mode == .snapAndTalk {
+                    func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
+                    let before = captureDispatches.count
+                    for kind in ToolbarCaptureKind.allCases {
+                        let button = buttons(content).first { $0.accessibilityIdentifier() == "toolbar.capture." + kind.rawValue }
+                        if let button { button.performClick(nil) }
+                        else { problems.append("missing direct capture choice: " + kind.title) }
+                    }
+                    let expected = ToolbarCaptureKind.allCases.map { mode.rawValue + ":" + $0.rawValue }
+                    if Array(captureDispatches.dropFirst(before)) != expected { problems.append("capture sources did not reach their named owner and source") }
+                }
                 if controls.toolbar.state.tier != tier {
                     problems.append("the toolbar did not settle \(tier == .resting ? "at rest" : "revealed") (in a local run, a pointer inside the invisible panel can hold it)")
                 }
@@ -1554,7 +1708,18 @@ enum SurfaceGallery {
                                 preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
                                 problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
         }
-        // A right-hand dock reverses the row around the same launcher centre (#134).
+        // Side docks use upright columns and retain direct capture dispatch.
+        for side in [FloatingControlAnchor.left, .right] {
+            controls.choosePosition?(side); twinControls.rowAnchor = ToolbarAnchor(rawValue: side.rawValue)!
+            for mode in [ToolbarMode.snap, .snapAndTalk] {
+                model.toolbarMode = mode
+                controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
+                try record("\(mode.rawValue)-\(side.rawValue)-revealed", "\(mode.title), revealed at \(side.title)", tier: .revealed)
+                controls.toolbar.send(.holdEnded(.keyboard)); twinControls.toolbar.send(.holdEnded(.keyboard))
+                try record("\(mode.rawValue)-\(side.rawValue)-resting", "\(mode.title), at rest at \(side.title)", tier: .resting)
+            }
+        }
+        controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
         model.toolbarMode = .present
         controls.choosePosition?(.right); twinControls.rowAnchor = .right
         try record("present-right-dock-revealed", "Present, revealed at the right-hand dock", tier: .revealed)
@@ -1627,11 +1792,10 @@ enum SurfaceGallery {
     }
 
     /// Free placement through the production host (#163, #134), with its panel invisible. Every
-    /// position is compared at the launcher's centre, which the compact rest and the revealed row
-    /// share. A release away from every dock rests right there through an update, a reveal and a
-    /// collapse, on either half of the display; a row that widens moves neither its launcher nor
-    /// its side; a release within the snap distance of a dock docks and one just beyond stays
-    /// free; a new host, as after a relaunch, restores the free position, and earlier builds'
+    /// position is compared at its resting reference. A release in the interior rests there
+    /// through an update, a reveal and a collapse, on either half of the display; wider rows
+    /// preserve their centre or inward edge. A release near an edge attaches there; a new host,
+    /// as after a relaunch, restores the position, and earlier builds'
     /// saves come back where they were left; Reset position docks at bottom centre. The chooser
     /// opens inside the display at larger text from a bottom-right and a top-left dock.
     func checkToolbarPlacement() throws -> [SurfaceGallery.PlacementCheck] {
@@ -1655,7 +1819,7 @@ enum SurfaceGallery {
             waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
         }
         func launcher() -> CGPoint {
-            ToolbarGeometry.launcherCentre(inWindow: host.window?.frame ?? .zero, growsLeftward: controls.rowAnchor.growsLeftward)
+            ToolbarGeometry.restingCentre(inWindow: host.window?.frame ?? .zero, anchor: controls.rowAnchor, isFloating: controls.isFloating)
         }
         func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
         /// What a failing step saw, so a failure on a runner can be read from its log alone: the
@@ -1681,16 +1845,15 @@ enum SurfaceGallery {
         }
         func compact(_ what: String) -> String? {
             guard controls.toolbar.state.tier == .resting, let size = host.window?.frame.size else { return nil }
-            return abs(size.width - ToolbarLayout.mark.width) > 0.5 || abs(size.height - ToolbarLayout.mark.height) > 0.5
-                ? "\(what): the resting window is \(Self.points(size)), not the compact rest's 48 × 28 pt" : nil
+            return abs(size.width - controls.restingSize.width) > 0.5 || abs(size.height - controls.restingSize.height) > 0.5
+                ? "\(what): the resting window is \(Self.points(size)), not the compact rest's \(Self.points(controls.restingSize))" : nil
         }
         for (side, centre) in [("left", CGPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
                                ("right", CGPoint(x: screen.minX + screen.width * 0.7, y: screen.minY + screen.height * 0.6))] {
             let centre = CGPoint(x: centre.x.rounded(), y: centre.y.rounded())
             host.releaseTools(atLauncher: centre); settle(.resting)
-            let leftward = side == "right"
             expect("Released free on the \(side), at rest", [free(centre), at(centre, "at rest"), compact("at rest"),
-                controls.rowAnchor.growsLeftward == leftward ? nil : "the row would grow \(leftward ? "rightward, off" : "leftward, away from") the near edge"])
+                controls.rowAnchor.growsFromCentre ? nil : "the free row does not expand from its centre"])
             // An update while free must not pull the toolbar back to a dock.
             model.floatingToolbarVisible = true; host.update(model: model); settle(.resting)
             expect("Free on the \(side), after an update", [free(centre), at(centre, "after an update")])
@@ -1763,7 +1926,7 @@ enum SurfaceGallery {
             defaults.set(["glyphEdge": Double(edge), "centreY": Double(edgeY), "growsLeftward": true], forKey: "capturePanelFreePosition.v1")
         }
         expect("A new host reading #163's glyph-edge save", [free(CGPoint(x: edge - 18, y: edgeY)), at(CGPoint(x: edge - 18, y: edgeY), "migrated"),
-            controls.rowAnchor.growsLeftward ? nil : "the save's side, leftward, was lost",
+            controls.rowAnchor.growsFromCentre ? nil : "the saved free position does not expand from its centre",
             UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the migrated position was not saved in this build's terms" : nil])
         let earlier = NSRect(x: (screen.minX + screen.width * 0.65).rounded(), y: (screen.minY + screen.height * 0.3).rounded(), width: 132, height: 36)
         relaunch { defaults in
@@ -1772,7 +1935,7 @@ enum SurfaceGallery {
             defaults.set(NSStringFromSize(earlier.size), forKey: "capturePanelSize.v1")
         }
         expect("A new host reading an earlier resting-element save", [free(CGPoint(x: earlier.maxX - 18, y: earlier.midY)),
-            controls.rowAnchor.growsLeftward ? nil : "the earlier save on the right half grows rightward",
+            controls.rowAnchor.growsFromCentre ? nil : "the earlier save does not use centred expansion",
             UserDefaults.standard.dictionary(forKey: "capturePanelLauncher.v1") == nil ? "the side decided for the earlier save was not saved with it" : nil])
         // An earlier build moved the toolbar after this one saved it: that later move wins.
         let moved = CGPoint(x: (screen.minX + screen.width * 0.25).rounded(), y: (screen.minY + screen.height * 0.55).rounded())
@@ -1811,18 +1974,20 @@ enum SurfaceGallery {
         checkAccessoriesInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         checkKeyboardTraversalInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
-        for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
+        for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1), (.left, 1), (.right, 1.35)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
+            let toolbar = ToolbarGeometry.frame(size: ToolbarLayout.oriented(NSSize(width: 252, height: 40), for: anchor), position: .docked(anchor), screen: screen)
             let chooser = ToolbarChooserPanel(); chooser.offscreenForChecks = true
             chooser.show(from: ToolbarGeometry.slot(around: centre), view: nil, level: .statusBar, growsLeftward: anchor.growsLeftward,
-                         choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)), textScale: scale, choose: { _ in }, closed: { _ in })
+                         choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)), anchor: anchor, toolbar: toolbar,
+                         textScale: scale, choose: { _ in }, closed: { _ in })
             let frame = chooser.shownFrame ?? .zero
             let natural = ToolbarChooserLayout.height(rows: ToolbarMode.allCases.count, scale: scale)
             expect("Chooser from the \(anchor.title.lowercased()) dock\(scale > 1 ? ", larger text" : "")", [
                 screen.contains(frame) ? nil : "the chooser at \(Int(frame.minX)), \(Int(frame.minY)), \(Self.points(frame.size)) leaves the display",
                 abs(frame.width - ToolbarChooserLayout.width * scale) > 1 && frame.width < screen.width - 16 ? "the chooser is \(Int(frame.width)) pt wide, not \(Int(ToolbarChooserLayout.width * scale))" : nil,
                 frame.height + 1 < natural && screen.height > natural + 200 ? "the chooser scrolls although all seven tools fit" : nil,
-                ToolbarGeometry.slot(around: centre).intersects(frame) ? "the chooser covers the launcher" : nil])
+                toolbar.intersects(frame) ? "the chooser covers the toolbar" : nil])
             chooser.close()
         }
         return checks
@@ -1849,10 +2014,10 @@ enum SurfaceGallery {
         // a menu's hold: the real pointer is elsewhere, and the host would find it gone and collapse.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
-        /// A result's controls grow inward from the launcher's centre; a display edge may lift them.
+        /// A bottom-centred result grows around its resting reference; a display edge may lift it.
         func grewFromTheCentre(_ what: String) -> String? {
             let frame = host.window?.frame ?? .zero
-            let x = ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: controls.rowAnchor.growsLeftward).x
+            let x = ToolbarGeometry.restingCentre(inWindow: frame, anchor: controls.rowAnchor).x
             return abs(x - bottom.x) > 0.5 ? "\(what): the controls grew from \(Int(x)), not the launcher's centre at \(Int(bottom.x))" : nil
         }
         model.toolbarMode = .dictate
@@ -1956,7 +2121,7 @@ enum SurfaceGallery {
             let above = anchor != .top
             let gap = above ? NSRect(x: frame.minX, y: mark.maxY, width: frame.width, height: frame.minY - mark.maxY)
                             : NSRect(x: frame.minX, y: frame.maxY, width: frame.width, height: mark.minY - frame.maxY)
-            let launcherX = ToolbarGeometry.launcherCentre(inWindow: mark, growsLeftward: controls.rowAnchor.growsLeftward).x
+            let launcherX = ToolbarGeometry.restingCentre(inWindow: mark, anchor: controls.rowAnchor).x
             expect("The coaching card at the \(anchor.title.lowercased()) dock", [
                 requested ? nil : "the host would not let the card show",
                 coach.isPresented ? nil : "the card was never reported presented",
@@ -2079,7 +2244,7 @@ enum SurfaceGallery {
     func checkResultsYieldToLiveWork(host: CapturePanelController, controls: CaptureHUDControls,
                                      expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.title }
+        func primary() -> String? { host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }?.accessibilityLabel() }
         /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
@@ -2326,12 +2491,12 @@ enum SurfaceGallery {
             model.toolbarMode = mode; settle(.revealed)
             let expected = ToolbarAccessory.offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false)
             let found = host.window?.contentView.map(buttons)?.filter { $0.accessibilityIdentifier() == "toolbar.accessory" } ?? []
-            let title = expected.map { $0.opensList ? $0.title + " ⌄" : $0.title }
+            let title = expected?.title
             expect("\(mode.title)'s accessory, revealed with nothing live", [
                 found.count > 1 ? "the row shows \(found.count) accessories" : nil,
-                found.first?.title == title ? nil
-                    : "the row shows \(found.first.map { "\"\($0.title)\"" } ?? "no accessory"), not \(title.map { "\"\($0)\"" } ?? "none")",
-                found.first.map { $0.accessibilityLabel() == expected?.title ? nil : "VoiceOver hears \"\($0.accessibilityLabel() ?? "")\"" } ?? nil])
+                found.first?.accessibilityLabel() == title ? nil
+                    : "the row shows \(found.first.map { "\"\($0.accessibilityLabel() ?? "")\"" } ?? "no accessory"), not \(title.map { "\"\($0)\"" } ?? "none")",
+                found.first.map { $0.image != nil ? nil : "the accessory has no visible action icon" } ?? nil])
         }
         controls.toolbar.send(.holdEnded(.keyboard)); settle(.resting)
         var routes: [String] = []
@@ -2403,56 +2568,7 @@ enum SurfaceGallery {
         view.layoutSubtreeIfNeeded()
     }
 
-    /// Draws the window's layer tree, as the screen would. Neither `cacheDisplay` nor a layer render
-    /// of the window reliably includes a scroll view's document (macOS may show it through the
-    /// scroll edge portal), so each visible document is hidden for the window pass and then drawn
-    /// on its own, outer ones first, clipped to its scroll view.
-    func snapshot(_ root: NSView) throws -> NSBitmapImageRep {
-        root.window?.display()
-        let scale = root.window?.backingScaleFactor ?? 2, bounds = root.bounds
-        guard root.layer != nil, let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(data: nil, width: Int(bounds.width * scale), height: Int(bounds.height * scale), bitsPerComponent: 8,
-                                      bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-            throw VoiceError.message("Could not allocate a render.")
-        }
-        context.scaleBy(x: scale, y: scale)
-        // The window background is not in the layer tree, so paint it first, in the window's appearance.
-        var background = NSColor.windowBackgroundColor.cgColor
-        (root.window?.effectiveAppearance ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
-            background = NSColor.windowBackgroundColor.cgColor
-        }
-        context.setFillColor(background); context.fill(bounds)
-        func draw(_ view: NSView, in rect: NSRect) {
-            guard let layer = view.layer else { return }
-            context.saveGState()
-            context.translateBy(x: rect.minX, y: rect.minY)
-            // A magnified scroll view shows its document scaled, as the image preview does.
-            let scale = CGSize(width: view.bounds.width > 0 ? rect.width / view.bounds.width : 1,
-                               height: view.bounds.height > 0 ? rect.height / view.bounds.height : 1)
-            let magnified = abs(scale.width - 1) > 0.001 || abs(scale.height - 1) > 0.001
-            if magnified { context.scaleBy(x: scale.width, y: scale.height) }
-            if view.isFlipped { context.translateBy(x: 0, y: magnified ? view.bounds.height : rect.height); context.scaleBy(x: 1, y: -1) }
-            layer.render(in: context)
-            context.restoreGState()
-        }
-        func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
-        let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
-        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
-        let opacities = documents.map(\.opacity)
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
-        documents.forEach { $0.isHidden = true }
-        draw(root, in: SurfacePass.unflipped(root.bounds, of: root, in: root))
-        for (clip, document) in scrolled {
-            document.layer?.isHidden = false; document.layer?.opacity = 1
-            context.saveGState()
-            context.clip(to: SurfacePass.unflipped(clip.bounds, of: clip, in: root))
-            draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
-            context.restoreGState()
-        }
-        guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
-        return NSBitmapImageRep(cgImage: image)
-    }
+    func snapshot(_ root: NSView) throws -> NSBitmapImageRep { try SurfaceGallery.snapshot(root) }
 
     /// A view's rectangle in the root's bottom-left coordinates, which the bitmap context uses.
     static func unflipped(_ rect: NSRect, of view: NSView, in root: NSView) -> NSRect {
@@ -2598,12 +2714,15 @@ enum SurfaceGallery {
         }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
         // Home (#134 H1): three quick starts that act, Recent work's reviews, a loaded session and saved photos.
-        list += [action(home, "Quick start · Dictate", "Starts dictating"), action(home, "Quick start · Read", "Reads the clipboard aloud"),
-                 action(home, "Quick start · Snap", "Captures a region, saved in History"),
+        list += [action(home, "Dictate · Start dictating", "Starts dictating"), action(home, "Read the clipboard aloud", "Reads the clipboard aloud"),
+                 action(home, "Snap · Capture a region", "Captures a region, saved in History"),
+                 page(home, "Snap & Talk · Open or continue", "readback"),
+                 action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
+                 action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
                  E(surface: home, label: "Recent work · a result's title", leads: "Page: history, revealing that task", route: "history"),
                  action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
-                 page(home, "Open History", "history"), page(home, "Continue Snap & Talk · Open session", "readback"),
+                 page(home, "Open History", "history"),
                  page(home, "Saved from iPhone, when photos are in Library", "photos"),
                  page(home, "Current work · Open Dictate, for a kept capture without a retry", "dictate"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
@@ -2733,7 +2852,7 @@ private struct SurfaceIndex {
                 + (check.problems.isEmpty ? "<td class=\"ok\">Fits</td>" : "<td class=\"flag\">\(esc(check.problems.joined(separator: "; ")))</td>") + "</tr>"
         }
         html += "</table>"
-        html += "<h3>Placement</h3><p>The same host released away from every dock, near one, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at the launcher's centre, which the compact rest shares, and the chooser opens from three docks (#134).</p>"
+        html += "<h3>Placement</h3><p>The same host released in free space and near an edge, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at its resting reference, and the chooser opens from three docks (#134).</p>"
         if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
         // Both passes' tables: they run at once, so a step can fail in one theme only.
         html += "<table><tr><th>Step</th><th>Light</th><th>Dark</th></tr>" + light.placement.enumerated().map { index, check in

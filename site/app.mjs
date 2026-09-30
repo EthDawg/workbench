@@ -71,5 +71,11 @@ async function copy(text, statusId) {
 document.getElementById('copy-report').addEventListener('click', () => { if (report) copy(report.body, 'copy-status'); });
 document.getElementById('copy-feedback-agent').addEventListener('click', () => { if (report) copy(agentHandoff(report), 'copy-status'); });
 document.getElementById('copy-agent').addEventListener('click', () => copy(agentHandoff(), 'agent-status'));
-// A details target needs to open before anchor navigation can reveal its content.
-document.querySelectorAll('a[href="#first-open"]').forEach(link => link.addEventListener('click', () => { document.getElementById('first-open').open = true; }));
+// Open linked help before scrolling, including a direct link or browser Back.
+function revealDetails(hash) {
+  const target = document.getElementById(hash.slice(1));
+  if (target instanceof HTMLDetailsElement) target.open = true;
+}
+document.querySelectorAll('a[href^="#"]').forEach(link => link.addEventListener('click', () => revealDetails(link.hash)));
+window.addEventListener('hashchange', () => revealDetails(location.hash));
+revealDetails(location.hash);

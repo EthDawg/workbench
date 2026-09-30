@@ -117,7 +117,7 @@ final class ToolbarKeyboardTraversalTests: XCTestCase {
     /// A right-hand dock mirrors the row on screen, More first and the launcher last, but the
     /// keyboard keeps the launcher, next action, accessory, More order.
     @MainActor func testAMirroredRowKeepsTheLogicalOrder() throws {
-        for anchor in ToolbarAnchor.allCases where anchor.growsLeftward {
+        for anchor in ToolbarAnchor.allCases where anchor.growsLeftward && !anchor.isVertical {
             let host = try host(ToolbarRow(state: draw(anchor)))
             let onScreen = Host.buttons(host.view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.") }
                 .sorted { $0.convert($0.bounds, to: host.view).minX < $1.convert($1.bounds, to: host.view).minX }

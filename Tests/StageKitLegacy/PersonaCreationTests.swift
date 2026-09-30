@@ -334,4 +334,61 @@ final class PersonaCreationTests {
         XCTAssertThrowsError(try f.starters.draft(PersonaStarterLibrary.portraits[0], for: blocked))
         XCTAssertEqual(try snapshot(f), before)
     }
+
+    func testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals() throws {
+        let f = try fixture()
+        defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
+        let defaults = UserDefaults(suiteName: f.root.appendingPathComponent("profile-preferences").path)!
+        let original = f.existing[0], before = try snapshot(f)
+        XCTAssertTrue(LocalPersonaProfile.persona(in: f.library, defaults: defaults) == nil)
+        XCTAssertFalse(LocalPersonaProfile.choose(UUID(), in: f.library, defaults: defaults))
+        XCTAssertTrue(LocalPersonaProfile.choose(original.id, in: f.library, defaults: defaults))
+        XCTAssertEqual(LocalPersonaProfile.persona(in: f.library, defaults: defaults)?.id, original.id)
+        XCTAssertEqual(try snapshot(f), before, "Choosing an existing persona only stores its reference")
+
+        let draft = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle(), name: "Me")
+        let cancelled = PersonaEditorSession(.new(draft)); cancelled.cancel()
+        XCTAssertTrue(cancelled.commit(to: f.library, replacing: original))
+        XCTAssertTrue(cancelled.committedID == nil)
+        XCTAssertEqual(try snapshot(f), before, "Cancel leaves the current profile and all source bytes intact")
+
+        let editor = PersonaEditorSession(.new(draft))
+        editor.appearance.framing = PersonaFraming(x: 0.35, y: 0.5, zoom: 1.4)
+        XCTAssertTrue(editor.commit(to: f.library, replacing: original))
+        XCTAssertEqual(editor.committedID, original.id)
+        let after = try snapshot(f)
+        XCTAssertEqual(after.items.map(\.id), before.items.map(\.id), "Replacing the photo does not create a duplicate persona")
+        XCTAssertEqual(after.groups, before.groups)
+        XCTAssertEqual(after.selectedID, before.selectedID)
+        XCTAssertEqual(after.originals, before.originals)
+        XCTAssertEqual(after.files[original.image], before.files[original.image], "Saved scenes retain their original image bytes")
+        XCTAssertTrue(after.items[0].image != original.image, "A new immutable asset is used for future placements")
+        XCTAssertEqual(after.items[0].appearance, editor.appearance)
+        XCTAssertTrue(editor.commit(to: f.library, replacing: original))
+        XCTAssertEqual(try snapshot(f), after, "A repeated confirmation writes nothing")
+        let reopened = PersonaLibrary(root: f.store); defer { reopened.shutdown() }
+        XCTAssertEqual(LocalPersonaProfile.persona(in: reopened, defaults: defaults), after.items[0], "The profile reference survives reopening")
+        f.library.remove(original.id)
+        XCTAssertTrue(LocalPersonaProfile.persona(in: f.library, defaults: defaults) == nil, "A removed profile never falls back to someone else")
+    }
+
+    func testFailedProfileReplacementKeepsDraftAndFiles() throws {
+        let f = try fixture()
+        defer { f.library.shutdown(); try? FileManager.default.removeItem(at: f.root) }
+        let original = f.existing[0]
+        let draft = try f.library.portraitDraft(from: f.source, card: PersonaCardStyle(), name: "Me")
+        let editor = PersonaEditorSession(.new(draft))
+        // Another process changed the archive after this profile's preview opened.
+        let other = PersonaLibrary(root: f.store); defer { other.shutdown() }
+        other.rename(original.id, name: "Name changed elsewhere")
+        let before = try snapshot(f)
+        XCTAssertFalse(editor.commit(to: f.library, replacing: original))
+        XCTAssertFalse(editor.isFinished)
+        XCTAssertFalse(editor.canRetry, "A changed saved persona requires reopening, not repeatedly trying the stale replacement")
+        XCTAssertTrue(editor.committedID == nil)
+        XCTAssertNotNil(editor.failure)
+        XCTAssertEqual(try snapshot(f), before, "A failed profile save removes its candidate image only and keeps external changes")
+        XCTAssertEqual(f.library.items[0], original)
+        XCTAssertEqual(editor.portrait(in: f.library)?.size, draft.portrait.size, "The draft stays for recovery")
+    }
 }

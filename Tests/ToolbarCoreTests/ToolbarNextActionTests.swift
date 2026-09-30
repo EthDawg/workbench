@@ -5,6 +5,19 @@ import XCTest
 /// product, so a wrong priority is a failing test rather than a screen that
 /// reads differently on two identical days.
 final class ToolbarNextActionTests: XCTestCase {
+    func testGlyphFollowsTheCommandWhenAnotherToolOwnsTheInput() {
+        let recording = ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, dictation: .recording))
+        XCTAssertEqual(recording.title, "Stop")
+        XCTAssertEqual(recording.symbol, "stop.fill")
+        let playing = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, reading: .playing))
+        XCTAssertEqual(playing.symbol, "pause.fill")
+        let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .paused))
+        XCTAssertEqual(paused.symbol, "play.fill")
+        let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, dictation: .processing))
+        XCTAssertEqual(waiting.symbol, "ellipsis")
+        XCTAssertFalse(waiting.isEnabled)
+    }
+
     private static let counts: [Int?] = [nil, 0, 1, 3]
 
     /// Every combination, once. Bools and enums are finite; the count is bounded.
@@ -167,7 +180,8 @@ final class ToolbarNextActionTests: XCTestCase {
             let action = ToolbarNextAction.resolve(live)
             switch action.operation {
             case .wait: if action.isEnabled { failures += 1 }
-            case .start: break
+            case .start, .captureNext:
+                if action.isEnabled != live.mayStart { failures += 1 }
             default: if !action.isEnabled { failures += 1 }
             }
         }

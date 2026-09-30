@@ -20,9 +20,10 @@ public enum ToolbarGallery {
         ToolbarTier.allCases.map { tier in
             let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode))
             return ToolbarViewState(name: "mode-\(mode.slug)-\(tier.rawValue)", tier: tier, mode: mode,
-                                    actionTitle: action.title, actionHint: action.hint(key: exampleKey(mode)),
+                                    actionTitle: action.title, actionSymbol: action.symbol, actionHint: action.hint(key: exampleKey(mode)),
                                     choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: mode), key: exampleKey),
-                                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false))
+                                    accessory: .offered(for: ToolbarLiveState(mode: mode), selectedPersonaCopy: false),
+                                    captureChoices: ToolbarCaptureKind.offered(for: ToolbarLiveState(mode: mode)))
         }
     }
 
@@ -60,14 +61,15 @@ public enum ToolbarGallery {
                              activity: ToolbarActivity? = nil, personaCopy: Bool = false,
                              accessoryDescription: String? = nil) -> ToolbarViewState {
         let action = ToolbarNextAction.resolve(live)
-        return ToolbarViewState(name: name, tier: tier, mode: live.mode, actionTitle: action.title,
+        return ToolbarViewState(name: name, tier: tier, mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol,
                                 isActionEnabled: action.isEnabled,
                                 actionHint: action.hint(key: action.operation.keyMode.flatMap(exampleKey)),
                                 choices: ToolbarNextAction.choices(for: live, key: exampleKey),
                                 isBusy: live.isLive(live.mode),
                                 status: .resolve(activity ?? Self.activity(live)),
                                 accessory: ToolbarAccessory.offered(for: live, selectedPersonaCopy: personaCopy),
-                                accessoryDescription: accessoryDescription)
+                                accessoryDescription: accessoryDescription,
+                                captureChoices: ToolbarCaptureKind.offered(for: live))
     }
 
     /// Each tool's one accessory where it applies (#134 part B): Snap & Talk's Review once a
@@ -185,5 +187,14 @@ public enum ToolbarGallery {
     ]
 
     /// Everything, in a stable order.
-    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + waiting + accessories + statuses
+    public static let captureSources: [ToolbarViewState] = [
+        live(ToolbarLiveState(mode: .snap), name: "capture-snap-sources"),
+        live(ToolbarLiveState(mode: .snap), name: "capture-snap-sources-right").anchored(.right),
+        live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 3), name: "capture-talk-sources"),
+        live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 12), name: "capture-talk-sources-right").anchored(.right),
+        live(ToolbarLiveState(mode: .snapAndTalk, captureCount: 3, mayStart: false), name: "capture-talk-unavailable"),
+        live(ToolbarLiveState(mode: .snap, narrating: true, captureCount: 3), name: "capture-snap-narration-running")
+    ]
+
+    public static let states: [ToolbarViewState] = placements + modes + activity + idle + recording + waiting + accessories + statuses + captureSources
 }

@@ -161,6 +161,19 @@ import Foundation
         try check(try Data(contentsOf: store.url) == savedBefore && Data(contentsOf: originalURL) == originalData,
                   "Recall and failed actions leave library bytes, bookmark and original file intact")
 
+        let rasterURL = directory.appendingPathComponent("Image.png")
+        let vectorURL = directory.appendingPathComponent("Diagram.svg")
+        try Data("Synthetic raster routing fixture".utf8).write(to: rasterURL)
+        try Data("<svg xmlns=\"http://www.w3.org/2000/svg\"/>".utf8).write(to: vectorURL)
+        let raster = DemoResource(kind: .file, title: "Raster", content: rasterURL.path)
+        let vector = DemoResource(kind: .file, title: "Vector", content: vectorURL.path)
+        var shownImages: [UUID] = []
+        model.showImages = { _, selected in shownImages.append(selected) }
+        model.open(raster)
+        try check(shownImages == [raster.id], "ImageIO raster files open in the shared image workspace")
+        model.open(vector)
+        try check(shownImages == [raster.id] && opened.last == vectorURL, "SVG files retain the existing file opener because ImageIO cannot decode them")
+
         // These are the production view's input-policy boundaries; native field
         // submission still owns IME composition and the list owns its own focus.
         func allowed(search: Bool = false, editable: Bool = false, marked: Bool = false,

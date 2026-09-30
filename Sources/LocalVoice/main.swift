@@ -83,7 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         snapCapture.attach(to: snap) { [weak self] in
             self?.closeControls(); self?.capturePanel?.window?.orderOut(nil)
         }
-        snap.onStateChange = { [weak self] in self?.updateRecordingUI() }
+        CaptureImagePreview.shared.snapOwner = snap
+        model.library.showImages = { images, selected in CaptureImagePreview.shared.showLibrary(images, selected: selected) }
+        CaptureImagePreview.shared.attach(to: snap, parent: { [weak self] in self?.window }) { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.onStateChange = { [weak self] in self?.updateRecordingUI() }
         model.handoffJobs.currentReviewDigest = { [weak snap] key in
             guard let snap else { return nil }
@@ -116,6 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         stage = StageKitController(onOpenControls: { [weak self] in self?.navigate("annotate") }, onOpenScenes: { [weak self] in self?.navigate("present") }, reserving: preferences.enabledCombinations)
         stage.useSharedActivityControls()
         stage.onOpenPersonas = { [weak self] in self?.navigate("personas") }
+        stage.onViewImages = { images, selected in
+            let collection = images.map { CaptureImagePreviewItem(title: $0.title, detail: $0.detail, source: .generated($0.id), render: $0.png) }
+            if let index = images.firstIndex(where: { $0.id == selected }) {
+                CaptureImagePreview.shared.show(collection[index], collection: collection)
+            }
+        }
         stage.mayBeginInteraction = { [weak self] in
             guard let self else { return false }
             return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.readback.isRecording && !self.readback.isCapturing
@@ -190,6 +198,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 guard let self else { return }
                 if self.stage.isPresenting { self.stage.endDeviceScene() }
                 else { self.model.toolbarMode = .present; self.stage.presentSelectedScene() }
+            }, capture: { [weak self] tool, kind in
+                guard let self, let mode = SnapCapture.Mode(rawValue: kind.rawValue) else { return }
+                if tool == .snap { self.toolbarSnapCapture(mode) }
+                else if tool == .snapAndTalk { self.toolbarSnap(mode) }
             })
         capturePanel.independentScreenCapture = { [weak snap] in snap?.isCapturing == true }
         // The toolbar's mode follows every door, not only the closures above.
@@ -531,8 +543,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.toolbarMode = .dictate
         model.toggleRecording(target: target)
     }
-    /// Snap mode's start: one standalone capture into Snap. Snap keeps no last
-    /// used mode, so the toolbar captures a region.
+    /// Snap mode's start: one standalone capture into Snap. Source choices are per capture;
+    /// the existing shortcut and generic starts retain their region default.
     func toolbarSnapCapture(_ mode: SnapCapture.Mode = .region) {
         // From the panel, a cancelled capture returns to the app it was opened
         // over. Read before closing: closing the panel expires its field.
@@ -541,7 +553,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         closeControls()
         Task { await snap.capture(mode, origin: origin) }
     }
-    func toolbarSnap() {
+    func toolbarSnap(_ mode: SnapCapture.Mode = .screen) {
         if readback.isRecording { readback.stopNarration(); return }
         model.toolbarMode = .snapAndTalk
         readback.refreshPermissionState()
@@ -549,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             navigate("readback"); return
         }
         closeControls(); window.orderOut(nil)
-        Task { await readback.toggleCapture() }
+        Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }
     func updateRecordingUI() {
         let receipt = model.clipboardReceipt.receipt
@@ -616,6 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard WorkbenchUpdates.shared.canTerminate(saveSession: { model?.saveBeforeUpdate() == true }) else { return .terminateCancel }
         if terminationPending { return .terminateLater }
+        guard CaptureImagePreview.shared.canTerminate() else { return .terminateCancel }
         guard let model, model.meetings.isBusy || model.handoffJobs.isBusy else { return .terminateNow }
         terminationPending = true
         terminating = true
@@ -727,6 +740,8 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try DemoLibraryChecks.runModelChecks() }
         case "--check-capture-preview":
             try await CaptureImagePreviewChecks.run()
+        case "--check-image-workspace":
+            try await ImageWorkspaceChecks.run(output: args.count > 1 ? URL(fileURLWithPath: args[1]) : nil)
         case "--check-quick-look-panel":
             let urls = args.dropFirst().map { URL(fileURLWithPath: $0).standardizedFileURL }
             try await MainActor.run { try DemoLibraryChecks.runQuickLookPanelChecks(urls) }

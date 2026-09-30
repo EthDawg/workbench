@@ -276,6 +276,7 @@ struct PersonaShownIdentity {
 /// Like DemoScenes, this UI model is owned and called by StageKit's main-thread
 /// coordinator. Keep storage and scene rendering on that same synchronous path.
 final class PersonaLibrary: NSObject, ObservableObject {
+    var onViewImages: (([StageImagePreview], UUID) -> Void)?
     let root: URL
     @Published private(set) var items: [SavedPersona] = []
     @Published private(set) var groups: [PersonaGroup] = []
@@ -509,6 +510,28 @@ final class PersonaLibrary: NSObject, ObservableObject {
             guard !items.contains(where: { $0.id == draft.id }) else { throw PersonaError.alreadyAdded }
             return try add(picture, id: draft.id, card: card, appearance: appearance)
         }
+    }
+
+    /// Replace one explicitly chosen profile portrait while keeping its identity and groups.
+    /// The earlier image stays available to saved scenes and already shown copies. A failed
+    /// commit removes only the candidate file; the previous record and artwork stay intact.
+    @discardableResult func replacePortrait(_ draft: PersonaPortraitDraft, replacing original: SavedPersona) throws -> SavedPersona {
+        guard writable() else { throw PersonaError.invalidSettings }
+        guard let index = items.firstIndex(where: { $0.id == original.id }), items[index] == original
+        else { throw PersonaError.changedOnDisk }
+        let file = "persona-" + UUID().uuidString + ".png"
+        var replacement = original
+        replacement.image = file; replacement.card = try draft.card.validated()
+        replacement.appearance = try draft.appearance.validated()
+        _ = try replacement.validated()
+        let destination = root.appendingPathComponent(file)
+        try draft.png.write(to: destination, options: .atomic)
+        do {
+            var next = archive; next.items[index] = replacement
+            try commit(next)
+        } catch { try? FileManager.default.removeItem(at: destination); throw error }
+        notice = nil
+        return replacement
     }
 
     /// Reads the library file again after something else changed it, so an Add

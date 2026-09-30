@@ -90,6 +90,7 @@ struct DemoScenesView: View {
                             .frame(maxWidth: .infinity)
                             .onChange(of: scene.id) { _, _ in previewPaused = false; adjustingLayout = false; resizingDevice = false }
                         HStack {
+                            if model.onViewImages != nil { Button("View image") { model.viewImages(startingAt: scene.id) } }
                             Text("Drag to position · saves automatically").fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Button("Change backdrop…") { backdropReplacement = BackdropReplacement(scene: model.selected ?? scene, root: model.root) }

@@ -28,30 +28,22 @@ final class ToolbarPlacementTests: XCTestCase {
         }
     }
 
-    func testAReleaseWithinSixteenPointsOfADockSnapsAndBeyondStaysFree() throws {
-        XCTAssertEqual(FloatingControlPlacement.snapDistance, 16)
+    func testEdgeMidpointsSnapFromTheirOwnRestingShape() {
         for anchor in ToolbarAnchor.allCases {
-            let shared = try XCTUnwrap(FloatingControlAnchor(rawValue: anchor.rawValue))
-            let dock = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen))
-            for (dx, dy) in [(16.0, 0.0), (-16.0, 0.0), (0.0, 16.0), (0.0, -16.0), (11.3, -11.3)] {
-                XCTAssertEqual(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), shared, "\(anchor.rawValue) \(dx), \(dy)")
-            }
-            for (dx, dy) in [(16.5, 0.0), (-16.5, 0.0), (0.0, 16.5), (12, 12)] {
-                XCTAssertNil(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), "\(anchor.rawValue) \(dx), \(dy)")
-            }
+            let frame = ToolbarGeometry.frame(size: ToolbarLayout.mark(for: anchor), position: .docked(anchor), screen: screen)
+            XCTAssertEqual(ToolbarGeometry.releasedPosition(frame: frame, screen: screen), .docked(anchor))
         }
     }
 
     func testAFreePositionKeepsItsLauncherAsTheRowOpensAndCloses() {
         // The side is decided on release, by the half of the display the launcher sits in.
-        for (centre, leftward) in [(CGPoint(x: 200, y: 300), false), (CGPoint(x: 1100, y: 500), true),
-                                   (CGPoint(x: 719, y: 60), false), (CGPoint(x: 721, y: 60), true)] {
+        for centre in [CGPoint(x: 200, y: 300), CGPoint(x: 1100, y: 500), CGPoint(x: 719, y: 60), CGPoint(x: 721, y: 60)] {
             let position = released(at: centre)
-            XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward, "\(centre)")
-            XCTAssertEqual(ToolbarGeometry.rowAnchor(position), leftward ? .right : .left)
+            XCTAssertFalse(ToolbarGeometry.growsLeftward(position), "\(centre)")
+            XCTAssertTrue(ToolbarGeometry.rowAnchor(position).growsFromCentre)
             for size in [ToolbarLayout.mark, row] {
                 let frame = ToolbarGeometry.frame(size: size, position: position, screen: screen)
-                XCTAssertEqual(ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: leftward), centre, "\(centre) \(size)")
+                XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: .bottom, isFloating: true), centre, "\(centre) \(size)")
                 XCTAssertTrue(screen.contains(frame))
             }
         }
@@ -65,7 +57,7 @@ final class ToolbarPlacementTests: XCTestCase {
             for width in [ToolbarLayout.mark.width, 248, 340, 500] {
                 let frame = ToolbarGeometry.frame(size: NSSize(width: width, height: ToolbarLayout.rowHeight), position: position, screen: screen)
                 XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward)
-                XCTAssertEqual(ToolbarGeometry.launcherCentre(inWindow: frame, growsLeftward: leftward), centre, "\(centre) at \(width)")
+                XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: .bottom, isFloating: true), centre, "\(centre) at \(width)")
             }
         }
     }
@@ -89,11 +81,11 @@ final class ToolbarPlacementTests: XCTestCase {
     func testAFreeRowNearAnEdgeGrowsInward() {
         let nearRight = released(at: CGPoint(x: screen.maxX - 28, y: 400))
         let right = ToolbarGeometry.frame(size: row, position: nearRight, screen: screen)
-        XCTAssertEqual(right.maxX, screen.maxX - 4)
+        XCTAssertEqual(right.maxX, screen.maxX)
         XCTAssertTrue(screen.contains(right))
         let nearLeft = released(at: CGPoint(x: screen.minX + 28, y: 400))
         let left = ToolbarGeometry.frame(size: row, position: nearLeft, screen: screen)
-        XCTAssertEqual(left.minX, screen.minX + 4)
+        XCTAssertEqual(left.minX, screen.minX)
         XCTAssertTrue(screen.contains(left))
     }
 

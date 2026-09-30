@@ -133,6 +133,7 @@ ENTRY_POINTS = [
     ('LocalVoice/main.swift', 'AppDelegate', 'app menu bar', 'controls'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.settings', 'settings page', 'page'),
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.welcome', 'window home', 'page'),
+    ('StageKit/LocalPersonaProfile.swift', 'LocalPersonaProfileView', 'local profile', 'page'),
     # The window's own controls around the pages: the sidebar column.
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome.body', 'window sidebar', 'controls'),
     # Capability pages own their options (Grammar: options live with their
@@ -196,6 +197,7 @@ CATALOGUES = [
     ('LocalVoice/WorkbenchHome.swift', 'WorkbenchHome'),
     # The floating toolbar's next action, one title per operation and start verb.
     ('ToolbarCore/ToolbarNextAction.swift', 'ToolbarNextAction.title'),
+    ('ToolbarCore/ToolbarCaptureKind.swift', 'ToolbarCaptureKind'),
 ]
 OFFER_NAME = re.compile(r'\b(?:struct|class)\s+(\w*Offer\w*|\w+Cue)\b')
 OFFER_TYPES = ['FounderIntroductionCard']
@@ -1052,6 +1054,10 @@ class Inventory:
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
                 self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar accessory', identity=case, case=case)
+        swift, ranges = self.owner(*CATALOGUES[7], kinds=('enum',))
+        for start, end in ranges[:1]:
+            for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
+                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar capture sources', identity=case, case=case)
         # Stage shortcuts: every Action case, titled as the shortcut list shows it.
         swift, ranges = self.owner(*CATALOGUES[3], kinds=('enum',))
         for start, end in ranges[:1]:

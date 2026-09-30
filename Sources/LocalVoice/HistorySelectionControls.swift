@@ -445,7 +445,7 @@ struct HandoffReviewView: View {
                                     ForEach(Array(source.images.enumerated()), id: \.offset) { _, bytes in
                                         if let image = NSImage(data: bytes) {
                                             // Read what will be shared at full size (#154).
-                                            CapturePreviewButton("View image to share for " + source.title, item: { .toShare(title: source.title, png: bytes) }) {
+                                            CapturePreviewButton("View image to share for " + source.title, item: { .toShare(title: source.title, png: bytes) }, collection: { sources.flatMap { source in source.images.map { .toShare(title: source.title, png: $0) } } }) {
                                                 Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 340, maxHeight: 110)
                                             }
                                         }

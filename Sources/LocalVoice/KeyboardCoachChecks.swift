@@ -27,6 +27,9 @@ enum KeyboardCoachChecks {
         }
         try check(ShortcutConflict.message(for: VoiceShortcut(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(controlKey | cmdKey)), replacing: "voice.dictation", in: entries) == nil, "Control makes a Command chord a Workbench key")
         try check(ShortcutConflict.message(for: VoiceShortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(optionKey)), replacing: "voice.dictation", in: entries)?.contains("accented") == true, "Option-E stays the accent key")
+        let sidebar = VoiceShortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(controlKey | cmdKey))
+        try check(ShortcutConflict.message(for: sidebar, replacing: "voice.dictation", in: entries)?.contains("sidebar") == true,
+                  "the sidebar command cannot be assigned as a global shortcut")
         try checkPresenterFirstVoiceDefaults()
 
         var practice = ShortcutPracticeState(target: target)
@@ -234,5 +237,19 @@ enum KeyboardCoachChecks {
         keys.register(commandOnly)
         try check(keys.failures[1]?.contains("Control or Option") == true, "⌘T is never registered as a global shortcut")
         keys.unregister()
+        commandOnly.dictationShortcut = VoiceShortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(controlKey | cmdKey))
+        let savedSidebar = commandOnly.dictationShortcut
+        commandOnly.save(to: defaults)
+        try check(VoicePreferences.load(from: defaults).dictationShortcut == savedSidebar,
+                  "the key-aware reservation must not rewrite a saved choice during migration")
+        keys.register(commandOnly)
+        defer { keys.unregister() }
+        try check(keys.failures[1]?.contains("sidebar") == true, "a saved sidebar conflict pauses registration with a repair message")
+        var fired = false
+        keys.onKey = { _, _, _ in fired = true }
+        let sidebarEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .command], timestamp: 0,
+                                           windowNumber: 0, context: nil, characters: "s", charactersIgnoringModifiers: "s",
+                                           isARepeat: false, keyCode: UInt16(kVK_ANSI_S))!
+        try check(keys.handle(sidebarEvent) === sidebarEvent && !fired, "the global Voice handler leaves the sidebar command for the window")
     }
 }

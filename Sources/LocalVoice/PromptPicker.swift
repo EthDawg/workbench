@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 import ToolbarCore
+import ToolbarKit
 
 extension DemoResource {
     /// A saved prompt's name in the picker. The library requires one; the
@@ -124,6 +125,11 @@ enum PromptPickerLayout {
     static func width(in visible: NSRect) -> CGFloat {
         max(0, min(maxWidth, visible.width - 2 * edgeMargin))
     }
+    static func width(in visible: NSRect, beside toolbar: NSRect, anchor: ToolbarAnchor) -> CGFloat {
+        guard anchor.isVertical else { return width(in: visible) }
+        return ToolbarGeometry.sidePanelFrame(size: NSSize(width: width(in: visible), height: 1), toolbar: toolbar,
+                                               anchor: anchor, visible: visible, inset: edgeMargin, gap: gap).width
+    }
     /// The height available above and below the anchor, inside the margins.
     static func room(anchor: NSRect, visible: NSRect) -> (above: CGFloat, below: CGFloat) {
         (max(0, visible.maxY - edgeMargin - (anchor.maxY + gap)), max(0, anchor.minY - gap - (visible.minY + edgeMargin)))
@@ -133,7 +139,10 @@ enum PromptPickerLayout {
         let room = room(anchor: anchor, visible: visible)
         return height <= room.above || room.above >= room.below
     }
-    static func frame(content: NSSize, anchor: NSRect, visible: NSRect, above: Bool) -> NSRect {
+    static func frame(content: NSSize, anchor: NSRect, visible: NSRect, above: Bool, toolbarAnchor: ToolbarAnchor = .bottom) -> NSRect {
+        if toolbarAnchor.isVertical {
+            return ToolbarGeometry.sidePanelFrame(size: content, toolbar: anchor, anchor: toolbarAnchor, visible: visible, inset: edgeMargin, gap: gap)
+        }
         let width = min(content.width, width(in: visible))
         let room = room(anchor: anchor, visible: visible)
         let height = min(content.height, above ? room.above : room.below)
@@ -527,6 +536,7 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
     private var anchor = NSRect.zero
     private var visible = NSRect.zero
     private var above = true
+    private var toolbarAnchor: ToolbarAnchor = .bottom
     private weak var searchField: NSSearchField?
 
     var isShown: Bool { model != nil }
@@ -544,7 +554,8 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
     /// Anchored to the button that asked for it; a second click closes it.
     func show(from view: NSView, context: Context) {
         guard let window = view.window else { return }
-        show(anchor: window.convertToScreen(view.convert(view.bounds, to: nil)), view: view, context: context)
+        let anchor = context.controls?.rowAnchor.isVertical == true ? window.frame : window.convertToScreen(view.convert(view.bounds, to: nil))
+        show(anchor: anchor, view: view, context: context)
     }
     /// Anchored to a toolbar window, after its glyph menu has closed.
     func show(anchor: NSRect, context: Context) { show(anchor: anchor, view: nil, context: context) }
@@ -561,13 +572,15 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
             context.controls?.endMenu(); return
         }
         self.anchor = anchor; self.visible = visible; anchorView = view; self.context = context
+        toolbarAnchor = context.controls?.rowAnchor ?? .bottom
         let mode = PromptPickerMode.resolve(trusted: context.trusted, destination: context.destination)
         let action = PromptPickerAction(mode: mode,
             insert: { text, title in context.delivery.insert(text, title: title, into: context.destination) },
             copy: { text, title in context.delivery.copy(text, title: title, receipts: context.receipts) })
         let room = PromptPickerLayout.room(anchor: anchor, visible: visible)
         let model = PromptPickerModel(list: PromptPickerList(resources: context.resources), mode: mode,
-            width: PromptPickerLayout.width(in: visible), available: max(room.above, room.below),
+            width: PromptPickerLayout.width(in: visible, beside: anchor, anchor: toolbarAnchor),
+            available: toolbarAnchor.isVertical ? visible.height - 2 * PromptPickerLayout.edgeMargin : max(room.above, room.below),
             perform: { [weak self] prompt in self?.choose(prompt, action: action) },
             dismiss: { [weak self] in self?.close() },
             stopInserting: { context.delivery.cancel() },
@@ -599,8 +612,8 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
         // own reports size the panel.
         func natural() -> NSSize { NSHostingView(rootView: PromptPickerView(model: model)).fittingSize }
         above = PromptPickerLayout.opensAbove(content: natural().height, anchor: anchor, visible: visible)
-        model.available = above ? room.above : room.below
-        panel.setFrame(PromptPickerLayout.frame(content: natural(), anchor: anchor, visible: visible, above: above), display: false)
+        model.available = toolbarAnchor.isVertical ? visible.height - 2 * PromptPickerLayout.edgeMargin : above ? room.above : room.below
+        panel.setFrame(PromptPickerLayout.frame(content: natural(), anchor: anchor, visible: visible, above: above, toolbarAnchor: toolbarAnchor), display: false)
         if offscreenForChecks {
             panel.alphaValue = 0; panel.ignoresMouseEvents = true
             panel.orderFrontRegardless()
@@ -640,7 +653,7 @@ final class PromptPickerController: NSObject, NSWindowDelegate {
     private func resize(_ size: CGSize) {
         guard let panel, size.width > 0, size.height > 0 else { return }
         reportedSize = size
-        let frame = PromptPickerLayout.frame(content: size, anchor: anchor, visible: visible, above: above)
+        let frame = PromptPickerLayout.frame(content: size, anchor: anchor, visible: visible, above: above, toolbarAnchor: toolbarAnchor)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
     }
 

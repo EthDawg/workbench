@@ -405,6 +405,9 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private let defaults: UserDefaults
     private let skillPacks: ReadbackSkillPackStore
     private let captureDisplay: @MainActor () async throws -> ReadbackScreenshot
+    private let captureSelection: any SnapImageSource
+    private let microphoneAccess: () -> AVAuthorizationStatus
+    private var captureRequest: UUID?
     private var recorder: AVAudioRecorder?
     private var meter: Timer?
     private var peakPower: Float = -160
@@ -418,13 +421,18 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     init(engine: RecognitionEngine, defaults: UserDefaults = .standard,
          captureDisplay: @escaping @MainActor () async throws -> ReadbackScreenshot = { try await ReadbackScreenCapture.currentDisplay() },
          transcribeAudio: (@MainActor (URL) async throws -> String)? = nil,
-         skillPacks: ReadbackSkillPackStore? = nil, screenAccess: ScreenCaptureAccess = .system) {
+         skillPacks: ReadbackSkillPackStore? = nil, screenAccess: ScreenCaptureAccess = .system,
+         captureSelection: (any SnapImageSource)? = nil,
+         microphoneAccess: @escaping () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }) {
         self.screenAccess = screenAccess
         self.transcribeAudio = transcribeAudio ?? { try await engine.transcribe($0) }
         self.defaults = defaults
         self.skillPacks = skillPacks ?? ReadbackSkillPackStore(root: Workbench.supportDirectory(component: "SnapTalkSkillPacks"))
         self.captureDisplay = captureDisplay
+        self.captureSelection = captureSelection ?? SnapCapture()
+        self.microphoneAccess = microphoneAccess
         super.init()
+        microphonePermission = microphoneAccess()
         screenPermissionGranted = screenAccess.isGranted()
         activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.returnedToWorkbench() }
@@ -519,7 +527,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         refreshSessionAvailability()
         refreshSkillPacks()
         screenPermissionGranted = screenAccess.isGranted()
-        microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
+        microphonePermission = microphoneAccess()
         stateChanged()
     }
 
@@ -631,6 +639,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func closeSession() {
         guard !isRecording else { notice = "Finish the current narration before closing this session."; return }
+        cancelCapture()
         sessionURL = nil; manifest = nil; transcriptDrafts = [:]; notice = nil
     }
 
@@ -670,7 +679,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func preflightPermissions() async {
         screenPermissionGranted = screenAccess.isGranted()
         if !screenPermissionGranted { screenPermissionGranted = screenAccess.request() }
-        microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
+        microphonePermission = microphoneAccess()
         if microphonePermission == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .audio)
             microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -694,24 +703,39 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         await captureNewSection(fromEditor: false)
     }
 
-    func captureNewSection(fromEditor: Bool) async {
+    func captureNewSection(fromEditor: Bool, mode: SnapCapture.Mode = .screen) async {
         guard !isCapturing, !isRecording else { return }
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
-        guard let root = sessionURL, manifest != nil else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
+        guard let root = sessionURL, let sessionID = manifest?.id else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
         refreshSessionAvailability()
         guard currentSessionProblem == nil else { notice = "Locate this session folder before capturing another section."; return }
         guard permissionsReady else { notice = permissionsProblem; stateChanged(); return }
-        isCapturing = true; notice = "Capturing the display under the pointer…"; stateChanged()
+        let request = UUID(); captureRequest = request
+        isCapturing = true
+        notice = mode == .screen ? "Capturing the display under the pointer…" : "Choose a \(mode.title.lowercased()). Press Escape to cancel."
+        stateChanged()
+        defer {
+            if captureRequest == request { captureRequest = nil; isCapturing = false; stateChanged() }
+        }
         var retainedInSnapHistory = false
         do {
-            let capture = try await captureScreen(fromEditor: fromEditor)
+            let selected = try await withTaskCancellationHandler {
+                try await captureImage(mode, fromEditor: fromEditor, request: request)
+            } onCancel: {
+                Task { @MainActor [weak self] in
+                    guard self?.captureRequest == request else { return }
+                    self?.cancelCapture()
+                }
+            }
+            guard captureRequest == request, !Task.isCancelled else { return }
+            guard let capture = selected else { notice = nil; return }
             if let reason = mayBeginCapture?() { throw ReadbackError.message(reason) }
-            guard sessionURL?.standardizedFileURL == root.standardizedFileURL else {
+            guard sessionURL?.standardizedFileURL == root.standardizedFileURL, manifest?.id == sessionID else {
                 throw ReadbackError.message("The session changed during capture. Capture again in the selected session.")
             }
             // The folder can disappear while ScreenCaptureKit awaits a frame.
             // Reload before creating UUID directories, so capture never recreates it.
-            guard try ReadbackStore.load(from: root).id == manifest?.id else {
+            guard try ReadbackStore.load(from: root).id == sessionID else {
                 throw ReadbackError.message("The session folder changed during capture. Open the session again.")
             }
             let current: ReadbackManifest, id: UUID
@@ -742,6 +766,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             catch { markNeedsNarration(root: root, sectionID: id, message: error.localizedDescription) }
             if let captureWarning { notice = (notice ?? "Capture saved.") + " " + captureWarning; stateChanged() }
         } catch {
+            guard captureRequest == request else { return }
+            if Task.isCancelled { notice = nil; return }
             refreshSessionAvailability()
             isCapturing = false
             notice = retainedInSnapHistory
@@ -1000,6 +1026,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func shutdown() {
+        cancelCapture()
         if isRecording { cancelNarration() }
         if let activeJob { markQueued(activeJob) }
         processor?.cancel(); processor = nil
@@ -1011,9 +1038,30 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
         // isCapturing synchronously hides the shared toolbar for every entry
         // point. Give WindowServer a frame before acquiring the display.
-        try await Task.sleep(nanoseconds: 250_000_000)
         defer { if fromEditor { onRestoreAfterEditorCapture?() } }
+        try await Task.sleep(nanoseconds: 250_000_000)
         return try await captureDisplay()
+    }
+
+    /// Screen keeps the existing capture and shortcut path. Apple's selectors supply a
+    /// region or window through Snap's source; Escape supplies no image and starts no audio.
+    private func captureImage(_ mode: SnapCapture.Mode, fromEditor: Bool, request: UUID) async throws -> ReadbackScreenshot? {
+        if fromEditor { onHideForEditorCapture?() }
+        defer { if fromEditor { onRestoreAfterEditorCapture?() } }
+        let delay: UInt64 = mode == .screen ? 250_000_000 : captureSelection.settleDelay
+        if delay > 0 { try await Task.sleep(nanoseconds: delay) }
+        guard captureRequest == request, !Task.isCancelled else { return nil }
+        if mode == .screen { return try await captureDisplay() }
+        guard let data = try await captureSelection.capture(mode) else { return nil }
+        let frame = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })?.frame ?? .zero
+        return ReadbackScreenshot(data: data, displayName: mode.title, screenFrame: frame)
+    }
+
+    func cancelCapture() {
+        guard captureRequest != nil else { return }
+        captureRequest = nil
+        captureSelection.cancel()
+        isCapturing = false; notice = nil; stateChanged()
     }
 
     private func archiveNarrationFiles(section: ReadbackSection, root: URL) throws {

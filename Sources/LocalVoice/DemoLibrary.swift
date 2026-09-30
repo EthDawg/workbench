@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import UniformTypeIdentifiers
+import ImageIO
 import PresenterKit
 import Darwin
 
@@ -225,6 +226,18 @@ struct DemoLibraryStore {
 
 @MainActor
 final class DemoLibraryModel: ObservableObject {
+    var showImages: (([DemoResource], UUID) -> Void)?
+    private func supportsImageWorkspace(_ item: DemoResource) -> Bool {
+        guard item.kind == .file, let type = UTType(filenameExtension: URL(fileURLWithPath: item.content).pathExtension) else { return false }
+        return (CGImageSourceCopyTypeIdentifiers() as? [String] ?? []).contains(type.identifier)
+    }
+    private func showImage(_ item: DemoResource) -> Bool {
+        guard let showImages, supportsImageWorkspace(item) else { return false }
+        var images = matches.filter(supportsImageWorkspace)
+        if !images.contains(where: { $0.id == item.id }) { images = [item] }
+        closePreview()
+        showImages(images, item.id); return true
+    }
     @Published private(set) var resources: [DemoResource] = [] { didSet { reconcileSelection() } }
     @Published var selection: UUID?
     @Published var draft: DemoResource? { didSet { if draft == nil { draftNotice = nil } } }
@@ -332,6 +345,7 @@ final class DemoLibraryModel: ObservableObject {
         draft = item
     }
     func open(_ item: DemoResource, reveal: Bool = false) {
+        if !reveal && showImage(item) { return }
         if item.kind == .link {
             if item.browserTarget != nil {
                 guard let switchBrowser else { error = "Open the complete Workbench app to switch to this Chrome destination."; return }
@@ -352,6 +366,7 @@ final class DemoLibraryModel: ObservableObject {
         else if !openURL(url) { error = "No application could open this file. Use Show in Finder to choose one." }
     }
     func preview(_ item: DemoResource) {
+        if showImage(item) { return }
         closePreview()
         guard item.kind == .file, let resolved = item.resolvedFile else {
             error = "Locate this file again before previewing it."

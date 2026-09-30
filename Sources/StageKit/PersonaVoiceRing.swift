@@ -53,9 +53,9 @@ struct PersonaVoiceRingGeometry {
 /// appearance: a quiet, still line in the Workbench accent while listening,
 /// which a voice brightens and weights outward, with the bounded glow for a
 /// raised voice. Its time and stroke come from `VoiceEnvelope` and
-/// `VoiceStyle`, exactly as the toolbar's voice trace does; only the geometry
-/// differs. A rim of the same accent keeps it readable over light and dark
-/// content; Increase Contrast strengthens both. With Reduce Motion its width
+/// `VoiceStyle`. The audience sees a calmer loudness response and a quieter
+/// resting line than the recording trace. A rim of the same accent keeps it
+/// readable over light and dark content; Increase Contrast strengthens both. With Reduce Motion its width
 /// holds still and only its brightness says a voice is heard.
 final class PersonaVoiceRingLayer: CALayer {
     /// The voice colour as this persona's appearance shows it, and its rim.
@@ -101,7 +101,7 @@ final class PersonaVoiceRingLayer: CALayer {
     var isMoving: Bool { state.isMoving }
     var visible: VoiceEnvelope.Visible { state.visible }
     /// The stroke it draws now, from the shared style.
-    var stroke: VoiceStyle.Stroke { VoiceStyle.stroke(state, reduceMotion: reduceMotion, increaseContrast: increaseContrast) }
+    var stroke: VoiceStyle.Stroke { VoiceStyle.outlineStroke(state, reduceMotion: reduceMotion, increaseContrast: increaseContrast) }
 
     func receive(_ frames: [PersonaVoiceFrame], at time: CFTimeInterval) { state.receive(frames.map(\.sample), at: time) }
     func receive(_ samples: [VoiceSample], at time: CFTimeInterval) { state.receive(samples, at: time) }
@@ -135,13 +135,13 @@ final class PersonaVoiceRingLayer: CALayer {
         if let drawn, drawn.stroke == stroke, drawn.width == width { return }
         drawn = (stroke, width)
         let path = geometry.path(width: width)
-        let rest = VoiceStyle.restOpacity(increaseContrast: increaseContrast)
+        let rest = VoiceStyle.outlineRestOpacity(increaseContrast: increaseContrast)
         let lit = (stroke.opacity - rest) / (1 - rest)
         line.path = path; rim.path = path
         line.lineWidth = width
         line.opacity = Float(stroke.opacity)
         rim.lineWidth = width + 2 * PersonaVoiceRingGeometry.rimWidth(increaseContrast: increaseContrast)
-        rim.opacity = Float((increaseContrast ? 0.95 : 0.7) * (0.8 + 0.2 * lit))
+        rim.opacity = Float((increaseContrast ? 0.95 : 0.7) * (0.3 + 0.7 * lit))
         line.shadowRadius = geometry.glowRadius
         line.shadowOpacity = Float(0.9 * stroke.glow)
         line.shadowPath = stroke.glow > 0 ? path.copy(strokingWithWidth: width, lineCap: .round, lineJoin: .round, miterLimit: 10) : nil

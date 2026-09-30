@@ -264,7 +264,20 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(Set(manager.failures.keys), [.timer, .redo])
         XCTAssertTrue(manager.failures[.timer]?.contains("Control or Option") == true, "The row explains how to fix it")
         manager.unregister()
-        XCTAssertTrue(GlobalShortcutRule.problem(label: "⌃⌘T", modifiers: UInt32(controlKey | cmdKey)) == nil, "Control or Option makes it a Workbench key")
+        XCTAssertTrue(GlobalShortcutRule.problem(label: "⌃⌘T", keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(controlKey | cmdKey)) == nil, "Control or Option makes it a Workbench key")
+        let sidebar = Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(controlKey | cmdKey))
+        prefs.shortcuts[Action.timer.rawValue] = sidebar
+        manager.register(prefs)
+        defer { manager.unregister() }
+        XCTAssertTrue(manager.failures[.timer]?.contains("sidebar") == true)
+        XCTAssertEqual(prefs.shortcut(for: .timer), sidebar, "The saved choice stays intact while registration is paused")
+        var actions = 0
+        manager.onAction = { _, _ in actions += 1 }
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .command], timestamp: 0,
+                                    windowNumber: 0, context: nil, characters: "s", charactersIgnoringModifiers: "s",
+                                    isARepeat: false, keyCode: UInt16(kVK_ANSI_S))!
+        XCTAssertTrue(manager.handleLocalEvent(event) === event, "The sidebar command remains available to the window")
+        XCTAssertEqual(actions, 0)
     }
     func testPreferencesPersistAndClamp() throws {
         let suite = "StageMarkTests.\(UUID().uuidString)"

@@ -299,7 +299,6 @@ struct HistoryView: View {
             }
             footer(shown: Set(entries.map(\.id)), stores: stores)
         }.padding(Workbench.pagePadding)
-            .sheet(item: $snap.draft) { draft in SnapEditorView(model: snap, draft: draft) }
             .sheet(isPresented: $showingConnections) {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to History") { showingConnections = false }
             }
@@ -381,6 +380,9 @@ struct HistoryView: View {
 
     private func list(_ entries: [HistoryEntry], stores: HistoryRowsCache.Stores) -> some View {
         let target = revealed.flatMap { HistoryList.revealTarget($0, jobs: jobs.jobs, visible: jobs.visibleJobs) }
+        let images: [CaptureImagePreviewItem] = entries.compactMap {
+            if case .snap(let item) = $0 { return .snap(item, store: snap.store) }; return nil
+        }
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
@@ -394,7 +396,7 @@ struct HistoryView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
                         case .snap(let item):
-                            HistorySnapRow(snap: snap, library: library, item: item)
+                            HistorySnapRow(snap: snap, library: library, item: item, images: images)
                         case .result(let job):
                             HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, revealed: target?.task,
                                            focus: $focusedTask, voiceOverFocus: $voiceOverTask,
@@ -484,6 +486,7 @@ struct HistorySnapRow: View {
     @ObservedObject var snap: SnapModel
     @ObservedObject var library: WorkbenchHistoryModel
     let item: SnapItem
+    var images: [CaptureImagePreviewItem] = []
     var body: some View {
         let reference = WorkbenchItemReference(kind: .snap, id: item.id)
         let time = item.createdAt.formatted(date: .abbreviated, time: .shortened)
@@ -496,7 +499,7 @@ struct HistorySnapRow: View {
             })).toggleStyle(.checkbox).labelsHidden()
                 .accessibilityLabel("Select Snap, \(item.title), \(item.source.title), \(time)" + (archived ? ", archived" : ""))
             // The image opens read-only, archived or not; Edit… is its own action.
-            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: snap.store) }) {
+            CapturePreviewButton("View \(item.title)", item: { .snap(item, store: snap.store) }, collection: { images }) {
                 SnapThumbnail(model: snap, item: item).frame(width: 120, height: 76)
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -518,7 +521,7 @@ struct HistorySnapRow: View {
                 }.buttonStyle(.borderless).font(.system(size: 11))
             }
         }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
-            .contextMenu { Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: snap.store)) } }
+            .contextMenu { Button("View image") { CaptureImagePreview.shared.show(.snap(item, store: snap.store), collection: images) } }
     }
 }
 
@@ -617,7 +620,7 @@ private struct HistoryInputChip: View {
                     }
                     ForEach(Array(item.images.enumerated()), id: \.offset) { _, path in
                         if let url = jobs.files(job)?.imageURLs[path] {
-                            CapturePreviewButton("View saved image for " + item.title, item: { .savedCopy(title: item.title, url: url) }) {
+                            CapturePreviewButton("View saved image for " + item.title, item: { .savedCopy(title: item.title, url: url) }, collection: { item.images.map { .savedCopy(title: item.title, url: jobs.files(job)?.imageURLs[$0]) } }) {
                                 FrozenThumbnail(url: url, maximumPixels: 720).frame(maxWidth: 380, maxHeight: 240)
                             }
                         } else {

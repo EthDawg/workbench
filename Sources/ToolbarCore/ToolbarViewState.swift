@@ -100,11 +100,12 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
         case .bottomRight: return "Bottom right"
         }
     }
-    /// The revealed row grows inward from the docked edge, so a dock on the
-    /// right grows leftward and the resting element keeps its place on screen.
-    /// This is the whole of the side-dock geometry; the old build special-cased
-    /// a tall pill and a taller hover frame to keep a decorative capsule fully visible.
+    /// Side edges use an upright column; corners retain a horizontal row.
+    public var isVertical: Bool { self == .left || self == .right }
+    /// Right attachments keep their outside edge fixed as the content opens inward.
     public var growsLeftward: Bool { self == .topRight || self == .right || self == .bottomRight }
+    /// Top and bottom open equally on either side of the resting mark.
+    public var growsFromCentre: Bool { self == .top || self == .bottom || isVertical }
 
     public var slug: String {
         switch self {
@@ -121,10 +122,10 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
 }
 
 /// The one contextual accessory beside the next action (#134 part B): what the chosen tool offers
-/// most often, when it applies. Dictate, Read and Snap have none in this increment; their options
-/// stay in the menu-bar panel and on their pages.
+/// most often, when it applies. Dictate, Read and Snap have no accessory; Snap's source
+/// actions replace its primary, while its editing stays on its page.
 public enum ToolbarAccessory: String, CaseIterable, Sendable {
-    /// Snap & Talk: the open session's review. The count stays with Capture next.
+    /// Snap & Talk: the open session's review. Its help carries the capture count.
     case review
     /// Draw: the drawing choices.
     case tools
@@ -140,6 +141,14 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         case .tools: return "Tools"
         case .prompts: return "Prompts"
         case .appearance: return "Appearance"
+        }
+    }
+    public var symbol: String {
+        switch self {
+        case .review: return "rectangle.stack"
+        case .tools: return "pencil.tip.crop.circle"
+        case .prompts: return "text.bubble"
+        case .appearance: return "person.crop.circle"
         }
     }
     /// The tool it belongs to.
@@ -179,15 +188,20 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var name: String
     public var tier: ToolbarTier
     public var anchor: ToolbarAnchor
+    /// An unattached toolbar expands around both axes of its resting centre.
+    public var isFloating = false
     public var mode: ToolbarMode
-    /// What the one button says: the next action for where you are in the
-    /// journey. Active work replaces the start action rather than adding a
-    /// finish button beside it.
+    /// The command's full words, for its hint and accessible name. Active work replaces
+    /// the start command rather than adding a finish button beside it.
     public var actionTitle: String
+    /// A frozen glyph for the exact operation that is latched on press.
+    public var actionSymbol: String
     public var isActionEnabled: Bool
     /// The assigned key and any count, shown on hover over the action. The row
     /// holds no information-only text.
     public var actionHint: String?
+    /// Direct source actions replace the generic capture button when capture is the next step.
+    public var captureChoices: [ToolbarCaptureKind]
     /// All seven tools, for the launcher's chooser: which one is chosen, which have live
     /// work, and their keys (#134).
     public var choices: [ToolbarToolChoice]
@@ -205,19 +219,22 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// What the compact rest shows: its indicator and the words for it.
     public var status: ToolbarStatus
 
-    public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
-                mode: ToolbarMode = .dictate, actionTitle: String? = nil,
+    public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom, isFloating: Bool = false,
+                mode: ToolbarMode = .dictate, actionTitle: String? = nil, actionSymbol: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
                 choices: [ToolbarToolChoice]? = nil, isBusy: Bool = false,
                 status: ToolbarStatus = .idle, showsAccessory: Bool = true, accessory: ToolbarAccessory? = nil,
-                accessoryDescription: String? = nil) {
+                accessoryDescription: String? = nil, captureChoices: [ToolbarCaptureKind] = []) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
+        self.isFloating = isFloating
         self.mode = mode
         self.actionTitle = actionTitle ?? mode.title
+        self.actionSymbol = actionSymbol ?? ToolbarOperation.start(mode).symbol
         self.isActionEnabled = isActionEnabled
         self.actionHint = actionHint
+        self.captureChoices = captureChoices
         self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }
         self.accessory = accessory
         self.accessoryDescription = accessoryDescription
@@ -230,6 +247,13 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var actionHelp: String {
         guard let hint = actionHint, !hint.isEmpty else { return actionTitle }
         return actionTitle + " · " + hint
+    }
+
+    public func captureHelp(_ kind: ToolbarCaptureKind) -> String {
+        var parts = [kind.title, kind.help(in: mode)]
+        if mode == .snapAndTalk { parts.append(actionTitle) }
+        if kind.usesShortcut(in: mode), let actionHint, !actionHint.isEmpty { parts.append(actionHint) }
+        return parts.joined(separator: " · ")
     }
 
     /// The same state at another dock, for fixtures.

@@ -1,14 +1,15 @@
 import AppKit
 import ToolbarCore
 
-/// The compact controls' measures (#134), in points at standard text. The compact mark and
-/// the revealed row's launcher share one centre on screen, and both meet their growth edge
-/// 24 points from it: the mark is the resting window, and the launcher's 48-point target is
-/// the row's end, so its margin lies inside it. Nothing moves under a pointer that stays on
-/// that centre while the row opens or closes.
+/// The compact controls' measures (#134), in points at standard text. Side attachments
+/// transpose the row into an upright column. Corners keep the horizontal layout.
 public enum ToolbarLayout {
     /// The compact rest: its pointer target, and the whole resting window.
     public static let mark = NSSize(width: 48, height: 28)
+    public static func oriented(_ size: NSSize, for anchor: ToolbarAnchor) -> NSSize {
+        anchor.isVertical ? NSSize(width: size.height, height: size.width) : size
+    }
+    public static func mark(for anchor: ToolbarAnchor) -> NSSize { oriented(mark, for: anchor) }
     /// The quiet handle, inside the larger pointer target. Tool identity appears on reveal.
     public static let markCapsule = NSSize(width: 48, height: 8)
     /// Make room for a recording, transport or recovery signal without moving the target.
@@ -25,10 +26,9 @@ public enum ToolbarLayout {
     public static let rowHeight: CGFloat = 40
     public static let controlHeight: CGFloat = 32
     public static let launcherWidth: CGFloat = 48
-    /// A short verb keeps a generous target without reserving other tools' labels.
-    public static let primaryMinimum: CGFloat = 64
-    public static let primaryHorizontalInset: CGFloat = 12
-    public static let accessoryWidth: CGFloat = 88
+    /// Icon actions keep stable, generous targets; their words live in the hint and VoiceOver.
+    public static let primaryMinimum: CGFloat = 36
+    public static let accessoryWidth: CGFloat = 36
     public static let moreWidth: CGFloat = 32
     public static let gap: CGFloat = 4
     /// At the far end of the row.
@@ -36,22 +36,33 @@ public enum ToolbarLayout {
     public static let cornerRadius: CGFloat = 20
     /// The launcher's centre from the content's growth edge, at rest and revealed.
     public static let launcherInset: CGFloat = 24
-    /// The launcher's end of the row: what a dock places and what snapping compares.
+    /// The legacy reference slot, retained for saved-position migration and display recovery.
     public static let dockSlot = NSSize(width: 48, height: 40)
     /// A dock keeps the row this far inside the visible display.
-    public static let dockInset: CGFloat = 16
-    /// Minimum row widths: 160 points without an accessory, 252 with one. Longer labels grow.
+    public static let dockInset: CGFloat = 8
+    /// Row widths: 132 points without an accessory, 172 with one, at standard scale.
     public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + gap + moreWidth + padding
     public static let accessoryStandardWidth: CGFloat = standardWidth + accessoryWidth + gap
     /// The accessory waits in More unless the row with it fits the display less this.
     public static let accessoryScreenMargin: CGFloat = 24
+
+    /// Predict the destination row before a drag commits its orientation. Preview and
+    /// release use the same measurement, including large text and an accessory in More.
+    public static func fittedRow(_ horizontal: NSSize, accessoryAvailable: Bool, accessoryShown: Bool,
+                                 anchor: ToolbarAnchor, screen: NSRect) -> (size: NSSize, accessoryFits: Bool) {
+        let accessory = (accessoryWidth + gap) * horizontal.height / rowHeight
+        let without = horizontal.width - (accessoryShown ? accessory : 0)
+        let withAccessory = without + (accessoryAvailable ? accessory : 0)
+        let fits = withAccessory <= (anchor.isVertical ? screen.height : screen.width) - accessoryScreenMargin
+        return (oriented(NSSize(width: fits ? withAccessory : without, height: horizontal.height), for: anchor), fits)
+    }
 }
 
 public enum ToolbarGeometry {
-    /// The launcher's centre: the middle of the dock slot at a dock, or the free centre kept
-    /// far enough inside the display for the slot to stay whole.
+    /// The resting reference point: the middle of a compact target, an edge attachment, or
+    /// the saved free centre. The historical name is retained for saved-position callers.
     public static func launcherCentre(_ position: ToolbarPosition, screen: NSRect) -> CGPoint {
-        let slot = ToolbarLayout.dockSlot
+        let slot = ToolbarLayout.mark(for: rowAnchor(position))
         switch position {
         case .docked(let anchor):
             let mx = min(ToolbarLayout.dockInset, max(0, (screen.width - slot.width) / 2))
@@ -70,48 +81,90 @@ public enum ToolbarGeometry {
             }
             return CGPoint(x: x, y: y)
         case .free(let free):
+            if let attachment = free.attachment { return attachment.centre(on: screen) }
             let x = free.centre.x.isFinite ? free.centre.x : screen.midX, y = free.centre.y.isFinite ? free.centre.y : screen.midY
-            let hx = min(slot.width / 2, screen.width / 2), hy = min(slot.height / 2, screen.height / 2)
+            let hx = min(ToolbarLayout.dockSlot.width / 2, screen.width / 2), hy = min(ToolbarLayout.dockSlot.height / 2, screen.height / 2)
             return CGPoint(x: min(max(screen.minX + hx, x), screen.maxX - hx), y: min(max(screen.minY + hy, y), screen.maxY - hy))
         }
     }
 
-    /// A row grows inward: a dock by its anchor, a free position by the side decided when
-    /// it was released. Neither depends on the content's width, so no reveal, tool or live
-    /// label ever turns the row round under the pointer.
+    /// Right-side attachments preserve their outside edge. A free row expands from its
+    /// centre; its legacy direction remains in the save solely for older builds.
     public static func growsLeftward(_ position: ToolbarPosition) -> Bool {
         switch position {
         case .docked(let anchor): return anchor.growsLeftward
-        case .free(let free): return free.growsLeftward
+        case .free(let free): return free.attachment?.edge == .right
         }
     }
 
-    /// The anchor the row is drawn for: its dock, or the side a free row grows from.
+    /// The row's growth policy follows its attachment; unattached rows use centred growth.
     public static func rowAnchor(_ position: ToolbarPosition) -> ToolbarAnchor {
         if case .docked(let anchor) = position { return anchor }
-        return growsLeftward(position) ? .right : .left
+        if case .free(let free) = position, let edge = free.attachment?.edge {
+            switch edge {
+            case .top: return .top
+            case .bottom: return .bottom
+            case .left: return .left
+            case .right: return .right
+            }
+        }
+        return .bottom
     }
 
-    /// The window for content of `size`, the compact mark or the row: its launcher on the
-    /// launcher centre, growing inward, kept whole on `screen`.
+    /// Expand along the edge around its resting reference, preserve the outside edge,
+    /// and keep the whole window on the usable screen. Free positions centre both axes.
     public static func frame(size: NSSize, position: ToolbarPosition, screen: NSRect) -> NSRect {
         let centre = launcherCentre(position, screen: screen)
         let width = min(max(1, size.width), screen.width), height = min(max(1, size.height), screen.height)
-        let x = growsLeftward(position) ? centre.x + ToolbarLayout.launcherInset - width : centre.x - ToolbarLayout.launcherInset
-        return NSRect(x: min(max(screen.minX, x), screen.maxX - width),
-                      y: min(max(screen.minY, centre.y - height / 2), screen.maxY - height), width: width, height: height)
+        let anchor = rowAnchor(position)
+        let frame = frame(size: NSSize(width: width, height: height), reference: centre, anchor: anchor, isFloating: !isAttached(position))
+        return NSRect(x: min(max(screen.minX, frame.minX), screen.maxX - width),
+                      y: min(max(screen.minY, frame.minY), screen.maxY - height), width: width, height: height)
     }
 
-    /// Where the launcher's centre is in a window of the tools, as a drag carries it.
+    /// The legacy horizontal launcher's centre, retained for migration callers.
     public static func launcherCentre(inWindow frame: NSRect, growsLeftward: Bool) -> CGPoint {
         CGPoint(x: growsLeftward ? frame.maxX - ToolbarLayout.launcherInset : frame.minX + ToolbarLayout.launcherInset, y: frame.midY)
     }
 
-    /// The dock slot around a launcher centre: what the drag's guides outline and what
-    /// snapping compares with each dock's own slot.
+    /// The resting mark's reference point, also used when a row changes width.
+    public static func restingCentre(inWindow frame: NSRect, anchor: ToolbarAnchor, isFloating: Bool = false) -> CGPoint {
+        if isFloating { return CGPoint(x: frame.midX, y: frame.midY) }
+        let rest = ToolbarLayout.mark(for: anchor)
+        let x = anchor == .top || anchor == .bottom ? frame.midX
+            : anchor.growsLeftward ? frame.maxX - rest.width / 2 : frame.minX + rest.width / 2
+        let y = anchor.isVertical ? frame.midY
+            : anchor == .top || anchor == .topLeft || anchor == .topRight ? frame.maxY - rest.height / 2 : frame.minY + rest.height / 2
+        return CGPoint(x: x, y: y)
+    }
+
+    /// The exact inverse of restingCentre, shared by placement and the animation clock.
+    /// A dock keeps its outside edge fixed; a side column grows around its vertical centre.
+    public static func frame(size: NSSize, reference: CGPoint, anchor: ToolbarAnchor, isFloating: Bool = false) -> NSRect {
+        if isFloating { return NSRect(x: reference.x - size.width / 2, y: reference.y - size.height / 2, width: size.width, height: size.height) }
+        let rest = ToolbarLayout.mark(for: anchor)
+        let x = anchor == .top || anchor == .bottom ? reference.x - size.width / 2
+            : anchor.growsLeftward ? reference.x + rest.width / 2 - size.width : reference.x - rest.width / 2
+        let y = anchor.isVertical ? reference.y - size.height / 2
+            : anchor == .top || anchor == .topLeft || anchor == .topRight ? reference.y + rest.height / 2 - size.height : reference.y - rest.height / 2
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
+    }
+
+    /// A reference slot around the resting mark, also used to read legacy positions.
     public static func slot(around centre: CGPoint) -> NSRect {
         let size = ToolbarLayout.dockSlot
         return NSRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2, width: size.width, height: size.height)
+    }
+
+    /// Side toolbars share an inboard lane for their chooser, prompts and Position panel.
+    /// The full toolbar is excluded, including controls above and below the invoking button.
+    public static func sidePanelFrame(size: NSSize, toolbar: NSRect, anchor: ToolbarAnchor, visible: NSRect,
+                                      inset: CGFloat = 8, gap: CGFloat = 8) -> NSRect {
+        let available = anchor == .right ? toolbar.minX - gap - visible.minX - inset : visible.maxX - inset - toolbar.maxX - gap
+        let width = min(size.width, max(1, available)), height = min(size.height, max(1, visible.height - 2 * inset))
+        let x = anchor == .right ? toolbar.minX - gap - width : toolbar.maxX + gap
+        return NSRect(x: x, y: min(max(toolbar.midY - height / 2, visible.minY + inset), visible.maxY - inset - height),
+                      width: width, height: height)
     }
 }
 
@@ -121,20 +174,20 @@ public enum ToolbarPosition: Equatable, Sendable {
     case free(ToolbarFreePosition)
 }
 
-/// A free position (#163, #134): the launcher's centre, which is also the compact mark's,
-/// and the side the row grows toward. The side is decided once, when the toolbar is released
-/// (or when an earlier save is first read), and kept with the position, so a change of
-/// content width never moves the launcher or turns the row round.
+/// A saved resting centre with an optional edge attachment. The historical direction
+/// and absolute centre remain compatible with older builds; current growth follows
+/// the attachment, or the centre when free.
 public struct ToolbarFreePosition: Equatable, Sendable {
     public var centre: CGPoint
-    /// The row grows leftward from its launcher, toward the middle of its display.
+    public var attachment: ToolbarEdgeAttachment?
+    /// The direction an older build uses after a downgrade.
     public var growsLeftward: Bool
 
-    public init(centre: CGPoint, growsLeftward: Bool) {
-        self.centre = centre; self.growsLeftward = growsLeftward
+    public init(centre: CGPoint, growsLeftward: Bool, attachment: ToolbarEdgeAttachment? = nil) {
+        self.centre = centre; self.growsLeftward = growsLeftward; self.attachment = attachment
     }
 
-    /// Decided where the launcher was let go: the row grows toward the middle of the display.
+    /// Keep the old direction convention alongside the current resting centre.
     public init(releasedAt centre: CGPoint, on screen: NSRect) {
         self.centre = centre
         growsLeftward = centre.x > screen.midX
