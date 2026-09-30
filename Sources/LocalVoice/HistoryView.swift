@@ -224,6 +224,7 @@ struct HistoryView: View {
     @ObservedObject private var library: WorkbenchHistoryModel
     @ObservedObject private var jobs: HandoffJobsModel
     var applySuggestedMetadata: (HandoffJob, String) -> Void
+    var openSnapTalkSessions: (() -> Void)?
     @State private var filter: HistoryFilter
     @State private var query = ""
     /// The search the list shows, applied once typing pauses.
@@ -249,10 +250,11 @@ struct HistoryView: View {
     @State private var removal: TranscriptRemoval?
     @State private var recording: Transcript?
 
-    init(model: AppModel, snap: SnapModel, applySuggestedMetadata: @escaping (HandoffJob, String) -> Void) {
+    init(model: AppModel, snap: SnapModel, openSnapTalkSessions: (() -> Void)? = nil, applySuggestedMetadata: @escaping (HandoffJob, String) -> Void) {
         self.model = model; self.snap = snap
         self.library = model.historyLibrary; self.jobs = model.handoffJobs
         self.applySuggestedMetadata = applySuggestedMetadata
+        self.openSnapTalkSessions = openSnapTalkSessions
         _filter = State(initialValue: model.historyDoor?.filter ?? .all)
     }
 
@@ -331,6 +333,9 @@ struct HistoryView: View {
     private var header: some View {
         WorkbenchPageHeader("history", summary: "What you dictated, snapped and handed off, newest first.") {
             ConfirmationLabel(text: snap.confirmation?.kind.rawValue, reserving: SnapConfirmation.texts)
+            if let openSnapTalkSessions {
+                Button("Snap & Talk sessions…", action: openSnapTalkSessions)
+            }
             Button("Connections…") { showingConnections = true }
         }
     }
@@ -397,7 +402,12 @@ struct HistoryView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))
                         case .snap(let item):
-                            HistorySnapRow(snap: snap, library: library, item: item, images: images)
+                            HistorySnapRow(snap: snap, library: library, item: item, images: images,
+                                saveImageToLibrary: { chosen in
+                                    if let message = model.library.saveCapturedImageToLibrary(.snap(chosen, store: snap.store)) {
+                                        snap.notice = message
+                                    }
+                                })
                         case .result(let job):
                             HandoffJobCard(jobs: jobs, job: job, expanded: $expandedResult, revealed: target?.task,
                                            focus: $focusedTask, voiceOverFocus: $voiceOverTask,
@@ -488,6 +498,7 @@ struct HistorySnapRow: View {
     @ObservedObject var library: WorkbenchHistoryModel
     let item: SnapItem
     var images: [CaptureImagePreviewItem] = []
+    var saveImageToLibrary: ((SnapItem) -> Void)? = nil
     var body: some View {
         let reference = WorkbenchItemReference(kind: .snap, id: item.id)
         let time = item.createdAt.formatted(date: .abbreviated, time: .shortened)
@@ -516,6 +527,10 @@ struct HistorySnapRow: View {
                     Button("Copy") { snap.copy(item.id) }.accessibilityLabel("Copy \(item.title)")
                     if !archived { Button("Edit…") { snap.edit(item.id) }.accessibilityLabel("Edit \(item.title)") }
                     Button("Export image…") { snap.export(item.id) }.accessibilityLabel("Export \(item.title)")
+                    if let saveImageToLibrary {
+                        Button("Save image to Library…") { saveImageToLibrary(item) }
+                            .accessibilityLabel("Save \(item.title) to Library")
+                    }
                     Spacer()
                     Button(archived ? "Restore" : "Archive") { snap.archive([item.id], archived: !archived) }
                         .accessibilityLabel((archived ? "Restore " : "Archive ") + item.title)

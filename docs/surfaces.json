@@ -587,12 +587,37 @@
     "note": "Existing control in a transcript's Details sheet: opens the Hand off review to suggest that transcript's details, an action on a History item (#137)."
   },
   {
+    "id": "LocalVoice.HistoryView.HistorySnapRow.Button.save-image-to-library",
+    "surface": "history page",
+    "label": "Save image to Library…",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Accepted image reuse option in #134: export the explicitly chosen rendered image to a user-chosen file, then commit its Library reference. Cancel preserves all records; a different unfinished Snap is never an input."
+  },
+  {
     "id": "LocalVoice.HistoryView.HistoryView.Button.connections",
     "surface": "history page",
     "label": "Connections…",
     "kind": "action",
     "belongsTo": "settings",
     "note": "Option of Settings: opens the Connections settings over History, moved from the removed Handoffs page so a Ready or failed task can connect a provider without leaving History (#137)."
+  },
+  {
+    "id": "LocalVoice.HistoryView.HistoryView.Button.snap-talk-sessions",
+    "surface": "history page",
+    "label": "Snap & Talk sessions…",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option of Snap & Talk (#134): History opens the existing portable Sessions picker without changing the current session. Explicit Open retains capture and unsaved-edit guards; no new store or selectable evidence kind."
+  },
+  {
+    "id": "LocalVoice.HistoryView.HistoryView.Button.snap-talk-sessions.2",
+    "surface": "history page",
+    "label": "Snap & Talk sessions…",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option of Snap & Talk (#134): History opens the existing portable Sessions picker without changing the current session. Explicit Open retains capture and unsaved-edit guards; no new store or selectable evidence kind.",
+    "aliasOf": "LocalVoice.HistoryView.HistoryView.Button.snap-talk-sessions"
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingDetectionSettings.Toggle.detect-meetings-calls",
@@ -846,6 +871,14 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Existing door, recorded, no change: Opens the Hand off review, an action on History items (Option of history; #134)."
+  },
+  {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.save-image-to-library",
+    "surface": "snap & talk page",
+    "label": "Save image to Library…",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Accepted image reuse option in #134: export the explicitly chosen rendered image to a user-chosen file, then commit its Library reference. Cancel preserves all records; a different unfinished Snap is never an input."
   },
   {
     "id": "LocalVoice.ReadingFollowAlong.MacVoiceHintRow.Button.runtime-2e29afee6d79",

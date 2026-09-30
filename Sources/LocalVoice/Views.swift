@@ -9,6 +9,8 @@ struct ContentView: View {
     @ObservedObject var model: AppModel
     /// Workbench supplies the window and navigation; each workspace owns its content.
     var embedded = true
+    var onUseImageInPresent: ((DemoLibraryImageSnapshot) -> Void)? = nil
+    var onUseImageInPersona: ((DemoLibraryImageSnapshot) -> Void)? = nil
     @State private var showOriginal = false
     @State private var showCorrection = false
     @State private var showDictateSettings = false
@@ -49,7 +51,8 @@ struct ContentView: View {
             Group {
                 switch model.page {
                 case "speak": speak
-                case "library": DemoLibraryView(library: model.library, model: model)
+                case "library": DemoLibraryView(library: model.library, model: model,
+                    onUseImageInPresent: onUseImageInPresent, onUseImageInPersona: onUseImageInPersona)
                 case "dictionary": DictionaryView(model: model)
                 default: dictate
                 }

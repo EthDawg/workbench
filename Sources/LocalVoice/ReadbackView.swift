@@ -8,12 +8,14 @@ struct ReadbackView: View {
     var onOpenPacks: () -> Void = {}
     var onChooseSnaps: (() -> Void)?
     var onReviewHandoff: (() -> Void)?
+    var onSaveImageToLibrary: ((CaptureImagePreviewItem) -> String?)?
     @State private var sheet: Sheet?
     @State private var afterSheet: (() -> Void)?
     @State private var captureMode: SnapCapture.Mode = .screen
     @State private var confirmEmptyTrash = false
     @State private var discardEdit: UUID?
     @State private var copyResult: String?
+    @State private var imageResult: String?
     @Environment(\.pageSectionFrames) private var sectionFrames
     /// Only the isolated gallery supplies presentation values; live controls read their owner.
     private var capturePresentation: CapturePresentation?
@@ -22,8 +24,8 @@ struct ReadbackView: View {
     private var isCapturing: Bool { capturePresentation?.capturing ?? model.isCapturing }
 
     init(model: ReadbackModel, onOpenPacks: @escaping () -> Void = {}, onChooseSnaps: (() -> Void)? = nil,
-         onReviewHandoff: (() -> Void)? = nil, initialSheet: Sheet? = nil, capturePresentation: CapturePresentation? = nil) {
-        self.model = model; self.onOpenPacks = onOpenPacks; self.onChooseSnaps = onChooseSnaps; self.onReviewHandoff = onReviewHandoff
+         onReviewHandoff: (() -> Void)? = nil, onSaveImageToLibrary: ((CaptureImagePreviewItem) -> String?)? = nil, initialSheet: Sheet? = nil, capturePresentation: CapturePresentation? = nil) {
+        self.model = model; self.onOpenPacks = onOpenPacks; self.onChooseSnaps = onChooseSnaps; self.onReviewHandoff = onReviewHandoff; self.onSaveImageToLibrary = onSaveImageToLibrary
         self._sheet = State(initialValue: initialSheet); self.capturePresentation = capturePresentation
     }
 
@@ -62,7 +64,7 @@ struct ReadbackView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Workbench.background)
-        .onChange(of: model.reviewedSectionID) { _, _ in copyResult = nil }
+        .onChange(of: model.reviewedSectionID) { _, _ in copyResult = nil; imageResult = nil }
         .confirmationDialog("Discard this unsaved narration edit?", isPresented: Binding(get: { discardEdit != nil }, set: { if !$0 { discardEdit = nil } })) {
             Button("Discard unsaved edit", role: .destructive) {
                 if let id = discardEdit { model.discardTranscriptEdit(id) }; discardEdit = nil
@@ -310,6 +312,9 @@ struct ReadbackView: View {
                     .font(.caption).foregroundStyle(section.status == .failed ? .orange : .secondary)
                 Menu {
                     Button("View image") { CaptureImagePreview.shared.show(preview(section, number: number), collection: activeImages) }
+                    if let onSaveImageToLibrary {
+                        Button("Save image to Library…") { imageResult = onSaveImageToLibrary(preview(section, number: number)) }
+                    }
                     Divider()
                     Button("Replace screenshot…") { Task { await model.replaceScreenshot(section.id) } }.disabled(changing)
                     Button(section.audio == nil ? "Record narration" : "Re-record narration") { model.startNarration(for: section.id) }
@@ -325,6 +330,7 @@ struct ReadbackView: View {
                     .frame(maxWidth: .infinity).frame(height: 250)
                     .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10)).clipped()
             }
+            if let imageResult { Text(imageResult).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             if let failure = section.failure {
                 Text(failure).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
             }

@@ -22,12 +22,12 @@ The **Floating pill is being implemented and verified by its separate owner**. T
 | [Meeting preparation](desktop.html#meeting-ready) | `MeetingModel`: app audio or microphone-only; explicit Start | Native source choice and microphone-only admission |
 | [Meeting recording](desktop.html#meeting-recording) | `MeetingModel` and independent StageKit timer | Stop/transcribe, Stop/keep, independent timer |
 | [Meeting processing](desktop.html#meeting-processing) | `MeetingModel`: cancellable processing with retained recording | Final Preview processing/retry and retained audio |
-| [Meeting review](desktop.html#meeting-review) | Exact committed `HistoryDoor`; recording playback/reveal being integrated by the ship owner | Combined History recording sheet and text export |
+| [Meeting review](desktop.html#meeting-review) | Exact committed `HistoryDoor` and original-recording review with explicit playback/reveal | Combined History recording sheet and text export |
 | [Meeting recovery](desktop.html#meeting-recovery) | `MeetingModel` / `MeetingStore` retry retained tracks | Real failed/cancelled path; no unrelated draft replacement |
 | [Read import](desktop.html#read-import) | Bounded native UTF-8 file picker and `AppModel` import admission: Keep current or Replace reading, no automatic playback | Cancel/invalid/oversized input, active reading, both decisions and explicit Save audio guard tested |
 | [Active reading](desktop.html#read-active) | `AppModel`: playback, pause/resume/seek, Save audio and cancellation | Voice & pace, audio output and sample-file save |
 | [Snap preparation](desktop.html#snap-ready) | `SnapModel`: Region/Window/Screen, import, explicit capture | Cancel selection leaves no result |
-| [Snap review](desktop.html#snap-review) | Shared image workspace: original, edit and Save & Copy | Explicit close/discard semantics being integrated by ship owner |
+| [Snap review](desktop.html#snap-review) | Shared image workspace: original, edit and Save & Copy | Close/Escape retain the same draft and undo owner; explicit Review, Save or confirmed Discard; independent image viewing stays available |
 | [Snap & Talk continuation](desktop.html#snap-talk-continue) | `ReadbackModel` / `ReadbackView`: Sessions, fixed capture/Stop, selected section, Hand off | 39-section layout at minimum/default sizes, all capture sources, navigation preserves review |
 | [Snap & Talk recovery](desktop.html#snap-talk-recovery) | Section owns retained audio/retry; failed narration saves retain the edit with retry/copy/discard | Failed save, background publication, close/reopen and exact original media preservation |
 | [Draw and Timer](desktop.html#draw-timer) | StageKit drawing and timer owners | Drawing tools, countdown and independent stop; pill routes integrated separately |
@@ -35,9 +35,9 @@ The **Floating pill is being implemented and verified by its separate owner**. T
 | [Persona](desktop.html#persona-ready) | StageKit Persona owner: selected and shown are separate | Browse, show/hide, live-copy controls; pill routes integrated separately |
 | [Retained meeting](desktop.html#meeting-retained) | Existing meeting recovery records | Relaunch/retry preserves the recording |
 | [Independent work](desktop.html#independent-work) | Existing activity owners projected by Home | Navigation and Stop affect only the named operation |
-| [Library reuse](desktop.html#library-reuse) | Existing resource owners, shared image preview and Read import admission | Select/reuse, Keep/Replace, original resource and current work preserved |
+| [Library reuse](desktop.html#library-reuse) | Existing resource owners, shared image preview, Read import admission and prepared image reuse in Present/Persona | Select/reuse, Keep/Replace, original resource and current work preserved; saved Snap/session image export commits a Library reference only after verified file save |
 
-These rows account for all accepted study scenarios. The source tests and native renders below prove only their named checks. The ship owner records final combined installed acceptance against the exact replacement build. The baseline installed `57fa1ef` receipt does not cover this revision. Snap & Talk sessions remain portable folders reached through Sessions; their captured images enter Snap History. A manual assistant handoff does not automatically create a finished deck or a History result.
+These rows account for all accepted study scenarios. The source tests and native renders below prove only their named checks. The ship owner records final combined installed acceptance against the exact replacement build. The baseline installed `57fa1ef` receipt does not cover this revision. Snap & Talk sessions remain portable folders reached through Sessions or History’s Snap & Talk sessions door; their captured images enter Snap History. A manual assistant handoff does not automatically create a finished deck or a History result.
 
 The desktop has 20 starting scenarios. The selector's State control can explore additional moments within each workspace. Reset scenario restores its synthetic starting data, including drafts, jobs and results. No state is copied between Desktop and Pill.
 

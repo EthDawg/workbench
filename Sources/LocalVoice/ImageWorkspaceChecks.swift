@@ -182,6 +182,7 @@ enum ImageWorkspaceChecks {
             ("saved Snap", images[1].source, { preview.show(images[1], over: owner, collection: images) }),
             ("Snap & Talk", sessionImage.source, { preview.show(sessionImage, over: owner) }),
             ("Library", .generated(resource.id), { preview.showLibrary([resource], selected: resource.id) })]
+        let reusableImages = DemoLibraryModel(store: DemoLibraryStore(directory: root.appendingPathComponent("Reusable images")))
         for door in doors {
             preview.close()
             door.show(); try await settle(preview)
@@ -205,6 +206,15 @@ enum ImageWorkspaceChecks {
                       && preview.model?.reviewPendingDraft != nil && preview.panel === viewingPanel && !preview.isShowingEditor
                       && snap.draft?.id == draftA.id,
                       "Edit image B stays on B and names the unfinished draft with an explicit Review action")
+            let exportedImage = root.appendingPathComponent("Exported B from " + door.name + ".png")
+            let exportedMessage = reusableImages.saveCapturedImageToLibrary(viewing.item, chooseDestination: { _ in exportedImage })
+            try check(exportedMessage?.contains("Image saved to Library") == true
+                      && (try Data(contentsOf: exportedImage)) == secondPNG
+                      && reusableImages.resources.contains { $0.content == exportedImage.path },
+                      "Save image to Library exports the chosen \(door.name) image B and commits its real file reference")
+            try check(preview.editing === editorA && snap.draft?.id == draftA.id && snap.draft?.originalPNG == draftA.originalPNG
+                      && editorA.draft.edit == draftA.edit && editorA.undoStack == undoA && editorA.redoStack == redoA,
+                      "saving image B to Library leaves suspended draft A and its undo history unchanged")
             if let output, door.name == "Library" {
                 preview.panel?.setContentSize(NSSize(width: 900, height: 620)); try await settle(preview)
                 try render(preview.panel!, to: output.appendingPathComponent("image-preview-pending-draft.png"))

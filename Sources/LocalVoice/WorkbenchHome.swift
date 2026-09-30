@@ -18,6 +18,12 @@ struct WorkbenchHome: View {
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var photoBackdrop: PhotoBackdropRequest?
+    @State private var libraryPreparation: LibraryPreparation?
+    @State private var openSnapTalkSessions = false
+    private struct LibraryPreparation: Identifiable {
+        let id = UUID()
+        let view: AnyView
+    }
     @State private var handoffReview: HandoffReviewRequest?
     @State private var suggestionReview: MetadataSuggestionReview?
     @AppStorage("workbench.sidebarCollapsed.v1") private var sidebarCollapsed = false
@@ -161,7 +167,9 @@ struct WorkbenchHome: View {
                     onChooseSnaps: { model.page = "snap" }, onReviewHandoff: {
                         guard let session = readback.sessionURL else { return }
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
-                    })
+                    }, onSaveImageToLibrary: { model.library.saveCapturedImageToLibrary($0) },
+                    initialSheet: openSnapTalkSessions ? .sessions : nil)
+                        .onAppear { openSnapTalkSessions = false }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
                     Set(history.selected.filter { $0.kind == .snap }.map(\.id))
                 }, set: { ids in
@@ -175,7 +183,9 @@ struct WorkbenchHome: View {
                     }, onOrganiseHandOff: { task in
                         handoffReview = HandoffReviewRequest(task: task, snapReview: true, savedSelectionID: history.activeSelectionID)
                     })
-                case "history": HistoryView(model: model, snap: snap, applySuggestedMetadata: { job, result in
+                case "history": HistoryView(model: model, snap: snap, openSnapTalkSessions: {
+                    openSnapTalkSessions = true; model.page = "readback"
+                }, applySuggestedMetadata: { job, result in
                     do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                     catch { model.handoffJobs.error = error.localizedDescription }
                 })
@@ -215,6 +225,7 @@ struct WorkbenchHome: View {
                 }
                 model.refreshPhotoHandoffIfEnabled()
             }
+            .sheet(item: $libraryPreparation) { $0.view }
             .sheet(item: $photoBackdrop) { request in
                 stage.backdropReplacementView(imageURL: request.url, title: request.title)
             }
@@ -266,9 +277,23 @@ struct WorkbenchHome: View {
             case "photos":
                 PhotoHandoffView(handoff: model.photoHandoff, onUseAsBackdrop: model.onUsePhotoAsBackdrop)
                     .padding(Workbench.pagePadding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            default: ContentView(model: model, embedded: true)
+            default: ContentView(model: model, embedded: true,
+                onUseImageInPresent: { prepareLibraryImage($0, for: .present) },
+                onUseImageInPersona: { prepareLibraryImage($0, for: .persona) })
             }
         }
+    }
+
+    private func prepareLibraryImage(_ image: DemoLibraryImageSnapshot, for destination: DemoLibraryImageUse) {
+        keyboard.stopInteraction()
+        do {
+            let view: AnyView
+            switch destination {
+            case .present: view = try stage.backdropReplacementView(imageData: image.data, title: image.title)
+            case .persona: view = try stage.personaImportView(imageData: image.data, title: image.title)
+            }
+            libraryPreparation = LibraryPreparation(view: view)
+        } catch { model.library.error = error.localizedDescription }
     }
 
     /// Settings holds General, Keyboard, Models and Connections as sections of one page, with
