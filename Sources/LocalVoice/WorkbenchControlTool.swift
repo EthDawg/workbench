@@ -250,7 +250,12 @@ struct HomePersonaControl {
     let action: ToolbarNextAction
     let help: String
     let personaIdentity: UUID?
-    init(_ state: WorkbenchControlState) { action = state.personaAction; help = state.personaDetail; personaIdentity = state.personaIdentity }
+    /// Hidden and failed camera visits still have a useful resume or recovery action.
+    let isCurrentWork: Bool
+    init(_ state: WorkbenchControlState) {
+        action = state.personaAction; help = state.personaDetail; personaIdentity = state.personaIdentity
+        isCurrentWork = state.overlays || state.overlaySession || state.personaCamera != .off
+    }
     /// The live strip's button.
     var rowTitle: String { action.title }
     /// The tile's second line.

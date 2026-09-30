@@ -589,7 +589,7 @@ struct WorkbenchHomePage: View {
     private var hasCurrentWork: Bool {
         dictationLive || readingLive || model.readingFailure != nil || !model.ready
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
-            || stage.hasActivePersona || stage.hasActiveTimer || meetings.isBusy || jobs.isBusy
+            || personaControl.isCurrentWork || stage.hasActiveTimer || meetings.isBusy || jobs.isBusy
     }
     /// Active input first, then stopped reading and other running or resumable work, each with its
     /// own truthful action. Leaving Home collapses, acknowledges or discards none of it.
@@ -628,7 +628,7 @@ struct WorkbenchHomePage: View {
             }
             if stage.isDrawing { liveRow("Drawing", "pencil.tip") { Button("Stop drawing") { stage.finishDrawing() } } }
             if stage.isPresenting { liveRow("Presenting", "iphone") { Button("End presentation") { stage.endDeviceScene() } } }
-            if stage.hasActivePersona {
+            if personaControl.isCurrentWork {
                 let persona = personaControl
                 liveRow("Persona · " + stage.personaStatus, "person.crop.rectangle") {
                     Button(persona.rowTitle) { perform(persona) }.help(persona.help)

@@ -489,6 +489,8 @@ enum WorkbenchControlChecks {
                 for (name, configure, persona, title, operation) in personas {
                     var live = WorkbenchControlState(); setUp(&live); configure(&live)
                     let home = HomePersonaControl(live)
+                    try check(home.isCurrentWork == (persona != .none),
+                              "Home keeps the resume or recovery row for \(name) \(context) until its visit ends")
                     let toolbar = ToolbarNextAction.resolve(ToolbarLiveState(mode: .persona, persona: persona))
                     try check(home.rowTitle == title && home.rowTitle == toolbar.title && home.operation == operation && home.isEnabled,
                               "Home's Persona control reads \(title) for \(name) \(context), as the toolbar's Persona mode does")
