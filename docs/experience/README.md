@@ -36,7 +36,7 @@ The imported proposal targets quiet-toolbar source `62f8ba5b9f41de7549d0877719ba
 
 ## Portable entry protocol
 
-Both standalone files retain a sandboxed iframe and their local state adapter. They have a return link to this entry and require no build or external service.
+Both standalone files retain a sandboxed iframe and their local state adapter. They have a return link to this entry and require no app backend or build. The portable renderer loads three pinned libraries from `unpkg.com`, so its complete rendering depends on network access to that CDN. No sample content is sent to an app backend.
 
 - Desktop URL: `desktop.html#meeting-review`. Parent message: `{type: "wb:scenario", scenario: "meeting-review"}`. Selection event: `wb:scenario-changed` with `scenario`.
 - Pill URL: `pill.html#recovery-pending`. Parent message: `{type: "workbench-pill-journey", id: "recovery-pending"}`. Selection event: `workbench-pill-scenario-changed` with `id`.
