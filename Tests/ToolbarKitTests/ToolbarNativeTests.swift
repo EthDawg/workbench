@@ -26,12 +26,12 @@ final class ToolbarNativeTests: XCTestCase {
             for state in ToolbarGallery.states {
                 let size = NSHostingView(rootView: ToolbarRow(state: state, textScale: scale)).fittingSize
                 if state.tier == .resting {
-                    XCTAssertEqual(size, ToolbarLayout.mark, state.name)
+                    XCTAssertEqual(size, ToolbarLayout.mark(for: state.anchor), state.name)
                     continue
                 }
                 XCTAssertGreaterThanOrEqual(size.height, ToolbarLayout.rowHeight * scale - 1, state.name)
                 XCTAssertLessThan(size.width, 700, state.name)
-                XCTAssertGreaterThanOrEqual(size.width, ToolbarLayout.standardWidth - 0.5, state.name)
+                XCTAssertGreaterThanOrEqual(state.anchor.isVertical ? size.height : size.width, ToolbarLayout.standardWidth - 0.5, state.name)
                 let larger = NSHostingView(rootView: ToolbarRow(state: state, textScale: scale * 1.2)).fittingSize
                 XCTAssertGreaterThan(larger.width, size.width, state.name)
             }
@@ -136,7 +136,7 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertGreaterThan(completeBadge, 4)
         for anchor in ToolbarAnchor.allCases {
             let state = ToolbarViewState(name: "recording-warning", tier: .resting, anchor: anchor, status: status)
-            XCTAssertEqual(try warningPixels(ToolbarRow(state: state)), completeBadge,
+            XCTAssertEqual(try warningPixels(ToolbarRow(state: state)), try warningPixels(ToolbarCompactMark(status: status, anchor: anchor)),
                            "the complete warning remains visible at \(anchor)")
         }
     }
@@ -266,8 +266,8 @@ final class ToolbarNativeTests: XCTestCase {
                 let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "launcher", tier: .revealed, anchor: anchor, mode: .present, accessory: .prompts), textScale: scale))
                 let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
                 let frame = launcher.convert(launcher.bounds, to: view)
-                XCTAssertEqual(frame.width, ToolbarLayout.launcherWidth, "\(anchor) at \(scale)")
-                let inset = anchor.growsLeftward ? view.bounds.maxX - frame.midX : frame.midX
+                XCTAssertEqual(anchor.isVertical ? frame.height : frame.width, ToolbarLayout.launcherWidth, "\(anchor) at \(scale)")
+                let inset = anchor.isVertical ? frame.midY : anchor.growsLeftward ? view.bounds.maxX - frame.midX : frame.midX
                 XCTAssertEqual(inset, ToolbarLayout.launcherInset, accuracy: 0.5, "\(anchor) at \(scale)")
             }
         }
@@ -284,7 +284,7 @@ final class ToolbarNativeTests: XCTestCase {
                 .map { $0.accessibilityIdentifier() }
         }
         XCTAssertEqual(order(.bottom), ["toolbar.launcher", "toolbar.primary", "toolbar.accessory", "toolbar.more"])
-        XCTAssertEqual(order(.right), ["toolbar.more", "toolbar.accessory", "toolbar.primary", "toolbar.launcher"])
+        XCTAssertEqual(order(.bottomRight), ["toolbar.more", "toolbar.accessory", "toolbar.primary", "toolbar.launcher"])
     }
 
     /// The row holds no mode strip any more: the launcher is the one way to another tool.
@@ -347,7 +347,7 @@ final class ToolbarNativeTests: XCTestCase {
                 panel.orderFrontRegardless()
                 host.layoutSubtreeIfNeeded()
                 for button in buttons(host) {
-                    let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: host)
+                    let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: host.superview)
                     let hit = host.hitTest(point)
                     XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,
                         "\(mode), \(anchor), \(button.accessibilityIdentifier()) intercepted by \(String(describing: hit))")
@@ -375,18 +375,18 @@ final class ToolbarNativeTests: XCTestCase {
                 for _ in 0..<3 {
                     state.tier = .resting
                     host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
-                    panel.setContentSize(ToolbarLayout.mark)
+                    panel.setContentSize(ToolbarLayout.mark(for: anchor))
                     tracking.layoutSubtreeIfNeeded()
                     state.tier = .revealed
                     host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
                     tracking.layoutSubtreeIfNeeded()
                     let size = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
                     for progress in [CGFloat(0.5), 0.9, 1] {
-                        panel.setContentSize(NSSize(width: 48 + (size.width - 48) * progress, height: 28 + (size.height - 28) * progress))
+                        panel.setContentSize(NSSize(width: ToolbarLayout.mark(for: anchor).width + (size.width - ToolbarLayout.mark(for: anchor).width) * progress, height: ToolbarLayout.mark(for: anchor).height + (size.height - ToolbarLayout.mark(for: anchor).height) * progress))
                         tracking.layoutSubtreeIfNeeded()
                     }
                     for button in buttons(host) {
-                        let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: tracking)
+                        let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: tracking.superview)
                         let hit = tracking.hitTest(point)
                         XCTAssertTrue(hit === button || hit?.isDescendant(of: button) == true,
                             "\(mode), \(anchor), \(button.accessibilityIdentifier()) after reveal intercepted by \(String(describing: hit))")
@@ -555,7 +555,7 @@ final class ToolbarNativeTests: XCTestCase {
             view.layoutSubtreeIfNeeded()
             let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
             let frame = launcher.convert(launcher.bounds, to: view)
-            return state.anchor.growsFromCentre ? frame.midX - view.bounds.midX
+            return state.anchor == .top || state.anchor == .bottom ? frame.midX - view.bounds.midX
                 : state.anchor.growsLeftward ? view.bounds.maxX - frame.maxX : frame.minX
         }
         for anchor in ToolbarAnchor.allCases {

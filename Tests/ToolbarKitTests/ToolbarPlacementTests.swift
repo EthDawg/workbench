@@ -28,17 +28,10 @@ final class ToolbarPlacementTests: XCTestCase {
         }
     }
 
-    func testAReleaseWithinSixteenPointsOfADockSnapsAndBeyondStaysFree() throws {
-        XCTAssertEqual(FloatingControlPlacement.snapDistance, 16)
+    func testEdgeMidpointsSnapFromTheirOwnRestingShape() {
         for anchor in ToolbarAnchor.allCases {
-            let shared = try XCTUnwrap(FloatingControlAnchor(rawValue: anchor.rawValue))
-            let dock = ToolbarGeometry.slot(around: ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen))
-            for (dx, dy) in [(16.0, 0.0), (-16.0, 0.0), (0.0, 16.0), (0.0, -16.0), (11.3, -11.3)] {
-                XCTAssertEqual(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), shared, "\(anchor.rawValue) \(dx), \(dy)")
-            }
-            for (dx, dy) in [(16.5, 0.0), (-16.5, 0.0), (0.0, 16.5), (12, 12)] {
-                XCTAssertNil(FloatingControlPlacement.snapAnchor(for: dock.offsetBy(dx: dx, dy: dy), in: screen), "\(anchor.rawValue) \(dx), \(dy)")
-            }
+            let frame = ToolbarGeometry.frame(size: ToolbarLayout.mark(for: anchor), position: .docked(anchor), screen: screen)
+            XCTAssertEqual(ToolbarGeometry.releasedPosition(frame: frame, screen: screen), .docked(anchor))
         }
     }
 
@@ -50,7 +43,7 @@ final class ToolbarPlacementTests: XCTestCase {
             XCTAssertTrue(ToolbarGeometry.rowAnchor(position).growsFromCentre)
             for size in [ToolbarLayout.mark, row] {
                 let frame = ToolbarGeometry.frame(size: size, position: position, screen: screen)
-                XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: .bottom), centre, "\(centre) \(size)")
+                XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: .bottom, isFloating: true), centre, "\(centre) \(size)")
                 XCTAssertTrue(screen.contains(frame))
             }
         }
@@ -64,7 +57,7 @@ final class ToolbarPlacementTests: XCTestCase {
             for width in [ToolbarLayout.mark.width, 248, 340, 500] {
                 let frame = ToolbarGeometry.frame(size: NSSize(width: width, height: ToolbarLayout.rowHeight), position: position, screen: screen)
                 XCTAssertEqual(ToolbarGeometry.growsLeftward(position), leftward)
-                XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: .bottom), centre, "\(centre) at \(width)")
+                XCTAssertEqual(ToolbarGeometry.restingCentre(inWindow: frame, anchor: .bottom, isFloating: true), centre, "\(centre) at \(width)")
             }
         }
     }

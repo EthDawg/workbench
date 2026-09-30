@@ -6,7 +6,7 @@ import AppKit
     private let accent: NSColor
     public init(accent: NSColor = .controlAccentColor) { self.accent = accent }
 
-    public func show(frame: NSRect, screen: NSRect, candidate: ToolbarPosition, below owner: NSWindow) {
+    public func show(landing: NSRect?, screen: NSRect, below owner: NSWindow) {
         guard owner.isVisible else { hide(); return }
         if panel == nil {
             let panel = GuidePanel(contentRect: screen, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -17,7 +17,6 @@ import AppKit
             self.panel = panel
         }
         guard let panel else { return }
-        let landing = ToolbarGeometry.isAttached(candidate) ? ToolbarGeometry.frame(size: frame.size, position: candidate, screen: screen) : nil
         let view = ToolbarSnapGuideView(frame: NSRect(origin: .zero, size: screen.size))
         view.landing = landing?.offsetBy(dx: -screen.minX, dy: -screen.minY)
         view.accent = accent

@@ -12,6 +12,35 @@ enum WorkbenchControlChecks {
             guard condition else { throw VoiceError.message("Contextual controls: " + name) }
             count += 1
         }
+        do {
+            let suite = "Workbench.ToolbarOrientationChecks." + UUID().uuidString
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let controls = CaptureHUDControls(defaults: defaults)
+            controls.activateToolbar(); controls.focusToolbar()
+            controls.reportSize(NSSize(width: 252, height: 40), tier: .revealed, anchor: .bottom, isResult: false,
+                                accessoryAvailable: true, accessoryShown: true)
+            controls.rowAnchor = .left
+            try check(controls.preferredToolbarSize == NSSize(width: 40, height: 252), "orientation seeds the correct column before a new size report")
+            controls.reportSize(NSSize(width: 400, height: 40), tier: .revealed, anchor: .bottom, isResult: false,
+                                accessoryAvailable: true, accessoryShown: true)
+            try check(controls.preferredToolbarSize == NSSize(width: 40, height: 252), "a delayed horizontal measurement cannot widen a vertical column")
+            let small = NSRect(x: 0, y: 0, width: 800, height: 250)
+            let landing = controls.size(for: .left, screen: small)
+            try check(landing == NSSize(width: 40, height: 212) && !controls.fittedRow(for: .left, screen: small).accessoryFits,
+                      "guide and release both leave Review in More when the destination edge is short")
+            controls.reportSize(landing, tier: .revealed, anchor: .left, isResult: false, accessoryAvailable: true, accessoryShown: false)
+            try check(controls.size(for: .left, screen: small) == landing, "committing the fitted column keeps the preview size")
+            try check(controls.size(for: .bottom, screen: small) == NSSize(width: 252, height: 40), "returning to a long edge restores the contextual accessory")
+            controls.suspendToolbar()
+            controls.resultPending = { true }; controls.activateToolbar(); controls.toolbar.send(.pointerEntered)
+            controls.reportSize(NSSize(width: 320, height: 100), tier: .revealed, anchor: .left, isResult: true,
+                                accessoryAvailable: false, accessoryShown: false)
+            try check(controls.preferredToolbarSize == NSSize(width: 320, height: 100), "side placement keeps a result card horizontal")
+            controls.resultEnded()
+            try check(controls.preferredToolbarSize == landing, "result measurement never overwrites the toolbar column")
+            controls.suspendToolbar()
+        }
         try check(WorkbenchControlTool.allCases.map(\.title) == ["Dictate", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "Timer"], "panel rows follow the moments: Dictate, Read, Snap, Snap & Talk, Draw, Present, Persona, Timer")
         try check(WorkbenchControlTool.allCases.contains(.snap) && WorkbenchControlTool(mode: .snap) == .snap && WorkbenchControlTool.timer.mode == nil, "Snap is a real row sharing the toolbar's Snap mode; Timer is a row without a mode")
         try check(VoicePreferences().shortcut(8).enabled == false, "the Snap shortcut (voice.8) starts off")

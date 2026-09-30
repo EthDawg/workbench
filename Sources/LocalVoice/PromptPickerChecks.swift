@@ -1,4 +1,6 @@
 import AppKit
+import ToolbarCore
+import ToolbarKit
 
 /// The Saved Prompts picker without a window (#159): its frozen list, width
 /// and placement, keyboard model, and what a choice does. Copy prompt runs on an
@@ -55,6 +57,13 @@ enum PromptPickerChecks {
         try check(PromptPickerLayout.width(in: wide) == 420 && PromptPickerLayout.width(in: narrow) == 328,
                   "the picker is 420 points wide at most and never wider than the display less 16 points each side")
         let content = NSSize(width: 420, height: 300)
+        for side in [ToolbarAnchor.left, .right] {
+            let toolbar = ToolbarGeometry.frame(size: NSSize(width: 40, height: 172), position: .docked(side), screen: narrow)
+            let width = PromptPickerLayout.width(in: narrow, beside: toolbar, anchor: side)
+            let frame = PromptPickerLayout.frame(content: NSSize(width: width, height: 300), anchor: toolbar, visible: narrow, above: true, toolbarAnchor: side)
+            try check(width == 290 && frame.width == width && !frame.intersects(toolbar) && narrow.contains(frame),
+                      "a narrow side picker measures its content to the inboard lane before it opens")
+        }
         for anchorX in [wide.minX, wide.maxX - 64] {
             let anchor = NSRect(x: anchorX, y: 40, width: 64, height: 30)
             let frame = PromptPickerLayout.frame(content: content, anchor: anchor, visible: wide, above: true)

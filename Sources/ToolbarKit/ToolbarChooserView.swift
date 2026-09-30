@@ -56,13 +56,15 @@ public struct ToolbarChooserView: View {
     let accent: Color
     /// The height the display leaves; the list scrolls only when it is shorter than the list.
     let available: CGFloat?
+    let availableWidth: CGFloat?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .body) private var systemScale: CGFloat = 1
     /// VoiceOver's cursor follows the keyboard highlight, so Up, Down and typing are heard.
     @AccessibilityFocusState private var voiceOverRow: ToolbarMode?
 
-    public init(model: ToolbarChooserModel, textScale: CGFloat = 1, accent: Color = .accentColor, available: CGFloat? = nil) {
+    public init(model: ToolbarChooserModel, textScale: CGFloat = 1, accent: Color = .accentColor, available: CGFloat? = nil, availableWidth: CGFloat? = nil) {
         self.model = model; self.textScale = textScale; self.accent = accent; self.available = available
+        self.availableWidth = availableWidth
     }
     private var scale: CGFloat { textScale * systemScale }
 
@@ -79,7 +81,7 @@ public struct ToolbarChooserView: View {
                 }
             } else { list }
         }
-        .frame(width: ToolbarChooserLayout.width * scale)
+        .frame(width: min(ToolbarChooserLayout.width * scale, availableWidth ?? .infinity))
         .background {
             let shape = RoundedRectangle(cornerRadius: 12)
             if reduceTransparency { shape.fill(Color(nsColor: .windowBackgroundColor)) } else { shape.fill(.regularMaterial) }

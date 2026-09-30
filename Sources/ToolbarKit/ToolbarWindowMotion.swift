@@ -11,7 +11,7 @@ import ToolbarCore
     private var revision = 0
     public init() {}
 
-    public func move(_ window: NSWindow, to frame: NSRect, animated: Bool, anchor: ToolbarAnchor = .bottom) {
+    public func move(_ window: NSWindow, to frame: NSRect, animated: Bool, anchor: ToolbarAnchor = .bottom, isFloating: Bool = false) {
         timer?.invalidate(); timer = nil
         revision += 1
         let current = revision
@@ -22,8 +22,8 @@ import ToolbarCore
             return
         }
         let start = window.frame, began = CACurrentMediaTime()
-        let destination = ToolbarGeometry.restingCentre(inWindow: frame, anchor: anchor)
-        var origin = ToolbarGeometry.restingCentre(inWindow: start, anchor: anchor)
+        let destination = ToolbarGeometry.restingCentre(inWindow: frame, anchor: anchor, isFloating: isFloating)
+        var origin = ToolbarGeometry.restingCentre(inWindow: start, anchor: anchor, isFloating: isFloating)
         // AppKit rounds native frames. Do not feed that half-point error back into the
         // next resize: an unchanged reference stays exact through repeated reversals.
         if abs(origin.x - destination.x) <= 1 { origin.x = destination.x }
@@ -37,9 +37,8 @@ import ToolbarCore
                 func blend(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * eased }
                 let width = blend(start.width, frame.width).rounded(), height = blend(start.height, frame.height).rounded()
                 let reference = CGPoint(x: blend(origin.x, destination.x), y: blend(origin.y, destination.y))
-                let x = anchor.growsFromCentre ? reference.x - width / 2
-                    : anchor.growsLeftward ? reference.x + ToolbarLayout.launcherInset - width : reference.x - ToolbarLayout.launcherInset
-                let next = NSRect(x: x.rounded(), y: (reference.y - height / 2).rounded(), width: width, height: height)
+                var next = ToolbarGeometry.frame(size: NSSize(width: width, height: height), reference: reference, anchor: anchor, isFloating: isFloating)
+                next.origin = NSPoint(x: next.minX.rounded(), y: next.minY.rounded())
                 window.setFrame(progress == 1 ? frame : next, display: true, animate: false)
                 guard self.revision == current else { tick.invalidate(); return }
                 if progress == 1 {

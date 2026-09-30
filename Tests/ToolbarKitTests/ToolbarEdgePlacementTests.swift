@@ -11,11 +11,16 @@ final class ToolbarEdgePlacementTests: XCTestCase {
         for position in [ToolbarPosition.docked(.top), .docked(.bottom),
                          .free(.init(releasedAt: CGPoint(x: screen.midX + 100, y: screen.midY), on: screen))] {
             let frames = sizes.map { ToolbarGeometry.frame(size: $0, position: position, screen: screen) }
-            for frame in frames { XCTAssertEqual(frame.midX, frames[0].midX); XCTAssertEqual(frame.midY, frames[0].midY) }
+            for frame in frames {
+                XCTAssertEqual(frame.midX, frames[0].midX)
+                if case .free = position { XCTAssertEqual(frame.midY, frames[0].midY) }
+                else if position == .docked(.top) { XCTAssertEqual(frame.maxY, frames[0].maxY) }
+                else { XCTAssertEqual(frame.minY, frames[0].minY) }
+            }
             XCTAssertEqual(frames[0].minX - frames[1].minX, frames[1].maxX - frames[0].maxX)
         }
         for anchor in [ToolbarAnchor.topLeft, .left, .bottomLeft, .topRight, .right, .bottomRight] {
-            let frames = sizes.map { ToolbarGeometry.frame(size: $0, position: .docked(anchor), screen: screen) }
+            let frames = sizes.map { ToolbarGeometry.frame(size: ToolbarLayout.oriented($0, for: anchor), position: .docked(anchor), screen: screen) }
             for frame in frames {
                 XCTAssertEqual(anchor.growsLeftward ? frame.maxX : frame.minX,
                                anchor.growsLeftward ? frames[0].maxX : frames[0].minX)
@@ -53,7 +58,7 @@ final class ToolbarEdgePlacementTests: XCTestCase {
 
     func testEdgeThresholdMidpointsAndCornersUseWindowBounds() {
         let centre = ToolbarEdgeAttachment(edge: .bottom, fraction: 0.3).centre(on: screen)
-        let slot = ToolbarGeometry.slot(around: centre)
+        let slot = NSRect(x: centre.x - 24, y: centre.y - 14, width: 48, height: 28)
         XCTAssertTrue(ToolbarGeometry.isAttached(ToolbarGeometry.releasedPosition(frame: slot.offsetBy(dx: 0, dy: 16), screen: screen)))
         XCTAssertFalse(ToolbarGeometry.isAttached(ToolbarGeometry.releasedPosition(frame: slot.offsetBy(dx: 0, dy: 16.1), screen: screen)))
         for anchor in ToolbarAnchor.allCases {

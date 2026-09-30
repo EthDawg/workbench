@@ -17,14 +17,21 @@ public struct ToolbarEdgeAttachment: Equatable, Sendable {
         displayID.flatMap { displays[$0] } ?? fallback
     }
     public func centre(on screen: NSRect) -> CGPoint {
-        let low = ToolbarGeometry.launcherCentre(.docked(.bottomLeft), screen: screen)
-        let high = ToolbarGeometry.launcherCentre(.docked(.topRight), screen: screen)
+        let (low, high) = limits(on: screen)
         switch edge {
         case .top: return CGPoint(x: low.x + (high.x - low.x) * fraction, y: high.y)
         case .bottom: return CGPoint(x: low.x + (high.x - low.x) * fraction, y: low.y)
         case .left: return CGPoint(x: low.x, y: low.y + (high.y - low.y) * fraction)
         case .right: return CGPoint(x: high.x, y: low.y + (high.y - low.y) * fraction)
         }
+    }
+    /// Tangential limits use this edge's resting shape, including the taller side handle.
+    func limits(on screen: NSRect) -> (CGPoint, CGPoint) {
+        let vertical = edge == .left || edge == .right
+        let size = ToolbarLayout.mark(for: vertical ? .left : .bottom)
+        let x = min(screen.width / 2, ToolbarLayout.dockInset + size.width / 2)
+        let y = min(screen.height / 2, ToolbarLayout.dockInset + size.height / 2)
+        return (CGPoint(x: screen.minX + x, y: screen.minY + y), CGPoint(x: screen.maxX - x, y: screen.maxY - y))
     }
 }
 
@@ -51,6 +58,7 @@ public extension ToolbarGeometry {
         if let vertical, abs(centre.x - screen.midX) <= snapDistance { return .docked(vertical == .top ? .top : .bottom) }
         if let horizontal, abs(centre.y - screen.midY) <= snapDistance { return .docked(horizontal == .left ? .left : .right) }
         if let edge = vertical ?? horizontal {
+            let (low, high) = ToolbarEdgeAttachment(edge: edge, fraction: 0.5).limits(on: screen)
             let fraction = vertical != nil ? (centre.x - low.x) / max(1, high.x - low.x)
                                           : (centre.y - low.y) / max(1, high.y - low.y)
             let attachment = ToolbarEdgeAttachment(edge: edge, fraction: fraction)

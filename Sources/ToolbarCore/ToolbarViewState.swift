@@ -100,13 +100,12 @@ public enum ToolbarAnchor: String, CaseIterable, Sendable {
         case .bottomRight: return "Bottom right"
         }
     }
-    /// The revealed row grows inward from the docked edge, so a dock on the
-    /// right grows leftward and the resting element keeps its place on screen.
-    /// This is the whole of the side-dock geometry; the old build special-cased
-    /// a tall pill and a taller hover frame to keep a decorative capsule fully visible.
+    /// Side edges use an upright column; corners retain a horizontal row.
+    public var isVertical: Bool { self == .left || self == .right }
+    /// Right attachments keep their outside edge fixed as the content opens inward.
     public var growsLeftward: Bool { self == .topRight || self == .right || self == .bottomRight }
     /// Top and bottom open equally on either side of the resting mark.
-    public var growsFromCentre: Bool { self == .top || self == .bottom }
+    public var growsFromCentre: Bool { self == .top || self == .bottom || isVertical }
 
     public var slug: String {
         switch self {
@@ -189,6 +188,8 @@ public struct ToolbarViewState: Equatable, Sendable {
     public var name: String
     public var tier: ToolbarTier
     public var anchor: ToolbarAnchor
+    /// An unattached toolbar expands around both axes of its resting centre.
+    public var isFloating = false
     public var mode: ToolbarMode
     /// The command's full words, for its hint and accessible name. Active work replaces
     /// the start command rather than adding a finish button beside it.
@@ -218,7 +219,7 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// What the compact rest shows: its indicator and the words for it.
     public var status: ToolbarStatus
 
-    public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom,
+    public init(name: String, tier: ToolbarTier, anchor: ToolbarAnchor = .bottom, isFloating: Bool = false,
                 mode: ToolbarMode = .dictate, actionTitle: String? = nil, actionSymbol: String? = nil,
                 isActionEnabled: Bool = true, actionHint: String? = nil,
                 choices: [ToolbarToolChoice]? = nil, isBusy: Bool = false,
@@ -227,6 +228,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.name = name
         self.tier = tier
         self.anchor = anchor
+        self.isFloating = isFloating
         self.mode = mode
         self.actionTitle = actionTitle ?? mode.title
         self.actionSymbol = actionSymbol ?? ToolbarOperation.start(mode).symbol

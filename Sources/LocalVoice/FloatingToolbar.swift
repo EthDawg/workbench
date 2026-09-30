@@ -144,7 +144,7 @@ struct FloatingToolbar: View {
         let action = ToolbarNextAction.resolve(live)
         let hint = [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
-            anchor: controls.rowAnchor,
+            anchor: controls.rowAnchor, isFloating: controls.isFloating,
             mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol, isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: ToolbarNextAction.choices(for: live, key: key),
@@ -188,15 +188,19 @@ struct FloatingToolbar: View {
             // The host sizes its window from these reports (#152). A preference written
             // from a background GeometryReader never reached onPreferenceChange once the
             // row held conditional content, so every window kept its seed size.
-            .onGeometryChange(for: ToolbarMeasurement.self) { ToolbarMeasurement(tier: state.tier, size: $0.size) } action: { measurement in
-                controls.reportSize(measurement.size, tier: measurement.tier)
+            .onGeometryChange(for: ToolbarMeasurement.self) {
+                ToolbarMeasurement(tier: state.tier, anchor: state.anchor, isResult: controls.revealsResult,
+                                   accessoryAvailable: state.accessory != nil, accessoryShown: state.shownAccessory != nil, size: $0.size)
+            } action: { measurement in
+                controls.reportSize(measurement.size, tier: measurement.tier, anchor: measurement.anchor, isResult: measurement.isResult,
+                                    accessoryAvailable: measurement.accessoryAvailable, accessoryShown: measurement.accessoryShown)
             }
             // Each change of the next action is a new generation, so a press latched on the
             // old one cannot act on the new one (#134).
             .onChange(of: operation, initial: true) { _, operation in controls.pressGate.shown(operation) }
             .onChange(of: state.choices) { _, choices in controls.chooserChoicesChanged?(choices) }
             .onChange(of: state.status, initial: true) { previous, status in controls.statusChanged(from: previous, to: status) }
-            .pinnedToDock(state.anchor)
+            .pinnedToDock(state.anchor, isFloating: state.isFloating)
             .tint(Workbench.accent).workbenchTheme()
     }
 
@@ -465,6 +469,10 @@ struct FloatingToolbar: View {
 
 private struct ToolbarMeasurement: Equatable {
     var tier: ToolbarTier
+    var anchor: ToolbarAnchor
+    var isResult: Bool
+    var accessoryAvailable: Bool
+    var accessoryShown: Bool
     var size: CGSize
 }
 

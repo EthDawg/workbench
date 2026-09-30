@@ -37,7 +37,8 @@ every app with only the microphone. The choice persists across relaunch under
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle,
 recording, playing, paused, processing, drawing, presenting, a persona, a timer,
 a Snap & Talk session, or a result waiting for the person. Its ordinary rest is a
-quiet 48 × 8 handle in a fixed 48 × 28 target. It carries no selected-tool or
+quiet 48 × 8 handle in a fixed 48 × 28 target. Left and right edges turn this into
+an 8 × 48 handle in a 28 × 48 target, with upright status glyphs. It carries no selected-tool or
 live-work icon: at this size the symbol adds little useful information, and one
 symbol cannot describe concurrent work. Hover or click reveals the remembered
 tool and its action. Recording, playback, processing, paused work and results
@@ -137,14 +138,18 @@ show, so its lesson is not spent and the attempt gets its ordinary no-speech cue
 narration starts; and fades it out in 160 ms, or at once with Reduce Motion.
 
 Revealed, the toolbar is a black 40-point capsule: `[tool ▾] [action icon]
-[accessory icon] [⋯]`, reversed on a right-hand anchor. At standard text its
+[accessory icon] [⋯]`, reversed at right-hand corners. Side edges stack the same
+controls vertically, launcher first, with upright symbols and the same reading
+and keyboard order on both sides. At standard text its
 width is 132 points, or 172 with an accessory. The launcher has a 48-point target,
 followed by 4-point gaps, 36-point primary and accessory targets,
 a 32-point More target and 8 points of padding at the far end. The action icons
 are white; hover adds a grey inset background without moving any target. Larger
 text scales the controls. When the accessory does not fit the display less 24
-points, it waits in More. At top, bottom and free positions, the row opens equally around the compact mark.
-At side and corner docks, the launcher stays at the inward growth edge. Full command names stay in the hint and
+points along the row's axis, it waits in More. Top and bottom rows grow equally
+left and right; side columns grow equally up and down. Their outside edge stays
+fixed, eight points inside the usable screen. Corners stay horizontal and grow
+inward along both axes; free rows expand around both axes of their centre. Full command names stay in the hint and
 accessible name, including capture counts and the exact Stop, Pause or Resume.
 
 The next action is the label for where you are in the journey, from one pure
@@ -168,7 +173,8 @@ session. A mouse-latched hold drawing, another drawing tool, or an unprepared
 Snap & Talk session omits a key that would perform a different action. Disabled
 and failed bindings are omitted. There is no competing whole-row tooltip. Hints
 share one rail centred on the entire row, above it when there is room and below
-at the top of the screen. Space for the longest hint determines the rail's
+at the top of the screen. Side columns use an inboard rail beside the whole column;
+its vertical centre and edge nearest the toolbar stay fixed. Space for the longest hint determines the rail's
 position, so moving between short and long hints cannot shift its centre or
 change sides. The compact mark has no separate native tooltip. Hints are
 click-through and close on actions, moves, resizing and collapse.
@@ -290,8 +296,11 @@ the frame changes in one 160 ms ease-out animation with no bounce, and the side
 the row grows toward never changes during an interaction. The visible capsule,
 mask and content read the host's current layout bounds during that animation;
 there is no second animation clock or asynchronous size observer. The quiet
-handle grows into the row around its centre at top, bottom and free positions;
-side and corner positions keep their inward edge. White glyphs fade in together
+handle follows its edge: horizontal at top, bottom, corners and free positions,
+vertical at the sides. Its orientation stays fixed during dragging; the guide
+previews the destination shape and accessory fit, committed on release. A turn
+uses the same frame clock, and recording signals stay within the changing target.
+White glyphs fade in together
 during the final fifth, after each target fits, and disappear before the closing
 edge reaches them. Controls accept clicks only when the row has reached its full
 size. Hints stay hidden through resizing, collapse and dragging.
@@ -388,11 +397,14 @@ an edge, the toolbar keeps its display identity and position as a fraction of th
 edge, so a display resolution change preserves the placement. A release in the interior stays free.
 Dragging chooses the display under the pointer.
 
-Top, bottom and free positions expand evenly around the resting mark's centre.
-Side and corner positions grow inward. The final frame stays on the usable
-screen; a position close to a corner may need horizontal clamping. Named docks
-keep a sixteen-point inset for the expanded standard row. The compact target is
-48 × 28, with a crisp 48 × 8 idle capsule and transparent space around it. The
+Top and bottom rows expand equally left and right; left and right columns expand
+equally up and down. Attached outer edges keep an eight-point inset at rest and
+revealed. Corners keep a horizontal row that grows inward; free rows remain
+horizontal and expand around their centre. The final frame stays on the usable
+screen; near a corner it may need clamping along its edge. The compact target is
+48 × 28 horizontally or 28 × 48 vertically, with a crisp eight-point idle capsule
+and almost transparent hit padding. The chooser, Saved Prompts, Position panel
+and native options open inboard of a side column, leaving its actions reachable. The
 tools window has no native shadow. A recording, result or cue uses this same
 position. Position floating toolbar… on Dictate opens the existing placement
 control beside it.
@@ -537,8 +549,9 @@ The core cannot be right if the host feeds it fiction.
   pointer reconciliation may reveal at the new geometry; an old dwell cannot
   shorten a later entry. If AppKit misses an exit, the next real entry starts a
   fresh dwell rather than leaving the pill unresponsive.
-- **One reference point, one growth policy.** `ToolbarGeometry` centres top,
-  bottom and free rows on the resting mark. Side and corner rows grow inward.
+- **One reference point, one growth policy.** `ToolbarGeometry` centres expansion
+  along an edge and pins the outside edge. Side attachments are vertical; corners
+  are horizontal and grow inward. Free rows expand around both axes of their centre.
   SwiftUI alignment, clipping, native window motion, hints and dragging use the
   same policy. A mode change sizes around that reference, and a free position
   remains free. Edge fractions belong to the placement owner.
@@ -547,7 +560,10 @@ The core cannot be right if the host feeds it fiction.
   (`layoutSubtreeIfNeeded`), so the report for the tier, mode and labels about to
   show arrives first. A reveal, a count crossing 9→10 or a mode switch goes
   straight to the right frame, and a drag keeps its window until release. At rest
-  the window is the compact mark's fixed 48 × 28; at full size it is the measured row. Do not
+  the window is the compact mark's 48 × 28 or 28 × 48 target; at full size it is the measured row.
+  Reports carry their orientation and content kind, so stale rows and horizontal
+  result cards cannot overwrite each other's measurements. Preview and release
+  share accessory fitting for the destination axis. Do not
   measure with a preference written from a background
   `GeometryReader`: once the row held conditional content, that report never
   arrived, and every window kept a seed size (#152).

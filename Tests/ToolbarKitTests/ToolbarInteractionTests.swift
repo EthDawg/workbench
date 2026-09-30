@@ -215,17 +215,19 @@ final class ToolbarInteractionTests: XCTestCase {
         for anchor in ToolbarAnchor.allCases {
             let state = ToolbarViewState(name: "clear-rest", tier: .resting, anchor: anchor)
             let view = NSHostingView(rootView: ToolbarRow(state: state))
-            view.frame = NSRect(origin: .zero, size: ToolbarLayout.mark); view.layoutSubtreeIfNeeded()
+            view.frame = NSRect(origin: .zero, size: ToolbarLayout.mark(for: anchor)); view.layoutSubtreeIfNeeded()
             let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
             view.cacheDisplay(in: view.bounds, to: bitmap)
-            let scale = CGFloat(bitmap.pixelsHigh) / ToolbarLayout.mark.height
+            let scale = CGFloat(bitmap.pixelsHigh) / view.bounds.height
             var outsideAlpha: CGFloat = 0
-            for y in 0..<bitmap.pixelsHigh where abs((CGFloat(y) + 0.5) / scale - 14) > 5 {
-                for x in 0..<bitmap.pixelsWide { outsideAlpha = max(outsideAlpha, bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) }
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide where abs((CGFloat(anchor.isVertical ? x : y) + 0.5) / scale - 14) > 5 {
+                    outsideAlpha = max(outsideAlpha, bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+                }
             }
             XCTAssertLessThanOrEqual(outsideAlpha, 1.0 / 255, "\(anchor): the clear target leaked paint around the 8-point capsule")
             let target = try XCTUnwrap(descendants(view).first { $0.accessibilityIdentifier() == "toolbar.rest" })
-            XCTAssertEqual(target.bounds.size, ToolbarLayout.mark)
+            XCTAssertEqual(target.bounds.size, ToolbarLayout.mark(for: anchor))
         }
     }
 
@@ -261,7 +263,7 @@ final class ToolbarInteractionTests: XCTestCase {
             let state = ToolbarViewState(name: "opening", tier: .revealed, anchor: anchor, mode: .snapAndTalk,
                 accessory: .review, captureChoices: ToolbarCaptureKind.allCases)
             let full = NSHostingView(rootView: ToolbarRow(state: state)).fittingSize
-            for (size, ready) in [(ToolbarLayout.mark, false), (NSSize(width: 130, height: 36), false), (full, true)] {
+            for (size, ready) in [(ToolbarLayout.mark(for: anchor), false), (ToolbarLayout.oriented(NSSize(width: 130, height: 36), for: anchor), false), (full, true)] {
                 var captures = 0, popups = 0
                 let row = ToolbarRow(state: state, openAccessory: { _ in popups += 1 },
                     pressCapture: { _ in { captures += 1 } }, openChooser: { _ in popups += 1 },

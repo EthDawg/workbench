@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ToolbarCore
 
 /// The capsule's native target. Hover changes its ink, never its size or hit region.
 /// The toolbar's outer tracking view remains the only source of reducer crossings.
@@ -89,6 +90,7 @@ class ToolbarIconButton: NSButton {
 /// Its panel ignores every mouse event and cannot become key. The command remains a button;
 /// there is deliberately no shortcut editor here.
 @MainActor final class ToolbarHintController {
+    var anchor: ToolbarAnchor = .bottom
     private(set) var panel: NSPanel?
     private(set) weak var source: ToolbarIconButton?
     private var pending: DispatchWorkItem?
@@ -173,7 +175,7 @@ class ToolbarIconButton: NSButton {
         let label = ToolbarHintLabel(text: button.hint, size: max(11, button.symbolSize * 0.75))
         let host = NSHostingView(rootView: label)
         let size = host.fittingSize
-        let frame = Self.frame(size: size, target: parent.frame, visible: visible)
+        let frame = Self.frame(size: size, target: parent.frame, visible: visible, anchor: anchor)
         if shownText == button.hint, panel?.isVisible == true, panel?.frame == frame { return }
         if observedWindow !== parent {
             observers.forEach(NotificationCenter.default.removeObserver)
@@ -219,10 +221,17 @@ class ToolbarIconButton: NSButton {
 
     /// All buttons share the row's rail. Reserve space for the longest hint before
     /// clamping its centre and choosing its side, so short/long text cannot move it.
-    static func frame(size: NSSize, target: NSRect, visible: NSRect) -> NSRect {
+    static func frame(size: NSSize, target: NSRect, visible: NSRect, anchor: ToolbarAnchor = .bottom) -> NSRect {
         let inset: CGFloat = 8, gap: CGFloat = 8
         let width = min(size.width, max(1, visible.width - 2 * inset))
         let height = min(size.height, max(1, visible.height - 2 * inset))
+        if anchor.isVertical {
+            var frame = ToolbarGeometry.sidePanelFrame(size: NSSize(width: width, height: height), toolbar: target, anchor: anchor, visible: visible)
+            let railHeight = min(max(height, 90), max(1, visible.height - 2 * inset))
+            let centre = min(max(target.midY, visible.minY + inset + railHeight / 2), visible.maxY - inset - railHeight / 2)
+            frame.origin.y = centre - frame.height / 2
+            return frame
+        }
         let railWidth = min(324, max(1, visible.width - 2 * inset))
         let centre = min(max(target.midX, visible.minX + inset + railWidth / 2), visible.maxX - inset - railWidth / 2)
         let above = target.maxY + gap + max(height, 90) <= visible.maxY - inset

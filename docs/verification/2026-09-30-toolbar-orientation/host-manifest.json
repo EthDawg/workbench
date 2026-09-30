@@ -1,0 +1,280 @@
+{
+  "entries" : [
+
+  ],
+  "flags" : [
+
+  ],
+  "renders" : [
+    {
+      "file" : "toolbar-dictate-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-dictate-revealed-light.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-read-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-read-revealed-light.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-snap-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-snap-revealed-light.png",
+      "height" : 80,
+      "width" : 424
+    },
+    {
+      "file" : "toolbar-snapAndTalk-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-snapAndTalk-revealed-light.png",
+      "height" : 80,
+      "width" : 504
+    },
+    {
+      "file" : "toolbar-draw-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-draw-revealed-light.png",
+      "height" : 80,
+      "width" : 344
+    },
+    {
+      "file" : "toolbar-present-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-present-revealed-light.png",
+      "height" : 80,
+      "width" : 344
+    },
+    {
+      "file" : "toolbar-persona-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-persona-revealed-light.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-dictate-to-present-revealed-light.png",
+      "height" : 80,
+      "width" : 344
+    },
+    {
+      "file" : "toolbar-present-to-dictate-revealed-light.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-snap-left-revealed-light.png",
+      "height" : 424,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snap-left-resting-light.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-snapAndTalk-left-revealed-light.png",
+      "height" : 504,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snapAndTalk-left-resting-light.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-snap-right-revealed-light.png",
+      "height" : 424,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snap-right-resting-light.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-snapAndTalk-right-revealed-light.png",
+      "height" : 504,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snapAndTalk-right-resting-light.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-present-right-dock-revealed-light.png",
+      "height" : 344,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-present-right-dock-resting-light.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-meeting-recording-resting-light.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-dictate-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-dictate-revealed-dark.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-read-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-read-revealed-dark.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-snap-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-snap-revealed-dark.png",
+      "height" : 80,
+      "width" : 424
+    },
+    {
+      "file" : "toolbar-snapAndTalk-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-snapAndTalk-revealed-dark.png",
+      "height" : 80,
+      "width" : 504
+    },
+    {
+      "file" : "toolbar-draw-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-draw-revealed-dark.png",
+      "height" : 80,
+      "width" : 344
+    },
+    {
+      "file" : "toolbar-present-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-present-revealed-dark.png",
+      "height" : 80,
+      "width" : 344
+    },
+    {
+      "file" : "toolbar-persona-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    },
+    {
+      "file" : "toolbar-persona-revealed-dark.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-dictate-to-present-revealed-dark.png",
+      "height" : 80,
+      "width" : 344
+    },
+    {
+      "file" : "toolbar-present-to-dictate-revealed-dark.png",
+      "height" : 80,
+      "width" : 264
+    },
+    {
+      "file" : "toolbar-snap-left-revealed-dark.png",
+      "height" : 424,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snap-left-resting-dark.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-snapAndTalk-left-revealed-dark.png",
+      "height" : 504,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snapAndTalk-left-resting-dark.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-snap-right-revealed-dark.png",
+      "height" : 424,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snap-right-resting-dark.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-snapAndTalk-right-revealed-dark.png",
+      "height" : 504,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-snapAndTalk-right-resting-dark.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-present-right-dock-revealed-dark.png",
+      "height" : 344,
+      "width" : 80
+    },
+    {
+      "file" : "toolbar-present-right-dock-resting-dark.png",
+      "height" : 96,
+      "width" : 56
+    },
+    {
+      "file" : "toolbar-meeting-recording-resting-dark.png",
+      "height" : 56,
+      "width" : 96
+    }
+  ]
+}

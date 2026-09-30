@@ -1,6 +1,8 @@
 import AppKit
 import StageKit
 import SwiftUI
+import ToolbarCore
+import ToolbarKit
 
 /// Position… (#163): the toolbar's named docks and a reset in one compact control, in place
 /// of an eight-item submenu. Dragging is the everyday way to move the toolbar; this is the
@@ -141,6 +143,7 @@ enum ToolbarPositionClose: Equatable {
     var isShown: Bool { panel != nil }
 
     func show(beside toolbar: NSRect, level: NSWindow.Level, current: FloatingControlAnchor?,
+              anchor: ToolbarAnchor = .bottom,
               choose: @escaping (FloatingControlAnchor) -> Void, reset: @escaping () -> Void,
               closed: @escaping (ToolbarPositionClose) -> Void = { _ in }) {
         close()
@@ -159,7 +162,7 @@ enum ToolbarPositionClose: Equatable {
         let size = hosting.fittingSize
         hosting.frame = NSRect(origin: .zero, size: size)
         panel.contentView = hosting
-        panel.setFrame(Self.frame(size: size, beside: toolbar), display: true)
+        panel.setFrame(Self.frame(size: size, beside: toolbar, anchor: anchor), display: true)
         panel.delegate = self
         self.panel = panel; self.closed = closed
         panel.makeKeyAndOrderFront(nil)
@@ -168,8 +171,10 @@ enum ToolbarPositionClose: Equatable {
 
     /// Above a toolbar in the lower half of its display, otherwise below it, kept on screen.
     static func frame(size: NSSize, beside toolbar: NSRect,
+                      anchor: ToolbarAnchor = .bottom,
                       screens: [NSRect] = NSScreen.screens.map(\.visibleFrame)) -> NSRect {
         let screen = FloatingControlPlacement.screen(for: toolbar, screens: screens, preferred: screens.first ?? toolbar)
+        if anchor.isVertical { return ToolbarGeometry.sidePanelFrame(size: size, toolbar: toolbar, anchor: anchor, visible: screen) }
         let y = toolbar.midY < screen.midY ? toolbar.maxY + 8 : toolbar.minY - 8 - size.height
         return FloatingControlGeometry.clamp(NSRect(origin: NSPoint(x: toolbar.minX, y: y), size: size), to: screen, inset: 0)
     }

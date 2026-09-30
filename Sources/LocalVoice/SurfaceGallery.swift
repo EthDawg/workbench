@@ -1708,7 +1708,18 @@ enum SurfaceGallery {
                                 preferred: [preferred.width, preferred.height], measured: controls.hasMeasured(tier), twinMeasured: twinControls.hasMeasured(tier),
                                 problems: problems, file: file, settled: controls.toolbar.state.tier == tier))
         }
-        // A right-hand dock reverses the row around the same launcher centre (#134).
+        // Side docks use upright columns and retain direct capture dispatch.
+        for side in [FloatingControlAnchor.left, .right] {
+            controls.choosePosition?(side); twinControls.rowAnchor = ToolbarAnchor(rawValue: side.rawValue)!
+            for mode in [ToolbarMode.snap, .snapAndTalk] {
+                model.toolbarMode = mode
+                controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
+                try record("\(mode.rawValue)-\(side.rawValue)-revealed", "\(mode.title), revealed at \(side.title)", tier: .revealed)
+                controls.toolbar.send(.holdEnded(.keyboard)); twinControls.toolbar.send(.holdEnded(.keyboard))
+                try record("\(mode.rawValue)-\(side.rawValue)-resting", "\(mode.title), at rest at \(side.title)", tier: .resting)
+            }
+        }
+        controls.toolbar.send(.holdBegan(.keyboard)); twinControls.toolbar.send(.holdBegan(.keyboard))
         model.toolbarMode = .present
         controls.choosePosition?(.right); twinControls.rowAnchor = .right
         try record("present-right-dock-revealed", "Present, revealed at the right-hand dock", tier: .revealed)
@@ -1808,7 +1819,7 @@ enum SurfaceGallery {
             waitForToolbar(host, controls, tier: tier, content: host.window?.contentView ?? NSView(), stillFor: 0.5)
         }
         func launcher() -> CGPoint {
-            ToolbarGeometry.restingCentre(inWindow: host.window?.frame ?? .zero, anchor: controls.rowAnchor)
+            ToolbarGeometry.restingCentre(inWindow: host.window?.frame ?? .zero, anchor: controls.rowAnchor, isFloating: controls.isFloating)
         }
         func expect(_ title: String, _ problems: [String?]) { checks.append(.init(title: title, problems: problems.compactMap { $0 })) }
         /// What a failing step saw, so a failure on a runner can be read from its log alone: the
@@ -1834,8 +1845,8 @@ enum SurfaceGallery {
         }
         func compact(_ what: String) -> String? {
             guard controls.toolbar.state.tier == .resting, let size = host.window?.frame.size else { return nil }
-            return abs(size.width - ToolbarLayout.mark.width) > 0.5 || abs(size.height - ToolbarLayout.mark.height) > 0.5
-                ? "\(what): the resting window is \(Self.points(size)), not the compact rest's 48 × 28 pt" : nil
+            return abs(size.width - controls.restingSize.width) > 0.5 || abs(size.height - controls.restingSize.height) > 0.5
+                ? "\(what): the resting window is \(Self.points(size)), not the compact rest's \(Self.points(controls.restingSize))" : nil
         }
         for (side, centre) in [("left", CGPoint(x: screen.minX + screen.width * 0.3, y: screen.minY + screen.height * 0.4)),
                                ("right", CGPoint(x: screen.minX + screen.width * 0.7, y: screen.minY + screen.height * 0.6))] {
@@ -1963,18 +1974,20 @@ enum SurfaceGallery {
         checkAccessoriesInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         checkKeyboardTraversalInTheHost(host: host, controls: controls, expect: expect, settle: settle)
         // The chooser opens beside the launcher and inside the display, at larger text too.
-        for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1)] {
+        for (anchor, scale) in [(ToolbarAnchor.bottomRight, CGFloat(1.35)), (.topLeft, 1.35), (.bottom, 1), (.left, 1), (.right, 1.35)] {
             let centre = ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen)
+            let toolbar = ToolbarGeometry.frame(size: ToolbarLayout.oriented(NSSize(width: 252, height: 40), for: anchor), position: .docked(anchor), screen: screen)
             let chooser = ToolbarChooserPanel(); chooser.offscreenForChecks = true
             chooser.show(from: ToolbarGeometry.slot(around: centre), view: nil, level: .statusBar, growsLeftward: anchor.growsLeftward,
-                         choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)), textScale: scale, choose: { _ in }, closed: { _ in })
+                         choices: ToolbarNextAction.choices(for: ToolbarLiveState(mode: .dictate)), anchor: anchor, toolbar: toolbar,
+                         textScale: scale, choose: { _ in }, closed: { _ in })
             let frame = chooser.shownFrame ?? .zero
             let natural = ToolbarChooserLayout.height(rows: ToolbarMode.allCases.count, scale: scale)
             expect("Chooser from the \(anchor.title.lowercased()) dock\(scale > 1 ? ", larger text" : "")", [
                 screen.contains(frame) ? nil : "the chooser at \(Int(frame.minX)), \(Int(frame.minY)), \(Self.points(frame.size)) leaves the display",
                 abs(frame.width - ToolbarChooserLayout.width * scale) > 1 && frame.width < screen.width - 16 ? "the chooser is \(Int(frame.width)) pt wide, not \(Int(ToolbarChooserLayout.width * scale))" : nil,
                 frame.height + 1 < natural && screen.height > natural + 200 ? "the chooser scrolls although all seven tools fit" : nil,
-                ToolbarGeometry.slot(around: centre).intersects(frame) ? "the chooser covers the launcher" : nil])
+                toolbar.intersects(frame) ? "the chooser covers the toolbar" : nil])
             chooser.close()
         }
         return checks
