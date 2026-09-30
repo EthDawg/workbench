@@ -176,7 +176,7 @@ ENTRY_POINTS = [
 # openHistory opens History with a door's starting view; openTranscript opens
 # a transcript on the Dictate page; importReading opens text on the Read page
 # through its import decision.
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading'}
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading', 'reviewUnresolvedDelivery'}
 # Calls in a menu action's own body that open a page (Inventory.menu_page): None takes
 # the route from the call's literal argument; otherwise the call always opens that page.
 MENU_ROUTES = {'navigate': None, 'onShowEditor': None, 'openHistory': 'history', 'showLibrary': 'library'}

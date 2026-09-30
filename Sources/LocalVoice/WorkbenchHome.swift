@@ -156,13 +156,12 @@ struct WorkbenchHome: View {
             Group {
                 switch model.page {
                 case "home": welcome
-                case "readback": titled("readback", summary: "Explain screens aloud and get a deck in seconds.", divided: true) {
+                case "readback":
                     ReadbackView(model: readback, onOpenPacks: { model.page = "packs" },
                     onChooseSnaps: { model.page = "snap" }, onReviewHandoff: {
                         guard let session = readback.sessionURL else { return }
                         handoffReview = HandoffReviewRequest(task: "Prepare a clear summary and follow-up from these screenshots and their paired narration.", evidenceURL: session)
                     })
-                }
                 case "snap": SnapWorkspaceView(model: snap, selectedIDs: Binding(get: {
                     Set(history.selected.filter { $0.kind == .snap }.map(\.id))
                 }, set: { ids in
@@ -695,7 +694,7 @@ struct WorkbenchHomePage: View {
                             model.clipboardReceipt.dismissHUD(); model.page = prompt ? "library" : "history"
                         },
                         showCue: { model.clipboardReceipt.revealHUD() },
-                        reviewUnresolved: { model.page = $0.isDraft ? "dictate" : "history" },
+                        reviewUnresolved: { _ in model.reviewUnresolvedDelivery() },
                         copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                 }
             }

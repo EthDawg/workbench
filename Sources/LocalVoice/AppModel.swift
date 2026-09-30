@@ -227,6 +227,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var audioDuration = 0.0
     @Published var playbackTime = 0.0
     @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
+    @Published private(set) var pendingTranscript: Transcript?
     @Published private(set) var readingFailure: ReadingFailure?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
@@ -388,6 +389,22 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             page = "speak"; onShowEditor?("speak")
             report(error.localizedDescription, on: .read)
         }
+    }
+
+    func importReadingFile() {
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        let panel = NSOpenPanel()
+        panel.title = "Import text"; panel.prompt = "Import"
+        panel.allowedContentTypes = [.plainText]
+        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK else { return }
+        importReadingFile(panel.url)
+    }
+    func importReadingFile(_ url: URL?) {
+        guard let url else { return }
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        do { receiveReadingSelection(try ReadingSelectionImport.readFile(url)) }
+        catch { report(error.localizedDescription, on: .read) }
     }
 
     /// Home's Read tile: the click is the choice. Different text replaces the
@@ -930,6 +947,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     /// The person's own choice to set it aside. Hiding a notice never does this.
     func dismissUnresolvedDelivery() { undelivered.dismiss() }
+    func reviewUnresolvedDelivery() {
+        guard let entry = unresolvedDelivery else { return }
+        switch entry.reference {
+        case .transcript(let id): openHistory(HistoryDoor(transcript: id))
+        case .draft: page = "dictate"
+        }
+    }
     func showLibrary() { page = "library"; onShowEditor?("library"); libraryFocusToken = UUID() }
     /// Every door opens History on All, even when History is already showing.
     /// Dictate's own option asks for Transcripts, and Hand off for its task.
@@ -983,8 +1007,27 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         onPhaseChange?()
     }
     func openTranscript(_ item: Transcript) {
+        guard phase == .idle else {
+            report("Finish the current dictation or processing before replacing its draft.", on: .dictate)
+            return
+        }
+        page = "dictate"
+        if !transcript.isEmpty && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
+            pendingTranscript = item
+            return
+        }
+        applyHistoryTranscript(item)
+    }
+    func keepCurrentTranscript() { pendingTranscript = nil }
+    func replaceDraftWithTranscript() {
+        guard phase == .idle, let item = pendingTranscript else { return }
+        applyHistoryTranscript(item)
+    }
+    private func applyHistoryTranscript(_ item: Transcript) {
+        pendingTranscript = nil
         rememberedCorrection = nil
-        transcript = item.text; rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"; page = "dictate"; persist()
+        rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"
+        transcript = item.text; page = "dictate"; persist()
     }
     @discardableResult func useOriginal() -> String {
         rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"

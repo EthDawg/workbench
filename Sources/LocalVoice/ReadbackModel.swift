@@ -348,7 +348,26 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private struct RecordingContext { let root: URL; let sectionID: UUID; let pendingURL: URL; let previousSection: ReadbackSection }
 
     @Published private(set) var sessionURL: URL?
-    @Published private(set) var manifest: ReadbackManifest?
+    @Published private(set) var manifest: ReadbackManifest? {
+        didSet {
+            // Review follows an identity, never a row number or background completion.
+            if !activeSections.contains(where: { $0.id == reviewedSectionID }) {
+                reviewedSectionID = activeSections.first?.id
+            }
+        }
+    }
+    @Published private(set) var reviewedSectionID: UUID?
+    var reviewedSection: ReadbackSection? { activeSections.first { $0.id == reviewedSectionID } }
+    func reviewSection(_ id: UUID) {
+        guard activeSections.contains(where: { $0.id == id }) else { return }
+        reviewedSectionID = id
+    }
+    /// Only work in this session delays its handoff; other sessions keep processing independently.
+    var sessionProcessingCount: Int { activeSections.filter { [.queued, .transcribing].contains($0.status) }.count }
+    var canHandOffSession: Bool {
+        sessionURL != nil && currentSessionProblem == nil && !activeSections.isEmpty
+            && !isRecording && !isCapturing && sessionProcessingCount == 0 && !hasUnsavedNarration
+    }
     @Published private(set) var recentSessionURLs: [URL] = []
     @Published private(set) var unavailableSessions: [String: String] = [:]
     var currentSessionProblem: String? { sessionURL.flatMap { unavailableSessions[$0.standardizedFileURL.path] } }
@@ -365,6 +384,12 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var shortcutFailure: String?
     @Published var notice: String?
     @Published private(set) var transcriptDrafts: [UUID: String] = [:]
+    @Published private(set) var transcriptSaveFailures: [UUID: String] = [:]
+    var hasUnsavedNarration: Bool { !transcriptSaveFailures.isEmpty }
+    private static let unsavedNarrationNotice = "Save or copy and discard the unsaved narration edit before closing or switching sessions."
+    // Failure injection belongs only to synthetic checks; ordinary saves use the portable store.
+    var transcriptWriter: ((Data, URL) throws -> Void)?
+    var transcriptManifestWriter: ((ReadbackManifest, URL) throws -> Void)?
     @Published private(set) var newSessionSkillID: String?
     @Published private(set) var packSkills: [TranscriptHandoffSkill] = []
     @Published private(set) var newSessionStyle: ReadbackDeckStyle = .neutral
@@ -471,6 +496,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func forgetRecentSession(_ url: URL) {
         let root = url.standardizedFileURL
+        guard sessionURL?.path != root.path || !hasUnsavedNarration else { notice = Self.unsavedNarrationNotice; return }
         guard sessionURL?.path != root.path || (!isRecording && !isCapturing) else {
             notice = "Finish the current capture before removing this entry."; return
         }
@@ -496,6 +522,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @discardableResult
     func relinkSession(_ oldURL: URL, to url: URL) -> Bool {
         guard !isRecording, !isCapturing, !hasPendingTranscriptions else { return false }
+        guard !hasUnsavedNarration || oldURL.standardizedFileURL == sessionURL?.standardizedFileURL else { notice = Self.unsavedNarrationNotice; return false }
         do {
             let loaded = try ReadbackStore.load(from: url)
             if sessionURL?.path == oldURL.standardizedFileURL.path, let manifest, loaded.id != manifest.id {
@@ -537,6 +564,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func createSession() {
+        guard !hasUnsavedNarration else { notice = Self.unsavedNarrationNotice; return }
         guard !isRecording else { notice = "Finish the current narration before creating another session."; return }
         refreshSkillPacks()
         guard newSessionStyleProblem == nil else { notice = newSessionStyleProblem; return }
@@ -557,6 +585,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     @discardableResult
     func createSession(at url: URL, title: String) throws -> ReadbackManifest {
+        guard !hasUnsavedNarration else { throw ReadbackError.message(Self.unsavedNarrationNotice) }
         let snapshot = try selectedSkillSnapshot()
         let created = try ReadbackStore.create(at: url, title: title, skillPack: snapshot)
         setCurrent(url: url, manifest: created)
@@ -617,6 +646,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func openSession() {
+        guard !hasUnsavedNarration else { notice = Self.unsavedNarrationNotice; return }
         guard !isRecording else { notice = "Finish the current narration before switching sessions."; return }
         let panel = NSOpenPanel()
         panel.title = "Open Snap & Talk Session"
@@ -629,6 +659,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func openRecent(_ url: URL) { guard !isRecording else { notice = "Finish the current narration before switching sessions."; return }; open(url) }
 
     private func open(_ url: URL) {
+        guard !hasUnsavedNarration else { notice = Self.unsavedNarrationNotice; return }
         do {
             let loaded = try ReadbackStore.load(from: url)
             setCurrent(url: url, manifest: recovered(loaded, at: url))
@@ -638,6 +669,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func closeSession() {
+        guard !hasUnsavedNarration else { notice = Self.unsavedNarrationNotice; return }
         guard !isRecording else { notice = "Finish the current narration before closing this session."; return }
         cancelCapture()
         sessionURL = nil; manifest = nil; transcriptDrafts = [:]; notice = nil
@@ -649,9 +681,14 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func handOff(to target: ReadbackHandoffTarget) {
+        guard !hasUnsavedNarration else { notice = "Save the edited narration before handing off this session."; return }
         refreshSessionAvailability()
         guard currentSessionProblem == nil else { notice = "Locate this session folder before handing it off."; return }
         guard let sessionURL else { notice = "Create or open a Snap & Talk session first."; return }
+        guard canHandOffSession else {
+            notice = activeSections.isEmpty ? "Add a screenshot before handing off this session." : "Finish this session's capture and transcription before handing it off."
+            return
+        }
         guard TextDelivery.copy(target.prompt(for: sessionURL)) != nil else {
             notice = "The handoff prompt could not be copied. The session was not sent anywhere."
             stateChanged()
@@ -684,7 +721,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             _ = await AVCaptureDevice.requestAccess(for: .audio)
             microphonePermission = AVCaptureDevice.authorizationStatus(for: .audio)
         }
-        if permissionsReady { notice = "Snap & Talk is ready. Move the pointer to the display you want and use \(shortcutLabel)." }
+        if permissionsReady { notice = nil }
         else { notice = permissionsProblem }
         stateChanged()
     }
@@ -760,7 +797,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
                     screenshot: screenshot, audio: nil, originalTranscript: nil, transcript: nil, status: .needsNarration, failure: nil, deletedAt: nil)
                 current = try ReadbackStore.append(section, at: root)
             }
-            publish(current, for: root); recordingThumbnail = NSImage(data: capture.data); recordingScreenFrame = capture.screenFrame
+            publish(current, for: root); reviewSection(id)
+            recordingThumbnail = NSImage(data: capture.data); recordingScreenFrame = capture.screenFrame
             isCapturing = false
             do { try startNarration(root: root, sectionID: id) }
             catch { markNeedsNarration(root: root, sectionID: id, message: error.localizedDescription) }
@@ -787,6 +825,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         do {
             let result = try SnapReadback.importSnapshots(snapshots, at: root, expectedSessionID: sessionID)
             publish(result.manifest, for: root)
+            if result.added > 0, let added = activeSections.last { reviewSection(added.id) }
             notice = result.warning ?? (result.added == 0
                 ? "These Snaps are already in this session, including Recently Deleted. Restore a deleted section there."
                 : "Added \(result.added) Snaps. Narration is optional; type notes or choose Record narration." + (result.alreadyAdded > 0 ? " \(result.alreadyAdded) already present were skipped." : ""))
@@ -795,6 +834,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func startNarration(for sectionID: UUID) {
+        guard transcriptSaveFailures[sectionID] == nil else { notice = "Save or discard this section's unsaved edit before recording again."; return }
         guard !isRecording, !isCapturing, let root = sessionURL, activeSections.contains(where: { $0.id == sectionID }) else { return }
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
         guard microphonePermission == .authorized else { notice = "Microphone access is required to record narration."; return }
@@ -808,11 +848,13 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     private func startNarration(root: URL, sectionID: UUID) throws {
+        guard transcriptSaveFailures[sectionID] == nil else { throw ReadbackError.message("Save or discard this section's unsaved edit before recording again.") }
         if let reason = mayBeginCapture?() { throw ReadbackError.message(reason) }
         guard microphonePermission == .authorized else { throw ReadbackError.message("Microphone access is off.") }
         guard var current = try? ReadbackStore.load(from: root), let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else {
             throw ReadbackError.message("The Snap & Talk section is no longer available.")
         }
+        reviewSection(sectionID)
         guard ![.queued, .transcribing, .recording].contains(current.sections[index].status) else {
             throw ReadbackError.message("Wait for this section's narration to finish before recording it again.")
         }
@@ -907,6 +949,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func redoBoth(_ sectionID: UUID) async {
+        guard transcriptSaveFailures[sectionID] == nil else { notice = "Save or discard this section's unsaved edit before replacing it."; return }
         guard !isCapturing, !isRecording, let root = sessionURL else { return }
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
         isCapturing = true; stateChanged()
@@ -928,6 +971,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func retryTranscription(_ sectionID: UUID) {
+        guard transcriptSaveFailures[sectionID] == nil else { notice = "Save or discard this section's unsaved edit before retrying transcription."; return }
         guard let root = sessionURL, var current = try? ReadbackStore.load(from: root),
               let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.audio != nil && $0.deletedAt == nil }) else { return }
         current.sections[index].status = .queued; current.sections[index].failure = nil
@@ -935,14 +979,46 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func updateTranscript(_ text: String, for sectionID: UUID) {
-        guard let root = sessionURL, var current = try? ReadbackStore.load(from: root),
-              let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else { return }
-        let relative = current.sections[index].transcript ?? current.sections[index].directory + "/narration.txt"
+        guard activeSections.contains(where: { $0.id == sectionID }) else { return }
+        transcriptDrafts[sectionID] = text
+        retryTranscriptSave(sectionID)
+    }
+
+    func retryTranscriptSave(_ sectionID: UUID) {
+        guard let root = sessionURL, let text = transcriptDrafts[sectionID] else { return }
+        // Mark before I/O: publication from another section must never reload over this edit.
+        transcriptSaveFailures[sectionID] = "Saving narration…"
         do {
-            try ReadbackStore.writePrivate(Data(text.utf8), to: ReadbackStore.safeURL(root: root, relative: relative))
-            current.sections[index].transcript = relative; transcriptDrafts[sectionID] = text
-            try ReadbackStore.save(current, at: root); publish(current, for: root)
-        } catch { notice = "The edited narration could not be saved. \(error.localizedDescription)" }
+            var current = try ReadbackStore.load(from: root)
+            guard let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }) else {
+                throw ReadbackError.message("The section is unavailable. Your edit is kept here.")
+            }
+            let relative = current.sections[index].transcript ?? current.sections[index].directory + "/narration.txt"
+            let url = try ReadbackStore.safeURL(root: root, relative: relative)
+            if let transcriptWriter { try transcriptWriter(Data(text.utf8), url) }
+            else { try ReadbackStore.writePrivate(Data(text.utf8), to: url) }
+            current.sections[index].transcript = relative
+            if let transcriptManifestWriter { try transcriptManifestWriter(current, root) }
+            else { try ReadbackStore.save(current, at: root) }
+            transcriptSaveFailures.removeValue(forKey: sectionID)
+            publish(current, for: root)
+        } catch {
+            transcriptSaveFailures[sectionID] = "This edit is kept in Workbench but could not be saved. \(error.localizedDescription)"
+        }
+    }
+
+    /// Explicit discard ends only the unsaved edit; no session file or original is removed.
+    func discardTranscriptEdit(_ sectionID: UUID) {
+        guard transcriptSaveFailures[sectionID] != nil else { return }
+        transcriptDrafts[sectionID] = sessionURL.flatMap { root in
+            manifest?.sections.first(where: { $0.id == sectionID }).map { ReadbackStore.readText(root: root, relative: $0.transcript) }
+        } ?? ""
+        transcriptSaveFailures.removeValue(forKey: sectionID)
+    }
+
+    func reviewUnsavedNarration() {
+        if let section = activeSections.first(where: { transcriptSaveFailures[$0.id] != nil }) { reviewSection(section.id) }
+        notice = Self.unsavedNarrationNotice
     }
 
     /// Save only the chosen permutation, merging it into the latest section
@@ -975,6 +1051,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func deleteSection(_ sectionID: UUID) {
+        guard transcriptSaveFailures[sectionID] == nil else { notice = "Save or discard this section's unsaved edit before moving it to Recently Deleted."; return }
         guard !isRecording, let root = sessionURL, var current = try? ReadbackStore.load(from: root),
               let index = current.sections.firstIndex(where: { $0.id == sectionID && $0.deletedAt == nil }),
               ![.queued, .transcribing].contains(current.sections[index].status) else {
@@ -1175,11 +1252,13 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     private func setCurrent(url: URL, manifest: ReadbackManifest) {
+        let retained = transcriptDrafts.filter { transcriptSaveFailures[$0.key] != nil }
         sessionURL = url.standardizedFileURL; self.manifest = manifest; notice = nil
         transcriptDrafts = Dictionary(uniqueKeysWithValues: manifest.sections.compactMap { section in
             let text = ReadbackStore.readText(root: url, relative: section.transcript)
             return text.isEmpty ? nil : (section.id, text)
         })
+        transcriptDrafts.merge(retained) { _, unsaved in unsaved }
         var paths = recentSessionURLs.map(\.standardizedFileURL).filter { $0.path != url.standardizedFileURL.path }
         paths.insert(url.standardizedFileURL, at: 0); recentSessionURLs = Array(paths.prefix(12))
         defaults.set(recentSessionURLs.map(\.path), forKey: Self.recentsKey)
@@ -1189,7 +1268,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private func publish(_ value: ReadbackManifest, for root: URL) {
         guard sessionURL?.standardizedFileURL == root.standardizedFileURL else { return }
         manifest = value
-        for section in value.sections where section.transcript != nil {
+        for section in value.sections where section.transcript != nil && transcriptSaveFailures[section.id] == nil {
             transcriptDrafts[section.id] = ReadbackStore.readText(root: root, relative: section.transcript)
         }
         stateChanged()
