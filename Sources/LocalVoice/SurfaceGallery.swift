@@ -1443,9 +1443,26 @@ enum SurfaceGallery {
             window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
             defer { window.contentViewController = nil; window.close() }
             model.page = "home"
-            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
-                readback: sessionReadback, snap: snap, sidebarCollapsed: true))
-            window.setContentSize(size)
+            // Both widths share one icon column: collapsing moves only the trailing edge, so the
+            // toggle and every row's icon keep their place.
+            var placed: [[String: CGRect]] = []
+            for collapsed in [false, true] {
+                var frames: [String: CGRect] = [:]
+                window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                    readback: sessionReadback, snap: snap, sidebarCollapsed: collapsed)
+                    .environment(\.pageSectionFrames, { id, frame in if id.hasPrefix("sidebar.") { frames[id] = frame } }))
+                window.setContentSize(size)
+                settle(window.contentView?.superview ?? window.contentView!)
+                placed.append(frames)
+            }
+            let (open, closed) = (placed[0], placed[1])
+            let moved = open.keys.sorted().filter { id in
+                guard let a = open[id], let b = closed[id] else { return true }
+                return [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height].contains { abs($0) >= 0.5 }
+            }
+            guard open["sidebar.toggle"] != nil, open.count > WorkbenchHome.navItems.count, Set(open.keys) == Set(closed.keys), moved.isEmpty else {
+                throw VoiceError.message("Collapsing the sidebar must move only its edge: \(moved.isEmpty ? "controls differ" : moved.joined(separator: ", ") + " moved"), \(name) (\(open.count) and \(closed.count) found).")
+            }
             let frame = window.contentView?.superview ?? window.contentView!
             settle(frame)
             shots.append(try save(try snapshot(frame), id: "collapsed-" + name, title: "Collapsed sidebar, " + name,

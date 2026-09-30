@@ -28,6 +28,7 @@ struct WorkbenchHome: View {
     @State private var handoffReview: HandoffReviewRequest?
     @State private var suggestionReview: MetadataSuggestionReview?
     @AppStorage("workbench.sidebarCollapsed.v1") private var sidebarCollapsed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var greetingPlayed = false
     @State private var showingProfile = false
     @State private var hoveredSidebarItem: String?
@@ -99,45 +100,49 @@ struct WorkbenchHome: View {
     }
     var body: some View {
         HStack(spacing: 0) {
+            // Both widths share one icon column, so collapsing or expanding moves only the
+            // trailing edge: the toggle, every icon and every row keep their place while the
+            // names fade. Collapsing inserts and removes nothing, so nothing below can jump.
             VStack(alignment: .leading, spacing: 0) {
-                if !collapsed, let logo = packs.brandLogo {
-                    Image(nsImage: logo).resizable().scaledToFit().frame(maxWidth: 150, maxHeight: 36)
+                if let logo = packs.brandLogo {
+                    // A fixed height keeps the rows below in place as the logo narrows.
+                    Image(nsImage: logo).resizable().scaledToFit().frame(maxWidth: 150).frame(height: 36)
                         .padding(8).background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
                         .accessibilityLabel(packs.brandLabel ?? "Workspace").padding(.bottom, 8)
                 }
                 // The window already carries the product name. Keep one mark and the edition,
-                // with a pack's own name only when it supplies one.
-                HStack(spacing: 9) {
-                    if !collapsed {
-                        Image(systemName: "square.stack.3d.up.fill").font(.system(size: 21)).foregroundStyle(Workbench.accent)
-                            .accessibilityHidden(true)
-                        if let label = packs.brandLabel { Text(label).font(.callout.weight(.semibold)).lineLimit(1) }
-                        else if Workbench.isPreview { Text("Preview").font(.caption.weight(.medium)).foregroundStyle(.secondary) }
-                        Spacer(minLength: 0)
-                    }
+                // with a pack's own name only when it supplies one. The toggle leads, so it
+                // stays under the pointer that used it.
+                HStack(spacing: 0) {
                     Button { sidebarCollapsed.toggle() } label: {
-                        Image(systemName: "sidebar.left").font(.system(size: 16)).frame(width: 36, height: 36)
+                        Image(systemName: "sidebar.left").font(.system(size: 16)).frame(width: SidebarMetrics.toggleSize, height: SidebarMetrics.toggleSize)
                     }.buttonStyle(WorkbenchNavigationStyle())
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("sidebar.toggle", $0) }
                         .modifier(SidebarHintTarget(id: "toggle", title: collapsed ? "Expand sidebar" : "Collapse sidebar",
                             enabled: collapsed, hovered: $hoveredSidebarItem))
                         .accessibilityLabel(collapsed ? "Expand sidebar" : "Collapse sidebar")
                         .keyboardShortcut("s", modifiers: [.command, .control])
                         .accessibilityIdentifier("sidebar.toggle")
-                }.frame(height: 42).padding(.bottom, 12)
+                    HStack(spacing: 9) {
+                        Image(systemName: "square.stack.3d.up.fill").font(.system(size: 21)).foregroundStyle(Workbench.accent)
+                            .accessibilityHidden(true)
+                        if let label = packs.brandLabel { Text(label).font(.callout.weight(.semibold)).lineLimit(1) }
+                        else if Workbench.isPreview { Text("Preview").font(.caption.weight(.medium)).foregroundStyle(.secondary) }
+                        Spacer(minLength: 0)
+                    }.padding(.leading, 9).sidebarName(hidden: collapsed, width: SidebarMetrics.headerNameWidth)
+                }.padding(.leading, SidebarMetrics.toggleInset).frame(height: 42).padding(.bottom, 12)
                 // A section or subpage keeps its page's item highlighted.
                 let current = Self.destination(model.page).page
                 ScrollView {
                     VStack(spacing: 2) {
                         if let home = Self.navItems.first(where: { $0.id == "home" }) { navItem(home, current: current) }
                         ForEach(Self.sidebarGroups, id: \.title) { group in
-                            if collapsed {
-                                Divider().padding(.horizontal, 8).padding(.vertical, 7)
-                            } else {
-                                Text(group.title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 12).padding(.top, 14).padding(.bottom, 4)
-                                    .accessibilityAddTraits(.isHeader)
-                            }
+                            // The group's name and the collapsed rule share one slot of one height.
+                            Text(group.title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                                .sidebarName(hidden: collapsed)
+                                .accessibilityAddTraits(.isHeader)
+                                .padding(.leading, SidebarMetrics.rowInset).padding(.top, 14).padding(.bottom, 4)
+                                .overlay { Divider().padding(.horizontal, 8).opacity(collapsed ? 1 : 0) }
                             ForEach(Self.navItems.filter { group.routes.contains($0.id) }, id: \.id) { item in
                                 navItem(item, current: current)
                             }
@@ -146,9 +151,9 @@ struct WorkbenchHome: View {
                 }
                 if updates.availableVersion != nil || updates.restartWaiting {
                     Button { hoveredSidebarItem = nil; model.page = "settings"; updates.checkForUpdates() } label: {
-                        if collapsed { Image(systemName: "arrow.down.circle").frame(width: 36, height: 36) }
-                        else { Text(updates.buttonTitle).font(.caption) }
-                    }.buttonStyle(.bordered).padding(.vertical, 6)
+                        sidebarRow("update", symbol: "arrow.down.circle", name: Text(updates.buttonTitle))
+                            .foregroundStyle(Workbench.accent)
+                    }.buttonStyle(WorkbenchNavigationStyle()).padding(.vertical, 6)
                         .modifier(SidebarHintTarget(id: "update", title: updates.buttonTitle, enabled: collapsed, hovered: $hoveredSidebarItem))
                         .accessibilityLabel(updates.buttonTitle)
                 }
@@ -157,8 +162,12 @@ struct WorkbenchHome: View {
                     Divider().padding(.vertical, 6)
                     navItem(settings, current: current)
                 }
-                if !collapsed { Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 8) }
-            }.padding(collapsed ? 10 : 14).frame(width: collapsed ? 68 : 215).background(Workbench.surface.opacity(0.6))
+                Text(updates.build.label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                    .sidebarName(hidden: collapsed, width: SidebarMetrics.buildLabelWidth)
+                    .padding(.leading, SidebarMetrics.rowInset).padding(.top, 8)
+            }.padding(.horizontal, SidebarMetrics.inset).padding(.vertical, 14)
+                .frame(width: collapsed ? SidebarMetrics.collapsedWidth : SidebarMetrics.expandedWidth, alignment: .leading)
+                .clipped().background(Workbench.surface.opacity(0.6))
             Divider()
             Group {
                 switch model.page {
@@ -200,7 +209,11 @@ struct WorkbenchHome: View {
                 default: ContentView(model: model, embedded: true)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
-        }.overlayPreferenceValue(SidebarHintAnchors.self) { anchors in
+        }
+        // The sidebar and the page move together as one change. Reduce Motion changes the
+        // width at once; the names still fade.
+        .animation(reduceMotion ? nil : SidebarMetrics.motion, value: collapsed)
+        .overlayPreferenceValue(SidebarHintAnchors.self) { anchors in
             GeometryReader { geometry in
                 if collapsed, let id = hoveredSidebarItem, let hint = anchors[id] {
                     let rect = geometry[hint.bounds]
@@ -376,17 +389,23 @@ struct WorkbenchHome: View {
             keyboard.stopInteraction()
             if item.id == "history" { model.openHistory() } else { model.page = item.id }
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: item.symbol).font(.system(size: 15)).frame(width: 22).accessibilityHidden(true)
-                if !collapsed { Text(item.title).font(.system(size: 13, weight: current == item.id ? .semibold : .regular)); Spacer(minLength: 0) }
-            }
-                .frame(maxWidth: .infinity, minHeight: 38, alignment: collapsed ? .center : .leading).padding(.horizontal, collapsed ? 0 : 11)
+            sidebarRow(item.id, symbol: item.symbol, name: Text(item.title), weight: current == item.id ? .semibold : .regular)
                 .foregroundStyle(current == item.id ? Workbench.accent : .primary)
         }.buttonStyle(WorkbenchNavigationStyle(selected: current == item.id))
             .modifier(SidebarHintTarget(id: item.id, title: item.title, enabled: collapsed, hovered: $hoveredSidebarItem))
             .accessibilityLabel(item.title)
             .accessibilityAddTraits(current == item.id ? .isSelected : [])
             .accessibilityIdentifier("sidebar." + item.id)
+    }
+
+    /// Every sidebar row has one shape: its icon on the shared column, then its name.
+    private func sidebarRow(_ id: String, symbol: String, name: Text, weight: Font.Weight = .regular) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 15)).frame(width: SidebarMetrics.iconWidth).accessibilityHidden(true)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("sidebar." + id, $0) }
+            name.font(.system(size: 13, weight: weight)).sidebarName(hidden: collapsed)
+        }.padding(.leading, SidebarMetrics.rowInset)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 38, alignment: .leading)
     }
 
     /// A page with sections: its name from the page record, then its switcher, where every

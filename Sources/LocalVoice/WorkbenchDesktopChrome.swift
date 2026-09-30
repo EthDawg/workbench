@@ -23,6 +23,51 @@ struct WorkbenchNavigationStyle: ButtonStyle {
     }
 }
 
+/// Home's sidebar geometry. Both widths share one icon column, centred in the collapsed
+/// sidebar, so collapsing or expanding moves only the trailing edge.
+enum SidebarMetrics {
+    static let collapsedWidth: CGFloat = 68
+    static let expandedWidth: CGFloat = 215
+    /// The sidebar's side padding, the same in both widths.
+    static let inset: CGFloat = 10
+    static let iconWidth: CGFloat = 22
+    /// From a row's leading edge to its icon: centres the icon in the collapsed sidebar.
+    static let rowInset = (collapsedWidth - iconWidth) / 2 - inset
+    /// The header's 36-point toggle sits on the same centre.
+    static let toggleSize: CGFloat = 36
+    static let toggleInset = (collapsedWidth - toggleSize) / 2 - inset
+    /// Names that could wrap or truncate lay out at their expanded width in both states.
+    static let headerNameWidth = expandedWidth - 2 * inset - toggleInset - toggleSize
+    static let buildLabelWidth = expandedWidth - 2 * inset - rowInset
+    static let motion = Animation.smooth(duration: 0.25)
+}
+
+extension View {
+    /// A sidebar name keeps its expanded layout (its own width, or `width`) whatever the
+    /// sidebar's width, so it never rewraps or truncates as the edge moves. It takes no room
+    /// from the icon column, fades out before the edge reaches it, fades in once there is
+    /// room, and leaves VoiceOver while hidden.
+    func sidebarName(hidden: Bool, width: CGFloat? = nil) -> some View {
+        modifier(SidebarName(hidden: hidden, width: width))
+    }
+}
+
+private struct SidebarName: ViewModifier {
+    var hidden: Bool
+    var width: CGFloat?
+    @ViewBuilder private func laidOut(_ content: Content) -> some View {
+        if let width { content.frame(width: width, alignment: .leading) }
+        else { content.fixedSize(horizontal: true, vertical: false) }
+    }
+    func body(content: Content) -> some View {
+        laidOut(content)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .opacity(hidden ? 0 : 1)
+            .animation(hidden ? .easeOut(duration: 0.1) : .easeOut(duration: 0.18).delay(0.08), value: hidden)
+            .accessibilityHidden(hidden)
+    }
+}
+
 /// Anchor hints at the window level so a sidebar ScrollView cannot clip their words.
 /// They are read-only: the original button remains the only hit target and accessible control.
 struct SidebarHintAnchor {
