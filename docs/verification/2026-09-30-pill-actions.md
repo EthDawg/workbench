@@ -8,7 +8,7 @@ relocation below; combined installed acceptance is still pending.
 
 Source branch: `codex/pill-actions`, based on
 `57fa1ef6469819db9234bbcada586916bd43df5a`. This receipt belongs to the implementation
-commit containing it. Integration owns the combined candidate, signed Preview,
+commit `4355a714801eadcdd010c79493cd5c2f365c267d`. Integration owns the combined candidate, signed Preview,
 installed verification and existing PR #232. This worker made no installation,
 foreground-app interaction, release or public publication.
 
@@ -36,7 +36,14 @@ foreground-app interaction, release or public publication.
   0 flags**. Its fixture restores the real toolbar-settings owner after chooser
   teardown; visual review confirms Keep open and Position in narrow General.
 - All 31 action groups have a `nativeHome` in the retained study contract, and the
-  packaged `pill.html` SHA-256 still matches its recorded hash.
+  current packaged `pill.html` and inline source SHA-256 match their recorded hashes.
+  The original imported hashes remain in `artifactHistory` and `sourceSHA256`.
+- The two watchdog corrections were made in the actual canvas and portable page:
+  waiting dictation keeps Stop drawing primary with Copy in the Dictate row;
+  dismissing Read failure returns to Listen with retained text. The focused headless
+  browser run passes **58 checks**, including these transitions, all **14** scenario
+  deep links and resets, three widths (320/736/1024), and **0 page errors**. Script
+  syntax also passes. These are simulated journeys, not installed app acceptance.
 
 The first full gallery attempt stopped at its completed-meeting fixture containment
 check before creating that fixture. The corrected harness creates a fresh direct
@@ -47,7 +54,8 @@ for nonexistent path components. No live data was used or replaced.
 Actual final logs are `/private/tmp/workbench-pill-tests.log`,
 `workbench-pill-gallery.log`, `workbench-pill-meetings.log`,
 `workbench-pill-stage-compile.log`, `workbench-pill-persona-layouts.log`,
-`workbench-pill-settings-final.log`, and `workbench-pill-surfaces-final.log` in the
+`workbench-pill-settings-final.log`, `workbench-pill-canvas-check.log`, and
+`workbench-pill-surfaces-final.log` in the
 same temporary directory. Offscreen rendering and synthetic checks do not establish
 installed focus, physical capture/audio, external paste, USB recovery, multiple
 displays or receiving-participant behavior.
@@ -70,7 +78,9 @@ displays or receiving-participant behavior.
 
 ## Complete action map
 
-The browser study’s proposal, hashes and original limits remain design evidence.
+The browser study’s proposal, original hashes and original limits remain design evidence.
+Its current hashes include the two native-alignment corrections; scenario IDs,
+reset behavior and direct-entry links are retained.
 Its `nativeImplementation` record and this table identify actual source behavior.
 Read Dismiss keeps text and voice; Listen renders again. Retry only exists while
 there is a failure. Copy now is directly available in the Dictate chooser row;
