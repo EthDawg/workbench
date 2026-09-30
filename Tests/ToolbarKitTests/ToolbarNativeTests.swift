@@ -70,108 +70,77 @@ final class ToolbarNativeTests: XCTestCase {
                          ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true), ToolbarActivity(unsavedCapture: true)] {
             let working = try drawn(.resolve(activity))
             XCTAssertEqual(working.size, ToolbarLayout.mark, "\(activity)")
-            XCTAssertEqual(working.height, 20, "the active capsule: \(activity)")
+            XCTAssertEqual(working.height, activity.capture == nil ? 8 : 20, "only recording changes the quiet capsule: \(activity)")
             XCTAssertEqual(working.width, 48, "nothing is drawn beyond the capsule: \(activity)")
         }
     }
 
-    /// Each badge's frame in `root`'s hosting view, as the badge reports its own layout (#211 F4):
-    /// read from the layout rather than from pixels, so no backing scale, colour space or accent
-    /// colour can move it.
-    @MainActor private func badgeFrames<V: View>(_ root: V) -> (view: NSView, frames: [String: CGRect]) {
-        var frames: [String: CGRect] = [:]
-        let view = NSHostingView(rootView: root.environment(\.toolbarBadgeFrames) { frames[$0] = $1 })
-        view.frame = NSRect(origin: .zero, size: view.fittingSize)
-        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view
-        view.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        window.contentView = nil
-        return (view, frames)
-    }
-
-    /// A background failure in a recording's last seconds shows both badges inside the 48 × 28
-    /// target (#211 F4): the timer beside the trace and the warning on the capsule's corner, like
-    /// a badge on an icon, each a fixed 7-point square, neither covering the other, and each where
-    /// it is when it shows alone.
-    @MainActor func testBothBadgesShowInsideTheMark() throws {
+    /// A saved warning or copied result cannot change the collapsed appearance, even
+    /// during a recording. Inspect rendered pixels at every dock, rather than a flag.
+    @MainActor func testRecoveryNeverPaintsWarningsOnThePill() throws {
         _ = NSApplication.shared
-        func badges(_ activity: ToolbarActivity) -> [String: CGRect] { badgeFrames(ToolbarCompactMark(status: .resolve(activity))).frames }
-        let timer = badges(ToolbarActivity(capture: .dictation, level: 0.4, stopsSoon: true))
-        let warning = badges(ToolbarActivity(capture: .dictation, level: 0.4, failure: true))
-        let both = badges(ToolbarActivity(capture: .dictation, level: 0.4, failure: true, stopsSoon: true))
-        XCTAssertEqual(Set(timer.keys), ["stopsSoon"])
-        XCTAssertEqual(Set(warning.keys), ["attention"])
-        XCTAssertEqual(Set(both.keys), ["stopsSoon", "attention"], "both show together")
-        let target = CGRect(origin: .zero, size: ToolbarLayout.mark)
-        for (badge, frame) in both {
-            XCTAssertEqual(frame.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "\(badge) is a 7-point square")
-            XCTAssertTrue(target.contains(frame), "\(badge) stays inside the 48 × 28 target: \(frame)")
-        }
-        let stopsSoon = try XCTUnwrap(both["stopsSoon"]), attention = try XCTUnwrap(both["attention"])
-        XCTAssertFalse(stopsSoon.intersects(attention), "neither badge covers the other: \(stopsSoon), \(attention)")
-        XCTAssertEqual(stopsSoon, timer["stopsSoon"], "the timer keeps its place when the warning joins it")
-        XCTAssertEqual(attention, warning["attention"], "and the warning keeps its place when the timer joins it")
-        XCTAssertLessThanOrEqual(attention.maxY, (ToolbarLayout.mark.height - ToolbarLayout.statusHeight) / 2, "the warning sits on the capsule's corner")
-    }
-
-    @MainActor func testCollapsedRecordingWarningIsNotClippedByTheRevealMask() throws {
-        _ = NSApplication.shared
-        let status = ToolbarStatus.resolve(ToolbarActivity(capture: .narration, level: 0.4, failure: true))
-        func warningPixels<V: View>(_ content: V) throws -> Int {
-            let view = laidOut(content.environment(\.colorScheme, .dark))
-            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            var pixels = 0
-            for y in 0..<bitmap.pixelsHigh {
-                for x in 0..<bitmap.pixelsWide {
-                    guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
-                    if color.alphaComponent > 0.2, color.redComponent > 0.8,
-                       color.greenComponent > 0.3, color.blueComponent < 0.3 { pixels += 1 }
-                }
-            }
-            return pixels
-        }
         for anchor in ToolbarAnchor.allCases {
-            let state = ToolbarViewState(name: "recording-warning", tier: .resting, anchor: anchor, status: status)
-            let mark = ToolbarCompactMark(status: status, anchor: anchor)
-            let complete = try warningPixels(mark)
-            let clipped = try warningPixels(mark.mask {
-                Capsule().frame(width: anchor.isVertical ? 20 : 48, height: anchor.isVertical ? 48 : 20)
-            })
-            XCTAssertGreaterThan(complete, 4)
-            // The old capsule mask must fail this oracle at every anchor. One
-            // antialiased edge pixel can cross the color cutoff when the native
-            // hit fill and SwiftUI mask composite, as on the CI display.
-            XCTAssertGreaterThan(complete - clipped, 1, "the reference must reproduce warning clipping at \(anchor)")
-            XCTAssertEqual(Double(try warningPixels(ToolbarRow(state: state))), Double(complete), accuracy: 1,
-                           "the complete warning remains visible at \(anchor)")
+            for capture in [false, true] {
+                let status = ToolbarStatus.resolve(ToolbarActivity(capture: capture ? .dictation : nil,
+                    level: 0.4, failure: true, pendingDelivery: true, unsavedCapture: true, stopsSoon: true))
+                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "quiet recovery", tier: .resting,
+                    anchor: anchor, status: status)))
+                let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                var orange = 0
+                for y in 0..<bitmap.pixelsHigh {
+                    for x in 0..<bitmap.pixelsWide {
+                        guard let c = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                        if c.alphaComponent > 0.5 && c.redComponent > 0.8 && c.greenComponent > 0.2
+                            && c.greenComponent < 0.8 && c.blueComponent < 0.2 { orange += 1 }
+                    }
+                }
+                XCTAssertEqual(orange, 0, "No warning or timer glyph at \(anchor), recording \(capture)")
+                XCTAssertEqual(view.fittingSize, ToolbarLayout.mark(for: anchor))
+            }
         }
     }
 
-    /// A result waiting for the person keeps its status on the launcher while the row is open
-    /// (#211 F1): the mark's glyph as a badge on the tool's symbol, and its words in VoiceOver's
-    /// value and the tooltip. With nothing waiting, nothing is added.
-    @MainActor func testTheLauncherKeepsAWaitingResultsStatus() throws {
+    @MainActor func testSwitchToolKeepsItsNameAndOwnTargetAcrossEveryMode() throws {
         _ = NSApplication.shared
-        func launcher(_ activity: ToolbarActivity) throws -> (button: NSButton, badge: CGRect?, target: CGRect) {
-            let state = ToolbarViewState(name: "waiting", tier: .revealed, mode: .dictate, status: .resolve(activity))
-            let (view, frames) = badgeFrames(ToolbarRow(state: state))
-            let button = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
-            return (button, frames["result"], button.convert(button.bounds, to: view))
+        for mode in ToolbarMode.allCases {
+            for activity in [ToolbarActivity.idle, ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true),
+                             ToolbarActivity(capture: .dictation, level: 0.4, failure: true)] {
+                let state = ToolbarViewState(name: "switch", tier: .revealed, mode: mode, status: .resolve(activity))
+                let view = laidOut(ToolbarRow(state: state))
+                let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+                XCTAssertEqual(launcher.accessibilityLabel(), "Switch tool")
+                XCTAssertEqual(launcher.accessibilityValue() as? String, mode.title)
+                XCTAssertEqual((launcher as? ToolbarIconButton)?.hint, "Switch tool · " + mode.title)
+                XCTAssertEqual(launcher.bounds.width, 48)
+            }
         }
-        let failure = try launcher(ToolbarActivity(failure: true))
-        let badge = try XCTUnwrap(failure.badge, "the warning is laid out on the launcher")
-        XCTAssertTrue(failure.target.contains(badge), "on the launcher's own target: \(badge) in \(failure.target)")
-        XCTAssertEqual(badge.size, CGSize(width: ToolbarLayout.badge, height: ToolbarLayout.badge), "a 7-point square at standard text")
-        XCTAssertEqual(failure.button.accessibilityValue() as? String, "Dictate. Needs attention")
-        XCTAssertEqual((failure.button as? ToolbarIconButton)?.hint, "Choose a tool · Dictate. Needs attention")
-        let receipt = try launcher(ToolbarActivity(pendingDelivery: true))
-        XCTAssertNotNil(receipt.badge, "a result waiting to be delivered is badged too")
-        XCTAssertEqual(receipt.button.accessibilityValue() as? String, "Dictate. Result waiting to be delivered")
-        let idle = try launcher(.idle)
-        XCTAssertNil(idle.badge, "with nothing waiting, no badge")
-        XCTAssertEqual(idle.button.accessibilityValue() as? String, "Dictate")
+    }
+
+    @MainActor func testSwitchToolRendersTheSameIconForEveryToolAndSavedResult() throws {
+        _ = NSApplication.shared
+        var reference: [Bool]?
+        for mode in ToolbarMode.allCases {
+            for activity in [ToolbarActivity.idle, ToolbarActivity(failure: true), ToolbarActivity(pendingDelivery: true),
+                             ToolbarActivity(capture: .dictation, level: 0.4, failure: true)] {
+                let view = laidOut(ToolbarRow(state: ToolbarViewState(name: "chooser icon", tier: .revealed,
+                    mode: mode, status: .resolve(activity))))
+                let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+                let rect = launcher.convert(launcher.bounds, to: view)
+                let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: rect))
+                view.cacheDisplay(in: rect, to: bitmap)
+                var glyph: [Bool] = []
+                for y in 0..<bitmap.pixelsHigh {
+                    for x in 0..<bitmap.pixelsWide {
+                        let c = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                        glyph.append(min(c.redComponent, c.greenComponent, c.blueComponent) > 0.88)
+                    }
+                }
+                XCTAssertTrue(glyph.contains(true), "the chooser must draw an icon")
+                if let reference { XCTAssertEqual(glyph, reference, "the chooser changed for \(mode) with \(activity)") }
+                else { reference = glyph }
+            }
+        }
     }
 
     /// Short actions keep their target without reserving space for other tools.
@@ -303,7 +272,7 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertTrue(buttons(view).filter { $0.accessibilityIdentifier().hasPrefix("toolbar.mode.") }.isEmpty)
         let launcher = try XCTUnwrap(buttons(view).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
         XCTAssertTrue(launcher.acceptsFirstResponder && launcher.acceptsFirstMouse(for: nil))
-        XCTAssertEqual(launcher.accessibilityLabel(), "Tool: Dictate")
+        XCTAssertEqual(launcher.accessibilityLabel(), "Switch tool")
         launcher.performClick(nil)
         XCTAssertEqual(opened.count, 1)
         XCTAssertTrue(opened.first === launcher, "the chooser is anchored to the launcher")
@@ -719,7 +688,7 @@ final class ToolbarNativeTests: XCTestCase {
             XCTAssertEqual(ToolbarRevealVisuals.progress(viewportHeight: row, rowHeight: row), 1)
             let halfway = ToolbarRevealVisuals.progress(viewportHeight: (28 + row) / 2, rowHeight: row)
             XCTAssertEqual(halfway, 0.5, accuracy: 0.001)
-            for (indicator, rest) in [(ToolbarStatus.Indicator.idle, CGFloat(8)), (.live(.presenting), 8), (.capture, 20), (.failure, 20)] {
+            for (indicator, rest) in [(ToolbarStatus.Indicator.idle, CGFloat(8)), (.live(.presenting), 8), (.capture, 20), (.failure, 8)] {
                 XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: 0, rowHeight: row, indicator: indicator), rest)
                 XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: halfway, rowHeight: row, indicator: indicator), (rest + row) / 2)
                 XCTAssertEqual(ToolbarRevealVisuals.capsuleHeight(progress: 1, rowHeight: row, indicator: indicator), row)
@@ -772,8 +741,8 @@ final class ToolbarNativeTests: XCTestCase {
         XCTAssertEqual(panel.frame.origin, NSPoint(x: 350, y: 250))
     }
 
-    /// The black capsule has white glyphs in both appearances. Live work keeps its green dot.
-    @MainActor func testBusyLauncherIsWhiteAndItsDotStaysGreenInBothAppearances() throws {
+    /// The black capsule has white glyphs in both appearances. Live work does not decorate Switch tool.
+    @MainActor func testSwitchToolStaysWhiteAndUndecoratedInBothAppearances() throws {
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try XCTUnwrap(NSAppearance(named: name))
             var expected: NSColor!
@@ -805,7 +774,7 @@ final class ToolbarNativeTests: XCTestCase {
                 }
             }
             XCTAssertGreaterThan(upperMatches, 0, "the launcher renders a white glyph in \(name)")
-            XCTAssertGreaterThan(lowerMatches, 0, "the aggregate dot must render the same accent in \(name)")
+            XCTAssertEqual(lowerMatches, 0, "live work must not decorate Switch tool in \(name)")
         }
     }
 

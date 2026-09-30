@@ -302,7 +302,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let hosting = CaptureHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback,
-            stage: stage, controls: controls, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture,
+            stage: stage, controls: controls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snapModel, dictate: dictate, snap: snap, snapCapture: snapCapture,
             draw: draw, present: present, capture: capture))
         hosting.sizingOptions = []
         hosting.autoresizingMask = [.width, .height]
@@ -333,6 +333,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
         model.$floatingToolbarVisible.receive(on: RunLoop.main)
+            .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
+            .store(in: &observations)
+        model.meetings.objectWillChange.receive(on: RunLoop.main)
             .sink { [weak self, weak model] _ in if let model { self?.update(model: model) } }
             .store(in: &observations)
         stage.objectWillChange.receive(on: RunLoop.main)
@@ -415,7 +418,7 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             capturingScreen: capturingScreen,
             dictation: Self.showsDictation(model), narration: narrating,
             reading: model.rendering || model.playing || model.paused || model.readingFailure != nil,
-            cue: Self.showsCue(model) && !narrating)
+            cue: (Self.showsCue(model) || Self.showsDeliveryCue(model)) && !narrating)
         if surface != self.surface {
             self.surface = surface
             tracking?.acceptsCrossings = false
@@ -499,6 +502,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
 
     /// A routine no-speech cue, unless a failure or a new capture has since taken the surface.
     static func showsCue(_ model: AppModel) -> Bool { model.captureCue != nil && model.captureFailure == nil && model.phase == .idle }
+
+    /// Delivery feedback never replaces the revealed row or adds recovery badges.
+    static func showsDeliveryCue(_ model: AppModel) -> Bool {
+        model.phase == .idle && model.captureCue == nil && model.captureFailure == nil
+            && !model.promptInsertion.running && !model.meetings.isBusy && !model.rendering && !model.playing && !model.paused
+            && model.clipboardReceipt.isHUDVisible && model.clipboardReceipt.receipt != nil
+    }
 
     /// Tells the hold what is live and pending now, as the row reads it from the same owners:
     /// input-consuming work that begins holds back the result pending at that moment (#220, #222).
@@ -1033,9 +1043,6 @@ struct DictationResultView: View {
                 failureState(failure, mirrored: mirrored)
                     .defaultFocus($focused, firstAction)
                     .onAppear { ResultKeyboard.appeared(controls) { focused = firstAction } }
-            } else {
-                CaptureReceiptView(receipts: model.clipboardReceipt, review: { Self.review($0, model: model) }, controls: controls,
-                                   mirrored: mirrored)
             }
             if mirrored { PanelDragHandle().frame(width: 8, height: 40) }
         }.padding(.horizontal, 12)
@@ -1141,53 +1148,42 @@ struct NoSpeechCueView: View {
     }
 }
 
-private struct CaptureReceiptView: View {
+/// Same quiet, non-activating presentation as No speech heard. No Review,
+/// pin, dismiss button, word count, placement menu or visible countdown.
+struct ClipboardCueHUD: View {
     @ObservedObject var receipts: ClipboardReceiptModel
-    /// Opens where the words are kept, for the receipt as it was when Review was pressed:
-    /// dismissing a receipt whose words have left the clipboard clears it.
-    let review: (ClipboardReceipt) -> Void
-    @ObservedObject var controls: CaptureHUDControls
-    /// At a right-hand dock the commands and Position sit at the far end (#211 F3).
-    var mirrored = false
-    /// Review, the receipt's first command, takes the keyboard's focus (#211 F1).
-    @FocusState private var reviewFocused: Bool
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AccessibilityFocusState private var voiceOverFocused: Bool
+    @State private var hovering = false
+
     var body: some View {
         if let receipt = receipts.receipt {
-            let words = VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 7) {
-                    Image(systemName: receipt.symbolName).foregroundStyle(Workbench.accent)
-                    Text(receipt.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                    if receipt.wordCount > 0 { Text("\(receipt.wordCount) \(receipt.wordCount == 1 ? "word" : "words")").font(.system(size: 12)).foregroundStyle(.secondary) }
+            HStack(spacing: 12) {
+                Image(systemName: receipt.symbolName).font(.system(size: 17)).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(receipt.title).font(.system(size: 13, weight: .semibold))
+                    Text(receipt.detail).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
-                Text(receipt.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }.frame(maxWidth: .infinity, alignment: .leading).accessibilitySortPriority(3)
-            let commands = VStack(spacing: 3) {
-                Button { receipts.dismissHUD(); review(receipt) } label: { Text("Review").frame(minWidth: 44, minHeight: 28) }
-                    .buttonStyle(.bordered).controlSize(.small).help(receipt.source == .prompt ? "Open Library" : "Open History")
-                    .focused($reviewFocused).resultAction("Review", controls)
-                HStack(spacing: 2) {
-                    if receipt.isClipboardCurrent {
-                        Button { receipts.keepVisible.toggle() } label: {
-                            Image(systemName: receipts.keepVisible ? "pin.fill" : "pin").frame(width: 28, height: 28)
-                        }.buttonStyle(.plain)
-                            .accessibilityLabel(receipts.keepVisible ? "Unpin receipt" : "Keep receipt visible")
-                            .help("Keep visible while this text is on the clipboard").resultAction("Pin", controls)
-                    }
-                    // The ring reads the receipt's own lifetime: eight seconds for a copy, four for a paste (#134 T5).
-                    Button { receipts.dismissHUD() } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
-                        .buttonStyle(.plain).accessibilityLabel("Dismiss dictation receipt").resultAction("Dismiss", controls)
-                        .overlay { LiveCountdownRing(lifetime: receipts.lifetime, clock: receipts.now).allowsHitTesting(false) }
-                }
-            }.accessibilityElement(children: .contain).accessibilitySortPriority(2)
-            let position = CapturePositionMenu(controls: controls).accessibilitySortPriority(1)
-            HStack(spacing: 9) {
-                if mirrored { position; commands; words } else { words; commands; position }
+                Spacer(minLength: 0)
             }
-            // The pointer holds its time, including one resting where it appears (#134 T5).
-            .background(PointerPresence { receipts.holdHUD($0) })
-            .defaultFocus($reviewFocused, true)
-            .onAppear { ResultKeyboard.appeared(controls) { reviewFocused = true } }
+            .padding(.horizontal, 20)
+            .frame(width: CaptureHUDLayout.compact.width, height: CaptureHUDLayout.compact.height)
+            .background {
+                if reduceTransparency { RoundedRectangle(cornerRadius: 18).fill(Color(nsColor: .windowBackgroundColor)) }
+                else { RoundedRectangle(cornerRadius: 18).fill(.regularMaterial) }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(0.12)))
+            .contentShape(Rectangle())
+            .background(PointerPresence { hovering = $0; receipts.holdHUD($0 || voiceOverFocused) })
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(receipt.title + ". " + receipt.detail)
+            .accessibilityFocused($voiceOverFocused)
+            .onChange(of: voiceOverFocused) { _, focused in receipts.holdHUD(focused || hovering) }
+            .onDisappear { receipts.holdHUD(false) }
+            .transaction { $0.animation = nil }
+            .tint(Workbench.accent).workbenchTheme()
         }
     }
 }

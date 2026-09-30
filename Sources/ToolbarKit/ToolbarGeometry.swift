@@ -12,20 +12,19 @@ public enum ToolbarLayout {
     public static func mark(for anchor: ToolbarAnchor) -> NSSize { oriented(mark, for: anchor) }
     /// The quiet handle, inside the larger pointer target. Tool identity appears on reveal.
     public static let markCapsule = NSSize(width: 48, height: 8)
-    /// Make room for a recording, transport or recovery signal without moving the target.
+    /// Only recording needs extra room; all other collapsed states stay icon-free.
     static func restingCapsuleHeight(for indicator: ToolbarStatus.Indicator) -> CGFloat {
         switch indicator {
-        case .idle, .live: return markCapsule.height
-        default: return 20
+        case .capture: return 20
+        default: return markCapsule.height
         }
     }
     /// The box for a resting status glyph or voice signal.
     public static let statusHeight: CGFloat = 12
-    /// A badge on the capture signal or the launcher: a fixed square, whatever its symbol's metrics.
-    public static let badge: CGFloat = 7
     public static let rowHeight: CGFloat = 40
     public static let controlHeight: CGFloat = 32
     public static let launcherWidth: CGFloat = 48
+    public static let captureSignalWidth: CGFloat = 44
     /// Icon actions keep stable, generous targets; their words live in the hint and VoiceOver.
     public static let primaryMinimum: CGFloat = 36
     public static let accessoryWidth: CGFloat = 36

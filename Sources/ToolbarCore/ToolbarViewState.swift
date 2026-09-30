@@ -22,8 +22,8 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
         case .persona: return "Persona"
         }
     }
-    /// One symbol per job, shared by the launcher, the chooser and the menu-bar
-    /// panel, so the same job always looks the same wherever it appears.
+    /// One symbol per job, shared by the chooser and menu-bar panel.
+    /// The toolbar launcher has its own fixed Switch tool icon.
     public var symbol: String {
         switch self {
         case .dictate: return "mic"

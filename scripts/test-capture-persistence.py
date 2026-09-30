@@ -342,9 +342,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(independent.hasCaptureRecovery && independent.canRetry && independent.retryCaptureLabel == "Retry transcription"
                   && (try Data(contentsOf: folder("stage-preserves-failure").appendingPathComponent("pending.json"))) == retainedJournal,
                   "Stage start retains the exact recording journal and its Retry action")
-        for (outcome, duration) in [(TextDelivery.Outcome(), 8.0),
-                                    (TextDelivery.Outcome(clipboardChangeCount: nil, wasPasted: true), 4.0),
-                                    (TextDelivery.Outcome(clipboardChangeCount: nil, failure: .copyFailed), 8.0)] {
+        for (outcome, duration) in [(TextDelivery.Outcome(), 3.0),
+                                    (TextDelivery.Outcome(clipboardChangeCount: nil, failure: .copyFailed), 3.0)] {
             let receipt = independent.clipboardReceipt
             receipt.record(outcome: outcome, wordCount: 3)
             let id = receipt.actual.receipt!.id, event = receipt.actual.lifetime!.event
@@ -357,6 +356,10 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             receipt.actual.expireHUD(event)
             try check(!receipt.actual.isHUDVisible, "the preserved receipt still ends at its own deadline")
         }
+        independent.clipboardReceipt.record(outcome: TextDelivery.Outcome(clipboardChangeCount: nil, wasPasted: true), wordCount: 3)
+        stageShell.beginStageActivity()
+        try check(!independent.clipboardReceipt.actual.isHUDVisible && independent.clipboardReceipt.actual.lifetime == nil,
+                  "Stage start does not resurrect a popup after confirmed insertion")
         independent.dismissCaptureFailure()
         try check(independent.captureFailure == nil && (try Data(contentsOf: retainedAudio)) == wav,
                   "explicit Dismiss still clears the result without deleting retained audio")

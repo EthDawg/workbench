@@ -511,7 +511,7 @@ enum SurfaceGallery {
         // Copy prompt writes only to this pasteboard; nothing is pasted or typed anywhere.
         let board = NSPasteboard(name: .init("Workbench.PickerHostCheck." + UUID().uuidString))
         defer { board.releaseGlobally() }
-        let isolated = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false }, preparePaste: { nil })
+        let isolated = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false }, preparePaste: { _ in nil })
         let receipts = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
         let delivery = PromptInsertion()
         let controller = PromptPickerController()
@@ -616,7 +616,7 @@ enum SurfaceGallery {
             let size = CaptureHUDLayout.compact
             let content = Group {
                 if let result { FloatingResultView(result: result, model: model, controls: controls) }
-                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
+                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snap,
                                                 dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}) }
             }
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
@@ -656,14 +656,14 @@ enum SurfaceGallery {
         try mirrored("floating-dictation-failure-right", "Floating: dictation failure, right-hand dock", .dictationFailure, size: CaptureHUDLayout.message)
         model.dismissCaptureFailure()
 
-        // The receipt's own countdown ring (#134 T5), frozen by a pointer hold so the render repeats.
+        // The brief delivery cue, held for a deterministic render.
         model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                      wasPasted: false, destinationName: nil), wordCount: 42)
         model.clipboardReceipt.holdHUD(true)
         do {
-            // The receipt as the toolbar reveals it from the mark's clipboard status (#134 T4).
-            let size = CaptureHUDLayout.message
-            let content = FloatingResultView(result: .receipt, model: model, controls: controls)
+            // The same button-free card used by the production host.
+            let size = CaptureHUDLayout.compact
+            let content = ClipboardCueHUD(receipts: model.clipboardReceipt)
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
                 .background(Color(nsColor: .windowBackgroundColor)))
             let window = offscreenWindow(size: size, styleMask: [.borderless])
@@ -671,10 +671,10 @@ enum SurfaceGallery {
             defer { window.contentView = nil; window.close() }
             settle(host)
             shots.append(try save(try snapshot(host), id: "floating-receipt", title: "Floating: copied receipt",
-                                  detail: "Its ring counts the receipt's own eight seconds; the pointer or a pin holds it.",
+                                  detail: "A brief two-line cue, with no buttons or countdown. Words stay in History.",
                                   file: "panel-floating-receipt-\(theme).png", to: output))
         }
-        try mirrored("floating-receipt-right", "Floating: copied receipt, right-hand dock", .receipt, size: CaptureHUDLayout.message)
+
         model.clipboardReceipt.holdHUD(false)
         model.clipboardReceipt.clear()
 
@@ -1673,7 +1673,7 @@ enum SurfaceGallery {
         // The twin has its own controls, so its size reports never reach the host under test.
         let twinControls = CaptureHUDControls(defaults: defaults)
         twinControls.toolbar.activate()
-        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, snapModel: snap,
+        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snap,
                                                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}))
         let twinWindow = offscreenWindow(size: NSSize(width: 600, height: 60), styleMask: [.borderless])
         twinWindow.contentView = twin
@@ -2099,13 +2099,13 @@ enum SurfaceGallery {
         expect("At rest while transcribing", rests("while transcribing", .processing))
         model.phase = .idle; model.elapsed = 0
         model.captureFailure = failure
-        expect("A new failure, at rest", rests("with a new failure", .failure))
+        expect("A new failure, at rest", rests("with a new failure", .idle))
         reveal()
         expect("The failure, revealed", [controls.revealsResult ? nil : "revealing did not show the failure's own controls",
             abs((host.window?.frame.width ?? 0) - CaptureHUDLayout.message.width) > 0.5 ? "the failure's controls are not their own size" : nil,
             grewFromTheCentre("the failure")])
         collapse()
-        expect("The failure, collapsed again", rests("after the failure was revealed", .failure)
+        expect("The failure, collapsed again", rests("after the failure was revealed", .idle)
             + [model.captureFailure == nil ? "collapsing dismissed the failure" : nil])
         model.dismissCaptureFailure(); settle(.resting)
         // A result that arrives while the row is open never replaces the row under the pointer.
@@ -2133,12 +2133,14 @@ enum SurfaceGallery {
         controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
         model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                      wasPasted: false, destinationName: nil), wordCount: 12)
-        expect("A new receipt, at rest", rests("with a new receipt", .pendingDelivery))
-        reveal()
-        expect("The receipt, revealed", [controls.revealsResult ? nil : "revealing did not show the receipt", grewFromTheCentre("the receipt")])
-        collapse()
-        expect("The receipt, collapsed again", rests("after the receipt was revealed", .pendingDelivery)
-            + [model.clipboardReceipt.receipt == nil ? "collapsing dismissed the receipt" : nil])
+        settle(.resting)
+        expect("A copied cue uses the no-speech card's size", [
+            CapturePanelController.showsDeliveryCue(model) ? nil : "the cue is missing",
+            host.window?.frame.size == CaptureHUDLayout.compact ? nil : "the cue has the old review-panel size",
+            FloatingResult.pending(model) == nil ? nil : "the receipt would replace the revealed tools"])
+        model.clipboardReceipt.dismissHUD(); settle(.resting)
+        expect("After the copied cue", rests("after the cue", .idle)
+            + [model.clipboardReceipt.receipt == nil ? "expiry discarded current clipboard metadata" : nil])
         model.clipboardReceipt.clear(); settle(.resting)
         // The no-speech cue shows at the toolbar's own place, then the mark again. Too short, not
         // too quiet: a second quiet capture in a row is a failure, and the floating shots had one.
@@ -2214,62 +2216,74 @@ enum SurfaceGallery {
     func checkResultsInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
                                expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        /// A receipt pinned, so its own eight seconds never end it while the steps run.
+        /// Hold the cue only while this synthetic check inspects it.
         func receipt() {
             model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                          wasPasted: false, destinationName: nil), wordCount: 12)
-            model.clipboardReceipt.keepVisible = true
+            model.clipboardReceipt.holdHUD(true)
         }
         /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere and the host
         /// would otherwise find it gone and collapse the row.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
-        func escape() {
-            guard let window = host.window, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-                windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
-                isARepeat: false, keyCode: 53) else { return }
-            window.sendEvent(event)
-        }
         model.toolbarMode = .dictate
         receipt(); settle(.resting)
-        controls.focusToolbar(); settle(.revealed)
-        let launcher = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.launcher" }
-        controls.focusFirstControl?()
-        let focused = launcher != nil && host.window?.firstResponder === launcher
-        let showedResult = controls.revealsResult
-        escape(); settle(.resting)
-        expect("Keyboard entry onto a waiting receipt", [
-            showedResult ? "the receipt's controls took the launcher row's place" : nil,
-            launcher == nil ? "the row has no launcher" : focused ? nil : "the launcher did not take the keyboard's focus",
-            controls.toolbar.state.holds.contains(.keyboard) ? "Escape left the keyboard's hold in place" : nil,
-            controls.toolbar.state.tier == .resting ? nil : "the row stayed open after Escape",
-            model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
-        // The pointer's reveal shows the receipt's own controls; the keyboard taken after it, and
-        // Escape from them, leave as from the launcher row.
+        let cueButtons = host.window?.contentView.map(buttons) ?? []
+        expect("A copied result is a brief cue without commands", [
+            CapturePanelController.showsDeliveryCue(model) ? nil : "the copied cue is not visible",
+            FloatingResult.pending(model) == nil ? nil : "the receipt is still a toolbar result",
+            cueButtons.isEmpty ? nil : "the cue still contains Review, pin or dismiss controls"])
+        // A cue can appear beneath an unmoving pointer. Exercise the actual native
+        // sensor in its production view; no mouse movement or live clipboard writes.
+        func sensors(_ view: NSView) -> [PointerPresenceView] {
+            (view as? PointerPresenceView).map { [$0] } ?? view.subviews.flatMap(sensors)
+        }
+        model.clipboardReceipt.holdHUD(false)
+        if let sensor = host.window?.contentView.flatMap({ sensors($0).first }), let window = sensor.window {
+            sensor.windowShows = { _ in true }; sensor.deliver = { $0() }
+            let centre = window.convertPoint(toScreen: sensor.convert(NSPoint(x: sensor.bounds.midX, y: sensor.bounds.midY), to: nil))
+            sensor.pointer = { centre }; sensor.refresh(); settle(.resting)
+            expect("A copied cue appearing under a stationary pointer holds its time", [
+                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == true ? nil : "the actual cue missed the resting pointer"])
+            sensor.pointer = { NSPoint(x: centre.x + 10_000, y: centre.y + 10_000) }; sensor.refresh(); settle(.resting)
+            expect("Leaving the copied cue releases its pointer hold", [
+                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == false ? nil : "the pointer hold stayed after leaving"])
+        } else { expect("The copied cue measures a stationary pointer", ["the production cue has no passive pointer sensor"]) }
+        model.clipboardReceipt.holdHUD(false)
+        model.clipboardReceipt.dismissHUD(); settle(.resting)
         reveal(); settle(.revealed)
-        let pointerShowed = controls.revealsResult
-        controls.focusToolbar(); escape()
-        let released = !controls.toolbar.state.holds.contains(.keyboard)
-        collapse(); settle(.resting)
-        expect("Escape from a waiting receipt's own controls", [pointerShowed ? nil : "the pointer's reveal did not show the receipt",
-            released ? nil : "Escape left the keyboard's hold in place", model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
-        model.clipboardReceipt.clear(); settle(.resting)
-        // Position… holds a kept-open row's result back while it is open (a menu's hold stands in
-        // for it here); closing it hands the keyboard back first, and only then does the host update.
-        controls.toolbar.send(.keepOpenChanged(true)); settle(.revealed)
-        controls.toolbar.send(.holdBegan(.menu))
-        receipt(); settle(.revealed)
-        let waited = !controls.revealsResult
-        controls.toolbar.send(.holdEnded(.menu))
-        host.positionClosed(returnsKeyboard: true) { controls.focusToolbar() }
-        let keptRow = !controls.revealsResult, keyboard = controls.toolbar.state.holds.contains(.keyboard)
-        settle(.revealed)
-        expect("Position… closing onto a receipt waiting on a kept-open row", [
-            waited ? nil : "the receipt took the row while Position… was open",
-            keptRow && !controls.revealsResult ? nil : "the receipt took the place of the row the keyboard came back to",
-            keyboard ? nil : "the keyboard did not come back"])
-        model.clipboardReceipt.clear(); controls.endKeyboardInteraction()
-        controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
+        expect("After the cue, hover reveals tools", [
+            controls.revealsResult ? "the expired receipt still replaces the toolbar" : nil,
+            host.window?.contentView.map(buttons)?.contains { $0.accessibilityIdentifier() == "toolbar.launcher" } == true
+                ? nil : "Switch tool is missing"])
+        collapse(); model.clipboardReceipt.clear(); settle(.resting)
+        // Reverse order: a meeting is already recording when old History text is copied.
+        // The brief feedback must not cover the recording signal or its Stop action.
+        do {
+            try drive(model.meetings, start: true); settle(.resting)
+            receipt(); settle(.resting)
+            expect("Copying during an active meeting keeps the recording signal", [
+                CapturePanelController.showsDeliveryCue(model) ? "copy feedback covers the meeting" : nil,
+                controls.status.indicator == .capture ? nil : "the meeting recording signal disappeared"])
+            reveal(); settle(.revealed)
+            let stop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
+            expect("Copying during an active meeting keeps Stop reachable", [
+                model.meetings.isRecording ? nil : "the meeting ended",
+                stop?.accessibilityLabel() == "Stop transcribing" && stop?.isEnabled == true ? nil : "Stop transcribing is not reachable"])
+            collapse(); model.clipboardReceipt.clear()
+            try drive(model.meetings, start: false); settle(.resting)
+            receipt(); settle(.resting)
+            try drive(model.meetings, start: true); settle(.resting)
+            expect("A meeting starting during a copied cue takes back its controls", [
+                CapturePanelController.showsDeliveryCue(model) ? "the earlier cue still has the surface" : nil,
+                host.window?.frame.size == ToolbarLayout.mark(for: controls.rowAnchor) ? nil : "the host still has the cue's frame"])
+            reveal(); settle(.revealed)
+            let nextStop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
+            expect("Stop is reachable when a meeting supersedes a copied cue", [
+                nextStop?.accessibilityLabel() == "Stop transcribing" && nextStop?.isEnabled == true ? nil : "the row did not return"])
+            collapse(); model.clipboardReceipt.clear()
+            try drive(model.meetings, start: false); settle(.resting)
+        } catch { expect("Copy during an active meeting", [error.localizedDescription]) }
         // At the right-hand dock each result grows leftward from the launcher's centre: its actions
         // must sit clear of the mark the pointer came from, never Retry, Dismiss or the like there.
         controls.choosePosition?(.right); settle(.resting)
@@ -2277,7 +2291,6 @@ enum SurfaceGallery {
         let failure = "The speech engine stopped before it finished."
         let results: [(String, () -> Void, () -> Void)] = [
             ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() }),
-            ("The clipboard receipt", receipt, { self.model.clipboardReceipt.clear() }),
             ("A stopped reading", { self.model.reportReadingFailure(.audioUnreadable) }, { self.model.dismissReadingFailure() })]
         for (name, show, clear) in results {
             show(); settle(.resting)
@@ -2317,7 +2330,7 @@ enum SurfaceGallery {
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
         func receipt(_ outcome: @escaping () -> TextDelivery.Outcome) -> () -> Void {
-            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.keepVisible = true }
+            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.holdHUD(true) }
         }
         /// A receipt goes the moment the clipboard changes, so a copy made on this Mac while a local
         /// run is under way would end a receipt case early. A case runs again, twice at most, when
@@ -2338,13 +2351,9 @@ enum SurfaceGallery {
                                       dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
         let copied = { TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                             wasPasted: false, destinationName: nil) }
-        let notCopied = { TextDelivery.Outcome(message: "Could not copy the transcript.", clipboardChangeCount: nil, wasPasted: false,
-                                               destinationName: nil, failure: .copyFailed) }
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
-            ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() }),
-            ("A receipt", .receipt, receipt(copied), { self.model.clipboardReceipt.clear() }),
-            ("An undelivered result", .receipt, receipt(notCopied), { self.model.clipboardReceipt.clear() })]
+            ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
         // More's section carries the result's title; a receipt's is read as it was recorded.
         func header(_ kind: FloatingResult) -> String {
             kind == .dictationFailure ? "Dictation needs attention" : model.clipboardReceipt.receipt?.title ?? "a receipt"
@@ -2375,7 +2384,7 @@ enum SurfaceGallery {
                         row ? nil : "the pointer's reveal showed the older result over the reading",
                         reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
                         goesOn ? nil : "revealing ended the reading",
-                        result.kind != .dictationFailure || warning.contains("Needs attention") ? nil : "the mark lost the result's warning: \"\(warning)\"",
+                        warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
                         more.contains(section) ? nil : "More lost the result's commands (\(section))",
                         reading.state == "preparing" || more.contains("Stop reading") ? nil : "More has no Stop reading",
                         back ? nil : "once the reading ended the pointer's reveal did not show the result"]
