@@ -1298,14 +1298,6 @@
     "note": "Home entry to the requested local Me profile, backed by an ordinary saved Persona; no account or duplicate library."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-dictate",
-    "surface": "window home",
-    "label": "Open Dictate",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Option: Current work's door to Dictate for a kept capture that has no retry here, where its recovery files and Discard are (#134 H1)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-history",
     "surface": "window home",
     "label": "Open History",
@@ -1345,15 +1337,6 @@
     "kind": "action",
     "belongsTo": "settings",
     "note": "Quality: the existing engine banner gains Retry when preparation fails (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-343c7a0bb03c",
-    "surface": "window home",
-    "label": null,
-    "expression": "model . retryCaptureLabel",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label: Retry transcription or Retry saving, Current work's recovery for a kept capture, the same action Dictate offers (#134 H1). Home never discards the recovery."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-690989861a19",

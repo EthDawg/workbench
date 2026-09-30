@@ -23,6 +23,7 @@ struct WorkbenchHome: View {
     @AppStorage("workbench.sidebarCollapsed.v1") private var sidebarCollapsed = false
     @State private var greetingPlayed = false
     @State private var showingProfile = false
+    @State private var hoveredSidebarItem: String?
     /// Only the offscreen gallery supplies an override; the app keeps the person's choice.
     private var sidebarOverride: Bool?
     private var collapsed: Bool { sidebarOverride ?? sidebarCollapsed }
@@ -83,10 +84,12 @@ struct WorkbenchHome: View {
         let page = destination(route).page
         return navItems.first { $0.id == page }?.symbol ?? "questionmark"
     }
-    init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel, sidebarCollapsed: Bool? = nil) {
+    // Optional sidebar values are only supplied by the isolated surface gallery.
+    init(model: AppModel, stage: StageKitController, keyboard: KeyboardCoachModel, readback: ReadbackModel, snap: SnapModel, sidebarCollapsed: Bool? = nil, sidebarHint: String? = nil) {
         self.model = model; self.stage = stage; self.keyboard = keyboard; self.readback = readback
         self.snap = snap; self.history = model.historyLibrary
         self.sidebarOverride = sidebarCollapsed
+        self._hoveredSidebarItem = State(initialValue: sidebarHint)
     }
     var body: some View {
         HStack(spacing: 0) {
@@ -109,7 +112,8 @@ struct WorkbenchHome: View {
                     Button { sidebarCollapsed.toggle() } label: {
                         Image(systemName: "sidebar.left").font(.system(size: 16)).frame(width: 36, height: 36)
                     }.buttonStyle(WorkbenchNavigationStyle())
-                        .help(collapsed ? "Expand sidebar" : "Collapse sidebar")
+                        .modifier(SidebarHintTarget(id: "toggle", title: collapsed ? "Expand sidebar" : "Collapse sidebar",
+                            enabled: collapsed, hovered: $hoveredSidebarItem))
                         .accessibilityLabel(collapsed ? "Expand sidebar" : "Collapse sidebar")
                         .keyboardShortcut("s", modifiers: [.command, .control])
                         .accessibilityIdentifier("sidebar.toggle")
@@ -135,10 +139,11 @@ struct WorkbenchHome: View {
                     }
                 }
                 if updates.availableVersion != nil || updates.restartWaiting {
-                    Button { model.page = "settings"; updates.checkForUpdates() } label: {
+                    Button { hoveredSidebarItem = nil; model.page = "settings"; updates.checkForUpdates() } label: {
                         if collapsed { Image(systemName: "arrow.down.circle").frame(width: 36, height: 36) }
                         else { Text(updates.buttonTitle).font(.caption) }
-                    }.buttonStyle(.bordered).padding(.vertical, 6).help(updates.buttonTitle)
+                    }.buttonStyle(.bordered).padding(.vertical, 6)
+                        .modifier(SidebarHintTarget(id: "update", title: updates.buttonTitle, enabled: collapsed, hovered: $hoveredSidebarItem))
                         .accessibilityLabel(updates.buttonTitle)
                 }
                 // Settings stays reachable below the list, whatever it scrolls to (#134).
@@ -186,7 +191,21 @@ struct WorkbenchHome: View {
                 default: ContentView(model: model, embedded: true)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
-        }.frame(minWidth: 1050, minHeight: 730).tint(Workbench.accent).workbenchTheme()
+        }.overlayPreferenceValue(SidebarHintAnchors.self) { anchors in
+            GeometryReader { geometry in
+                if collapsed, let id = hoveredSidebarItem, let hint = anchors[id] {
+                    let rect = geometry[hint.bounds]
+                    SidebarHintLabel(title: hint.title)
+                        .frame(width: 0, height: rect.height, alignment: .leading)
+                        .offset(x: rect.maxX + 8, y: rect.minY)
+                }
+            }.allowsHitTesting(false).accessibilityHidden(true)
+        }
+            .frame(minWidth: 1050, minHeight: 730).tint(Workbench.accent).workbenchTheme()
+            .onChange(of: collapsed) { _ in hoveredSidebarItem = nil }
+            .onChange(of: model.page) { _ in hoveredSidebarItem = nil }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in hoveredSidebarItem = nil }
+            .onDisappear { hoveredSidebarItem = nil }
             .onAppear {
                 model.onHandOffSelection = { task in handoffReview = HandoffReviewRequest(task: task) }
                 model.onSuggestTranscriptDetails = { id in
@@ -327,6 +346,7 @@ struct WorkbenchHome: View {
     /// its page and starts nothing; every door opens History on All, even from History itself.
     private func navItem(_ item: (id: String, title: String, symbol: String), current: String) -> some View {
         Button {
+            hoveredSidebarItem = nil
             keyboard.stopInteraction()
             if item.id == "history" { model.openHistory() } else { model.page = item.id }
         } label: {
@@ -337,7 +357,8 @@ struct WorkbenchHome: View {
                 .frame(maxWidth: .infinity, minHeight: 38, alignment: collapsed ? .center : .leading).padding(.horizontal, collapsed ? 0 : 11)
                 .foregroundStyle(current == item.id ? Workbench.accent : .primary)
         }.buttonStyle(WorkbenchNavigationStyle(selected: current == item.id))
-            .help(item.title).accessibilityLabel(item.title)
+            .modifier(SidebarHintTarget(id: item.id, title: item.title, enabled: collapsed, hovered: $hoveredSidebarItem))
+            .accessibilityLabel(item.title)
             .accessibilityAddTraits(current == item.id ? .isSelected : [])
             .accessibilityIdentifier("sidebar." + item.id)
     }
@@ -515,17 +536,17 @@ struct WorkbenchHomePage: View {
 
     // MARK: Current work
 
-    /// Dictation, reading and their recovery, each read from its owner.
+    /// Live dictation and reading, each read from its owner.
     private var dictationLive: Bool { model.phase != .idle || model.waitingForDrawing }
     private var readingLive: Bool { model.rendering || model.playing || model.paused }
-    private var captureRecovery: Bool { model.hasCaptureRecovery && model.phase == .idle }
-    /// Anything running, paused or waiting for recovery. A saved transcript or session alone is not.
+    /// Active or paused work and stopped reading. Retained dictation audio belongs on Dictate,
+    /// where Retry, the saved files and explicit Discard stay together; it is not current work.
     private var hasCurrentWork: Bool {
-        dictationLive || readingLive || captureRecovery || model.readingFailure != nil || !model.ready
+        dictationLive || readingLive || model.readingFailure != nil || !model.ready
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
             || stage.hasActivePersona || stage.hasActiveTimer || meetings.isBusy || jobs.isBusy
     }
-    /// Active input first, then recovery, then other running or resumable work, each with its
+    /// Active input first, then stopped reading and other running or resumable work, each with its
     /// own truthful action. Leaving Home collapses, acknowledges or discards none of it.
     private var currentWork: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -538,13 +559,6 @@ struct WorkbenchHomePage: View {
                 liveRow("Narrating", WorkbenchHome.symbol(of: "readback")) { Button("Stop") { readback.stopNarration() } }
             }
             if meetings.isRecording { MeetingQuickStatus(model: meetings) { model.page = "meeting" } }
-            // Recovery.
-            if captureRecovery {
-                liveRow("A capture is kept for recovery", "exclamationmark.arrow.circlepath") {
-                    if model.canRetry { Button(model.retryCaptureLabel) { model.retryTranscription() }.help(model.retryCaptureHelp) }
-                    else { Button("Open Dictate") { model.page = "dictate" } }
-                }
-            }
             if model.readingFailure != nil {
                 liveRow("A reading stopped", "exclamationmark.triangle") {
                     Button("Retry") { model.retryReading() }.disabled(!model.canRetryReading)
@@ -863,7 +877,7 @@ struct HomeJourney: Equatable {
     var transcripts = 0
     /// Saved with the Dictate preferences; nil reads as offered.
     var guide: FirstDictationGuide? = nil
-    /// Something is running, paused or waiting for recovery.
+    /// Something is running, paused or a reading has stopped.
     var hasCurrentWork = false
     /// A loaded Snap & Talk session with captures, not already current work.
     var hasSession = false
