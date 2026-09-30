@@ -80,6 +80,10 @@ final class ToolbarNextActionTests: XCTestCase {
             case .pauseOverlays: ok = live.persona == .session && live.mode == .persona
             case .resumeOverlays: ok = live.persona == .sessionHidden && live.mode == .persona
             case .hidePersona: ok = live.persona == .shown && live.mode == .persona
+            case .cancelPersonaCamera: ok = live.persona == .cameraStarting && live.mode == .persona
+            case .hidePersonaCamera: ok = live.persona == .cameraShown && live.mode == .persona
+            case .showPersonaCamera: ok = live.persona == .cameraHidden && live.mode == .persona
+            case .retryPersonaCamera: ok = live.persona == .cameraFailed && live.mode == .persona
             case .captureNext: ok = live.mode == .snapAndTalk && live.captureCount != nil
             case .stopMeetingTranscription: ok = live.meetingRecording && live.mode == .dictate
             case .endPresentation: ok = live.presenting && live.mode == .present
@@ -118,7 +122,7 @@ final class ToolbarNextActionTests: XCTestCase {
             let operation = ToolbarNextAction.resolve(live).operation
             if operation == .endPresentation, live.mode != .present { failures += 1 }
             if operation == .stopMeetingTranscription, live.mode != .dictate { failures += 1 }
-            if [.pauseOverlays, .resumeOverlays, .hidePersona].contains(operation), live.mode != .persona { failures += 1 }
+            if [.pauseOverlays, .resumeOverlays, .hidePersona, .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera].contains(operation), live.mode != .persona { failures += 1 }
             if operation == .captureNext, live.mode != .snapAndTalk { failures += 1 }
         }
         XCTAssertEqual(failures, 0)
@@ -131,7 +135,7 @@ final class ToolbarNextActionTests: XCTestCase {
         var failures = 0
         Self.product { live in
             let action = ToolbarNextAction.resolve(live)
-            let own = [.endPresentation, .stopMeetingTranscription, .captureNext, .pauseOverlays, .resumeOverlays, .hidePersona]
+            let own = [.endPresentation, .stopMeetingTranscription, .captureNext, .pauseOverlays, .resumeOverlays, .hidePersona, .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera]
                 .contains(action.operation)
             if own, Self.inputLive(live) { failures += 1 }
             if Self.ownLive(live), !Self.inputLive(live), !own { failures += 1 }

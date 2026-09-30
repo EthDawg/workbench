@@ -6,7 +6,7 @@ public struct ToolbarLiveState: Hashable, Sendable {
     /// delivered, or for Copy now (#211 F5).
     public enum Dictation: CaseIterable, Sendable { case idle, requesting, recording, processing, cancelling, waitingForDrawing }
     public enum Reading: CaseIterable, Sendable { case idle, preparing, playing, paused }
-    public enum Persona: CaseIterable, Sendable { case none, shown, session, sessionHidden }
+    public enum Persona: CaseIterable, Sendable { case none, shown, session, sessionHidden, cameraStarting, cameraShown, cameraHidden, cameraFailed }
     public enum Timer: CaseIterable, Sendable { case none, running, paused, finished }
 
     public var mode: ToolbarMode
@@ -77,6 +77,7 @@ public enum ToolbarOperation: Hashable, Sendable {
     /// stops instead, and dispatches through the same owner switch.
     case stopReading
     case hidePersona, pauseOverlays, resumeOverlays
+    case cancelPersonaCamera, hidePersonaCamera, showPersonaCamera, retryPersonaCamera
     case captureNext, stopMeetingTranscription, endPresentation
     case start(ToolbarMode)
     /// Nothing to do but wait; the label says why and is disabled.
@@ -88,11 +89,12 @@ public enum ToolbarOperation: Hashable, Sendable {
         switch self {
         case .stopInserting, .stopDictation, .finishNarration, .finishDrawing,
              .stopReading, .stopMeetingTranscription, .endPresentation: return "stop.fill"
-        case .cancelDictationRequest, .cancelReading: return "xmark"
+        case .cancelDictationRequest, .cancelReading, .cancelPersonaCamera: return "xmark"
         case .pauseReading: return "pause.fill"
         case .resumeReading: return "play.fill"
-        case .hidePersona, .pauseOverlays: return "eye.slash"
-        case .resumeOverlays: return "eye"
+        case .hidePersona, .pauseOverlays, .hidePersonaCamera: return "eye.slash"
+        case .resumeOverlays, .showPersonaCamera: return "eye"
+        case .retryPersonaCamera: return "arrow.clockwise"
         case .captureNext: return "viewfinder"
         case .wait: return "hourglass"
         case .start(let mode): return mode == .dictate ? "mic.fill" : mode.symbol
@@ -107,7 +109,7 @@ public enum ToolbarOperation: Hashable, Sendable {
         case .finishNarration, .captureNext: return .snapAndTalk
         case .finishDrawing: return .draw
         case .stopInserting, .endPresentation: return .present
-        case .hidePersona, .pauseOverlays, .resumeOverlays: return .persona
+        case .hidePersona, .pauseOverlays, .resumeOverlays, .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera: return .persona
         case .start(let mode): return mode
         case .wait: return nil
         }
@@ -147,7 +149,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         let enabled: Bool
         switch operation {
         case .wait: enabled = false
-        case .start, .captureNext: enabled = live.mayStart
+        case .start, .captureNext, .showPersonaCamera, .retryPersonaCamera: enabled = live.mayStart
         default: enabled = true
         }
         var detail: String?
@@ -208,6 +210,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
             case .session: return .pauseOverlays
             case .sessionHidden: return .resumeOverlays
             case .shown: return .hidePersona
+            case .cameraStarting: return .cancelPersonaCamera
+            case .cameraShown: return .hidePersonaCamera
+            case .cameraHidden: return .showPersonaCamera
+            case .cameraFailed: return .retryPersonaCamera
             case .none: break
             }
         case .snapAndTalk:
@@ -236,6 +242,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .pauseOverlays: return "Hide personas"
         case .resumeOverlays: return "Show personas"
         case .hidePersona: return "Hide persona"
+        case .cancelPersonaCamera: return "Cancel"
+        case .hidePersonaCamera: return "Hide camera"
+        case .showPersonaCamera: return "Show camera again"
+        case .retryPersonaCamera: return "Try again"
         case .captureNext: return "Capture next · \(live.captureCount ?? 0)"
         case .stopMeetingTranscription: return "Stop transcribing"
         case .endPresentation: return "End presentation"

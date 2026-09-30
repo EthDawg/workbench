@@ -59,11 +59,17 @@ extension FloatingToolbar {
         if stage.isDrawing { command("Stop drawing", id: "draw.stop", .draw, identity: stage.drawingIdentity?.uuidString ?? "") { stage.finishDrawing() } }
         if stage.isPresenting { command("End presentation", id: "present.end", .present, identity: stage.presentationIdentity?.uuidString ?? "") { stage.endDeviceScene() } }
         if promptInsertion.running { command("Stop inserting", id: "present.stop-inserting", .present, identity: promptInsertion.operationIdentity.uuidString) { promptInsertion.cancel() } }
-        if stage.selectedPersonaCopy != nil || stage.hasActivePersonaSession {
-            let hidden = stage.personaStatus == "Hidden"
-            command(hidden ? "Show again" : "Hide", id: "persona.visibility", .persona,
-                identity: stage.personaSessionIdentity.uuidString + stage.personaStatus + String(describing: stage.selectedPersonaCopy)) { stage.togglePersona() }
-            command("End Persona", id: "persona.end", .persona, identity: stage.personaSessionIdentity.uuidString + String(describing: stage.selectedPersonaCopy)) { stage.endPersona() }
+        // Persona's live commands name the source that is actually live: a
+        // prepared set, the one floating card or the camera bubble, which is also
+        // cancellable while it starts. Each title is part of the command's
+        // identity, so a stale row cannot perform a different operation.
+        if stage.hasLivePersonaSource {
+            let visibility = stage.personaVisibilityTitle, end = stage.personaEndTitle
+            if stage.personaCameraPhase == .off || WorkbenchControlContext(model: model, readback: readback, stage: stage, snap: snapModel).state.enabled(.persona) {
+                command(visibility, id: "persona.visibility", .persona,
+                    identity: stage.personaSessionIdentity.uuidString + visibility + stage.personaStatus + String(describing: stage.selectedPersonaCopy)) { stage.togglePersona() }
+            }
+            command(end, id: "persona.end", .persona, identity: stage.personaSessionIdentity.uuidString + end + String(describing: stage.selectedPersonaCopy)) { stage.endPersona() }
         }
         if let identity = meetings.recordingIdentity {
             command("Stop transcribing", id: "meeting.stop", nil, identity: identity.uuidString) {

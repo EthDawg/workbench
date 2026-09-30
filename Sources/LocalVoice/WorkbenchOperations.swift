@@ -30,7 +30,8 @@ enum WorkbenchRowAction: Hashable {
         case .pauseReading, .resumeReading: model.listen()
         case .cancelReading: model.cancelReading()
         case .stopReading: model.stopPlayback()
-        case .hidePersona, .pauseOverlays, .resumeOverlays: stage.togglePersona()
+        case .hidePersona, .pauseOverlays, .resumeOverlays,
+             .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera: stage.togglePersona()
         case .captureNext: start(.snapAndTalk)
         case .stopMeetingTranscription: Task { await meetings.stop() }
         case .endPresentation: stage.endDeviceScene()

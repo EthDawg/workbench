@@ -818,15 +818,6 @@
     "aliasOf": "read"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.end-persona",
-    "surface": "floating toolbar activity chooser",
-    "label": "End Persona",
-    "kind": "action",
-    "belongsTo": "persona",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "persona"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.end-presentation",
     "surface": "floating toolbar activity chooser",
     "label": "End presentation",
@@ -944,6 +935,15 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-361e48d0308f",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "end",
+    "note": "Quality: the existing Persona End command names the active artwork or camera visit and revalidates that visit before ending it.",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-7179df6049fe",
     "surface": "floating toolbar activity chooser",
     "label": null,
@@ -953,11 +953,11 @@
     "belongsTo": "timer"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-8a3b61e56a81",
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-7d2fb3da93a0",
     "surface": "floating toolbar activity chooser",
     "label": null,
-    "expression": "hidden ? \"Show again\" : \"Hide\"",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "expression": "visibility",
+    "note": "Quality: the existing Persona visibility command follows the current artwork or camera visit and keeps an old control from affecting a newer visit.",
     "kind": "action",
     "belongsTo": "persona"
   },
@@ -2197,10 +2197,11 @@
   },
   {
     "id": "StageKit.ActivityMenus.PersonaSizeMenuView.native-control.persona-size",
-    "surface": "Persona menu",
+    "surface": "Persona camera menu",
     "label": "Persona Size",
     "kind": "option",
-    "belongsTo": "persona"
+    "belongsTo": "persona",
+    "note": "Option of Persona: the existing size control changes only the camera bubble placement while that visit owns the live slot."
   },
   {
     "id": "StageKit.AnnotationMenu.AnnotationMenu.NSMenuItem.ink-colour",
@@ -2541,6 +2542,38 @@
     "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.position-camera",
+    "surface": "Persona camera menu",
+    "label": "Position camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: named positions act on the current camera bubble and preserve the saved artwork placement."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.switch-camera",
+    "surface": "Persona camera menu",
+    "label": "Switch camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.cancel-starting-camera",
+    "surface": "Persona camera menu",
+    "label": "Cancel starting camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality: cancellation ends only the current permission or startup request and drops late replies."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-camera",
+    "surface": "Persona camera menu",
+    "label": "End camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: end the current camera visit, release the device and preserve saved artwork and independent Present work."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-overlay",
     "surface": "Persona menu",
     "label": "End Overlay",
@@ -2548,11 +2581,27 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.hide-camera",
+    "surface": "Persona camera menu",
+    "label": "Hide camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: hide releases the camera and keeps its temporary placement for Show camera again."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.lock-artwork-clicks-pass-through",
     "surface": "Persona menu",
     "label": "Lock Artwork · Clicks Pass Through",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.lock-camera-clicks-pass-through",
+    "surface": "Persona camera menu",
+    "label": "Lock camera · clicks pass through",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
@@ -2581,11 +2630,28 @@
     "note": "Quality within Persona (#170): Hide keeps the one floating card, and Show Again brings back that card, the same words as a paused set's Show Again."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-camera-again",
+    "surface": "Persona camera menu",
+    "label": "Show camera again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: explicitly restart the selected camera in the retained placement."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-selected-persona",
     "surface": "Persona menu",
     "label": "Show Selected Persona",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.try-again",
+    "surface": "Persona camera menu",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality: contextual camera recovery opens only the prepared camera on explicit retry.",
+    "aliasOf": "persona"
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.update-shown-card",
@@ -2737,6 +2803,108 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.cancel",
+    "surface": "Persona live camera",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The existing contextual dismissal wording: it stops opening the camera and leaves the shown artwork and saved work as they were."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.end-camera",
+    "surface": "Persona live camera",
+    "label": "End camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona (#134 camera source): ends the live camera visit and releases the device. It keeps saved personas, prepared layouts and any running presentation."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.hide-camera",
+    "surface": "Persona live camera",
+    "label": "Hide camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: releases the camera at once and keeps the bubble's place for Show camera again. The same words as Hide elsewhere in Persona."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.open-camera-settings",
+    "surface": "Persona live camera",
+    "label": "Open Camera settings",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The same refused-access recovery the profile camera offers, beside the explanation."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.show-camera-again",
+    "surface": "Persona live camera",
+    "label": "Show camera again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: starts the same camera again and returns the bubble to its kept place, as Show again does for a hidden card."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.start-camera",
+    "surface": "Persona live camera",
+    "label": "Start camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: the one door that opens this Mac's camera. Off at launch; visiting Persona or choosing Camera as the source starts nothing."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.switch-camera",
+    "surface": "Persona live camera",
+    "label": "Switch camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.try-again",
+    "surface": "Persona live camera",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: explicitly retry the prepared camera after a failure, without silently selecting a fallback."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Menu.position",
+    "surface": "Persona live camera",
+    "label": "Position",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The shown card's own Position control, acting on the camera bubble while it is the live source; it uses the shared named anchors."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Picker.camera",
+    "surface": "Persona live camera",
+    "label": "Camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Option of Persona: prepare a camera choice without opening hardware; Start, Show again, Try again or Switch camera explicitly applies it."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Toggle.lock-camera-clicks-pass-through",
+    "surface": "Persona live camera",
+    "label": "Lock camera · clicks pass through",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.choice.choose-a-camera",
+    "surface": "Persona live camera",
+    "label": "Choose a camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Temporary empty choice when no camera has been chosen yet and several are available; it requires an explicit source."
+  },
+  {
     "id": "StageKit.PersonaLibraryView.PersonaCardEditor.Button.cancel",
     "surface": "local profile",
     "label": "Cancel",
@@ -2877,12 +3045,37 @@
     "aliasOf": "persona"
   },
   {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Picker.live-source",
+    "surface": "Persona source",
+    "label": "Live source",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: prepare artwork or a local camera bubble in the same workspace. Changing this selector starts no capture."
+  },
+  {
     "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Toggle.lock-artwork-clicks-pass-through",
     "surface": "Persona live copy",
     "label": "Lock artwork · clicks pass through",
     "kind": "setting",
     "belongsTo": "persona",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.choice.artwork",
+    "surface": "Persona source",
+    "label": "Artwork",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: prepare the existing saved-artwork source without changing the live output."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.choice.camera",
+    "surface": "Persona source",
+    "label": "Camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: prepare a local webcam bubble. Start camera remains the explicit capture action.",
     "aliasOf": "persona"
   },
   {
@@ -3203,6 +3396,15 @@
     "belongsTo": "dictate"
   },
   {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelPersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
+  },
+  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelReading",
     "surface": "floating toolbar next action",
     "label": "Cancel",
@@ -3265,6 +3467,15 @@
     "belongsTo": "persona"
   },
   {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.hidePersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Hide camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
+  },
+  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.pauseOverlays",
     "surface": "floating toolbar next action",
     "label": "Hide personas",
@@ -3312,6 +3523,24 @@
     "label": "Resume reading",
     "kind": "action",
     "belongsTo": "read"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.retryPersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.showPersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Show camera again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.snap",

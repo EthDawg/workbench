@@ -247,6 +247,9 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     var mayBeginInteraction: (() -> Bool)?
     var isPresenting: Bool { presentation != nil }
     var presentationIdentity: UUID? { presentation?.sessionIdentity }
+    /// The camera a running device presentation holds. Persona's camera reports
+    /// it as a conflict rather than taking the device from the presentation.
+    var heldDeviceID: String? { presentation?.heldDeviceID }
     @Published private(set) var myDevice: DeviceViewport?
     @Published private(set) var savedLogos: [SavedSceneLogo] = []
     @Published private(set) var starterPreferences = StarterPreferences()
@@ -274,6 +277,8 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason, sessionPanelFactory: personaPanels,
                                        sessionHUDEnabled: personaPanels == nil, voice: personaVoice)
         super.init()
+        // Persona's camera keeps clear of the device a presentation is showing.
+        personas.camera.deviceInUse = { [weak self] in self?.heldDeviceID }
         if let readOnlyReason {
             storageBlocked = true; logoLibraryBlocked = true; starterLibraryBlocked = true
             notice = readOnlyReason

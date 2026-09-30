@@ -249,7 +249,11 @@ struct FloatingToolbar: View {
     /// press on a label that changed since the last redraw does nothing. Internal so the host
     /// checks can press it through a completion.
     func pressPrimary() -> (() -> Void)? {
-        controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: perform)
+        let personaIdentity = stage.personaSessionIdentity
+        return controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: { operation in
+            guard operation.mode != .persona || stage.personaSessionIdentity == personaIdentity else { return }
+            perform(operation)
+        })
     }
 
     /// The source and selected tool are fixed at mouse-down. The shared operation generation

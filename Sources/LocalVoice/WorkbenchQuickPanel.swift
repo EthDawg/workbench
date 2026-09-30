@@ -62,7 +62,7 @@ struct WorkbenchQuickPanel: View {
                     let renderedAction = state.rowAction(tool)
                     HStack(spacing: 8) {
                         // Each capability retains its own symbol, action and live accent.
-                        Button { perform(tool, renderedAction: renderedAction) } label: {
+                        Button { perform(tool, renderedAction: renderedAction, personaIdentity: state.personaIdentity) } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: tool.symbol).font(.system(size: 13))
                                     .foregroundStyle(state.active(tool) ? Workbench.accent : .secondary)
@@ -277,8 +277,8 @@ struct WorkbenchQuickPanel: View {
     /// The row does exactly what its label says: the same operation, through the
     /// same owner switch the floating toolbar uses. Only a start goes through
     /// this surface's own door.
-    private func perform(_ tool: WorkbenchControlTool, renderedAction: WorkbenchRowAction) {
-        guard !keyboard.isInteracting, context.state.admits(renderedAction, for: tool) else { return }
+    private func perform(_ tool: WorkbenchControlTool, renderedAction: WorkbenchRowAction, personaIdentity: UUID?) {
+        guard !keyboard.isInteracting, context.state.admits(renderedAction, for: tool, personaIdentity: personaIdentity) else { return }
         let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
             switch mode {
             case .dictate: model.onMenuRecording?()

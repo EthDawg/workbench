@@ -48,6 +48,41 @@ struct TestRunner {
             print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
             exit(assertionFailures == 0 ? 0 : 1)
         }
+        if args == ["--persona-camera-only"] {
+            // A fake camera, window, permission, clock and camera list on a
+            // disposable library: no hardware, prompt or saved work is involved.
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.finishLaunching()
+            let suite = PersonaCameraTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("camera is off until an explicit start", suite.testCameraIsOffUntilAnExplicitStartAndShowsNothingBeforeAFrame),
+                ("camera sleep cancels permission and startup", suite.testSleepCancelsPermissionAndStartup),
+                ("camera failures before readiness keep the shown artwork", suite.testFailuresBeforeReadinessLeaveTheShownArtworkAndNeedAnExplicitRetry),
+                ("camera stall and disconnection need explicit retry", suite.testStalledAndDisconnectedFeedsRecoverOnlyOnExplicitRetry),
+                ("camera in use is reported, not taken", suite.testABusyCameraIsReportedInsteadOfTaken),
+                ("camera choice starts only the chosen camera", suite.testChoosingAnotherCameraStartsOnlyThatOneAndDropsTheOldFeed),
+                ("camera keeps saved and prepared artwork", suite.testTheCameraTakesTheSlotWithoutLosingSavedOrPreparedArtwork),
+                ("camera Hide releases it and keeps its place", suite.testHideReleasesTheCameraAndKeepsItsPlaceForShowAgain),
+                ("camera live doors and cycling", suite.testLiveDoorsFollowTheCameraAndCyclingNeverReplacesIt),
+                ("camera and prepared sets never share the slot", suite.testPreparedSetsAndTheCameraNeverShareTheSlot),
+                ("camera neither listens nor writes", suite.testCameraNeitherListensNorWritesAnything),
+                ("camera bubble window moves, resizes and crops", suite.testTheBubbleWindowMovesResizesAndCropsLikeArtwork),
+                ("optional offscreen camera panel renders", suite.testOffscreenCameraPanelRenders)
+            ]
+            var skipped = 0
+            for (name, test) in tests {
+                if name.hasPrefix("optional"), ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] == nil {
+                    skipped += 1; print("SKIP \(name): set WORKBENCH_LAYOUT_EVIDENCE to render"); continue
+                }
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            if skipped > 0 { print("\(skipped) skipped") }
+            print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--persona-layout-only"] {
             guard ProcessInfo.processInfo.environment["WORKBENCH_LAYOUT_EVIDENCE"] != nil else { exit(2) }
             _ = NSApplication.shared
@@ -530,6 +565,7 @@ struct TestRunner {
         let personaCreation = PersonaCreationTests()
         let personaAppearance = PersonaAppearanceTests()
         let personaShown = PersonaShownTests()
+        let personaCamera = PersonaCameraTests()
         let floating = FloatingControlGeometryTests()
         let timerPlacement = BreakTimerPlacementTests()
         let timerTransport = TimerTransportTests()
@@ -645,6 +681,18 @@ struct TestRunner {
                 ("camera stays in profile host and Cancel preserves library", ProfileCameraTests().testProfileKeepsCameraInTheSameHostAndCancelReturnsWithoutSaving),
                 ("camera frame conversion preserves pixels", ProfileCameraTests().testFrameConversionKeepsItsSizeAndOrientation),
                 ("camera synthetic layouts", ProfileCameraTests().testCameraLayouts),
+                ("persona camera is off until an explicit start", personaCamera.testCameraIsOffUntilAnExplicitStartAndShowsNothingBeforeAFrame),
+                ("persona camera sleep cancels permission and startup", personaCamera.testSleepCancelsPermissionAndStartup),
+                ("persona camera failures keep the shown artwork", personaCamera.testFailuresBeforeReadinessLeaveTheShownArtworkAndNeedAnExplicitRetry),
+                ("persona camera stall and disconnection", personaCamera.testStalledAndDisconnectedFeedsRecoverOnlyOnExplicitRetry),
+                ("persona camera in use is reported, not taken", personaCamera.testABusyCameraIsReportedInsteadOfTaken),
+                ("persona camera choice starts only that camera", personaCamera.testChoosingAnotherCameraStartsOnlyThatOneAndDropsTheOldFeed),
+                ("persona camera keeps saved and prepared artwork", personaCamera.testTheCameraTakesTheSlotWithoutLosingSavedOrPreparedArtwork),
+                ("persona camera Hide releases it and keeps its place", personaCamera.testHideReleasesTheCameraAndKeepsItsPlaceForShowAgain),
+                ("persona camera live doors and cycling", personaCamera.testLiveDoorsFollowTheCameraAndCyclingNeverReplacesIt),
+                ("persona camera and prepared sets never share the slot", personaCamera.testPreparedSetsAndTheCameraNeverShareTheSlot),
+                ("persona camera neither listens nor writes", personaCamera.testCameraNeitherListensNorWritesAnything),
+                ("persona camera bubble window moves, resizes and crops", personaCamera.testTheBubbleWindowMovesResizesAndCropsLikeArtwork),
             ("profile reference and replacement keep identity and original artwork", personaCreation.testProfileReferenceAndPhotoReplacementPreserveIdentityAndOriginals),
             ("profile failed replacement keeps draft and files", personaCreation.testFailedProfileReplacementKeepsDraftAndFiles),
             ("saved card edit cancel and shown card", personaCreation.testCancellingAnEditLeavesTheSavedCardAndTheShownCardAlone),

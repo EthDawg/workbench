@@ -106,6 +106,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
         return menu
     }
+    /// The device this presentation's capture holds; another camera owner reports
+    /// a conflict instead of taking it.
+    var heldDeviceID: String? { capture.heldDeviceID }
     var liveSettingsView: some View { LiveSettings(presentation: self, capture: capture, controls: controls) }
     private struct LiveSettings: View {
         let presentation: DemoPresentation

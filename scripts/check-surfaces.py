@@ -119,6 +119,11 @@ ENTRY_POINTS = [
     ('LocalVoice/PresentWorkspaceView.swift', 'PresentPromptButton', 'Present workspace', 'controls'),
     ('StageKit/PersonaLiveSettings.swift', 'PersonaLiveSettings', 'Persona live copies', 'controls'),
     ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.shownPanel', 'Persona live copy', 'controls'),
+    ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.liveSourceControl', 'Persona source', 'controls'),
+    # Persona's other live source: the local camera bubble, prepared and run beside
+    # the shown card's controls on the same page.
+    ('StageKit/PersonaCamera.swift', 'PersonaCameraPanel', 'Persona live camera', 'controls'),
+    ('StageKit/Persona.swift', 'PersonaLibrary.cameraItems', 'Persona camera menu', 'controls'),
     ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
     ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),

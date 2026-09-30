@@ -125,19 +125,74 @@ public final class StageKitController: ObservableObject {
         coordinator.demoScenes.usesSharedControls = true
         coordinator.demoScenes.personas.usesSharedControls = true
     }
-    public var hasActivePersona: Bool { hasActivePersonaSession || coordinator.demoScenes.personas.overlayVisible }
+    /// Persona has something on screen, or is opening a source for it, so its
+    /// doors offer that source's ending rather than a new start.
+    public var hasActivePersona: Bool {
+        hasActivePersonaSession || coordinator.demoScenes.personas.overlayVisible
+            || coordinator.demoScenes.personas.camera.isStarting
+    }
+    /// Anything a live door can hide, show again or end, including a camera visit
+    /// that is still starting or has stopped with a reason.
+    public var hasLivePersonaSource: Bool {
+        let library = coordinator.demoScenes.personas
+        return hasActivePersonaSession || library.overlayVisible || library.hasHiddenCard || library.cameraOwnsSlot
+    }
+    /// A projection of the single camera owner for Home, the panel and toolbar.
+    public enum PersonaCameraPhase: Sendable { case off, starting, live, hidden, failed }
+    public var personaCameraPhase: PersonaCameraPhase {
+        let library = coordinator.demoScenes.personas
+        guard library.cameraOwnsSlot else { return .off }
+        switch library.camera.state {
+        case .off: return .off
+        case .permission, .starting: return .starting
+        case .live: return .live
+        case .hidden: return .hidden
+        case .failed: return .failed
+        }
+    }
+    public var personaCameraMayResume: Bool {
+        coordinator.demoScenes.personas.camera.failure?.offersRetry != false
+    }
     public var personaStatus: String {
         let library = coordinator.demoScenes.personas
+        if library.cameraOwnsSlot { return library.camera.status }
         if library.sessionState.phase == .paused { return "Hidden" }
         if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
         if library.overlayVisible { return "Shown" }
         // A hidden card is kept for Show again, like a paused set.
         return library.hasHiddenCard ? "Hidden" : ""
     }
+    /// The live source is kept but off screen: a paused set, a hidden card, or a
+    /// camera bubble that is hidden or stopped and waiting to be started again.
+    public var isPersonaHidden: Bool {
+        let library = coordinator.demoScenes.personas
+        if library.cameraOwnsSlot { return library.camera.isHidden || library.camera.failure != nil }
+        if library.sessionState.phase == .paused { return true }
+        return library.sessionState.phase == .idle && library.hasHiddenCard
+    }
+    /// Exactly what `togglePersona()` will do to the live source now, for a
+    /// control that must name the operation it performs.
+    public var personaVisibilityTitle: String {
+        let library = coordinator.demoScenes.personas
+        if library.cameraOwnsSlot {
+            switch library.camera.state {
+            case .permission, .starting: return "Cancel"
+            case .live: return "Hide camera"
+            case .hidden: return "Show camera again"
+            case .failed: return "Try again"
+            case .off: break
+            }
+        }
+        return isPersonaHidden ? "Show again" : "Hide"
+    }
+    /// End names the source it releases.
+    public var personaEndTitle: String {
+        coordinator.demoScenes.personas.cameraOwnsSlot ? "End camera" : "End Persona"
+    }
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }
     }
-    public func endPersona() { coordinator.demoScenes.personas.endOverlaySession() }
+    public func endPersona() { coordinator.demoScenes.personas.endLivePersona() }
     public var personaSessionIdentity: UUID { coordinator.demoScenes.personas.liveControlsGeneration }
     public func makePersonaMenu(includePreparation: Bool = false) -> NSMenu {
         let menu = coordinator.demoScenes.personas.makeControlsMenu()

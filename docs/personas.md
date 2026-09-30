@@ -61,6 +61,14 @@ The audience sees a quiet continuous outline that brightens with speech. It keep
 
 It measures alongside Dictate, meeting capture and Snap & Talk narration without taking their microphone, and none of them stops the outline.
 
+## Live camera bubble
+
+Persona's **Camera** source shows a mirrored webcam bubble over other apps. Choosing the source prepares its controls; **Start camera** opens the camera. A saved card stays visible until the first camera frame arrives. The bubble uses the same direct drag, resize, screen bounds and optional click-through lock as artwork. It has its own temporary placement; saved images, groups, selected cards and prepared layouts stay unchanged.
+
+**Hide camera** releases the device and keeps the bubble's place for **Show camera again**. **End camera**, Quit and sleep release it too. Sleep also cancels permission and startup, so a late reply cannot reopen capture. Nothing records audio or video, saves a photo, or streams to a service. A prepared overlay set must end before the camera can occupy Persona's single live slot. A device already held by Present or another application is reported in place.
+
+With several cameras, a workspace camera choice only prepares a source; **Switch camera**, Start, Show again or Try again opens it explicitly. A disconnected, stalled or refused camera has contextual recovery and never silently switches devices. The workspace, visibility shortcut, toolbar and menu read the same live camera visit; Next Persona cannot replace it. The camera's placement resets when Workbench quits. Native camera permission, actual frame delivery, movement, device disconnect and receiver behavior remain separately recorded acceptance checks in [#134](https://github.com/EthDawg/workbench/issues/134).
+
 ## Prepare several overlays
 
 1. Create a group and choose its members in Personas. Prepare each audience separately.

@@ -31,7 +31,7 @@ Reusing what you captured (History, then Hand off) supports these moments. It is
 | Read | text into speech | voice, source text |
 | Draw | marks over anything | pen, arrow, shape, board, undo, clear |
 | Present | a device or scene into a live stage | scene, device, audio, saved prompts, Persona in the scene |
-| Persona | you onto the screen | cards, size, position, voice framing |
+| Persona | you onto the screen | cards, live camera, size, position, voice framing |
 | Timer | a break into a visible countdown | duration, placement |
 
 **Named workflows** combine capabilities and keep their own name because they are a moment: **Snap & Talk** (Snap with narration, building a deck) and **Meetings** (Dictate with a meeting or call’s audio, as a longer session). Meetings is the existing Transcribe meeting or call workflow, promoted to a visible desktop destination. A new named workflow is a new capability for review purposes.
@@ -97,7 +97,7 @@ The surface gallery holds rule 4, the names in rule 6 and the look of rule 7's c
 | Text → speech | Explicit selected-text handoff, Mac voices with word highlighting, playback/export and optional online reading | Review imported text and keep provider setup explicit; do not turn the utility into a general agent platform. |
 | Screen → Snap | Capture a region, window or display; crop, annotate, copy and keep a searchable local history | Originals survive edits and reversible archive. Cancel creates no empty record or Desktop file. |
 | Snap + narration | Compose saved Snaps or a new region, window or pointer-display capture into an ordered portable Snap & Talk session | Narration follows a new capture; cancelled selectors start no audio. Narration is optional for saved images. Existing sections, original audio and frozen skill packs remain intact. |
-| Persona | Show saved artwork over windows and browsers, or place it in a Present scene | Independent overlays retain their own placement and lifecycle. The optional voice outline measures loudness only while its persona shows and never records. |
+| Persona | Show saved artwork over windows and browsers, or place it in a Present scene | Independent overlays retain their own placement and lifecycle. The optional voice outline measures loudness only while its persona shows and never records. An explicitly started local camera can take the one floating slot as a mirrored bubble; it is video only, keeps no image, writes nothing and never opens the microphone. Remote streams, recording and a camera inside a Present scene are outside this source. |
 | Meeting → transcript | Explicitly capture a selected Mac app's audio and optional microphone, retain recoverable audio and save into existing history | Detection is off by default and only offers transcription. Phone-only audio, protected routes and headset results require separate native evidence. |
 | Explain a screen | Live drawing, pointer emphasis, boards and a clear return to the demo | A meeting app owns distribution to the audience. |
 | Present a device | USB video preview in a saved scene, branding, readable controls and a break timer | [Connection & audio](phone-presenting.md) separates picture, voice and Mac control. QuickTime and iPhone Mirroring remain separate apps; an explicit fallback releases Workbench capture first. |

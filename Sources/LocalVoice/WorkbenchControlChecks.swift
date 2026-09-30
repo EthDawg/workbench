@@ -480,6 +480,10 @@ enum WorkbenchControlChecks {
                 ("a hidden prepared set", { $0.overlays = true; $0.overlaySession = true; $0.overlaysPaused = true }, .sessionHidden, "Show personas", .resumeOverlays),
                 ("an active prepared set", { $0.overlays = true; $0.overlaySession = true }, .session, "Hide personas", .pauseOverlays),
                 ("one card", { $0.overlays = true }, .shown, "Hide persona", .hidePersona),
+                ("a camera waiting for its first frame", { $0.personaCamera = .starting }, .cameraStarting, "Cancel", .cancelPersonaCamera),
+                ("a live camera", { $0.personaCamera = .live }, .cameraShown, "Hide camera", .hidePersonaCamera),
+                ("a hidden camera", { $0.personaCamera = .hidden }, .cameraHidden, "Show camera again", .showPersonaCamera),
+                ("a stopped camera", { $0.personaCamera = .failed }, .cameraFailed, "Try again", .retryPersonaCamera),
                 ("an ended set", { _ in }, .none, "Show persona", .start(.persona))]
             for (context, setUp) in alongside {
                 for (name, configure, persona, title, operation) in personas {
@@ -490,6 +494,21 @@ enum WorkbenchControlChecks {
                               "Home's Persona control reads \(title) for \(name) \(context), as the toolbar's Persona mode does")
                 }
             }
+            var camera = WorkbenchControlState(); camera.personaCamera = .starting; camera.personaIdentity = UUID()
+            let cancel = HomePersonaControl(camera)
+            camera.personaCamera = .live
+            try check(!cancel.isAdmitted(in: camera), "a rendered camera Cancel cannot turn into Hide when the first frame arrives")
+            let hideCamera = HomePersonaControl(camera)
+            camera.personaIdentity = UUID()
+            try check(!hideCamera.isAdmitted(in: camera), "a rendered camera Hide cannot act on a replacement visit")
+            camera.mayPresent = false
+            try check(camera.enabled(.persona), "a live camera can always be hidden when new starts are blocked")
+            camera.personaCamera = .hidden
+            try check(!camera.enabled(.persona), "Show camera again respects input admission")
+            camera.personaCamera = .failed
+            try check(!camera.enabled(.persona), "Try again respects input admission")
+            camera.mayPresent = true; camera.personaCameraMayResume = false
+            try check(!camera.enabled(.persona), "restricted camera access is not retryable from another surface")
             var hidden = WorkbenchControlState(); hidden.overlays = true; hidden.overlaySession = true; hidden.overlaysPaused = true
             try check(HomePersonaControl(hidden).tileVerb == "Show personas" && HomePersonaControl(hidden).help.hasPrefix("Show the set again"),
                       "a hidden prepared set's tile and tooltip offer to show it again, never to hide it")

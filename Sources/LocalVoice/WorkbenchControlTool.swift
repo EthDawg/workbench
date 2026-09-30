@@ -76,6 +76,9 @@ struct WorkbenchControlState {
     /// A prepared multiple-overlay set is running, shown or temporarily hidden.
     var overlaySession = false
     var overlaysPaused = false
+    var personaCamera: StageKitController.PersonaCameraPhase = .off
+    var personaCameraMayResume = true
+    var personaIdentity: UUID?
     var timerStarted = false
     var timerRunning = false
     /// The timer's transport, which tells a finished countdown from a paused one; `timerStarted`
@@ -100,7 +103,8 @@ struct WorkbenchControlState {
         case .snap: return phase == .idle && !capturing && !narrating && !screenshotting && !snapBusy
         case .snapAndTalk: return phase == .idle && !rendering && !capturing && !screenshotting && !meetingBusy
         case .annotate: return mayDraw
-        case .present, .persona, .timer: return mayPresent
+        case .persona: return mayPresent && personaCameraMayResume
+        case .present, .timer: return mayPresent
         }
     }
 
@@ -115,12 +119,20 @@ struct WorkbenchControlState {
         case .delivering where waitingForDrawing: dictation = .waitingForDrawing
         case .transcribing, .cleaning, .delivering: dictation = .processing
         }
+        let persona: ToolbarLiveState.Persona
+        switch personaCamera {
+        case .off: persona = overlaysPaused ? .sessionHidden : overlaySession ? .session : overlays ? .shown : .none
+        case .starting: persona = .cameraStarting
+        case .live: persona = .cameraShown
+        case .hidden: persona = .cameraHidden
+        case .failed: persona = .cameraFailed
+        }
         return ToolbarLiveState(mode: mode, dictation: dictation, canRecordAgain: canRecordAgain,
             reading: rendering ? .preparing : playing ? .playing : paused ? .paused : .idle,
             narrating: narrating, capturingScreen: capturing || screenshotting,
             pendingNarration: pendingNarration, captureCount: captureCount ?? (hasSession ? 0 : nil),
             drawing: drawing, presenting: presenting,
-            persona: overlaysPaused ? .sessionHidden : overlaySession ? .session : overlays ? .shown : .none,
+            persona: persona,
             timer: Self.liveTimer(timerTransport),
             insertingPrompt: insertingPrompt, meetingRecording: meetingRecording,
             mayStart: WorkbenchControlTool(mode: mode).map(mayStart) ?? false)
@@ -172,6 +184,10 @@ struct WorkbenchControlState {
         case .pauseOverlays: return "Hide the set without ending it."
         case .resumeOverlays: return mayPresent ? "Show the set again, as you arranged it." : "Finish the current input operation before showing the set again."
         case .hidePersona: return "Hide the persona without ending the scene."
+        case .cancelPersonaCamera: return "Cancel the camera request."
+        case .hidePersonaCamera: return "Hide the bubble and release the camera."
+        case .showPersonaCamera: return "Start the camera again and show the bubble where you placed it."
+        case .retryPersonaCamera: return personaCameraMayResume ? "Try starting the camera again." : "Camera access is restricted on this Mac. Open Persona to show saved artwork."
         default: return "Show a prepared persona. Organise cards in Workbench."
         }
     }
@@ -210,8 +226,9 @@ struct WorkbenchControlState {
 
     /// Re-read the owners when a rendered button commits. A completed Stop,
     /// Hide or End must never resolve again into a fresh start.
-    func admits(_ rendered: WorkbenchRowAction, for tool: WorkbenchControlTool) -> Bool {
+    func admits(_ rendered: WorkbenchRowAction, for tool: WorkbenchControlTool, personaIdentity expected: UUID? = nil) -> Bool {
         enabled(tool) && rowAction(tool) == rendered
+            && (tool != .persona || expected == nil || personaIdentity == expected)
     }
 
     /// Idle rows keep their capability name; active rows name their own action.
@@ -232,7 +249,8 @@ struct WorkbenchControlState {
 struct HomePersonaControl {
     let action: ToolbarNextAction
     let help: String
-    init(_ state: WorkbenchControlState) { action = state.personaAction; help = state.personaDetail }
+    let personaIdentity: UUID?
+    init(_ state: WorkbenchControlState) { action = state.personaAction; help = state.personaDetail; personaIdentity = state.personaIdentity }
     /// The live strip's button.
     var rowTitle: String { action.title }
     /// The tile's second line.
@@ -240,7 +258,7 @@ struct HomePersonaControl {
     var operation: ToolbarOperation { action.operation }
     var isEnabled: Bool { action.isEnabled }
     func isAdmitted(in state: WorkbenchControlState) -> Bool {
-        isEnabled && state.admits(.operation(operation), for: .persona)
+        isEnabled && state.admits(.operation(operation), for: .persona, personaIdentity: personaIdentity)
     }
 }
 
@@ -265,7 +283,8 @@ struct WorkbenchControlContext {
             mayDraw: stage.mayBeginDrawing?() ?? stage.mayBeginInteraction?() ?? true,
             mayPresent: stage.mayBeginInteraction?() ?? true, playing: model.playing, paused: model.paused,
             overlays: stage.hasActivePersona, overlaySession: stage.hasActivePersonaSession,
-            overlaysPaused: stage.isPersonaSessionPaused, timerStarted: stage.hasTimerSession,
+            overlaysPaused: stage.isPersonaSessionPaused, personaCamera: stage.personaCameraPhase,
+            personaCameraMayResume: stage.personaCameraMayResume, personaIdentity: stage.personaSessionIdentity, timerStarted: stage.hasTimerSession,
             timerRunning: stage.isTimerRunning, timerTransport: stage.timerTransport, canRecordAgain: model.canRecordAgain,
             insertingPrompt: model.promptInsertion.running, meetingRecording: model.meetings.isRecording,
             screenshotting: stage.isTakingScreenshot || snap?.isCapturing == true, snapBusy: snap?.disablesCaptureDoors == true,

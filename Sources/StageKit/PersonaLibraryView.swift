@@ -61,6 +61,9 @@ struct PersonaLibraryView: View {
     @State private var confirmingDiscard = false
     @State private var dismissAfterDiscard = false
     @State private var removingPersona: SavedPersona?
+    /// Which source this page is preparing. It follows the live source, so the
+    /// page always shows what is actually on screen, and changing it starts nothing.
+    @State private var source: PersonaLiveSource = .artwork
 
     var body: some View {
         Group {
@@ -73,6 +76,14 @@ struct PersonaLibraryView: View {
                 }
             } else { content(availableWidth: preparingPresentation ? 780 : 660) }
         }.background(Workbench.background).workbenchTheme()
+    }
+
+    private var liveSourceControl: some View {
+        Picker("Live source", selection: $source) {
+            Text("Artwork").tag(PersonaLiveSource.artwork)
+            Text("Camera").tag(PersonaLiveSource.camera)
+        }.pickerStyle(.segmented).fixedSize()
+            .help("Prepare saved artwork or a camera bubble. Choosing a source starts nothing.")
     }
 
     private func content(availableWidth: CGFloat) -> some View {
@@ -106,12 +117,16 @@ struct PersonaLibraryView: View {
                 }
             }
             if !preparingPresentation {
-                Text(onChoose == nil ? "Show a persona card over your apps, or arrange several cards together." : "Choose a persona card to place in this scene.")
+                Text(onChoose == nil ? "Show saved artwork or a live camera bubble over your apps." : "Choose a persona card to place in this scene.")
                     .font(.callout).foregroundStyle(.secondary)
                 if onChoose == nil {
                     overlayActions
-                    if library.sessionState.phase == .idle { shownPanel }
-                    else { PersonaLiveSettings(library: library, generation: library.liveControlsGeneration) }
+                    // One live slot, two sources. Choosing a source shows its own
+                    // preparation; only Show selected or Start camera starts anything.
+                    if library.sessionState.phase == .idle {
+                        liveSourceControl
+                        if source == .camera { PersonaCameraPanel(library: library, camera: library.camera) } else { shownPanel }
+                    } else { PersonaLiveSettings(library: library, generation: library.liveControlsGeneration) }
                 }
                 ViewThatFits(in: .horizontal) {
                     HStack { groupPicker; groupActions }
@@ -195,7 +210,7 @@ struct PersonaLibraryView: View {
                             Text("Use the same saved image over your browser or inside a Present scene.")
                                 .font(.callout).foregroundStyle(.secondary)
                         }
-                        if onChoose == nil && (library.overlayVisible || library.sessionState.phase != .idle) {
+                        if onChoose == nil && (library.artworkVisible || library.sessionState.phase != .idle) {
                             Button("Focus floating controls for keyboard") { library.focusOverlayControls() }
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
@@ -231,6 +246,8 @@ struct PersonaLibraryView: View {
             } message: {
                 Text("This removes \(removingPersona?.name ?? "the persona") from the library, groups and active overlays. Its original image is retained for saved scenes. To only hide an on-screen card, use Hide instead.")
             }
+            .onAppear { if library.cameraOwnsSlot { source = .camera } }
+            .onChange(of: library.liveSource) { _, value in source = value }
             .onDisappear {
                 let resuming = launchState.pending?.isResume == true
                 if case .failure(let error) = launchState.dismissed(in: library) {
@@ -295,7 +312,8 @@ struct PersonaLibraryView: View {
     private var overlayActions: some View {
         HStack(spacing: 10) {
             if library.sessionState.phase == .idle {
-                if library.overlayVisible {
+                // These name saved artwork only; the camera keeps its own controls.
+                if library.artworkVisible {
                     Button("Hide floating persona") { library.hideOverlay() }.buttonStyle(.borderedProminent)
                         .help("Hide keeps this card for Show again")
                     Button("End overlay") { library.endOverlaySession() }
@@ -335,7 +353,9 @@ struct PersonaLibraryView: View {
     /// shown and Update shown card when they apply. Browsing Selected below never
     /// changes it.
     @ViewBuilder private var shownPanel: some View {
-        if let shown = library.shownIdentity {
+        // While the camera owns the slot, Size, Position and Lock belong to its
+        // bubble, so they are offered there and not repeated here.
+        if let shown = library.shownIdentity, !library.cameraOwnsSlot {
             VStack(alignment: .leading, spacing: 10) {
                 if let copy = library.selectedLiveCopy, let shape = library.liveShape(of: copy) {
                     Picker("Live appearance", selection: Binding(get: { shape }, set: { library.setLiveShape($0, for: copy) })) {

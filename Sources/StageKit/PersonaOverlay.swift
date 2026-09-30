@@ -55,6 +55,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
 
     func show(image: NSImage, name: String, state: PersonaOverlayState, animated: Bool = false) -> PersonaOverlayState {
         let wasVisible = window?.isVisible == true
+        artwork.live = nil
         configure(image: image, name: name, state: state)
         let fade = animated && !wasVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         window?.alphaValue = fade ? 0 : 1
@@ -80,6 +81,34 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         artwork.toolTip = state.locked ? nil : "Drag to move. Lock in Workbench to let clicks pass through."
         position()
     }
+    /// A live source in place of saved artwork: a layer its owner keeps running,
+    /// such as a camera's mirrored preview, drawn in the artwork's rectangle and
+    /// cropped to `outline`. Movement, resizing, bounds, screen recovery and
+    /// click-through are exactly the artwork's; only what is drawn, and who
+    /// releases it, differ. No image is decoded, cached or saved for it.
+    /// Returns the placement it was shown with.
+    func showLive(layer: CALayer, aspect: CGSize, outline: PersonaArtworkOutline?,
+                  name: String, help: String, state: PersonaOverlayState) -> PersonaOverlayState {
+        artwork.image = nil
+        artwork.outline = outline
+        artwork.live = (layer, aspect)
+        configureLive(name: name, help: help, state: state)
+        window?.alphaValue = 1
+        window?.orderFrontRegardless()
+        pointer.add(self)
+        pointerMoved(to: pointer.location)
+        return self.state
+    }
+    /// The live bubble's name, help and placement, without touching its layer.
+    func configureLive(name: String, help: String, state: PersonaOverlayState) {
+        self.state = state
+        artwork.setAccessibilityLabel(name)
+        artwork.setAccessibilityHelp(help)
+        artwork.toolTip = state.locked ? nil : help
+        position()
+    }
+    /// Lets go of the owner's live layer. The owner stops the source itself.
+    func releaseLive() { hide(); artwork.live = nil }
     func hide() {
         artwork.cancelDragging(); manipulation = nil; artwork.pauseRing()
         reveal?.invalidate(); reveal = nil
@@ -109,7 +138,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     /// A copy hidden or paused keeps its last place, so its centre is kept too
     /// and it comes back there in the new look.
     func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
-        guard let window, artwork.image != nil, window.frame.width > 0, window.frame.height > 0, let screen = screenForArtwork() else {
+        guard let window, artwork.contentSize != nil, window.frame.width > 0, window.frame.height > 0, let screen = screenForArtwork() else {
             setOutline(outline); configure(image: image, name: name, state: state); return self.state
         }
         let before = CGRect(x: window.frame.minX + artwork.artworkInsets.left, y: window.frame.minY + artwork.artworkInsets.bottom,
@@ -140,7 +169,10 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         position()
         return self.state
     }
-    func shutdown() { hide(); handles.shutdown(); artwork.ringOn = false; screenChanges = nil; onPlacementChange = nil; onSelection = nil }
+    func shutdown() {
+        hide(); handles.shutdown(); artwork.ringOn = false; artwork.live = nil
+        screenChanges = nil; onPlacementChange = nil; onSelection = nil
+    }
 
     // MARK: Pointer, click-through and handles
 
@@ -202,11 +234,11 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     private func followArtwork() { handles.move(handleFrames()) }
 
     func handleBegan(_ handle: PersonaHandle) {
-        guard let window, let image = artwork.image, let visible = visibleFrame, let screen = screenForArtwork() else { return }
+        guard let window, let content = artwork.contentSize, let visible = visibleFrame, let screen = screenForArtwork() else { return }
         artwork.cancelDragging()
         let available = screen.visibleFrame
         func width(_ fraction: Double) -> CGFloat {
-            PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: fraction), imageSize: image.size, in: available.size).width
+            PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: fraction), imageSize: content, in: available.size).width
         }
         let artworkRect = CGRect(x: window.frame.minX + artwork.artworkInsets.left, y: window.frame.minY + artwork.artworkInsets.bottom,
                                  width: window.frame.width - artwork.artworkInsets.left - artwork.artworkInsets.right,
@@ -231,13 +263,13 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     func handleEnded(_ handle: PersonaHandle) {
         guard manipulation != nil else { return }
         manipulation = nil
-        if handle.resizes, let window, let image = artwork.image, let screen = screenForArtwork() {
+        if handle.resizes, let window, let content = artwork.contentSize, let screen = screenForArtwork() {
             let width = window.frame.width - artwork.artworkInsets.left - artwork.artworkInsets.right
             // Tall artwork is limited by the display's height, so a wider Size
             // shows at the same width. Keep the Size it had when it still shows
             // at this width, so a resize that could not grow it leaves it alone.
             let kept = PersonaGeometry.rect(PersonaPlacement(image: "persona.png", width: state.width),
-                                            imageSize: image.size, in: screen.visibleFrame.size).width
+                                            imageSize: content, in: screen.visibleFrame.size).width
             // Window frames are whole points, so a couple of points of rounding is the same width.
             if abs(kept - width) > 2 { state.width = min(0.40, max(0.06, Double(width / screen.visibleFrame.width))) }
         }
@@ -254,10 +286,10 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
             ?? NSScreen.main ?? NSScreen.screens.first
     }
     private func position() {
-        guard let window, let image = artwork.image, let screen = preferredScreen() else { return }
+        guard let window, let content = artwork.contentSize, let screen = preferredScreen() else { return }
         let available = screen.visibleFrame
         let placement = PersonaPlacement(image: "persona.png", x: state.x, y: state.y, width: state.width)
-        let placed = PersonaGeometry.rect(placement, imageSize: image.size, in: available.size)
+        let placed = PersonaGeometry.rect(placement, imageSize: content, in: available.size)
         let insets = artwork.ringInsets(for: placed.size)
         artwork.artworkInsets = insets
         window.setFrame(Self.placedFrame(placed, insets: insets, x: state.x, y: state.y, in: available), display: true)
@@ -287,10 +319,10 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         } ?? preferredScreen()
     }
     private func finishDragging() {
-        guard let window, let image = artwork.image, let screen = screenForArtwork() else { return }
+        guard let window, let content = artwork.contentSize, let screen = screenForArtwork() else { return }
         let available = screen.visibleFrame
         let placement = PersonaPlacement(image: "persona.png", width: state.width)
-        let artworkSize = PersonaGeometry.rect(placement, imageSize: image.size, in: available.size).size
+        let artworkSize = PersonaGeometry.rect(placement, imageSize: content, in: available.size).size
         let insets = artwork.ringInsets(for: artworkSize)
         let size = CGSize(width: artworkSize.width + insets.left + insets.right, height: artworkSize.height + insets.top + insets.bottom)
         let travelX = max(0, available.width - size.width), travelY = max(0, available.height - size.height)
@@ -314,6 +346,13 @@ private final class PersonaArtworkView: NSView {
     var onSelection: (() -> Void)?
     /// Off leaves the artwork exactly as it was: no room, layer or microphone.
     var ringOn = false { didSet { if ringOn != oldValue { ringChanged() } } }
+    /// A live source drawn in the artwork's place, with the proportions the
+    /// window is sized from: its owner keeps the layer running and releases it.
+    var live: (layer: CALayer, aspect: CGSize)? {
+        didSet { if live?.layer !== oldValue?.layer { liveChanged(from: oldValue?.layer) } else { needsLayout = true } }
+    }
+    /// What the window is sized from: the live source's proportions, or the artwork's.
+    var contentSize: CGSize? { live?.aspect ?? image?.size }
     /// Where the artwork sits inside the window; the rest belongs to the outline.
     var artworkInsets = NSEdgeInsetsZero { didSet { needsLayout = true } }
     private var anchor: CGPoint?
@@ -325,6 +364,9 @@ private final class PersonaArtworkView: NSView {
     /// is measured from the pixels.
     var outline: PersonaArtworkOutline? { didSet { if outline != oldValue { needsLayout = true } } }
     private let artworkLayer = CALayer()
+    /// Crops a live source to the same visible edge the handles and the voice
+    /// outline follow, so a circular bubble is a circle to the pointer too.
+    private let liveMask = CAShapeLayer()
     private let ring = PersonaVoiceRingLayer()
     private var analysis: (image: ObjectIdentifier, outline: PersonaArtworkOutline)?
     private var ringLink: CADisplayLink?
@@ -357,9 +399,15 @@ private final class PersonaArtworkView: NSView {
         let rect = artworkRect
         CATransaction.begin(); CATransaction.setDisableActions(true)
         artworkLayer.frame = rect
+        if let live {
+            live.layer.frame = rect
+            liveMask.frame = CGRect(origin: .zero, size: rect.size)
+            liveMask.path = (outline ?? analyzed()?.outline)?.placed(in: CGRect(origin: .zero, size: rect.size)).path(outset: 0)
+                ?? CGPath(rect: liveMask.bounds, transform: nil)
+        }
         ring.frame = bounds
-        if ringOn, let analysis = analyzed() {
-            ring.geometry = PersonaVoiceRingGeometry(outline: outline ?? analysis.outline, artwork: rect)
+        if ringOn, let edge = outline ?? analyzed()?.outline {
+            ring.geometry = PersonaVoiceRingGeometry(outline: edge, artwork: rect)
         }
         CATransaction.commit()
     }
@@ -384,18 +432,19 @@ private final class PersonaArtworkView: NSView {
                height: max(0, bounds.height - artworkInsets.top - artworkInsets.bottom))
     }
     /// The artwork's visible edge in the view: the same shape the voice outline
-    /// follows and the handles sit around.
+    /// follows and the handles sit around. An appearance or live source that
+    /// knows its own edge needs no pixels to measure.
     var visibleOutline: PersonaArtworkOutline? {
-        guard let analysis = analyzed() else { return nil }
-        return (outline ?? analysis.outline).placed(in: artworkRect)
+        guard let edge = outline ?? analyzed()?.outline else { return nil }
+        return edge.placed(in: artworkRect)
     }
     /// Whether a point in the view is on the visible artwork, not its transparent room.
     func bodyContains(_ point: CGPoint) -> Bool { visibleOutline?.contains(point) ?? artworkRect.contains(point) }
 
     /// Room the outline needs around artwork of this size; none while it is off.
     func ringInsets(for size: CGSize) -> NSEdgeInsets {
-        guard ringOn, size.width > 0, size.height > 0, let analysis = analyzed() else { return NSEdgeInsetsZero }
-        return PersonaVoiceRingGeometry(outline: outline ?? analysis.outline, artwork: CGRect(origin: .zero, size: size)).outsets
+        guard ringOn, size.width > 0, size.height > 0, let edge = outline ?? analyzed()?.outline else { return NSEdgeInsetsZero }
+        return PersonaVoiceRingGeometry(outline: edge, artwork: CGRect(origin: .zero, size: size)).outsets
     }
     /// Silence costs nothing: the display link sleeps until there is a voice.
     func showVoice(_ frames: [PersonaVoiceFrame]) {
@@ -406,6 +455,17 @@ private final class PersonaArtworkView: NSView {
     func pauseRing() { ring.reset(); stopTicking() }
     func resumeRing() { if ringOn { ring.reset() } }
 
+    /// The owner's layer joins this view, cropped to the visible edge; the
+    /// previous one leaves without being stopped, which stays with its owner.
+    private func liveChanged(from previous: CALayer?) {
+        previous?.mask = nil
+        previous?.removeFromSuperlayer()
+        artworkLayer.isHidden = live != nil
+        guard let live else { needsLayout = true; return }
+        live.layer.mask = liveMask
+        layer?.addSublayer(live.layer)
+        needsLayout = true
+    }
     private func artworkChanged() {
         guard let image else { artworkLayer.contents = nil; return }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
