@@ -1,5 +1,7 @@
 # Desktop cohesion candidate
 
+This is the historical initial candidate receipt. Later native completion is recorded in the [Snap & Talk completion record](../2026-09-30-snaptalk-cohesion/README.md), the [scenario map](../../experience/README.md) and [issue #134](https://github.com/EthDawg/workbench/issues/134). Tests, source revisions and installation statements below apply to the initial candidate only; the final combined Preview receipt belongs to #134 and PR #232.
+
 30 September 2026. Implements Ethan's request to rethink the desktop as complete journeys, with less configuration on working pages and a visible meeting/call workflow. [Issue #134](https://github.com/EthDawg/workbench/issues/134) remains the contract and review index.
 
 ## Experience
@@ -88,9 +90,9 @@ The complete gallery retains its separate toolbar, placement and prompt-picker p
 
 ## Installed acceptance
 
-The installed Preview remains reserved by the paste/toolbar owner for Ethan's Claude and ChatGPT keyboard check. An idle chat is not an installation handoff. This desktop candidate has not replaced that build.
+At this initial candidate stage, the installed Preview was reserved by the paste/toolbar owner for Ethan's Claude and ChatGPT keyboard check. That owner subsequently handed installation to **Complete watchdog ship tasks**. The initial screenshots and checks above do not certify the later combined build.
 
-After explicit handoff, follow [the shared install workflow](../../updating.md), verify Copy build details and check:
+The combined integration owner follows [the shared install workflow](../../updating.md), verify Copy build details and check:
 
 1. Home cards and sidebar open the expected workspace without starting capture or changing drafts.
 2. Dictate Settings and Settings → Dictate settings open the same sheet. Done/Escape and dictionary navigation preserve the draft.
