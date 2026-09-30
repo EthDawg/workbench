@@ -31,6 +31,15 @@ final class MeetingModel: ObservableObject {
 
     var isBusy: Bool { isRecording || isProcessing || isStarting }
     var mayStart: (() -> String?)?
+    let recordingPlayback = MeetingRecordingPlayback()
+    var mayPlayRecording: (() -> Bool)?
+    @Published private(set) var canPlayRecording = true
+
+    func updateRecordingPlaybackAdmission() {
+        let allowed = mayPlayRecording?() ?? true
+        if canPlayRecording != allowed { canPlayRecording = allowed }
+        if !allowed { recordingPlayback.pause() }
+    }
     var saveTranscript: ((Transcript, String) throws -> Void)?
     var onStateChange: (() -> Void)?
 
@@ -91,10 +100,18 @@ final class MeetingModel: ObservableObject {
         MeetingTranscriptRemoval.hasRecording(root: directory, id: transcriptID)
     }
 
+    func recordingURL(for transcriptID: UUID) throws -> URL {
+        guard !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
+            throw MeetingError.message("This recording is still in use. Finish its capture or recovery before playing it.")
+        }
+        return MeetingStore.sessionURL(root: directory, id: transcriptID)
+    }
+
     /// No suspension between admission and staging: capture/recovery cannot
     /// start using this same UUID during a confirmed removal.
     func removeCompletedRecording(for transcriptID: UUID, commit: () throws -> Void) throws -> String? {
-        guard !shuttingDown, !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
+        guard !shuttingDown, recordingPlayback.session?.lastPathComponent != transcriptID.uuidString,
+              !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
             throw MeetingError.message("This recording is still in use. Finish or cancel it before removing its transcript and audio.")
         }
         let notice = try MeetingTranscriptRemoval.remove(root: directory, id: transcriptID, commit: commit)
@@ -405,6 +422,7 @@ final class MeetingModel: ObservableObject {
     /// The app's terminateLater hook awaits this before replying to macOS.
     func prepareForShutdown() async {
         shuttingDown = true
+        recordingPlayback.close()
         detectionTask?.cancel(); detectionTask = nil; offer = nil
         recoveryTask?.cancel(); recoveryTask = nil
         await cancel()

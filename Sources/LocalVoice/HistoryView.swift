@@ -247,6 +247,7 @@ struct HistoryView: View {
     @State private var original: Transcript?
     @State private var details: Transcript?
     @State private var removal: TranscriptRemoval?
+    @State private var recording: Transcript?
 
     init(model: AppModel, snap: SnapModel, applySuggestedMetadata: @escaping (HandoffJob, String) -> Void) {
         self.model = model; self.snap = snap
@@ -302,7 +303,7 @@ struct HistoryView: View {
             .sheet(isPresented: $showingConnections) {
                 HandoffConnectionsSheet(jobs: jobs, backTitle: "Back to History") { showingConnections = false }
             }
-            .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal))
+            .modifier(TranscriptHistoryDialogs(model: model, original: $original, details: $details, removal: $removal, recording: $recording))
             .onAppear { snap.refresh(); applyDoor() }
             .onChange(of: model.historyDoor) { applyDoor() }
             .task(id: query) {
@@ -391,7 +392,7 @@ struct HistoryView: View {
                         case .transcript(let item):
                             TranscriptHistoryRow(model: model, library: library, item: item,
                                 history: stores.sameSecond[Int(item.date.timeIntervalSince1970.rounded(.down))] ?? [item],
-                                original: $original, details: $details, removal: $removal,
+                                original: $original, details: $details, removal: $removal, recording: $recording,
                                 shown: shownTranscript == item.id, focus: $focusedTranscript, voiceOverFocus: $voiceOverTranscript)
                                 .overlay(RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(shownTranscript == item.id ? Workbench.accent : .clear, lineWidth: 2))

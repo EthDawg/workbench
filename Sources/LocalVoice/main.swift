@@ -112,6 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return self.model.phase == .idle && !self.model.rendering && !self.readback.blocksDictation && !self.shortcutsSuspended
                 ? nil : "Finish Dictate, reading or Snap & Talk before starting a meeting."
         }
+        model.meetings.mayPlayRecording = { [weak self] in
+            guard let self, !self.terminating else { return false }
+            return self.model.phase == .idle && !self.model.rendering && !self.model.playing
+                && !self.model.meetings.isBusy && !self.readback.blocksDictation
+        }
         model.meetings.onStateChange = { [weak self] in self?.updateRecordingUI() }
         PackLibraryModel.shared.onSkillsChanged = { [weak self] skills in self?.readback.setPackSkills(skills) }
         PackLibraryModel.shared.start()
@@ -564,6 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }
     func updateRecordingUI() {
+        model.meetings.updateRecordingPlaybackAdmission()
         let receipt = model.clipboardReceipt.receipt
         let state: String
         switch model.phase {

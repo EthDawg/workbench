@@ -350,10 +350,60 @@ enum MeetingChecks {
         let restored = try MeetingRecovery.rebuildTracks(session: recorderSession, manifest: recording)
         try expect(restored.tracks.first?.seconds == recorded.seconds, "writer timing/audio survives close and recovery")
 
+        try await recordingReviewChecks(root: root, expect: expect)
         try await lifecycleChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
         checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
+    }
+
+    private static func recordingReviewChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        var original = manifest(state: .stopped)
+        let session = try MeetingStore.create(root: root.appendingPathComponent("recording-review"), manifest: original)
+        let local = try audio(source: .local, seconds: 1, rate: 16_000, value: 0.15, offset: 0, session: session)
+        let remote = try audio(source: .remote, seconds: 1, rate: 48_000, value: 0.25, offset: 0.5, session: session)
+        var committed = original
+        committed.tracks = [local, remote]; committed.seconds = 1.5; committed.state = .committed
+        committed.segments = [.init(index: 0, file: "segments/segment-0000.wav", startSeconds: 0,
+                                    seconds: 1.5, bytes: 48_000, text: "Synthetic recording review")]
+        try MeetingStore.save(committed, at: session, replacing: original)
+        original = committed
+        let manifestURL = session.appendingPathComponent(MeetingStore.manifestName)
+        let localURL = try MeetingStore.safeURL(session: session, relative: local.file)
+        let remoteURL = try MeetingStore.safeURL(session: session, relative: remote.file)
+        let before = try [manifestURL, localURL, remoteURL].map { try Data(contentsOf: $0) }
+        let recording = try MeetingRecording.load(session: session)
+        let item = try await recording.playerItem()
+        let tracks = try await item.asset.loadTracks(withMediaType: .audio)
+        let starts = tracks.compactMap { $0 as? AVCompositionTrack }.flatMap(\.segments)
+            .filter { !$0.isEmpty }.map { $0.timeMapping.target.start.seconds }
+        try expect(tracks.count == 2 && starts.contains { abs($0 - 0.5) < 0.001 },
+                   "recording review retains both originals and their half-second source offset")
+        let duration = try await item.asset.load(.duration).seconds
+        try expect(abs(duration - 1.5) < 0.001, "recording review uses the complete recorded timeline")
+        try expect(item.audioMix?.inputParameters.count == 2, "recording review mixes both tracks without discarding a source")
+        let playback = MeetingRecordingPlayback()
+        await playback.prepare { session }
+        try expect(!playback.playing && playback.recording?.manifest.id == committed.id,
+                   "opening recording review selects the exact transcript UUID and never autoplays")
+        playback.close()
+        try expect(playback.recording == nil && !playback.playing && !playback.ready,
+                   "closing recording review releases its player and cannot leave hidden playback")
+        try expect(try [manifestURL, localURL, remoteURL].map { try Data(contentsOf: $0) } == before,
+                   "review preparation and close preserve every original byte")
+        var unfinished = committed; unfinished.state = .stopped
+        try MeetingStore.save(unfinished, at: session, replacing: committed)
+        var refusedUnfinished = false
+        do { _ = try MeetingRecording.load(session: session) } catch { refusedUnfinished = true }
+        try expect(refusedUnfinished, "unfinished audio stays with recovery instead of a completed-recording preview")
+        try MeetingStore.save(original, at: session, replacing: unfinished)
+        try FileManager.default.removeItem(at: remoteURL)
+        await playback.prepare { session }
+        try expect(playback.problem != nil && !playback.ready && !playback.playing && playback.session == session,
+                   "a missing original track produces a visible failure with a revealable folder instead of partial playback")
+        try expect(try Data(contentsOf: localURL) == before[1] && Data(contentsOf: manifestURL) == before[0],
+                   "failed review preserves the remaining track and manifest")
+        playback.close()
     }
 
     private static func offerLifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
