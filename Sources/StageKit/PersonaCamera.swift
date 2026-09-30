@@ -51,7 +51,7 @@ enum PersonaCameraFailure: Equatable {
         case .inUse(let camera, let owner):
             return "“\(camera)” is already in use by \(owner). End that use or choose another camera, then start the camera again."
         case .missing(let camera):
-            return (camera.map { "“\($0)”" } ?? "The chosen camera") + " isn’t connected. Choose another camera, or reconnect it, then start the camera again."
+            return "The selected camera" + (camera.map { ", “\($0)”," } ?? "") + " isn’t connected. Choose another camera, or reconnect it, then start the camera again."
         case .access(let issue):
             switch issue {
             case .denied: return "Camera access is off. Allow Workbench in Camera settings, then start the camera again."
