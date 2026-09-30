@@ -16,6 +16,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
     private var screenChanges: AnyCancellable?
     private let pointer: PersonaPointerTracking
     private let revealDelay: TimeInterval
+    private let persistentLockedHandle: Bool
     private var pointerLocation: CGPoint?
     private var reveal: Timer?
     private lazy var handles = PersonaHandleSet(owner: self)
@@ -25,9 +26,11 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
 
     /// `pointer` follows the pointer for the handles and click-through; checks
     /// pass their own so the real pointer never decides a result.
-    init(pointer: PersonaPointerTracking = PersonaPointerTracker.shared, revealDelay: TimeInterval = PersonaManipulation.revealDelay) {
+    init(pointer: PersonaPointerTracking = PersonaPointerTracker.shared, revealDelay: TimeInterval = PersonaManipulation.revealDelay,
+         persistentLockedHandle: Bool = false) {
         self.pointer = pointer
         self.revealDelay = revealDelay
+        self.persistentLockedHandle = persistentLockedHandle
         let panel = PersonaPanel(contentRect: CGRect(x: 0, y: 0, width: 160, height: 160),
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: panel)
@@ -226,7 +229,10 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
                 self.handles.show(self.handleFrames(), above: window)
             }
         } else {
-            cancelReveal(); handles.hide()
+            cancelReveal()
+            if persistentLockedHandle && state.locked {
+                handles.show(handleFrames().filter { $0.key == .move }, above: window)
+            } else { handles.hide() }
         }
     }
     private func cancelReveal() { reveal?.invalidate(); reveal = nil }

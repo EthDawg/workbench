@@ -128,7 +128,7 @@ final class PersonaHandleTests {
     func testLockedArtworkMovesAndResizesFromItsHandlesAndStaysLocked() throws {
         guard let screen = screen() else { XCTAssertTrue(false, "The native handle test needs a display"); return }
         let pointer = PersonaTestPointer()
-        let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0)
+        let controller = PersonaOverlayController(pointer: pointer, revealDelay: 0, persistentLockedHandle: true)
         defer { controller.shutdown() }
         guard let window = controller.window else { return }
         var placements: [PersonaOverlayState] = []
@@ -142,8 +142,9 @@ final class PersonaHandleTests {
         guard let visible = controller.visibleFrame else { XCTAssertTrue(false, "The artwork's visible edge is known"); return }
         XCTAssertTrue(window.frame.width > visible.width + 10, "The voice outline's room surrounds the badge")
 
-        // Far away: no handles, and the locked artwork ignores the pointer.
-        XCTAssertTrue(controller.handleWindows.isEmpty, "Handles stay hidden until the pointer comes near")
+        // The single locked persona always shows its move handle, so movement
+        // is discoverable while the body still lets clicks through.
+        XCTAssertEqual(Set(controller.handleWindows.keys), Set([PersonaHandle.move]), "The locked persona keeps one visible move handle")
         XCTAssertTrue(window.ignoresMouseEvents)
         for point in [CGPoint(x: visible.midX, y: visible.midY), CGPoint(x: window.frame.minX + 3, y: window.frame.minY + 3)] {
             pointer.move(to: point)

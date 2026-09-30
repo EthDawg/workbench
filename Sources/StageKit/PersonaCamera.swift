@@ -178,7 +178,7 @@ final class PersonaLiveCamera: ObservableObject {
     /// Checks pass their own capture, window, permission, clock and camera list,
     /// so no hardware, display or privacy prompt is involved.
     init(capture: @escaping () -> ProfileCameraCapturing = { ProfileCameraSession() },
-         panel: @escaping () -> PersonaCameraDisplaying = { PersonaOverlayController() },
+         panel: @escaping () -> PersonaCameraDisplaying = { PersonaOverlayController(persistentLockedHandle: true) },
          authorize: @escaping Authorize = PersonaLiveCamera.authorize,
          schedule: @escaping Schedule = PersonaLiveCamera.schedule,
          list: @escaping () -> PersonaCameraList = PersonaCameraList.system) {

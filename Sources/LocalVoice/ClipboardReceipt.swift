@@ -93,6 +93,10 @@ final class ClipboardReceiptModel: ObservableObject {
             title = outcome.destinationName.map { "Pasted into \($0)" } ?? "Pasted"
             detail = outcome.message
             symbol = outcome.failure == .clipboardRestoreFailed ? "exclamationmark.triangle" : "checkmark.circle.fill"
+        } else if outcome.pasteWasAttempted && outcome.failure == nil {
+            title = outcome.destinationName.map { "Sent to \($0)" } ?? "Paste sent"
+            detail = outcome.message
+            symbol = "arrow.up.right"
         } else if outcome.failure == .pasteUnconfirmed {
             title = "Paste unconfirmed"
             detail = ownsClipboard ? "Check the destination before pasting again. The transcript is still copied." : "Check the destination. The transcript is available in Workbench."

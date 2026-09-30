@@ -2215,6 +2215,7 @@ enum SurfaceGallery {
             let controls = CaptureHUDControls(defaults: defaults)
             let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
                                               dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+            host.placementScreenOverride = screen
             host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
             return (host, controls)
         }
@@ -2309,7 +2310,8 @@ enum SurfaceGallery {
                            CGVector(dx: 0, dy: -screen.height), CGVector(dx: 0, dy: screen.height)] {
                 host.beginDragging()
                 if let window = host.window {
-                    window.setFrameOrigin(CGPoint(x: screen.midX + offset.dx, y: screen.midY + offset.dy))
+                    let proposed = CGRect(origin: CGPoint(x: screen.midX + offset.dx, y: screen.midY + offset.dy), size: window.frame.size)
+                    window.setFrame(host.constrainDragFrame(proposed), display: true)
                     host.previewDragging()
                     expect("\(capture ? "Capture" : "Toolbar") stays visible during edge drag",
                            [screen.contains(window.frame) ? nil : "the native host escaped the display while dragging"])

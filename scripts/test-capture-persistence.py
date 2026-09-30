@@ -162,13 +162,12 @@ struct CaptureSettings {
         calls += 1; return Result(text: raw.isEmpty ? "" : raw == "um synthetic captured words" ? "Synthetic captured words." : raw, method: "Fixture Light")
     }
 }
-// This harness models ordinary readable fields as strings. They have no
-// opaque-editor observation; TextDeliveryChecks exercises that real owner.
+// An observation spy allows the exact AppModel phase and destination
+// observers to prove teardown, without monitoring the user's actual input.
 @MainActor final class FixtureOpaqueEditor {
-    func begin(shortcut: FixtureShortcut) {}
-}
-extension String {
-    @MainActor var opaqueEditor: FixtureOpaqueEditor? { nil }
+    var begins = 0, ends = 0, active = false
+    func begin(shortcut: FixtureShortcut) { begins += 1; active = true }
+    func end() { if active { ends += 1 }; active = false }
 }
 @MainActor enum TextDelivery {
     static var calls = 0
@@ -194,11 +193,16 @@ extension String {
     static var copyFails = false
     static let copiedMessage = "Copied. Paste with ⌘V."
     static func copiedDetail(_ failure: FailureKind?) -> String { "Synthetic delivery detail" }
-    typealias Target = String
-    static func capture() -> String? { "Frontmost fixture field" }
+    struct Target: ExpressibleByStringLiteral {
+        var name: String
+        var opaqueEditor: FixtureOpaqueEditor?
+        init(stringLiteral value: String) { name = value }
+        init(_ name: String, observation: FixtureOpaqueEditor) { self.name = name; opaqueEditor = observation }
+    }
+    static func capture() -> Target? { "Frontmost fixture field" }
     static func copy(_ text: String) -> Int? { copies.append(text); return copyFails ? nil : copies.count }
-    static func deliver(_ text: String, target: String?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
-        lastMode = mode; lastTarget = target
+    static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
+        lastMode = mode; lastTarget = target?.name
         beforeDelivery?(); calls += 1
         if delayed { await withCheckedContinuation { continuation = $0 } }
         return nextOutcome
@@ -237,14 +241,14 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
 
 @MainActor final class CaptureHarness {
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
-    var phase = Phase.idle
+    __LIFECYCLE_PROPERTIES__
     var page = "home", historyDoor: HistoryDoor?
     // The press path and the coach (#134 T5).
     var preferences = FixtureVoicePreferences()
     var coach: FeedbackCoachModel
     var holdGesture: HoldGesture?
     var captureUsesHoldShortcut = false, isMicrophoneQuiet = false, rendering = false
-    var microphoneStartFailure: ((String?) -> String?)?
+    var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
     var undelivered = UnresolvedDeliverySlot()
     var draftRevision: UInt64 = 0
     var persistWork: DispatchWorkItem?
@@ -268,7 +272,6 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     var previewingPanel = false, canRetry = false, accessibilityGranted = false, ready = true
     var preparing = false, modelMessage = ""
-    var destination: String? = "Original app target"
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var recorder: AVAudioRecorder?, meter: Timer?, recordingAttempt: UUID?
     var peakPower: Float = -160, recordingSettings: CaptureSettings?
@@ -289,6 +292,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
         if let state { transcript = state.draft; rawTranscript = state.rawDraft ?? state.draft; history = state.history }
         // As AppModel's launch does once the draft is settled (the writer inventory checks it calls this).
         undelivered.restore(state?.undelivered, loadedDraftRevision: draftRevision, in: deliveryRecords)
+        destination = "Original app target"
     }
     func captureSettings() -> CaptureSettings { captureOptions }
     func stopPlayback() {}
@@ -341,6 +345,24 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             tag("RIFF"); le(UInt32(32036)); tag("WAVEfmt "); le(UInt32(16)); le(UInt16(1)); le(UInt16(1)); le(UInt32(16000)); le(UInt32(32000)); le(UInt16(2)); le(UInt16(16)); tag("data"); le(UInt32(32000)); data.append(Data(repeating: 0, count: 32000)); return data
         }
         let wav = wave()
+        let observed = CaptureHarness(directory: folder("opaque-lifecycle"))
+        let firstObservation = FixtureOpaqueEditor(), replacementObservation = FixtureOpaqueEditor()
+        observed.toggleRecording(target: TextDelivery.Target("Opaque fixture", observation: firstObservation))
+        try check(firstObservation.begins == 1 && firstObservation.active, "Dictation arms the captured opaque target once")
+        for phase in [CaptureHarness.Phase.recording, .transcribing, .cleaning, .delivering] {
+            observed.phase = phase
+            try check(firstObservation.active && firstObservation.ends == 0, "Observation survives every phase through delivery")
+        }
+        replacementObservation.begin(shortcut: FixtureShortcut())
+        observed.destination = TextDelivery.Target("Replacement", observation: replacementObservation)
+        try check(firstObservation.ends == 1 && !firstObservation.active, "Replacing the destination tears down the old observation")
+        observed.phase = .idle
+        try check(replacementObservation.ends == 1 && !replacementObservation.active, "Returning idle tears down the current observation")
+        let cancelledObservation = FixtureOpaqueEditor()
+        observed.toggleRecording(target: TextDelivery.Target("Cancelled", observation: cancelledObservation))
+        observed.cancelRecording()
+        try check(!cancelledObservation.active && cancelledObservation.ends == 1, "Cancelling the request removes its observation")
+
         let independent = CaptureHarness(directory: folder("stage-preserves-failure"))
         let retainedAudio = try independent.makeRecording(wav)
         let retainedJournal = try Data(contentsOf: folder("stage-preserves-failure").appendingPathComponent("pending.json"))
@@ -1008,6 +1030,8 @@ values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'e
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
 fixture = fixture.replace('__STAGE_START__', stage_start)
+# Expose only the destination's access level to the fixture; keep its actual observer body.
+fixture = fixture.replace('__LIFECYCLE_PROPERTIES__', model.extract(['phase', 'destination']).replace('private var destination', 'var destination'))
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)

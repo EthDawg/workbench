@@ -1085,7 +1085,7 @@ final class PersonaLibrary: NSObject, ObservableObject {
     /// Puts the card on screen with its voice outline, edge and placement.
     private func present(_ image: NSImage) {
         if overlay == nil {
-            overlay = PersonaOverlayController()
+            overlay = PersonaOverlayController(persistentLockedHandle: true)
             overlay?.onPlacementChange = { [weak self] state in self?.updateOverlay(state) }
         }
         overlay?.setVoiceRing(voiceRing && voiceAccess != nil)

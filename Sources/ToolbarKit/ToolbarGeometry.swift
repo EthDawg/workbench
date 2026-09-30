@@ -215,6 +215,16 @@ public struct ToolbarFreePosition: Equatable, Sendable {
 /// moves the toolbar only after this much travel; less is a click and its action runs (#163). StageKit's
 /// `FloatingControlPlacement.dragThreshold` is the same value for other floating controls.
 public enum ToolbarDrag {
+    /// Clamp before moving the window. While crossing adjacent displays, keep
+    /// following the hand across their shared area; release chooses one display.
+    public static func bounded(_ frame: CGRect, screens: [CGRect], fallback: CGRect) -> CGRect {
+        let overlapping = screens.filter { !$0.intersection(frame).isEmpty }
+        let area = overlapping.reduce(CGRect.null) { $0.union($1) }
+        let bounds = area.isNull ? fallback : area
+        return CGRect(x: min(max(frame.minX, bounds.minX), max(bounds.minX, bounds.maxX - frame.width)),
+                      y: min(max(frame.minY, bounds.minY), max(bounds.minY, bounds.maxY - frame.height)),
+                      width: frame.width, height: frame.height)
+    }
     public static let threshold: CGFloat = 4
     public static func isDrag(from start: CGPoint, to point: CGPoint) -> Bool {
         hypot(point.x - start.x, point.y - start.y) >= threshold

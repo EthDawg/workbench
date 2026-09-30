@@ -94,6 +94,11 @@ final class TextDelivery {
 
     static func capture(app: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) -> Target? {
         guard let app, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+        // Sublime's known window-only editor uses a bounded AX snapshot from
+        // the first read; never run the generic unbounded field walk first.
+        if OpaqueEditorDestination.supports(app.bundleIdentifier) {
+            return Target(app: app, element: nil, value: nil, opaqueEditor: OpaqueEditorDestination.capture(app: app))
+        }
         let element = captureField(app.processIdentifier)
         let state = fieldState(element)
         return Target(app: app, element: element, value: state.value, selection: state.selection,
@@ -284,6 +289,11 @@ final class TextDelivery {
         guard target.element != nil || target.opaqueEditor != nil else {
             return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
         }
+        if let opaque = target.opaqueEditor, !opaque.active, !opaque.invalidated {
+            // Saved Prompts never arm opaque dictation. Explain the actual
+            // limitation instead of claiming the person changed the field.
+            return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
+        }
         guard system.isEligible(target) else {
             return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
         }
@@ -306,6 +316,13 @@ final class TextDelivery {
         // our own paste; it is sent once and cannot be confirmed from AX text.
         target.opaqueEditor?.end()
         paste()
+        if target.opaqueEditor != nil {
+            // One command was sent to the guarded editor. Its AX API cannot
+            // confirm insertion; this expected limitation is not a failure.
+            // Keep the words copied and never suggest sending a second paste.
+            return outcome("Sent to \(destinationName ?? "your app") · " + (pasteboard.changeCount == ownedChange
+                ? "still copied." : "the clipboard has since changed."))
+        }
         var confirmed = false
         // Web/Electron accessibility updates can arrive after the paste itself.
         // Poll for at most 1.2 seconds; never retry the paste or retarget a field.

@@ -9,10 +9,11 @@ public struct ToolbarDragActions {
     public var end: () -> Void
     public var cancel: () -> Void
     public var isCancelled: () -> Bool
+    public var constrain: (CGRect) -> CGRect
     public init(begin: @escaping () -> Void = {}, move: @escaping () -> Void = {}, end: @escaping () -> Void = {}, cancel: @escaping () -> Void = {},
-                isCancelled: @escaping () -> Bool = { false }) {
+                isCancelled: @escaping () -> Bool = { false }, constrain: @escaping (CGRect) -> CGRect = { $0 }) {
         self.begin = begin; self.move = move; self.end = end
-        self.cancel = cancel; self.isCancelled = isCancelled
+        self.cancel = cancel; self.isCancelled = isCancelled; self.constrain = constrain
     }
 }
 
@@ -104,7 +105,7 @@ public struct ToolbarRow: View {
     private var interactionDrag: ToolbarDragActions {
         ToolbarDragActions(begin: { hints.isReady = false; drag.begin() }, move: drag.move,
             end: { drag.end(); hints.isReady = controlsReady },
-            cancel: { drag.cancel(); hints.isReady = controlsReady }, isCancelled: drag.isCancelled)
+            cancel: { drag.cancel(); hints.isReady = controlsReady }, isCancelled: drag.isCancelled, constrain: drag.constrain)
     }
 
     private var scale: CGFloat { textScale * systemScale }
@@ -448,7 +449,7 @@ final class RestTargetView: NSView {
         // WindowServer passes clicks through alpha-zero pixels, regardless of NSView's
         // hitTest. One 8-bit alpha step keeps the generous target without the previous
         // stacked 1.2% rectangles or a shadow around their bounds.
-        NSColor.black.withAlphaComponent(0.004).setFill()
+        NSColor.black.withAlphaComponent(FloatingHitTarget.backingAlpha).setFill()
         bounds.fill()
     }
     override func mouseDown(with event: NSEvent) {
@@ -742,7 +743,8 @@ private final class DragRegion: NSView {
             actions.begin(); origin = window.frame.origin; dragging = true
         }
         if dragging {
-            window.setFrameOrigin(NSPoint(x: origin.x + point.x - start.x, y: origin.y + point.y - start.y))
+            let proposed = CGRect(origin: NSPoint(x: origin.x + point.x - start.x, y: origin.y + point.y - start.y), size: window.frame.size)
+            window.setFrame(actions.constrain(proposed), display: true)
             actions.move()
         }
         if next.type == .leftMouseUp {

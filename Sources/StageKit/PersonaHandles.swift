@@ -1,4 +1,5 @@
 import AppKit
+import VoiceAppearance
 
 /// Direct manipulation for a floating persona. A small grab handle above its
 /// top edge moves it; corner and edge handles resize it, keeping its shape.
@@ -176,7 +177,7 @@ final class PersonaHandleView: NSView {
         // WindowServer ignores fully clear pixels before NSView hit testing.
         // Keep the complete advertised handle target hittable, not just its
         // thin painted stroke, while the artwork itself remains click-through.
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(FloatingHitTarget.backingAlpha).cgColor
         for layer in [edgeLayer, markLayer] {
             layer.fillColor = nil; layer.lineCap = .round; layer.lineJoin = .round
             layer.actions = ["path": NSNull(), "bounds": NSNull(), "position": NSNull()]

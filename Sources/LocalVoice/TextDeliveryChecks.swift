@@ -180,10 +180,33 @@ enum TextDeliveryChecks {
         let guarded = guardedTarget()
         _ = TextDelivery.copy("previous clipboard", to: board)
         let opaqueOutcome = await TextDelivery.deliver("opaque synthetic words", target: guarded, mode: .paste, restoreClipboard: true, system: opaqueSystem)
-        try check(opaquePosts == 1 && opaqueOutcome.pasteWasAttempted && !opaqueOutcome.wasPasted && opaqueOutcome.failure == .pasteUnconfirmed,
+        try check(opaquePosts == 1 && opaqueOutcome.pasteWasAttempted && !opaqueOutcome.wasPasted && opaqueOutcome.failure == nil,
                   "an unchanged opaque destination receives one paste without a false confirmation")
+        let sentReceipt = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
+        sentReceipt.record(outcome: opaqueOutcome, wordCount: 3)
+        try check(UnresolvedDelivery.kind(of: opaqueOutcome) == nil && sentReceipt.receipt?.title.hasPrefix("Sent to ") == true
+                  && sentReceipt.receipt?.canSuggestPaste == false && opaqueOutcome.message.contains("still copied"),
+                  "an expected unobservable paste has a quiet truthful receipt and no unresolved entry or duplicate-paste hint")
         try check(board.string(forType: .string) == "opaque synthetic words" && opaqueStops == 1 && guarded.opaqueEditor?.active == false,
                   "opaque delivery retains recovery text and releases its observation")
+        let unarmed = TextDelivery.Target(app: .current, element: nil, value: nil,
+            opaqueEditor: OpaqueEditorDestination(current: { true }, observe: { _, _ in {} }))
+        let promptOutcome = await TextDelivery.deliver("prompt words", target: unarmed, mode: .paste, restoreClipboard: false, system: opaqueSystem)
+        try check(promptOutcome.failure == .fieldUnreadable && !promptOutcome.pasteWasAttempted && opaquePosts == 1,
+                  "Saved Prompts explain an unreadable field without claiming it changed")
+        try check(!OpaqueEditorDestination.inputEvents.contains(.scrollWheel), "scrolling cannot cancel an unchanged editor target")
+        var boundedReads = 0, limits: [Float] = [], clock = 0.0
+        let bounded = OpaqueEditorDestination.ReadBudget(now: { clock }, setTimeout: { _, timeout in limits.append(timeout); return .success },
+            read: { _, _ in boundedReads += 1; return (.cannotComplete, nil) })
+        _ = bounded.attribute(editorWindow, kAXModalAttribute)
+        _ = bounded.attribute(editorWindow, kAXTitleAttribute)
+        try check(!bounded.valid && boundedReads == 1 && limits.count == 1 && limits[0] <= 0.03,
+                  "an AX timeout invalidates the snapshot and stops further IPC even for an optional attribute")
+        let elapsedBudget = OpaqueEditorDestination.ReadBudget(now: { clock }, setTimeout: { _, _ in .success },
+            read: { _, _ in clock += 0.07; return (.success, "late" as CFString) })
+        try check(elapsedBudget.attribute(editorWindow, kAXTitleAttribute) == nil && !elapsedBudget.valid,
+                  "a slow successful AX response cannot extend the total snapshot budget")
+        try check(OpaqueEditorDestination.observationInterval >= 0.25, "recording observes window changes at a bounded rate")
         let edited = guardedTarget()
         invalidate?() // an edit, click or app departure, even if the target returns
         edited.opaqueEditor?.begin(shortcut: VoiceShortcut())

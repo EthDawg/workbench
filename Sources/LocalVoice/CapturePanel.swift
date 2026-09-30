@@ -293,7 +293,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         }
         controls.dragActions = ToolbarDragActions(begin: { [weak self] in self?.beginDragging() },
             move: { [weak self] in self?.previewDragging() }, end: { [weak self] in self?.finishDragging() },
-            cancel: { [weak self] in self?.cancelDragging() }, isCancelled: { [weak self] in self?.dragging != true })
+            cancel: { [weak self] in self?.cancelDragging() }, isCancelled: { [weak self] in self?.dragging != true },
+            constrain: { [weak self] in self?.constrainDragFrame($0) ?? $0 })
         controls.cancelDrag = { [weak self] in self?.cancelDragging() }
         controls.menuDidClose = { [weak self] in
             guard let self else { return }
@@ -618,8 +619,10 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
         place(size: motion.target?.size ?? window.frame.size, restoreSaved: !window.isVisible)
     }
 
+    /// Offscreen host checks choose a deterministic display without moving the user's pointer.
+    var placementScreenOverride: NSRect?
     private var preferredScreen: NSRect? {
-        (NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main)?.visibleFrame
+        placementScreenOverride ?? (NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main)?.visibleFrame
     }
 
     private func place(size: NSSize, restoreSaved: Bool, animated: Bool = false) {
@@ -871,10 +874,14 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// The launcher's end is what docks, whatever the host shows: its slot is outlined, and a
     /// dock's guide is active only within the snap distance. Recording and results move the one
     /// shared position, as the tools do (#134 T4).
+    func constrainDragFrame(_ frame: CGRect) -> CGRect {
+        guard let preferred = preferredScreen else { return frame }
+        let screens = placementScreenOverride.map { [$0] } ?? NSScreen.screens.map(\.visibleFrame)
+        return ToolbarDrag.bounded(frame, screens: screens, fallback: preferred)
+    }
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
-        let bounded = FloatingControlGeometry.clamp(window.frame, to: preferred, inset: 0)
-        if bounded != window.frame { window.setFrame(bounded, display: true) }
+        let bounded = window.frame
         let candidate = ToolbarGeometry.releasedPosition(frame: bounded, screen: preferred)
         let size = surface == .tools ? controls.size(for: ToolbarGeometry.rowAnchor(candidate), screen: preferred) : window.frame.size
         let landing = ToolbarGeometry.isAttached(candidate) ? ToolbarGeometry.frame(size: size, position: candidate, screen: preferred) : nil
@@ -982,6 +989,7 @@ protocol FloatingHUDDragController: AnyObject {
     func beginDragging()
     func cancelDragging()
     func previewDragging()
+    func constrainDragFrame(_ frame: CGRect) -> CGRect
     func finishDragging()
 }
 
@@ -1020,8 +1028,10 @@ final class DragHandleView: NSView {
             dragging = true
             (window.windowController as? FloatingHUDDragController)?.beginDragging()
         }
-        window.setFrameOrigin(NSPoint(x: startingOrigin.x + point.x - anchor.x, y: startingOrigin.y + point.y - anchor.y))
-        (window.windowController as? FloatingHUDDragController)?.previewDragging()
+        let host = window.windowController as? FloatingHUDDragController
+        let proposed = CGRect(origin: NSPoint(x: startingOrigin.x + point.x - anchor.x, y: startingOrigin.y + point.y - anchor.y), size: window.frame.size)
+        window.setFrame(host?.constrainDragFrame(proposed) ?? proposed, display: true)
+        host?.previewDragging()
     }
     override func mouseUp(with event: NSEvent) {
         if dragging { (window?.windowController as? FloatingHUDDragController)?.finishDragging() }

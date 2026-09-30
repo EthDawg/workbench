@@ -16,6 +16,19 @@ final class ToolbarPlacementTests: XCTestCase {
         .free(ToolbarFreePosition(releasedAt: centre, on: screen))
     }
 
+    func testDragBoundsFollowTheHandAcrossDisplaysAndClampOuterEdges() {
+        let left = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let right = CGRect(x: 1000, y: 0, width: 1000, height: 800)
+        let crossing = CGRect(x: 950, y: 200, width: 200, height: 40)
+        XCTAssertEqual(ToolbarDrag.bounded(crossing, screens: [left, right], fallback: right), crossing,
+                       "Crossing a shared display edge does not jump the whole pill to the next display")
+        for frame in [CGRect(x: -100, y: 200, width: 200, height: 40), CGRect(x: 950, y: 780, width: 200, height: 40)] {
+            XCTAssertTrue(left.contains(ToolbarDrag.bounded(frame, screens: [left], fallback: left)))
+        }
+        let far = CGRect(x: 4000, y: -900, width: 200, height: 40)
+        XCTAssertTrue(right.contains(ToolbarDrag.bounded(far, screens: [left, right], fallback: right)))
+    }
+
     func testAMoveStartsAtFourPointsAndLessIsAClick() {
         XCTAssertEqual(ToolbarDrag.threshold, 4)
         XCTAssertEqual(ToolbarDrag.threshold, FloatingControlPlacement.dragThreshold,
