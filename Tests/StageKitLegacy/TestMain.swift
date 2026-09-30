@@ -4,6 +4,23 @@ import AppKit
 struct TestRunner {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--library-image-reuse-only"] {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.accessory)
+            let suite = LibraryImageReuseTests()
+            let tests: [(String, () throws -> Void)] = [
+                ("Library scene preparation cancel create and replace", suite.testScenePreparationCancelCreateAndReplace),
+                ("Library Persona preparation preserves live copies", suite.testPersonaPreparationCancelAndAddPreserveLiveCopies),
+                ("Library preparation offscreen renders", { try MainActor.assumeIsolated { try suite.renderPreparationViews() } })
+            ]
+            for (name, test) in tests {
+                let before = assertionFailures
+                do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+                if assertionFailures == before { print("PASS \(name)") }
+            }
+            print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+            exit(assertionFailures == 0 ? 0 : 1)
+        }
         if args == ["--profile-camera-only"] {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
@@ -732,6 +749,11 @@ struct TestRunner {
             ("desktop sleep and pause independence", desktopMotion.testDesktopSleepReasonsAndPauseRemainIndependent),
             ("desktop removal and fresh session", desktopMotion.testDesktopRemovalStopsEvenDuringSleepAndRestartNeedsNewSession)
         ], at: 5)
+        let libraryImageReuse = LibraryImageReuseTests()
+        tests.append(contentsOf: [
+            ("Library scene preparation cancel create and replace", libraryImageReuse.testScenePreparationCancelCreateAndReplace),
+            ("Library Persona preparation preserves live copies", libraryImageReuse.testPersonaPreparationCancelAndAddPreserveLiveCopies)
+        ])
         tests.insert(contentsOf: backdropTests, at: 5)
         tests.insert(contentsOf: sceneListTests, at: 5)
         tests.insert(contentsOf: personaControlTests, at: 5)

@@ -427,6 +427,13 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         try draft.chooseImage(imageURL, name: title, source: "From iPhone · Independent copy")
         return draft
     }
+    func makeBackdropReplacement(sceneID: UUID, image: BackdropImage, title: String) throws -> BackdropReplacement {
+        guard !storageBlocked else { throw SceneError.storageBlocked }
+        guard let scene = scenes.first(where: { $0.id == sceneID }) else { throw BackdropReplacementError.sceneMissing }
+        let draft = BackdropReplacement(scene: scene, root: root)
+        try draft.chooseImage(image, name: title, source: "Library · Independent copy")
+        return draft
+    }
     func applyBackdrop(_ draft: BackdropReplacement) throws {
         guard !storageBlocked else { throw SceneError.storageBlocked }
         guard draft.root.standardizedFileURL == root.standardizedFileURL else { throw BackdropReplacementError.closed }
@@ -477,6 +484,19 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         var scene = DemoScene(name: String((name ?? url.deletingPathExtension().lastPathComponent).prefix(160)), background: filename)
         scene.viewport = myDevice ?? .phone
         do { try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = nil }
+        catch { try? FileManager.default.removeItem(at: destination); throw error }
+    }
+    /// Explicit Create scene from a prepared Library image. The in-memory
+    /// choice creates no file until here and never touches the live presentation.
+    func addImage(_ image: BackdropImage, name: String) throws {
+        guard !storageBlocked else { throw SceneError.storageBlocked }
+        let filename = UUID().uuidString + "." + image.fileExtension
+        let destination = root.appendingPathComponent(filename)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try image.data.write(to: destination, options: .withoutOverwriting)
+        var scene = DemoScene(name: String(name.prefix(160)), background: filename)
+        scene.viewport = myDevice ?? .phone
+        do { try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = "Scene saved. Choose Present when you are ready." }
         catch { try? FileManager.default.removeItem(at: destination); throw error }
     }
     private func copyImage(_ url: URL) throws -> String {
