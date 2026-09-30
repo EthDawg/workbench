@@ -473,6 +473,7 @@ struct WorkbenchFloatingContent: View {
     @ObservedObject var stage: StageKitController
     @ObservedObject var controls: CaptureHUDControls
     @ObservedObject var receipts: ClipboardReceiptModel
+    @ObservedObject var meetings: MeetingModel
     let snapModel: SnapModel
     let dictate: () -> Void
     let snap: () -> Void

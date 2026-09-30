@@ -33,3 +33,14 @@ These are production SwiftUI/AppKit views with synthetic state, not installed ac
 ## Native acceptance
 
 Signed Preview installed in place: version 2.3.1, build 20260930080409, source d677e65131d9a0b89a73a3c507a6a62b4813400b. Real Claude desktop input checks are pending. The app-control tool refuses this Mac's ChatGPT app identity, so ChatGPT requires a user check in the installed candidate. No permission reset or extra application identity is part of this change.
+
+## Repeatable scenarios for the experience study
+
+1. Change between every tool, then start recording: Switch tool keeps the same icon; recording has a separate signal.
+2. Leave saved recovery unresolved, collapse, reveal, then record: no warning pictogram appears, and saved audio remains available.
+3. Copy an existing transcript: the brief cue has only its title and useful next step. After expiry, hover reveals tools.
+4. Start a synthetic meeting, then Copy: the recording signal remains visible and Stop transcribing remains reachable. Also check the reverse order, Copy then start a meeting.
+5. Keep the pointer stationary where a cue appears: its passive native sensor holds the remaining time. Moving away releases the hold; VoiceOver focus independently keeps it readable.
+6. In an empty Claude or ChatGPT desktop composer, dictate a short sentence, repeat, replace selected text, then switch apps during a capture. Text is inserted once into the unchanged original target; a changed target gets a clear fallback, with no submission.
+
+The toolbar-host cases use actual production views, synthetic meeting capture and a synthetic pointer location. They do not establish microphone or desktop-app delivery acceptance. The original full-suite run encountered occupied global shortcuts; after closing Stable, the StageKit rerun passed 253 tests and 4,903 assertions.

@@ -583,7 +583,7 @@ enum SurfaceGallery {
             let size = CaptureHUDLayout.compact
             let content = Group {
                 if let result { FloatingResultView(result: result, model: model, controls: controls) }
-                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, receipts: model.clipboardReceipt, snapModel: snap,
+                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snap,
                                                 dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}) }
             }
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
@@ -1605,7 +1605,7 @@ enum SurfaceGallery {
         // The twin has its own controls, so its size reports never reach the host under test.
         let twinControls = CaptureHUDControls(defaults: defaults)
         twinControls.toolbar.activate()
-        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, receipts: model.clipboardReceipt, snapModel: snap,
+        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snap,
                                                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}))
         let twinWindow = offscreenWindow(size: NSSize(width: 600, height: 60), styleMask: [.borderless])
         twinWindow.contentView = twin
@@ -2165,6 +2165,22 @@ enum SurfaceGallery {
             CapturePanelController.showsDeliveryCue(model) ? nil : "the copied cue is not visible",
             FloatingResult.pending(model) == nil ? nil : "the receipt is still a toolbar result",
             cueButtons.isEmpty ? nil : "the cue still contains Review, pin or dismiss controls"])
+        // A cue can appear beneath an unmoving pointer. Exercise the actual native
+        // sensor in its production view; no mouse movement or live clipboard writes.
+        func sensors(_ view: NSView) -> [PointerPresenceView] {
+            (view as? PointerPresenceView).map { [$0] } ?? view.subviews.flatMap(sensors)
+        }
+        model.clipboardReceipt.holdHUD(false)
+        if let sensor = host.window?.contentView.flatMap({ sensors($0).first }), let window = sensor.window {
+            sensor.windowShows = { _ in true }; sensor.deliver = { $0() }
+            let centre = window.convertPoint(toScreen: sensor.convert(NSPoint(x: sensor.bounds.midX, y: sensor.bounds.midY), to: nil))
+            sensor.pointer = { centre }; sensor.refresh(); settle(.resting)
+            expect("A copied cue appearing under a stationary pointer holds its time", [
+                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == true ? nil : "the actual cue missed the resting pointer"])
+            sensor.pointer = { NSPoint(x: centre.x + 10_000, y: centre.y + 10_000) }; sensor.refresh(); settle(.resting)
+            expect("Leaving the copied cue releases its pointer hold", [
+                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == false ? nil : "the pointer hold stayed after leaving"])
+        } else { expect("The copied cue measures a stationary pointer", ["the production cue has no passive pointer sensor"]) }
         model.clipboardReceipt.holdHUD(false)
         model.clipboardReceipt.dismissHUD(); settle(.resting)
         reveal(); settle(.revealed)
@@ -2173,6 +2189,33 @@ enum SurfaceGallery {
             host.window?.contentView.map(buttons)?.contains { $0.accessibilityIdentifier() == "toolbar.launcher" } == true
                 ? nil : "Switch tool is missing"])
         collapse(); model.clipboardReceipt.clear(); settle(.resting)
+        // Reverse order: a meeting is already recording when old History text is copied.
+        // The brief feedback must not cover the recording signal or its Stop action.
+        do {
+            try drive(model.meetings, start: true); settle(.resting)
+            receipt(); settle(.resting)
+            expect("Copying during an active meeting keeps the recording signal", [
+                CapturePanelController.showsDeliveryCue(model) ? "copy feedback covers the meeting" : nil,
+                controls.status.indicator == .capture ? nil : "the meeting recording signal disappeared"])
+            reveal(); settle(.revealed)
+            let stop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
+            expect("Copying during an active meeting keeps Stop reachable", [
+                model.meetings.isRecording ? nil : "the meeting ended",
+                stop?.accessibilityLabel() == "Stop transcribing" && stop?.isEnabled == true ? nil : "Stop transcribing is not reachable"])
+            collapse(); model.clipboardReceipt.clear()
+            try drive(model.meetings, start: false); settle(.resting)
+            receipt(); settle(.resting)
+            try drive(model.meetings, start: true); settle(.resting)
+            expect("A meeting starting during a copied cue takes back its controls", [
+                CapturePanelController.showsDeliveryCue(model) ? "the earlier cue still has the surface" : nil,
+                host.window?.frame.size == ToolbarLayout.mark(for: controls.rowAnchor) ? nil : "the host still has the cue's frame"])
+            reveal(); settle(.revealed)
+            let nextStop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
+            expect("Stop is reachable when a meeting supersedes a copied cue", [
+                nextStop?.accessibilityLabel() == "Stop transcribing" && nextStop?.isEnabled == true ? nil : "the row did not return"])
+            collapse(); model.clipboardReceipt.clear()
+            try drive(model.meetings, start: false); settle(.resting)
+        } catch { expect("Copy during an active meeting", [error.localizedDescription]) }
         // At the right-hand dock each result grows leftward from the launcher's centre: its actions
         // must sit clear of the mark the pointer came from, never Retry, Dismiss or the like there.
         controls.choosePosition?(.right); settle(.resting)
