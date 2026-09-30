@@ -272,6 +272,17 @@ public final class StageKitController: ObservableObject {
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {
         AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, imageURL: imageURL, title: title))
     }
+    /// Library holds file access only while reading; these views own immutable
+    /// bytes and wait for Use backdrop/Create scene or Add persona before saving.
+    public func backdropReplacementView(imageData: Data, title: String) throws -> AnyView {
+        let image = try BackdropImage.decode(imageData)
+        return AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, image: image, title: title))
+    }
+    public func personaImportView(imageData: Data, title: String) throws -> AnyView {
+        let library = coordinator.demoScenes.personas
+        let draft = try library.portraitDraft(imageData: imageData, name: title)
+        return AnyView(PersonaImageImportView(library: library, draft: draft))
+    }
     public var isDrawing: Bool { coordinator.isDrawing }
     public enum ShortcutGesture { case press, hold, release }
     /// Only presentation metadata; shortcut execution stays with the coordinator.
@@ -386,11 +397,18 @@ public final class StageKitController: ObservableObject {
 }
 
 @MainActor
-private struct PhotoBackdropChooser: View {
+struct PhotoBackdropChooser: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: DemoScenes
-    let imageURL: URL
+    private let imageURL: URL?
+    private let preparedImage: BackdropImage?
     let title: String
+    init(model: DemoScenes, imageURL: URL, title: String) {
+        self.model = model; self.imageURL = imageURL; self.preparedImage = nil; self.title = title
+    }
+    init(model: DemoScenes, image: BackdropImage, title: String) {
+        self.model = model; self.imageURL = nil; self.preparedImage = image; self.title = title
+    }
     @State private var sceneID: UUID?
     @State private var draft: BackdropReplacement?
     @State private var notice: String?
@@ -403,7 +421,7 @@ private struct PhotoBackdropChooser: View {
             } else {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {
-                        Text("Use photo as backdrop").font(.title2.weight(.semibold))
+                        Text(preparedImage == nil ? "Use photo as backdrop" : "Use in Present").font(.title2.weight(.semibold))
                         Spacer()
                         Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                     }
@@ -414,13 +432,18 @@ private struct PhotoBackdropChooser: View {
                         }.frame(width: 120, height: 90).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                         VStack(alignment: .leading, spacing: 6) {
                             Text(title).font(.headline).lineLimit(2)
-                            Text("Choose a saved scene. Review the crop next, then apply when it looks right.")
+                            Text(model.scenes.isEmpty && preparedImage != nil
+                                 ? "Create your first scene from this image. It will be saved for you to prepare in Present."
+                                 : "Choose a saved scene. Review the crop next, then apply when it looks right.")
                                 .foregroundStyle(.secondary)
                         }
                     }
                     if model.storageBlocked {
                         ContentUnavailableView("Saved scenes need attention", systemImage: "exclamationmark.folder",
                             description: Text("The scene library could not be read. Its original files are preserved. You can still save a separate copy of this photo."))
+                    } else if model.scenes.isEmpty && preparedImage != nil {
+                        Label("Your image stays unchanged. Creating a scene saves an independent copy.", systemImage: "photo.on.rectangle")
+                            .font(.callout).foregroundStyle(.secondary)
                     } else if model.scenes.isEmpty {
                         ContentUnavailableView("Prepare a scene first", systemImage: "rectangle.on.rectangle",
                             description: Text("Create a scene in Present, then return to this photo. Choosing a backdrop never creates a duplicate scene."))
@@ -437,24 +460,39 @@ private struct PhotoBackdropChooser: View {
                     Spacer(minLength: 0)
                     Divider()
                     HStack {
-                        Text("Only the backdrop changes. Foreground layers and the current presentation stay as they are.")
+                        Text(model.scenes.isEmpty && preparedImage != nil
+                             ? "Create scene saves your choice. Choose Present when you are ready."
+                             : "Only the backdrop changes. Foreground layers and the current presentation stay as they are.")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Preview backdrop") {
-                            guard let sceneID else { return }
-                            do { draft = try model.makeBackdropReplacement(sceneID: sceneID, imageURL: imageURL, title: title) }
-                            catch { notice = error.localizedDescription }
-                        }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                            .disabled(model.storageBlocked || thumbnail == nil || !model.scenes.contains { $0.id == sceneID })
-                            .accessibilityIdentifier("handoff.preview-backdrop")
+                        if model.scenes.isEmpty, let preparedImage {
+                            Button("Create scene") {
+                                guard model.scenes.isEmpty else { notice = "A scene is now available. Choose it before previewing this backdrop."; return }
+                                do { try model.addImage(preparedImage, name: title); dismiss() }
+                                catch { notice = error.localizedDescription }
+                            }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                                .disabled(model.storageBlocked)
+                        } else {
+                            Button("Preview backdrop") {
+                                guard let sceneID else { return }
+                                do {
+                                    if let preparedImage { draft = try model.makeBackdropReplacement(sceneID: sceneID, image: preparedImage, title: title) }
+                                    else if let imageURL { draft = try model.makeBackdropReplacement(sceneID: sceneID, imageURL: imageURL, title: title) }
+                                } catch { notice = error.localizedDescription }
+                            }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                                .disabled(model.storageBlocked || thumbnail == nil || !model.scenes.contains { $0.id == sceneID })
+                                .accessibilityIdentifier("handoff.preview-backdrop")
+                        }
                     }
-                }.padding(20).frame(width: 840, height: 660)
+                }.padding(20).frame(width: 840, height: model.scenes.isEmpty && preparedImage != nil ? 320 : 660)
                     .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
             }
         }.onAppear {
             sceneID = model.selected?.id ?? model.scenes.first?.id
-            do { thumbnail = try BackdropImage.thumbnail(imageURL) }
-            catch { notice = "The photo could not be opened. " + error.localizedDescription }
+            do {
+                if let preparedImage { thumbnail = preparedImage.image }
+                else if let imageURL { thumbnail = try BackdropImage.thumbnail(imageURL) }
+            } catch { notice = "The photo could not be opened. " + error.localizedDescription }
         }.onDisappear { draft?.cancel() }
     }
 }

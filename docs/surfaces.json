@@ -190,6 +190,22 @@
     "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-persona",
+    "surface": "library page",
+    "label": "Use in Persona…",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Accepted Library reuse option: prepares this local image in the existing Persona owner. Choosing and cancelling write nothing; live output changes only through an explicit Present or Show."
+  },
+  {
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-present",
+    "surface": "library page",
+    "label": "Use in Present…",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Accepted Library reuse option: prepares this local image in the existing Present owner. Choosing and cancelling write nothing; live output changes only through an explicit Present or Show."
+  },
+  {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.appearance",
     "surface": "floating toolbar More menu",
     "label": "Appearance",

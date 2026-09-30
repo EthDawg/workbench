@@ -514,6 +514,18 @@ private struct PersonaStarterChooser: View {
     }
 }
 
+/// Holds a Library image's editor through host and sheet recomputations.
+/// It has the same Add/Cancel transaction as Import portrait.
+struct PersonaImageImportView: View {
+    @ObservedObject var library: PersonaLibrary
+    @StateObject private var session: PersonaEditorSession
+    init(library: PersonaLibrary, draft: PersonaPortraitDraft) {
+        self.library = library
+        _session = StateObject(wrappedValue: PersonaEditorSession(.new(draft)))
+    }
+    var body: some View { PersonaCardEditor(library: library, session: session) }
+}
+
 /// What the persona editor changes before Save or Add: a saved persona's
 /// appearance, label and colour, or a new portrait's draft. Nothing is written
 /// until `commit`, so Cancel, and Escape, which presses Cancel, simply drop it.

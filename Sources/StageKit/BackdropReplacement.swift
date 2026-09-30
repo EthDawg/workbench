@@ -199,7 +199,14 @@ final class BackdropReplacement: ObservableObject, Identifiable {
     func chooseImage(_ url: URL, name: String? = nil, source: String = "Chosen image",
                      selectionID: String? = nil, existingFilename: String? = nil) throws {
         guard active else { throw BackdropReplacementError.closed }
-        let image = try BackdropImage.read(url)
+        try chooseImage(BackdropImage.read(url), name: name ?? url.lastPathComponent, source: source,
+                        selectionID: selectionID, existingFilename: existingFilename)
+    }
+    /// Library supplies the bounded bytes read under its file-access lease.
+    /// Both paths use the same candidate, crop and cancellation transaction.
+    func chooseImage(_ image: BackdropImage, name: String, source: String,
+                     selectionID: String? = nil, existingFilename: String? = nil) throws {
+        guard active else { throw BackdropReplacementError.closed }
         var filename = existingFilename
         // Choosing the current image again should neither reset its crop nor
         // write a duplicate. Keep explicit saved-image choices otherwise.
@@ -212,7 +219,7 @@ final class BackdropReplacement: ObservableObject, Identifiable {
         }
         if image.digest != candidate?.image.digest { centreCrop() }
         candidate = Candidate(selectionID: filename.map { "saved:" + $0 } ?? selectionID ?? UUID().uuidString,
-                              name: String((name ?? url.lastPathComponent).prefix(160)), source: source,
+                              name: String(name.prefix(160)), source: source,
                               image: image, existingFilename: filename)
         notice = nil
     }

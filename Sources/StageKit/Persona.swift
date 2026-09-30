@@ -494,6 +494,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
         return draft
     }
 
+    /// A Library image keeps its frozen bytes while the same portrait editor
+    /// prepares an independent persona. Nothing is selected or saved here.
+    func portraitDraft(imageData: Data, name: String) throws -> PersonaPortraitDraft {
+        guard writable() else { throw PersonaError.invalidSettings }
+        let image = LogoImport.Image(png: try LogoImport.normalizedPNG(imageData), name: name)
+        let draft = try PersonaPortraitDraft(image, card: PersonaCardStyle().validated(), name: name)
+        notice = nil
+        return draft
+    }
+
     /// Add persona: saves the draft's picture and card, selects it and adds it to
     /// the active group, together and once. If the library changed on disk while
     /// the draft was open, it is read again and the draft is added to it once.

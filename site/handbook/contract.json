@@ -52,10 +52,10 @@
       "name": "Change a scene backdrop",
       "status": "implemented",
       "entry": "Present \u2192 Change backdrop\u2026",
-      "effect": "Preview a file, starter or saved scene image with the retained foreground; apply only the background and crop.",
+      "effect": "Preview a file, starter or saved scene image with the retained foreground; apply only the background and crop. Library Resources can prepare a supported image through this same transaction, or explicitly create the first scene when no scenes exist. Cancel writes nothing.",
       "limit": "Changes the saved scene and later outputs, not a running presentation or an already-applied desktop image.",
       "source": "Sources/StageKit/BackdropReplacement.swift",
-      "evidence": "Six focused tests with 126 assertions; native picker Cancel, Escape, Return Apply and missing-image repair checked with disposable scenes."
+      "evidence": "Six focused tests with 126 assertions; native picker Cancel, Escape, Return Apply and missing-image repair checked with disposable scenes. Library image reuse passed 30 bounded-byte and export/reference checks plus three focused StageKit checks with 45 assertions covering preparation, cancellation, explicit first-scene creation and Persona frozen live copies with fake displays. Source and offscreen renders are separate from pending combined installed Preview acceptance."
     },
     {
       "id": "scene-session",
