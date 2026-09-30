@@ -19,6 +19,8 @@ Based on main b06fbaa. Checks use synthetic data and a separate named pasteboard
 - Surface registry: 439 entries, passed. Removed obsolete receipt commands.
 - Native surface gallery: 280 renders, 140 entries, zero flags. Toolbar gallery: 344 production-view fixtures.
 - Capture persistence: 154 checks, including saved audio preservation and no popup revival after confirmed insertion.
+- Corrected toolbar-host gallery: 54 renders, zero flags. It covers Copy during a meeting, a meeting starting while a copied cue is visible, and a stationary pointer holding the cue.
+- StageKit: 253 tests and 4,903 assertions, zero failures after quitting both app editions to free their global shortcuts. The remaining full-suite checks also passed: transcript handoff, readback pack, capture preview, image workspace, history, handoff jobs, subscription CLI, meeting removal and capture, and Snap.
 
 ## Rendered production views
 
@@ -32,7 +34,20 @@ These are production SwiftUI/AppKit views with synthetic state, not installed ac
 
 ## Native acceptance
 
-Signed Preview installed in place: version 2.3.1, build 20260930080409, source d677e65131d9a0b89a73a3c507a6a62b4813400b. Real Claude desktop input checks are pending. The app-control tool refuses this Mac's ChatGPT app identity, so ChatGPT requires a user check in the installed candidate. No permission reset or extra application identity is part of this change.
+Signed Preview installed in place and verified through the running app's **Copy build details**:
+
+- Version: 2.3.1 (20260930082642)
+- Source: 62f8ba5b9f41de7549d0877719baa89a402fdb34
+- Local development; modified source: no
+- macOS: 26.5.1 (25F80)
+
+The existing Preview identity, saved data and Stable installation were preserved. Both editions were closed for shortcut-sensitive tests; only Preview was reopened afterward.
+
+Desktop delivery acceptance is **pending a user keyboard check**. The app-control tool's Option-V attempt in Claude entered the normal Option-V characters without starting Workbench capture. Those two unsent test characters were removed and the empty composer was verified. This attempt does not establish a native delivery result. The tool also refuses this Mac's ChatGPT app identity. Neither limitation was bypassed with another automation mechanism.
+
+Requested check on this exact candidate: use Option-V to dictate a short sentence twice into an empty Claude desktop composer and an empty ChatGPT desktop composer. Each sentence should appear once, without the old Copied/Review popup or submission. Source checks for selection replacement and a changed target passed, but the corresponding real-app journeys remain unverified.
+
+The control tool cannot establish native hover timing. Production-host pointer tests and rendered views are recorded separately above. No permission reset or extra application identity is part of this change.
 
 ## Repeatable scenarios for the experience study
 
