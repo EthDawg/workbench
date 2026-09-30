@@ -106,6 +106,11 @@ import AppKit
 import AVFoundation
 import Combine
 
+// Trust is a fixture input, never the runner's real TCC state. These exact
+// AppModel methods call this local seam before choosing whether to defer paste.
+@MainActor enum FixtureAccessibility { static var trusted = true }
+@MainActor func AXIsProcessTrusted() -> Bool { FixtureAccessibility.trusted }
+
 __VALUES__
 __REQUEST__
 
@@ -372,9 +377,15 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(meetingBusy.error?.contains("meeting") == true && meetingBusy.engine.calls == 0,
                   "audio import cannot race the meeting recognizer")
         func finish(_ model: CaptureHarness) async { let task = model.transcriptionTask; await task?.value }
+        func waitUntil(_ name: String, _ condition: () -> Bool) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            while !condition() {
+                guard ProcessInfo.processInfo.systemUptime < deadline else { throw CheckFailure(description: "Timed out waiting for " + name) }
+                try await Task.sleep(nanoseconds: 1_000_000)
+            }
+        }
         func waitForEngine(_ model: CaptureHarness) async throws {
-            for _ in 0..<500 { if model.engine.continuation != nil { return }; await Task.yield() }
-            throw CheckFailure(description: "Fixture engine was not reached")
+            try await waitUntil("fixture engine") { model.engine.continuation != nil }
         }
 
         // Normal delivery cannot observe a state that has not been committed.
@@ -584,11 +595,23 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         TextDelivery.delayed = true
         let delivering = CaptureHarness(directory: folder("late-delivery")); let deliveredURL = try delivering.makeRecording(wav)
         delivering.run(deliveredURL, owned: true)
-        for _ in 0..<500 { if TextDelivery.continuation != nil { break }; await Task.yield() }
+        try await waitUntil("delayed delivery") { TextDelivery.continuation != nil }
         try check(TextDelivery.continuation != nil && delivering.store.saved?.history.count == 1, "Delayed delivery begins only after the capture commit")
         delivering.shutdown(); let stoppedStatus = delivering.status
         TextDelivery.release(); await finish(delivering); TextDelivery.delayed = false
         try check(delivering.clipboardReceipt.receipts == 0 && delivering.status == stoppedStatus, "An invalidated delivery cannot publish a late receipt or replace shutdown state")
+
+        FixtureAccessibility.trusted = false
+        let untrustedDrawing = CaptureHarness(directory: folder("drawing-untrusted"))
+        untrustedDrawing.shouldDeferDelivery = { true }; untrustedDrawing.captureOptions.preferences.delivery = .paste
+        let untrustedCalls = TextDelivery.calls
+        untrustedDrawing.run(try untrustedDrawing.makeRecording(wav), owned: true); await finish(untrustedDrawing)
+        try check(!untrustedDrawing.accessibilityGranted && !untrustedDrawing.waitingForDrawing
+                  && !untrustedDrawing.drawingDelivery.isWaiting && TextDelivery.calls == untrustedCalls + 1,
+                  "without Accessibility trust, drawing does not defer the copied delivery")
+        try check(untrustedDrawing.history.count == 1 && untrustedDrawing.phase == .idle,
+                  "untrusted drawing still retains the committed transcript")
+        FixtureAccessibility.trusted = true
 
         // Drawing defers only delivery: the exact production method saves the
         // transcript first and retains its original target, without holding audio.
@@ -598,7 +621,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         drawing.shouldDeferDelivery = { isDrawing }
         drawing.captureOptions.preferences.delivery = .paste
         drawing.run(try drawing.makeRecording(wav), owned: true)
-        for _ in 0..<500 where !drawing.drawingDelivery.isWaiting { await Task.yield() }
+        try await waitUntil("drawing delivery") { drawing.drawingDelivery.isWaiting }
         try check(drawing.waitingForDrawing && drawing.drawingDelivery.isWaiting && TextDelivery.calls == 0, "Drawing defers text delivery")
         try check(drawing.history.count == 1 && drawing.store.saved?.history.count == 1 && !drawing.captureRecovery.hasRecovery, "Waiting text is durably saved and owned audio is released")
         drawing.resumeWaitingDelivery()
@@ -610,14 +633,14 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let copyDrawing = CaptureHarness(directory: folder("drawing-copy"))
         copyDrawing.shouldDeferDelivery = { true }; copyDrawing.captureOptions.preferences.delivery = .paste
         copyDrawing.run(try copyDrawing.makeRecording(wav), owned: true)
-        for _ in 0..<500 where !copyDrawing.drawingDelivery.isWaiting { await Task.yield() }
+        try await waitUntil("copy while drawing") { copyDrawing.drawingDelivery.isWaiting }
         copyDrawing.copyWaitingDelivery(); await finish(copyDrawing)
         try check(TextDelivery.calls == 2 && TextDelivery.lastMode == .clipboard && !copyDrawing.waitingForDrawing, "Copy now completes without asking drawing to stop")
 
         let quitDrawing = CaptureHarness(directory: folder("drawing-quit"))
         quitDrawing.shouldDeferDelivery = { true }; quitDrawing.captureOptions.preferences.delivery = .paste
         quitDrawing.run(try quitDrawing.makeRecording(wav), owned: true)
-        for _ in 0..<500 where !quitDrawing.drawingDelivery.isWaiting { await Task.yield() }
+        try await waitUntil("quit while drawing") { quitDrawing.drawingDelivery.isWaiting }
         let waitingTask = quitDrawing.transcriptionTask
         quitDrawing.shutdown(); await waitingTask?.value
         try check(TextDelivery.calls == 2 && !quitDrawing.waitingForDrawing && !quitDrawing.drawingDelivery.isWaiting, "Quit cancels a waiting insertion without delivering or retaining its continuation")
