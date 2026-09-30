@@ -52,8 +52,7 @@ struct WorkbenchHome: View {
     /// the section, so a later Library door returns to Resources.
     static let photoArrivals = "photos"
 
-    /// The page pinned below the sidebar's scrolling list, and the items a small unnamed break
-    /// follows: Home, then the tools, then History and Library (#134).
+    /// App-wide settings stay reachable below the sidebar's scrolling groups.
     static let pinnedPage = "settings"
     /// What the floating toolbar's one switch does, wherever it appears (#134).
     static let floatingToolbarHelp = "Show between actions. Recording and recovery controls still appear when needed."

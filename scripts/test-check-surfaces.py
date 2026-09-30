@@ -224,15 +224,17 @@ class SurfaceTests(unittest.TestCase):
         self.write('LocalVoice/Views.swift', '''struct ContentView: View {
           private var dictate: some View {
             Toggle("Keep clipboard", isOn: $model.preferences.restoreClipboard); Toggle("Show original", isOn: $showOriginal)
-            Picker("Voice", selection: $model.voice) { Text("Alex").tag("Alex") }; Button("Copy text") { copy() }; dictateOptions
+            Picker("Voice", selection: $model.voice) { Text("Alex").tag("Alex") }; Button("Copy text") { copy() }
           }
-          private var dictateOptions: some View { VoiceOptions(model: model); Button("Your dictionary") { page = "dictionary" } }
+        }
+        struct DictateSettingsView: View {
+          var body: some View { VoiceOptions(model: model); Button("Your dictionary") { page = "dictionary" } }
         }''')
         self.write('LocalVoice/QuickControls.swift', '''struct VoiceOptions: View {
           var body: some View { Picker("Activation", selection: $model.preferences.capture) { ForEach(CaptureMode.allCases, id: \\.self) { Text($0.rawValue).tag($0) } } }
         }''')
         self.write('LocalVoice/VoicePreferences.swift', 'enum CaptureMode: String, CaseIterable { case toggle = "Toggle", hold = "Press & hold" }')
-        options = sorted(e['label'] for e in self.entries() if e['surface'] == 'dictate page options')
+        options = sorted(e['label'] for e in self.entries() if e['surface'] in ('dictate page options', 'dictate settings'))
         self.assertEqual(['Activation', 'Keep clipboard', 'Your dictionary'], options)
         self.assertIn('Press & hold', self.labels())
         for transient in ('Show original', 'Voice', 'Alex', 'Copy text'):
@@ -241,6 +243,25 @@ class SurfaceTests(unittest.TestCase):
         page = self.root / 'Sources/LocalVoice/Views.swift'
         page.write_text(page.read_text().replace('Button("Copy text")', 'Toggle("Sounds", isOn: $model.preferences.sounds); Button("Copy text")'))
         self.assertIn('Unregistered entry on dictate page options: "Sounds".', '\n'.join(self.errors(before)))
+
+    def test_home_workspace_cards_use_the_canonical_page_record(self):
+        source = '''struct WorkbenchHome: View {
+          static let navItems = [("dictate", "Dictate", "mic"), ("meeting", "Meetings", "person.2")]
+          private var welcome: some View {
+            workspaceCard("dictate", detail: "Turn voice into text.")
+            workspaceCard("meeting", detail: "Transcribe a meeting or call.")
+          }
+          private func workspaceCard(_ route: String, detail: String) -> some View {
+            Button { model.page = route } label: { Text(Self.name(of: route)) }
+          }
+        }'''
+        path = self.write('LocalVoice/WorkbenchHome.swift', source)
+        cards = [e for e in self.entries() if e['surface'] == 'window home']
+        self.assertEqual([('Dictate', 'dictate'), ('Meetings', 'meeting')],
+                         sorted((e['label'], e['page']) for e in cards))
+        path.write_text(source.replace('workspaceCard("meeting"', 'workspaceCard("missing"'))
+        with self.assertRaisesRegex(ValueError, 'workspaceCard must name an existing page route'):
+            self.entries()
 
     def test_transient_controls_on_a_capability_page_stay_out(self):
         page = self.write('LocalVoice/Views.swift', 'struct ContentView: View { private var dictate: some View { Button("Copy text") { copy() } } }')

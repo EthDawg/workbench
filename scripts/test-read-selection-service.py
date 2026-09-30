@@ -228,12 +228,13 @@ assert button_action("Sources/LocalVoice/CaptureHistoryView.swift", "Read aloud"
     "History's Read aloud must go through importReading"
 assert button_action("Sources/LocalVoice/DemoLibraryView.swift", "Read aloud") == "model.importReading(item.content, from: .savedText)", \
     "Library's Read aloud must go through importReading"
-tile = SwiftFile(ROOT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHomePage").select(["readClipboard"])[0].code
-assert "model.listen(to: text)" in tile and "speechText" not in tile, "Home's Read tile must replace through listen(to:)"
+home = SwiftFile(ROOT / "Sources/LocalVoice/WorkbenchHome.swift").type("WorkbenchHomePage").select(["workspaceCard(_:detail:)"])[0].code
+assert "model.page = route" in home and "model.listen" not in home and "speechText" not in home, \
+    "Home workspace navigation must preserve a reading and must not start playback"
 assert "self?.model.receiveReadingSelection(selection)" in (ROOT / "Sources/LocalVoice/main.swift").read_text(), \
     "the Service must hand its selection to the import owner"
 # Nothing else writes the reading draft. AppModel's three writers are the saved
-# session's restore, Home's listen(to:) and the import decision's apply; the
+# session's restore, explicit listen(to:) and the import decision's apply; the
 # Read editor's binding is the person typing. Any other write or binding fails.
 WRITE = re.compile(r"(?<!var )(?<!let )\bspeechText\s*(\+=|=(?!=))|\bspeechText\.(append|insert|remove|replace)")
 BINDING = re.compile(r"\$\w*\.?speechText\b")

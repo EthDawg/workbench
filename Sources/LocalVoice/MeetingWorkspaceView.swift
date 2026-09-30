@@ -74,7 +74,7 @@ struct MeetingWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .firstTextBaseline, spacing: 16) {
                             Text("Audio source").frame(width: 100, alignment: .leading)
-                            Picker("Audio source", selection: $model.selectedAppID) {
+                            Picker("Audio source", selection: Binding(get: { model.selectedAppID }, set: model.selectAudioSource)) {
                                 Text("Microphone only").tag(Int32?.none)
                                 ForEach(model.apps) { app in Text(app.name).tag(Optional(app.id)) }
                             }.labelsHidden().frame(maxWidth: 360)
@@ -82,8 +82,10 @@ struct MeetingWorkspaceView: View {
                                 .help("Refresh audio apps").accessibilityLabel("Refresh audio apps")
                             Spacer(minLength: 0)
                         }
-                        Toggle("Include my microphone", isOn: $model.includeMicrophone)
-                            .padding(.leading, 116)
+                        if model.selectedAppID != nil {
+                            Toggle("Include my microphone", isOn: $model.includeMicrophone)
+                                .padding(.leading, 116)
+                        }
                         if model.selectedAppID == nil {
                             Text("Microphone only records what this Mac can hear. Choose the call app to include people speaking through headphones.")
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

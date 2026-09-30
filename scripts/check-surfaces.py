@@ -140,13 +140,14 @@ ENTRY_POINTS = [
     # capability). The page body is scanned in mode 'options', so its transient
     # controls (editor buttons, selection, the current draft) stay out while a
     # new persistent preference on it is found. The page's options area is an
-    # ordinary page surface: its buttons are doors or setting actions, as on
+    # ordinary sheet surface: its buttons are doors or setting actions, as on
     # Settings, and the views it embeds (VoiceOptions) are followed.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page options', 'options'),
-    ('LocalVoice/Views.swift', 'ContentView.dictateOptions', 'dictate page options', 'page'),
-    # Delivery and Text style sit in Dictate's task region beside the microphone and the
-    # result (#134); their view is followed as the options area's is.
-    ('LocalVoice/Views.swift', 'ContentView.dictateChoices', 'dictate page options', 'page'),
+    ('LocalVoice/Views.swift', 'ContentView.dictateHeader', 'dictate page', 'page'),
+    ('LocalVoice/Views.swift', 'ContentView.readingHeader', 'read page', 'page'),
+    ('LocalVoice/Views.swift', 'DictateSettingsView', 'dictate settings', 'page'),
+    ('LocalVoice/Views.swift', 'ReadingSettingsView', 'read settings', 'page'),
+    ('LocalVoice/Views.swift', 'DictionaryView', 'dictionary page', 'doors'),
     # Capability pages also carry doors (rule 8: opens a place or page, wherever
     # it appears). Mode 'doors' keeps the page's own actions (editor, selection,
     # copy, save) out. A closure the host injects, such as ReadbackView's
@@ -208,9 +209,9 @@ ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 # first argument is its accessible name. PanelSwitch is the panel header's switch row.
 CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
     Stepper Slider Link NativeControlMenu PanelSwitch ToolbarMenuAction StageMenuAction
-    NSMenuItem NSButton addItem addSubmenu card command actionItem action CapturePreviewButton'''.split())
+    NSMenuItem NSButton addItem addSubmenu card workspaceCard command actionItem action CapturePreviewButton'''.split())
 # Label-taking helpers, counted only in the file that declares them.
-HELPERS = {'card', 'command', 'actionItem', 'action'}
+HELPERS = {'card', 'workspaceCard', 'command', 'actionItem', 'action'}
 IDENT = r'[A-Za-z_$][\w$]*'
 KEYWORDS = set('''return in let var case try await if guard else where for while
     switch throw defer do catch is as some any'''.split())
@@ -910,6 +911,15 @@ class Inventory:
         declared = {v[k + 1] for k in range(len(v) - 1) if v[k] == 'func'}
         for i, api, args, end in swift.calls(CONTROLS):
             if not inside(i) or i in consumed or (api in HELPERS and api not in declared):
+                continue
+            # Home's preparation cards take a route and draw its canonical page name. Record
+            # every literal door; a new route must resolve before it can enter the registry.
+            if api == 'workspaceCard' and args:
+                route = literal(args[0])
+                name = self.tree.page_names().get(route)
+                if not name:
+                    raise ValueError(f'{swift.path}: workspaceCard must name an existing page route, got {expression(args[0])}.')
+                record(i, api, lex(json.dumps(name)), page=route)
                 continue
             if api == 'Label' and (in_closure(i) or mode == 'page'):
                 continue  # Outside a control, a Label is a heading or a status line.

@@ -448,7 +448,8 @@ enum MeetingChecks {
         let capture = CaptureFixture()
         let model = MeetingModel(directory: root.appendingPathComponent("model"), defaults: defaults, processSource: source,
                                  transcribe: { _ in recognition += 1; return "synthetic meeting" },
-                                 microphonePermission: { permissions += 1; return true }, captureFactory: { factories += 1; return capture })
+                                 microphonePermission: { permissions += 1; return true },
+                                 captureFactory: { factories += 1; return factories == 1 ? capture : CaptureFixture() })
         await Task.yield()
         model.useOffer(MeetingAudioApp(id: 950, name: "Mac calling service", bundleID: "com.apple.avconferenced"))
         try expect(model.selectedAppID == 950 && model.purpose == "call", "reviewing a call on this Mac records it as a Call")
@@ -459,6 +460,10 @@ enum MeetingChecks {
         await model.start()
         try expect(!model.isBusy && factories == 0 && permissions == 0, "shared admission guard prevents capture")
         model.mayStart = nil; model.refreshApps(); model.selectedAppID = 789; model.includeMicrophone = false
+        model.selectAudioSource(nil)
+        try expect(model.selectedAppID == nil && model.includeMicrophone && factories == 0 && permissions == 0,
+                   "choosing microphone-only prepares a valid source without asking permission or starting capture")
+        model.selectAudioSource(789); model.includeMicrophone = false
         model.saveTranscript = { transcript, purpose in
             guard purpose == "meeting" else { throw MeetingError.message("Purpose changed") }
             history = TranscriptHistory.adding(transcript, to: history)
@@ -466,6 +471,9 @@ enum MeetingChecks {
         await model.start()
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
+        model.selectAudioSource(nil)
+        try expect(model.selectedAppID == 789 && !model.includeMicrophone,
+                   "navigation cannot change an active recording's sources")
         let activeID = UUID(uuidString: MeetingStore.sessions(in: root.appendingPathComponent("model"))[0].lastPathComponent)!
         var removalCommits = 0
         do {
@@ -489,6 +497,19 @@ enum MeetingChecks {
         try expect(!model.hasRecovery, "committed controller session is not offered as unfinished")
         try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID == activeID,
                    "meeting completion opens its exact committed transcript")
+        do {
+            _ = try model.removeCompletedRecording(for: activeID) { throw MeetingError.message("Synthetic history write failed") }
+            throw MeetingError.message("Failed history removal unexpectedly succeeded")
+        } catch {
+            try expect(model.completedTranscriptID == activeID && model.hasRecording(for: activeID) && history.contains { $0.id == activeID },
+                       "failed removal retains the valid completion link and saved audio")
+        }
+        _ = try model.removeCompletedRecording(for: activeID) { history.removeAll { $0.id == activeID } }
+        try expect(model.completedTranscriptID == nil && history.isEmpty && !model.hasRecording(for: activeID),
+                   "removing the completed transcript also removes its workspace completion link")
+        await model.start(); await model.stop()
+        try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID != nil,
+                   "a subsequent completed meeting gets its own review link")
         await model.start()
         try expect(model.isRecording && model.completedTranscriptID == nil, "a new recording cannot review a stale completion")
         await model.cancel()

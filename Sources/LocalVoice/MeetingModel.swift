@@ -97,7 +97,17 @@ final class MeetingModel: ObservableObject {
         guard !shuttingDown, !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
             throw MeetingError.message("This recording is still in use. Finish or cancel it before removing its transcript and audio.")
         }
-        return try MeetingTranscriptRemoval.remove(root: directory, id: transcriptID, commit: commit)
+        let notice = try MeetingTranscriptRemoval.remove(root: directory, id: transcriptID, commit: commit)
+        if completedTranscriptID == transcriptID { completedTranscriptID = nil }
+        return notice
+    }
+
+    /// Choosing microphone-only is the explicit source choice; it cannot leave
+    /// the preparation form with both sources switched off. Never starts capture.
+    func selectAudioSource(_ id: Int32?) {
+        guard !isBusy else { return }
+        selectedAppID = id
+        if id == nil { includeMicrophone = true }
     }
 
     func refreshApps() {

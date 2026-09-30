@@ -115,10 +115,7 @@ struct ContentView: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    WorkbenchPageHeader("dictate") {
-                        Button("Import audio…") { dictateResult = nil; model.importAudio() }.disabled(!model.ready || model.phase != .idle)
-                        Button("Settings…") { showDictateSettings = true }.accessibilityLabel("Dictate settings")
-                    }
+                    dictateHeader
                     VStack(alignment: .leading, spacing: 16) {
                         captureControls
                         Divider()
@@ -147,6 +144,19 @@ struct ContentView: View {
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("dictate.visible", $0) }
             .onAppear { showRequestedSettings() }
             .onChange(of: model.focusRequest) { _, _ in showRequestedSettings() }
+        }
+    }
+
+    private var dictateHeader: some View {
+        WorkbenchPageHeader("dictate") {
+            Button("Import audio…") { dictateResult = nil; model.importAudio() }.disabled(!model.ready || model.phase != .idle)
+            Button("Settings…") { showDictateSettings = true }.accessibilityLabel("Dictate settings")
+        }
+    }
+
+    private var readingHeader: some View {
+        WorkbenchPageHeader("speak") {
+            Button("Voice & pace…") { showReadingSettings = true }
         }
     }
 
@@ -302,9 +312,7 @@ struct ContentView: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    WorkbenchPageHeader("speak") {
-                        Button("Voice & pace…") { showReadingSettings = true }
-                    }
+                    readingHeader
                     if let selection = model.pendingReadingSelection {
                         ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
                                                    replacingDisabled: !model.canReplaceReading,
