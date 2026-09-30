@@ -1769,7 +1769,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     const s=state;
     if(s.dictate.phase===&#x27;recording&#x27;)return [&#x27;dictate-stop&#x27;,&#x27;Stop dictation&#x27;,&#x27;square&#x27;];
     if(s.dictate.phase===&#x27;processing&#x27;)return [&#x27;dictate-cancel&#x27;,&#x27;Cancel transcription&#x27;,&#x27;x&#x27;];
-    if(s.dictate.phase===&#x27;waiting&#x27;)return [&#x27;copy-waiting&#x27;,&#x27;Copy text now&#x27;,&#x27;copy&#x27;];
+    if(s.dictate.phase===&#x27;waiting&#x27;)return s.draw.on?[&#x27;draw-stop&#x27;,&#x27;Stop drawing&#x27;,&#x27;square&#x27;]:[&#x27;copy-waiting&#x27;,&#x27;Copy text now&#x27;,&#x27;copy&#x27;];
     if(s.snap.selecting)return [&#x27;snap-cancel&#x27;,&#x27;Cancel capture&#x27;,&#x27;x&#x27;];
     if(s.talk.narrating)return [&#x27;talk-stop&#x27;,&#x27;Stop narration&#x27;,&#x27;square&#x27;];
     if(s.draw.on)return [&#x27;draw-stop&#x27;,&#x27;Stop drawing&#x27;,&#x27;square&#x27;];
@@ -1986,7 +1986,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     else if(a===&#x27;read-pause&#x27;){s.read.phase=&#x27;paused&#x27;;announce(&#x27;Reading paused at its current position.&#x27;);}
     else if(a===&#x27;read-resume&#x27;){s.read.phase=s.env.reading?&#x27;playing&#x27;:&#x27;failed&#x27;;announce(s.env.reading?&#x27;Reading resumed.&#x27;:&#x27;Playback unavailable. Text retained.&#x27;);}
     else if(a===&#x27;read-stop&#x27;){s.read.phase=&#x27;off&#x27;;s.read.position=0;announce(&#x27;Reading stopped. Text stays in Read.&#x27;);}
-    else if(a===&#x27;read-dismiss&#x27;){s.read.notice=false;announce(&#x27;Reading message hidden. Text and retry remain in Read.&#x27;);}
+    else if(a===&#x27;read-dismiss&#x27;){if(s.read.phase===&#x27;failed&#x27;)s.read.phase=&#x27;off&#x27;;s.read.notice=false;announce(&#x27;Reading message hidden. Text and voice remain in Read; Listen can play them again.&#x27;);}
     else if(a===&#x27;draw-start&#x27;){s.draw.on=true;s.mode=&#x27;Draw&#x27;;s.page=&#x27;&#x27;;s.pop=&#x27;draw&#x27;;announce(&#x27;Drawing started. Add marks in the sample area.&#x27;);}
     else if(a===&#x27;draw-stop&#x27;){s.draw.on=false;s.pop=&#x27;&#x27;;announce(&#x27;Drawing ended. Reading and other activities continue.&#x27;);if(s.dictate.phase===&#x27;waiting&#x27;)deliver();}
     else if(a===&#x27;draw-tool&#x27;){s.draw.tool=arg;announce(`${arg} selected.`);}
