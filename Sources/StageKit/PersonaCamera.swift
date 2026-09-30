@@ -145,6 +145,8 @@ final class PersonaLiveCamera: ObservableObject {
     /// Try again or Switch camera is explicitly chosen.
     @Published private(set) var preparedID: String?
     var hasPreparedSwitch: Bool { isLive && preparedID != nil && preparedID != selectedID }
+    var preparedSourceAvailable: Bool { sources.contains { $0.id == (preparedID ?? selectedID) } }
+    var offersSourceChoice: Bool { sources.count > 1 || (!sources.isEmpty && !preparedSourceAvailable) }
     func prepareDevice(_ id: String) {
         guard sources.contains(where: { $0.id == id }) else { return }
         preparedID = id
@@ -228,9 +230,7 @@ final class PersonaLiveCamera: ObservableObject {
         let token = request
         visit = UUID()
         let cameras = list()
-        if !cameras.devices.isEmpty {
-            sources = cameras.devices.map { ProfileCameraSource(id: $0.id, name: $0.name) }
-        }
+        sources = cameras.devices.map { ProfileCameraSource(id: $0.id, name: $0.name) }
         let target = deviceID ?? preparedID ?? selectedID
         // An unknown or absent camera is left to the session, which reports that
         // none is available with the same words as every other start.
@@ -277,6 +277,7 @@ final class PersonaLiveCamera: ObservableObject {
     func end() {
         guard isActive else { return }
         release()
+        visit = UUID()
         move(to: .off)
     }
     func shutdown() {
@@ -284,6 +285,13 @@ final class PersonaLiveCamera: ObservableObject {
         disarmSleepWatch()
         panel?.shutdown(); panel = nil
         capture?.stop(); capture = nil
+    }
+
+    /// Workspace actions retain the visit they were rendered for. End and
+    /// source departure invalidate them before any later click can restart it.
+    func perform(ifCurrent expected: UUID, _ action: () -> Void) {
+        guard visit == expected else { return }
+        action()
     }
 
     // MARK: The bubble's own placement
@@ -443,10 +451,10 @@ struct PersonaCameraPanel: View {
             }
             Text(camera.explanation).font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if camera.sources.count > 1 {
-                Picker("Camera", selection: Binding(get: { camera.preparedID ?? camera.selectedID ?? "" },
+            if camera.offersSourceChoice {
+                Picker("Camera", selection: Binding(get: { camera.preparedSourceAvailable ? (camera.preparedID ?? camera.selectedID ?? "") : "" },
                                                     set: { camera.prepareDevice($0) })) {
-                    if camera.selectedID == nil { Text("Choose a camera").tag("") }
+                    if !camera.preparedSourceAvailable { Text("Choose a camera").tag("") }
                     ForEach(camera.sources) { Text($0.name).tag($0.id) }
                 }.disabled(camera.isStarting)
                     .help("Choose a camera, then start or switch when ready.")
@@ -474,29 +482,29 @@ struct PersonaCameraPanel: View {
         let visit = camera.visit
         switch camera.state {
         case .off:
-            Button("Start camera") { if camera.visit == visit { library.startCamera() } }
+            Button("Start camera") { camera.perform(ifCurrent: visit) { library.startCamera() } }
                 .buttonStyle(.borderedProminent).disabled(library.hasPreparedSession)
                 .help("Opens this Mac’s camera and shows it in a floating bubble. Your saved card stays up until the picture arrives.")
             if library.hasPreparedSession {
                 Text("End the prepared overlay set first.").font(.caption).foregroundStyle(.secondary)
             }
         case .permission, .starting:
-            Button("Cancel") { if camera.visit == visit { library.endCamera() } }.keyboardShortcut(.cancelAction)
+            Button("Cancel") { camera.perform(ifCurrent: visit) { library.endCamera() } }.keyboardShortcut(.cancelAction)
                 .help("Stops opening the camera and leaves everything as it is")
         case .live:
             if camera.hasPreparedSwitch {
                 Button("Switch camera") {
-                    if camera.visit == visit { library.startCamera(deviceID: camera.preparedID) }
+                    camera.perform(ifCurrent: visit) { library.startCamera(deviceID: camera.preparedID) }
                 }.buttonStyle(.borderedProminent)
             }
-            Button("Hide camera") { if camera.visit == visit { library.hideCamera() } }.buttonStyle(.borderedProminent)
+            Button("Hide camera") { camera.perform(ifCurrent: visit) { library.hideCamera() } }.buttonStyle(.borderedProminent)
                 .help("Releases the camera and keeps the bubble’s place for Show camera again")
         case .hidden:
-            Button("Show camera again") { if camera.visit == visit { library.showCameraAgain() } }.buttonStyle(.borderedProminent)
+            Button("Show camera again") { camera.perform(ifCurrent: visit) { library.showCameraAgain() } }.buttonStyle(.borderedProminent)
                 .help("Starts the same camera again and returns the bubble to its place")
         case .failed(let failure):
             if failure.offersRetry {
-                Button("Try again") { if camera.visit == visit { library.retryCamera() } }.buttonStyle(.borderedProminent)
+                Button("Try again") { camera.perform(ifCurrent: visit) { library.retryCamera() } }.buttonStyle(.borderedProminent)
             }
             if failure.offersCameraSettings {
                 Button("Open Camera settings") {
@@ -507,7 +515,7 @@ struct PersonaCameraPanel: View {
             }
         }
         if camera.isLive || camera.isHidden || camera.failure != nil {
-            Button("End camera") { if camera.visit == visit { library.endCamera() } }
+            Button("End camera") { camera.perform(ifCurrent: visit) { library.endCamera() } }
                 .help("Releases the camera and this visit. Saved personas and layouts are untouched.")
         }
     }

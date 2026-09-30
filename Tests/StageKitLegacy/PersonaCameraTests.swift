@@ -286,6 +286,21 @@ final class PersonaCameraTests {
             f.capture.starts.last?.1(.frame)
             XCTAssertEqual(f.camera.state, .live)
             XCTAssertEqual(f.camera.sources.count, 2)
+
+            // The chosen external camera disappears, leaving one built-in
+            // camera. Keep the failed choice until the person chooses A.
+            f.capture.starts.last?.1(.failed(.interrupted))
+            f.offer(PersonaCameraList(devices: [PersonaCameraDevice(id: "built-in", name: "Built-in camera", inUseByAnotherApp: false)], preferredID: "built-in"))
+            f.library.retryCamera(); f.permissionRequests.last?(.authorized)
+            XCTAssertEqual(f.capture.starts.last?.0, "studio", "Retry never silently substitutes another camera")
+            f.capture.starts.last?.1(.failed(.unavailable))
+            XCTAssertEqual(f.camera.sources.count, 1)
+            XCTAssertTrue(f.camera.offersSourceChoice, "The remaining camera is reachable even though only one is available")
+            XCTAssertFalse(f.camera.preparedSourceAvailable)
+            f.camera.prepareDevice("built-in")
+            XCTAssertTrue(f.camera.preparedSourceAvailable)
+            f.library.retryCamera(); f.permissionRequests.last?(.authorized)
+            XCTAssertEqual(f.capture.starts.last?.0, "built-in", "The explicit replacement choice is the one opened")
         }
     }
 
@@ -370,6 +385,33 @@ final class PersonaCameraTests {
             try f.library.showAgain().get()
             XCTAssertTrue(f.library.artworkVisible)
             XCTAssertEqual(f.library.shownCard, card)
+
+            // A failed or pending camera leaves artwork visible; its separate
+            // Hide command must still hide that artwork and keep camera state.
+            f.library.startCamera()
+            let pending = f.camera.state
+            f.library.hideArtwork()
+            XCTAssertFalse(f.library.artworkVisible)
+            XCTAssertEqual(f.camera.state, pending)
+            f.permissionRequests.last?(.denied)
+            f.library.endCamera()
+            try f.library.showAgain().get()
+            f.library.startCamera(); f.permissionRequests.last?(.denied)
+            let failure = f.camera.state
+            f.library.hideArtwork()
+            XCTAssertFalse(f.library.artworkVisible)
+            XCTAssertEqual(f.camera.state, failure)
+            XCTAssertEqual(f.library.shownCard, card)
+
+            // Explicitly showing artwork also invalidates an old camera Retry.
+            let visit = f.camera.visit
+            let pendingRetry = { f.camera.perform(ifCurrent: visit) { f.library.retryCamera() } }
+            try f.library.showAgain().get()
+            let requests = f.permissionRequests.count
+            pendingRetry()
+            XCTAssertEqual(f.camera.state, .off)
+            XCTAssertEqual(f.permissionRequests.count, requests)
+            XCTAssertTrue(f.library.artworkVisible)
         }
     }
 
@@ -403,7 +445,19 @@ final class PersonaCameraTests {
             XCTAssertEqual(f.camera.placement, place, "It returns to the same place and size")
             XCTAssertTrue(f.bubble.shown)
 
+            // Retain the same production dispatch used by a rendered workspace
+            // action, then end the visit. It cannot reopen camera hardware.
+            f.library.hideCamera()
+            let visit = f.camera.visit
+            let pendingShow = { f.camera.perform(ifCurrent: visit) { f.library.showCameraAgain() } }
+            f.library.endCamera()
+            let requests = f.permissionRequests.count
+            pendingShow()
+            XCTAssertEqual(f.camera.state, .off)
+            XCTAssertEqual(f.permissionRequests.count, requests)
+
             let beforeQuit = f.capture.stops
+            f.live()
             f.library.shutdown()
             XCTAssertEqual(f.camera.state, .off)
             XCTAssertGreaterThan(f.capture.stops, beforeQuit, "Quit releases the camera")
@@ -587,7 +641,7 @@ final class PersonaCameraTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try MainActor.assumeIsolated {
             for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-                for name in ["off", "starting", "live", "switch", "hidden", "denied", "busy"] {
+                for name in ["off", "starting", "live", "switch", "missing-source", "hidden", "denied", "busy"] {
                     let f = Fixture(); defer { f.cleanup() }
                     switch name {
                     case "starting": f.library.startCamera(); f.permissionRequests.last?(.authorized)
@@ -601,6 +655,10 @@ final class PersonaCameraTests {
                             f.camera.prepareDevice("studio")
                             XCTAssertTrue(f.camera.hasPreparedSwitch, "The switch layout must actually offer Switch camera")
                         }
+                    case "missing-source":
+                        f.library.startCamera(deviceID: "disconnected"); f.permissionRequests.last?(.authorized)
+                        f.capture.starts.last?.1(.failed(.unavailable))
+                        XCTAssertTrue(f.camera.offersSourceChoice)
                     case "hidden": f.live(); f.library.hideCamera()
                     case "denied": f.library.startCamera(); f.permissionRequests.last?(.denied)
                     case "busy": f.camera.deviceInUse = { "built-in" }; f.library.startCamera()

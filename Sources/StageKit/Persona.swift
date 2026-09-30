@@ -1103,11 +1103,16 @@ final class PersonaLibrary: NSObject, ObservableObject {
     func hideOverlay() {
         // Hide always acts on the source that is actually showing.
         if cameraOwnsSlot { hideCamera(); return }
+        hideArtwork()
+    }
+    /// The workspace's artwork command remains usable while a separate camera
+    /// request is pending or has failed and left the shown card in place.
+    func hideArtwork() {
         guard session == nil else { endOverlaySession(); clearLiveNotices(); return }
         guard artworkVisible else { return }
         overlay?.hide(); hud?.hide()
         artworkVisible = false
-        clearLiveNotices()
+        if !cameraOwnsSlot { clearLiveNotices() }
     }
     /// A floating card hidden with Hide, kept for Show again. A card the camera
     /// took the slot from is kept the same way, and End camera brings it back

@@ -314,7 +314,7 @@ struct PersonaLibraryView: View {
             if library.sessionState.phase == .idle {
                 // These name saved artwork only; the camera keeps its own controls.
                 if library.artworkVisible {
-                    Button("Hide floating persona") { library.hideOverlay() }.buttonStyle(.borderedProminent)
+                    Button("Hide floating persona") { library.hideArtwork() }.buttonStyle(.borderedProminent)
                         .help("Hide keeps this card for Show again")
                     Button("End overlay") { library.endOverlaySession() }
                 } else if library.hasHiddenCard {
