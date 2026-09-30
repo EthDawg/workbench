@@ -211,6 +211,8 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
 @MainActor final class AuxiliaryCaptureWork {
     var isBusy = false
     var shutdownCount = 0
+    var removedTranscripts: [UUID] = []
+    func transcriptRemoved(_ id: UUID) { removedTranscripts.append(id) }
     func shutdown() { shutdownCount += 1 }
     func hasRecording(for id: UUID) -> Bool { false }
     func removeCompletedRecording(for id: UUID, commit: () throws -> Void) throws -> String? { try commit(); return nil }
@@ -885,10 +887,17 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         removing.run(try removing.makeRecording(wav), owned: true); await finish(removing)
         TextDelivery.nextOutcome = TextDelivery.Outcome()
         let removed = removing.history.first!
+        removing.store.fails = true
+        removing.removeTranscript(removed)
+        try check(removing.history.first?.id == removed.id && removing.meetings.removedTranscripts.isEmpty,
+                  "failed transcript-only removal keeps History and the meeting completion link")
+        removing.store.fails = false
         removing.removeTranscript(removed)
         try check(removing.history.isEmpty && removing.unresolvedDelivery == nil && removing.undelivered.entry == nil
                   && removing.store.saved?.undelivered == nil && removing.store.saved?.history.isEmpty == true,
                   "removing its transcript drops it, from memory and from the saved session")
+        try check(removing.meetings.removedTranscripts == [removed.id],
+                  "successful transcript-only removal invalidates exactly its meeting completion link")
 
         // A draft entry acts only while the draft is the one that failed.
         let draft = CaptureHarness(directory: folder("draft-copy"))

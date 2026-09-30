@@ -510,6 +510,12 @@ enum MeetingChecks {
         await model.start(); await model.stop()
         try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID != nil,
                    "a subsequent completed meeting gets its own review link")
+        let subsequentID = model.completedTranscriptID!
+        model.transcriptRemoved(UUID())
+        try expect(model.completedTranscriptID == subsequentID, "removing another transcript retains this completion link")
+        model.transcriptRemoved(subsequentID)
+        try expect(model.completedTranscriptID == nil, "authoritative transcript-only removal clears its completion link")
+        await model.start(); await model.stop()
         await model.start()
         try expect(model.isRecording && model.completedTranscriptID == nil, "a new recording cannot review a stale completion")
         await model.cancel()

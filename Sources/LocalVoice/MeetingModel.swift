@@ -98,8 +98,14 @@ final class MeetingModel: ObservableObject {
             throw MeetingError.message("This recording is still in use. Finish or cancel it before removing its transcript and audio.")
         }
         let notice = try MeetingTranscriptRemoval.remove(root: directory, id: transcriptID, commit: commit)
-        if completedTranscriptID == transcriptID { completedTranscriptID = nil }
+        transcriptRemoved(transcriptID)
         return notice
+    }
+
+    /// History calls this after its durable removal, including when the audio
+    /// directory has already gone. Failed or cancelled removals never arrive here.
+    func transcriptRemoved(_ id: UUID) {
+        if completedTranscriptID == id { completedTranscriptID = nil }
     }
 
     /// Choosing microphone-only is the explicit source choice; it cannot leave

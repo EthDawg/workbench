@@ -1448,6 +1448,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             try self.store.save(self.session(draft: self.transcript, history: next, replacements: self.replacements))
             self.persistWork?.cancel()
             self.history = next
+            self.meetings.transcriptRemoved(item.id)
             // Removing the transcript is the person's choice: nothing is left to deliver.
             self.undelivered.transcriptRemoved(item.id)
         }
