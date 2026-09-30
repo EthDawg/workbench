@@ -16,15 +16,21 @@ final class TextDelivery {
         /// The captured field is still frontmost, focused and not secure.
         var isEligible: (Target) -> Bool
         /// The ⌘V poster, or nil when its key events cannot be made.
-        var preparePaste: () -> (() -> Void)?
+        var preparePaste: (Target) -> (() -> Void)?
+        var readField: (Target) -> FieldState = { TextDelivery.fieldState($0.element) }
+        var pause: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
 
         static var live: System {
             System(pasteboard: .general, isTrusted: { AXIsProcessTrusted() }, isEligible: { TextDelivery.eligible($0) },
-                   preparePaste: {
-                       guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
-                             let up = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false) else { return nil }
+                   preparePaste: { target in
+                       guard let source = CGEventSource(stateID: .privateState),
+                             let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
+                             let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return nil }
                        down.flags = .maskCommand; up.flags = .maskCommand
-                       return { down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap) }
+                       // Eligibility is checked immediately before posting. Addressing
+                       // that process also prevents an intervening app switch from
+                       // redirecting these events to the newly frontmost application.
+                       return { down.postToPid(target.app.processIdentifier); up.postToPid(target.app.processIdentifier) }
                    })
         }
     }
@@ -56,30 +62,136 @@ final class TextDelivery {
         var value: String?
         var selection: NSRange? = nil
     }
+    struct FieldState: Equatable {
+        var value: String?
+        var selection: NSRange?
+    }
+    /// The AX adapter is separate from delivery so checks can represent a lazy
+    /// Electron tree and rich-text descendants without inspecting another app.
+    struct Accessibility {
+        var isTrusted: () -> Bool
+        var frontmostPID: () -> pid_t?
+        var attribute: (AXUIElement, String) -> CFTypeRef?
+        var parameterized: (AXUIElement, String, CFTypeRef) -> CFTypeRef?
+        var setBoolean: (AXUIElement, String, Bool) -> Bool
+
+        static var live: Self {
+            .init(isTrusted: { AXIsProcessTrusted() }, frontmostPID: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+                  attribute: { element, key in
+                      var value: CFTypeRef?
+                      guard AXUIElementCopyAttributeValue(element, key as CFString, &value) == .success else { return nil }
+                      return value
+                  }, parameterized: { element, key, parameter in
+                      var value: CFTypeRef?
+                      guard AXUIElementCopyParameterizedAttributeValue(element, key as CFString, parameter, &value) == .success else { return nil }
+                      return value
+                  }, setBoolean: { element, key, value in
+                      AXUIElementSetAttributeValue(element, key as CFString, value as CFBoolean) == .success
+                  })
+        }
+    }
+
     static func capture(app: NSRunningApplication? = NSWorkspace.shared.frontmostApplication) -> Target? {
         guard let app, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
-        let element = focusedElement(app.processIdentifier)
-        return Target(app: app, element: element, value: element.flatMap {
-            string($0, kAXSubroleAttribute) == kAXSecureTextFieldSubrole ? nil : string($0, kAXValueAttribute)
-        }, selection: element.flatMap { PromptInsertion.selection($0) })
+        let element = captureField(app.processIdentifier)
+        let state = fieldState(element)
+        return Target(app: app, element: element, value: state.value, selection: state.selection)
     }
-    static func focusedElement(_ pid: pid_t) -> AXUIElement? {
-        guard AXIsProcessTrusted() else { return nil }
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    static func captureField(_ pid: pid_t, accessibility: Accessibility? = nil) -> AXUIElement? {
+        let ax = accessibility ?? .live
+        guard ax.isTrusted() else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        // Electron explicitly exposes this opt-in to assistive clients. Only
+        // enable a supported, currently disabled tree; never change OS approval
+        // or guess a new destination later if this capture is still unreadable.
+        if (ax.attribute(app, "AXManualAccessibility") as? Bool) == false {
+            _ = ax.setBoolean(app, "AXManualAccessibility", true)
+        }
+        return focusedField(pid, accessibility: ax)
+    }
+    private static func element(_ value: CFTypeRef?) -> AXUIElement? {
+        guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
-    static func string(_ element: AXUIElement, _ key: String) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, key as CFString, &value) == .success else { return nil }
-        return value as? String
+    static func focusedField(_ pid: pid_t, accessibility: Accessibility) -> AXUIElement? {
+        guard accessibility.isTrusted() else { return nil }
+        var current = element(accessibility.attribute(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute))
+        var visited: [AXUIElement] = []
+        // Rich editors can focus a paragraph or static-text child. Resolve only
+        // its nearest text-field ancestor, never siblings or the window's page.
+        while let node = current, visited.count < 8, !visited.contains(where: { CFEqual($0, node) }) {
+            visited.append(node)
+            guard accessibility.attribute(node, kAXSubroleAttribute) as? String != kAXSecureTextFieldSubrole,
+                  accessibility.attribute(node, kAXEnabledAttribute) as? Bool != false else { return nil }
+            let role = accessibility.attribute(node, kAXRoleAttribute) as? String
+            if role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole { return node }
+            guard [kAXStaticTextRole, kAXGroupRole, kAXUnknownRole, "AXParagraph"].contains(role ?? "") else { return nil }
+            current = element(accessibility.attribute(node, kAXParentAttribute))
+        }
+        return nil
     }
-    static func eligible(_ target: Target) -> Bool {
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.app.processIdentifier,
-              let captured = target.element, let current = focusedElement(target.app.processIdentifier), CFEqual(captured, current),
-              string(current, kAXSubroleAttribute) != kAXSecureTextFieldSubrole else { return false }
+    static func string(_ element: AXUIElement, _ key: String) -> String? {
+        if key == kAXValueAttribute { return textValue(element, accessibility: .live) }
+        return Accessibility.live.attribute(element, key) as? String
+    }
+    static func eligible(_ target: Target, accessibility: Accessibility? = nil) -> Bool {
+        let ax = accessibility ?? .live
+        guard ax.frontmostPID() == target.app.processIdentifier,
+              let captured = target.element, let current = focusedField(target.app.processIdentifier, accessibility: ax),
+              CFEqual(captured, current) else { return false }
         return true
+    }
+    static func fieldState(_ element: AXUIElement?, accessibility: Accessibility? = nil) -> FieldState {
+        let ax = accessibility ?? .live
+        guard let element, ax.attribute(element, kAXSubroleAttribute) as? String != kAXSecureTextFieldSubrole else {
+            return .init(value: nil, selection: nil)
+        }
+        var selection: NSRange?
+        if let raw = ax.attribute(element, kAXSelectedTextRangeAttribute), CFGetTypeID(raw) == AXValueGetTypeID() {
+            let value = raw as! AXValue
+            var range = CFRange()
+            if AXValueGetType(value) == .cfRange, AXValueGetValue(value, .cfRange, &range), range.location >= 0, range.length >= 0 {
+                selection = NSRange(location: range.location, length: range.length)
+            }
+        }
+        return .init(value: textValue(element, accessibility: ax), selection: selection)
+    }
+    private static func textValue(_ element: AXUIElement, accessibility ax: Accessibility) -> String? {
+        guard ax.attribute(element, kAXSubroleAttribute) as? String != kAXSecureTextFieldSubrole else { return nil }
+        func plain(_ value: CFTypeRef?) -> String? { (value as? String) ?? (value as? NSAttributedString)?.string }
+        let value = plain(ax.attribute(element, kAXValueAttribute))
+        if let value, !value.isEmpty { return value }
+        // Some rich-text controls expose the document through a text range,
+        // rather than AXValue. Read this field only, with a bounded UTF-16 range.
+        guard let count = ax.attribute(element, kAXNumberOfCharactersAttribute) as? Int,
+              (0...1_000_000).contains(count) else { return value }
+        if count == 0 { return value ?? "" }
+        var range = CFRange(location: 0, length: count)
+        guard let parameter = AXValueCreate(.cfRange, &range) else { return nil }
+        return plain(ax.parameterized(element, kAXStringForRangeParameterizedAttribute, parameter))
+            ?? plain(ax.parameterized(element, kAXAttributedStringForRangeParameterizedAttribute, parameter))
+            ?? value
+    }
+
+    static func confirms(_ text: String, before: FieldState, after: FieldState,
+                         expectedValue: String? = nil, expectedSelection: NSRange? = nil) -> Bool {
+        guard let old = before.value, let new = after.value,
+              expectedSelection.map({ after.selection == $0 }) ?? true else { return false }
+        if let expectedValue { return new == expectedValue && (new != old || before.selection != after.selection) }
+        if let selection = before.selection, let range = Range(selection, in: old) {
+            var expected = old; expected.replaceSubrange(range, with: text)
+            // Replacing selected text with itself is confirmed by the collapsed
+            // caret, not by finding words that were already in the field.
+            return new == expected && (new != old || after.selection == NSRange(location: selection.location + text.utf16.count, length: 0))
+        }
+        // Without a readable selection, require exactly one inserted text span.
+        // Merely containing the words can mistake an unrelated edit for a paste.
+        let oldUnits = Array(old.utf16), newUnits = Array(new.utf16), inserted = Array(text.utf16)
+        guard !inserted.isEmpty, newUnits.count == oldUnits.count + inserted.count else { return false }
+        var prefix = 0
+        while prefix < oldUnits.count, oldUnits[prefix] == newUnits[prefix] { prefix += 1 }
+        return Array(newUnits[prefix..<(prefix + inserted.count)]) == inserted
+            && oldUnits[prefix...] == newUnits[(prefix + inserted.count)...]
     }
     @discardableResult
     static func copy(_ text: String) -> Int? {
@@ -150,8 +262,8 @@ final class TextDelivery {
             return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
         }
         // Snapshot immediately before insertion so an unrelated user edit is not mistaken for our paste.
-        let before = target.element.flatMap { string($0, kAXValueAttribute) }
-        guard let paste = system.preparePaste() else {
+        let before = system.readField(target)
+        guard let paste = system.preparePaste(target) else {
             return outcome("Copied. " + copiedDetail(.pasteUnavailable), failure: .pasteUnavailable)
         }
         guard pasteboard.changeCount == ownedChange else {
@@ -160,16 +272,25 @@ final class TextDelivery {
         guard !Task.isCancelled, validateTarget?() != false else {
             return outcome("Delivery stopped before pasting. The transcript remains copied.", failure: .cancelled)
         }
+        guard system.isEligible(target) else {
+            return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
+        }
         pasteWasAttempted = true
         paste()
-        do { try await Task.sleep(nanoseconds: 450_000_000) }
-        catch {
-            return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)
+        var confirmed = false
+        // Web/Electron accessibility updates can arrive after the paste itself.
+        // Poll for at most 1.2 seconds; never retry the paste or retarget a field.
+        for _ in 0..<15 {
+            do { try await system.pause(80_000_000); try Task.checkCancellation() }
+            catch {
+                return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)
+            }
+            guard system.isEligible(target) else { break }
+            if confirms(text, before: before, after: system.readField(target),
+                        expectedValue: expectedValue, expectedSelection: expectedSelection) {
+                confirmed = true; break
+            }
         }
-        let stillEligible = system.isEligible(target)
-        let after = stillEligible ? target.element.flatMap { string($0, kAXValueAttribute) } : nil
-        let selectionConfirmed = expectedSelection.map { expected in target.element.flatMap { PromptInsertion.selection($0) } == expected } ?? true
-        let confirmed = stillEligible && selectionConfirmed && (expectedValue.map { after == $0 } ?? (after != before && after?.contains(text) == true))
         if confirmed, restoreClipboard {
             // Never overwrite a copy made while paste confirmation was pending.
             let restoration = restoreClipboardSnapshot(previous, on: pasteboard, ownedChange: ownedChange,
