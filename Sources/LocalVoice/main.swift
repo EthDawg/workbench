@@ -181,7 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         })
         panelEditor = PanelShortcutEditor(keyboard: keyboard)
         let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)))
-        homeWindow.onHide = { [weak self] in self?.model.library.closePreview() }
+        homeWindow.onHide = { [weak self] in
+            self?.model.library.closePreview()
+            self?.model.meetings.recordingPlayback.pause()
+        }
         window = homeWindow
         window.title = Workbench.displayName
         window.setContentSize(NSSize(width: 1180, height: 800))

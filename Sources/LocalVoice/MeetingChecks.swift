@@ -360,8 +360,8 @@ enum MeetingChecks {
     private static func recordingReviewChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
         var original = manifest(state: .stopped)
         let session = try MeetingStore.create(root: root.appendingPathComponent("recording-review"), manifest: original)
-        let local = try audio(source: .local, seconds: 1, rate: 16_000, value: 0.15, offset: 0, session: session)
-        let remote = try audio(source: .remote, seconds: 1, rate: 48_000, value: 0.25, offset: 0.5, session: session)
+        let local = try audio(source: .local, seconds: 1, rate: 16_000, value: 0, offset: 0, session: session)
+        let remote = try audio(source: .remote, seconds: 1, rate: 48_000, value: 0, offset: 0.5, session: session)
         var committed = original
         committed.tracks = [local, remote]; committed.seconds = 1.5; committed.state = .committed
         committed.segments = [.init(index: 0, file: "segments/segment-0000.wav", startSeconds: 0,
@@ -389,6 +389,69 @@ enum MeetingChecks {
         playback.close()
         try expect(playback.recording == nil && !playback.playing && !playback.ready,
                    "closing recording review releases its player and cannot leave hidden playback")
+        // Exercise the real owner admission and removal hold, using silent synthetic audio.
+        let suite = "Workbench-RecordingReview-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = MeetingModel(directory: session.deletingLastPathComponent(), defaults: defaults,
+            processSource: ProcessFixture(), transcribe: { _ in "unused" },
+            microphonePermission: { false }, captureFactory: { CaptureFixture() })
+        let review = model.recordingPlayback
+        await review.prepare { try model.recordingURL(for: committed.id) }
+        await waitUntil { review.ready || review.problem != nil }
+        try expect(review.ready && !review.playing, "the real recording player becomes ready without autoplay")
+        review.toggle()
+        await waitUntil { review.playing }
+        try expect(review.playing, "explicit Play starts the reviewed recording")
+        var admitted = false
+        model.mayPlayRecording = { admitted }
+        model.updateRecordingPlaybackAdmission()
+        await Task.yield()
+        try expect(!model.canPlayRecording && !review.playing, "competing capture or Read admission pauses recording playback")
+        admitted = true; model.updateRecordingPlaybackAdmission()
+        await Task.yield()
+        try expect(model.canPlayRecording && !review.playing, "ending competing work never resumes the recording automatically")
+        var commits = 0, held = false
+        do { _ = try model.removeCompletedRecording(for: committed.id) { commits += 1 } }
+        catch { held = error.localizedDescription.contains("Close the recording review") }
+        try expect(held && commits == 0 && model.hasRecording(for: committed.id),
+                   "an open recording review rejects same-UUID removal before the history commit")
+        var alternate = committed; alternate.id = UUID()
+        let alternateSession = try MeetingStore.create(root: session.deletingLastPathComponent(), manifest: alternate)
+        try before[1].write(to: MeetingStore.safeURL(session: alternateSession, relative: local.file))
+        try before[2].write(to: MeetingStore.safeURL(session: alternateSession, relative: remote.file))
+
+        // Hold the old asynchronous preparation across a newer review and across Close.
+        let gate = Gate<Bool>()
+        let delayed = MeetingRecordingPlayback { value in
+            if value.manifest.id == committed.id { _ = await gate.wait() }
+            return try await value.playerItem()
+        }
+        let oldLoad = Task { await delayed.prepare { session } }
+        await waitUntil { gate.isWaiting }
+        await delayed.prepare { alternateSession }
+        gate.resume(true); await oldLoad.value
+        try expect(delayed.session == alternateSession && delayed.recording?.manifest.id == alternate.id && !delayed.playing,
+                   "an older preparation cannot replace the newer recording review")
+        delayed.close()
+        let closingLoad = Task { await delayed.prepare { session } }
+        await waitUntil { gate.isWaiting }
+        delayed.close(); gate.resume(true); await closingLoad.value
+        try expect(delayed.session == nil && delayed.recording == nil && !delayed.ready && !delayed.playing,
+                   "closing during asynchronous preparation cannot resurrect the recording player")
+        _ = try model.removeCompletedRecording(for: alternate.id) { commits += 1 }
+        try expect(commits == 1 && review.session == session && !model.hasRecording(for: alternate.id),
+                   "an open review does not prevent removal of an unrelated recording")
+        review.close()
+        do {
+            _ = try model.removeCompletedRecording(for: committed.id) {
+                commits += 1
+                throw MeetingError.message("Synthetic history failure keeps the fixture")
+            }
+        } catch {}
+        try expect(commits == 2 && model.hasRecording(for: committed.id),
+                   "closing the review releases its removal hold while a failed history commit keeps the audio")
+        await model.prepareForShutdown()
         try expect(try [manifestURL, localURL, remoteURL].map { try Data(contentsOf: $0) } == before,
                    "review preparation and close preserve every original byte")
         var unfinished = committed; unfinished.state = .stopped

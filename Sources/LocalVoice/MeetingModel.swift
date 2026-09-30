@@ -110,7 +110,10 @@ final class MeetingModel: ObservableObject {
     /// No suspension between admission and staging: capture/recovery cannot
     /// start using this same UUID during a confirmed removal.
     func removeCompletedRecording(for transcriptID: UUID, commit: () throws -> Void) throws -> String? {
-        guard !shuttingDown, recordingPlayback.session?.lastPathComponent != transcriptID.uuidString,
+        guard recordingPlayback.session?.lastPathComponent != transcriptID.uuidString else {
+            throw MeetingError.message("Close the recording review before removing this transcript and its audio.")
+        }
+        guard !shuttingDown,
               !(isBusy && (activeManifest?.id == transcriptID || processingSessionID == transcriptID)) else {
             throw MeetingError.message("This recording is still in use. Finish or cancel it before removing its transcript and audio.")
         }

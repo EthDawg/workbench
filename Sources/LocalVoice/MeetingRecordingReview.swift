@@ -70,6 +70,7 @@ final class MeetingRecordingPlayback: ObservableObject {
     @Published private(set) var position = 0.0
     @Published private(set) var duration = 0.0
     @Published private(set) var problem: String?
+    private let makePlayerItem: (MeetingRecording) async throws -> AVPlayerItem
     private var player: AVPlayer?
     private var generation = UUID()
     private var statusObservation: NSKeyValueObservation?
@@ -77,6 +78,10 @@ final class MeetingRecordingPlayback: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var failureObserver: NSObjectProtocol?
+
+    init(makePlayerItem: @escaping (MeetingRecording) async throws -> AVPlayerItem = { try await $0.playerItem() }) {
+        self.makePlayerItem = makePlayerItem
+    }
 
     func prepare(_ locate: () throws -> URL) async {
         close()
@@ -91,7 +96,7 @@ final class MeetingRecordingPlayback: ObservableObject {
             self.session = session
             let recording = try MeetingRecording.load(session: session)
             self.recording = recording
-            let item = try await recording.playerItem()
+            let item = try await makePlayerItem(recording)
             try Task.checkCancellation()
             guard generation == token else { return }
             let player = AVPlayer(playerItem: item)
@@ -222,6 +227,10 @@ struct MeetingRecordingReviewView: View {
                 }.disabled(!playback.ready || (!playback.playing && !meetings.canPlayRecording))
                 Button("Reveal recording") { playback.reveal() }.disabled(playback.session == nil)
                 Spacer()
+            }
+            if !meetings.canPlayRecording {
+                Text("Finish the current capture or reading to play this recording.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
             Text("Playback uses the saved audio. Closing this review stops playback and keeps the recording and transcript.")
                 .font(.caption).foregroundStyle(.secondary)
