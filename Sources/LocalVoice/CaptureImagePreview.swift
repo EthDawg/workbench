@@ -388,8 +388,12 @@ final class CaptureImagePreviewPanel: NSPanel {
     var command: ((CaptureImagePreviewModel.Command) -> Void)?
     var navigate: ((Int) -> Void)?
     var requestClose: (() -> Void)?
-    override func cancelOperation(_ sender: Any?) { if let requestClose { requestClose() } else { close() } }
+    override func cancelOperation(_ sender: Any?) {
+        if (firstResponder as? ImageWorkspaceCanvasView)?.cancelCurrentGesture() == true { return }
+        if let requestClose { requestClose() } else { close() }
+    }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 53, (firstResponder as? ImageWorkspaceCanvasView)?.cancelCurrentGesture() == true { return true }
         if event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
            !(firstResponder is NSTextView), let navigate, [123, 124].contains(event.keyCode) {
             navigate(event.keyCode == 123 ? -1 : 1); return true
@@ -502,7 +506,10 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
             catch { model?.notice = error.localizedDescription }
         }
         if let draft = snap.draft { showEditor(snap: snap, draft: draft) }
-        else { editingFromPreview = false }
+        else {
+            if let message = snap.notice { model?.report(message, success: false) }
+            editingFromPreview = false
+        }
     }
 
     func showEditor(snap: SnapModel, draft: SnapDraft, over parent: NSWindow? = nil) {
@@ -554,6 +561,8 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: "Keep editing"); alert.addButton(withTitle: "Discard edits")
         return alert.runModal() == .alertSecondButtonReturn
     }
+    /// Decide before shutdown starts, without discarding if another activity later cancels Quit.
+    func canTerminate() -> Bool { resolveDiscard() }
     private func finishEditing() {
         editing = nil
         if editingFromPreview { editingFromPreview = false; showCurrent() }
@@ -582,12 +591,24 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         return bytes
     }
     func close() {
-        if editing != nil { cancelEditing(); return }
+        guard admitClose() else { return }
         panel?.close()
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard editing != nil else { return true }
-        cancelEditing(); return false
+        admitClose()
+    }
+    private func admitClose() -> Bool {
+        guard resolveDiscard() else { return false }
+        if editing != nil { editing = nil; snapOwner?.draft = nil; editingFromPreview = false }
+        return true
+    }
+    private func parentWillClose() {
+        guard editing != nil, let panel else { close(); return }
+        // The main window can close independently. Keep the draft's own window alive.
+        panel.parent?.removeChildWindow(panel)
+        if let parentObserver { NotificationCenter.default.removeObserver(parentObserver) }
+        parentObserver = nil
+        present(panel)
     }
 
     private func makePanel(over owner: NSWindow?) -> CaptureImagePreviewPanel {
@@ -605,7 +626,7 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
             // It travels with Workbench's window, so it is also hidden while a capture hides that window.
             owner.addChildWindow(panel, ordered: .above)
             parentObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: owner, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.close() }
+                MainActor.assumeIsolated { self?.parentWillClose() }
             }
         }
         self.panel = panel

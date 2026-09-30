@@ -51,12 +51,15 @@ struct SnapMark: Codable, Equatable, Identifiable {
     var text: String? = nil
     var fontSize: Double? = nil
     var background: String? = nil
+    /// Clockwise text turns within its box, relative to the original image.
+    var textRotation: Int? = nil
     var isValid: Bool {
         (2...20_000).contains(points.count) && points.allSatisfy(\.isValid) &&
             ["red", "yellow", "blue", "white", "black"].contains(colour) && width.isFinite && (0.0001...0.1).contains(width) &&
             (kind != .text || (points.count == 2 && (text?.count ?? 0) <= 10_000 &&
                 (fontSize.map { $0.isFinite && (0.005...0.2).contains($0) } ?? false))) &&
-            (background == nil || ["none", "white", "black", "yellow"].contains(background!))
+            (background == nil || ["none", "white", "black", "yellow"].contains(background!)) &&
+            (textRotation == nil || (0...3).contains(textRotation!))
     }
 }
 

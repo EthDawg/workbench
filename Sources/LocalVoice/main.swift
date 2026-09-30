@@ -624,6 +624,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard WorkbenchUpdates.shared.canTerminate(saveSession: { model?.saveBeforeUpdate() == true }) else { return .terminateCancel }
         if terminationPending { return .terminateLater }
+        guard CaptureImagePreview.shared.canTerminate() else { return .terminateCancel }
         guard let model, model.meetings.isBusy || model.handoffJobs.isBusy else { return .terminateNow }
         terminationPending = true
         terminating = true

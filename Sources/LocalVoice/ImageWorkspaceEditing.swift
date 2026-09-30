@@ -129,11 +129,13 @@ final class ImageWorkspaceEditing: ObservableObject {
     }
     func addText(at point: SnapPoint? = nil) {
         let crop = draft.edit.crop
-        let w = min(crop.width * 0.6, 0.6), h = min(crop.height * 0.25, 0.25)
+        let sideways = draft.edit.quarterTurns % 2 != 0
+        let w = crop.width * (sideways ? 0.25 : 0.6), h = crop.height * (sideways ? 0.6 : 0.25)
         let x = min(1 - w, max(0, point?.x ?? (crop.x + (crop.width - w) / 2)))
         let y = min(1 - h, max(0, point?.y ?? (crop.y + (crop.height - h) / 2)))
         let mark = SnapMark(kind: .text, points: [.init(x: x, y: y), .init(x: x + w, y: y + h)],
-                            colour: "black", text: "Your text", fontSize: fontSize, background: background)
+                            colour: background == "black" ? "white" : "black", text: "Your text", fontSize: fontSize,
+                            background: background, textRotation: (4 - draft.edit.quarterTurns) % 4)
         mutate { $0.marks.append(mark) }; select(mark.id); tool = .select; showingDetails = true
     }
     func zoom(_ command: CaptureImagePreviewModel.Command) {

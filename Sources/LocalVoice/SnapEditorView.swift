@@ -5,6 +5,7 @@ import AppKit
 struct SnapEditorView: View {
     @ObservedObject var model: SnapModel
     @ObservedObject var editing: ImageWorkspaceEditing
+    @ObservedObject private var appearance = WorkbenchSettings.shared
     let save: (Bool) -> Void
     let cancel: () -> Void
     @FocusState private var textFocused: Bool
@@ -51,7 +52,7 @@ struct SnapEditorView: View {
                 HStack {
                     Picker("Aspect", selection: Binding(get: { editing.aspect }, set: { editing.setAspect($0) })) {
                         ForEach(ImageCropAspect.allCases) { Text($0.title).tag($0) }
-                    }.frame(width: 240)
+                    }.id(appearance.colorScheme).frame(width: 240)
                     Text("Drag the corners to crop. Drag inside to move.").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Reset crop") { editing.mutate { $0.crop = .full }; editing.aspect = .free }.disabled(editing.draft.edit.crop == .full)
@@ -93,7 +94,7 @@ struct SnapEditorView: View {
                         .accessibilityLabel("Text on image")
                     Picker("Background", selection: Binding(get: { editing.selectedMark?.background ?? "none" }, set: { value in editing.background = value; editing.updateSelected { $0.background = value } })) {
                         ForEach(["none", "white", "black", "yellow"], id: \.self) { Text($0.capitalized).tag($0) }
-                    }
+                    }.id(appearance.colorScheme)
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Text size · \(Int((mark.fontSize ?? 0.035) * min(editing.imageSize.width, editing.imageSize.height))) px").font(.caption)
                         Slider(value: Binding(get: { editing.selectedMark?.fontSize ?? 0.035 }, set: { value in editing.fontSize = value; editing.updateSelected { $0.fontSize = value } }), in: 0.008...0.15)
@@ -134,6 +135,8 @@ struct SnapEditorView: View {
         Picker("Colour", selection: Binding(get: { editing.colour }, set: { value in
             editing.colour = value; if selected { editing.updateSelected { $0.colour = value } }
         })) { ForEach(["red", "yellow", "blue", "white", "black"], id: \.self) { Text($0.capitalized).tag($0) } }
+            // Native popup labels can retain their previous colour when appearance changes.
+            .id(appearance.colorScheme)
     }
 }
 

@@ -78,6 +78,9 @@ enum ImageWorkspaceChecks {
         try check(preview.editing === editor && preview.index == 0, "navigation and other open requests cannot discard an edit")
         preview.approveDiscard = { false }; preview.close()
         try check(preview.editing === editor && snap.draft != nil, "Keep editing protects draft on Close")
+        try check(!preview.canTerminate() && preview.editing === editor, "Keep editing refuses Quit without losing the draft")
+        preview.approveDiscard = { true }
+        try check(preview.canTerminate() && preview.editing === editor, "Quit approval is non-destructive until the app actually terminates")
         try await settle(preview)
         if let output {
             try fm.createDirectory(at: output, withIntermediateDirectories: true)
@@ -125,6 +128,36 @@ enum ImageWorkspaceChecks {
         preview.approveDiscard = { true }; preview.cancelEditing()
         try check(snap.draft == nil && preview.panel == nil, "Discard ends a new unsaved draft without a history record")
         try check(try store.load().items.count == 3, "discarded drafts create no extra Snaps")
+        preview.show(.snap(saved.item, store: store), over: owner); try await settle(preview)
+        let originalURL = store.root.appendingPathComponent(first.id.uuidString.lowercased()).appendingPathComponent("original.png")
+        try Data("Changed synthetic original".utf8).write(to: originalURL)
+        preview.beginEditing()
+        try check(preview.editing == nil && preview.model?.notice?.isEmpty == false, "an Edit failure is visible in the image window")
+        try png.write(to: originalURL)
+        preview.beginEditing(); try await settle(preview); preview.editing?.addText()
+        if let liveEditor = preview.editing, let liveCanvas = liveEditor.canvas?.canvas, let livePanel = preview.panel {
+            let before = liveEditor.draft.edit
+            liveEditor.tool = .crop
+            func dragEvent(_ type: NSEvent.EventType, _ fraction: Double) -> NSEvent {
+                let point = liveCanvas.convert(CGPoint(x: fraction * liveCanvas.bounds.width, y: fraction * liveCanvas.bounds.height), to: nil)
+                return NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: livePanel.windowNumber,
+                                         context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
+            }
+            liveCanvas.mouseDown(with: dragEvent(.leftMouseDown, 0.2))
+            liveCanvas.mouseDragged(with: dragEvent(.leftMouseDragged, 0.7))
+            let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: livePanel.windowNumber,
+                                         context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+            let handled = livePanel.performKeyEquivalent(with: escape)
+            liveCanvas.mouseUp(with: dragEvent(.leftMouseUp, 0.7))
+            try check(handled && preview.editing === liveEditor && liveEditor.draft.edit == before,
+                      "Escape cancels a transient crop gesture before the window's Cancel shortcut")
+        } else { try check(false, "the live editor exposes its canvas for gesture cancellation") }
+        preview.approveDiscard = { false }
+        preview.panel?.performClose(nil)
+        try check(preview.editing != nil && snap.draft != nil, "the window close button honours Keep editing")
+        preview.approveDiscard = { true }
+        preview.panel?.performClose(nil)
+        try check(preview.panel == nil && snap.draft == nil, "the window close button closes the workspace after Discard")
         // Send real AppKit pointer/key events to the canvas. A geometry-only test would miss
         // endpoint direction, drag focus and which coordinate system keyboard movement uses.
         let gesture = try ImageWorkspaceEditing(draft: SnapDraft(originalPNG: png, source: .imported, title: "Pointer checks", notes: "", tags: [], edit: .init()))
@@ -160,6 +193,16 @@ enum ImageWorkspaceChecks {
         canvas.keyDown(with: right)
         try check(abs(gesture.selectedMark!.points[0].x - beforeNudge.x) < 0.000001 && abs(gesture.selectedMark!.points[0].y - beforeNudge.y - 1.0 / 1000) < 0.000001,
                   "Right nudges a clockwise-rotated mark one visible pixel right")
+        let beforeComparison = gesture.draft.edit
+        gesture.showingOriginal = true
+        canvas.keyDown(with: right)
+        let delete = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: owner.windowNumber,
+                                     context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 51)!
+        canvas.keyDown(with: delete)
+        try check(gesture.draft.edit == beforeComparison, "Original comparison never changes hidden marks through keyboard input")
+        gesture.showingOriginal = false; gesture.background = "black"; gesture.addText()
+        try check(gesture.selectedMark?.colour == "white" && gesture.selectedMark?.background == "black", "new text contrasts with the retained black background")
+        try check(gesture.selectedMark?.textRotation == 3, "text added after a clockwise image rotation starts upright")
         for rotation in 0...3 {
             let ratio = ImageCropAspect.widescreen.ratio(image: CGSize(width: 1600, height: 1000), rotation: rotation)!
             for (a,b) in [(SnapPoint(x: 0.1,y: 0.1), SnapPoint(x: 0.95,y: 0.9)), (SnapPoint(x: 0.9,y: 0.9), SnapPoint(x: 0.02,y: 0.1))] {
@@ -167,6 +210,13 @@ enum ImageWorkspaceChecks {
                 try check(crop.isValid && abs((crop.width * 1600) / (crop.height * 1000) - ratio) < 0.00001, "aspect drag respects bounds and rotation")
             }
         }
+        preview.show(.snap(saved.item, store: store), over: owner); try await settle(preview)
+        preview.beginEditing(); try await settle(preview); preview.editing?.addText()
+        let openEditor = preview.editing, openPanel = preview.panel
+        owner.close()
+        try check(preview.editing === openEditor && preview.panel === openPanel && openPanel?.parent == nil && snap.draft != nil,
+                  "closing the main window leaves its unsaved image in an independent workspace")
+        preview.approveDiscard = { true }; preview.close()
         print("IMAGE_WORKSPACE_CHECKS_OK: \(checks) checks for navigation, editable text, crop, rotation, undo, originals, drafts and frozen copies")
     }
     private static func settle(_ preview: CaptureImagePreview) async throws {

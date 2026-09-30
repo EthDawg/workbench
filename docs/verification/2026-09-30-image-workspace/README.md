@@ -13,22 +13,24 @@ Host: Apple Silicon, macOS 26.5.1 (25F80), Apple Swift 6.3.3.
 | Check | Result |
 | --- | --- |
 | `swift build --disable-sandbox` with an isolated temporary scratch path | Passed, no compiler warnings |
-| `LocalVoice --check-image-workspace` | 33 checks passed |
+| `LocalVoice --check-image-workspace` | 43 checks passed |
 | `LocalVoice --check-capture-preview` | 60 checks passed |
 | `LocalVoice --check-snap-capture` | 128 checks passed |
-| `bash scripts/test-snap.sh` | 133 checks passed |
+| `bash scripts/test-snap.sh` | 139 checks passed |
 | `python3 scripts/test-library-recall.py` | 31 checks passed |
 | `python3 scripts/check-surfaces.py` | 434 entries passed |
 | `LocalVoice --render-surfaces` | 266 renders, 140 entries, zero gallery flags |
 | `git diff --check` | Passed |
 
-The 385 focused checks cover same-window navigation and editing, selection and drag events, arrow endpoint direction, keyboard movement after rotation, aspect crops, undo/redo, full source bytes after display downsampling, EXIF orientation, draft protection, saved-copy display, save/reopen, immutable originals, stale revisions and v1 metadata backups. SVG files retain the existing Library opener because ImageIO cannot decode them.
+The 401 focused checks cover same-window navigation and editing, selection and drag events, arrow endpoint direction, keyboard movement after rotation, aspect crops, undo/redo, full source bytes after display downsampling, EXIF orientation, draft protection, saved-copy display, save/reopen, immutable originals, stale revisions and v1 metadata backups. SVG files retain the existing Library opener because ImageIO cannot decode them.
+
+The final consistency review covered every image route. Its fixes add Quit protection, visible Edit errors, protection against hidden keyboard edits in Original comparison and readable text against a retained background. Further checks cover closing the image and main windows independently, Escape during a drag, and upright new text at all image rotations. The rotation checks compare actual glyph pixels with ordinary horizontal text and verify serialization.
 
 All image and storage fixtures are synthetic and temporary. The offscreen checks do not capture the screen, use the microphone, change live Snap data or install an app. The full `scripts/test.sh` run remains with integration because it probes exclusive shortcuts and requires the installed apps to be quit first.
 
 ## Visual evidence
 
-These are native AppKit/SwiftUI layer renders of the implemented window, using the shared production canvas. They are not screenshots of the installed Preview. Light and dark gallery passes run in separate processes with isolated preferences. The editor's light, dark, crop and compact states were inspected for visible controls, readable text and clipping.
+These are native AppKit/SwiftUI layer renders of the implemented window, using the shared production canvas. They are not screenshots of the installed Preview. The full gallery's light and dark passes run in separate processes with isolated preferences. Focused editor renders also switch appearance while the window remains open; the dropdowns are recreated with the same binding so their labels stay readable. The editor's light, dark, crop and compact states were inspected for visible controls, readable text and clipping.
 
 ![Text editing in dark appearance](editor-dark.png)
 

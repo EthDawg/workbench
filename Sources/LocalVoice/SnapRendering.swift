@@ -134,8 +134,17 @@ enum SnapRendering {
                     .foregroundColor: colour(mark.colour), .paragraphStyle: paragraph
                 ])
                 context.clip(to: rect)
+                context.translateBy(x: rect.minX, y: rect.minY)
+                switch mark.textRotation ?? 0 {
+                case 1: context.translateBy(x: 0, y: rect.height); context.rotate(by: -.pi / 2)
+                case 2: context.translateBy(x: rect.width, y: rect.height); context.rotate(by: .pi)
+                case 3: context.translateBy(x: rect.width, y: 0); context.rotate(by: .pi / 2)
+                default: break
+                }
+                let sideways = (mark.textRotation ?? 0) % 2 != 0
+                let textRect = CGRect(x: 0, y: 0, width: sideways ? rect.height : rect.width, height: sideways ? rect.width : rect.height)
                 context.textMatrix = .identity
-                let path = CGPath(rect: rect.insetBy(dx: padding, dy: padding), transform: nil)
+                let path = CGPath(rect: textRect.insetBy(dx: padding, dy: padding), transform: nil)
                 CTFrameDraw(CTFramesetterCreateFrame(CTFramesetterCreateWithAttributedString(string), CFRange(), path, nil), context)
             }
             context.strokePath()

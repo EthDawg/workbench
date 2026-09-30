@@ -483,5 +483,25 @@ for y in 8..<70 { for x in 14..<114 {
     if c.redComponent < 0.15 && c.greenComponent < 0.15 && c.blueComponent < 0.15 { blackPixels += 1 }
 } }
 try check(blackPixels > 15, "text produces visible glyph pixels inside its comment box")
+for turn in 1...3 {
+    var upright = noteEdit
+    upright.rotation = turn
+    upright.marks[0].textRotation = (4 - turn) % 4
+    let rendered = NSBitmapImageRep(data: try SnapRendering.render(png, edit: upright))!
+    let rotatedSource = try SnapRendering.render(png, edit: SnapEdit(rotation: turn))
+    let reference = NSBitmapImageRep(data: try SnapRendering.render(rotatedSource, edit: noteEdit))!
+    var intersection = 0, union = 0
+    for y in 0..<rendered.pixelsHigh { for x in 0..<rendered.pixelsWide {
+        func ink(_ bitmap: NSBitmapImageRep) -> Bool {
+            let c = bitmap.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+            return c.redComponent < 0.15 && c.greenComponent < 0.15 && c.blueComponent < 0.15
+        }
+        let a = ink(rendered), b = ink(reference)
+        if a && b { intersection += 1 }
+        if a || b { union += 1 }
+    } }
+    try check(union > 15 && Double(intersection) / Double(union) > 0.9, "new text stays upright at image rotation \(turn), matching ordinary horizontal text")
+    try check(try JSONDecoder().decode(SnapEdit.self, from: JSONEncoder().encode(upright)) == upright, "text direction survives save/reopen at rotation \(turn)")
+}
 
 print("SNAP_CHECKS_OK: \(checks) checks for rendering, Desktop screenshot import, screenshots off the Desktop and while editing, revision conflicts, private storage, immutable snapshots, reversible review, repeats, search text and portable optional narration")

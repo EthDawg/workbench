@@ -214,9 +214,14 @@ final class ImageWorkspaceCanvasView: NSView {
         resetGesture()
     }
     private func resetGesture() { start = nil; points = []; transient = nil; movedMark = nil; movedCrop = nil; resizeAnchor = nil; arrowEndpoint = nil; panStart = nil; needsDisplay = true }
+    @discardableResult func cancelCurrentGesture() -> Bool {
+        guard start != nil || panStart != nil else { return false }
+        resetGesture(); return true
+    }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 49 { spaceHeld = true; NSCursor.openHand.set(); return }
-        if event.keyCode == 53, start != nil { resetGesture(); return }
+        if event.keyCode == 53, cancelCurrentGesture() { return }
+        if editing.showingOriginal, [51, 117, 123, 124, 125, 126].contains(event.keyCode) { return }
         if [51, 117].contains(event.keyCode) { editing.removeSelected(); return }
         if let mark = editing.selectedMark, [123, 124, 125, 126].contains(event.keyCode) {
             let amount = event.modifierFlags.contains(.shift) ? 10.0 : 1.0
