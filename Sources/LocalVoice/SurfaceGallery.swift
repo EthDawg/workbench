@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import ObjectiveC
 import PhotoHandoffKit
 import SwiftUI
@@ -66,7 +67,10 @@ enum SurfaceGallery {
         }
         func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
         let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
-        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
+        // Native scroll documents are drawn separately below. Draw the actual window-level
+        // hint layer after them as well, preserving its production z-order and measured frame.
+        let overlays = sidebarHints(in: root).filter { !$0.isHiddenOrHasHiddenAncestor }
+        let documents = (scrolled.compactMap { $0.1.layer } + overlays.compactMap { $0.layer }).filter { !$0.isHidden }
         let opacities = documents.map(\.opacity)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
@@ -79,8 +83,16 @@ enum SurfaceGallery {
             draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
             context.restoreGState()
         }
+        for overlay in overlays {
+            overlay.layer?.isHidden = false
+            draw(overlay, in: SurfacePass.unflipped(overlay.bounds, of: overlay, in: root))
+        }
         guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
         return NSBitmapImageRep(cgImage: image)
+    }
+
+    @MainActor static func sidebarHints(in view: NSView) -> [SidebarHintHostingView] {
+        ((view as? SidebarHintHostingView).map { [$0] } ?? []) + view.subviews.flatMap { sidebarHints(in: $0) }
     }
 
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
@@ -276,6 +288,27 @@ enum SurfaceGallery {
         // Never look for a legacy StageMark preferences domain.
         stageDefaults.set(true, forKey: "legacyStagePreferencesSeeded.v1")
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations(defaults: stageDefaults))
+        // The bounded Home pass keeps real synthetic recovery pending throughout the visit.
+        // This must not become a Home task or be cleared merely by navigating.
+        if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" {
+            let directory = Workbench.supportDirectory(component: "LocalVoice")
+                .appendingPathComponent("CaptureRecovery", isDirectory: true)
+            // verifiedHome already checks the store root before any model is created. Keep
+            // the write's own precondition explicit too: a fresh folder in this pass only.
+            guard directory.resolvingSymlinksInPath().path.hasPrefix(home.resolvingSymlinksInPath().path + "/"),
+                  !FileManager.default.fileExists(atPath: directory.path) else {
+                throw VoiceError.message("Synthetic recovery requires a new folder inside the verified temporary home.")
+            }
+            let recovery = CaptureRecoveryStore(directory: directory)
+            let url = try recovery.beginRecording()
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 160)!
+            buffer.frameLength = 160
+            for index in 0..<160 { buffer.floatChannelData![0][index] = 0 }
+            try file.write(from: buffer)
+        }
         model = AppModel(preferences: preferences)
         // Before anything reads the app's lazy meeting owner, which would list live audio processes.
         let support = Workbench.supportDirectory(component: "Meetings")
@@ -1144,6 +1177,18 @@ enum SurfaceGallery {
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
     /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
     func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
+        try HomeJourneyChecks.run()
+        try WorkbenchPageChecks.run()
+        try HomeRecentWorkChecks.run()
+        let recovery = CaptureRecoveryStore(directory: Workbench.supportDirectory(component: "LocalVoice")
+            .appendingPathComponent("CaptureRecovery", isDirectory: true))
+        guard let pending = try recovery.load(), let audio = try recovery.audioURL(for: pending),
+              model.hasCaptureRecovery, model.canRetry, model.canDiscardCaptureRecovery else {
+            throw VoiceError.message("The Home pass must start with retryable, discardable synthetic audio.")
+        }
+        let audioBytes = try Data(contentsOf: audio)
+        let journal = recovery.directory.appendingPathComponent("pending.json")
+        let journalBytes = try Data(contentsOf: journal)
         var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
         guard let homeIndex = pages.firstIndex(where: { $0.route == "home" }) else { throw VoiceError.message("Home is missing from the page record.") }
         for (name, size) in SurfaceGallery.sizes {
@@ -1158,8 +1203,13 @@ enum SurfaceGallery {
             + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        guard model.hasCaptureRecovery, model.canRetry, model.canDiscardCaptureRecovery,
+              try Data(contentsOf: audio) == audioBytes, try Data(contentsOf: journal) == journalBytes else {
+            throw VoiceError.message("Visiting Home or History changed the pending recording or its recovery controls.")
+        }
         return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
-            pages: pages, entries: entries(), menus: [], checks: review.checks)
+            pages: pages, entries: entries(), menus: [], checks: review.checks + [
+                "Home and History visits preserve the pending recording and its journal byte for byte; Retry and explicit Discard remain available on Dictate."])
     }
 
     /// Both sidebar widths and the local-profile sheet, without ordering a window on screen,
@@ -1181,6 +1231,24 @@ enum SurfaceGallery {
             shots.append(try save(try snapshot(frame), id: "collapsed-" + name, title: "Collapsed sidebar, " + name,
                 detail: "A loaded Snap & Talk session continues from its workflow card. Every icon keeps a tooltip and accessible name.",
                 file: "page-home-collapsed-\(name)-\(theme).png", to: output))
+            for hint in ["readback", "settings", "toggle"] {
+                window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                    readback: sessionReadback, snap: snap, sidebarCollapsed: true, sidebarHint: hint))
+                window.setContentSize(size)
+                settle(frame)
+                let hints = SurfaceGallery.sidebarHints(in: frame)
+                let title = hint == "toggle" ? "Expand sidebar" : WorkbenchHome.name(of: hint)
+                guard hints.count == 1, let label = hints.first, label.rootView.title == title,
+                      label.bounds.width > 30, label.bounds.height > 15,
+                      frame.bounds.contains(label.convert(label.bounds, to: frame)),
+                      label.hitTest(NSPoint(x: label.bounds.midX, y: label.bounds.midY)) == nil else {
+                    throw VoiceError.message("The collapsed sidebar hint must fit, name its destination and pass clicks through: \(hint), \(name).")
+                }
+                shots.append(try save(try snapshot(frame), id: "hint-" + hint + "-" + name,
+                    title: "Collapsed sidebar hint, " + hint + ", " + name,
+                    detail: "The production hint overlay, outside the sidebar's scrolling clip; the fixture selects the hovered item. Pointer timing requires installed testing.",
+                    file: "page-home-hint-\(hint)-\(name)-\(theme).png", to: output))
+            }
         }
         let host = NSHostingView(rootView: stage.localProfileView)
         let window = offscreenWindow(size: NSSize(width: 470, height: 370), styleMask: [.borderless])
