@@ -212,8 +212,13 @@ final class PersonaLiveCamera: ObservableObject {
         case .off: return "A mirrored circle of this Mac’s camera floats over your apps. Nothing is recorded, sent or saved."
         case .permission: return "Allow Camera access in the macOS prompt. You can cancel at any time."
         case .starting: return "Starting the camera. Nothing shows until a real picture arrives, so your artwork stays as it is."
-        case .live: return "Your camera is showing. Drag the bubble to move it, or drag a corner to resize it."
+        case .live:
+            return placement.locked
+                ? "Your camera is showing. Drag the handle above it to move it, or drag a corner to resize it."
+                : "Your camera is showing. Drag the bubble to move it, or drag a corner to resize it."
         case .hidden(let reason): return reason.message
+        case .failed(.access(.unavailable)) where !sources.isEmpty && !sources.contains(where: { $0.id == selectedID }):
+            return "The selected camera isn’t available. Choose another camera above, then try again."
         case .failed(let failure): return failure.message
         }
     }

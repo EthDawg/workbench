@@ -276,6 +276,10 @@ final class PersonaCameraTests {
             XCTAssertEqual(f.capture.starts.count, starts, "A source choice opens no device")
             XCTAssertEqual(f.permissionRequests.count, permissions)
             XCTAssertTrue(f.camera.hasPreparedSwitch)
+            f.library.setOverlayLocked(true)
+            XCTAssertTrue(f.camera.explanation.contains("handle above"), "Locked camera movement uses the visible handle")
+            f.library.setOverlayLocked(false)
+            XCTAssertTrue(f.camera.explanation.contains("Drag the bubble"), "Unlocked camera movement uses its body")
             f.library.startCamera() // explicit Switch camera consumes the prepared choice
             XCTAssertEqual(f.camera.selectedID, "studio")
             XCTAssertEqual(f.camera.state, .permission)
@@ -297,6 +301,8 @@ final class PersonaCameraTests {
             XCTAssertEqual(f.camera.sources.count, 1)
             XCTAssertTrue(f.camera.offersSourceChoice, "The remaining camera is reachable even though only one is available")
             XCTAssertFalse(f.camera.preparedSourceAvailable)
+            XCTAssertTrue(f.camera.explanation.contains("selected camera") && f.camera.explanation.contains("Choose another camera"),
+                          "A missing selected camera must not claim that the available replacement is absent")
             f.camera.prepareDevice("built-in")
             XCTAssertTrue(f.camera.preparedSourceAvailable)
             f.library.retryCamera(); f.permissionRequests.last?(.authorized)
