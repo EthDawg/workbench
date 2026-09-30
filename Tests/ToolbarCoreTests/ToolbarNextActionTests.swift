@@ -184,7 +184,7 @@ final class ToolbarNextActionTests: XCTestCase {
             let action = ToolbarNextAction.resolve(live)
             switch action.operation {
             case .wait: if action.isEnabled { failures += 1 }
-            case .start, .captureNext:
+            case .start, .captureNext, .showPersonaCamera, .retryPersonaCamera:
                 if action.isEnabled != live.mayStart { failures += 1 }
             default: if !action.isEnabled { failures += 1 }
             }

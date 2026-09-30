@@ -354,6 +354,22 @@ final class PersonaCameraTests {
             try f.library.showAgain().get()
             XCTAssertTrue(f.library.artworkVisible)
             XCTAssertEqual(f.library.shownCard, card)
+
+            // The pill's End camera goes through StageKitController.endPersona
+            // to this shared owner method. It must preserve the same frozen
+            // card and placement as the workspace's direct End camera.
+            let selection = f.library.liveSelection
+            f.live()
+            f.library.endLivePersona()
+            XCTAssertEqual(f.camera.state, .off)
+            XCTAssertTrue(f.library.hasHiddenCard)
+            XCTAssertEqual(f.library.shownCard, card)
+            XCTAssertEqual(f.library.liveSelection, selection)
+            XCTAssertEqual(f.library.overlayWidth, savedWidth, accuracy: 0.0001)
+            XCTAssertTrue(f.library.overlayLocked)
+            try f.library.showAgain().get()
+            XCTAssertTrue(f.library.artworkVisible)
+            XCTAssertEqual(f.library.shownCard, card)
         }
     }
 

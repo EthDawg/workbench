@@ -803,12 +803,12 @@ final class PersonaLibrary: NSObject, ObservableObject {
         overlay?.hide(); liveSelection = nil; cardDeck = nil; shownCard = nil
         clearCardFailure()
     }
-    /// The End door for whatever Persona is showing: the live camera and the
-    /// artwork slot together. It keeps saved personas, layouts and any running
-    /// presentation, and restores nothing by itself.
+    /// The shared End door ends only the source its label names. End camera
+    /// keeps the card it replaced, so Show again can restore that exact card.
+    /// Ending artwork ends its card or set, without changing saved preparation.
     func endLivePersona() {
-        endCamera()
-        endOverlaySession()
+        if cameraOwnsSlot { endCamera() }
+        else { endOverlaySession() }
     }
     private func reportCardFailure(_ error: Error) {
         notice = error.localizedDescription; cardFailure = notice
