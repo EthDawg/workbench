@@ -261,6 +261,25 @@ enum TextDeliveryChecks {
         try check(TextDelivery.confirms("words", before: .init(value: "before  after", selection: nil),
                                        after: .init(value: "before words after", selection: nil)),
                   "a missing AX selection still confirms exactly one inserted text span")
+        try check(TextDelivery.confirms("ab", before: .init(value: "aX", selection: nil),
+                                       after: .init(value: "abaX", selection: nil)),
+                  "an inserted span sharing only part of the old prefix is confirmed")
+        try check(TextDelivery.confirms("bca", before: .init(value: "abcabc", selection: nil),
+                                       after: .init(value: "abcabcabc", selection: nil)),
+                  "repeated text can confirm an insertion between both unchanged boundaries")
+        try check(TextDelivery.confirms("🧑‍🚀a", before: .init(value: "🧑‍🚀X", selection: nil),
+                                       after: .init(value: "🧑‍🚀a🧑‍🚀X", selection: nil)),
+                  "an ambiguous Unicode prefix is matched in UTF-16 without losing a character")
+        try check(TextDelivery.confirms("🧑‍🚀e\u{301}", before: .init(value: "e\u{301}🧑‍🚀e\u{301}🧑‍🚀", selection: nil),
+                                       after: .init(value: "e\u{301}🧑‍🚀e\u{301}🧑‍🚀e\u{301}🧑‍🚀", selection: nil)),
+                  "repeated emoji and combining marks can match an interior insertion position")
+        try check(!TextDelivery.confirms("ab", before: .init(value: "ac", selection: nil),
+                                        after: .init(value: "abcc", selection: nil)),
+                  "matching words outside the unchanged prefix and suffix cannot confirm a paste")
+        let repeated = String(repeating: "a", count: 50_000)
+        try check(TextDelivery.confirms(repeated + "b", before: .init(value: repeated, selection: nil),
+                                       after: .init(value: repeated + "b" + repeated, selection: nil)),
+                  "a long repeated prefix confirms without rebuilding the field for each candidate")
         let unchangedText = TextDelivery.FieldState(value: "words", selection: NSRange(location: 0, length: 5))
         try check(!TextDelivery.confirms("words", before: unchangedText, after: unchangedText)
                   && TextDelivery.confirms("words", before: unchangedText, after: .init(value: "words", selection: NSRange(location: 5, length: 0))),

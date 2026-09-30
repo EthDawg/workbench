@@ -190,8 +190,30 @@ final class TextDelivery {
         guard !inserted.isEmpty, newUnits.count == oldUnits.count + inserted.count else { return false }
         var prefix = 0
         while prefix < oldUnits.count, oldUnits[prefix] == newUnits[prefix] { prefix += 1 }
-        return Array(newUnits[prefix..<(prefix + inserted.count)]) == inserted
-            && oldUnits[prefix...] == newUnits[(prefix + inserted.count)...]
+        var suffix = 0
+        while suffix < oldUnits.count,
+              oldUnits[oldUnits.count - 1 - suffix] == newUnits[newUnits.count - 1 - suffix] { suffix += 1 }
+        let first = oldUnits.count - suffix, last = prefix
+        guard first <= last else { return false }
+        // Removing a span of this length anywhere within these bounds leaves
+        // the original prefix and suffix intact. Shared/repeated text means the
+        // real insertion need not be at the longest common prefix's end.
+        // KMP's prefix table searches those positions in linear time, without
+        // rebuilding the whole field for each possible insertion position.
+        var fallback = [Int](repeating: 0, count: inserted.count)
+        for index in 1..<inserted.count {
+            var matched = fallback[index - 1]
+            while matched > 0, inserted[index] != inserted[matched] { matched = fallback[matched - 1] }
+            if inserted[index] == inserted[matched] { matched += 1 }
+            fallback[index] = matched
+        }
+        var matched = 0
+        for index in first..<(last + inserted.count) {
+            while matched > 0, newUnits[index] != inserted[matched] { matched = fallback[matched - 1] }
+            if newUnits[index] == inserted[matched] { matched += 1 }
+            if matched == inserted.count { return true }
+        }
+        return false
     }
     @discardableResult
     static func copy(_ text: String) -> Int? {
