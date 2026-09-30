@@ -2,6 +2,46 @@
 
 [PR #229](https://github.com/EthDawg/workbench/pull/229) brings together the Home, sidebar, local Me profile, floating controls, voice feedback and download-copy changes. It is an installed Preview candidate. No new public archive, update feed or website deployment is claimed.
 
+## 30 September integration
+
+The combined candidate includes profile camera recovery, the shared image workspace, direct Snap / Snap & Talk capture choices, and toolbar edge orientation. Camera, image and toolbar work had separate writers and worktrees; this chat alone integrated the changes and updated the shared Preview.
+
+### Installed source
+
+- **Workbench Preview 2.3.1, build 20260930031442**, clean source **bd6d2ba1063397ce498e97027af891c5fa859d90**. Native Copy build details was pasted into a local test document and matched the installed bundle. The existing path, `com.ethdawg.workbench.preview` identity and `GHVAAH9P5Z` signing team were retained through `scripts/install.sh --no-open`.
+- Detailed image editing and camera recovery checks first ran on build **20260930023227**, source **f3992dcf4851bb847d0aa41ebf7c0421297ccad3**. The final build adds toolbar orientation; image and camera implementation is unchanged. Image reopening, navigation, archive/copy behavior and capture integration were checked again on the final build.
+- Stable, public binaries, update feeds and the deployed website were not part of this install. The receipt below for 29 September describes an earlier candidate.
+
+### Combined checks
+
+At `bd6d2ba`, `bash scripts/test.sh` passed: **327 Swift package tests** (two gated on-screen skips), **253 StageKit tests / 4,903 assertions**, **139 Snap checks**, and the required capture, image workspace, history, handoff, provider, meeting and release checks. The two gated native window-hit and keyboard-traversal tests were also run explicitly and both passed.
+
+The focused toolbar run passed **203 tests**, production controls passed **190 checks**, and the motion renderer passed **18 sequences**. The surface registry classified **444 entries**. The signed installer passed its packaged resource checks. Existing keychain deprecation warnings remain unrelated to this change.
+
+CI run [36662608243](https://github.com/EthDawg/workbench/actions/runs/36662608243) exposed runner-specific drag-coordinate and warning-pixel assertions after local success. Follow-up `4129f61` corrects queued test-event coordinates, allows one pixel of rendering variation while requiring a deliberately clipped reference to fail, and completes the native display pass before hit testing. It changes tests and their receipt only; the installed production implementation remains identical. The final CI result is recorded on PR #229; a local pass alone does not satisfy that gate.
+
+### Installed acceptance
+
+| Journey | Result and boundary |
+| --- | --- |
+| Image editing | Imported a synthetic 1600 × 1000 image, added multiline text, cropped to 16:9, moved and resized text with the pointer, and verified keyboard Undo/Redo. Original comparison retained edits and ignored editing keys. Rotation changed dimensions and newly added text stayed upright. |
+| Draft protection | Cancel, window close and Quit asked before discarding changed edits. Keep editing retained the draft. Closing the main Home window left the separate draft open. Deliberate discard preserved the saved image. |
+| Save, copy and export | Save & Copy produced a saved Snap and an image on the clipboard. Native export produced 1600 × 900 PNG. Decoded sRGB pixels matched the stored rendered image; the stored original matched the synthetic input pixels. PNG byte encodings differ because the app normalizes images. |
+| Shared viewing | Home and Snap opened the same saved-image window. Right/Left keys moved through the source collection and returned to the synthetic image. Zoom and Fit worked. An archived image offered Edit a copy, opened a separate New Snap draft, and returned to the unchanged source on Cancel. |
+| Capture controls | The installed Snap toolbar exposed Region, Window and Screen. Screen opened New Snap at the captured display size; Cancel saved nothing. Snap's Region and Window selectors showed the expected source and their Cancel capture button returned with no history entry. Snap & Talk's Region selector started with the same 39-section session; quitting ended the test selector without adding a section or narration. The controller could not deliver Escape to Apple's selector, so physical Escape cancellation is not certified here. |
+| Toolbar layout and keyboard | Left and right positions rendered upright vertical controls; free placement remained horizontal. Native Tab traversal reached More; keyboard menus opened Position, and the chooser switched to Snap & Talk with Region / Window / Screen / Review in order. Top/bottom, corners, transitions and guide geometry have source/render coverage; this run did not establish physical drag or hover acceptance. |
+| Camera recovery | Take photo opened an in-profile preview without trapping the sheet. The selected camera reached its ready state, then reported a stalled feed; a bounded recovery message and Try again appeared. Retry, Cancel, Choose photo, appearance review and cancellation all worked. No new permission was granted and no profile photo was saved. Successful live photo capture and denied-permission behavior remain hardware/OS acceptance checks. |
+
+The synthetic saved Snap was archived through the app. Capture and copy drafts were discarded. Home, the expanded sidebar, Dark appearance, Snap toolbar mode and original free placement were restored; the loaded session retained 39 sections. Of 171 files hashed before testing, 169 remained byte-identical, no file was missing, and only the existing app-state and boards manifests changed during normal app use. Original image files remained unchanged. The temporary placement preferences were restored with Preview closed, touching only the six placement keys after verifying they still held this test's right-edge choice.
+
+### Remaining merge and release gates
+
+PR #229 remains draft for outstanding installed acceptance; final CI must also pass before merge. The native controller returned `windowNotFoundAtPosition` for pointer actions on the floating panel, while pointer actions in the image editor worked. This limits physical hover, drag, reveal/collapse and click-through conclusions. Full VoiceOver traversal, physical display arrangements, successful camera capture and the earlier natural-speech/coexistence audio gap also remain separate from automated checks. The [Mac release gate #7](https://github.com/EthDawg/workbench/issues/7) stays open.
+
+Snap text or rotation uses format 2. Prior v1 metadata is retained on first promotion; original and earlier rendered files remain immutable. Older binaries reject v2 records. See [Snap compatibility](../../snap.md#one-image-workspace) before a binary downgrade.
+
+## 29 September baseline
+
 ## Build and test boundary
 
 - Installed and running: **Workbench Preview 2.3.1**, build **20260929121540**, clean source **bca3ecf1d7bbc0152f88c0dfb5083835189f8c85**.
