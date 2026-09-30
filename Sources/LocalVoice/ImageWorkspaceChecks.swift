@@ -76,8 +76,8 @@ enum ImageWorkspaceChecks {
         editor.showingOriginal = false
         preview.step(1); preview.show(images[1])
         try check(preview.editing === editor && preview.index == 0, "navigation and other open requests cannot discard an edit")
-        preview.approveDiscard = { false }; preview.close()
-        try check(preview.editing === editor && snap.draft != nil, "Keep editing protects draft on Close")
+        preview.approveDiscard = { false }; preview.cancelEditing()
+        try check(preview.editing === editor && snap.draft != nil, "Keep draft refuses explicit Discard without losing edits")
         try check(!preview.canTerminate() && preview.editing === editor, "Keep editing refuses Quit without losing the draft")
         preview.approveDiscard = { true }
         try check(preview.canTerminate() && preview.editing === editor, "Quit approval is non-destructive until the app actually terminates")
@@ -90,6 +90,13 @@ enum ImageWorkspaceChecks {
                 preview.panel?.setContentSize(NSSize(width: 1180, height: 740))
                 try await settle(preview)
                 try render(preview.panel!, to: output.appendingPathComponent("image-workspace-" + theme + ".png"))
+                owner.contentView = NSHostingView(rootView: SnapWorkspaceView(model: snap, selectedIDs: .constant([]))
+                    .frame(width: 1180, height: 780))
+                owner.setContentSize(NSSize(width: 1180, height: 780))
+                owner.appearance = preview.panel?.appearance
+                owner.contentView?.layoutSubtreeIfNeeded()
+                try await settle(preview)
+                try render(owner, to: output.appendingPathComponent("snap-pending-draft-" + theme + ".png"))
             }
             setTheme(.light)
             preview.panel?.appearance = NSAppearance(named: .aqua)
@@ -124,7 +131,7 @@ enum ImageWorkspaceChecks {
         try await settle(preview)
         try check(preview.editing != nil && preview.panel != nil, "Paste/import drafts use the same expanded workspace host")
         preview.editing?.addText(); preview.approveDiscard = { false }; preview.cancelEditing()
-        try check(snap.draft != nil, "Cancel asks before discarding changed work")
+        try check(snap.draft != nil, "Discard asks before resolving changed work")
         preview.approveDiscard = { true }; preview.cancelEditing()
         try check(snap.draft == nil && preview.panel == nil, "Discard ends a new unsaved draft without a history record")
         try check(try store.load().items.count == 3, "discarded drafts create no extra Snaps")
@@ -150,14 +157,19 @@ enum ImageWorkspaceChecks {
             let handled = livePanel.performKeyEquivalent(with: escape)
             liveCanvas.mouseUp(with: dragEvent(.leftMouseUp, 0.7))
             try check(handled && preview.editing === liveEditor && liveEditor.draft.edit == before,
-                      "Escape cancels a transient crop gesture before the window's Cancel shortcut")
+                      "Escape cancels a transient crop gesture before the window's Close shortcut")
         } else { try check(false, "the live editor exposes its canvas for gesture cancellation") }
+        let preservedEditor = preview.editing, preservedDraft = preview.editing?.draft
         preview.approveDiscard = { false }
         preview.panel?.performClose(nil)
-        try check(preview.editing != nil && snap.draft != nil, "the window close button honours Keep editing")
-        preview.approveDiscard = { true }
-        preview.panel?.performClose(nil)
-        try check(preview.panel == nil && snap.draft == nil, "the window close button closes the workspace after Discard")
+        try check(preview.panel == nil && preview.editing === preservedEditor && snap.draft?.id == preservedDraft?.id
+                  && snap.draft?.originalPNG == preservedDraft?.originalPNG && snap.draft?.edit == preservedDraft?.edit,
+                  "the window close button preserves the original and edited saved-image draft")
+        preview.show(images[1], over: owner)
+        try check(preview.panel != nil && preview.editing === preservedEditor && snap.draft?.id == preservedDraft?.id,
+                  "another image-open door resumes the same hidden draft instead of replacing it")
+        preview.approveDiscard = { true }; preview.cancelEditing()
+        try check(preview.panel == nil && snap.draft == nil, "only explicit Discard resolves the resumed draft")
         // Send real AppKit pointer/key events to the canvas. A geometry-only test would miss
         // endpoint direction, drag focus and which coordinate system keyboard movement uses.
         let gesture = try ImageWorkspaceEditing(draft: SnapDraft(originalPNG: png, source: .imported, title: "Pointer checks", notes: "", tags: [], edit: .init()))
@@ -216,7 +228,7 @@ enum ImageWorkspaceChecks {
         owner.close()
         try check(preview.editing === openEditor && preview.panel === openPanel && openPanel?.parent == nil && snap.draft != nil,
                   "closing the main window leaves its unsaved image in an independent workspace")
-        preview.approveDiscard = { true }; preview.close()
+        preview.approveDiscard = { true }; preview.cancelEditing(); preview.close()
         print("IMAGE_WORKSPACE_CHECKS_OK: \(checks) checks for navigation, editable text, crop, rotation, undo, originals, drafts and frozen copies")
     }
     private static func settle(_ preview: CaptureImagePreview) async throws {
@@ -228,7 +240,7 @@ enum ImageWorkspaceChecks {
             break
         }
     }
-    private static func render(_ panel: NSPanel, to url: URL) throws {
+    private static func render(_ panel: NSWindow, to url: URL) throws {
         guard let view = panel.contentView else { throw VoiceError.message("Could not render the image workspace") }
         let rep = try SurfaceGallery.snapshot(view)
         guard let png = rep.representation(using: .png, properties: [:]) else { throw VoiceError.message("Could not encode workspace render") }

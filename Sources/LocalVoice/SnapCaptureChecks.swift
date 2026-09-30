@@ -79,10 +79,10 @@ enum SnapCaptureChecks {
                           "\(journey) leaves one \(mode.title) draft in the editor and nothing saved yet")
                 try check(desktop.log.contains("hide") == door.windowOnScreen && !desktop.log.contains { $0.hasPrefix("activate") },
                           "\(journey) hides only a window that was on screen and brings nothing else forward")
-                // Save & Copy, Save and Cancel each resolve the draft; only Save & Copy of a capture from another app returns there.
+                // Save & Copy, Save and Discard each resolve the draft; only Save & Copy of a capture from another app returns there.
                 guard let draft = snap.draft else { throw VoiceError.message("SNAP_CAPTURE_CHECK_FAILED: \(journey) has no draft") }
                 desktop.log.removeAll()
-                watchdog.step("\(journey): " + ["Save & Copy", "Save", "Cancel"][resolution % 3])
+                watchdog.step("\(journey): " + ["Save & Copy", "Save", "Discard"][resolution % 3])
                 switch resolution % 3 {
                 case 0:
                     try check(snap.saveDraft(draft, copyAfterSaving: true) && snap.items.count == 1
@@ -95,7 +95,7 @@ enum SnapCaptureChecks {
                               "\(journey): Save keeps Workbench in front")
                 default:
                     snap.draft = nil
-                    try check(snap.items.isEmpty && desktop.log.isEmpty, "\(journey): Cancel saves nothing and keeps Workbench in front")
+                    try check(snap.items.isEmpty && desktop.log.isEmpty, "\(journey): Discard saves nothing and keeps Workbench in front")
                 }
                 let saved = snap.items.count
                 watchdog.step("\(journey): the next capture")
@@ -153,10 +153,10 @@ enum SnapCaptureChecks {
             desktop.windowOnScreen = false; desktop.inFront = mail; desktop.log.removeAll()
             await snap.capture(.region)
             try check(first != nil && snap.draft?.id == first && source.requests == [.screen] && desktop.log == ["open snap"]
-                      && snap.notice == "Finish or cancel the current Snap first.", "a hidden draft is brought back instead of blocking a new capture")
+                      && snap.notice == "Save or discard the current Snap first.", "a hidden draft is brought back instead of blocking a new capture")
             snap.draft = nil
             await snap.capture(.region)
-            try check(snap.draft != nil && snap.draft?.id != first && source.requests == [.screen, .region], "cancelling it lets the next capture start")
+            try check(snap.draft != nil && snap.draft?.id != first && source.requests == [.screen, .region], "discarding it lets the next capture start")
         }
 
         // Screen Recording off (#112): each door explains on the Snap page instead of
@@ -217,7 +217,8 @@ enum SnapCaptureChecks {
         watchdog.step("Snap & Talk with Screen Recording off")
         try await checkSnapTalkWithoutScreenAccess(root: root, snapshots: savedSnapshots, check: check)
 
-        try await checkEditorExposure(makeSnap: { snapModel($0, source: SyntheticImageSource(next: .success(image))) }, watchdog: watchdog, check: check)
+        try await checkEditorExposure(makeSnap: { snapModel($0, source: SyntheticImageSource(next: .success(image))) },
+                                      pasteboard: pasteboard, watchdog: watchdog, check: check)
         print("SNAP_CAPTURE_CHECKS_OK: \(count) checks for every door's editor, Save & Copy, cancelled selectors, problems, hidden drafts and Screen Recording off, in "
               + String(format: "%.1f s", Date().timeIntervalSince(started)) + " at \(priority) priority")
         // Written now, so a slow exit cannot hide the result; the watchdog still covers the exit.
@@ -271,8 +272,8 @@ enum SnapCaptureChecks {
 
     /// The production draft host presents one expanded editor regardless of the
     /// page beneath it, including a capture restored from a minimised window.
-    private static func checkEditorExposure(makeSnap: (String) -> SnapModel, watchdog: CheckWatchdog,
-                                            check: (Bool, String) throws -> Void) async throws {
+    private static func checkEditorExposure(makeSnap: (String) -> SnapModel, pasteboard: NSPasteboard,
+                                            watchdog: CheckWatchdog, check: (Bool, String) throws -> Void) async throws {
         for (index, page) in ["home", "snap", "history"].enumerated() {
             let snap = makeSnap("exposure-\(index)"), route = CheckRoute(); route.page = page
             let window = OffscreenCheckWindow(contentRect: NSRect(x: -30_000, y: -30_000, width: 1_000, height: 720),
@@ -299,8 +300,69 @@ enum SnapCaptureChecks {
             await snap.capture(.region)
             try check(preview.panel === panel && presentations >= count, "a pending capture reuses its editor window")
             try check((panel?.frame.minX ?? 0) < -20_000, "the editor stays off every display")
+            guard let editor = preview.editing, let captured = snap.draft else {
+                throw VoiceError.message("SNAP_CAPTURE_CHECK_FAILED: the synthetic capture has no editor")
+            }
+            var discardPrompts = 0
+            preview.approveDiscard = { discardPrompts += 1; return false }
+            try check(!preview.canTerminate() && snap.draft?.id == captured.id,
+                      "even a pristine capture asks before Quit can lose it")
+            discardPrompts = 0
+            for edited in [false, true] {
+                if edited {
+                    editor.addText()
+                    editor.updateSelected { $0.text = "Keep this explanation" }
+                    editor.draft.title = "Resumed synthetic capture"
+                    editor.draft.notes = "Keep these notes"
+                    editor.draft.tags = ["preserved"]
+                }
+                let expected = editor.draft, undoCount = editor.undoStack.count
+                let exits: [(String, () -> Void)] = [
+                    ("Close", { preview.panel?.requestClose?() }),
+                    ("Escape", { preview.panel?.cancelOperation(nil) }),
+                    ("window close", { preview.panel?.performClose(nil) })]
+                for (name, leave) in exits {
+                    watchdog.step("\(name) and Review of \(edited ? "edited" : "unedited") capture from \(page)")
+                    leave()
+                    try check(preview.panel == nil && preview.editing === editor && snap.draft?.id == captured.id
+                              && snap.draft?.originalPNG == captured.originalPNG && snap.draft?.edit == expected.edit
+                              && snap.draft?.title == expected.title && snap.draft?.notes == expected.notes
+                              && snap.draft?.tags == expected.tags && snap.items.isEmpty && discardPrompts == 0,
+                              "\(name) preserves the same \(edited ? "edited" : "unedited") draft and exact image without a discard prompt")
+                    // This is the Snap page's Review action: no toolbar is created or required.
+                    snap.reviewDraft()
+                    try check(preview.panel != nil && preview.editing === editor && editor.draft.id == captured.id
+                              && editor.draft.originalPNG == captured.originalPNG && editor.undoStack.count == undoCount,
+                              "Snap page Review restores the same capture and undo history after \(name), independently of the toolbar")
+                }
+            }
+            editor.draft.title = ""
+            preview.saveEditing(copy: false)
+            try check(snap.draft?.id == captured.id && preview.editing === editor && preview.panel != nil
+                      && snap.items.isEmpty && snap.lastOutcome == .failed,
+                      "a failed Save leaves the resumed capture available to fix")
             preview.cancelEditing()
-            try check(snap.draft == nil && preview.panel == nil, "Cancel closes the expanded editor and its draft")
+            try check(snap.draft?.id == captured.id && preview.editing === editor && discardPrompts == 1,
+                      "refusing Discard preserves the resumed capture")
+            preview.close()
+            try check(!preview.canTerminate() && snap.draft?.id == captured.id && preview.panel == nil,
+                      "Quit protects an unfinished capture even after its editor closes")
+            preview.approveDiscard = { true }
+            try check(preview.canTerminate() && snap.draft?.id == captured.id,
+                      "Quit approval keeps a hidden draft until all other quit guards accept")
+            snap.reviewDraft()
+            editor.draft.title = "Saved after Review"
+            let rendered = try SnapRendering.render(editor.draft.originalPNG, edit: editor.draft.edit)
+            preview.saveEditing(copy: true)
+            try check(snap.draft == nil && preview.editing == nil && preview.panel == nil && snap.items.count == 1
+                      && pasteboard.data(forType: .png) == rendered && snap.lastOutcome == .savedAndCopied,
+                      "Save & Copy resolves the resumed draft once and copies its edited image")
+            await snap.capture(.screen)
+            guard let next = snap.draft else { throw VoiceError.message("The next synthetic capture did not open") }
+            preview.close()
+            preview.cancelEditing()
+            try check(snap.draft == nil && preview.editing == nil && preview.panel == nil && snap.items.count == 1
+                      && next.id != captured.id, "explicit Discard alone resolves a closed pristine capture without adding History")
         }
     }
 

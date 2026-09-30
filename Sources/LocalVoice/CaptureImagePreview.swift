@@ -445,7 +445,10 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
 
     func show(_ item: CaptureImagePreviewItem, over parent: NSWindow? = nil,
               collection: [CaptureImagePreviewItem] = []) {
-        guard editing == nil else { if let panel { present(panel) }; return }
+        if let snap = snapOwner, let draft = snap.draft {
+            showEditor(snap: snap, draft: draft, over: parent)
+            return
+        }
         onClose?(); onClose = nil
         items = collection.contains(item) ? collection : [item]
         index = items.firstIndex(of: item) ?? 0
@@ -513,10 +516,11 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
     }
 
     func showEditor(snap: SnapModel, draft: SnapDraft, over parent: NSWindow? = nil) {
-        if editing?.draft.id == draft.id { if let panel { present(panel) }; return }
-        guard editing == nil else { return }
+        if editing?.draft.id == draft.id, let panel { present(panel); return }
+        guard editing == nil || editing?.draft.id == draft.id else { return }
         do {
-            let editor = try ImageWorkspaceEditing(draft: draft)
+            // Closing the window suspends this same edit, including undo and tool state.
+            let editor = try editing ?? ImageWorkspaceEditing(draft: draft)
             snapOwner = snap; editing = editor
             let panel = self.panel ?? makePanel(over: parent ?? NSApp.mainWindow)
             panel.title = draft.existing == nil ? "New Snap" : draft.title
@@ -527,9 +531,10 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
                 panel.setContentSize(NSSize(width: min(1_180, visible.width - 40), height: min(780, visible.height - 60)))
             }
             panel.command = { [weak editor] in editor?.zoom($0) }; panel.navigate = nil
-            panel.requestClose = { [weak self] in self?.cancelEditing() }
+            panel.requestClose = { [weak self] in self?.close() }
             let content = NSHostingView(rootView: SnapEditorView(model: snap, editing: editor,
-                save: { [weak self] in self?.saveEditing(copy: $0) }, cancel: { [weak self] in self?.cancelEditing() }))
+                save: { [weak self] in self?.saveEditing(copy: $0) }, close: { [weak self] in self?.close() },
+                discard: { [weak self] in self?.cancelEditing() }))
             content.sizingOptions = [.minSize]; panel.contentView = content; present(panel)
         } catch { snap.notice = error.localizedDescription }
     }
@@ -549,16 +554,19 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
             if let message { model?.report(message, success: snap.notice == nil) }
         }
     }
+    /// The explicit Discard action. Close and Escape never resolve a draft.
     func cancelEditing() {
         guard resolveDiscard() else { return }
         snapOwner?.draft = nil; finishEditing()
     }
     private func resolveDiscard() -> Bool {
-        guard editing?.dirty == true else { return true }
+        guard let draft = snapOwner?.draft else { return true }
         if let approveDiscard { return approveDiscard() }
-        let alert = NSAlert(); alert.messageText = "Discard these image edits?"
-        alert.informativeText = "Your saved image and original will stay unchanged."
-        alert.addButton(withTitle: "Keep editing"); alert.addButton(withTitle: "Discard edits")
+        let alert = NSAlert(); alert.messageText = "Discard this Snap draft?"
+        alert.informativeText = draft.existing == nil
+            ? "This image has not been saved to History."
+            : "Your saved image and original will stay unchanged."
+        alert.addButton(withTitle: "Keep draft"); alert.addButton(withTitle: "Discard")
         return alert.runModal() == .alertSecondButtonReturn
     }
     /// Decide before shutdown starts, without discarding if another activity later cancels Quit.
@@ -590,18 +598,7 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         }
         return bytes
     }
-    func close() {
-        guard admitClose() else { return }
-        panel?.close()
-    }
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        admitClose()
-    }
-    private func admitClose() -> Bool {
-        guard resolveDiscard() else { return false }
-        if editing != nil { editing = nil; snapOwner?.draft = nil; editingFromPreview = false }
-        return true
-    }
+    func close() { panel?.close() }
     private func parentWillClose() {
         guard editing != nil, let panel else { close(); return }
         // The main window can close independently. Keep the draft's own window alive.
@@ -635,11 +632,17 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === panel else { return }
+        // Flush the latest editor value before SwiftUI releases its subscription.
+        // Keeping the same UUID does not publish a new editor-open transition.
+        if let editing, snapOwner?.draft?.id == editing.draft.id {
+            snapOwner?.draft = editing.draft
+        } else { editing = nil }
+        editingFromPreview = false
         window.parent?.removeChildWindow(window)
         window.delegate = nil
         if let parentObserver { NotificationCenter.default.removeObserver(parentObserver) }
         parentObserver = nil
-        model?.cancel(); model = nil; panel = nil; editing = nil; items = []
+        model?.cancel(); model = nil; panel = nil; items = []
         onClose?(); onClose = nil
     }
 }

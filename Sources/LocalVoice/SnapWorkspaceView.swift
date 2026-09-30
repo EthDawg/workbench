@@ -33,13 +33,18 @@ struct SnapWorkspaceView: View {
                 } label: { Label("Add image", systemImage: "plus") }.disabled(model.isBusy || model.importingScreenshots)
             }
             HStack(spacing: 10) {
-                // Region is the page's one accent action, what Snap's row and toolbar do (#134);
-                // Window and Screen stay beside it as neutral options.
-                ForEach(SnapCapture.Mode.allCases) { mode in
-                    let capture = Button { Task { await model.capture(mode) } } label: {
-                        Label(mode.title, systemImage: mode == .region ? "viewfinder" : mode == .window ? "macwindow" : "display")
-                    }.disabled(model.isBusy)
-                    if mode == .region { capture.buttonStyle(.borderedProminent) } else { capture }
+                if let draft = model.draft {
+                    Button("Review") { model.reviewDraft() }.buttonStyle(.borderedProminent)
+                        .help("Resume the unfinished Snap with its original image and edits")
+                    Text("Unfinished Snap · \(draft.title)").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                } else {
+                    // Region is the page's one accent action; Window and Screen stay neutral.
+                    ForEach(SnapCapture.Mode.allCases) { mode in
+                        let capture = Button { Task { await model.capture(mode) } } label: {
+                            Label(mode.title, systemImage: mode == .region ? "viewfinder" : mode == .window ? "macwindow" : "display")
+                        }.disabled(model.isBusy)
+                        if mode == .region { capture.buttonStyle(.borderedProminent) } else { capture }
+                    }
                 }
                 Spacer()
                 #if APP_STORE
@@ -75,7 +80,7 @@ struct SnapWorkspaceView: View {
                 VStack(spacing: 10) {
                     Image(systemName: model.search.isEmpty ? "photo.on.rectangle" : "magnifyingglass").font(.largeTitle)
                     Text(emptyTitle).font(.headline)
-                    Text(model.search.isEmpty ? (model.showingArchived ? "Archived Snaps stay here until you restore them." : "Choose Region, Window or Screen, then save your capture here.") : "Try another title, note or tag. Your selection is kept.")
+                    Text(emptyDetail)
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -141,6 +146,12 @@ struct SnapWorkspaceView: View {
     private var emptyTitle: String {
         if !model.search.isEmpty { return "No matching Snaps" }
         return model.showingArchived ? "Nothing archived" : "Your Snaps start here"
+    }
+    private var emptyDetail: String {
+        if !model.search.isEmpty { return "Try another title, note or tag. Your selection is kept." }
+        if model.showingArchived { return "Archived Snaps stay here until you restore them." }
+        if model.draft != nil { return "Review your unfinished Snap, then save it to History." }
+        return "Choose Region, Window or Screen, then save your capture here."
     }
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
