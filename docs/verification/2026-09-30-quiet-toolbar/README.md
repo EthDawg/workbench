@@ -32,6 +32,22 @@ These are production SwiftUI/AppKit views with synthetic state, not installed ac
 
 ![The brief copied cue](copied-cue.png)
 
+## Motion gallery correction
+
+[Hosted CI run 36690542193](https://github.com/EthDawg/workbench/actions/runs/36690542193/job/109806634869) failed on head `45276a6` after all 344 static toolbar fixtures passed. The motion check still required an orange warning pictogram: `edge-bottom-left-resting frame 0`, red 12 / orange 0. The missing surface-artifact error followed because the earlier gallery failure prevented surface rendering.
+
+The correction retains the per-frame recording-dot assertion, requires zero warning pixels, and adds a quiet recovery case to every edge-change sequence. The quiet case rejects any bright pictogram while carrying failure, copied-delivery, unsaved-capture and stopping-soon state. Existing checks for interrupted expansion, reference position, clipping, launcher position and settling remain active.
+
+Local command:
+
+```sh
+swift run --disable-sandbox ToolbarGalleryRenderer --motion /private/tmp/workbench-quiet-motion-correction
+```
+
+Result: **23 native offscreen sequences, 1,158 frames, passed**. All 210 recording edge-change frames retained the red dot (26–52 detected red pixels) and had zero warning pixels. All 210 quiet recovery frames had zero bright or warning pixels. Representative recording and quiet edge-change renders were visually inspected. `motion.json` records the per-frame pixel counts alongside geometry.
+
+This correction changes the test renderer and evidence only. The installed Preview below remains the native-test candidate; these offscreen sequences send no input and do not establish desktop dictation acceptance.
+
 ## Native acceptance
 
 Signed Preview installed in place and verified through the running app's **Copy build details**:
