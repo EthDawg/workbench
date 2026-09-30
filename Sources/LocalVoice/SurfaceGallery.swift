@@ -2792,7 +2792,6 @@ enum SurfaceGallery {
                  action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
                  page(home, "Open History", "history"),
                  page(home, "Saved from iPhone, when photos are in Library", "photos"),
-                 page(home, "Current work · Open Dictate, for a kept capture without a retry", "dictate"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
                  page(home, "Speech settings, while speech is not ready", "models"),
                  E(surface: "Settings page", label: "Dictate options…", leads: "Page: dictate, scrolled to and focused on its options", route: "dictate"),
