@@ -143,9 +143,8 @@ final class PersonaHandleSet {
         panel.title = "Workbench persona handle"
         panel.isFloatingPanel = true; panel.level = .floating; panel.hidesOnDeactivate = false
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
-        // A clear panel passes clicks on its transparent pixels through by default,
-        // which would leave only the thin drawn mark to grab. The panel is exactly
-        // the handle's hit region, so it takes every click inside it.
+        // The view supplies a faint backing across this complete hit region;
+        // ignoresMouseEvents alone cannot make fully clear pixels hittable.
         panel.ignoresMouseEvents = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -174,6 +173,10 @@ final class PersonaHandleView: NSView {
         self.handle = handle
         super.init(frame: CGRect(x: 0, y: 0, width: 18, height: 18))
         wantsLayer = true
+        // WindowServer ignores fully clear pixels before NSView hit testing.
+        // Keep the complete advertised handle target hittable, not just its
+        // thin painted stroke, while the artwork itself remains click-through.
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
         for layer in [edgeLayer, markLayer] {
             layer.fillColor = nil; layer.lineCap = .round; layer.lineJoin = .round
             layer.actions = ["path": NSNull(), "bounds": NSNull(), "position": NSNull()]

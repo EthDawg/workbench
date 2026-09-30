@@ -61,6 +61,7 @@ final class TextDelivery {
         var element: AXUIElement?
         var value: String?
         var selection: NSRange? = nil
+        var opaqueEditor: OpaqueEditorDestination? = nil
     }
     struct FieldState: Equatable {
         var value: String?
@@ -95,7 +96,8 @@ final class TextDelivery {
         guard let app, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
         let element = captureField(app.processIdentifier)
         let state = fieldState(element)
-        return Target(app: app, element: element, value: state.value, selection: state.selection)
+        return Target(app: app, element: element, value: state.value, selection: state.selection,
+                      opaqueEditor: element == nil ? OpaqueEditorDestination.capture(app: app) : nil)
     }
     static func captureField(_ pid: pid_t, accessibility: Accessibility? = nil) -> AXUIElement? {
         let ax = accessibility ?? .live
@@ -135,6 +137,7 @@ final class TextDelivery {
         return Accessibility.live.attribute(element, key) as? String
     }
     static func eligible(_ target: Target, accessibility: Accessibility? = nil) -> Bool {
+        if let opaque = target.opaqueEditor { return opaque.isEligible }
         let ax = accessibility ?? .live
         guard ax.frontmostPID() == target.app.processIdentifier,
               let captured = target.element, let current = focusedField(target.app.processIdentifier, accessibility: ax),
@@ -245,6 +248,7 @@ final class TextDelivery {
                         validateTarget: (() -> Bool)? = nil, expectedValue: String? = nil, expectedSelection: NSRange? = nil,
                         system: System? = nil) async -> Outcome {
         let system = system ?? .live
+        defer { target?.opaqueEditor?.end() }
         let pasteboard = system.pasteboard
         let destinationName = target?.app.localizedName
         guard !Task.isCancelled, validateTarget?() != false else {
@@ -256,7 +260,7 @@ final class TextDelivery {
         // Only inspect old clipboard contents when a paste may need restoring.
         let priorCount = pasteboard.changeCount
         let previous: [NSPasteboardItem]
-        if restoreClipboard, mayPaste {
+        if restoreClipboard, mayPaste, target?.opaqueEditor == nil {
             previous = pasteboard.pasteboardItems?.map { item in
                 let saved = NSPasteboardItem()
                 for type in item.types { if let data = item.data(forType: type) { saved.setData(data, forType: type) } }
@@ -277,7 +281,7 @@ final class TextDelivery {
         // Automatic paste waits for approval. The copy is the supported result,
         // so it says what to do next rather than where to change a setting.
         guard mayPaste else { return outcome(copiedMessage, failure: .accessibilityUnavailable) }
-        guard target.element != nil else {
+        guard target.element != nil || target.opaqueEditor != nil else {
             return outcome("Copied. " + copiedDetail(.fieldUnreadable), failure: .fieldUnreadable)
         }
         guard system.isEligible(target) else {
@@ -298,11 +302,14 @@ final class TextDelivery {
             return outcome("Copied. " + copiedDetail(.focusChanged), failure: .focusChanged)
         }
         pasteWasAttempted = true
+        // The captured opaque editor was rechecked above. Stop observing before
+        // our own paste; it is sent once and cannot be confirmed from AX text.
+        target.opaqueEditor?.end()
         paste()
         var confirmed = false
         // Web/Electron accessibility updates can arrive after the paste itself.
         // Poll for at most 1.2 seconds; never retry the paste or retarget a field.
-        for _ in 0..<15 {
+        for _ in 0..<(before.value == nil ? 0 : 15) {
             do { try await system.pause(80_000_000); try Task.checkCancellation() }
             catch {
                 return outcome("Paste was sent before cancellation. Check the destination; insertion was not confirmed or undone.", failure: .cancelled)

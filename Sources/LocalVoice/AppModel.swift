@@ -97,7 +97,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// clears it; without one, History opens on All.
     @Published var historyDoor: HistoryDoor?
     @Published var libraryFocusToken = UUID()
-    @Published var phase: Phase = .idle
+    @Published var phase: Phase = .idle {
+        didSet { if phase == .idle { destination?.opaqueEditor?.end() } }
+    }
     @Published var ready = false
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
@@ -269,7 +271,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private var voiceObservers: [AnyCancellable] = []
     private var voiceRefresh: Task<Void, Never>?
     private var peakPower: Float = -160
-    private var destination: TextDelivery.Target?
+    private var destination: TextDelivery.Target? {
+        didSet { oldValue?.opaqueEditor?.end() }
+    }
     private var recordingAttempt: UUID?
     private var recordingSettings: CaptureSettings?
     private var permissionRequest: Task<Bool, Never>?
@@ -558,6 +562,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         isMicrophoneQuiet = false
         let attempt = UUID(); recordingAttempt = attempt
         destination = intendedTarget
+        destination?.opaqueEditor?.begin(shortcut: preferences.dictationShortcut)
         phase = .requesting
         Task { await startRecording(attempt) }
     }

@@ -8,6 +8,7 @@ enum TextDeliveryChecks {
     private final class AXFixture {
         let app = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
         var focused: AXUIElement?
+        var focusedWindow: AXUIElement?
         var trusted = true, frontmost: pid_t? = NSRunningApplication.current.processIdentifier
         var manual: Bool? = nil
         var requiresManual = false
@@ -25,6 +26,7 @@ enum TextDeliveryChecks {
                 if CFEqual(node, self.app) {
                     if key == "AXManualAccessibility" { return self.manual.map { $0 as CFTypeRef } }
                     if key == kAXFocusedUIElementAttribute { return self.requiresManual && self.manual != true ? nil : self.focused }
+                    if key == kAXFocusedWindowAttribute { return self.focusedWindow }
                 }
                 if key == kAXValueAttribute { self.textReads += 1 }
                 return self.nodes.first(where: { CFEqual($0.0, node) })?.1[key]
@@ -133,6 +135,71 @@ enum TextDeliveryChecks {
                   "an outcome whose copy was replaced cannot read as ready to paste")
         try check(trustReads > 0 && board.string(forType: .string) == "unrelated newer copy",
                   "checks used only the injected trust and the isolated pasteboard")
+
+        // The real Sublime shape is an AXWindow, not a fictional custom text
+        // field. Exercise that admission and the production delivery path.
+        let opaqueAX = AXFixture()
+        let editorWindow = opaqueAX.node([kAXRoleAttribute: kAXWindowRole as CFString,
+                                         kAXSubroleAttribute: kAXStandardWindowSubrole as CFString,
+                                         kAXTitleAttribute: "Synthetic untitled editor" as CFString])
+        opaqueAX.focused = editorWindow; opaqueAX.focusedWindow = editorWindow
+        let opaquePID = NSRunningApplication.current.processIdentifier
+        func windowAllowed(_ bundle: String = "com.sublimetext.4") -> Bool {
+            OpaqueEditorDestination.window(pid: opaquePID, bundleID: bundle, accessibility: opaqueAX.adapter) != nil
+        }
+        try check(windowAllowed() && TextDelivery.captureField(opaquePID, accessibility: opaqueAX.adapter) == nil,
+                  "the observed Sublime window is compatible without pretending it is a readable text field")
+        try check(!windowAllowed("other.editor"), "unknown opaque apps remain copy-only")
+        let sheet = opaqueAX.node([kAXRoleAttribute: kAXSheetRole as CFString])
+        opaqueAX.nodes[0].1[kAXChildrenAttribute] = [sheet] as CFArray
+        try check(!windowAllowed(), "an editor window with a sheet is never a paste destination")
+        opaqueAX.nodes[0].1.removeValue(forKey: kAXChildrenAttribute)
+        let dialog = opaqueAX.node([kAXRoleAttribute: kAXWindowRole as CFString,
+                                   kAXSubroleAttribute: kAXDialogSubrole as CFString,
+                                   kAXTitleAttribute: "Dialog" as CFString])
+        opaqueAX.focused = dialog; opaqueAX.focusedWindow = dialog
+        try check(!windowAllowed(), "a native dialog is never an opaque editor destination")
+        opaqueAX.focused = editorWindow; opaqueAX.focusedWindow = editorWindow
+        opaqueAX.trusted = false
+        try check(!windowAllowed(), "opaque capture needs existing Accessibility trust")
+        opaqueAX.trusted = true
+        var invalidate: (() -> Void)?, opaqueStops = 0, opaquePosts = 0, stillCurrent = true
+        func guardedTarget(observation: Bool = true) -> TextDelivery.Target {
+            let guardState = OpaqueEditorDestination(current: { stillCurrent && windowAllowed() }, observe: { _, changed in
+                guard observation else { return nil }
+                invalidate = changed
+                return { opaqueStops += 1 }
+            })
+            guardState.begin(shortcut: VoiceShortcut())
+            return TextDelivery.Target(app: .current, element: nil, value: nil, opaqueEditor: guardState)
+        }
+        let opaqueSystem = TextDelivery.System(pasteboard: board, isTrusted: { true },
+            isEligible: { TextDelivery.eligible($0) }, preparePaste: { _ in { opaquePosts += 1 } },
+            readField: { _ in .init(value: nil, selection: nil) },
+            pause: { _ in throw VoiceError.message("An opaque editor cannot confirm its text") })
+        let guarded = guardedTarget()
+        _ = TextDelivery.copy("previous clipboard", to: board)
+        let opaqueOutcome = await TextDelivery.deliver("opaque synthetic words", target: guarded, mode: .paste, restoreClipboard: true, system: opaqueSystem)
+        try check(opaquePosts == 1 && opaqueOutcome.pasteWasAttempted && !opaqueOutcome.wasPasted && opaqueOutcome.failure == .pasteUnconfirmed,
+                  "an unchanged opaque destination receives one paste without a false confirmation")
+        try check(board.string(forType: .string) == "opaque synthetic words" && opaqueStops == 1 && guarded.opaqueEditor?.active == false,
+                  "opaque delivery retains recovery text and releases its observation")
+        let edited = guardedTarget()
+        invalidate?() // an edit, click or app departure, even if the target returns
+        edited.opaqueEditor?.begin(shortcut: VoiceShortcut())
+        let editedOutcome = await TextDelivery.deliver("changed target words", target: edited, mode: .paste, restoreClipboard: true, system: opaqueSystem)
+        try check(opaquePosts == 1 && !editedOutcome.pasteWasAttempted && editedOutcome.failure == .focusChanged,
+                  "a changed opaque target stays invalid even after focus returns and cannot paste twice")
+        let missingObservation = guardedTarget(observation: false)
+        let unavailable = await TextDelivery.deliver("unobserved words", target: missingObservation, mode: .paste, restoreClipboard: false, system: opaqueSystem)
+        try check(!unavailable.pasteWasAttempted && opaquePosts == 1, "missing observation fails closed to one copy")
+        let changedWindow = guardedTarget()
+        stillCurrent = false
+        let changedWindowOutcome = await TextDelivery.deliver("window changed words", target: changedWindow, mode: .paste, restoreClipboard: false, system: opaqueSystem)
+        try check(!changedWindowOutcome.pasteWasAttempted && opaquePosts == 1, "the final exact-window check rejects an unseen window change")
+        try check(!TextDelivery.confirms("exact words", before: .init(value: nil, selection: NSRange(location: 0, length: 0)),
+                                        after: .init(value: nil, selection: NSRange(location: 11, length: 0))),
+                  "caret movement alone cannot confirm exact inserted words")
 
         // Cold Electron trees opt in through their documented attribute only.
         let pid = NSRunningApplication.current.processIdentifier

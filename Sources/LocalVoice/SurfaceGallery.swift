@@ -2281,6 +2281,29 @@ enum SurfaceGallery {
         let beyond = CGPoint(x: dock.x - (FloatingControlPlacement.snapDistance + 4), y: dock.y)
         host.releaseTools(atLauncher: beyond); settle(.resting)
         expect("Released \(Int(FloatingControlPlacement.snapDistance + 4)) pt from the bottom-right dock", [free(beyond), at(beyond, "beyond the snap distance")])
+        // Exercise the production drag host, including the compact capture
+        // surface when the ordinary toolbar is hidden. Its release used to save
+        // a position without moving the visible window back onto the display.
+        for capture in [false, true] {
+            model.floatingToolbarVisible = !capture
+            model.phase = capture ? .recording : .idle
+            host.update(model: model)
+            for offset in [CGVector(dx: -screen.width, dy: 0), CGVector(dx: screen.width, dy: 0),
+                           CGVector(dx: 0, dy: -screen.height), CGVector(dx: 0, dy: screen.height)] {
+                host.beginDragging()
+                if let window = host.window {
+                    window.setFrameOrigin(CGPoint(x: screen.midX + offset.dx, y: screen.midY + offset.dy))
+                    host.previewDragging()
+                    expect("\(capture ? "Capture" : "Toolbar") stays visible during edge drag",
+                           [screen.contains(window.frame) ? nil : "the native host escaped the display while dragging"])
+                }
+                host.finishDragging()
+                settle(capture ? .resting : controls.toolbar.state.tier)
+                expect("\(capture ? "Capture" : "Toolbar") settles inside the display",
+                       [host.window.map { screen.contains($0.frame) } == true ? nil : "the released host stayed offscreen"])
+            }
+        }
+        model.phase = .idle; model.floatingToolbarVisible = true; host.update(model: model)
         // A new host reads the saved position, as Workbench does after a relaunch.
         let kept = CGPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
         host.releaseTools(atLauncher: kept); settle(.resting)

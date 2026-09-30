@@ -873,7 +873,9 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
     /// shared position, as the tools do (#134 T4).
     func previewDragging() {
         guard dragging, let window, let preferred = preferredScreen else { snapGuide.hide(); return }
-        let candidate = ToolbarGeometry.releasedPosition(frame: window.frame, screen: preferred)
+        let bounded = FloatingControlGeometry.clamp(window.frame, to: preferred, inset: 0)
+        if bounded != window.frame { window.setFrame(bounded, display: true) }
+        let candidate = ToolbarGeometry.releasedPosition(frame: bounded, screen: preferred)
         let size = surface == .tools ? controls.size(for: ToolbarGeometry.rowAnchor(candidate), screen: preferred) : window.frame.size
         let landing = ToolbarGeometry.isAttached(candidate) ? ToolbarGeometry.frame(size: size, position: candidate, screen: preferred) : nil
         snapGuide.show(landing: landing, screen: preferred, below: window)
@@ -901,7 +903,13 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate, Floati
             free.attachment?.displayID = NSScreen.screens.first { $0.visibleFrame == screen }.map(Self.displayID)
             controls.anchor = nil; freePosition = free; dockedDisplayID = nil
         }
-        if surface == .tools { placeTools(previous: screen, preferred: screen, animated: true) } else { savePosition() }
+        if surface == .tools {
+            placeTools(previous: screen, preferred: screen, animated: true)
+        } else if let window {
+            // Recording and recovery share this host. Apply their landing too;
+            // saving alone left that visible window beyond the display edge.
+            setFrame(toolbarFrame(size: window.frame.size, screen: screen), animated: true)
+        }
     }
 
     /// Position…: the named docks and a reset, beside the toolbar, from the keyboard or pointer.
@@ -987,6 +995,7 @@ struct PanelDragHandle: NSViewRepresentable {
 final class DragHandleView: NSView {
     private var anchor: NSPoint?
     private var startingOrigin: NSPoint?
+    private var dragging = false
     private let showsGrip: Bool
     init(accessibilityLabel: String, showsGrip: Bool = false) {
         self.showsGrip = showsGrip
@@ -1000,23 +1009,28 @@ final class DragHandleView: NSView {
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
         anchor = window.convertPoint(toScreen: event.locationInWindow)
-        (window.windowController as? FloatingHUDDragController)?.beginDragging()
+        dragging = false
         startingOrigin = window.frame.origin
     }
     override func mouseDragged(with event: NSEvent) {
         guard let window, let anchor, let startingOrigin else { return }
         let point = window.convertPoint(toScreen: event.locationInWindow)
+        if !dragging {
+            guard ToolbarDrag.isDrag(from: anchor, to: point) else { return }
+            dragging = true
+            (window.windowController as? FloatingHUDDragController)?.beginDragging()
+        }
         window.setFrameOrigin(NSPoint(x: startingOrigin.x + point.x - anchor.x, y: startingOrigin.y + point.y - anchor.y))
         (window.windowController as? FloatingHUDDragController)?.previewDragging()
     }
     override func mouseUp(with event: NSEvent) {
-        (window?.windowController as? FloatingHUDDragController)?.finishDragging()
-        anchor = nil; startingOrigin = nil
+        if dragging { (window?.windowController as? FloatingHUDDragController)?.finishDragging() }
+        anchor = nil; startingOrigin = nil; dragging = false
     }
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
             (window?.windowController as? FloatingHUDDragController)?.cancelDragging()
-            anchor = nil; startingOrigin = nil
+            anchor = nil; startingOrigin = nil; dragging = false
         }
         super.viewWillMove(toWindow: newWindow)
     }

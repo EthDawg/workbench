@@ -156,6 +156,8 @@ final class PersonaHandleTests {
         for (handle, panel) in shown {
             XCTAssertTrue(panel.isVisible && !panel.ignoresMouseEvents, "\(handle) takes the pointer")
             XCTAssertFalse(panel.canBecomeKey || panel.canBecomeMain)
+            XCTAssertTrue((panel.contentView?.layer?.backgroundColor?.alpha ?? 0) > 0,
+                          "The complete native hit region has backing, including pixels outside the thin handle mark")
             XCTAssertEqual(panel.level, window.level)
             XCTAssertTrue(panel.frame.width <= 44 && panel.frame.height <= 30)
         }
