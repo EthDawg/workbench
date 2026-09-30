@@ -26,7 +26,7 @@ struct MeetingDetectionSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Detect Meetings & Calls", isOn: $model.detectionEnabled)
-            Text("Offer to transcribe when a supported Mac app, or a FaceTime or iPhone call answered on this Mac, appears to be using the microphone. Detection reads audio activity only; it never records or sends audio. You choose whether to start. Calls kept on your iPhone are not heard by this Mac.")
+            Text("Offer to transcribe when a supported call uses audio on this Mac. Detection checks activity only; you choose whether to record.")
                 .font(.caption).foregroundStyle(.secondary)
             if #unavailable(macOS 14.2) {
                 Text("Meeting detection and app audio capture require macOS 14.2 or later. Dictate remains available.")
@@ -38,65 +38,126 @@ struct MeetingDetectionSettings: View {
 
 struct MeetingWorkspaceView: View {
     @ObservedObject var model: MeetingModel
-    var openHistory: () -> Void
+    var engineName: String
+    var openHistory: (UUID?) -> Void
+    @State private var showingOptions = false
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                WorkbenchPageHeader("meeting", summary: "Choose the audio you want to keep. Recording starts only when you choose Start.")
+            VStack(alignment: .leading, spacing: 22) {
+                WorkbenchPageHeader("meeting", summary: "Transcribe a meeting or call.") {
+                    Button("History") { openHistory(nil) }
+                }
                 if let offer = model.offer {
-                    HStack {
+                    HStack(spacing: 12) {
                         Label(MeetingDetector.offerTitle(for: offer), systemImage: "phone")
                         Spacer()
                         Button("Use this source") { model.useOffer(offer); model.dismissOffer() }
                         Button("Not now") { model.dismissOffer() }
                         Button("Snooze") { model.snoozeOffers() }
-                    }.padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+                    }.padding(14).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
                 }
-                Group {
-                    Picker("Purpose", selection: $model.purpose) {
-                        Text("Meeting").tag("meeting")
-                        Text("Call").tag("call")
-                    }.pickerStyle(.segmented).fixedSize()
-                    Picker("Mac app audio", selection: $model.selectedAppID) {
-                        Text("Microphone only").tag(Int32?.none)
-                        ForEach(model.apps) { app in Text(app.name).tag(Optional(app.id)) }
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 14) {
+                        Image(systemName: model.isRecording ? "record.circle.fill" : "person.2.wave.2")
+                            .font(.system(size: 26)).foregroundStyle(model.isRecording ? .red : Workbench.accent)
+                            .frame(width: 48, height: 48).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(model.isRecording ? "Recording conversation" : model.isProcessing ? "Transcribing your recording" : model.isStarting ? "Starting recording" : "Choose what to record")
+                                .font(.title3.weight(.semibold))
+                            Text(model.isRecording ? time(model.elapsed) : model.isProcessing ? "You can keep working while this finishes." : "App audio, your microphone, or both.")
+                                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        Spacer()
                     }
-                    Toggle("Include current Mac microphone", isOn: $model.includeMicrophone)
-                    HStack {
-                        Button("Refresh audio apps") { model.refreshApps() }
+                    Divider()
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline, spacing: 16) {
+                            Text("Audio source").frame(width: 100, alignment: .leading)
+                            Picker("Audio source", selection: $model.selectedAppID) {
+                                Text("Microphone only").tag(Int32?.none)
+                                ForEach(model.apps) { app in Text(app.name).tag(Optional(app.id)) }
+                            }.labelsHidden().frame(maxWidth: 360)
+                            Button { model.refreshApps() } label: { Image(systemName: "arrow.clockwise") }
+                                .help("Refresh audio apps").accessibilityLabel("Refresh audio apps")
+                            Spacer(minLength: 0)
+                        }
+                        Toggle("Include my microphone", isOn: $model.includeMicrophone)
+                            .padding(.leading, 116)
+                        if model.selectedAppID == nil {
+                            Text("Microphone only records what this Mac can hear. Choose the call app to include people speaking through headphones.")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text("A browser source can include audio from its other tabs.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }.disabled(model.isBusy)
+                    HStack(spacing: 12) {
+                        transport
+                        Spacer()
+                        Text("Up to 2 hours").font(.caption).foregroundStyle(.secondary)
+                    }.controlSize(.large)
+                    Label(engineName, systemImage: "waveform")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(22).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityIdentifier("meeting.recording")
+
+                if let error = model.error {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                }
+                if !model.isBusy, let id = model.completedTranscriptID {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle").foregroundStyle(Workbench.accent)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Transcript saved").font(Workbench.sectionTitle)
+                            Text("Review, copy or prepare follow-up notes in History.").font(.callout).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Review transcript") { openHistory(id) }
+                    }.padding(18).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                }
+                if model.isStarting || model.isProcessing || model.error != nil || model.hasRecovery || !model.pendingTranscriptNotes.isEmpty {
+                    Text(model.notice).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                if model.hasRecovery && !model.isBusy {
+                    HStack(spacing: 12) {
+                        Label("Unfinished recording", systemImage: "waveform")
+                        Spacer()
+                        Button("Retry saved recording") { Task { await model.retry() } }
+                    }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                }
+                DisclosureGroup("Recording options", isExpanded: $showingOptions) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Picker("Save as", selection: $model.purpose) {
+                            Text("Meeting").tag("meeting")
+                            Text("Call").tag("call")
+                        }.pickerStyle(.segmented).fixedSize().disabled(model.isBusy)
                         Button("Open Sound settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!) }
-                    }.font(.caption)
-                }.disabled(model.isBusy)
-                Text("Select the Mac app producing the call audio. A browser source can include its other tabs. Try a short sample with your headphone or routed phone setup first. Calls remaining on your phone are outside this capture.")
-                    .font(.callout).foregroundStyle(.secondary)
-                Text("Recordings are kept locally for recovery and transcribed with your selected speech engine. Allow up to two hours. Meeting speech stays reference material in handoffs.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 12) {
-                    if model.isStarting {
-                        ProgressView().controlSize(.small)
-                        Button("Cancel start") { Task { await model.cancel() } }
-                    } else if model.isRecording {
-                        Label("Recording · \(Int(model.elapsed) / 60):\(String(format: "%02d", Int(model.elapsed) % 60))", systemImage: "record.circle")
-                            .foregroundStyle(.red).monospacedDigit()
-                        Button("Stop & transcribe") { Task { await model.stop() } }.buttonStyle(.borderedProminent)
-                        Button("Stop & keep for later") { Task { await model.cancel() } }
-                    } else if model.isProcessing {
-                        ProgressView().controlSize(.small)
-                        Text("Transcribing saved audio…")
-                        Button("Stop processing") { Task { await model.cancel() } }
-                    } else {
-                        Button("Start") { Task { await model.start() } }.buttonStyle(.borderedProminent)
-                            .disabled(!model.includeMicrophone && model.selectedAppID == nil)
-                        if model.hasRecovery { Button("Retry saved recording") { Task { await model.retry() } } }
-                        Button("History", action: openHistory)
-                    }
-                }
-                if !model.notice.isEmpty { Text(model.notice).font(.callout).textSelection(.enabled) }
-                if let error = model.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).textSelection(.enabled) }
-                Divider()
-                MeetingDetectionSettings(model: model)
-            }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading)
-        }.onAppear { model.refreshApps() }
+                        Text("Audio is kept on this Mac for recovery. Try a short sample before an important call. Calls that stay on your phone cannot be captured here.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }.padding(.top, 12)
+                }.font(.callout)
+            }.padding(Workbench.pagePadding).frame(maxWidth: 960, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }.onAppear { if !model.isBusy { model.refreshApps() } }
+    }
+
+    @ViewBuilder private var transport: some View {
+        if model.isStarting {
+            ProgressView().controlSize(.small)
+            Button("Cancel start") { Task { await model.cancel() } }
+        } else if model.isRecording {
+            Button("Stop & transcribe") { Task { await model.stop() } }.buttonStyle(.borderedProminent)
+            Button("Stop & keep for later") { Task { await model.cancel() } }
+        } else if model.isProcessing {
+            ProgressView().controlSize(.small)
+            Button("Stop processing") { Task { await model.cancel() } }
+        } else {
+            Button { Task { await model.start() } } label: { Label("Start recording", systemImage: "record.circle") }
+                .buttonStyle(.borderedProminent).disabled(!model.includeMicrophone && model.selectedAppID == nil)
+                .accessibilityIdentifier("meeting.start")
+        }
     }
 }
 

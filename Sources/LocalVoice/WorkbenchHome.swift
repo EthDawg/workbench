@@ -33,6 +33,7 @@ struct WorkbenchHome: View {
     /// (`WorkbenchControlTool`), checked by --check-core. The surface gallery renders each route.
     static let navItems: [(id: String, title: String, symbol: String)] = [
         ("home", "Home", "square.grid.2x2"), ("dictate", "Dictate", "mic"),
+        ("meeting", "Meetings", "person.2.wave.2"),
         ("speak", "Read", "speaker.wave.2"), ("snap", "Snap", "viewfinder"), ("readback", "Snap & Talk", "rectangle.dashed.badge.record"), ("annotate", "Draw", "pencil.tip"),
         ("present", "Present", "iphone"), ("personas", "Persona", "person.crop.rectangle"),
         ("history", "History", "clock"), ("library", "Library", "square.stack"), ("settings", "Settings", "slider.horizontal.3")]
@@ -45,7 +46,7 @@ struct WorkbenchHome: View {
     /// Pages reached from another page. A door to one keeps that page highlighted, so the
     /// sidebar is always the way back.
     static let subpages: [(id: String, page: String, title: String)] = [
-        ("dictionary", "dictate", "Your dictionary"), ("meeting", "dictate", "Transcribe meeting or call")]
+        ("dictionary", "dictate", "Your dictionary")]
     /// Home's photo arrival cue opens Library on From iPhone by this route. Nothing else holds
     /// the section, so a later Library door returns to Resources.
     static let photoArrivals = "photos"
@@ -55,7 +56,12 @@ struct WorkbenchHome: View {
     static let pinnedPage = "settings"
     /// What the floating toolbar's one switch does, wherever it appears (#134).
     static let floatingToolbarHelp = "Show between actions. Recording and recovery controls still appear when needed."
-    static let sidebarBreaks: Set<String> = ["home", "personas"]
+    /// Stable, visible groups explain what belongs together without adding a navigation level.
+    static let sidebarGroups: [(title: String, routes: [String])] = [
+        ("Voice", ["dictate", "meeting", "speak"]),
+        ("Screen", ["snap", "readback", "annotate", "present", "personas"]),
+        ("Saved", ["history", "library"])
+    ]
 
     /// Where a route lands: the sidebar page it highlights and, on a page with sections, the
     /// section it shows. Every door resolves here, so a route that was once a page of its own
@@ -112,10 +118,19 @@ struct WorkbenchHome: View {
                 let current = Self.destination(model.page).page
                 ScrollView {
                     VStack(spacing: 2) {
-                        ForEach(Self.navItems.filter { $0.id != Self.pinnedPage }, id: \.id) { item in
-                            navItem(item, current: current)
-                            // Small unnamed breaks after Home and after the tools.
-                            if Self.sidebarBreaks.contains(item.id) { Spacer().frame(height: 10) }
+                        if let home = Self.navItems.first(where: { $0.id == "home" }) { navItem(home, current: current) }
+                        ForEach(Self.sidebarGroups, id: \.title) { group in
+                            if collapsed {
+                                Divider().padding(.horizontal, 8).padding(.vertical, 7)
+                            } else {
+                                Text(group.title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.leading, 12).padding(.top, 14).padding(.bottom, 4)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
+                            ForEach(Self.navItems.filter { group.routes.contains($0.id) }, id: \.id) { item in
+                                navItem(item, current: current)
+                            }
                         }
                     }
                 }
@@ -161,7 +176,8 @@ struct WorkbenchHome: View {
                     do { suggestionReview = try MetadataSuggestionReview(job: job, result: result, jobs: model.handoffJobs, transcripts: model.history) }
                     catch { model.handoffJobs.error = error.localizedDescription }
                 })
-                case "meeting": MeetingWorkspaceView(model: model.meetings, openHistory: { model.openHistory() })
+                case "meeting": MeetingWorkspaceView(model: model.meetings, engineName: model.modelMessage,
+                    openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
                 case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { stage.scenesView }
                 case "personas": stage.personasView
@@ -267,7 +283,6 @@ struct WorkbenchHome: View {
                 }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
             default:
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    Text("Only turn on the access you need. Closing this window leaves the menu-bar tools available; Quit stops Workbench.").foregroundStyle(.secondary)
                     // Saved drawing settings that could not be read or saved, and login, belong to
                     // General: the menu-bar panel's Open Settings… leads to these words (#134).
                     if let notice = stage.notice(on: .general) {
@@ -280,7 +295,6 @@ struct WorkbenchHome: View {
                         WorkbenchAppearancePicker().fixedSize()
                         Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
                             .help(WorkbenchHome.floatingToolbarHelp)
-                        Text(WorkbenchHome.floatingToolbarHelp).font(.caption).foregroundStyle(.secondary)
                     }
                     Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
                         do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
@@ -294,13 +308,13 @@ struct WorkbenchHome: View {
                     Divider()
                     HStack(spacing: 12) {
                         // Opens Dictate on its options and focuses them (#134).
-                        Button("Dictate options…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
+                        Button("Dictate settings…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
                         // Until the first dictation, Home's guide can be asked for here too (#15).
                         if !HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide).hasDictated {
                             Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
                         }
                     }
-                    Text("Delivery, text style, activation, your dictionary and the floating toolbar's position are on the Dictate page.").font(.caption).foregroundStyle(.secondary)
+                    Text("Delivery, text style and your dictionary stay together in Dictate settings.").font(.caption).foregroundStyle(.secondary)
                     Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
                     Divider()
                     FounderIntroductionCard(model: introduction, canDismiss: false)
@@ -452,7 +466,6 @@ struct WorkbenchHomePage: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Home").font(.callout.weight(.medium)).foregroundStyle(.secondary)
                         HomeGreeting(hasPlayed: greetingPlayed)
-                        Text("Speak an idea. Capture a moment. Explain it clearly.").foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 16)
                     Button(action: openProfile) {
@@ -481,7 +494,6 @@ struct WorkbenchHomePage: View {
                     case .fromIPhone: fromIPhone
                     }
                 }
-                if !introduction.isDismissed { FounderIntroductionCard(model: introduction) }
             }.padding(Workbench.pagePadding)
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
                 .background(Workbench.background)
@@ -691,75 +703,40 @@ struct WorkbenchHomePage: View {
 
     // MARK: Quick start
 
-    /// Dictate, Snap and Snap & Talk, each doing only what it says. The guide's
-    /// own Start dictating replaces the Dictate tile while it shows, and a tile whose operation
-    /// is already listed in Current work steps aside.
+    /// Desktop starts open the workspace. The menu bar and toolbar keep instant capture.
+    /// The four destinations stay in place during work; navigation never starts or ends it.
     private var quickStart: some View {
-        let tools = HomeJourney.quickStarts(showsGuide: journey.showsGuide, dictationLive: dictationLive, readingLive: readingLive)
-        return VStack(alignment: .leading, spacing: 8) {
-            // The strongest workflows each have one card. Snap & Talk's same card is the
-            // continuation when a valid session is already loaded, without reopening its files.
-            HStack(alignment: .top, spacing: 12) {
-                ForEach(tools) { tool in
-                    switch tool {
-                    case .dictate:
-                        // Only ever a start: the toggle would stop a recording begun since this was drawn.
-                        card("Dictate", "Turn your voice into text.", actionTitle: "Start dictating", symbol: "mic", disabled: !model.ready || model.phase != .idle || readback.blocksDictation) {
-                            if model.phase == .idle { model.toggleRecording() }
-                        }
-                    case .snapAndTalk:
-                        card("Snap & Talk", hasSession ? (readback.manifest?.title ?? "Your loaded session") : "Build an explanation with screens and narration.",
-                             actionTitle: hasSession ? "Continue · \(readback.activeSections.count) \(readback.activeSections.count == 1 ? "capture" : "captures")" : "Open Snap & Talk",
-                             symbol: WorkbenchHome.symbol(of: "readback"), disabled: false) { model.page = "readback" }
-                    default:
-                        card("Snap", "Keep exactly what matters on screen.", actionTitle: "Capture a region", symbol: "viewfinder", disabled: snap.disablesCaptureDoors) { Task { await snap.capture(.region) } }
-                    }
-                }
-            }.fixedSize(horizontal: false, vertical: true)
-            if tools.contains(.snap) && !snap.screenAccessGranted {
-                Text("Screen Recording is off for Workbench. Snap shows how to allow it, or add an image you already have.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            // Why the Read tile did nothing, beside it (#173): only the tile's own problem, gone as
-            // soon as anything replaces or clears it, and a meeting wait only while the meeting runs.
-            // Read's banner shows every Read problem.
-            HStack(spacing: 7) {
-                Image(systemName: "speaker.wave.2").foregroundStyle(.secondary).accessibilityHidden(true)
-                Button("Read the clipboard aloud") { readClipboard() }.buttonStyle(.link)
-                    .disabled(model.phase != .idle || readingLive).help("Read copied text using your selected voice")
-            }.font(.callout).padding(.top, 3)
-            if let notice = Attention.besideHomeReadTile(model.attention, meetingBusy: meetings.isBusy) {
-                Label(notice, systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            WorkbenchSectionTitle("Start here")
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                workspaceCard("dictate", detail: "Turn your voice into text.")
+                workspaceCard("meeting", detail: "Transcribe a meeting or call.")
+                workspaceCard("snap", detail: "Capture and mark up your screen.")
+                workspaceCard("readback", detail: hasSession ? "Continue · " + (readback.manifest?.title ?? "Your session") : "Explain screens with your voice.")
             }
         }
     }
-    /// The whole card performs the action its bottom line names. Its description remains
-    /// available to VoiceOver even when a long loaded-session title wraps to two lines.
-    private func card(_ title: String, _ detail: String, actionTitle: String, symbol: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: symbol).font(.system(size: 23, weight: .medium)).foregroundStyle(Workbench.accent)
-                    .frame(height: 28).accessibilityHidden(true)
+    private func workspaceCard(_ route: String, detail: String) -> some View {
+        Button { model.page = route } label: {
+            HStack(spacing: 14) {
+                Image(systemName: WorkbenchHome.symbol(of: route))
+                    .font(.system(size: 21, weight: .medium)).foregroundStyle(Workbench.accent)
+                    .frame(width: 44, height: 44)
+                    .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(WorkbenchHome.name(of: route)).font(.system(size: 15, weight: .semibold))
                     Text(detail).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                        .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
-                }
-                HStack(spacing: 5) {
-                    Text(actionTitle).font(.callout.weight(.medium)).lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "arrow.up.right").font(.caption).accessibilityHidden(true)
-                }.foregroundStyle(Workbench.accent)
-            }.padding(17).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .background(Workbench.surface.opacity(0.75), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Workbench.border))
-        }.buttonStyle(WorkbenchNavigationStyle()).disabled(disabled).accessibilityLabel(title + ". " + detail + ". " + actionTitle)
-    }
-    private func readClipboard() {
-        if let text = NSPasteboard.general.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            model.listen(to: text)
-        } else { model.status = "Copy some text first."; model.page = "speak" }
+                        .multilineTextAlignment(.leading)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }.padding(16).frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+                .background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Workbench.border))
+        }.buttonStyle(WorkbenchNavigationStyle())
+            .accessibilityLabel(WorkbenchHome.name(of: route) + ". " + detail)
+            .accessibilityHint("Opens the workspace without starting a capture")
+            .accessibilityIdentifier("home.workspace." + route)
     }
 
     // MARK: Recent work
@@ -772,12 +749,12 @@ struct WorkbenchHomePage: View {
         let entries = recent
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                WorkbenchSectionTitle("Pick up where you left off")
+                WorkbenchSectionTitle("Recent work")
                 Spacer()
                 Button("Open History") { model.openHistory() }.buttonStyle(.link)
             }.padding(.bottom, 4)
             if entries.isEmpty {
-                Text("Your dictations, Snaps and results will appear here.").foregroundStyle(.secondary)
+                Text("Your transcripts, Snaps and results will appear here.").foregroundStyle(.secondary)
             } else {
                 ForEach(entries) { entry in recentRow(entry) }
             }
@@ -912,16 +889,7 @@ struct HomeJourney: Equatable {
         return (hasCurrentWork ? [.currentWork] : []) + (showsGuide ? [.guide] : []) + (result ? [.firstResult] : [])
             + [.quickStart] + (result ? [] : [.recentWork]) + (photos > 0 ? [.fromIPhone] : [])
     }
-    /// Dictate, Snap and Snap & Talk, in that order. The guide's own Start dictating replaces the
-    /// Dictate tile while it shows; a tile whose operation Current work already lists steps aside.
-    static func quickStarts(showsGuide: Bool, dictationLive: Bool, readingLive: Bool) -> [WorkbenchControlTool] {
-        [WorkbenchControlTool.dictate, .snap, .snapAndTalk].filter { tool in
-            switch tool {
-            case .dictate: return !showsGuide && !dictationLive
-            default: return true
-            }
-        }
-    }
+
 }
 
 /// A small thumbnail for Home's Recent work row; the Snap page keeps its own.

@@ -13,8 +13,8 @@ enum WorkbenchPageChecks {
             passed += 1
         }
         let pages = WorkbenchHome.navItems.map(\.id)
-        try check(WorkbenchHome.navItems.map(\.title) == ["Home", "Dictate", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "History", "Library", "Settings"],
-                  "the sidebar is the eleven pages, in order, under their Grammar names")
+        try check(WorkbenchHome.navItems.map(\.title) == ["Home", "Dictate", "Meetings", "Read", "Snap", "Snap & Talk", "Draw", "Present", "Persona", "History", "Library", "Settings"],
+                  "the sidebar includes Meetings beside Dictate under the shared page names")
         try check(Set(pages).count == pages.count, "each sidebar page has its own route")
         for page in pages { try check(WorkbenchHome.destination(page).page == page, "\(page) highlights its own item") }
 
@@ -38,7 +38,7 @@ enum WorkbenchPageChecks {
         for route in ["speak", "annotate", "present", "library"] {
             try check(WorkbenchHome.destination(route).page == route, "\(route) still opens its renamed page")
         }
-        for route in ["dictionary", "meeting"] {
+        for route in ["dictionary"] {
             let landing = WorkbenchHome.destination(route)
             try check(landing.page == "dictate" && landing.section == nil, "\(route) keeps its page with Dictate highlighted")
         }
@@ -64,7 +64,7 @@ enum WorkbenchPageChecks {
                   "a page's own name wins over its first section's")
         try check(WorkbenchHome.name(of: "shortcuts") == "Keyboard" && WorkbenchHome.name(of: "models") == "Models" && WorkbenchHome.name(of: "packs") == "Packs",
                   "sections are named by the record")
-        try check(WorkbenchHome.name(of: "meeting") == "Transcribe meeting or call", "the meeting page keeps its Grammar workflow name")
+        try check(WorkbenchHome.name(of: "meeting") == "Meetings" && WorkbenchHome.destination("meeting").page == "meeting", "meeting doors open a visible Meetings page with its own sidebar item")
         // One identity on all three surfaces (#134 C10): each capability's page in the sidebar, its
         // toolbar mode and its menu-bar panel row carry the same name and symbol, and the mode's
         // page door opens that page. Timer is a panel row and a Present option, never a page.
@@ -91,18 +91,14 @@ enum WorkbenchPageChecks {
             try check(landing.page == route && landing.section == section, "a StageKit notice owned by \(page) opens \(route)\(section.map { " on " + $0 } ?? "")")
         }
         try check(Set(StageNoticePage.allCases.map(\.route)).count == StageNoticePage.allCases.count, "each StageKit owner has its own page or section")
-        // The sidebar (#134 H2): the eleven pages in the record's order, Settings pinned below the
-        // scrolling list, and unnamed breaks after Home and after the tools.
-        let listed = pages.filter { $0 != WorkbenchHome.pinnedPage }
-        try check(pages.last == WorkbenchHome.pinnedPage && WorkbenchHome.pinnedPage == "settings" && listed.count == 10,
-                  "Settings is the last page and is pinned below the ten others")
-        var groups: [[String]] = [[]]
-        for page in listed {
-            groups[groups.count - 1].append(page)
-            if WorkbenchHome.sidebarBreaks.contains(page) { groups.append([]) }
-        }
-        try check(groups == [["home"], ["dictate", "speak", "snap", "readback", "annotate", "present", "personas"], ["history", "library"]],
-                  "the breaks fall after Home and after Persona: \(groups)")
+        // Groups remain shallow: every capability and saved place occurs once, in sidebar order.
+        let listed = pages.filter { $0 != WorkbenchHome.pinnedPage && $0 != "home" }
+        try check(pages.last == WorkbenchHome.pinnedPage && WorkbenchHome.pinnedPage == "settings",
+                  "Settings stays pinned below navigation")
+        try check(WorkbenchHome.sidebarGroups.map(\.title) == ["Voice", "Screen", "Saved"], "the desktop groups explain voice, screen and saved work")
+        let grouped = WorkbenchHome.sidebarGroups.flatMap(\.routes)
+        try check(grouped == listed && Set(grouped).count == grouped.count, "groups cover each workspace once in navigation order")
+        try check(WorkbenchHome.sidebarGroups.first?.routes == ["dictate", "meeting", "speak"], "Meetings is visible next to Dictate and Read")
         // The floating toolbar's one switch reads the same everywhere (#134 H3).
         try check(WorkbenchHome.floatingToolbarHelp == "Show between actions. Recording and recovery controls still appear when needed.",
                   "the switch explains itself in the contract's words")

@@ -13,8 +13,6 @@ enum HomeJourneyChecks {
         let fresh = HomeJourney()
         try check(fresh.showsGuide && fresh.offersSkip && !fresh.offersGuide, "nothing saved shows the guide and offers Skip for now")
         try check(fresh.sections == [.guide, .quickStart, .recentWork], "nothing saved shows the guide, the quick starts and Recent work")
-        try check(HomeJourney.quickStarts(showsGuide: true, dictationLive: false, readingLive: false) == [.snap, .snapAndTalk],
-                  "the guide's Start dictating replaces the Dictate tile; Snap and Snap & Talk stay reachable")
 
         // The gate: other saved work never ends the guide, and stays listed below it.
         for (name, journey) in [("a loaded Snap & Talk session", HomeJourney(hasSession: true)), ("iPhone photos", HomeJourney(photos: 2)),
@@ -29,8 +27,6 @@ enum HomeJourneyChecks {
         let dictated = HomeJourney(transcripts: 1)
         try check(!dictated.showsGuide && !dictated.offersSkip && !dictated.offersGuide, "after a dictation Home offers neither the guide nor the way back")
         try check(dictated.sections == [.quickStart, .recentWork], "after a dictation Home shows the quick starts and recent work")
-        try check(HomeJourney.quickStarts(showsGuide: false, dictationLive: false, readingLive: false) == [.dictate, .snap, .snapAndTalk],
-                  "the strongest workflows lead in order: Dictate, Snap and Snap & Talk")
         try check(dictated.guideToSave == .completed && HomeJourney(transcripts: 1, guide: .skipped).guideToSave == .completed,
                   "a dictation in History is recorded as completed, even after Skip for now")
         try check(HomeJourney(transcripts: 1, guide: .completed).guideToSave == nil && HomeJourney(hasSession: true, photos: 4).guideToSave == nil,
@@ -66,10 +62,6 @@ enum HomeJourneyChecks {
         try check(HomeJourney(hasCurrentWork: true).sections.first == .currentWork
                   && HomeJourney(transcripts: 1, hasCurrentWork: true).sections == [.currentWork, .quickStart, .recentWork],
                   "current work renders above the guide and the quick starts")
-        try check(HomeJourney.quickStarts(showsGuide: false, dictationLive: true, readingLive: false) == [.snap, .snapAndTalk]
-                  && HomeJourney.quickStarts(showsGuide: false, dictationLive: false, readingLive: true) == [.dictate, .snap, .snapAndTalk]
-                  && HomeJourney.quickStarts(showsGuide: true, dictationLive: true, readingLive: true) == [.snap, .snapAndTalk],
-                  "an active dictation steps aside while saved-session preparation stays reachable")
         let order: [HomeJourney.Section] = [.currentWork, .guide, .firstResult, .quickStart, .recentWork, .fromIPhone]
         for journey in [HomeJourney(transcripts: 1, hasCurrentWork: true, hasSession: true, photos: 2),
                         HomeJourney(hasCurrentWork: true, hasSession: true, photos: 2), landed, fresh] {

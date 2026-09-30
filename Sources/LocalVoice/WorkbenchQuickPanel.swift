@@ -213,7 +213,7 @@ struct WorkbenchQuickPanel: View {
                 Divider()
                 // Capture history belongs to Dictate, so its option opens History on Transcripts.
                 Button("History…") { model.openHistory(HistoryDoor(filter: .transcripts)); open("history") }
-                Button("Transcribe meeting or call…") { open("meeting") }
+                Button("Meetings…") { open("meeting") }
                 Button("Open Dictate…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()
                 // A small control draws the 11 pt label the native Options controls use on every

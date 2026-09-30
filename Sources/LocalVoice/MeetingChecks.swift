@@ -487,6 +487,12 @@ enum MeetingChecks {
         try expect(!model.isBusy && capture.finished == 1 && history.count == 1 && recognition == 1,
                    "Stop closes capture then saves through the shared history callback")
         try expect(!model.hasRecovery, "committed controller session is not offered as unfinished")
+        try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID == activeID,
+                   "meeting completion opens its exact committed transcript")
+        await model.start()
+        try expect(model.isRecording && model.completedTranscriptID == nil, "a new recording cannot review a stale completion")
+        await model.cancel()
+        try expect(model.completedTranscriptID == nil && model.hasRecovery, "keeping unfinished audio never advertises a saved transcript")
         await model.prepareForShutdown()
 
         let permissionGate = Gate<Bool>()

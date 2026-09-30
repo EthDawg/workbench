@@ -15,6 +15,8 @@ final class MeetingModel: ObservableObject {
     @Published private(set) var notice = "Choose an app and microphone, then start. Recording is limited to two hours."
     @Published private(set) var error: String?
     @Published private(set) var hasRecovery = false
+    /// Published only after the transcript and its completion journal both commit.
+    @Published private(set) var completedTranscriptID: UUID?
     /// The history writer reads these during saveTranscript; originals stay unchanged.
     @Published private(set) var pendingTranscriptNotes: [String] = []
     @Published var detectionEnabled: Bool {
@@ -119,7 +121,7 @@ final class MeetingModel: ObservableObject {
         guard app != nil || includeMicrophone else { error = "Choose an app, the microphone, or both."; return }
         let token = UUID(); generation = token
         let microphone = includeMicrophone, kind = purpose == "call" ? "call" : "meeting"
-        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []
+        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil
         notice = microphone ? "Waiting for microphone access…" : "Starting app audio… macOS may ask for Audio Recording access."
         phase(starting: true)
         let delay = startupNoticeDelayNanoseconds
@@ -264,7 +266,7 @@ final class MeetingModel: ObservableObject {
         guard !isBusy, !shuttingDown else { return }
         if let issue = mayStart?() { error = issue; return }
         let token = UUID(); generation = token
-        error = nil; pendingTranscriptNotes = []; notice = "Opening the saved recording…"; phase(processing: true)
+        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; notice = "Opening the saved recording…"; phase(processing: true)
         let task = Task { [weak self] in
             guard let self else { return }
             do {
@@ -299,6 +301,7 @@ final class MeetingModel: ObservableObject {
         }, isCurrent: { [weak self] in self?.generation == token })
         let result = try await processor.run()
         pendingTranscriptNotes = result.notes
+        if result.committed { completedTranscriptID = result.manifest.id }
         notice = ([result.committed ? "Saved to History." : "Original audio was kept."] + result.notes).joined(separator: " ")
         elapsed = result.manifest.seconds
     }

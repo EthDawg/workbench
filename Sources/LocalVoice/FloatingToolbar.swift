@@ -357,7 +357,7 @@ struct FloatingToolbar: View {
             case .persona(let title): return ToolbarMenuAction(title) { stage.togglePersona() }
             case .stopTranscribing: return ToolbarMenuAction("Stop transcribing") { Task { await meetings.stop() } }
             case .meetingRecovery:
-                return ToolbarMenuAction("Transcribe meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
+                return ToolbarMenuAction("Meetings…") { model.page = "meeting"; model.onShowEditor?("meeting") }
             case .snapDraft: return ToolbarMenuAction("Open Snap…") { model.onShowEditor?("snap") }
             case .timer(let transport): return ToolbarMenuAction(transport.title + " timer") { stage.performTimerTransport(expected: timerStep) }
             }
