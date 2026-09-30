@@ -22,7 +22,15 @@ CI run [36662608243](https://github.com/EthDawg/workbench/actions/runs/366626082
 
 Follow-up `9d78bad` fixes production interaction readiness. Capture buttons now retain their parent's disabled state until expansion completes; the fading row cannot receive input during collapse. The deterministic native test synchronizes each simulated frame, and a separate test follows the real animation clock through immediate and animated completion for all seven tools at eight anchors. The worker passed 1,680 reveal/collapse cycles and 112 real-clock completions. The integration owner reran all **204 toolbar tests with both native gates enabled: zero skips and zero failures**. Production controls and motion checks also passed with the worker's final fix.
 
-The detailed installed journeys below describe the two identified builds above. The signed install, native build-details readback and final CI result for the subsequent readiness fix are recorded on [PR #229](https://github.com/EthDawg/workbench/pull/229). A local pass alone does not satisfy that CI gate.
+CI run [36669133975](https://github.com/EthDawg/workbench/actions/runs/36669133975) then exposed one accessibility-dependent fixture assumption: it required fading controls even when Reduce Motion removes the closing overlay immediately. The test now reads that system setting, requires zero closing controls under Reduce Motion, and otherwise requires the complete disabled row. Exact revealed-control counts, enabled-state checks and hit targets remain unchanged. The integration rerun passed **204 tests, two gated on-screen skips, zero failures**; both gated tests had already passed with the same production implementation. This correction changes only tests and this receipt. The final CI result is recorded on [PR #229](https://github.com/EthDawg/workbench/pull/229).
+
+### Final installed readiness fix
+
+Signed **Workbench Preview 2.3.1, build 20260930043130**, clean source **9ddb1761e25aeeb5dee9253bf8bf1e26a30da2b6**, includes the production readiness fix. Native Copy build details matched the installed bundle, and deep, strict signature verification passed. The installer retained the existing path and identity and passed its packaged resource, pack and transcript handoff checks.
+
+The final native smoke check revealed the resting toolbar, opened the seven-tool chooser and More, and used Snap's Screen control to open a 1470 × 956 New Snap draft. Cancel saved no capture. Home retained the loaded 39-capture session. The toolbar was returned to the user's current Dictate choice; placement and user-created records were retained. The user deferred the camera retake/use-photo concern from this integration; successful camera capture is not newly certified by this check.
+
+The detailed image and camera journeys below describe the earlier identified builds. Their production implementation is unchanged in the final installed build. A passing local run does not substitute for the final CI result.
 
 ### Installed acceptance
 
@@ -40,7 +48,7 @@ The synthetic saved Snap was archived through the app. Capture and copy drafts w
 
 ### Remaining merge and release gates
 
-PR #229 remains draft for outstanding installed acceptance; final CI must also pass before merge. The native controller returned `windowNotFoundAtPosition` for pointer actions on the floating panel, while pointer actions in the image editor worked. This limits physical hover, drag, reveal/collapse and click-through conclusions. Full VoiceOver traversal, physical display arrangements, successful camera capture and the earlier natural-speech/coexistence audio gap also remain separate from automated checks. The [Mac release gate #7](https://github.com/EthDawg/workbench/issues/7) stays open.
+PR #229 remains draft for physical toolbar acceptance; final CI must also pass before merge. The camera control concern is deferred from this integration. The native controller returned `windowNotFoundAtPosition` for pointer actions on the floating panel, while pointer actions in the image editor worked. This limits physical hover, drag, reveal/collapse and click-through conclusions. Full VoiceOver traversal, physical display arrangements, successful camera capture and the earlier natural-speech/coexistence audio gap also remain separate from automated checks. The [Mac release gate #7](https://github.com/EthDawg/workbench/issues/7) stays open.
 
 Snap text or rotation uses format 2. Prior v1 metadata is retained on first promotion; original and earlier rendered files remain immutable. Older binaries reject v2 records. See [Snap compatibility](../../snap.md#one-image-workspace) before a binary downgrade.
 

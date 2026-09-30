@@ -366,6 +366,7 @@ final class ToolbarNativeTests: XCTestCase {
     }
 
     @MainActor func testControlsRemainClickableAfterGrowingFromRest() throws {
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         for anchor in ToolbarAnchor.allCases {
             for mode in ToolbarMode.allCases {
                 var state = ToolbarViewState(name: "hover-hit", tier: .resting, anchor: anchor, mode: mode,
@@ -419,7 +420,10 @@ final class ToolbarNativeTests: XCTestCase {
                     host.rootView = ToolbarRow(state: state).pinnedToDock(anchor)
                     renderFrame()
                     let closing = buttons(host)
-                    XCTAssertEqual(closing.count, controls.count, "the closing overlay still paints every control")
+                    // SwiftUI's read-only accessibility setting removes the overlay immediately
+                    // under Reduce Motion. Otherwise every fading control remains present but disabled.
+                    XCTAssertEqual(closing.count, reduceMotion ? 0 : controls.count,
+                        "closing controls follow Reduce Motion (\(reduceMotion))")
                     for button in closing {
                         XCTAssertFalse(button.isEnabled,
                             "\(mode), \(anchor), \(button.accessibilityIdentifier()) cannot act while closing")
