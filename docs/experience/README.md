@@ -64,6 +64,6 @@ The desktop worker rechecked all 20 scenarios at 1024, 736 and 320 pixels after 
 
 The pill owner checked its 14 scenarios and documented the limits in its contract. The integration owner independently replayed the portable recovery link, failed retry and Meeting + Timer path through the shared entry. These are browser checks of sample state.
 
-The imported files preserve the final pill source hash in `sourceSHA256`; `sha256` identifies this repository's portable wrapper with its return link. Its source artifact was `workbench-live-pill.html`. The desktop source artifact was `desktop-journeys.html`, SHA-256 `d7a2d1c36bde86a6dac9dd01cb7791d493943827de349a129c04dbf11908d5f6`; its exported wrapper is maintained here as `desktop.html`.
+The pill contract preserves the original imported source hash in `sourceSHA256` and the revised native-aligned fragment in `currentSourceSHA256`; `sha256` identifies the current portable wrapper with its return link. `artifactHistory` retains the earlier wrapper and source hashes. Its source artifact was `workbench-live-pill.html`. The desktop source artifact was `desktop-journeys.html`, SHA-256 `d7a2d1c36bde86a6dac9dd01cb7791d493943827de349a129c04dbf11908d5f6`; its exported wrapper is maintained here as `desktop.html`.
 
 Source renders and the signed candidate package belong in the verification record. An interactive model or passing screenshot does not establish installed acceptance.
