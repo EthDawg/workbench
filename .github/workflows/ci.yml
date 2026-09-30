@@ -28,8 +28,9 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: macos-26
-    # Single PRs take 16 to 18 minutes here; an integration batch runs every new check at once.
-    timeout-minutes: 35
+    # The combined native suite and galleries take about 32 minutes on macos-26.
+    # Allow final packaging to finish; the prior 35-minute limit expired at that step.
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
