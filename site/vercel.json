@@ -3,6 +3,68 @@
   "framework": null,
   "buildCommand": "node --test tests/*.test.mjs && node build.mjs --require-production",
   "outputDirectory": "public",
+  "redirects": [
+    {
+      "source": "/phone-presenting",
+      "destination": "/guide/#phone-share",
+      "permanent": false
+    },
+    {
+      "source": "/phone-presenting/",
+      "destination": "/guide/#phone-share",
+      "permanent": false
+    },
+    {
+      "source": "/personas",
+      "destination": "/guide/#persona",
+      "permanent": false
+    },
+    {
+      "source": "/personas/",
+      "destination": "/guide/#persona",
+      "permanent": false
+    },
+    {
+      "source": "/scenes/ambient",
+      "destination": "/guide/#scenes",
+      "permanent": false
+    },
+    {
+      "source": "/scenes/ambient/",
+      "destination": "/guide/#scenes",
+      "permanent": false
+    },
+    {
+      "source": "/scenes",
+      "destination": "/guide/#scenes",
+      "permanent": false
+    },
+    {
+      "source": "/scenes/",
+      "destination": "/guide/#scenes",
+      "permanent": false
+    },
+    {
+      "source": "/handoff",
+      "destination": "/guide/#scenes",
+      "permanent": false
+    },
+    {
+      "source": "/handoff/",
+      "destination": "/guide/#scenes",
+      "permanent": false
+    },
+    {
+      "source": "/mobile",
+      "destination": "/guide/#mac-only",
+      "permanent": false
+    },
+    {
+      "source": "/mobile/",
+      "destination": "/guide/#mac-only",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/updates/(.*).xml",

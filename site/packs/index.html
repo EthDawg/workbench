@@ -1,3 +1,27 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Open a pack · Workbench</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="./packs.css"></head>
-<body><main><a href="/">Workbench</a><h1>Your team’s tools.<br>Your own workspace.</h1><p id="description">Open a shared pack in Workbench, then connect the GitHub account your team invited. You choose what to add.</p><p><code id="source"></code></p><div class="actions"><a id="open" hidden>Open in Workbench</a><a href="/">Get Workbench</a></div><p id="problem" role="status"></p><p>Requires Workbench 2.2 or later. Pack updates improve shared starters; your existing sessions and personal copies keep their content.</p></main><script type="module" src="./open.mjs"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer">
+  <title>Open a team pack · Workbench</title>
+  <meta name="description" content="Add your team's shared Workbench pack: the same scenes, personas and deck templates for everyone.">
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="/assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="/packs/packs.css">
+  <script type="module" src="/site.mjs"></script>
+  <script type="module" src="/packs/open.mjs"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<!-- menubar -->
+<main id="main" class="wrap pack-page">
+  <p class="eyebrow">Team pack</p>
+  <h1 class="page-title">Your team’s kit, in your Workbench.</h1>
+  <p class="page-lede" id="description">Open this pack in Workbench, then connect the GitHub account your team invited. You choose what to add, and anything you change stays yours.</p>
+  <p class="pack-source"><code id="source"></code></p>
+  <div class="cta"><a class="btn dl" id="open" hidden>Open in Workbench</a><a class="btn ghost" href="/#download">Get Workbench first</a></div>
+  <p id="problem" role="status"></p>
+  <p class="fine">Needs Workbench 2.2 or later. Pack updates improve the shared starters; your existing sessions and personal copies keep their content.</p>
+</main>
+<!-- footer -->
+</body>
+</html>

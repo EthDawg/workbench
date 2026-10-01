@@ -3,52 +3,86 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Help shape Workbench</title>
-  <meta name="description" content="Try a real Workbench workflow, report what you noticed, or hand a scoped contribution to your coding agent.">
-  <meta name="theme-color" content="#142b31">
+  <meta name="description" content="Tell us what you noticed in Workbench, hand a fix to your coding agent, or look under the hood.">
   <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="preload" href="/assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="/contribute/contribute.css">
+  <script type="module" src="/site.mjs"></script>
   <script type="module" src="/app.mjs"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="header wrap">
-  <a class="brand" href="/" aria-label="Workbench home"><img src="/assets/icon.svg" width="32" height="32" alt="">Workbench<span class="beta">CONTRIBUTE</span></a>
-  <nav aria-label="Main navigation"><a href="/#download">Download</a><a href="/guide/">Guide</a><a href="https://github.com/EthDawg/workbench">GitHub ↗</a></nav>
-</header>
-<main id="main">
-  <section class="hero wrap">
-    <div><p class="eyebrow">FREE, OPEN SOURCE, MIT LICENSED</p><h1>Help shape Workbench.<br><span>Start with what you noticed.</span></h1><p class="lede">Try one real workflow for ten minutes, write down what you expected, and send it to GitHub when you are ready. No code needed.</p><p class="fine">Using {{RELEASE_NAME}} {{RELEASE_VERSION}} · <a href="{{RELEASE_URL}}">Release notes ↗</a></p></div>
-  </section>
-  <section class="wrap trial-section" id="try" aria-labelledby="try-title">
-    <div class="section-top"><div><p class="eyebrow">01 / USE IT BEFORE YOU FIX IT</p><h2 id="try-title">Ten minutes. One honest observation.</h2></div><p>Use a blank note or a made-up demo.<br>Notice what you expected to happen.</p></div>
-    <div class="trial-tabs" role="tablist" aria-label="Choose a workflow to try"><button id="tab-voice" role="tab" aria-selected="true" aria-controls="trial-voice" data-app="voice">Speak and listen <span>5 min</span></button><button id="tab-stagemark" role="tab" aria-selected="false" aria-controls="trial-stagemark" data-app="stagemark" tabindex="-1">Explain and present <span>5 min</span></button></div>
-    <div id="trial-voice" class="trial-panel" role="tabpanel" aria-labelledby="tab-voice" tabindex="0">
-      <div class="trial-context"><span class="large-number">01</span><h3>Turn a thought<br>into a useful note.</h3><p>Keep this page beside the installed app. The checks below track your trial; they do not control your microphone.</p><a href="#feedback" data-feedback-app="voice">Record a speech observation →</a></div>
-      <div class="trial-steps"><label><input type="checkbox"><span><strong>Capture without preparing a perfect sentence.</strong><span>Open a blank TextEdit document. Dictate: “Bring the blue notebook tomorrow. Actually, bring the green one.” Stop and read what came back. Was the result faithful?</span></span></label><label><input type="checkbox"><span><strong>Recover and reuse the original.</strong><span>Open History, choose a capture, then Original. Compare it with the cleaned text. Copy the capture into TextEdit. Could you find each action without hunting?</span></span></label><label><input type="checkbox"><span><strong>Try the handoff.</strong><span>If you want automatic paste, enable it and grant Accessibility. Start from your blank TextEdit field using the shortcut shown in Settings → Keyboard. If delivery falls back to copying, is the explanation clear?</span></span></label><label><input type="checkbox"><span><strong>Listen to what you wrote.</strong><span>Use Read aloud, then pause and resume. What interrupted your flow? Record one observation below—even if everything worked.</span></span></label></div>
-    </div>
-    <div id="trial-stagemark" class="trial-panel" role="tabpanel" aria-labelledby="tab-stagemark" tabindex="0">
-      <div class="trial-context"><span class="large-number">02</span><h3>Explain something.<br>Keep your flow.</h3><p>Open a blank slide or a harmless demo. Try Workbench’s Draw tools, then return here with one thing you noticed.</p><a href="#feedback" data-feedback-app="stagemark">Record a presentation observation →</a></div>
-      <div class="trial-steps"><label><input type="checkbox"><span><strong>Point out one thing.</strong><span>Choose Draw on screen and draw a circle. Press Escape to return to the underlying app. Try Undo, then Clear. Did entering and leaving drawing feel predictable?</span></span></label><label><input type="checkbox"><span><strong>Keep a thought on a board.</strong><span>Open Whiteboard, draw a simple diagram, then press Escape. Reopen Whiteboard. Is your drawing there? Was it clear that Escape hides rather than deletes?</span></span></label><label><input type="checkbox"><span><strong>Run a short break.</strong><span>Open the timer, start it, pause, close its window and reopen it. Are the state and remaining time easy to understand?</span></span></label><label><input type="checkbox"><span><strong>Check the audience’s view, if you can.</strong><span>Share your entire display with a second device or person. Ask what they can see. If you cannot test this, leave it unchecked—local visibility is not audience verification.</span></span></label></div>
-    </div>
-    <p class="trial-progress" id="trial-progress" role="status" aria-live="polite">Your trial progress stays on this page only.</p>
-  </section>
-  <section class="feedback-section" id="feedback"><div class="wrap feedback-grid">
-    <div class="section-intro"><p class="eyebrow">02 / TELL US WHAT YOU NOTICED</p><h2>“I expected…”<br>is a contribution.</h2><p>You do not need to diagnose the code. Describe the moment, what you expected, and what actually happened.</p><p class="fine">Drafted only in this page’s memory. Copy it before closing. Nothing is submitted automatically. Opening GitHub sends the draft there for your review; posting requires a GitHub account.</p><a href="https://github.com/EthDawg/workbench/blob/{{RELEASE_TAG}}/CONTRIBUTING.md">Read the contributor guide →</a></div>
-    <form id="feedback-form">
-      <div class="field-row"><label>Area<select id="feedback-app" name="app"><option value="voice">Speech</option><option value="stagemark">Annotation and presentation</option></select></label><label>Build details<textarea id="version" name="version" placeholder="In Workbench, choose Copy build details, then paste here." maxlength="1200" required></textarea></label></div>
-      <label>Your Mac and macOS version<input name="environment" placeholder="e.g. MacBook Air M2, macOS 26.5.1" maxlength="160" required></label>
-      <label>What were you trying to do?<input name="task" placeholder="e.g. copy an earlier dictation into a note" maxlength="200" required></label>
-      <label>What did you expect?<textarea name="expected" rows="2" maxlength="1000" required></textarea></label>
-      <label>What happened instead—or what worked well?<textarea name="observed" rows="3" maxlength="1500" required></textarea></label>
-      <div class="field-row"><label>Impact<select name="impact"><option>Small friction</option><option>Blocked the task</option><option>Lost or changed content</option><option>Worked well</option></select></label><label>What next?<select name="help"><option>I can test a fix</option><option>I would like to contribute</option><option>I am sharing feedback</option></select></label></div>
-      <p class="fine">Use made-up examples. Remove private text, audio, file paths and screen contents. For a security problem, use the app’s private reporting link on GitHub instead.</p>
-      <div class="card-actions"><button type="submit" class="button primary">Preview my report →</button></div>
-      <div id="report-result" hidden><h3 tabindex="-1" id="report-title">Your report is ready to review</h3><pre id="report-preview"></pre><div class="report-actions"><a id="github-report" class="button primary" rel="noreferrer" target="_blank">Review on GitHub ↗</a><button type="button" class="button secondary" id="copy-report">Copy report</button><button type="button" class="button secondary" id="copy-feedback-agent">Copy for my agent</button></div><p class="fine">Review on GitHub opens a prefilled issue. You still choose whether to submit it.</p></div>
-      <p id="copy-status" role="status" aria-live="polite"></p>
-    </form>
-  </div></section>
-  <section class="wrap contribute-section" id="contribute"><div><p class="eyebrow">03 / MAKE A SMALL THING BETTER</p><h2>Bring your curiosity.<br>Or your coding agent.</h2><p>Start with something you actually noticed. A clear bug report, a better instruction or a small interface improvement all count.</p><div class="card-actions"><button class="button primary" id="copy-agent" type="button">Copy agent handoff</button><a href="https://github.com/EthDawg/workbench/blob/{{RELEASE_TAG}}/CONTRIBUTING.md">Read the contributor guide →</a></div><p id="agent-status" role="status" aria-live="polite"></p><noscript><p>JavaScript is needed for the interactive trial and report builder. Downloads and guides still work. To hand off to an agent, share the contributor guide above and ask it to read CONTRIBUTING.md, choose a scoped issue, verify the native workflow, and open a tested PR.</p></noscript></div><div class="contribution-links"><a href="https://github.com/EthDawg/workbench/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><span><strong>Workbench starter issues</strong><small>Setup, accessibility and everyday dictation</small></span><span aria-hidden="true">↗</span></a><a href="https://github.com/EthDawg/workbench/blob/main/docs/updating.md"><span><strong>Test a change in Workbench Preview</strong><small>A separate edition for contributors</small></span><span aria-hidden="true">↗</span></a><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}/site"><span><strong>Improve this website</strong><small>App and website share one source repository</small></span><span aria-hidden="true">↗</span></a></div></section>
+<!-- menubar -->
+<main id="main" class="wrap">
+  <header class="page-head">
+    <p class="eyebrow">Help shape Workbench</p>
+    <h1 class="page-title">Like it? Make it better.</h1>
+    <p class="page-lede">Workbench is free and open source, made by Ethan and Matt. If it has earned a place on your Mac, here are three easy ways to help. No code needed for the first one.</p>
+    <ul class="jump"><li><a href="#feedback">Tell us what you noticed</a></li><li><a href="#agent">Hand it to your agent</a></li><li><a href="#code">Look under the hood</a></li></ul>
+  </header>
+
+  <div class="doc">
+    <section class="topic" id="feedback" aria-labelledby="feedback-title">
+      <div>
+        <p class="tool-name">Feedback</p>
+        <h2 id="feedback-title">Tell us what you noticed.</h2>
+        <p class="lead">“I expected…” is enough. Describe the moment, what you expected and what happened. You don’t need to know why.</p>
+        <p class="note">Your draft stays on this page until you copy it or open GitHub. Nothing is sent for you. Posting needs a GitHub account and is public, so use made-up examples.</p>
+      </div>
+      <form id="feedback-form">
+        <div class="field-row">
+          <label>Area<select id="feedback-app" name="app"><option value="voice">Speech tools</option><option value="stagemark">Screen tools</option></select></label>
+          <label>Your Mac and macOS<input name="environment" placeholder="MacBook Air M2, macOS 26.5" maxlength="160" required></label>
+        </div>
+        <label>Build details<textarea id="version" name="version" rows="2" placeholder="In Workbench, choose Copy build details, then paste here." maxlength="1200" required></textarea></label>
+        <label>What were you trying to do?<input name="task" placeholder="Copy an earlier dictation into a note" maxlength="200" required></label>
+        <label>What did you expect?<textarea name="expected" rows="2" maxlength="1000" required></textarea></label>
+        <label>What happened instead, or what worked well?<textarea name="observed" rows="3" maxlength="1500" required></textarea></label>
+        <div class="field-row">
+          <label>Impact<select name="impact"><option>Small friction</option><option>Blocked the task</option><option>Lost or changed content</option><option>Worked well</option></select></label>
+          <label>What next?<select name="help"><option>I can test a fix</option><option>I would like to contribute</option><option>I am sharing feedback</option></select></label>
+        </div>
+        <button type="submit" class="btn dl">Preview my report</button>
+        <div id="report-result" hidden>
+          <h3 tabindex="-1" id="report-title">Your report is ready to review</h3>
+          <pre id="report-preview"></pre>
+          <div class="report-actions"><a id="github-report" class="btn dl" rel="noreferrer" target="_blank">Review on GitHub ↗</a><button type="button" class="btn line" id="copy-report">Copy report</button><button type="button" class="btn line" id="copy-feedback-agent">Copy for my agent</button></div>
+          <p class="fine">Review on GitHub opens a prefilled issue. You still choose whether to post it.</p>
+        </div>
+        <p id="copy-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="topic" id="agent" aria-labelledby="agent-title">
+      <div>
+        <p class="tool-name">Coding agents</p>
+        <h2 id="agent-title">Hand it to your agent.</h2>
+        <p class="lead">Copy one message into Claude Code, Codex or your own agent. It points at this release’s source, the contributor guide and the product rules, and asks for a small, tested change.</p>
+      </div>
+      <div>
+        <button class="btn dl" id="copy-agent" type="button">Copy agent handoff</button>
+        <p id="agent-status" role="status" aria-live="polite"></p>
+        <noscript><p>Ask your agent to read CONTRIBUTING.md in the Workbench repository, choose a scoped issue, check it in the real app and open a tested pull request.</p></noscript>
+      </div>
+    </section>
+
+    <section class="topic" id="code" aria-labelledby="code-title">
+      <div>
+        <p class="tool-name">Source</p>
+        <h2 id="code-title">Look under the hood.</h2>
+        <p class="lead">Everything is MIT licensed and lives in one repository: the app, this website and the release records.</p>
+      </div>
+      <ul class="links">
+        <li><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}"><b>Source for {{RELEASE_NAME}} {{RELEASE_VERSION}}</b><span>The code behind the download</span></a></li>
+        <li><a href="https://github.com/EthDawg/workbench/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><b>Starter issues</b><span>Small, well-scoped places to begin</span></a></li>
+        <li><a href="https://github.com/EthDawg/workbench/blob/{{RELEASE_TAG}}/CONTRIBUTING.md"><b>Contributor guide</b><span>How changes are made, checked and shipped</span></a></li>
+        <li><a href="/handbook/"><b>Product handbook</b><span>How each tool should behave, with its evidence</span></a></li>
+        <li><a href="https://github.com/EthDawg/workbench/blob/main/docs/updating.md"><b>Workbench Preview</b><span>The separate test edition for trying changes early</span></a></li>
+        <li><a href="https://github.com/EthDawg/workbench/security/advisories/new"><b>Report a security problem</b><span>Privately, not in a public issue</span></a></li>
+      </ul>
+    </section>
+  </div>
 </main>
-<footer class="wrap"><a class="brand" href="/">Workbench</a><span>Made to be useful. Open to contribution.</span><div><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}">Workbench source</a><a href="https://github.com/EthDawg/workbench/blob/main/LICENSE">MIT licence</a><a href="/privacy.html">Privacy</a></div></footer>
+<!-- footer -->
 </body>
 </html>

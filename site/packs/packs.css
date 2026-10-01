@@ -1,1 +1,9 @@
-main{max-width:680px;margin:12vh auto;padding:28px}h1{font-size:3rem;line-height:1.05}p{line-height:1.6}.actions{display:flex;gap:16px;flex-wrap:wrap;margin:28px 0}.actions a{padding:12px 20px;border:1px solid currentColor;border-radius:10px}code{overflow-wrap:anywhere}#problem{color:#a34824}
+/* The pack opener: one message, one button. */
+.pack-page{max-width:760px;padding-block:clamp(64px,12vh,140px) clamp(56px,8vh,96px)}
+.pack-source{margin:22px 0 0}
+.pack-source code:empty{display:none}
+.pack-page .cta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;margin-top:26px}
+.pack-page .btn.dl{background:var(--ink);color:var(--bg)}
+.pack-page .btn.ghost{color:var(--ink);padding:14px 6px;font-size:16px}
+#problem{color:#b5502b;margin:16px 0 0}
+#problem:empty{display:none}

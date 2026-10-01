@@ -1,43 +1,11 @@
-import { apps, createReport, agentHandoff } from './report.mjs';
-const tabs = [...document.querySelectorAll('[role="tab"]')];
-let activeApp = 'voice';
+import { createReport, agentHandoff } from './report.mjs';
 let report;
-function setApp(app, focusTab = false) {
-  activeApp = app;
-  tabs.forEach(tab => {
-    const selected = tab.dataset.app === app;
-    tab.setAttribute('aria-selected', String(selected));
-    tab.tabIndex = selected ? 0 : -1;
-    document.getElementById(tab.getAttribute('aria-controls')).hidden = !selected;
-    if (selected && focusTab) tab.focus();
-  });
-  updateProgress();
-}
-function updateProgress() {
-  const checks = [...document.querySelectorAll(`#trial-${activeApp} input[type="checkbox"]`)];
-  const count = checks.filter(input => input.checked).length;
-  document.getElementById('trial-progress').textContent = `${apps[activeApp].name}: ${count} of ${checks.length} tried. Your progress stays on this page only.`;
-}
-tabs.forEach((tab, index) => {
-  tab.addEventListener('click', () => setApp(tab.dataset.app));
-  tab.addEventListener('keydown', event => {
-    let next;
-    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-    if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = tabs.length - 1;
-    if (next !== undefined) { event.preventDefault(); setApp(tabs[next].dataset.app, true); }
-  });
-});
-document.querySelectorAll('.trial-steps input').forEach(input => input.addEventListener('change', updateProgress));
-setApp('voice');
 const form = document.getElementById('feedback-form');
 const result = document.getElementById('report-result');
 const appSelect = document.getElementById('feedback-app');
 function invalidateReport() { result.hidden = true; report = undefined; document.getElementById('copy-status').textContent = ''; }
 function selectFeedback(app) { appSelect.value = app; invalidateReport(); }
 appSelect.addEventListener('change', () => selectFeedback(appSelect.value));
-document.querySelectorAll('[data-feedback-app]').forEach(link => link.addEventListener('click', () => selectFeedback(link.dataset.feedbackApp)));
 form.addEventListener('input', invalidateReport);
 form.addEventListener('change', invalidateReport);
 form.addEventListener('submit', event => {
@@ -71,11 +39,3 @@ async function copy(text, statusId) {
 document.getElementById('copy-report').addEventListener('click', () => { if (report) copy(report.body, 'copy-status'); });
 document.getElementById('copy-feedback-agent').addEventListener('click', () => { if (report) copy(agentHandoff(report), 'copy-status'); });
 document.getElementById('copy-agent').addEventListener('click', () => copy(agentHandoff(), 'agent-status'));
-// Open linked help before scrolling, including a direct link or browser Back.
-function revealDetails(hash) {
-  const target = document.getElementById(hash.slice(1));
-  if (target instanceof HTMLDetailsElement) target.open = true;
-}
-document.querySelectorAll('a[href^="#"]').forEach(link => link.addEventListener('click', () => revealDetails(link.hash)));
-window.addEventListener('hashchange', () => revealDetails(location.hash));
-revealDetails(location.hash);
