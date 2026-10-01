@@ -191,7 +191,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
         // Words waiting for drawing to end: stopping drawing is what delivers them, and the Dictate chooser row has
         // Copy now (#211 F5). Drawing that has already ended is a moment's processing.
         case .waitingForDrawing where live.drawing: return .finishDrawing
-        case .processing, .cancelling, .waitingForDrawing: return .wait
+        // Processing consumes nothing: only Dictate waits on it. Another tool keeps its own
+        // action, and the chooser's Dictate row keeps the dictation's commands.
+        case .processing, .cancelling, .waitingForDrawing:
+            if live.mode == .dictate { return .wait }
         case .idle: break
         }
         if live.capturingScreen { return .wait }
@@ -200,8 +203,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
         switch live.reading {
         case .preparing: return .cancelReading
         case .playing: return .pauseReading
-        case .paused: return .resumeReading
-        case .idle: break
+        // A paused reading consumes nothing and has no timeout: it leads only in Read, so it
+        // never hides another tool's start, such as Snap's sources. The chooser's Read row resumes it.
+        case .paused where live.mode == .read: return .resumeReading
+        case .paused, .idle: break
         }
         // From here the label belongs to the selected mode alone.
         switch live.mode {

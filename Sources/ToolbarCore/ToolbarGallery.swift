@@ -149,7 +149,7 @@ public enum ToolbarGallery {
              activity: ToolbarActivity(capture: .narration, level: 0.4, live: [.snapAndTalk])),
         live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing"),
         live(ToolbarLiveState(mode: .read, reading: .playing), name: "reading-playing-resting", tier: .resting),
-        live(ToolbarLiveState(mode: .dictate, reading: .paused), name: "reading-paused-in-dictate")
+        live(ToolbarLiveState(mode: .read, reading: .paused), name: "reading-paused")
     ]
 
     /// A result waiting for the person, revealed from the keyboard (#211 F1): the launcher row, not

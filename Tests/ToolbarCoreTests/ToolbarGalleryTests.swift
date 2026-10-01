@@ -131,7 +131,7 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(state("recording-processing")?.isActionEnabled, false)
         XCTAssertEqual(state("recording-narration")?.actionTitle, "Stop narration")
         XCTAssertEqual(state("reading-playing")?.actionTitle, "Pause reading")
-        XCTAssertEqual(state("reading-paused-in-dictate")?.actionTitle, "Resume reading")
+        XCTAssertEqual(state("reading-paused")?.actionTitle, "Resume reading")
         XCTAssertEqual(state("recording-dictation-stops-soon")?.status.stopsSoonBadge, true)
         XCTAssertEqual(state("recording-dictation-stops-soon-attention")?.status.badges, [.stopsSoon, .attention], "both badges, in the launcher too")
         XCTAssertEqual(state("recording-waiting-for-drawing")?.actionTitle, "Stop drawing", "words waiting for drawing (#211 F5)")

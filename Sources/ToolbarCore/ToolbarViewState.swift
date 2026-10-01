@@ -145,7 +145,7 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     public var symbol: String {
         switch self {
         case .review: return "rectangle.stack"
-        case .tools: return "pencil.tip.crop.circle"
+        case .tools: return "paintpalette"
         case .prompts: return "text.bubble"
         case .personaPicker: return "person.crop.rectangle.stack"
         }
