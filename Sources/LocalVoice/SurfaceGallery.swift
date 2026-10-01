@@ -2958,8 +2958,13 @@ enum SurfaceGallery {
         chooser.openTool = { self.model.onShowEditor?($0.page) }
         let before = routes.count
         chooser.openTool(.persona)
+        // Nothing is live, but the camera is always one of Persona's choices, so the revealed pill
+        // offers the picker; its last choice is Camera (Ethan, 1 October).
+        let personaChoices = plain.accessoryMenu(plain.accessory(plain.live)).items.map(\.title)
         expect("Persona with no live copy", [
-            plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to change",
+            plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so the camera is not one click away",
+            personaChoices.last == "Camera" ? nil : "The Persona picker lists \(personaChoices), not the cards and then Camera",
+            plain.accessoryDescription(plain.live) == "Choose Persona" ? nil : "The picker reads \(plain.accessoryDescription(plain.live) ?? "nothing")",
             Array(routes.dropFirst(before)) == ["personas"] ? nil : "The chooser's Open Persona route failed"])
         routes.removeAll()
         model.toolbarMode = .snapAndTalk

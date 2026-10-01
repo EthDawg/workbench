@@ -787,4 +787,53 @@ final class PersonaCameraTests {
             XCTAssertTrue(library.shownCard == nil && !library.overlayVisible)
         }
     }
+
+    /// The camera is one of Persona's choices in the revealed pill: the picker
+    /// lists the cards, then Camera. Choosing Camera is the explicit start and the
+    /// shown card stays up until the first frame; choosing the card again ends the
+    /// camera and brings back that exact card. A picker left open across a change
+    /// does nothing.
+    func testThePillPickerOffersTheCameraBesideTheCards() {
+        MainActor.assumeIsolated {
+            let f = Fixture(withArtwork: true); defer { f.cleanup() }
+            XCTAssertEqual(f.library.toolbarPicker, .init(title: "", isSet: false), "Nothing live: the picker still offers a choice")
+            var menu = f.library.makeToolbarPickerMenu()
+            XCTAssertEqual(menu.items.map(\.title), ["Site lead", "", "Camera"], "The saved card, then the camera")
+            XCTAssertEqual(f.permissionRequests.count, 0, "Opening the picker asks for nothing")
+            invoke(menu, "Site lead")
+            XCTAssertTrue(f.library.artworkVisible && f.library.toolbarPicker?.title == "Site lead", "Choosing a card shows it")
+            let card = f.library.shownCard?.copyID
+
+            menu = f.library.makeToolbarPickerMenu()
+            XCTAssertEqual(menu.items.first { $0.title == "Site lead" }?.state, .on)
+            invoke(menu, "Camera")
+            XCTAssertEqual(f.camera.state, .permission, "Camera is the explicit start")
+            XCTAssertEqual(f.permissionRequests.count, 1)
+            XCTAssertTrue(f.library.artworkVisible, "The card stays up until the camera's first frame")
+            f.permissionRequests.last?(.authorized)
+            f.capture.starts.last?.1(.frame)
+            XCTAssertEqual(f.camera.state, .live)
+            XCTAssertTrue(f.library.hasHiddenCard && !f.library.artworkVisible && f.library.toolbarPicker?.title == "Camera")
+
+            menu = f.library.makeToolbarPickerMenu()
+            XCTAssertEqual(menu.items.first { $0.title == "Camera" }?.state, .on)
+            XCTAssertEqual(menu.items.first { $0.title == "Site lead" }?.state, .off)
+            invoke(menu, "Camera")
+            XCTAssertEqual(f.capture.starts.count, 1, "Choosing the live camera again opens nothing")
+
+            // A picker drawn while the camera was live does nothing once it is hidden.
+            let stale = f.library.makeToolbarPickerMenu()
+            f.library.hideCamera()
+            invoke(stale, "Site lead")
+            XCTAssertEqual(f.camera.state, .hidden(.chosen), "A stale choice changes nothing")
+            XCTAssertFalse(f.library.artworkVisible)
+            invoke(stale, "Camera")
+            XCTAssertEqual(f.capture.starts.count, 1, "A stale Camera never becomes a start")
+
+            invoke(f.library.makeToolbarPickerMenu(), "Site lead")
+            XCTAssertTrue(f.library.artworkVisible && f.library.shownCard?.copyID == card, "The same card comes back")
+            XCTAssertEqual(f.camera.state, .off, "Choosing the card ends the camera")
+            XCTAssertEqual(f.library.liveSource, .artwork)
+        }
+    }
 }

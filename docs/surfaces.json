@@ -2558,6 +2558,14 @@
     "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.camera",
+    "surface": "floating toolbar Persona picker",
+    "label": "Camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona (Ethan, 1 Oct 2026: the camera is effectively its own persona and must be quick from the revealed pill). The pill's Persona picker lists the cards and then Camera; choosing it is the explicit Start camera, the shown card stays up until the first frame, and choosing a card ends a live camera. Each choice revalidates the live state it was drawn for."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.cancel-starting-camera",
     "surface": "Persona camera menu",
     "label": "Cancel starting camera",

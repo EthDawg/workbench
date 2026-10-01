@@ -224,12 +224,17 @@ explicit persistent preference.
 Draw has Tools; Present has Prompts, plus View while a presentation is live. View
 contains only the current presentation’s applicable source, motion and window
 controls. End stays the primary/chooser action, and Apple handoffs stay in the
-connection guide. Persona has Choose Persona for a shown card, or Choose Set for
-a running prepared set, plus Next Persona or Next set when more than one frozen
-choice exists. Next advances once without opening a menu. The picker uses frozen
-public labels. Hidden Persona has Show again and no picker/Next; one-item sets
-have no inert Next. Failure preserves the shown artwork and exposes its notice
-through the chooser and picker. Dictate, Read and Snap have no settings accessory.
+connection guide. Persona always has Choose Persona, because the live camera is
+one of its sources beside the saved cards (1 October): the picker lists the cards
+(the shown or kept card's frozen candidates, or the saved cards when nothing is
+live) and then Camera. Choosing Camera is the explicit Start camera and the shown
+card stays up until the first frame; choosing a card ends a live camera and shows
+that card. Restricted camera access leaves Camera disabled. A running prepared set
+has Choose Set instead. Next Persona or Next set appears when more than one frozen
+choice exists and advances once without opening a menu; it never cycles into the
+camera. The picker uses frozen public labels and every choice checks again that
+Persona is as it was drawn. One-item sets have no inert Next. Failure preserves the
+shown artwork and exposes its notice through the chooser and picker. Dictate, Read and Snap have no settings accessory.
 Review and Next act directly; Tools, Prompts, View and Persona selection open their
 focused menus/picker. Space, Return, Enter or Down open admitted menus. The full
 contextual group hides together when it cannot fit; the chooser’s workspace door

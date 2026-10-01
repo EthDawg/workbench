@@ -217,14 +217,16 @@ public final class StageKitController: ObservableObject {
     public func stepPersona(expected: PersonaCycle, offset: Int = 1) {
         coordinator.demoScenes.personas.stepToolbarPersona(expected: expected, offset: offset)
     }
-    public func makePersonaPickerMenu() -> NSMenu {
-        let source = makePersonaMenu()
-        let title = personaCycle?.isSet == true ? "Choose Set" : "Choose Persona"
-        guard let item = source.items.first(where: { $0.title == title }), let menu = item.submenu else { return NSMenu() }
-        item.submenu = nil
-        if let notice = personaCycleNotice { menu.insertItem(StageMenuAction(notice, enabled: false) {}, at: 0) }
-        return menu
+    /// The pill's one Persona picker: a prepared set's current set, or the shown
+    /// card, the camera or nothing yet among Persona's choices.
+    public struct PersonaPicker: Equatable {
+        /// The current choice's public name; empty while nothing is live.
+        public let title: String
+        public let isSet: Bool
     }
+    public var personaPicker: PersonaPicker? { coordinator.demoScenes.personas.toolbarPicker }
+    /// The cards Persona can show now, then Camera; a prepared set's sets.
+    public func makePersonaPickerMenu() -> NSMenu { coordinator.demoScenes.personas.makeToolbarPickerMenu() }
     /// One live persona copy, named exactly: the one floating card, or one copy of
     /// a prepared set. Capture it when a control is drawn, so a later choice
     /// changes that copy and never another (#169, #134).

@@ -1495,6 +1495,81 @@ final class PersonaLibrary: NSObject, ObservableObject {
         else { stepQuickPersona(offset) }
     }
 
+    // MARK: The pill's Persona picker
+
+    /// What the pill's one Persona picker names as current. A prepared set keeps
+    /// its Choose set; otherwise Persona always has a choice, because the live
+    /// camera is one of its sources beside the saved cards. An empty title means
+    /// nothing is live yet.
+    var toolbarPicker: StageKitController.PersonaPicker? {
+        if sessionState.phase != .idle { return toolbarCycle.map { .init(title: $0.title, isSet: true) } }
+        if cameraOwnsSlot { return .init(title: "Camera", isSet: false) }
+        if shownCard != nil { return .init(title: displayedLabel.flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona", isSet: false) }
+        return .init(title: "", isSet: false)
+    }
+    /// The picker's choices: the cards Persona can show now, then Camera. Choosing
+    /// is the explicit start or switch: a card ends a live camera and shows that
+    /// card; Camera opens the camera while the shown card stays up until its first
+    /// frame. Every item checks again that Persona is as it was drawn, so a menu
+    /// left open across a change does nothing rather than start something else.
+    func makeToolbarPickerMenu() -> NSMenu {
+        let menu = NSMenu(title: "Choose Persona"); menu.autoenablesItems = false
+        if sessionState.phase != .idle {
+            // A prepared set chooses among its sets, as its own live menu does.
+            let state = sessionState, generation = overlayGeneration
+            if let feedback = state.feedback { menu.addItem(StageMenuAction(feedback, enabled: false) {}) }
+            for group in state.groups {
+                menu.addItem(StageMenuAction(group.label, checked: group.id == state.currentGroupID) { [weak self] in
+                    guard let self, self.overlayGeneration == generation, self.sessionState.currentGroupID == state.currentGroupID else { return }
+                    self.performOverlayAction(.selectGroup(group.id))
+                })
+            }
+            return menu
+        }
+        if let notice = cameraOwnsSlot ? camera.failure?.message : cardFeedback {
+            menu.addItem(StageMenuAction(notice, enabled: false) {})
+        }
+        let generation = overlayGeneration, visit = camera.visit, source = liveSource, cameraState = camera.state
+        let drawnCard = shownCard?.copyID, showing = artworkVisible
+        func unchanged(_ library: PersonaLibrary) -> Bool {
+            library.overlayGeneration == generation && library.camera.visit == visit && library.liveSource == source
+                && library.camera.state == cameraState && library.shownCard?.copyID == drawnCard && library.artworkVisible == showing
+        }
+        if shownCard != nil {
+            // The frozen candidates behind the shown or kept card, as Choose Persona offers them.
+            let current = displayedID
+            let ids = liveSelection?.candidateIDs ?? current.map { [$0] } ?? []
+            for (index, id) in ids.enumerated() {
+                let label = liveLabels[id].flatMap { $0 == "Floating persona" ? nil : $0 } ?? "Persona \(index + 1)"
+                menu.addItem(StageMenuAction(label, checked: showing && !cameraOwnsSlot && id == current) { [weak self] in
+                    guard let self, unchanged(self) else { return }
+                    if id != self.displayedID {
+                        self.selectLivePersona(id)
+                        guard self.displayedID == id else { return }
+                    }
+                    if self.hasHiddenCard { self.showAgain() }
+                })
+            }
+        } else {
+            // Nothing is live yet: the saved cards Show selected would offer.
+            for (index, persona) in visibleItems.enumerated() {
+                let label = publicLabel(for: persona)
+                menu.addItem(StageMenuAction(label == "Floating persona" ? "Persona \(index + 1)" : label) { [weak self] in
+                    guard let self, unchanged(self) else { return }
+                    self.selectedID = persona.id
+                    self.showOverlay()
+                })
+            }
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        // Restricted access cannot be retried; the camera's own line above says so.
+        menu.addItem(StageMenuAction("Camera", checked: cameraOwnsSlot, enabled: camera.failure?.offersRetry != false) { [weak self] in
+            guard let self, unchanged(self), !(self.camera.isLive || self.camera.isStarting) else { return }
+            self.startCamera()
+        })
+        return menu
+    }
+
     /// The live camera's own items for both live menus, named by what is on
     /// screen. Each one freezes this visit and checks it again before acting, so
     /// a Hide or Try Again left over from an earlier visit does nothing. Only

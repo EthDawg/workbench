@@ -106,7 +106,7 @@ the primary retains Stop drawing while Draw owns input.
 | 16 | End Presentation | Present primary and chooser row: End the exact current presentation |
 | 17 | Saved Prompts | Present Prompts accessory and Saved Prompts workspace button reuse the same frozen-target picker; Library owns management |
 | 18 | Switch to Browser Tab | Present workspace: Switch to Browser Tab opens the existing explicit destination panel |
-| 19 | Choose Persona and Next/Previous | Shown Persona: frozen card picker and Next Persona; existing Previous/Next keys; no Next for one candidate |
+| 19 | Choose Persona and Next/Previous | Persona picker: the cards, then Camera (1 October), whatever is live; Next Persona for a shown card; existing Previous/Next keys; no Next for one candidate |
 | 20 | Choose prepared set | Live prepared Persona set: Choose Set and Next set; no Next for one set |
 | 21 | Choose overlay; size, lock, position, appearance | Persona workspace live-copy section and menu-bar Options: selected copy, size, lock, position, appearance |
 | 22 | Replace shown/selected; update shown appearance | Persona workspace shown-copy controls: explicit Replace and Update |
