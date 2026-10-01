@@ -2778,7 +2778,9 @@ enum SurfaceGallery {
         let readings: [(state: String, start: () -> Void, action: String)] = [
             ("preparing", { self.model.rendering = true }, "Cancel"),
             ("playing", { self.model.playing = true }, "Pause reading"),
-            ("paused", { self.model.paused = true }, "Resume reading")]
+            // A paused reading consumes nothing, so in Dictate the row keeps Dictate's own action;
+            // the result is still held back and Resume reading stays in the chooser's Read row.
+            ("paused", { self.model.paused = true }, "Dictate")]
         func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
         model.toolbarMode = .dictate
         for result in results {
@@ -2805,6 +2807,7 @@ enum SurfaceGallery {
                         warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
                         recovery ? nil : "The chooser lost the result's recovery route",
                         reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
+                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading",
                         back ? nil : "once the reading ended the pointer's reveal did not show the result"]
                 })
                 // Arriving during the reading: revealed as any new result, with the reading still reachable.
@@ -2820,7 +2823,8 @@ enum SurfaceGallery {
                         shown ? nil : "the pointer's reveal held a new result back",
                         over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
                         entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading"]
+                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
+                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading"]
                 })
             }
         }
