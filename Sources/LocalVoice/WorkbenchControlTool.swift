@@ -400,7 +400,8 @@ struct WorkbenchControlContext {
         case .dictate:
             if state.meetingBusy { return "Finish the meeting recording or transcription before dictating." }
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
-            if !model.ready { return "Prepare speech in Workbench." }
+            // The one readiness line: a setup's progress, or why it stopped, then where to act.
+            if !model.ready { return model.modelMessage + (model.preparing ? "" : " · Settings › Models") }
             return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .clipboard ? "Copy text"
                 : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until automatic paste is approved")
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
