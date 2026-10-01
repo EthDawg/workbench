@@ -166,6 +166,8 @@ ENTRY_POINTS = [
     # onOpenPacks, counts because the page cannot know where it leads.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page', 'doors'),
     ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingWorkspaceView', 'meeting page', 'doors'),
+    # Meetings owns its offer to start when a call begins (Grammar: options live with their capability).
+    ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingDetectionSettings', 'meeting page', 'page'),
     ('LocalVoice/ReadbackView.swift', 'ReadbackView', 'snap & talk page', 'doors'),
     ('LocalVoice/SnapWorkspaceView.swift', 'SnapWorkspaceView', 'snap page', 'doors'),
     # History is one page made of several views: its header, the transcript,

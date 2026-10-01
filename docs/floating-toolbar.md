@@ -123,7 +123,7 @@ The next action is the label for where you are in the journey, from one pure
 function of what is live (`ToolbarNextAction`) with a fixed priority: what is
 consuming your input now (inserting, dictating, capturing, narrating, drawing,
 reading) whatever the mode, then the selected mode's own step or ending
-(`Capture next · 3`, `Stop transcribing`, `End presentation`, `Hide personas`),
+(`Capture next · 3`, `Stop & transcribe`, `End presentation`, `Hide personas`),
 then its start verb. Another mode's ending never claims the label: presenting
 while Draw is the mode reads `Draw`, the accessible value names live work, and
 the Present chooser row offers `End presentation`. Two identical screens never

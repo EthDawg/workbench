@@ -142,6 +142,18 @@ enum AudioRendererCancellationChecks {
         guard ((try? FileManager.default.attributesOfItem(atPath: m4a.path))?[.size] as? NSNumber)?.intValue ?? 0 > 0 else {
             throw VoiceError.message("CHECK FAILED: the bounded export writes its file")
         }
-        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated, a hung tool stops at its bound, the bounded export writes its file, and a later render can start")
+        // Read's Cancel during Save audio cancels this export: afconvert stops and nothing is written.
+        let long = folder.appendingPathComponent("ten-minutes.wav"), cancelled = folder.appendingPathComponent("cancelled.m4a")
+        try SpekoRenderer.wav(Data(repeating: 0, count: 48_000 * 600)).write(to: long)
+        let export = Task { try await AudioRenderer.exportBounded(long, to: cancelled) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let exportCancelled = Date()
+        export.cancel()
+        var exportReportedCancellation = false
+        do { try await export.value } catch is CancellationError { exportReportedCancellation = true }
+        guard exportReportedCancellation, Date().timeIntervalSince(exportCancelled) < 2, !FileManager.default.fileExists(atPath: cancelled.path) else {
+            throw VoiceError.message("CHECK FAILED: a cancelled export stops promptly and writes no file")
+        }
+        print("AUDIO_RENDERER_CANCELLATION_OK: child process terminated, a hung tool stops at its bound, the bounded export writes its file, a cancelled export writes none, and a later render can start")
     }
 }

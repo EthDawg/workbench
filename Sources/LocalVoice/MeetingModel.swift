@@ -14,7 +14,19 @@ final class MeetingModel: ObservableObject {
     @Published private(set) var elapsed = 0.0
     @Published private(set) var notice = "Choose an app and microphone, then start. Recording is limited to two hours."
     @Published private(set) var error: String?
-    @Published private(set) var hasRecovery = false
+    /// Recordings that still hold audio without text, newest first. Each is retried, shown or
+    /// moved to the Trash by its own row, never by whichever happens to sort first.
+    @Published private(set) var recoveries: [MeetingRecoveryEntry] = []
+    var hasRecovery: Bool { !recoveries.isEmpty }
+    /// The last recording that finished without a word: kept, never offered for retry, and shown
+    /// once so the person can find or remove its audio.
+    @Published private(set) var keptWithoutSpeech: KeptMeeting?
+    /// A quiet line after an action that leaves nothing else on the page, such as Move to Trash.
+    @Published private(set) var receipt: String?
+    struct KeptMeeting: Equatable {
+        var session: URL
+        var message: String
+    }
     /// Published only after the transcript and its completion journal both commit.
     @Published private(set) var completedTranscriptID: UUID?
     /// The history writer reads these during saveTranscript; originals stay unchanged.
@@ -41,9 +53,12 @@ final class MeetingModel: ObservableObject {
         if !allowed { recordingPlayback.pause() }
     }
     var saveTranscript: ((Transcript, String) throws -> Void)?
+    /// Checks replace this so they never fill the person's Trash.
+    var moveToTrash: @Sendable (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
     var onStateChange: (() -> Void)?
 
     static let detectionKey = "workbench.meeting.detect.v1"
+    static let keptForLater = "Recording was cancelled. Original audio was kept."
     static let disabledAppsKey = "workbench.meeting.disabled-apps.v1"
     private let directory: URL
     private let defaults: UserDefaults
@@ -158,7 +173,7 @@ final class MeetingModel: ObservableObject {
         guard app != nil || includeMicrophone else { error = "Choose an app, the microphone, or both."; return }
         let token = UUID(); generation = token
         let microphone = includeMicrophone, kind = purpose == "call" ? "call" : "meeting"
-        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil
+        error = nil; offer = nil; elapsed = 0; pendingTranscriptNotes = []; completedTranscriptID = nil; keptWithoutSpeech = nil; receipt = nil
         notice = microphone ? "Waiting for microphone access…" : "Starting app audio… macOS may ask for Audio Recording access."
         phase(starting: true)
         let delay = startupNoticeDelayNanoseconds
@@ -249,8 +264,12 @@ final class MeetingModel: ObservableObject {
                 self.elapsed = report.seconds
                 try self.check(token)
                 if process { try await self.process(session: session, token: token) }
-                else {
-                    self.notice = "Recording stopped. Original audio was kept; Retry transcribes it when you choose."
+                else if reason == Self.keptForLater {
+                    // Stop & keep for later is the person's choice, not a failure.
+                    self.notice = "Kept for later. Transcribe it below when you are ready."
+                    self.error = report.failure
+                } else {
+                    self.notice = "Recording stopped. Its audio is kept below; transcribe it when you are ready."
                     self.error = reason ?? report.failure
                 }
             } catch {
@@ -258,8 +277,8 @@ final class MeetingModel: ObservableObject {
                 self.notice = "Original audio was kept. Retry when you are ready."
             }
             self.activeCapture = nil; self.activeSession = nil; self.activeManifest = nil
-            self.operation = nil; self.phase()
             await self.refreshRecovery()
+            self.operation = nil; self.phase()
         }
         operation = task
         await task.value
@@ -277,7 +296,7 @@ final class MeetingModel: ObservableObject {
 
     func cancel() async {
         watcher?.cancel(); watcher = nil
-        if isRecording { await finishCapture(process: false, reason: "Recording was cancelled. Original audio was kept."); return }
+        if isRecording { await finishCapture(process: false, reason: Self.keptForLater); return }
         guard isStarting || isProcessing else { return }
         generation = UUID()
         startupNoticeTask?.cancel(); startupNoticeTask = nil
@@ -299,27 +318,32 @@ final class MeetingModel: ObservableObject {
         if isBusy { phase() }
     }
 
-    func retry() async {
+    /// Transcribes the chosen kept recording, or the newest readable one when none is named.
+    func retry(_ chosen: MeetingRecoveryEntry? = nil) async {
         guard !isBusy, !shuttingDown else { return }
         if let issue = mayStart?() { error = issue; return }
         let token = UUID(); generation = token
-        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; notice = "Opening the saved recording…"; phase(processing: true)
+        error = nil; pendingTranscriptNotes = []; completedTranscriptID = nil; keptWithoutSpeech = nil; receipt = nil
+        notice = "Opening the saved recording…"; phase(processing: true)
         let task = Task { [weak self] in
             guard let self else { return }
             do {
                 let root = self.directory
                 let entries = try await MeetingFileWork.run { MeetingRecovery.scan(root: root) }
                 try self.check(token)
-                guard let entry = entries.first(where: { $0.isReadable }) else {
-                    throw MeetingError.message(entries.first?.problem ?? "There is no unfinished recording to retry.")
+                let target = chosen.map { chosen in entries.first { $0.id == chosen.id } } ?? entries.first { $0.isReadable }
+                guard let entry = target, entry.isReadable else {
+                    throw MeetingError.message(target?.problem ?? (chosen == nil ? entries.first?.problem : nil)
+                        ?? "That recording is no longer waiting to be transcribed.")
                 }
                 try await self.process(session: entry.session, token: token)
             } catch {
                 if !(error is CancellationError) { self.error = error.localizedDescription }
                 self.notice = "Saved audio remains available for explicit retry."
             }
-            self.operation = nil; self.phase()
+            // The kept list is current before the page sees the work end.
             await self.refreshRecovery()
+            self.operation = nil; self.phase()
         }
         operation = task; await task.value
     }
@@ -339,6 +363,7 @@ final class MeetingModel: ObservableObject {
         let result = try await processor.run()
         pendingTranscriptNotes = result.notes
         if result.committed { completedTranscriptID = result.manifest.id }
+        else { keptWithoutSpeech = KeptMeeting(session: session, message: result.manifest.failure ?? "No speech was recognised.") }
         notice = ([result.committed ? "Saved to History." : "Original audio was kept."] + result.notes).joined(separator: " ")
         elapsed = result.manifest.seconds
     }
@@ -382,8 +407,8 @@ final class MeetingModel: ObservableObject {
         let root = directory
         let entries = try? await MeetingFileWork.run { MeetingRecovery.scan(root: root) }
         guard let entries else { return }
-        hasRecovery = !entries.isEmpty
-        if !isBusy, error == nil, let issue = entries.first(where: { !$0.isReadable })?.problem { error = issue }
+        // An unreadable recording names its own problem in its row on the page.
+        recoveries = entries
     }
 
     private func configureDetection() {
@@ -415,6 +440,32 @@ final class MeetingModel: ObservableObject {
         selectedAppID = app.id
         if MeetingDetector.isCallService(app) { purpose = "call" }
     }
+    /// Moves one kept recording's folder to the Trash, where Finder can put it back. Only a
+    /// session this store lists, and never one being recorded or transcribed.
+    func moveRecordingToTrash(_ session: URL) async {
+        guard !shuttingDown else { return }
+        let id = session.lastPathComponent
+        guard !(isBusy && (activeSession?.lastPathComponent == id || processingSessionID?.uuidString == id)),
+              recordingPlayback.session?.lastPathComponent != id else {
+            error = "This recording is still in use. Finish or close it before moving it to the Trash."; return
+        }
+        let root = directory, trash = moveToTrash
+        do {
+            try await MeetingFileWork.run {
+                guard let listed = MeetingStore.sessions(in: root).first(where: { $0.lastPathComponent == id }) else {
+                    throw MeetingError.message("That recording is no longer in the Meetings folder.")
+                }
+                try trash(listed)
+            }
+            if keptWithoutSpeech?.session.lastPathComponent == id { keptWithoutSpeech = nil }
+            receipt = "Moved to the Trash. Finder can put it back."
+        } catch { self.error = error.localizedDescription }
+        await refreshRecovery()
+    }
+
+    func dismissKeptWithoutSpeech() { keptWithoutSpeech = nil }
+    func dismissError() { error = nil }
+
     func dismissOffer() { if let offer { detector.dismiss(offer) }; offer = nil }
     func snoozeOffers() { detector.snooze(); offer = nil }
     func disableOffers(for app: MeetingAudioApp) {

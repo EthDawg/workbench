@@ -395,7 +395,7 @@
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingDetectionSettings.Toggle.detect-meetings-calls",
-    "surface": "settings page",
+    "surface": "meeting page",
     "label": "Detect Meetings & Calls",
     "kind": "setting",
     "belongsTo": "dictate"
@@ -433,27 +433,29 @@
     "note": "The meeting offer title: \"Possible call in <app>\" or \"Possible call on this Mac\". Runtime label from MeetingDetector . offerTitle ( for : offer )."
   },
   {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.cancel",
-    "surface": "quick panel status rows",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-aeac18b23690",
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-a49b2fc5da5d",
     "surface": "quick panel status rows",
     "label": null,
-    "expression": "model . isRecording ? \"Meeting · recording\" : \"Meeting · processing\"",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Live state of Transcribe meeting or call; opens its page. Runtime label from model . isRecording ? \"Meeting · recording\" : \"Meeting · processing\"."
-  },
-  {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop",
-    "surface": "quick panel status rows",
-    "label": "Stop",
+    "expression": "model . isRecording ? \"Meetings · recording\" : \"Meetings · transcribing\"",
+    "note": "Live state of Transcribe meeting or call; opens its page. Quality: names the Meetings page, and says transcribing rather than processing (1 Oct). Runtime label from model . isRecording ? \"Meetings · recording\" : \"Meetings · transcribing\".",
     "kind": "action",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop-processing",
+    "surface": "quick panel status rows",
+    "label": "Stop processing",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: was Cancel, which kept the audio. Stop processing is the page's own word for the same action (1 Oct)."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop-transcribe",
+    "surface": "quick panel status rows",
+    "label": "Stop & transcribe",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: was Stop. The same action and words as the page and the floating toolbar: it stops recording and transcribes (1 Oct)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.history",
@@ -462,6 +464,14 @@
     "kind": "action",
     "belongsTo": "history",
     "note": "Quality: the meeting page's existing door to History takes the place's name (was Recent transcripts; #137)."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.models",
+    "surface": "meeting page",
+    "label": "Models…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.review-transcript",
@@ -1017,13 +1027,13 @@
     "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Stop timer ends the countdown and closes its window, as the panel row and the Timer menu say; it replaces End timer."
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-transcribing",
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-transcribe",
     "surface": "floating toolbar activity chooser",
-    "label": "Stop transcribing",
+    "label": "Stop & transcribe",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "dictate"
+    "aliasOf": "dictate",
+    "note": "Quality: was Stop transcribing, which read as ending transcription while it stops recording and transcribes; the page's words (1 Oct). Approved #134 overflow removal: this existing action lives with its activity or live owner."
   },
   {
     "id": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position",
@@ -1536,6 +1546,14 @@
     "note": "Home entry to the requested local Me profile, backed by an ordinary saved Persona; no account or duplicate library."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.models",
+    "surface": "window home",
+    "label": "Models…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Quality: was Speech settings; the door names the Settings section it opens, Models (Fit rule 6; 1 Oct)."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-history",
     "surface": "window home",
     "label": "Open History",
@@ -1618,14 +1636,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Option: hides Home's first-dictation guide and saves that choice with the Dictate preferences; Show me a first dictation brings it back until the first dictation (#15)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",
-    "surface": "window home",
-    "label": "Speech settings",
-    "kind": "action",
-    "belongsTo": "settings",
-    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop",
@@ -2143,6 +2153,24 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.page-item.annotate",
+    "surface": "app menu bar",
+    "label": "Draw",
+    "page": "annotate",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Opens the Draw page; the top-level Draw menu holds the tools."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.dictate",
+    "surface": "app menu bar",
+    "label": "Dictate",
+    "page": "dictate",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.page-item.history",
     "surface": "app menu bar",
     "label": "History",
@@ -2179,6 +2207,15 @@
     "note": "Quality: Window › Persona takes its name and route from the page record (#134)."
   },
   {
+    "id": "LocalVoice.main.AppDelegate.page-item.present",
+    "surface": "app menu bar",
+    "label": "Present",
+    "page": "present",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Switch to… stays the presenter's own door."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.page-item.readback",
     "surface": "app menu bar",
     "label": "Snap & Talk",
@@ -2204,6 +2241,24 @@
     "kind": "action",
     "belongsTo": "settings",
     "note": "Quality: Workbench › Keyboard shortcuts… becomes Keyboard…, the name of the Settings section it opens, read from the page record (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.snap",
+    "surface": "app menu bar",
+    "label": "Snap",
+    "page": "snap",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.speak",
+    "surface": "app menu bar",
+    "label": "Read",
+    "page": "speak",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
   },
   {
     "id": "StageKit.ActivityMenus.PersonaSizeMenuView.native-control.persona-size",
@@ -3586,9 +3641,10 @@
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopMeetingTranscription",
     "surface": "floating toolbar next action",
-    "label": "Stop transcribing",
+    "label": "Stop & transcribe",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Quality: was Stop transcribing; it stops recording and transcribes, so it says so, as the Meetings page does (1 Oct)."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopReading",

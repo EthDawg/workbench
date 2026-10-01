@@ -352,6 +352,7 @@ enum MeetingChecks {
 
         try await recordingReviewChecks(root: root, expect: expect)
         try await lifecycleChecks(root: root, expect: expect)
+        try await keptRecordingChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
         checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
@@ -639,6 +640,7 @@ enum MeetingChecks {
         try expect(model.isRecording && model.completedTranscriptID == nil, "a new recording cannot review a stale completion")
         await model.cancel()
         try expect(model.completedTranscriptID == nil && model.hasRecovery, "keeping unfinished audio never advertises a saved transcript")
+        try expect(model.error == nil, "Stop & keep for later is the person's choice, not a problem")
         await model.prepareForShutdown()
 
         let permissionGate = Gate<Bool>()
@@ -716,6 +718,51 @@ enum MeetingChecks {
                    "normal shutdown awaits audio flush and leaves recovery without recognition")
         try expect(MeetingRecovery.scan(root: quitRoot).first?.manifest?.state == .stopped,
                    "shutdown leaves a durable stopped session")
+    }
+
+    /// A recording with no words is settled, not unfinished: it is shown once with its audio
+    /// kept, never offered for retry, and never hides an older kept recording. Transcribe acts on
+    /// the row it belongs to, and Move to Trash removes only that recording.
+    private static func keptRecordingChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        let suite = "Workbench-MeetingChecks-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = root.appendingPathComponent("kept")
+        var words = "kept meeting words", history: [Transcript] = []
+        let model = MeetingModel(directory: store, defaults: defaults, processSource: ProcessFixture(),
+                                 transcribe: { _ in words }, microphonePermission: { true }, captureFactory: { CaptureFixture() })
+        model.saveTranscript = { transcript, _ in history.append(transcript) }
+        var trashed: [String] = []
+        model.moveToTrash = { url in try FileManager.default.removeItem(at: url) }
+        await Task.yield()
+
+        await model.start(); await model.cancel()
+        let older = MeetingStore.sessions(in: store)[0].lastPathComponent
+        try expect(model.recoveries.map(\.id) == [older] && model.error == nil, "a recording kept for later is listed with no problem shown")
+
+        words = ""
+        await model.start(); await model.stop()
+        let silent = MeetingStore.sessions(in: store).map(\.lastPathComponent).first { $0 != older }!
+        try expect(model.keptWithoutSpeech?.session.lastPathComponent == silent && model.completedTranscriptID == nil && history.isEmpty,
+                   "a recording with no words is shown once as kept without speech, and nothing reaches History")
+        try expect(model.recoveries.map(\.id) == [older], "a recording with no words is never offered for retry and does not hide the older one")
+        try expect(MeetingRecovery.scan(root: store).map(\.id) == [older], "the settled recording stays settled across a fresh scan")
+
+        words = "kept meeting words"
+        guard let entry = model.recoveries.first else { throw MeetingError.message("Meeting check failed: kept recording vanished") }
+        await model.retry(entry)
+        try expect(model.completedTranscriptID?.uuidString == older && history.map(\.text) == ["kept meeting words"] && model.recoveries.isEmpty,
+                   "Transcribe on a kept row commits that recording")
+        await model.retry(entry)
+        try expect(model.error != nil && history.count == 1, "transcribing a row that is no longer kept explains itself and adds nothing")
+        model.dismissError()
+        try expect(model.error == nil, "a meeting problem can be dismissed")
+
+        await model.moveRecordingToTrash(MeetingStore.sessionURL(root: store, id: UUID(uuidString: silent)!))
+        trashed = MeetingStore.sessions(in: store).map(\.lastPathComponent)
+        try expect(!trashed.contains(silent) && trashed.contains(older) && model.keptWithoutSpeech == nil && model.receipt != nil,
+                   "Move to Trash removes only the chosen recording and says where it went")
+        await model.prepareForShutdown()
     }
 
     private static func waitUntil(_ condition: () -> Bool) async {
