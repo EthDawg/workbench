@@ -235,26 +235,34 @@ a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
 .line{color:#c3d1d1;margin-top:3px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .line b{color:#fff;margin-right:6px}
 
-/* Snap & Talk: snaps with your words, handed to an assistant, back as a deck */
-.art-snaptalk{place-items:stretch;align-content:center;gap:12px;padding:16px 18px}
-.snaps{display:flex;justify-content:center;gap:10px}
-.snap{width:29%;display:grid;gap:6px;justify-items:center}
-.snap>span:first-child{width:100%;aspect-ratio:16/10;background:#fff;border-radius:6px;box-shadow:0 6px 16px -8px rgba(20,40,45,.45),0 0 0 1px rgba(0,0,0,.05);padding:12% 11% 0;display:flex;align-items:flex-end;gap:7%}
-.mini i{flex:1;background:#cddcdc;border-radius:2px 2px 0 0}
-.mini i:nth-child(1){height:38%}.mini i:nth-child(2){height:54%}.mini i:nth-child(3){height:46%}.mini i:nth-child(4){height:90%;background:#2fb47f}.mini i:nth-child(5){height:62%}
-.snap .titled,.snap .lined{flex-direction:column;align-items:flex-start!important;justify-content:center;gap:12%!important;padding:10% 12%!important}
-.titled i,.lined i{display:block;height:5px;width:80%;background:#d5dfdf;border-radius:2px}
-.titled i:first-child{height:8px;width:65%;background:#12282e}.titled i:last-child{width:50%}
-.lined i:nth-child(2){width:62%}.lined i:nth-child(3){width:74%}.lined i:nth-child(4){width:40%;background:#9af0c6}
-.said{display:flex;align-items:center;gap:2px;height:12px}
-.said b{width:2.5px;height:4px;border-radius:2px;background:var(--mint-ink)}
-.said b:nth-child(2),.said b:nth-child(4){height:8px}.said b:nth-child(3){height:12px}
-.handoff-row{display:flex;justify-content:center;align-items:center;gap:6px;font-size:12.5px;font-weight:650}
-.hand-pill{background:#16181a;color:#fff;border-radius:999px;padding:5px 11px}
-.handoff-row .ai{display:inline-flex;align-items:center;gap:5px;background:#fff;color:#12282e;border-radius:999px;padding:5px 11px 5px 7px;box-shadow:0 4px 12px -6px rgba(20,40,45,.4),0 0 0 1px rgba(0,0,0,.05)}
-.deckfile{justify-self:center;display:flex;align-items:center;gap:8px;background:#fff;color:#12282e;border-radius:10px;padding:7px 12px 7px 8px;font-size:13px;box-shadow:0 8px 22px -10px rgba(20,40,45,.45),0 0 0 1px rgba(0,0,0,.05)}
-.pptx{font-size:9.5px;font-weight:800;background:#12282e;color:#fff;border-radius:4px;padding:2px 5px;letter-spacing:.05em}
-.deckfile span:last-child{color:#5b6b6e}
+/* Snap & Talk: one stack of snaps, one Hand off, one deck */
+.art-snaptalk{place-items:center}
+.st{position:relative;width:min(62%,190px);display:grid;justify-items:center;gap:14px;transform:translate(-14%,-12px)}
+.st-stack{position:relative;width:100%;aspect-ratio:16/10}
+.st-stack .c1 em{left:7%;top:9%}
+.st-hand{position:absolute;left:76%;top:52%;z-index:3}
+.st-btn{display:inline-flex;align-items:center;gap:6px;background:#16181a;color:#fff;border-radius:999px;padding:7px 12px 7px 14px;font-size:13px;font-weight:650;white-space:nowrap;box-shadow:0 8px 20px -8px rgba(0,0,0,.45)}
+.st-btn .ai-mark:first-of-type{margin-left:3px}
+.st-btn .ai-mark.codex{border-radius:4px;box-shadow:0 0 0 1px rgba(255,255,255,.4)}
+.st-menu{position:absolute;left:0;top:calc(100% + 6px);display:grid;min-width:100%;background:#fff;color:#12282e;border-radius:10px;padding:4px;font-size:13px;font-weight:600;box-shadow:0 12px 28px -10px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.06);transform-origin:20px 0;opacity:0;transform:scale(.9)}
+.st-menu>span{display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:7px;white-space:nowrap}
+.st-file{margin:0;display:flex;gap:8px;align-items:baseline;white-space:nowrap;font-size:13px;color:var(--wall-ink);transform:translateX(14%)}
+.st-file span{color:var(--wall-muted)}
+.play .st-stack .card{animation:stdrop 9s infinite both}
+.play .st-stack .c3{animation-name:stdrop3}.play .st-stack .c2{animation-name:stdrop2}
+@keyframes stdrop3{0%,2%{opacity:0;transform:translate(0,-30%) rotate(-6deg)}7%,92%{opacity:1;transform:translate(-12px,-12px) rotate(-6deg)}97%,100%{opacity:0;transform:translate(-12px,-12px) rotate(-6deg)}}
+@keyframes stdrop2{0%,8%{opacity:0;transform:translate(0,-30%) rotate(-3deg)}13%,92%{opacity:1;transform:translate(-6px,-6px) rotate(-3deg)}97%,100%{opacity:0;transform:translate(-6px,-6px) rotate(-3deg)}}
+@keyframes stdrop{0%,14%{opacity:0;transform:translateY(-30%)}19%,58%{opacity:1;transform:none}61%{transform:scale(.96)}64%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
+.play .st-stack .c1 em{animation:badge 9s infinite both}
+@keyframes badge{0%,60%{opacity:0;transform:scale(.6)}64%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
+.play .st-btn{animation:btnin 9s infinite both}
+@keyframes btnin{0%,22%{opacity:0;transform:translateY(6px)}26%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
+.play .st-menu{animation:menu 9s infinite both}
+@keyframes menu{0%,31%{opacity:0;transform:scale(.9)}35%,53%{opacity:1;transform:none}57%,100%{opacity:0;transform:scale(.9)}}
+.play .st-menu .pick{animation:pick 9s infinite both}
+@keyframes pick{0%,42%{background:transparent}45%,100%{background:#c9f5df}}
+.play .st-file{animation:filein 9s infinite both}
+@keyframes filein{0%,62%{opacity:0;transform:translate(14%,6px)}66%,92%{opacity:1;transform:translateX(14%)}97%,100%{opacity:0}}
 
 /* Draw: one drawing, so the circle and arrow always land on the bar */
 .art-draw{place-items:stretch;padding:0}
@@ -310,18 +318,6 @@ a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
 @keyframes l2{0%,55%{opacity:0;transform:translateY(4px)}59%,90%{opacity:1;transform:none}95%,100%{opacity:0}}
 .play .call .rec:before{animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.25}}
-
-.play .snap{animation:snapin 10s infinite both}
-.play .snap.s2{animation-name:snapin2}.play .snap.s3{animation-name:snapin3}
-@keyframes snapin{0%,3%{opacity:0;transform:scale(.7)}7%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
-@keyframes snapin2{0%,13%{opacity:0;transform:scale(.7)}17%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
-@keyframes snapin3{0%,23%{opacity:0;transform:scale(.7)}27%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
-.play .handoff-row{animation:handoff 10s infinite both}
-@keyframes handoff{0%,34%{opacity:.25}38%,92%{opacity:1}97%,100%{opacity:.25}}
-.play .handoff-row .ai:nth-of-type(2){animation:nudge 10s infinite both}
-@keyframes nudge{0%,40%{transform:none}43%{transform:scale(1.12)}47%,100%{transform:none}}
-.play .deckfile{animation:deckin 10s infinite both}
-@keyframes deckin{0%,50%{opacity:0;transform:translateY(10px) scale(.92)}55%,92%{opacity:1;transform:none}97%,100%{opacity:0}}
 
 .play .m{stroke-dasharray:1}
 .play .m.circle{animation:drawc 7s infinite both}.play .m.arrow{animation:drawa 7s infinite both}
