@@ -54,6 +54,7 @@
               <div class="card c2"><b></b><i></i><i></i></div>
               <div class="card c1"><span></span><span></span><span></span><span class="hot"></span><span></span><em>PPTX</em></div>
             </div>
+            <p class="deck-hand"><span class="ai-mark claude"></span>Hand off to Claude</p>
             <p class="deck-name"><b>Launch walkthrough.pptx</b><span>3 slides</span></p>
             <p class="deck-tag"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>Saved to History · searchable</p>
           </div>
@@ -67,7 +68,8 @@
         <svg class="marks"><path class="circle"/><path class="arrow"/><path class="head"/><text class="note">even this page!</text></svg>
         <div class="pen"><svg viewBox="0 0 24 24"><path d="M3 21l1.6-5.4L15.8 4.4a2.2 2.2 0 0 1 3.1 3.1L7.7 18.7z" fill="#fff" stroke="#12282e" stroke-width="1.4" stroke-linejoin="round"/><path d="M3 21l1.6-5.4 3.1 3.1z" fill="#ff5446"/></svg></div>
         <div class="persona"><svg class="ring" viewBox="0 0 100 100"></svg><img src="/assets/home/persona-site-manager.png" width="400" height="400" alt=""></div>
-        <div class="capsule"><span class="cap-handle"></span><span class="cap-rec"><i></i><svg viewBox="0 0 50 22"></svg></span><span class="cap-tool"><i class="live"></i><svg viewBox="0 0 24 24"></svg><b></b><small></small></span></div>
+        <div class="capsule"><span class="cap-handle"></span><span class="cap-rec"><i></i><svg viewBox="0 0 50 22"></svg></span><span class="cap-row"></span></div>
+        <span class="cap-hint"></span>
         <span class="u-probe"></span>
       </div>
     </div>
@@ -82,29 +84,45 @@
     <div class="tool-grid">
       <article class="tool">
         <div class="tool-art art-dictate" aria-hidden="true">
-          <div class="field">Send the deck to Sam by <span class="chip">Thursday</span> <span class="chip">morning.</span><span class="caret static"></span></div>
-          <div class="mini-capsule"><i></i><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="prompt"><span class="ai-mark spark"></span><p><span>Summarise</span> <span>the</span> <span>launch</span> <span>plan</span> <span>and</span> <span>flag</span> <span>risks</span><i class="caret static"></i></p><span class="mic-pill"><i></i><b></b><b></b><b></b><b></b><b></b></span></div>
+          <div class="call">
+            <p class="call-head"><span class="rec">Rec</span>Launch sync<span class="time">12:04</span></p>
+            <p class="call-people"><span>SK</span><span>AL</span><span>You</span></p>
+            <p class="line l1"><b>Sam</b>Can we ship on Thursday?</p>
+            <p class="line l2"><b>You</b>Yes, once QA signs off.</p>
+          </div>
         </div>
-        <p class="tool-name">Dictate</p>
+        <p class="tool-name">Dictate and Meetings</p>
         <h3>Talk, and it types.</h3>
-        <p>Speak into any text field in any app. Speech recognition runs on your Mac and your original words are always kept. Meetings and calls get transcribed too, and Read aloud turns text back into speech.</p>
+        <p>Speak a prompt, a note or a whole email into any app. Turn on Meetings and Workbench writes up your calls too. Speech recognition runs on your Mac, and your original words are always kept.</p>
       </article>
 
       <article class="tool">
-        <div class="tool-art art-deck" aria-hidden="true">
-          <div class="fan"><div class="card c3"><i></i><i></i><i></i></div><div class="card c2"><b></b><i></i><i></i></div><div class="card c1"><span></span><span></span><span></span><span class="hot"></span><span></span><em>PPTX</em></div></div>
-          <p class="deck-name"><b>Launch walkthrough.pptx</b><span>3 slides</span></p>
+        <div class="tool-art art-snaptalk" aria-hidden="true">
+          <div class="snaps">
+            <div class="snap s1"><span class="mini"><i></i><i></i><i></i><i class="hot"></i><i></i></span><span class="said"><b></b><b></b><b></b><b></b><b></b></span></div>
+            <div class="snap s2"><span class="titled"><i></i><i></i><i></i></span><span class="said"><b></b><b></b><b></b><b></b><b></b></span></div>
+            <div class="snap s3"><span class="lined"><i></i><i></i><i></i><i></i></span><span class="said"><b></b><b></b><b></b><b></b><b></b></span></div>
+          </div>
+          <div class="handoff-row"><span class="hand-pill">Hand off</span><span class="ai"><span class="ai-mark claude"></span>Claude</span><span class="ai"><span class="ai-mark codex"></span>Codex</span></div>
+          <div class="deckfile"><span class="pptx">PPTX</span><b>Launch walkthrough</b><span>3 slides</span></div>
         </div>
         <p class="tool-name">Snap &amp; Talk</p>
         <h3>Talk through your screens. Get a deck.</h3>
-        <p>Snap a few screens while you explain them. Each snap keeps what you said about it, and the set becomes a slide deck. Later you can search every snap, even the words inside the picture.</p>
+        <p>Snap a few screens while you explain them. Workbench keeps each snap with what you said, then hands the set to Claude or Codex to build the deck. Every snap stays searchable, even the words inside the picture.</p>
       </article>
 
       <article class="tool">
         <div class="tool-art art-draw" aria-hidden="true">
-          <div class="mini-chart"><span></span><span></span><span></span><span class="hot"></span><span></span></div>
-          <svg viewBox="0 0 200 120" preserveAspectRatio="none"><path d="M152 12c-13-7-33 0-36 15-3 16 11 28 27 26 16-2 25-15 21-29-3-10-12-15-23-13"/><path d="M62 20c17-7 34-6 50 6"/><path d="M103 19l9 7-10 5"/></svg>
-          <span class="hand">here!</span>
+          <svg viewBox="0 0 320 180">
+            <rect class="sheet" x="40" y="24" width="240" height="138" rx="10"/>
+            <rect class="bar" x="66" y="102" width="30" height="38" rx="3"/><rect class="bar" x="110" y="86" width="30" height="54" rx="3"/><rect class="bar" x="154" y="94" width="30" height="46" rx="3"/><rect class="bar hot" x="198" y="50" width="30" height="90" rx="3"/><rect class="bar" x="242" y="78" width="30" height="62" rx="3"/>
+            <path class="base" d="M58 140.5h224"/>
+            <path class="m circle" pathLength="1" d="M191.3 40.5 L192.6 37.8 L194.8 35.6 L197.8 34.0 L201.4 33.1 L204.9 32.6 L208.3 32.1 L211.6 31.4 L215.1 30.7 L218.9 30.5 L222.6 31.1 L225.7 32.6 L228.3 34.7 L230.4 36.9 L232.6 39.0 L234.9 41.0 L237.3 43.1 L239.2 45.7 L239.9 48.5 L239.3 51.4 L237.9 54.0 L236.3 56.5 L234.8 58.9 L233.5 61.4 L231.9 64.1 L229.5 66.4 L226.4 68.0 L222.7 68.8 L218.9 69.0 L215.2 69.0 L211.7 69.1 L208.0 69.3 L204.2 69.3 L200.4 68.6 L197.1 67.0 L194.6 64.8 L192.7 62.2 L191.1 59.7 L189.4 57.3 L187.4 54.9 L185.8 52.2 L185.1 49.2 L185.7 46.3 L187.4 43.6 L189.6 41.2 L191.9 39.0 L193.9 36.7 L196.0 34.2 L198.6 31.9"/>
+            <path class="m arrow" pathLength="1" d="M112 40Q150 18 186 50"/>
+            <path class="m head" d="M182.2 39.7L186 50L175.3 47.4"/>
+            <text class="hand" x="50" y="50">here!</text>
+          </svg>
         </div>
         <p class="tool-name">Draw</p>
         <h3>Point at anything.</h3>
@@ -112,14 +130,27 @@
       </article>
 
       <article class="tool tool-wide">
-        <figure class="tool-shot">
-          <img src="/assets/guide/presentation-actual.png" width="1224" height="768" alt="Workbench presenting a phone frame over an office backdrop, with a Site manager persona card in the corner and a small device panel." loading="lazy">
-          <figcaption>A real Present screen: a phone frame on a backdrop, with a persona card in the corner.</figcaption>
-        </figure>
+        <div class="tool-art art-present" aria-hidden="true">
+          <div class="bd b1"></div><div class="bd b2"></div><div class="bd b3"></div>
+          <p class="bd-name"><span class="n1">Campus</span><span class="n2">Mine site</span><span class="n3">Office</span></p>
+          <div class="cable"><span class="plug"></span></div>
+          <div class="phone">
+            <div class="phone-off">Connect your iPhone</div>
+            <div class="home">
+              <p class="status"><b>9:41</b><span></span></p>
+              <div class="apps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="dock"><i></i><i></i><i></i><i></i></div>
+            </div>
+            <span class="island"></span>
+          </div>
+          <div class="pc p1"><img src="/assets/home/persona-site-manager.png" width="400" height="400" alt="" loading="lazy"></div>
+          <div class="pc p2"><span class="disc"><img src="/assets/home/persona-operations-lead.png" width="300" height="300" alt="" loading="lazy"></span><b>Operations lead</b></div>
+          <div class="bd b1 cover"></div>
+        </div>
         <div class="tool-text">
           <p class="tool-name">Present and Persona</p>
           <h3>Put yourself in the demo.</h3>
-          <p>Show your phone, your face or a role card on a clean backdrop, all in one stage you can share in any call. Your voice makes the ring around your persona move, so the room knows who is talking.</p>
+          <p>Plug in your iPhone and it shows up on a clean backdrop you can share in any call. Switch scenes for each audience, and add your face or a persona card for the role you are playing.</p>
         </div>
       </article>
     </div>

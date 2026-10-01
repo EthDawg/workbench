@@ -11,10 +11,27 @@ const smooth = (a, b, t) => { const p = clamp((t - a)/(b - a)); return p*p*(3 - 
 const mod = (x, m) => ((x % m) + m) % m;
 const rand = (i, k) => { const s = Math.sin(i*127.1 + k*311.7)*43758.5453; return s - Math.floor(s); };
 const NS = 'http://www.w3.org/2000/svg';
+// White line icons in the shape of the real toolbar's symbols.
 const ICONS = {
-  snap: '<path d="M4 8.5V5.5A1.5 1.5 0 0 1 5.5 4h3M15.5 4h3A1.5 1.5 0 0 1 20 5.5v3M20 15.5v3a1.5 1.5 0 0 1-1.5 1.5h-3M8.5 20h-3A1.5 1.5 0 0 1 4 18.5v-3"/>',
-  draw: '<path d="M5 19.5l1.2-4.3L16.4 5a1.9 1.9 0 0 1 2.7 2.7L8.8 17.9z"/><path d="M14.6 6.8l2.7 2.7"/>',
-  persona: '<circle cx="12" cy="9" r="3.6"/><path d="M5 20c1.1-3.9 3.9-5.5 7-5.5s5.9 1.6 7 5.5"/>'
+  chooser: '<rect class="fill" x="4" y="4" width="7" height="7" rx="2"/><rect class="fill" x="13" y="4" width="7" height="7" rx="2"/><rect class="fill" x="4" y="13" width="7" height="7" rx="2"/><rect class="fill" x="13" y="13" width="7" height="7" rx="2"/>',
+  more: '<circle class="fill" cx="5.5" cy="12" r="1.7"/><circle class="fill" cx="12" cy="12" r="1.7"/><circle class="fill" cx="18.5" cy="12" r="1.7"/>',
+  snapTalk: '<rect x="3.5" y="5.5" width="15" height="12" rx="2" stroke-dasharray="2.6 2.2"/><circle cx="18.5" cy="17.5" r="3.4" fill="#ff453a" stroke="#16181a" stroke-width="1.4"/>',
+  region: '<rect x="4" y="6" width="16" height="12" rx="2" stroke-dasharray="2.6 2.2"/>',
+  window: '<rect x="4" y="5" width="16" height="14" rx="2.5"/><path d="M4 9.5h16"/>',
+  screen: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/>',
+  pen: '<path d="M5 19.5l1.2-4.3L16.4 5a1.9 1.9 0 0 1 2.7 2.7L8.8 17.9z"/><path d="M14.6 6.8l2.7 2.7"/>',
+  arrow: '<path d="M5 19L18.5 5.5M10 5h9v9"/>',
+  shape: '<circle cx="12" cy="12" r="7.5"/>',
+  board: '<rect x="3.5" y="4.5" width="17" height="12" rx="1.5"/><path d="M8.5 20.5l3.5-4 3.5 4"/>',
+  persona: '<rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="12" cy="10.5" r="2.8"/><path d="M7.5 18c.9-2.4 2.6-3.4 4.5-3.4s3.6 1 4.5 3.4"/>',
+  camera: '<rect x="3" y="7" width="12.5" height="10" rx="2.2"/><path d="M15.5 11l5-3v8l-5-3z"/>',
+  hide: '<path d="M3 12s3.4-6 9-6 9 6 9 6-3.4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.6"/><path d="M4.5 4.5l15 15"/>'
+};
+// Each moment reveals its tool's row, like hovering the real toolbar; the first icon is active.
+const ROWS = {
+  snap: { icons: ['snapTalk', 'region', 'window', 'screen'], hint: 'Snap & Talk · Screen' },
+  draw: { icons: ['pen', 'arrow', 'shape', 'board'], hint: 'Draw · Pen' },
+  persona: { icons: ['persona', 'camera', 'hide'], hint: 'Persona · Site manager' }
 };
 // Where the circle sits in persona-site-manager.png, as a share of the image.
 const FACE = { cx: 50.2, cy: 46.7, r: 39.2 };
@@ -31,7 +48,7 @@ class Hero {
     this.marks = q('.marks'); this.circle = q('.marks .circle'); this.arrow = q('.marks .arrow');
     this.head = q('.marks .head'); this.note = q('.marks .note');
     this.pen = q('.pen'); this.persona = q('.persona'); this.probe = q('.u-probe');
-    this.capTool = q('.cap-tool'); this.capLabel = q('.cap-tool b'); this.capSub = q('.cap-tool small'); this.capIcon = q('.cap-tool svg');
+    this.stage = q('.stage'); this.capsule = q('.capsule'); this.capRow = q('.cap-row'); this.hint = q('.cap-hint');
     this.ring = [];
     const ring = q('.persona .ring');
     for (let i = 0; i < 48; i++) {
@@ -54,9 +71,13 @@ class Hero {
   }
   layout() {
     const S = this.s; S.classList.add('measuring');
-    const u = this.probe.getBoundingClientRect().width || 8;
+    const u = this.probe.getBoundingClientRect().width || 8; this.u = u;
     const box = this.fx.getBoundingClientRect(); this.W = box.width; this.H = box.height;
-    const cap = this.rel(S.querySelector('.capsule')), cx = cap.x + cap.w/2, cy = cap.y + cap.h/2;
+    // The toolbar sits centred under the slide window, on the white strip below the chart.
+    const st = this.rel(this.stage), cx = st.x + st.w/2, cy = st.y + st.h - 4*u;
+    this.capsule.style.left = `${cx}px`; this.capsule.style.top = `${cy}px`;
+    this.hint.style.left = `${cx}px`; this.hint.style.top = `${cy - 2.6*u}px`;
+    this.capWidth(this.cap || 'idle');
     for (const w of [...this.words, ...this.hl]) {
       const r = this.rel(w);
       w.style.setProperty('--dx', `${cx - r.x - r.w/2}px`); w.style.setProperty('--dy', `${cy - r.y - r.h/2}px`);
@@ -99,13 +120,24 @@ class Hero {
     S.classList.remove('measuring');
     this.prevT = -1; this.tick(performance.now(), true);
   }
+  capWidth(state) {
+    const u = this.u || 8, n = state === 'tool' ? ROWS[this.tool].icons.length + 2 : 0;
+    const w = state === 'rec' ? 9.4*u : state === 'tool' ? n*3*u + (n - 1)*.35*u + 1.6*u + 1.4*u : 6.4*u;
+    this.capsule.style.width = `${w}px`;
+  }
   setCap(state, tool) {
-    if (state !== this.cap) { this.s.dataset.cap = state; this.cap = state; }
     if (tool && tool !== this.tool) {
       this.tool = tool;
-      const [label, sub, icon, live] = tool.split('|');
-      this.capLabel.textContent = label; this.capSub.textContent = sub; this.capIcon.innerHTML = ICONS[icon];
-      this.capTool.classList.toggle('live', live === 'live');
+      const icon = (name, on) => `<span class="ico${on ? ' on' : ''}"><svg viewBox="0 0 24 24">${ICONS[name]}</svg></span>`;
+      this.capRow.innerHTML = icon('chooser') + '<span class="sep"></span>' + ROWS[tool].icons.map((name, i) => icon(name, i === 0)).join('') + '<span class="sep"></span>' + icon('more');
+      this.hint.textContent = ROWS[tool].hint;
+      this.cap = '';
+    }
+    if (state !== this.cap) {
+      this.s.dataset.cap = state; this.cap = state; this.capWidth(state);
+      if (state === 'rec') this.hint.textContent = 'Dictate';
+      else if (state === 'tool') this.hint.textContent = ROWS[this.tool].hint;
+      this.hint.classList.toggle('on', state !== 'idle');
     }
   }
   tick(now, force) {
@@ -128,9 +160,9 @@ class Hero {
     if (at) this.caret.style.transform = `translate(${at.x}px,${at.y}px)`;
     const intro = !reduce && e < INTRO - .25;
     if (intro || (t >= .5 && t < 3.9)) this.setCap('rec');
-    else if (t >= 4.3 && t < 8.9) this.setCap('tool', 'Snap & Talk|Screen|snap|live');
-    else if (t >= 9.5 && t < 12) this.setCap('tool', 'Draw|Pen|draw|');
-    else if (t >= 12.5 && t < FADE - .5) this.setCap('tool', 'Persona|Site manager|persona|');
+    else if (t >= 4.3 && t < 8.9) this.setCap('tool', 'snap');
+    else if (t >= 9.5 && t < 12) this.setCap('tool', 'draw');
+    else if (t >= 12.5 && t < FADE - .5) this.setCap('tool', 'persona');
     else this.setCap('idle');
     // Snap it: select, snap, two more snaps fan out, then they fold into a deck.
     const g = ease(clamp((t - 4.9)/1.05)), snapping = t >= 4.55 && t < 6.15;
@@ -144,7 +176,9 @@ class Hero {
     on(this.cross, 'on', t >= 4.7 && t < 6.05);
     on(this.flash, 'on', t >= 6.12 && t < 6.26);
     on(this.c1, 'on', t >= 6.2); on(this.c2, 'on', t >= 6.75); on(this.c3, 'on', t >= 7.1);
-    on(this.deck, 'folded', t >= 7.75); on(this.deck, 'tagged', t >= 8.4);
+    // Workbench hands the snaps and your words to an assistant, which builds the deck.
+    on(this.deck, 'handing', t >= 7.4 && t < 8.15);
+    on(this.deck, 'folded', t >= 8.15); on(this.deck, 'tagged', t >= 8.6);
     // Mark it: circle the headline, then write a note and point at it.
     const cp = ease(clamp((t - 9.85)/.95)), ap = ease(clamp((t - 11.3)/.45));
     this.circle.style.strokeDashoffset = this.cLen*(1 - cp);
@@ -164,7 +198,7 @@ class Hero {
       r.line.setAttribute('x1', (FACE.cx + r.c*r0).toFixed(2)); r.line.setAttribute('y1', (FACE.cy + r.s*r0).toFixed(2));
       r.line.setAttribute('x2', (FACE.cx + r.c*r1).toFixed(2)); r.line.setAttribute('y2', (FACE.cy + r.s*r1).toFixed(2));
     }
-    const rec = this.cap === 'rec' || (this.cap === 'tool' && this.tool.endsWith('live')) ? 1 : 0;
+    const rec = this.cap === 'rec' ? 1 : 0;
     for (const b of this.trace) {
       const h = rec*b.amp*(.35 + .65*Math.abs(Math.sin(e*b.w + b.p)))*15;
       b.line.setAttribute('y1', (11 - h/2).toFixed(2)); b.line.setAttribute('y2', (11 + h/2).toFixed(2));
@@ -188,6 +222,14 @@ if (screen) {
   // Start straight away; re-measure once the display font arrives, since it moves the words.
   start();
   document.fonts?.ready.then(() => hero.layout());
+}
+
+// Each card's illustration starts when it first scrolls into view; reduced motion keeps the finished frame.
+if (!reduce) {
+  const arts = new IntersectionObserver(entries => entries.forEach(entry => {
+    if (entry.isIntersecting) { entry.target.classList.add('play'); arts.unobserve(entry.target); }
+  }), { threshold: .35 });
+  document.querySelectorAll('.tool-art').forEach(art => arts.observe(art));
 }
 
 // The menu bar clock shows the visitor's own time, like the real one.
