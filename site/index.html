@@ -12,8 +12,10 @@
   <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
   <link rel="preload" href="/assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/home.css">
+  <link rel="stylesheet" href="/home-play.css">
   <script src="/home-boot.js"></script>
   <script type="module" src="/home.mjs"></script>
+  <script type="module" src="/home-play.mjs"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -71,6 +73,21 @@
         <div class="capsule"><span class="cap-handle"></span><span class="cap-rec"><i></i><svg viewBox="0 0 50 22"></svg></span><span class="cap-row"></span></div>
         <span class="cap-hint"></span>
         <span class="u-probe"></span>
+      </div>
+
+      <div class="toolbar-try" id="toolbar-try" hidden>
+        <button class="cap-hit" type="button" aria-expanded="false" aria-controls="try-tray" aria-label="Try the toolbar yourself"></button>
+        <p class="try-note" aria-hidden="true"><svg viewBox="0 0 40 30"><path d="M4 26C14 25 24 19 30 6"/><path d="M23 9.5L30.5 5l1.6 8.4"/></svg>try it!</p>
+        <div class="try-tray" id="try-tray" role="group" aria-label="Play a moment">
+          <button type="button" data-moment="dictate" aria-pressed="false"><svg viewBox="0 0 24 24"><circle class="rec" cx="6" cy="12" r="3.2"/><path d="M12.5 9v6M16.5 6v12M20.5 10v4"/></svg><span>Dictate</span></button>
+          <button type="button" data-moment="snap" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="15" height="12" rx="2" stroke-dasharray="2.6 2.2"/><circle class="rec ring" cx="18.5" cy="17.5" r="3.4"/></svg><span>Snap &amp; Talk</span></button>
+          <button type="button" data-moment="draw" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M5 19.5l1.2-4.3L16.4 5a1.9 1.9 0 0 1 2.7 2.7L8.8 17.9z"/><path d="M14.6 6.8l2.7 2.7"/></svg><span>Draw</span></button>
+          <button type="button" data-moment="persona" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="12" cy="10.5" r="2.8"/><path d="M7.5 18c.9-2.4 2.6-3.4 4.5-3.4s3.6 1 4.5 3.4"/></svg><span>Persona</span></button>
+          <span class="sep"></span>
+          <button type="button" class="tray-close" aria-label="Close and let it play"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+        </div>
+        <div class="ink-bar"><span>Draw anywhere on this page</span><span class="ink-esc"><kbd>Esc</kbd> clears it</span><button type="button">Done</button></div>
+        <p class="sr" role="status"></p>
       </div>
     </div>
   </section>

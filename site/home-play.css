@@ -1,0 +1,51 @@
+/* The playable toolbar (home-play.mjs). It shares the hero overlay's box, so it can sit on the
+   capsule using the geometry home.mjs publishes: --cap-x, --cap-y (centre) and --cap-w. */
+.toolbar-try{position:absolute;inset:0;max-width:1280px;margin-inline:auto;z-index:4;pointer-events:none}
+.toolbar-try button{font:inherit;-webkit-tap-highlight-color:transparent}
+
+/* An invisible button over the capsule; the ring shows it can be pressed. */
+.cap-hit{position:absolute;left:var(--cap-x,50%);top:var(--cap-y,80%);transform:translate(-50%,-50%);width:var(--cap-w,calc(var(--u)*6.4));height:calc(var(--u)*4);padding:0;border:0;border-radius:999px;background:transparent;cursor:pointer;pointer-events:auto;transition:width .4s cubic-bezier(.2,.85,.25,1),box-shadow .2s}
+.cap-hit:hover{box-shadow:0 0 0 2px var(--mint),0 0 calc(var(--u)*2.4) rgba(154,240,198,.45)}
+.cap-hit:focus-visible{outline:3px solid var(--mint);outline-offset:3px;border-radius:999px}
+@media (pointer:coarse){.cap-hit{min-width:48px;min-height:44px}}
+.try-open .cap-hit{visibility:hidden}
+
+/* A handwritten nudge under the window, gone once the toolbar has been opened. */
+.try-note{position:absolute;left:calc(var(--cap-x,50%) - var(--u)*.6);top:calc(var(--cap-y,80%) + var(--u)*2.2);transform:translateX(-100%);margin:0;display:flex;align-items:flex-end;gap:calc(var(--u)*.2);font-family:var(--hand);font-weight:700;font-size:max(17px,calc(var(--u)*2.7));line-height:1;color:var(--mark);white-space:nowrap}
+.try-note svg{width:max(26px,calc(var(--u)*4.2));height:max(20px,calc(var(--u)*3.2));fill:none;stroke:var(--mark);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:calc(var(--u)*.9)}
+.anim .try-note{animation:try-note .5s 4.6s both}
+@keyframes try-note{from{opacity:0;transform:translateX(-100%) translateY(6px) rotate(-3deg)}}
+.tried .try-note{visibility:hidden}
+
+/* The open toolbar: the four moments, then close. home-play.mjs places it and its origin. */
+.try-tray{position:absolute;left:0;top:0;display:flex;align-items:center;gap:2px;padding:5px;border-radius:16px;background:rgba(22,24,26,.95);color:#fff;box-shadow:0 calc(var(--u)*.8) calc(var(--u)*2.8) rgba(0,0,0,.3),inset 0 0 0 1px rgba(255,255,255,.08);transform:scale(.55);opacity:0;visibility:hidden;pointer-events:auto;transition:opacity .16s,transform .32s cubic-bezier(.2,.9,.25,1.15),visibility 0s .32s}
+.try-open .try-tray{opacity:1;visibility:visible;transform:none;transition-delay:0s}
+.try-tray button{display:grid;justify-items:center;align-content:center;gap:3px;min-width:54px;min-height:46px;padding:5px 7px;border:0;border-radius:11px;background:transparent;color:#fff;font-size:11.5px;font-weight:600;line-height:1.1;white-space:nowrap;cursor:pointer;transition:background-color .15s}
+.try-tray button:hover{background:rgba(255,255,255,.1)}
+.try-tray button[aria-pressed="true"]{background:rgba(255,255,255,.2)}
+.try-tray button[aria-pressed="true"] span{color:var(--mint)}
+.try-tray button:focus-visible{outline:2px solid var(--mint);outline-offset:-2px;border-radius:11px}
+.try-tray svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.try-tray .rec{fill:#ff453a;stroke:none}
+.try-tray .rec.ring{stroke:#16181a;stroke-width:1.4}
+.try-tray .sep{width:1px;height:26px;background:rgba(255,255,255,.22);margin:0 3px}
+.try-tray .tray-close{min-width:36px;color:rgba(255,255,255,.75)}
+.try-tray .tray-close svg{width:16px;height:16px}
+
+/* While it is open the tray stands in for the capsule and its hint; the pressed tool says what is playing. */
+.try-open .capsule,.try-open .cap-hint{opacity:0}
+
+/* Draw: ink over the whole page, under the site menu bar so the menu still works. */
+.page-ink{position:absolute;left:0;top:0;width:100%;z-index:45;touch-action:none;cursor:url(/assets/home/pen-cursor.svg) 4 28,crosshair}
+.page-ink path{fill:none;stroke:var(--mark);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.try-drawing.screen .toolbar-try{z-index:46}
+.ink-bar{display:none;position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);align-items:center;gap:12px;padding:6px 6px 6px 18px;border-radius:999px;background:rgba(22,24,26,.95);color:#fff;font-size:14px;font-weight:600;white-space:nowrap;box-shadow:0 8px 28px rgba(0,0,0,.3),inset 0 0 0 1px rgba(255,255,255,.08);pointer-events:auto}
+.try-drawing .ink-bar{display:flex}
+.ink-esc{color:rgba(255,255,255,.7);font-weight:500}
+.ink-esc kbd{font:inherit;font-size:12px;font-weight:650;color:#fff;border:1px solid rgba(255,255,255,.35);border-bottom-width:2px;border-radius:5px;padding:0 6px;margin-right:3px}
+.ink-bar button{min-height:36px;padding:0 16px;border:0;border-radius:999px;background:var(--mint);color:#12282e;font-weight:700;cursor:pointer}
+.ink-bar button:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:999px}
+@media (hover:none),(max-width:480px){.ink-esc{display:none}}
+@media (pointer:coarse){.ink-bar button{min-height:44px}}
+
+.toolbar-try .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

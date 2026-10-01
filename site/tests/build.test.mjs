@@ -11,7 +11,7 @@ async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'workbench-site-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   // Exact source allowlist; never copy local environment or deployment files.
-  for (const name of ['build.mjs', 'release.mjs', 'report.mjs', 'app.mjs', 'index.html', 'home.css', 'home.mjs', 'home-boot.js', 'contribute', 'privacy.html', 'style.css', 'packs', 'guide', 'mobile', 'handoff', 'scenes', 'personas', 'phone-presenting', 'handbook']) {
+  for (const name of ['build.mjs', 'release.mjs', 'report.mjs', 'app.mjs', 'index.html', 'home.css', 'home.mjs', 'home-boot.js', 'home-play.mjs', 'home-play.css', 'contribute', 'privacy.html', 'style.css', 'packs', 'guide', 'mobile', 'handoff', 'scenes', 'personas', 'phone-presenting', 'handbook']) {
     await cp(new URL(`../${name}`, import.meta.url), join(directory, name), { recursive: true });
   }
   await mkdir(join(directory, 'assets'));
@@ -66,6 +66,25 @@ test('built HTML, browser feedback and update assets share the selected producti
   for (const path of ['.env.local', 'updates/maintainer-notes.txt', 'updates/README.md', 'tests']) {
     await assert.rejects(access(join(directory, 'public', path)), { code: 'ENOENT' });
   }
+});
+
+test('the homepage and its playable toolbar stay inside the content security policy', async t => {
+  const directory = await fixture(t);
+  await stageSyntheticProduction(directory);
+  const result = build(directory, '--require-production');
+  assert.equal(result.status, 0, result.stderr);
+  const html = await readFile(join(directory, 'public/index.html'), 'utf8');
+  // The CSP allows no inline styles, scripts or handlers, so everything the page loads is a shipped file.
+  assert.doesNotMatch(html, /\sstyle=/);
+  assert.doesNotMatch(html, /\son[a-z]+=/);
+  assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)[^>]*>/);
+  const assets = [...html.matchAll(/(?:src|href)="\/([^"#?]+\.(?:mjs|js|css))"/g)].map(match => match[1]);
+  assert.ok(assets.includes('home-play.mjs') && assets.includes('home-play.css'));
+  for (const name of assets) await access(join(directory, 'public', name));
+  // The toolbar is opt-in: hidden until its module runs, with a named button and the four moments.
+  assert.match(html, /<div class="toolbar-try" id="toolbar-try" hidden>/);
+  assert.match(html, /aria-controls="try-tray" aria-label="Try the toolbar yourself"/);
+  for (const moment of ['dictate', 'snap', 'draw', 'persona']) assert.ok(html.includes(`data-moment="${moment}"`), moment);
 });
 
 test('legacy fallback is honest and cannot pass the explicit production promotion gate', async t => {
