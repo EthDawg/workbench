@@ -4189,10 +4189,11 @@
   {
     "id": "shortcut.stage.controls",
     "surface": "global shortcuts",
-    "label": "Open drawing controls",
+    "label": "Open Draw",
     "case": "controls",
     "kind": "action",
-    "belongsTo": "draw"
+    "belongsTo": "draw",
+    "note": "Quality: renamed from Open drawing controls to name the page it opens, as the panel's Open Draw… does."
   },
   {
     "id": "shortcut.stage.ellipse",
@@ -4333,10 +4334,11 @@
   {
     "id": "shortcut.stage.scenes",
     "surface": "global shortcuts",
-    "label": "Demo scenes",
+    "label": "Open Present",
     "case": "scenes",
     "kind": "action",
-    "belongsTo": "present"
+    "belongsTo": "present",
+    "note": "Quality: renamed from Demo scenes to name the page it opens, as the panel's Open Present… does."
   },
   {
     "id": "shortcut.stage.text",

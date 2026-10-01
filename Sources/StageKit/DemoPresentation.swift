@@ -75,20 +75,24 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             menu.addItem(StageMenuAction(controls.motionPaused ? "Play Background Motion" : "Pause Background Motion") { [weak self] in self?.controls.motionPaused.toggle() })
         }
         menu.addItem(StageMenuAction("Show Presentation Window") { [weak self] in self?.bringForward() })
-        menu.addItem(StageMenuAction("Full Screen", checked: window?.styleMask.contains(.fullScreen) == true) { [weak self] in self?.window?.toggleFullScreen(nil) })
-        menu.addSubmenu("Window Size", items: [("Compact", CGFloat(640)), ("Medium", CGFloat(900)), ("Large", CGFloat(1100))].map { title, width in
-            StageMenuAction(title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
-                guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
-                let frame = FloatingControlGeometry.clamp(NSRect(origin: window.frame.origin, size: NSSize(width: width, height: width * 0.66)), to: screen.visibleFrame)
-                window.setFrame(frame, display: true)
-            }
-        })
-        menu.addSubmenu("Window Position", items: FloatingControlAnchor.allCases.map { anchor in
-            StageMenuAction(anchor.title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
-                guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
-                window.setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen.visibleFrame), display: true)
-            }
-        })
+        let fullScreen = window?.styleMask.contains(.fullScreen) == true
+        menu.addItem(StageMenuAction("Full Screen", checked: fullScreen) { [weak self] in self?.window?.toggleFullScreen(nil) })
+        // Size and position only apply to a window; in full screen they would be submenus of disabled items.
+        if !fullScreen {
+            menu.addSubmenu("Window Size", items: [("Compact", CGFloat(640)), ("Medium", CGFloat(900)), ("Large", CGFloat(1100))].map { title, width in
+                StageMenuAction(title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
+                    guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
+                    let frame = FloatingControlGeometry.clamp(NSRect(origin: window.frame.origin, size: NSSize(width: width, height: width * 0.66)), to: screen.visibleFrame)
+                    window.setFrame(frame, display: true)
+                }
+            })
+            menu.addSubmenu("Window Position", items: FloatingControlAnchor.allCases.map { anchor in
+                StageMenuAction(anchor.title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
+                    guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
+                    window.setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen.visibleFrame), display: true)
+                }
+            })
+        }
         menu.addItem(.separator())
         for app in NativePresentationApp.allCases {
             menu.addItem(StageMenuAction("End Preview & Open \(app.title)", enabled: app.isAvailable) { [weak self] in self?.endAndOpen(app) })
@@ -100,7 +104,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
     /// already a direct action; external-player handoffs remain in connection help.
     func makeViewMenu() -> NSMenu {
         let menu = makeControlsMenu()
-        for item in menu.items where item.title == "End Presentation" || item.title.hasPrefix("End Preview & Open ") {
+        // Like the panel, the pill's menu holds only actions: the connection status line is not one.
+        for item in menu.items where item.title == "End Presentation" || item.title.hasPrefix("End Preview & Open ")
+            || !item.isEnabled && !item.isSeparatorItem && item.submenu == nil {
             menu.removeItem(item)
         }
         while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }

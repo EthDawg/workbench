@@ -61,10 +61,11 @@ struct ControlCenter: View {
                         }
                 }
                 HStack {
-                    Text(app.embedded && app.selectedTab == "Present" ? "Drawing & presentation" : app.selectedTab).font(.body.weight(.semibold))
+                    Text(app.embedded && app.selectedTab == "Present" ? "Overview" : app.selectedTab).font(.body.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
-                    Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") }
+                    // In Workbench, Persona is its own page; a second library sheet here was a parallel door.
+                    if !app.embedded { Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
                     HStack(spacing: 6) {
                         Circle().fill(inkAccent).frame(width: 6, height: 6)
                         Text("Ready on \(app.displayCount) \(app.displayCount == 1 ? "display" : "displays")")
@@ -366,9 +367,9 @@ struct Keycap: View {
     let text: String
     var body: some View {
         Text(text).font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(Color.white.opacity(0.85)).padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.08)))
+            .foregroundStyle(Color.primary.opacity(0.85)).padding(.horizontal, 9).padding(.vertical, 5)
+            .background(Color.primary.opacity(0.065), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(0.12)))
     }
 }
 
