@@ -3141,7 +3141,7 @@ enum SurfaceGallery {
                          page(panel, "Snap · Options · Open Snap…", "snap")]
             case .snapAndTalk:
                 list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
-                         page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Options · Review Snap & Talk…", "readback")]
+                         page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Options · Open Snap & Talk…", "readback")]
             case .annotate:
                 list += [action(panel, tool.title, "Starts drawing on screen"), action(panel, options, "Native menu, listed below")]
             case .present:

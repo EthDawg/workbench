@@ -237,7 +237,7 @@ struct WorkbenchQuickPanel: View {
         case .snapAndTalk:
             NativeControlMenu(title: "Options") {
                 let menu = NSMenu(title: "Snap & Talk"); menu.autoenablesItems = false
-                menu.addItem(ToolbarMenuAction("Review Snap & Talk…") { open("readback") })
+                menu.addItem(ToolbarMenuAction("Open Snap & Talk…") { open("readback") })
                 return menu
             }
         case .annotate:

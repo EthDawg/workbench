@@ -195,7 +195,7 @@ struct ReadbackView: View {
                 Text(time(capturePresentation?.elapsed ?? model.recordingElapsed)).monospacedDigit().foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button("Cancel") { model.cancelNarration() }
-                Button("Stop and save") { model.stopNarration() }.buttonStyle(.borderedProminent)
+                Button("Stop narration") { model.stopNarration() }.buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("readback.stop")
             } else if isCapturing {
                 ProgressView().controlSize(.small)
@@ -377,7 +377,7 @@ struct ReadbackView: View {
             } else {
                 HStack(spacing: 8) {
                     if section.status != .recording { ProgressView().controlSize(.small) }
-                    Text(section.status == .recording ? "Narration is recording. Use Stop and save above when you’re done." : "Transcribing this section. You can review another section while it finishes.")
+                    Text(section.status == .recording ? "Narration is recording. Use Stop narration above when you’re done." : "Transcribing this section. You can review another section while it finishes.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }

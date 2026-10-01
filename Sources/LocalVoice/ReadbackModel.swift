@@ -760,7 +760,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
         if let reason = mayBeginCapture?() { notice = reason; stateChanged(); return }
         guard let root = sessionURL, let sessionID = manifest?.id else { notice = "Create or open a Snap & Talk session first."; stateChanged(); return }
         refreshSessionAvailability()
-        guard currentSessionProblem == nil else { notice = "Locate this session folder before capturing another section."; return }
+        guard currentSessionProblem == nil else { notice = "Locate this session folder before capturing another section."; stateChanged(); return }
         guard permissionsReady else { notice = permissionsProblem; stateChanged(); return }
         let request = UUID(); captureRequest = request
         isCapturing = true

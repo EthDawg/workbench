@@ -836,15 +836,6 @@
     "aliasOf": "timer"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.finish-narration",
-    "surface": "floating toolbar activity chooser",
-    "label": "Finish narration",
-    "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "snapAndTalk"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.open-meetings",
     "surface": "floating toolbar activity chooser",
     "label": "Open Meetings…",
@@ -890,13 +881,13 @@
     "aliasOf": "read"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-captures",
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review",
     "surface": "floating toolbar activity chooser",
-    "label": "Review captures",
+    "label": "Review",
     "kind": "action",
     "belongsTo": "snapAndTalk",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "snapAndTalk"
+    "aliasOf": "snapAndTalk",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Review captures to match the pill's Review control."
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-delivery",
@@ -987,6 +978,15 @@
     "belongsTo": "present",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "present"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-narration",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop narration",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Finish narration so every door says Stop narration."
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading",
@@ -1906,11 +1906,12 @@
     "note": "Shared \"Options\" wording for the Snap & Talk row; the row owns it."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-snapandtalk-options.ToolbarMenuAction.review-snap-talk",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-snapandtalk-options.ToolbarMenuAction.open-snap-talk",
     "surface": "quick panel snapAndTalk options",
-    "label": "Review Snap & Talk…",
+    "label": "Open Snap & Talk…",
     "kind": "action",
-    "belongsTo": "snapAndTalk"
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: renamed from Review Snap & Talk… to match the other Options doors (Open Snap…, Open Draw…)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-b9f66b1c9f83",
@@ -3552,9 +3553,10 @@
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.snapAndTalk",
     "surface": "floating toolbar next action",
-    "label": "Capture",
+    "label": "Snap & Talk",
     "kind": "workflow",
-    "belongsTo": "snapAndTalk"
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: the start without a session opens its setup, so it names the workflow rather than Capture."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopDictation",

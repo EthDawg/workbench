@@ -260,7 +260,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
             case .dictate: return live.canRecordAgain ? "Record again" : "Dictate"
             case .read: return "Read"
             case .snap: return "Snap"
-            case .snapAndTalk: return "Capture"
+            case .snapAndTalk: return "Snap & Talk"
             case .draw: return "Draw"
             case .present: return "Present"
             case .persona: return "Show persona"

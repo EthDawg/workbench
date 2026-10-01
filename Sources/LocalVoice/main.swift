@@ -565,8 +565,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if readback.isRecording { readback.stopNarration(); return }
         model.toolbarMode = .snapAndTalk
         readback.refreshPermissionState()
-        guard readback.sessionURL != nil, readback.permissionsReady else {
+        readback.refreshSessionAvailability()
+        // A missing session folder or a refused start is explained on the page, as the
+        // capture key does; hiding Workbench first made the press look like nothing happened.
+        guard readback.sessionURL != nil, readback.permissionsReady, readback.currentSessionProblem == nil else {
             navigate("readback"); return
+        }
+        if let reason = readback.mayBeginCapture?() {
+            readback.notice = reason; navigate("readback"); return
         }
         closeControls(); window.orderOut(nil)
         Task { await readback.captureNewSection(fromEditor: false, mode: mode) }

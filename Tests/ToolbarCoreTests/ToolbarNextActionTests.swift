@@ -274,7 +274,7 @@ final class ToolbarNextActionTests: XCTestCase {
         next.mode = .snapAndTalk
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Capture next · 3")
         next.captureCount = nil
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Capture")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Snap & Talk", "without a session the start opens its setup")
     }
 
     func testTheHintCarriesCountsAndTheKeyAndNothingElse() {

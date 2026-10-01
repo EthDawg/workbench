@@ -52,10 +52,10 @@ extension FloatingToolbar {
         }
         if readback.isRecording {
             let identity = readback.narrationIdentity ?? ""
-            command("Finish narration", id: "snap-talk.stop", .snapAndTalk, identity: identity) { readback.stopNarration() }
+            command("Stop narration", id: "snap-talk.stop", .snapAndTalk, identity: identity) { readback.stopNarration() }
             command("Cancel narration", id: "snap-talk.cancel", .snapAndTalk, identity: identity) { readback.cancelNarration() }
         }
-        if readback.sessionURL != nil { command("Review captures", id: "snap-talk.review", .snapAndTalk) { model.onShowEditor?("readback") } }
+        if readback.sessionURL != nil { command("Review", id: "snap-talk.review", .snapAndTalk) { model.onShowEditor?("readback") } }
         if stage.isDrawing { command("Stop drawing", id: "draw.stop", .draw, identity: stage.drawingIdentity?.uuidString ?? "") { stage.finishDrawing() } }
         if stage.isPresenting { command("End presentation", id: "present.end", .present, identity: stage.presentationIdentity?.uuidString ?? "") { stage.endDeviceScene() } }
         if promptInsertion.running { command("Stop inserting", id: "present.stop-inserting", .present, identity: promptInsertion.operationIdentity.uuidString) { promptInsertion.cancel() } }
@@ -101,7 +101,10 @@ extension FloatingToolbar {
             case .read: if model.readingFailure != nil { choice.detail = "Reading stopped · text kept" }
             case .snap: if snapModel.draft != nil { choice.detail = "Unsaved capture" }
             case .snapAndTalk:
-                if readback.sessionURL != nil { choice.detail = "\(readback.activeSections.count) captures" }
+                if readback.sessionURL != nil {
+                    let count = readback.activeSections.count
+                    choice.detail = "\(count) " + (count == 1 ? "capture" : "captures")
+                }
             case .persona:
                 if !choice.actions.isEmpty { choice.detail = stage.personaCycleNotice ?? stage.personaStatus }
             default: break
