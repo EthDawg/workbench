@@ -204,9 +204,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
     private func invalidateAudio() { stopPlayback(); audio?.discard(); audio = nil }
+    /// What Read's Cancel ends: audio being made, or Save audio's whole run, whose
+    /// export continues after the audio is made.
+    var canCancelReading: Bool { readingGenerationActive || savingAudio }
     func cancelReading() {
-        guard readingGenerationActive else { return }
-        let mayBeBilled = readingProvider == .speko
+        guard canCancelReading else { return }
+        // Only making audio sends text to Speko; an export sends nothing.
+        let mayBeBilled = readingGenerationActive && readingProvider == .speko
+        let cancelled = savingAudio ? "Save audio cancelled." : "Reading generation cancelled."
         let task = readingTask
         if savingAudioID == readingGenerationID { savingAudioID = nil }
         readingGenerationID = nil
@@ -216,7 +221,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         rendering = false
         task?.cancel()
         pendingRender?.cancel(); pendingRender = nil
-        status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
+        status = mayBeBilled ? cancelled + " Speko may still bill text already accepted." : cancelled
     }
     @Published private(set) var readingGenerationActive = false
     /// Save audio's whole run, from making the audio to writing the file.
@@ -1353,8 +1358,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 try await AudioRenderer.exportBounded(url, to: destination)
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
+                // A Cancel that landed as the file was written leaves no file behind.
+                guard !Task.isCancelled, readingGenerationID == generationID else {
+                    try? FileManager.default.removeItem(at: destination); throw CancellationError()
+                }
                 status = "Audio saved to \(destination.lastPathComponent)."
                 completion?(status)
             } catch {
