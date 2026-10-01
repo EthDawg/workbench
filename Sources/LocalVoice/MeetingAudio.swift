@@ -387,7 +387,7 @@ final class MeetingProcessTap: @unchecked Sendable {
 
         let created = AudioHardwareCreateProcessTap(description, &tap)
         guard created == noErr, tap != kAudioObjectUnknown else {
-            throw MeetingError.message("Workbench could not listen to that app's audio (CoreAudio error \(created)). Check Privacy & Security → Audio Recording.")
+            throw MeetingError.message("Workbench could not listen to that app's audio (CoreAudio error \(created)). Check Privacy & Security › Audio Recording.")
         }
 
         guard var asbd = MeetingCoreAudio.tapFormat(tap),

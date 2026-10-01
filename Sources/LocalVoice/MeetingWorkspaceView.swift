@@ -45,6 +45,9 @@ struct MeetingWorkspaceView: View {
     var openHistory: (UUID?) -> Void
     /// Where the speech engine is chosen and downloaded: Settings › Models.
     var openModels: () -> Void = {}
+    /// Whether macOS refuses the microphone, and the door to its setting, from the host.
+    var microphoneDenied: () -> Bool = { false }
+    var openMicrophoneSettings: () -> Void = {}
     @State private var showingOptions = false
 
     var body: some View {
@@ -101,6 +104,10 @@ struct MeetingWorkspaceView: View {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
                         Text(error).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         Spacer()
+                        if model.includeMicrophone, microphoneDenied() {
+                            Button("Microphone Settings…", action: openMicrophoneSettings).controlSize(.small)
+                                .help("Open Privacy & Security › Microphone in System Settings")
+                        }
                         Button { model.dismissError() } label: { Image(systemName: "xmark") }
                             .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
                     }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))

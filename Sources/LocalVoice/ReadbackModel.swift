@@ -305,7 +305,7 @@ enum ReadbackScreenCapture {
     @MainActor
     static func currentDisplay() async throws -> ReadbackScreenshot {
         guard CGPreflightScreenCaptureAccess() else {
-            throw ReadbackError.message("Screen Recording access is off. Allow Workbench in System Settings → Privacy & Security → Screen Recording, then try again.")
+            throw ReadbackError.message("Screen Recording access is off. Allow Workbench in System Settings › Privacy & Security › Screen Recording, then try again.")
         }
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first,
               let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {

@@ -44,6 +44,11 @@ struct ContentView: View {
                     Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                     Text(error).font(.system(size: 12)).textSelection(.enabled)
                     Spacer()
+                    // The fix is in System Settings, so the page opens it, as the toolbar's failure does.
+                    if model.page != "speak", model.microphoneAccessDenied {
+                        Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
+                            .help("Open Privacy & Security › Microphone in System Settings")
+                    }
                     Button { model.dismissError() } label: { Image(systemName: "xmark") }
                         .buttonStyle(.plain).accessibilityLabel("Dismiss error")
                 }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))

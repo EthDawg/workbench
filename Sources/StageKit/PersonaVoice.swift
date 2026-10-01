@@ -302,7 +302,7 @@ enum PersonaVoiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .microphoneDenied:
-            return "React to my voice needs microphone access. Allow Workbench in System Settings > Privacy & Security > Microphone."
+            return "React to my voice needs microphone access. Allow Workbench in System Settings › Privacy & Security › Microphone."
         case .unavailable(let reason):
             return "React to my voice stopped: \(reason)"
         }

@@ -108,7 +108,7 @@ enum WorkbenchPageChecks {
         let keyboard = WorkbenchHome.destination("shortcuts")
         try check(keyboard.page == "settings" && keyboard.section == "shortcuts", "Keyboard… opens Settings on Keyboard")
         // The menu-bar panel's recovery says one sentence and opens the page that says the rest.
-        try check(PanelRecoveryRow.headline("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.") == "Microphone access is off.",
+        try check(PanelRecoveryRow.headline("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.") == "Microphone access is off.",
                   "a recovery row keeps only the first sentence")
         try check(PanelRecoveryRow.headline("Preparing speech · first setup may take a few minutes") == "Preparing speech · first setup may take a few minutes",
                   "a one-sentence message is shown whole")

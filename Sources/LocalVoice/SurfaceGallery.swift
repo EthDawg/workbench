@@ -2011,7 +2011,7 @@ enum SurfaceGallery {
                                                                              wasPasted: false, destinationName: nil), wordCount: 42) },
                        reset: { model.clipboardReceipt.clear() }),
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
-                       apply: { model.report("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.", on: .dictate) },
+                       apply: { model.report("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.", on: .dictate) },
                        reset: { model.dismissError() }),
             PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
                        apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),

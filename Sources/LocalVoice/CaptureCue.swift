@@ -36,7 +36,7 @@ struct CaptureCue: Identifiable, Equatable {
     var status: String {
         switch reason {
         case .tooShort: return "No speech heard. Nothing was added."
-        case .tooQuiet: return "No speech heard. Nothing was added. If you spoke, check Sound → Input; on a MacBook, open the lid."
+        case .tooQuiet: return "No speech heard. Nothing was added. If you spoke, check Sound › Input; on a MacBook, open the lid."
         case .nothingRecognised(keptAudio: false): return "No speech heard. Nothing was added."
         case .nothingRecognised(keptAudio: true): return "No speech heard. The recording is kept here if you want to retry it."
         case .narrationNotHeard: return "No speech heard. The screenshot and any earlier narration were kept."
