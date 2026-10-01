@@ -171,6 +171,10 @@ struct SnapWorkspaceView: View {
                 Text("Other selected evidence stays selected. Use Update in History to change a saved selection.").font(.caption2).foregroundStyle(.secondary)
             }
             if let selectionProblem { Text(selectionProblem).foregroundStyle(.red).font(.caption) }
+            // A kept draft disables the selection's actions; say why and where to resolve it.
+            if model.draft != nil, !selectedIDs.isEmpty {
+                Text("Save or discard the unfinished Snap, using Review above, to use these.").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
     private var selectionActions: some View {
@@ -183,6 +187,7 @@ struct SnapWorkspaceView: View {
                 Divider()
                 Button(model.showingArchived ? "Restore selected" : "Archive selected") { model.archive(selectedIDs, archived: !model.showingArchived) }
             }.disabled(selectedIDs.isEmpty || model.isBusy)
+                .help(model.draft != nil ? "Save or discard the unfinished Snap first" : "")
         }
     }
     private func card(_ item: SnapItem) -> some View {
@@ -206,6 +211,7 @@ struct SnapWorkspaceView: View {
                 Button("Copy") { model.copy(item.id) }.controlSize(.small)
                 if item.archivedAt == nil {
                     Button("Edit…") { model.edit(item.id) }.controlSize(.small).disabled(model.isBusy).accessibilityLabel("Edit \(item.title)")
+                        .help(model.draft != nil ? "Save or discard the unfinished Snap first" : "Edit a copy; the original stays")
                 }
                 Spacer()
                 Menu {

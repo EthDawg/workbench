@@ -917,13 +917,13 @@
     "aliasOf": "dictate"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-unsaved-snap",
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-unfinished-snap",
     "surface": "floating toolbar activity chooser",
-    "label": "Review unsaved Snap",
+    "label": "Review unfinished Snap",
     "kind": "action",
     "belongsTo": "snap",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "snap"
+    "aliasOf": "snap",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Review unsaved Snap to the Review unfinished Snap wording snap.md and the image viewer use."
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-343c7a0bb03c",

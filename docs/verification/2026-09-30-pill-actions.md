@@ -95,7 +95,7 @@ the primary retains Stop drawing while Draw owns input.
 | 5 | Copy again, Review, Dismiss delivery receipt | Dictate chooser row: Review delivery, Copy again when allowed, Dismiss; desktop owner retains durable delivery and exact History review |
 | 6 | Reading cancel, pause, resume, stop, retry and dismiss | Read chooser row: Cancel/Pause/Resume/Stop and applicable Retry/Dismiss; Read retains text and voice, and Listen after dismissal |
 | 7 | Open Dictate, Read or Snap | Chooser footer opens the selected tool workspace, unaffected by hover |
-| 8 | Unsaved Snap review | Snap chooser row: Review unsaved Snap opens the workspace retaining the exact draft; shared editor Review reopens it |
+| 8 | Unsaved Snap review | Snap chooser row: Review unfinished Snap opens the workspace retaining the exact draft; shared editor Review reopens it |
 | 9 | Snap & Talk Review and Cancel | Snap & Talk chooser row: current-take Finish/Cancel and current-session Review; pill Review remains |
 | 10 | Drawing controls | Draw Tools on pill; existing Draw workspace and menu-bar Options; chooser Stop drawing |
 | 11 | Present source, reconnect, connection help | Present View and live presentation section: conditional Source, Reconnect and help |

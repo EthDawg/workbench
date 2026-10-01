@@ -48,7 +48,7 @@ extension FloatingToolbar {
             }
         }
         if let draft = snapModel.draft {
-            command("Review unsaved Snap", id: "snap.review", .snap, identity: draft.id.uuidString) { model.onShowEditor?("snap") }
+            command("Review unfinished Snap", id: "snap.review", .snap, identity: draft.id.uuidString) { model.onShowEditor?("snap") }
         }
         if readback.isRecording {
             let identity = readback.narrationIdentity ?? ""

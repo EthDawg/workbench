@@ -141,7 +141,7 @@
       "stateOwner": "SnapModel draft",
       "proposedHome": "Snap row Review and Snap editor",
       "invariant": "Leaving the editor preserves the draft; explicit Save or Discard resolves it",
-      "nativeHome": "Snap chooser row: Review unsaved Snap opens the workspace retaining the exact draft; shared editor Review reopens it"
+      "nativeHome": "Snap chooser row: Review unfinished Snap opens the workspace retaining the exact draft; shared editor Review reopens it"
     },
     {
       "oldAction": "Snap & Talk Review and Cancel",

@@ -146,7 +146,7 @@ struct FloatingToolbar: View {
             : [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: controls.rowAnchor, isFloating: controls.isFloating,
-            mode: live.mode, actionTitle: draftWaiting ? "Review Snap" : action.title, actionSymbol: draftWaiting ? "photo" : action.symbol,
+            mode: live.mode, actionTitle: draftWaiting ? "Review unfinished Snap" : action.title, actionSymbol: draftWaiting ? "photo" : action.symbol,
             isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: chooserChoices,
