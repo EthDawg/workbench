@@ -274,7 +274,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var error: String? { attention?.message }
     func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     var previewingPanel = false, canRetry = false, accessibilityGranted = false, ready = true
-    var preparing = false, modelMessage = ""
+    var preparing = false, modelMessage = "", modelFailure: String? = nil
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var recorder: AVAudioRecorder?, meter: Timer?, recordingAttempt: UUID?
     var peakPower: Float = -160, recordingSettings: CaptureSettings?
@@ -1018,11 +1018,13 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         unprepared.engine.prepareFailure = CheckFailure(description: "Synthetic model download failure")
         await unprepared.prepare()
         try check(unprepared.attention?.page == .home && unprepared.error?.hasPrefix("Could not prepare the speech model.") == true
-                  && unprepared.modelMessage == "Speech model needs attention" && !unprepared.ready && !unprepared.preparing,
+                  && unprepared.modelMessage == "The speech model couldn’t be prepared" && !unprepared.ready && !unprepared.preparing,
                   "A model that could not be prepared is Home's problem, where Retry model is")
+        try check(unprepared.modelFailure != nil, "Settings › Models keeps the reason beside Try download again")
         unprepared.engine.prepareFailure = nil
         await unprepared.prepare()
-        try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready", "Retry model prepares it")
+        try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready" && unprepared.modelFailure == nil,
+                  "Retry model prepares it and clears the reason")
 
         // A refusal is shown where the person acted (1 October audit, finding 7). The Dictate page's
         // mic: the reason is Dictate's, whose banner is beside that mic, and the capture HUD's.
