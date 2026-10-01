@@ -9,11 +9,42 @@ public struct ToolbarToolChoice: Equatable, Hashable, Sendable, Identifiable {
     public var isLive: Bool
     /// The assigned key, or nil when it is off or failed.
     public var key: String?
+    /// Commands belong to this activity, never to the selected toolbar mode.
+    public var actions: [ToolbarChooserAction] = []
+    public var detail: String? = nil
     public var id: ToolbarMode { mode }
 
     public init(mode: ToolbarMode, isSelected: Bool = false, isLive: Bool = false, key: String? = nil) {
         self.mode = mode; self.isSelected = isSelected; self.isLive = isLive; self.key = key
     }
+}
+
+/// A frozen, explicitly named command. The identity includes the owner's state so a
+/// stale Pause, Stop or recovery command cannot act on newer work.
+public struct ToolbarChooserAction: Equatable, Hashable, Sendable, Identifiable {
+    public var id: String
+    public var title: String
+    public var identity: String
+    public init(_ id: String, _ title: String, identity: String = "") {
+        self.id = id; self.title = title; self.identity = identity
+    }
+}
+
+/// Meetings and Timer are independent jobs, not additional toolbar modes.
+public struct ToolbarChooserActivity: Equatable, Sendable, Identifiable {
+    public var id: String
+    public var title: String
+    public var symbol: String
+    public var detail: String?
+    public var actions: [ToolbarChooserAction]
+    public init(id: String, title: String, symbol: String, detail: String? = nil, actions: [ToolbarChooserAction]) {
+        self.id = id; self.title = title; self.symbol = symbol; self.detail = detail; self.actions = actions
+    }
+}
+
+public struct ToolbarChooserActivities: Equatable, Sendable {
+    public var rows: [ToolbarChooserActivity]
+    public init(_ rows: [ToolbarChooserActivity] = []) { self.rows = rows }
 }
 
 /// The chooser's keyboard state, with no view: Up and Down move the highlight, typing jumps

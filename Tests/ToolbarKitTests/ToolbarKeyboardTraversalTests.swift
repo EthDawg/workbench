@@ -87,31 +87,31 @@ final class ToolbarKeyboardTraversalTests: XCTestCase {
 
     /// Draw's row: the launcher, the next action, Tools and More, and round again.
     @MainActor func testTabCyclesARowWithTools() throws {
-        let (forward, backward) = try cycle(draw(), count: 4)
-        XCTAssertEqual(forward, ["primary", "accessory", "more", "launcher"], "Tab from the launcher")
-        XCTAssertEqual(backward, ["more", "accessory", "primary", "launcher"], "Shift-Tab from the launcher")
+        let (forward, backward) = try cycle(draw(), count: 3)
+        XCTAssertEqual(forward, ["primary", "accessory", "launcher"], "Tab from the launcher")
+        XCTAssertEqual(backward, ["accessory", "primary", "launcher"], "Shift-Tab from the launcher")
     }
 
     /// Read has no accessory: Tab goes from the next action straight to More.
     @MainActor func testTabCyclesARowWithoutAnAccessory() throws {
-        let (forward, backward) = try cycle(ToolbarViewState(name: "read", tier: .revealed, mode: .read), count: 3)
-        XCTAssertEqual(forward, ["primary", "more", "launcher"])
-        XCTAssertEqual(backward, ["more", "primary", "launcher"])
+        let (forward, backward) = try cycle(ToolbarViewState(name: "read", tier: .revealed, mode: .read), count: 2)
+        XCTAssertEqual(forward, ["primary", "launcher"])
+        XCTAssertEqual(backward, ["primary", "launcher"])
     }
 
     /// An accessory that waits in More is not in the row, so it is not in the cycle either.
     @MainActor func testAnAccessoryWaitingInMoreIsSkipped() throws {
         var state = draw(); state.showsAccessory = false
-        let (forward, backward) = try cycle(state, count: 3)
-        XCTAssertEqual(forward, ["primary", "more", "launcher"])
-        XCTAssertEqual(backward, ["more", "primary", "launcher"])
+        let (forward, backward) = try cycle(state, count: 2)
+        XCTAssertEqual(forward, ["primary", "launcher"])
+        XCTAssertEqual(backward, ["primary", "launcher"])
     }
 
     /// A disabled next action is passed over both ways.
     @MainActor func testTabSkipsADisabledPrimary() throws {
-        let (forward, backward) = try cycle(draw(enabled: false), count: 3)
-        XCTAssertEqual(forward, ["accessory", "more", "launcher"])
-        XCTAssertEqual(backward, ["more", "accessory", "launcher"])
+        let (forward, backward) = try cycle(draw(enabled: false), count: 2)
+        XCTAssertEqual(forward, ["accessory", "launcher"])
+        XCTAssertEqual(backward, ["accessory", "launcher"])
     }
 
     /// A right-hand dock mirrors the row on screen, More first and the launcher last, but the
@@ -123,10 +123,10 @@ final class ToolbarKeyboardTraversalTests: XCTestCase {
                 .sorted { $0.convert($0.bounds, to: host.view).minX < $1.convert($1.bounds, to: host.view).minX }
                 .map { $0.accessibilityIdentifier() }
             host.close()
-            XCTAssertEqual(onScreen, ["toolbar.more", "toolbar.accessory", "toolbar.primary", "toolbar.launcher"], "\(anchor) mirrors")
-            let (forward, backward) = try cycle(draw(anchor), count: 4)
-            XCTAssertEqual(forward, ["primary", "accessory", "more", "launcher"], "\(anchor)")
-            XCTAssertEqual(backward, ["more", "accessory", "primary", "launcher"], "\(anchor)")
+            XCTAssertEqual(onScreen, ["toolbar.accessory", "toolbar.primary", "toolbar.launcher"], "\(anchor) mirrors")
+            let (forward, backward) = try cycle(draw(anchor), count: 3)
+            XCTAssertEqual(forward, ["primary", "accessory", "launcher"], "\(anchor)")
+            XCTAssertEqual(backward, ["accessory", "primary", "launcher"], "\(anchor)")
         }
     }
 
@@ -159,13 +159,13 @@ final class ToolbarKeyboardTraversalTests: XCTestCase {
     @MainActor func testTheCycleWorksWhereAppKitCountsNoButtonAsAKeyView() throws {
         let host = try host(ToolbarRow(state: draw()))
         defer { host.close() }
-        let controls = ["launcher", "primary", "accessory", "more"].compactMap { host.control($0) }
-        XCTAssertEqual(controls.count, 4)
+        let controls = ["launcher", "primary", "accessory"].compactMap { host.control($0) }
+        XCTAssertEqual(controls.count, 3)
         guard !NSApp.isFullKeyboardAccessEnabled else { return }
         XCTAssertTrue(controls.allSatisfy { $0.acceptsFirstResponder && !$0.canBecomeKeyView },
                       "with Full Keyboard Access off, each control takes the focus but is no key view")
         var visited: [String] = []
         for _ in controls { host.tab(); visited.append(host.focused) }
-        XCTAssertEqual(visited, ["primary", "accessory", "more", "launcher"], "and Tab still visits every one")
+        XCTAssertEqual(visited, ["primary", "accessory", "launcher"], "and Tab still visits every one")
     }
 }

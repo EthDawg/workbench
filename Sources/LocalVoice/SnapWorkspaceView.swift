@@ -33,13 +33,18 @@ struct SnapWorkspaceView: View {
                 } label: { Label("Add image", systemImage: "plus") }.disabled(model.isBusy || model.importingScreenshots)
             }
             HStack(spacing: 10) {
-                // Region is the page's one accent action, what Snap's row and toolbar do (#134);
-                // Window and Screen stay beside it as neutral options.
-                ForEach(SnapCapture.Mode.allCases) { mode in
-                    let capture = Button { Task { await model.capture(mode) } } label: {
-                        Label(mode.title, systemImage: mode == .region ? "viewfinder" : mode == .window ? "macwindow" : "display")
-                    }.disabled(model.isBusy)
-                    if mode == .region { capture.buttonStyle(.borderedProminent) } else { capture }
+                if let draft = model.draft {
+                    Button("Review") { model.reviewDraft() }.buttonStyle(.borderedProminent)
+                        .help("Resume the unfinished Snap with its original image and edits")
+                    Text("Unfinished Snap · \(draft.title)").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                } else {
+                    // Region is the page's one accent action; Window and Screen stay neutral.
+                    ForEach(SnapCapture.Mode.allCases) { mode in
+                        let capture = Button { Task { await model.capture(mode) } } label: {
+                            Label(mode.title, systemImage: mode == .region ? "viewfinder" : mode == .window ? "macwindow" : "display")
+                        }.disabled(model.isBusy)
+                        if mode == .region { capture.buttonStyle(.borderedProminent) } else { capture }
+                    }
                 }
                 Spacer()
                 #if APP_STORE
@@ -75,7 +80,7 @@ struct SnapWorkspaceView: View {
                 VStack(spacing: 10) {
                     Image(systemName: model.search.isEmpty ? "photo.on.rectangle" : "magnifyingglass").font(.largeTitle)
                     Text(emptyTitle).font(.headline)
-                    Text(model.search.isEmpty ? (model.showingArchived ? "Archived Snaps stay here until you restore them." : "Choose Region, Window or Screen, then save your capture here.") : "Try another title, note or tag. Your selection is kept.")
+                    Text(emptyDetail)
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -125,12 +130,12 @@ struct SnapWorkspaceView: View {
                 Button("Import image…") { model.importImage() }.disabled(model.isBusy)
                 Spacer(minLength: 8)
                 Button("Open System Settings…") { model.openScreenRecordingSettings() }
-                    .help("Privacy & Security → Screen Recording. Workbench changes no setting itself.")
+                    .help("Privacy & Security › Screen Recording. Workbench changes no setting itself.")
             }
             if model.suggestsReopenForScreenAccess {
                 Text(ScreenCaptureAccess.reopenHint).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Allow Workbench under Privacy & Security → Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.")
+            Text("Allow Workbench under Privacy & Security › Screen Recording. macOS may ask you to quit and reopen Workbench afterwards. If your organisation manages this Mac, it may keep screen capture off.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -141,6 +146,12 @@ struct SnapWorkspaceView: View {
     private var emptyTitle: String {
         if !model.search.isEmpty { return "No matching Snaps" }
         return model.showingArchived ? "Nothing archived" : "Your Snaps start here"
+    }
+    private var emptyDetail: String {
+        if !model.search.isEmpty { return "Try another title, note or tag. Your selection is kept." }
+        if model.showingArchived { return "Archived Snaps stay here until you restore them." }
+        if model.draft != nil { return "Review your unfinished Snap, then save it to History." }
+        return "Choose Region, Window or Screen, then save your capture here."
     }
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -160,6 +171,10 @@ struct SnapWorkspaceView: View {
                 Text("Other selected evidence stays selected. Use Update in History to change a saved selection.").font(.caption2).foregroundStyle(.secondary)
             }
             if let selectionProblem { Text(selectionProblem).foregroundStyle(.red).font(.caption) }
+            // A kept draft disables the selection's actions; say why and where to resolve it.
+            if model.draft != nil, !selectedIDs.isEmpty {
+                Text("Save or discard the unfinished Snap, using Review above, to use these.").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
     private var selectionActions: some View {
@@ -172,6 +187,7 @@ struct SnapWorkspaceView: View {
                 Divider()
                 Button(model.showingArchived ? "Restore selected" : "Archive selected") { model.archive(selectedIDs, archived: !model.showingArchived) }
             }.disabled(selectedIDs.isEmpty || model.isBusy)
+                .help(model.draft != nil ? "Save or discard the unfinished Snap first" : "")
         }
     }
     private func card(_ item: SnapItem) -> some View {
@@ -195,6 +211,7 @@ struct SnapWorkspaceView: View {
                 Button("Copy") { model.copy(item.id) }.controlSize(.small)
                 if item.archivedAt == nil {
                     Button("Edit…") { model.edit(item.id) }.controlSize(.small).disabled(model.isBusy).accessibilityLabel("Edit \(item.title)")
+                        .help(model.draft != nil ? "Save or discard the unfinished Snap first" : "Edit a copy; the original stays")
                 }
                 Spacer()
                 Menu {

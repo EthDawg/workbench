@@ -11,11 +11,32 @@ final class ToolbarNextActionTests: XCTestCase {
         XCTAssertEqual(recording.symbol, "stop.fill")
         let playing = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, reading: .playing))
         XCTAssertEqual(playing.symbol, "pause.fill")
-        let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .paused))
+        let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused))
         XCTAssertEqual(paused.symbol, "play.fill")
-        let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: .draw, dictation: .processing))
-        XCTAssertEqual(waiting.symbol, "ellipsis")
+        let waiting = ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, dictation: .processing))
+        XCTAssertEqual(waiting.symbol, "hourglass")
         XCTAssertFalse(waiting.isEnabled)
+    }
+
+    /// Work that consumes nothing never hides another tool's start: a paused reading or a
+    /// dictation still processing leads only in its own tool, so Snap keeps its sources and
+    /// Present and Draw stay one click away. Their commands stay in the chooser.
+    func testIdleWaitsLeadOnlyInTheirOwnTool() {
+        for mode in ToolbarMode.allCases where mode != .read {
+            let paused = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, reading: .paused, mayStart: true))
+            XCTAssertNotEqual(paused.operation, .resumeReading, "\(mode)")
+        }
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .snap, reading: .paused, mayStart: true)).operation, .start(.snap))
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .read, reading: .paused)).operation, .resumeReading)
+        XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .present, reading: .playing)).operation, .pauseReading,
+                       "playback is still heard, so Pause leads everywhere")
+        for state in [ToolbarLiveState.Dictation.processing, .cancelling, .waitingForDrawing] {
+            for mode in ToolbarMode.allCases where mode != .dictate {
+                let action = ToolbarNextAction.resolve(ToolbarLiveState(mode: mode, dictation: state, mayStart: true))
+                XCTAssertNotEqual(action.operation, .wait, "\(mode) \(state)")
+            }
+            XCTAssertEqual(ToolbarNextAction.resolve(ToolbarLiveState(mode: .dictate, dictation: state)).operation, .wait)
+        }
     }
 
     private static let counts: [Int?] = [nil, 0, 1, 3]
@@ -51,6 +72,15 @@ final class ToolbarNextActionTests: XCTestCase {
             || live.reading != .idle
     }
 
+    /// Input work that claims the label: as `inputLive`, except that a paused reading leads only
+    /// in Read and a dictation still processing only in Dictate, because neither consumes input.
+    private static func leadsLive(_ live: ToolbarLiveState) -> Bool {
+        let dictation = live.dictation == .requesting || live.dictation == .recording
+            || live.dictation == .waitingForDrawing && live.drawing || live.dictation != .idle && live.mode == .dictate
+        let reading = live.reading == .preparing || live.reading == .playing || live.reading == .paused && live.mode == .read
+        return live.insertingPrompt || dictation || live.capturingScreen || live.narrating || live.drawing || reading
+    }
+
     /// The selected mode's own step or ending, which claims the label only there.
     private static func ownLive(_ live: ToolbarLiveState) -> Bool {
         switch live.mode {
@@ -75,17 +105,21 @@ final class ToolbarNextActionTests: XCTestCase {
             case .finishDrawing: ok = live.drawing
             case .cancelReading: ok = live.reading == .preparing
             case .pauseReading: ok = live.reading == .playing
-            case .resumeReading: ok = live.reading == .paused
+            case .resumeReading: ok = live.reading == .paused && live.mode == .read
             case .stopReading: ok = false
             case .pauseOverlays: ok = live.persona == .session && live.mode == .persona
             case .resumeOverlays: ok = live.persona == .sessionHidden && live.mode == .persona
             case .hidePersona: ok = live.persona == .shown && live.mode == .persona
+            case .cancelPersonaCamera: ok = live.persona == .cameraStarting && live.mode == .persona
+            case .hidePersonaCamera: ok = live.persona == .cameraShown && live.mode == .persona
+            case .showPersonaCamera: ok = live.persona == .cameraHidden && live.mode == .persona
+            case .retryPersonaCamera: ok = live.persona == .cameraFailed && live.mode == .persona
             case .captureNext: ok = live.mode == .snapAndTalk && live.captureCount != nil
             case .stopMeetingTranscription: ok = live.meetingRecording && live.mode == .dictate
             case .endPresentation: ok = live.presenting && live.mode == .present
             case .start(let mode): ok = mode == live.mode
-            case .wait: ok = live.capturingScreen || live.dictation == .processing || live.dictation == .cancelling
-                || live.dictation == .waitingForDrawing
+            case .wait: ok = live.capturingScreen || live.mode == .dictate && (live.dictation == .processing
+                || live.dictation == .cancelling || live.dictation == .waitingForDrawing)
             }
             if !ok, failures.count < 5 { failures.append("\(action.operation) for \(live)") }
         }
@@ -118,7 +152,7 @@ final class ToolbarNextActionTests: XCTestCase {
             let operation = ToolbarNextAction.resolve(live).operation
             if operation == .endPresentation, live.mode != .present { failures += 1 }
             if operation == .stopMeetingTranscription, live.mode != .dictate { failures += 1 }
-            if [.pauseOverlays, .resumeOverlays, .hidePersona].contains(operation), live.mode != .persona { failures += 1 }
+            if [.pauseOverlays, .resumeOverlays, .hidePersona, .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera].contains(operation), live.mode != .persona { failures += 1 }
             if operation == .captureNext, live.mode != .snapAndTalk { failures += 1 }
         }
         XCTAssertEqual(failures, 0)
@@ -131,10 +165,10 @@ final class ToolbarNextActionTests: XCTestCase {
         var failures = 0
         Self.product { live in
             let action = ToolbarNextAction.resolve(live)
-            let own = [.endPresentation, .stopMeetingTranscription, .captureNext, .pauseOverlays, .resumeOverlays, .hidePersona]
+            let own = [.endPresentation, .stopMeetingTranscription, .captureNext, .pauseOverlays, .resumeOverlays, .hidePersona, .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera]
                 .contains(action.operation)
-            if own, Self.inputLive(live) { failures += 1 }
-            if Self.ownLive(live), !Self.inputLive(live), !own { failures += 1 }
+            if own, Self.leadsLive(live) { failures += 1 }
+            if Self.ownLive(live), !Self.leadsLive(live), !own { failures += 1 }
         }
         XCTAssertEqual(failures, 0)
     }
@@ -144,9 +178,9 @@ final class ToolbarNextActionTests: XCTestCase {
         Self.product { live in
             let action = ToolbarNextAction.resolve(live)
             if case .start = action.operation {
-                if Self.inputLive(live) || Self.ownLive(live) { failures += 1 }
+                if Self.leadsLive(live) || Self.ownLive(live) { failures += 1 }
                 if action.isEnabled != live.mayStart { failures += 1 }
-            } else if !Self.inputLive(live), !Self.ownLive(live) {
+            } else if !Self.leadsLive(live), !Self.ownLive(live) {
                 failures += 1
             }
         }
@@ -180,7 +214,7 @@ final class ToolbarNextActionTests: XCTestCase {
             let action = ToolbarNextAction.resolve(live)
             switch action.operation {
             case .wait: if action.isEnabled { failures += 1 }
-            case .start, .captureNext:
+            case .start, .captureNext, .showPersonaCamera, .retryPersonaCamera:
                 if action.isEnabled != live.mayStart { failures += 1 }
             default: if !action.isEnabled { failures += 1 }
             }
@@ -226,7 +260,7 @@ final class ToolbarNextActionTests: XCTestCase {
         next.drawing = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Pause reading")
         next.reading = .idle
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop transcribing", "Dictate owns the meeting")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop & transcribe", "Dictate owns the meeting")
         next.meetingRecording = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Dictate", "presenting and personas belong to other modes")
         next.mode = .present
@@ -240,7 +274,7 @@ final class ToolbarNextActionTests: XCTestCase {
         next.mode = .snapAndTalk
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Capture next · 3")
         next.captureCount = nil
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Capture")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Snap & Talk", "without a session the start opens its setup")
     }
 
     func testTheHintCarriesCountsAndTheKeyAndNothingElse() {

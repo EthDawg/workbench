@@ -98,7 +98,7 @@ enum PromptPickerChecks {
         }
         var prepared = 0, posted = 0, inserted: [String] = []
         let system = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false },
-                                         preparePaste: { prepared += 1; return { posted += 1 } })
+                                         preparePaste: { _ in prepared += 1; return { posted += 1 } })
         let delivery = PromptInsertion()
         let receipts = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
         func model(_ mode: PromptPickerMode, dismissed: @escaping () -> Void = {}) -> PromptPickerModel {

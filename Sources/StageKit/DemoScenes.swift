@@ -237,6 +237,8 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     @Published private(set) var sceneSync: MacSceneSync?
     private var window: NSWindow?
     private var presentation: DemoPresentation?
+    var liveSettingsView: AnyView? { presentation.map { AnyView($0.liveSettingsView) } }
+    func makeViewMenu() -> NSMenu { presentation?.makeViewMenu() ?? NSMenu() }
     var usesSharedControls = false
     var onFocusSharedControls: (() -> Void)?
     let desktopMotion = MainActor.assumeIsolated { DesktopMotionController() }
@@ -244,6 +246,10 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     var onBeginPresentation: (() -> Void)?
     var mayBeginInteraction: (() -> Bool)?
     var isPresenting: Bool { presentation != nil }
+    var presentationIdentity: UUID? { presentation?.sessionIdentity }
+    /// The camera a running device presentation holds. Persona's camera reports
+    /// it as a conflict rather than taking the device from the presentation.
+    var heldDeviceID: String? { presentation?.heldDeviceID }
     @Published private(set) var myDevice: DeviceViewport?
     @Published private(set) var savedLogos: [SavedSceneLogo] = []
     @Published private(set) var starterPreferences = StarterPreferences()
@@ -263,14 +269,17 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
     }
     private var archiveURL: URL { root.appendingPathComponent("scenes.json") }
     private var snapshotURL: URL { root.appendingPathComponent("desktop-restore.json") }
-    /// `personaPanels` stands in for prepared overlay windows in checks.
+    /// `personaPanels` stands in for prepared overlay windows in checks, and
+    /// `personaCamera` for the live camera.
     init(root: URL? = nil, readOnlyReason: String? = nil, systemIntegrationEnabled: Bool = true, personaVoice: PersonaVoiceAccess? = nil,
-         personaPanels: (() -> any PersonaSessionDisplaying)? = nil) {
+         personaPanels: (() -> any PersonaSessionDisplaying)? = nil, personaCamera: PersonaLiveCamera? = nil) {
         self.root = root ?? Workbench.supportDirectory(component: "StageMark").appendingPathComponent("Scenes")
         self.systemIntegrationEnabled = systemIntegrationEnabled
         self.personas = PersonaLibrary(root: self.root, readOnlyReason: readOnlyReason, sessionPanelFactory: personaPanels,
-                                       sessionHUDEnabled: personaPanels == nil, voice: personaVoice)
+                                       sessionHUDEnabled: personaPanels == nil, voice: personaVoice, camera: personaCamera)
         super.init()
+        // Persona's camera keeps clear of the device a presentation is showing.
+        personas.camera.deviceInUse = { [weak self] in self?.heldDeviceID }
         if let readOnlyReason {
             storageBlocked = true; logoLibraryBlocked = true; starterLibraryBlocked = true
             notice = readOnlyReason
@@ -427,6 +436,13 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         try draft.chooseImage(imageURL, name: title, source: "From iPhone · Independent copy")
         return draft
     }
+    func makeBackdropReplacement(sceneID: UUID, image: BackdropImage, title: String) throws -> BackdropReplacement {
+        guard !storageBlocked else { throw SceneError.storageBlocked }
+        guard let scene = scenes.first(where: { $0.id == sceneID }) else { throw BackdropReplacementError.sceneMissing }
+        let draft = BackdropReplacement(scene: scene, root: root)
+        try draft.chooseImage(image, name: title, source: "Library · Independent copy")
+        return draft
+    }
     func applyBackdrop(_ draft: BackdropReplacement) throws {
         guard !storageBlocked else { throw SceneError.storageBlocked }
         guard draft.root.standardizedFileURL == root.standardizedFileURL else { throw BackdropReplacementError.closed }
@@ -477,6 +493,19 @@ final class DemoScenes: NSObject, ObservableObject, NSWindowDelegate {
         var scene = DemoScene(name: String((name ?? url.deletingPathExtension().lastPathComponent).prefix(160)), background: filename)
         scene.viewport = myDevice ?? .phone
         do { try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = nil }
+        catch { try? FileManager.default.removeItem(at: destination); throw error }
+    }
+    /// Explicit Create scene from a prepared Library image. The in-memory
+    /// choice creates no file until here and never touches the live presentation.
+    func addImage(_ image: BackdropImage, name: String) throws {
+        guard !storageBlocked else { throw SceneError.storageBlocked }
+        let filename = UUID().uuidString + "." + image.fileExtension
+        let destination = root.appendingPathComponent(filename)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try image.data.write(to: destination, options: .withoutOverwriting)
+        var scene = DemoScene(name: String(name.prefix(160)), background: filename)
+        scene.viewport = myDevice ?? .phone
+        do { try persist(scenes + [scene]); query = ""; selectedID = scene.id; notice = "Scene saved. Choose Present when you are ready." }
         catch { try? FileManager.default.removeItem(at: destination); throw error }
     }
     private func copyImage(_ url: URL) throws -> String {

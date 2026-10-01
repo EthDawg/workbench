@@ -49,7 +49,7 @@ enum ToolbarActiveWork: Equatable {
         if facts.drawing && facts.mode != .draw && facts.nextAction != .finishDrawing { items.append(.stopDrawing) }
         if facts.presenting && facts.mode != .present { items.append(.endPresentation) }
         if facts.persona != .none && facts.mode != .persona {
-            items.append(.persona(facts.persona == .session ? "Hide personas" : facts.persona == .sessionHidden ? "Show personas" : "Hide persona"))
+            items.append(.persona(ToolbarNextAction.resolve(ToolbarLiveState(mode: .persona, persona: facts.persona)).title))
         }
         if facts.meetingRecording && facts.mode != .dictate { items.append(.stopTranscribing) }
         // Dictate's own options hold only its page, so the recovery is offered in every tool.

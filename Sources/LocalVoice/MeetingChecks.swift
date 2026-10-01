@@ -350,10 +350,124 @@ enum MeetingChecks {
         let restored = try MeetingRecovery.rebuildTracks(session: recorderSession, manifest: recording)
         try expect(restored.tracks.first?.seconds == recorded.seconds, "writer timing/audio survives close and recovery")
 
+        try await recordingReviewChecks(root: root, expect: expect)
         try await lifecycleChecks(root: root, expect: expect)
+        try await keptRecordingChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
         checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
+    }
+
+    private static func recordingReviewChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        var original = manifest(state: .stopped)
+        let session = try MeetingStore.create(root: root.appendingPathComponent("recording-review"), manifest: original)
+        let local = try audio(source: .local, seconds: 1, rate: 16_000, value: 0, offset: 0, session: session)
+        let remote = try audio(source: .remote, seconds: 1, rate: 48_000, value: 0, offset: 0.5, session: session)
+        var committed = original
+        committed.tracks = [local, remote]; committed.seconds = 1.5; committed.state = .committed
+        committed.segments = [.init(index: 0, file: "segments/segment-0000.wav", startSeconds: 0,
+                                    seconds: 1.5, bytes: 48_000, text: "Synthetic recording review")]
+        try MeetingStore.save(committed, at: session, replacing: original)
+        original = committed
+        let manifestURL = session.appendingPathComponent(MeetingStore.manifestName)
+        let localURL = try MeetingStore.safeURL(session: session, relative: local.file)
+        let remoteURL = try MeetingStore.safeURL(session: session, relative: remote.file)
+        let before = try [manifestURL, localURL, remoteURL].map { try Data(contentsOf: $0) }
+        let recording = try MeetingRecording.load(session: session)
+        let item = try await recording.playerItem()
+        let tracks = try await item.asset.loadTracks(withMediaType: .audio)
+        let starts = tracks.compactMap { $0 as? AVCompositionTrack }.flatMap(\.segments)
+            .filter { !$0.isEmpty }.map { $0.timeMapping.target.start.seconds }
+        try expect(tracks.count == 2 && starts.contains { abs($0 - 0.5) < 0.001 },
+                   "recording review retains both originals and their half-second source offset")
+        let duration = try await item.asset.load(.duration).seconds
+        try expect(abs(duration - 1.5) < 0.001, "recording review uses the complete recorded timeline")
+        try expect(item.audioMix?.inputParameters.count == 2, "recording review mixes both tracks without discarding a source")
+        let playback = MeetingRecordingPlayback()
+        await playback.prepare { session }
+        try expect(!playback.playing && playback.recording?.manifest.id == committed.id,
+                   "opening recording review selects the exact transcript UUID and never autoplays")
+        playback.close()
+        try expect(playback.recording == nil && !playback.playing && !playback.ready,
+                   "closing recording review releases its player and cannot leave hidden playback")
+        // Exercise the real owner admission and removal hold, using silent synthetic audio.
+        let suite = "Workbench-RecordingReview-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = MeetingModel(directory: session.deletingLastPathComponent(), defaults: defaults,
+            processSource: ProcessFixture(), transcribe: { _ in "unused" },
+            microphonePermission: { false }, captureFactory: { CaptureFixture() })
+        let review = model.recordingPlayback
+        await review.prepare { try model.recordingURL(for: committed.id) }
+        await waitUntil { review.ready || review.problem != nil }
+        try expect(review.ready && !review.playing, "the real recording player becomes ready without autoplay")
+        review.toggle()
+        await waitUntil { review.playing }
+        try expect(review.playing, "explicit Play starts the reviewed recording")
+        var admitted = false
+        model.mayPlayRecording = { admitted }
+        model.updateRecordingPlaybackAdmission()
+        await Task.yield()
+        try expect(!model.canPlayRecording && !review.playing, "competing capture or Read admission pauses recording playback")
+        admitted = true; model.updateRecordingPlaybackAdmission()
+        await Task.yield()
+        try expect(model.canPlayRecording && !review.playing, "ending competing work never resumes the recording automatically")
+        var commits = 0, held = false
+        do { _ = try model.removeCompletedRecording(for: committed.id) { commits += 1 } }
+        catch { held = error.localizedDescription.contains("Close the recording review") }
+        try expect(held && commits == 0 && model.hasRecording(for: committed.id),
+                   "an open recording review rejects same-UUID removal before the history commit")
+        var alternate = committed; alternate.id = UUID()
+        let alternateSession = try MeetingStore.create(root: session.deletingLastPathComponent(), manifest: alternate)
+        try before[1].write(to: MeetingStore.safeURL(session: alternateSession, relative: local.file))
+        try before[2].write(to: MeetingStore.safeURL(session: alternateSession, relative: remote.file))
+
+        // Hold the old asynchronous preparation across a newer review and across Close.
+        let gate = Gate<Bool>()
+        let delayed = MeetingRecordingPlayback { value in
+            if value.manifest.id == committed.id { _ = await gate.wait() }
+            return try await value.playerItem()
+        }
+        let oldLoad = Task { await delayed.prepare { session } }
+        await waitUntil { gate.isWaiting }
+        await delayed.prepare { alternateSession }
+        gate.resume(true); await oldLoad.value
+        try expect(delayed.session == alternateSession && delayed.recording?.manifest.id == alternate.id && !delayed.playing,
+                   "an older preparation cannot replace the newer recording review")
+        delayed.close()
+        let closingLoad = Task { await delayed.prepare { session } }
+        await waitUntil { gate.isWaiting }
+        delayed.close(); gate.resume(true); await closingLoad.value
+        try expect(delayed.session == nil && delayed.recording == nil && !delayed.ready && !delayed.playing,
+                   "closing during asynchronous preparation cannot resurrect the recording player")
+        _ = try model.removeCompletedRecording(for: alternate.id) { commits += 1 }
+        try expect(commits == 1 && review.session == session && !model.hasRecording(for: alternate.id),
+                   "an open review does not prevent removal of an unrelated recording")
+        review.close()
+        do {
+            _ = try model.removeCompletedRecording(for: committed.id) {
+                commits += 1
+                throw MeetingError.message("Synthetic history failure keeps the fixture")
+            }
+        } catch {}
+        try expect(commits == 2 && model.hasRecording(for: committed.id),
+                   "closing the review releases its removal hold while a failed history commit keeps the audio")
+        await model.prepareForShutdown()
+        try expect(try [manifestURL, localURL, remoteURL].map { try Data(contentsOf: $0) } == before,
+                   "review preparation and close preserve every original byte")
+        var unfinished = committed; unfinished.state = .stopped
+        try MeetingStore.save(unfinished, at: session, replacing: committed)
+        var refusedUnfinished = false
+        do { _ = try MeetingRecording.load(session: session) } catch { refusedUnfinished = true }
+        try expect(refusedUnfinished, "unfinished audio stays with recovery instead of a completed-recording preview")
+        try MeetingStore.save(original, at: session, replacing: unfinished)
+        try FileManager.default.removeItem(at: remoteURL)
+        await playback.prepare { session }
+        try expect(playback.problem != nil && !playback.ready && !playback.playing && playback.session == session,
+                   "a missing original track produces a visible failure with a revealable folder instead of partial playback")
+        try expect(try Data(contentsOf: localURL) == before[1] && Data(contentsOf: manifestURL) == before[0],
+                   "failed review preserves the remaining track and manifest")
+        playback.close()
     }
 
     private static func offerLifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
@@ -448,7 +562,8 @@ enum MeetingChecks {
         let capture = CaptureFixture()
         let model = MeetingModel(directory: root.appendingPathComponent("model"), defaults: defaults, processSource: source,
                                  transcribe: { _ in recognition += 1; return "synthetic meeting" },
-                                 microphonePermission: { permissions += 1; return true }, captureFactory: { factories += 1; return capture })
+                                 microphonePermission: { permissions += 1; return true },
+                                 captureFactory: { factories += 1; return factories == 1 ? capture : CaptureFixture() })
         await Task.yield()
         model.useOffer(MeetingAudioApp(id: 950, name: "Mac calling service", bundleID: "com.apple.avconferenced"))
         try expect(model.selectedAppID == 950 && model.purpose == "call", "reviewing a call on this Mac records it as a Call")
@@ -459,13 +574,22 @@ enum MeetingChecks {
         await model.start()
         try expect(!model.isBusy && factories == 0 && permissions == 0, "shared admission guard prevents capture")
         model.mayStart = nil; model.refreshApps(); model.selectedAppID = 789; model.includeMicrophone = false
+        model.selectAudioSource(nil)
+        try expect(model.selectedAppID == nil && model.includeMicrophone && factories == 0 && permissions == 0,
+                   "choosing microphone-only prepares a valid source without asking permission or starting capture")
+        model.selectAudioSource(789); model.includeMicrophone = false
         model.saveTranscript = { transcript, purpose in
             guard purpose == "meeting" else { throw MeetingError.message("Purpose changed") }
             history = TranscriptHistory.adding(transcript, to: history)
         }
         await model.start()
+        let firstRecording = model.recordingIdentity
+        try expect(firstRecording != nil, "the live recording has an operation identity")
         try expect(model.isRecording && model.isBusy && factories == 1 && permissions == 0 && recognition == 0,
                    "explicit app-only Start records without microphone access or concurrent recognition")
+        model.selectAudioSource(nil)
+        try expect(model.selectedAppID == 789 && !model.includeMicrophone,
+                   "navigation cannot change an active recording's sources")
         let activeID = UUID(uuidString: MeetingStore.sessions(in: root.appendingPathComponent("model"))[0].lastPathComponent)!
         var removalCommits = 0
         do {
@@ -487,6 +611,36 @@ enum MeetingChecks {
         try expect(!model.isBusy && capture.finished == 1 && history.count == 1 && recognition == 1,
                    "Stop closes capture then saves through the shared history callback")
         try expect(!model.hasRecovery, "committed controller session is not offered as unfinished")
+        try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID == activeID,
+                   "meeting completion opens its exact committed transcript")
+        do {
+            _ = try model.removeCompletedRecording(for: activeID) { throw MeetingError.message("Synthetic history write failed") }
+            throw MeetingError.message("Failed history removal unexpectedly succeeded")
+        } catch {
+            try expect(model.completedTranscriptID == activeID && model.hasRecording(for: activeID) && history.contains { $0.id == activeID },
+                       "failed removal retains the valid completion link and saved audio")
+        }
+        _ = try model.removeCompletedRecording(for: activeID) { history.removeAll { $0.id == activeID } }
+        try expect(model.completedTranscriptID == nil && history.isEmpty && !model.hasRecording(for: activeID),
+                   "removing the completed transcript also removes its workspace completion link")
+        await model.start()
+        try expect(model.recordingIdentity != firstRecording, "a replacement recording has its own generation")
+        await model.stop(expected: firstRecording)
+        try expect(model.isRecording, "a held Stop cannot finish a replacement recording")
+        await model.stop()
+        try expect(model.completedTranscriptID == history.first?.id && model.completedTranscriptID != nil,
+                   "a subsequent completed meeting gets its own review link")
+        let subsequentID = model.completedTranscriptID!
+        model.transcriptRemoved(UUID())
+        try expect(model.completedTranscriptID == subsequentID, "removing another transcript retains this completion link")
+        model.transcriptRemoved(subsequentID)
+        try expect(model.completedTranscriptID == nil, "authoritative transcript-only removal clears its completion link")
+        await model.start(); await model.stop()
+        await model.start()
+        try expect(model.isRecording && model.completedTranscriptID == nil, "a new recording cannot review a stale completion")
+        await model.cancel()
+        try expect(model.completedTranscriptID == nil && model.hasRecovery, "keeping unfinished audio never advertises a saved transcript")
+        try expect(model.error == nil, "Stop & keep for later is the person's choice, not a problem")
         await model.prepareForShutdown()
 
         let permissionGate = Gate<Bool>()
@@ -564,6 +718,62 @@ enum MeetingChecks {
                    "normal shutdown awaits audio flush and leaves recovery without recognition")
         try expect(MeetingRecovery.scan(root: quitRoot).first?.manifest?.state == .stopped,
                    "shutdown leaves a durable stopped session")
+    }
+
+    /// A recording with no words is settled, not unfinished: it is shown once with its audio
+    /// kept, never offered for retry, and never hides an older kept recording. Transcribe acts on
+    /// the row it belongs to, and Move to Trash removes only that recording.
+    private static func keptRecordingChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        let suite = "Workbench-MeetingChecks-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = root.appendingPathComponent("kept")
+        var words = "kept meeting words", history: [Transcript] = []
+        let model = MeetingModel(directory: store, defaults: defaults, processSource: ProcessFixture(),
+                                 transcribe: { _ in words }, microphonePermission: { true }, captureFactory: { CaptureFixture() })
+        model.saveTranscript = { transcript, _ in history.append(transcript) }
+        var trashed: [String] = []
+        model.moveToTrash = { url in try FileManager.default.removeItem(at: url) }
+        await Task.yield()
+
+        await model.start(); await model.cancel()
+        let older = MeetingStore.sessions(in: store)[0].lastPathComponent
+        try expect(model.recoveries.map(\.id) == [older] && model.error == nil, "a recording kept for later is listed with no problem shown")
+
+        words = ""
+        await model.start(); await model.stop()
+        let silent = MeetingStore.sessions(in: store).map(\.lastPathComponent).first { $0 != older }!
+        try expect(model.keptWithoutSpeech?.session.lastPathComponent == silent && model.completedTranscriptID == nil && history.isEmpty,
+                   "a recording with no words is shown once as kept without speech, and nothing reaches History")
+        try expect(model.recoveries.map(\.id) == [older], "a recording with no words is never offered for retry and does not hide the older one")
+        try expect(MeetingRecovery.scan(root: store).map(\.id) == [older], "the settled recording stays settled across a fresh scan")
+
+        words = "kept meeting words"
+        guard let entry = model.recoveries.first else { throw MeetingError.message("Meeting check failed: kept recording vanished") }
+        await model.retry(entry)
+        try expect(model.completedTranscriptID?.uuidString == older && history.map(\.text) == ["kept meeting words"] && model.recoveries.isEmpty,
+                   "Transcribe on a kept row commits that recording")
+        await model.retry(entry)
+        try expect(model.error != nil && history.count == 1, "transcribing a row that is no longer kept explains itself and adds nothing")
+        model.dismissError()
+        try expect(model.error == nil, "a meeting problem can be dismissed")
+
+        await model.moveRecordingToTrash(MeetingStore.sessionURL(root: store, id: UUID(uuidString: silent)!))
+        trashed = MeetingStore.sessions(in: store).map(\.lastPathComponent)
+        try expect(!trashed.contains(silent) && trashed.contains(older) && model.keptWithoutSpeech == nil && model.receipt != nil,
+                   "Move to Trash removes only the chosen recording and says where it went")
+        await model.prepareForShutdown()
+
+        // Microphone Settings… is offered beside the microphone refusal only, never beside another problem.
+        let refused = MeetingModel(directory: root.appendingPathComponent("refused"), defaults: defaults, processSource: ProcessFixture(),
+                                   transcribe: { _ in "unused" }, microphonePermission: { false }, captureFactory: { CaptureFixture() })
+        refused.includeMicrophone = true
+        await refused.start()
+        try expect(refused.error == MeetingModel.microphoneRefused && !refused.isBusy, "a refused microphone names the one refusal its settings fix")
+        refused.dismissError(); refused.mayStart = { "Another Workbench recording is active." }
+        await refused.start()
+        try expect(refused.error != nil && refused.error != MeetingModel.microphoneRefused, "another refusal is not the microphone's")
+        await refused.prepareForShutdown()
     }
 
     private static func waitUntil(_ condition: () -> Bool) async {

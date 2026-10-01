@@ -62,7 +62,7 @@ struct WorkbenchQuickPanel: View {
                     let renderedAction = state.rowAction(tool)
                     HStack(spacing: 8) {
                         // Each capability retains its own symbol, action and live accent.
-                        Button { perform(tool, renderedAction: renderedAction) } label: {
+                        Button { perform(tool, renderedAction: renderedAction, personaIdentity: state.personaIdentity) } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: tool.symbol).font(.system(size: 13))
                                     .foregroundStyle(state.active(tool) ? Workbench.accent : .secondary)
@@ -97,7 +97,8 @@ struct WorkbenchQuickPanel: View {
                             },
                             showCue: { model.onCloseMenu?(); receipts.revealHUD() },
                             reviewUnresolved: { entry in
-                                if entry.isDraft { open("dictate") } else { model.openHistory(); open("history") }
+                                open(entry.isDraft ? "dictate" : "history")
+                                model.reviewUnresolvedDelivery()
                             },
                             copyAgain: { model.copyUnresolvedDelivery() }, dismissUnresolved: { model.dismissUnresolvedDelivery() })
                         if receipts.receipt?.isClipboardCurrent != true {
@@ -213,7 +214,7 @@ struct WorkbenchQuickPanel: View {
                 Divider()
                 // Capture history belongs to Dictate, so its option opens History on Transcripts.
                 Button("History…") { model.openHistory(HistoryDoor(filter: .transcripts)); open("history") }
-                Button("Transcribe meeting or call…") { open("meeting") }
+                Button("Meetings…") { open("meeting") }
                 Button("Open Dictate…") { open("dictate") }
             }.menuStyle(.borderlessButton).fixedSize()
                 // A small control draws the 11 pt label the native Options controls use on every
@@ -236,7 +237,7 @@ struct WorkbenchQuickPanel: View {
         case .snapAndTalk:
             NativeControlMenu(title: "Options") {
                 let menu = NSMenu(title: "Snap & Talk"); menu.autoenablesItems = false
-                menu.addItem(ToolbarMenuAction("Review Snap & Talk…") { open("readback") })
+                menu.addItem(ToolbarMenuAction("Open Snap & Talk…") { open("readback") })
                 return menu
             }
         case .annotate:
@@ -276,8 +277,8 @@ struct WorkbenchQuickPanel: View {
     /// The row does exactly what its label says: the same operation, through the
     /// same owner switch the floating toolbar uses. Only a start goes through
     /// this surface's own door.
-    private func perform(_ tool: WorkbenchControlTool, renderedAction: WorkbenchRowAction) {
-        guard !keyboard.isInteracting, context.state.admits(renderedAction, for: tool) else { return }
+    private func perform(_ tool: WorkbenchControlTool, renderedAction: WorkbenchRowAction, personaIdentity: UUID?) {
+        guard !keyboard.isInteracting, context.state.admits(renderedAction, for: tool, personaIdentity: personaIdentity) else { return }
         let dispatch = WorkbenchOperationDispatch(model: model, readback: readback, stage: stage, meetings: model.meetings) { mode in
             switch mode {
             case .dictate: model.onMenuRecording?()

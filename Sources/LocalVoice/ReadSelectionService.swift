@@ -12,12 +12,14 @@ struct ReadingSelectionImport: Identifiable, Equatable {
         case transcript
         /// Read aloud on a Library item.
         case savedText
+        case file
 
         var name: String {
             switch self {
             case .selection: return "Selected text"
             case .transcript: return "The transcript"
             case .savedText: return "The saved text"
+            case .file: return "The text file"
             }
         }
         /// What Keep current leaves behind, said on the review and after it.
@@ -26,6 +28,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             case .selection: return "Keep current discards only this imported selection."
             case .transcript: return "Keep current leaves it in History."
             case .savedText: return "Keep current leaves it in Library."
+            case .file: return "Keep current leaves the original file unchanged."
             }
         }
         var keptNote: String {
@@ -33,6 +36,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             case .selection: return "The imported selection was not saved or sent."
             case .transcript: return "The transcript is still in History."
             case .savedText: return "The saved text is still in Library."
+            case .file: return "The original file is unchanged."
             }
         }
         fileprivate var emptyMessage: String {
@@ -40,6 +44,7 @@ struct ReadingSelectionImport: Identifiable, Equatable {
             case .selection: return "Select some text, then choose Read Selection in Workbench again."
             case .transcript: return "This transcript has no words to read."
             case .savedText: return "This saved item has no text to read."
+            case .file: return "This file has no words to read."
             }
         }
     }
@@ -71,6 +76,26 @@ struct ReadingSelectionImport: Identifiable, Equatable {
 
     static func needsReview(current: String, incoming: String) -> Bool {
         !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && current != incoming
+    }
+
+    /// One explicit local plain-text file, bounded before and during the read. No document
+    /// extraction, provider, clipboard or automatic playback is involved.
+    static func readFile(_ url: URL) throws -> Self {
+        guard url.isFileURL else { throw VoiceError.message("Choose a local plain-text file.") }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let limit = maximumCharacters * 4
+        let metadata = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard metadata.isRegularFile == true else { throw VoiceError.message("Choose a plain-text file, not a folder.") }
+        guard (metadata.fileSize ?? 0) <= limit else { throw VoiceError.message("This file is too large to read. Choose a smaller text file.") }
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        let data = try file.read(upToCount: limit + 1) ?? Data()
+        guard data.count <= limit else { throw VoiceError.message("This file is too large to read. Choose a smaller text file.") }
+        guard let text = String(data: data, encoding: .utf8), !text.contains("\u{0000}") else {
+            throw VoiceError.message("Choose a plain-text file saved as UTF-8.")
+        }
+        return try Self(text: text, origin: .file)
     }
 }
 

@@ -98,18 +98,19 @@ struct ReadingFollowAlongView: NSViewRepresentable {
     }
 }
 
-/// One line under the voice picker while every voice for the person's language
+/// A hint under the voice picker while every voice for the person's language
 /// is compact. The button only opens the settings pane.
 struct MacVoiceHintRow: View {
     let hint: MacVoiceHint
     let open: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "waveform.badge.plus").foregroundStyle(Workbench.accent).accessibilityHidden(true)
-            Text(hint.message).lineLimit(1).truncationMode(.tail).foregroundStyle(.secondary)
+            Text(hint.message).fixedSize(horizontal: false, vertical: true).foregroundStyle(.secondary)
             Spacer(minLength: 8)
             Button(hint.buttonTitle, action: open).controlSize(.small).help(hint.help)
+                .fixedSize()
                 .accessibilityHint(hint.help)
         }
         .font(.system(size: 12))

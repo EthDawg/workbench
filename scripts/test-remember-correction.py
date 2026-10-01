@@ -39,6 +39,10 @@ enum StoreFailure: Error { case simulated }
 /// The session now carries the one undelivered result (#134 T5); corrections
 /// never create one, so delivery here is only the outcome shape it reads.
 enum TextDelivery {
+    // Correction work has no captured destination. Keep the exact phase
+    // observer compilable without opening an app or monitoring real input.
+    struct Target { var opaqueEditor: Observation? }
+    struct Observation { func end() {} }
     enum FailureKind { case copyFailed, pasteUnconfirmed, cancelled, clipboardChanged, clipboardRestoreFailed }
     struct Outcome { var failure: FailureKind?; var pasteWasAttempted = false }
 }
@@ -57,6 +61,7 @@ enum TextDelivery {
 @MainActor final class AppModelCorrectionHarness {
     enum Phase: String { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var loaded = false
+    var destination: TextDelivery.Target?
     var draftRevision: UInt64 = 0
     var undelivered = UnresolvedDeliverySlot()
     var persistWork: DispatchWorkItem?

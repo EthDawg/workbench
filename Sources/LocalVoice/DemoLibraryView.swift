@@ -14,6 +14,8 @@ enum DemoLibraryReturnPolicy {
 struct DemoLibraryView: View {
     @ObservedObject var library: DemoLibraryModel
     @ObservedObject var model: AppModel
+    var onUseImageInPresent: ((DemoLibraryImageSnapshot) -> Void)? = nil
+    var onUseImageInPersona: ((DemoLibraryImageSnapshot) -> Void)? = nil
     @FocusState private var searching: Bool
     @State private var removal: DemoResource?
 
@@ -185,6 +187,14 @@ struct DemoLibraryView: View {
                 }
                 if item.fileAvailable && !item.canOpenFile { Text("Applications and executable files are available in Finder only.").font(.caption).foregroundStyle(.secondary) }
                 else if item.fileAvailable && !item.canPreviewFile { Text("This file type opens in its usual app but is not available for Quick Look here.").font(.caption).foregroundStyle(.secondary) }
+                if DemoLibraryImageUse.present.supports(item) || DemoLibraryImageUse.persona.supports(item) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack { imageReuseActions(item) }
+                        VStack(alignment: .leading) { imageReuseActions(item) }
+                    }
+                    Text("Prepare an independent scene or persona. Choose Present or Show when you are ready.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Button("Locate file…") { library.chooseFile(for: item) }.disabled(library.savingDisabled)
             } else {
                 if let target = item.browserTarget {
@@ -217,6 +227,18 @@ struct DemoLibraryView: View {
                 Button { removal = item } label: { Image(systemName: "trash") }.accessibilityLabel("Remove resource").disabled(library.savingDisabled)
             }.font(.caption).buttonStyle(.borderless)
         }.padding(18)
+    }
+    @ViewBuilder private func imageReuseActions(_ item: DemoResource) -> some View {
+        if DemoLibraryImageUse.present.supports(item), let onUseImageInPresent {
+            Button("Use in Present…") {
+                if let image = library.prepareImage(item, for: .present) { onUseImageInPresent(image) }
+            }.disabled(!item.fileAvailable || !item.canOpenFile)
+        }
+        if DemoLibraryImageUse.persona.supports(item), let onUseImageInPersona {
+            Button("Use in Persona…") {
+                if let image = library.prepareImage(item, for: .persona) { onUseImageInPersona(image) }
+            }.disabled(!item.fileAvailable || !item.canOpenFile)
+        }
     }
     private func primaryActionButton(_ item: DemoResource) -> some View {
         Button { library.performPrimaryAction() } label: {

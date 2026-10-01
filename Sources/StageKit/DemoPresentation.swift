@@ -4,6 +4,7 @@ import SwiftUI
 import AVFoundation
 
 final class DemoPresentation: NSObject, NSWindowDelegate {
+    let sessionIdentity = UUID()
     var onEnd: (() -> Void)?
     var onRevealSharedControls: (() -> Void)?
     private let sharedControls: Bool
@@ -61,9 +62,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         let menu = NSMenu(title: "Present"); menu.autoenablesItems = false
         if scene.showsPhone {
             menu.addItem(StageMenuAction(capture.live ? "Device Connected" : capture.message, enabled: false) {})
-            menu.addSubmenu("Source", items: capture.sources.map { source in
+            if !capture.sources.isEmpty { menu.addSubmenu("Source", items: capture.sources.map { source in
                 StageMenuAction(source.name, checked: source.id == capture.selectedID) { [weak self] in self?.capture.select(source.id) }
-            })
+            }) }
             menu.addItem(StageMenuAction("Source & Connection Help…") { [weak self] in
                 self?.controls.choosingSource = true; self?.bringForward()
             })
@@ -74,26 +75,88 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
             menu.addItem(StageMenuAction(controls.motionPaused ? "Play Background Motion" : "Pause Background Motion") { [weak self] in self?.controls.motionPaused.toggle() })
         }
         menu.addItem(StageMenuAction("Show Presentation Window") { [weak self] in self?.bringForward() })
-        menu.addItem(StageMenuAction("Full Screen", checked: window?.styleMask.contains(.fullScreen) == true) { [weak self] in self?.window?.toggleFullScreen(nil) })
-        menu.addSubmenu("Window Size", items: [("Compact", CGFloat(640)), ("Medium", CGFloat(900)), ("Large", CGFloat(1100))].map { title, width in
-            StageMenuAction(title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
-                guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
-                let frame = FloatingControlGeometry.clamp(NSRect(origin: window.frame.origin, size: NSSize(width: width, height: width * 0.66)), to: screen.visibleFrame)
-                window.setFrame(frame, display: true)
-            }
-        })
-        menu.addSubmenu("Window Position", items: FloatingControlAnchor.allCases.map { anchor in
-            StageMenuAction(anchor.title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
-                guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
-                window.setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen.visibleFrame), display: true)
-            }
-        })
+        let fullScreen = window?.styleMask.contains(.fullScreen) == true
+        menu.addItem(StageMenuAction("Full Screen", checked: fullScreen) { [weak self] in self?.window?.toggleFullScreen(nil) })
+        // Size and position only apply to a window; in full screen they would be submenus of disabled items.
+        if !fullScreen {
+            menu.addSubmenu("Window Size", items: [("Compact", CGFloat(640)), ("Medium", CGFloat(900)), ("Large", CGFloat(1100))].map { title, width in
+                StageMenuAction(title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
+                    guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
+                    let frame = FloatingControlGeometry.clamp(NSRect(origin: window.frame.origin, size: NSSize(width: width, height: width * 0.66)), to: screen.visibleFrame)
+                    window.setFrame(frame, display: true)
+                }
+            })
+            menu.addSubmenu("Window Position", items: FloatingControlAnchor.allCases.map { anchor in
+                StageMenuAction(anchor.title, enabled: window?.styleMask.contains(.fullScreen) != true) { [weak self] in
+                    guard let window = self?.window, !window.styleMask.contains(.fullScreen), let screen = window.screen else { return }
+                    window.setFrame(FloatingControlGeometry.frame(anchor: anchor, size: window.frame.size, visibleFrame: screen.visibleFrame), display: true)
+                }
+            })
+        }
         menu.addItem(.separator())
         for app in NativePresentationApp.allCases {
             menu.addItem(StageMenuAction("End Preview & Open \(app.title)", enabled: app.isAvailable) { [weak self] in self?.endAndOpen(app) })
         }
         menu.addItem(StageMenuAction("End Presentation") { [weak self] in self?.end() })
         return menu
+    }
+    /// The pill's View control contains only this live window and source. Ending is
+    /// already a direct action; external-player handoffs remain in connection help.
+    func makeViewMenu() -> NSMenu {
+        let menu = makeControlsMenu()
+        // Like the panel, the pill's menu holds only actions: the connection status line is not one.
+        for item in menu.items where item.title == "End Presentation" || item.title.hasPrefix("End Preview & Open ")
+            || !item.isEnabled && !item.isSeparatorItem && item.submenu == nil {
+            menu.removeItem(item)
+        }
+        while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
+        return menu
+    }
+    /// The device this presentation's capture holds; another camera owner reports
+    /// a conflict instead of taking it.
+    var heldDeviceID: String? { capture.heldDeviceID }
+    var liveSettingsView: some View { LiveSettings(presentation: self, capture: capture, controls: controls) }
+    private struct LiveSettings: View {
+        let presentation: DemoPresentation
+        @ObservedObject var capture: DemoCapture
+        @ObservedObject var controls: PresentationControlsModel
+        var body: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Live presentation · " + presentation.scene.name).font(.headline)
+                Text("Adjust the running presentation here. Your saved scene stays unchanged.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Show presentation window") { presentation.bringForward() }
+                    Button("End presentation") { presentation.end() }
+                }
+                Toggle("Full screen", isOn: Binding(get: { controls.fullScreen }, set: { value in
+                    guard presentation.window?.styleMask.contains(.fullScreen) != value else { return }
+                    presentation.window?.toggleFullScreen(nil)
+                }))
+                HStack { submenu("Window Size"); submenu("Window Position") }.disabled(controls.fullScreen)
+                if presentation.scene.showsPhone {
+                    Text(capture.live ? "Device connected" : capture.message).font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        if !capture.sources.isEmpty { submenu("Source") }
+                        Button("Reconnect") { capture.reconnect() }
+                        Button("Source & connection help…") { controls.choosingSource = true; presentation.bringForward() }
+                    }
+                    Toggle("Match device proportions", isOn: $controls.fitToSource)
+                }
+                if presentation.scene.gentleMotion == true {
+                    Toggle("Pause background motion", isOn: $controls.motionPaused)
+                }
+            }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        }
+        private func submenu(_ title: String) -> some View {
+            StageLiveMenu(title: title) {
+                let parent = presentation.makeControlsMenu()
+                guard let item = parent.items.first(where: { $0.title == title }), let menu = item.submenu else { return NSMenu() }
+                item.submenu = nil
+                return menu
+            }.fixedSize().frame(height: 24)
+        }
     }
     func bringForward() { NSApp.activate(ignoringOtherApps: true); window?.makeKeyAndOrderFront(nil) }
     func end() {
@@ -146,8 +209,9 @@ final class DemoPresentation: NSObject, NSWindowDelegate {
         lifecycle.willEnter(); window?.titleVisibility = .hidden
     }
     func windowWillExitFullScreen(_ notification: Notification) { lifecycle.willExit() }
-    func windowDidEnterFullScreen(_ notification: Notification) { apply(lifecycle.didEnter()) }
+    func windowDidEnterFullScreen(_ notification: Notification) { controls.fullScreen = true; apply(lifecycle.didEnter()) }
     func windowDidExitFullScreen(_ notification: Notification) {
+        controls.fullScreen = false
         window?.titleVisibility = .visible
         apply(lifecycle.didExit())
     }
@@ -190,6 +254,7 @@ private final class DemoStageWindow: NSWindow {
 /// AppKit owns Command-/ and Escape; the model owns only this presentation's
 /// controls and placement. Capture and scene state never depend on expansion.
 private final class PresentationControlsModel: ObservableObject {
+    @Published var fullScreen = false
     @Published private(set) var policy = PresentationControlsPolicy()
     @Published var fitToSource = true
     @Published var motionPaused = false

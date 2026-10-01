@@ -29,6 +29,7 @@ struct TranscriptHistoryDialogs: ViewModifier {
     @Binding var original: Transcript?
     @Binding var details: Transcript?
     @Binding var removal: TranscriptRemoval?
+    @Binding var recording: Transcript?
     private var removalIncludesRecording: Bool { removal?.includesRecording == true }
 
     func body(content: Content) -> some View {
@@ -39,6 +40,10 @@ struct TranscriptHistoryDialogs: ViewModifier {
                     ScrollView { Text(item.rawText ?? item.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     HStack { Text(item.date, format: .dateTime.month().day().hour().minute()).foregroundStyle(.secondary); Spacer(); Button("Done") { original = nil }.keyboardShortcut(.defaultAction) }
                 }.padding(24).frame(width: 560, height: 380)
+            }
+            .sheet(item: $recording) { item in
+                MeetingRecordingReviewView(meetings: model.meetings, playback: model.meetings.recordingPlayback,
+                                           transcript: item) { recording = nil }
             }
             .sheet(item: $details) { item in
                 TranscriptMetadataEditor(transcript: item, library: model.historyLibrary, suggest: { model.onSuggestTranscriptDetails?(item.id) })
@@ -71,6 +76,7 @@ struct TranscriptHistoryRow: View {
     @Binding var original: Transcript?
     @Binding var details: Transcript?
     @Binding var removal: TranscriptRemoval?
+    @Binding var recording: Transcript?
     /// A door asked History to show this transcript (#134): its heading line is then a focus stop
     /// that takes keyboard and VoiceOver focus, as a revealed task's heading does. Focus is not
     /// selection; the checkbox and the shared selection are untouched.
@@ -108,6 +114,14 @@ struct TranscriptHistoryRow: View {
                 if !metadata.captureNotes.isEmpty {
                     Label(metadata.captureNotes.joined(separator: " "), systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange)
+                }
+                if metadata.purpose == .meeting || metadata.purpose == .call || model.meetings.hasRecording(for: item.id) {
+                    HStack {
+                        Label("Original recording", systemImage: "waveform").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Review recording") { recording = item }
+                            .accessibilityLabel(CaptureHistoryAccessibility.label("Review original recording", context: context))
+                    }.font(.caption).buttonStyle(.borderless)
                 }
                 HStack(spacing: 12) {
                     Button("Copy") { model.copyCapture(item) }.accessibilityLabel(CaptureHistoryAccessibility.label("Copy", context: context))

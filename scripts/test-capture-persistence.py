@@ -30,7 +30,9 @@ methods = model.extract([
     'discardRecordingRecovery', 'discardCaptureRecovery', 'showCaptureRecoveryFiles', 'showSavedRecordings',
     # Manual copies and the undelivered result they resolve (#134 T5).
     'copyTranscript', 'deliveryRecords', 'unresolvedDelivery', 'copyTextWithReceipt', 'copyUnresolvedDelivery',
-    'dismissUnresolvedDelivery', 'copyCapture',
+    'dismissUnresolvedDelivery', 'reviewUnresolvedDelivery', 'openHistory', 'copyCapture',
+    # History's Open, refused on History while Dictate is busy (1 October audit, finding 7).
+    'openTranscript', 'applyHistoryTranscript', 'persist',
     # Removing a transcript drops an undelivered result that names it (#134 T5 review).
     'removeTranscript',
     # Failures, the routine no-speech cue (#156) and the hold lesson that can take its place (#134 T5).
@@ -106,6 +108,11 @@ import AppKit
 import AVFoundation
 import Combine
 
+// Trust is a fixture input, never the runner's real TCC state. These exact
+// AppModel methods call this local seam before choosing whether to defer paste.
+@MainActor enum FixtureAccessibility { static var trusted = true }
+@MainActor func AXIsProcessTrusted() -> Bool { FixtureAccessibility.trusted }
+
 __VALUES__
 __REQUEST__
 
@@ -157,6 +164,13 @@ struct CaptureSettings {
         calls += 1; return Result(text: raw.isEmpty ? "" : raw == "um synthetic captured words" ? "Synthetic captured words." : raw, method: "Fixture Light")
     }
 }
+// An observation spy allows the exact AppModel phase and destination
+// observers to prove teardown, without monitoring the user's actual input.
+@MainActor final class FixtureOpaqueEditor {
+    var begins = 0, ends = 0, active = false
+    func begin(shortcut: FixtureShortcut) { begins += 1; active = true }
+    func end() { if active { ends += 1 }; active = false }
+}
 @MainActor enum TextDelivery {
     static var calls = 0
     static var delayed = false
@@ -181,11 +195,16 @@ struct CaptureSettings {
     static var copyFails = false
     static let copiedMessage = "Copied. Paste with ⌘V."
     static func copiedDetail(_ failure: FailureKind?) -> String { "Synthetic delivery detail" }
-    typealias Target = String
-    static func capture() -> String? { "Frontmost fixture field" }
+    struct Target: ExpressibleByStringLiteral {
+        var name: String
+        var opaqueEditor: FixtureOpaqueEditor?
+        init(stringLiteral value: String) { name = value }
+        init(_ name: String, observation: FixtureOpaqueEditor) { self.name = name; opaqueEditor = observation }
+    }
+    static func capture() -> Target? { "Frontmost fixture field" }
     static func copy(_ text: String) -> Int? { copies.append(text); return copyFails ? nil : copies.count }
-    static func deliver(_ text: String, target: String?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
-        lastMode = mode; lastTarget = target
+    static func deliver(_ text: String, target: Target?, mode: DeliveryMode, restoreClipboard: Bool) async -> Outcome {
+        lastMode = mode; lastTarget = target?.name
         beforeDelivery?(); calls += 1
         if delayed { await withCheckedContinuation { continuation = $0 } }
         return nextOutcome
@@ -211,6 +230,8 @@ enum AudioRenderer { static func remove(_ url: URL?) {} }
 @MainActor final class AuxiliaryCaptureWork {
     var isBusy = false
     var shutdownCount = 0
+    var removedTranscripts: [UUID] = []
+    func transcriptRemoved(_ id: UUID) { removedTranscripts.append(id) }
     func shutdown() { shutdownCount += 1 }
     func hasRecording(for id: UUID) -> Bool { false }
     func removeCompletedRecording(for id: UUID, commit: () throws -> Void) throws -> String? { try commit(); return nil }
@@ -222,13 +243,15 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
 
 @MainActor final class CaptureHarness {
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
-    var phase = Phase.idle
+    __LIFECYCLE_PROPERTIES__
+    var page = "home", historyDoor: HistoryDoor?
+    var pendingTranscript: Transcript?, rememberedCorrection: String?
     // The press path and the coach (#134 T5).
     var preferences = FixtureVoicePreferences()
     var coach: FeedbackCoachModel
     var holdGesture: HoldGesture?
     var captureUsesHoldShortcut = false, isMicrophoneQuiet = false, rendering = false
-    var microphoneStartFailure: ((String?) -> String?)?
+    var microphoneStartFailure: ((TextDelivery.Target?) -> String?)?
     var undelivered = UnresolvedDeliverySlot()
     var draftRevision: UInt64 = 0
     var persistWork: DispatchWorkItem?
@@ -251,8 +274,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     var error: String? { attention?.message }
     func report(_ message: String, on page: Attention.Page) { attention = Attention(message: message, page: page) }
     var previewingPanel = false, canRetry = false, accessibilityGranted = false, ready = true
-    var preparing = false, modelMessage = ""
-    var destination: String? = "Original app target"
+    var preparing = false, modelMessage = "", modelFailure: String? = nil
     var recordURL: URL?, elapsed = 1.0, level = 0.0
     var recorder: AVAudioRecorder?, meter: Timer?, recordingAttempt: UUID?
     var peakPower: Float = -160, recordingSettings: CaptureSettings?
@@ -273,6 +295,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
         if let state { transcript = state.draft; rawTranscript = state.rawDraft ?? state.draft; history = state.history }
         // As AppModel's launch does once the draft is settled (the writer inventory checks it calls this).
         undelivered.restore(state?.undelivered, loadedDraftRevision: draftRevision, in: deliveryRecords)
+        destination = "Original app target"
     }
     func captureSettings() -> CaptureSettings { captureOptions }
     func stopPlayback() {}
@@ -325,6 +348,24 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             tag("RIFF"); le(UInt32(32036)); tag("WAVEfmt "); le(UInt32(16)); le(UInt16(1)); le(UInt16(1)); le(UInt32(16000)); le(UInt32(32000)); le(UInt16(2)); le(UInt16(16)); tag("data"); le(UInt32(32000)); data.append(Data(repeating: 0, count: 32000)); return data
         }
         let wav = wave()
+        let observed = CaptureHarness(directory: folder("opaque-lifecycle"))
+        let firstObservation = FixtureOpaqueEditor(), replacementObservation = FixtureOpaqueEditor()
+        observed.toggleRecording(target: TextDelivery.Target("Opaque fixture", observation: firstObservation))
+        try check(firstObservation.begins == 1 && firstObservation.active, "Dictation arms the captured opaque target once")
+        for phase in [CaptureHarness.Phase.recording, .transcribing, .cleaning, .delivering] {
+            observed.phase = phase
+            try check(firstObservation.active && firstObservation.ends == 0, "Observation survives every phase through delivery")
+        }
+        replacementObservation.begin(shortcut: FixtureShortcut())
+        observed.destination = TextDelivery.Target("Replacement", observation: replacementObservation)
+        try check(firstObservation.ends == 1 && !firstObservation.active, "Replacing the destination tears down the old observation")
+        observed.phase = .idle
+        try check(replacementObservation.ends == 1 && !replacementObservation.active, "Returning idle tears down the current observation")
+        let cancelledObservation = FixtureOpaqueEditor()
+        observed.toggleRecording(target: TextDelivery.Target("Cancelled", observation: cancelledObservation))
+        observed.cancelRecording()
+        try check(!cancelledObservation.active && cancelledObservation.ends == 1, "Cancelling the request removes its observation")
+
         let independent = CaptureHarness(directory: folder("stage-preserves-failure"))
         let retainedAudio = try independent.makeRecording(wav)
         let retainedJournal = try Data(contentsOf: folder("stage-preserves-failure").appendingPathComponent("pending.json"))
@@ -342,9 +383,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(independent.hasCaptureRecovery && independent.canRetry && independent.retryCaptureLabel == "Retry transcription"
                   && (try Data(contentsOf: folder("stage-preserves-failure").appendingPathComponent("pending.json"))) == retainedJournal,
                   "Stage start retains the exact recording journal and its Retry action")
-        for (outcome, duration) in [(TextDelivery.Outcome(), 8.0),
-                                    (TextDelivery.Outcome(clipboardChangeCount: nil, wasPasted: true), 4.0),
-                                    (TextDelivery.Outcome(clipboardChangeCount: nil, failure: .copyFailed), 8.0)] {
+        for (outcome, duration) in [(TextDelivery.Outcome(), 3.0),
+                                    (TextDelivery.Outcome(clipboardChangeCount: nil, failure: .copyFailed), 3.0)] {
             let receipt = independent.clipboardReceipt
             receipt.record(outcome: outcome, wordCount: 3)
             let id = receipt.actual.receipt!.id, event = receipt.actual.lifetime!.event
@@ -357,6 +397,10 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
             receipt.actual.expireHUD(event)
             try check(!receipt.actual.isHUDVisible, "the preserved receipt still ends at its own deadline")
         }
+        independent.clipboardReceipt.record(outcome: TextDelivery.Outcome(clipboardChangeCount: nil, wasPasted: true), wordCount: 3)
+        stageShell.beginStageActivity()
+        try check(!independent.clipboardReceipt.actual.isHUDVisible && independent.clipboardReceipt.actual.lifetime == nil,
+                  "Stage start does not resurrect a popup after confirmed insertion")
         independent.dismissCaptureFailure()
         try check(independent.captureFailure == nil && (try Data(contentsOf: retainedAudio)) == wav,
                   "explicit Dismiss still clears the result without deleting retained audio")
@@ -367,9 +411,15 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(meetingBusy.error?.contains("meeting") == true && meetingBusy.engine.calls == 0,
                   "audio import cannot race the meeting recognizer")
         func finish(_ model: CaptureHarness) async { let task = model.transcriptionTask; await task?.value }
+        func waitUntil(_ name: String, _ condition: () -> Bool) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            while !condition() {
+                guard ProcessInfo.processInfo.systemUptime < deadline else { throw CheckFailure(description: "Timed out waiting for " + name) }
+                try await Task.sleep(nanoseconds: 1_000_000)
+            }
+        }
         func waitForEngine(_ model: CaptureHarness) async throws {
-            for _ in 0..<500 { if model.engine.continuation != nil { return }; await Task.yield() }
-            throw CheckFailure(description: "Fixture engine was not reached")
+            try await waitUntil("fixture engine") { model.engine.continuation != nil }
         }
 
         // Normal delivery cannot observe a state that has not been committed.
@@ -579,11 +629,23 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         TextDelivery.delayed = true
         let delivering = CaptureHarness(directory: folder("late-delivery")); let deliveredURL = try delivering.makeRecording(wav)
         delivering.run(deliveredURL, owned: true)
-        for _ in 0..<500 { if TextDelivery.continuation != nil { break }; await Task.yield() }
+        try await waitUntil("delayed delivery") { TextDelivery.continuation != nil }
         try check(TextDelivery.continuation != nil && delivering.store.saved?.history.count == 1, "Delayed delivery begins only after the capture commit")
         delivering.shutdown(); let stoppedStatus = delivering.status
         TextDelivery.release(); await finish(delivering); TextDelivery.delayed = false
         try check(delivering.clipboardReceipt.receipts == 0 && delivering.status == stoppedStatus, "An invalidated delivery cannot publish a late receipt or replace shutdown state")
+
+        FixtureAccessibility.trusted = false
+        let untrustedDrawing = CaptureHarness(directory: folder("drawing-untrusted"))
+        untrustedDrawing.shouldDeferDelivery = { true }; untrustedDrawing.captureOptions.preferences.delivery = .paste
+        let untrustedCalls = TextDelivery.calls
+        untrustedDrawing.run(try untrustedDrawing.makeRecording(wav), owned: true); await finish(untrustedDrawing)
+        try check(!untrustedDrawing.accessibilityGranted && !untrustedDrawing.waitingForDrawing
+                  && !untrustedDrawing.drawingDelivery.isWaiting && TextDelivery.calls == untrustedCalls + 1,
+                  "without Accessibility trust, drawing does not defer the copied delivery")
+        try check(untrustedDrawing.history.count == 1 && untrustedDrawing.phase == .idle,
+                  "untrusted drawing still retains the committed transcript")
+        FixtureAccessibility.trusted = true
 
         // Drawing defers only delivery: the exact production method saves the
         // transcript first and retains its original target, without holding audio.
@@ -593,7 +655,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         drawing.shouldDeferDelivery = { isDrawing }
         drawing.captureOptions.preferences.delivery = .paste
         drawing.run(try drawing.makeRecording(wav), owned: true)
-        for _ in 0..<500 where !drawing.drawingDelivery.isWaiting { await Task.yield() }
+        try await waitUntil("drawing delivery") { drawing.drawingDelivery.isWaiting }
         try check(drawing.waitingForDrawing && drawing.drawingDelivery.isWaiting && TextDelivery.calls == 0, "Drawing defers text delivery")
         try check(drawing.history.count == 1 && drawing.store.saved?.history.count == 1 && !drawing.captureRecovery.hasRecovery, "Waiting text is durably saved and owned audio is released")
         drawing.resumeWaitingDelivery()
@@ -605,14 +667,14 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let copyDrawing = CaptureHarness(directory: folder("drawing-copy"))
         copyDrawing.shouldDeferDelivery = { true }; copyDrawing.captureOptions.preferences.delivery = .paste
         copyDrawing.run(try copyDrawing.makeRecording(wav), owned: true)
-        for _ in 0..<500 where !copyDrawing.drawingDelivery.isWaiting { await Task.yield() }
+        try await waitUntil("copy while drawing") { copyDrawing.drawingDelivery.isWaiting }
         copyDrawing.copyWaitingDelivery(); await finish(copyDrawing)
         try check(TextDelivery.calls == 2 && TextDelivery.lastMode == .clipboard && !copyDrawing.waitingForDrawing, "Copy now completes without asking drawing to stop")
 
         let quitDrawing = CaptureHarness(directory: folder("drawing-quit"))
         quitDrawing.shouldDeferDelivery = { true }; quitDrawing.captureOptions.preferences.delivery = .paste
         quitDrawing.run(try quitDrawing.makeRecording(wav), owned: true)
-        for _ in 0..<500 where !quitDrawing.drawingDelivery.isWaiting { await Task.yield() }
+        try await waitUntil("quit while drawing") { quitDrawing.drawingDelivery.isWaiting }
         let waitingTask = quitDrawing.transcriptionTask
         quitDrawing.shutdown(); await waitingTask?.value
         try check(TextDelivery.calls == 2 && !quitDrawing.waitingForDrawing && !quitDrawing.drawingDelivery.isWaiting, "Quit cancels a waiting insertion without delivering or retaining its continuation")
@@ -851,6 +913,11 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let afterQuit = CaptureHarness(directory: folder("undelivered-relaunch"), state: quitState)
         try check(afterQuit.unresolvedDelivery?.kind == .copyFailed && afterQuit.unresolvedDelivery?.offersCopy == true,
                   "relaunch shows it on the shelf, with Copy again")
+        let beforeReview = afterQuit.transcript
+        afterQuit.reviewUnresolvedDelivery()
+        try check(afterQuit.page == "history" && afterQuit.historyDoor?.transcript == failedID
+                  && afterQuit.historyDoor?.filter == .all && afterQuit.transcript == beforeReview
+                  && afterQuit.unresolvedDelivery != nil, "durable Review opens the exact failed result without replacing the draft or resolving delivery")
         let copiesBefore = TextDelivery.copies.count
         afterQuit.copyUnresolvedDelivery()
         try check(TextDelivery.copies.count == copiesBefore + 1 && TextDelivery.copies.last == afterQuit.history.first(where: { $0.id == failedID })?.text
@@ -882,10 +949,17 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         removing.run(try removing.makeRecording(wav), owned: true); await finish(removing)
         TextDelivery.nextOutcome = TextDelivery.Outcome()
         let removed = removing.history.first!
+        removing.store.fails = true
+        removing.removeTranscript(removed)
+        try check(removing.history.first?.id == removed.id && removing.meetings.removedTranscripts.isEmpty,
+                  "failed transcript-only removal keeps History and the meeting completion link")
+        removing.store.fails = false
         removing.removeTranscript(removed)
         try check(removing.history.isEmpty && removing.unresolvedDelivery == nil && removing.undelivered.entry == nil
                   && removing.store.saved?.undelivered == nil && removing.store.saved?.history.isEmpty == true,
                   "removing its transcript drops it, from memory and from the saved session")
+        try check(removing.meetings.removedTranscripts == [removed.id],
+                  "successful transcript-only removal invalidates exactly its meeting completion link")
 
         // A draft entry acts only while the draft is the one that failed.
         let draft = CaptureHarness(directory: folder("draft-copy"))
@@ -899,6 +973,9 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let changedDraft = draft.unresolvedDelivery
         try check(draft.transcript == "Synthetic captured words." && changedDraft?.draftChanged == true && changedDraft?.offersCopy == false,
                   "a new dictation replaced the draft: the shelf says the draft changed and offers Review, not Copy again")
+        draft.reviewUnresolvedDelivery()
+        try check(draft.page == "dictate" && draft.transcript == "Synthetic captured words."
+                  && draft.unresolvedDelivery == changedDraft, "Review of a changed draft opens Dictate without replacing or copying it")
         let copiesAfterChange = TextDelivery.copies.count
         draft.copyUnresolvedDelivery()
         try check(TextDelivery.copies.count == copiesAfterChange && draft.unresolvedDelivery != nil, "Copy again never copies whatever the draft became")
@@ -941,20 +1018,51 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         unprepared.engine.prepareFailure = CheckFailure(description: "Synthetic model download failure")
         await unprepared.prepare()
         try check(unprepared.attention?.page == .home && unprepared.error?.hasPrefix("Could not prepare the speech model.") == true
-                  && unprepared.modelMessage == "Speech model needs attention" && !unprepared.ready && !unprepared.preparing,
+                  && unprepared.modelMessage == "The speech model couldn’t be prepared" && !unprepared.ready && !unprepared.preparing,
                   "A model that could not be prepared is Home's problem, where Retry model is")
+        try check(unprepared.modelFailure != nil, "Settings › Models keeps the reason beside Try download again")
         unprepared.engine.prepareFailure = nil
         await unprepared.prepare()
-        try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready", "Retry model prepares it")
+        try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready" && unprepared.modelFailure == nil,
+                  "Retry model prepares it and clears the reason")
+
+        // A refusal is shown where the person acted (1 October audit, finding 7). The Dictate page's
+        // mic: the reason is Dictate's, whose banner is beside that mic, and the capture HUD's.
+        let refusedStart = CaptureHarness(directory: folder("start-refused"))
+        let meetingWait = "Finish the meeting recording or transcription before starting Dictate."
+        refusedStart.microphoneStartFailure = { _ in meetingWait }
+        refusedStart.page = "dictate"
+        refusedStart.toggleRecording()
+        try check(refusedStart.phase == .idle && refusedStart.recordingAttempt == nil && refusedStart.startedAttempts.isEmpty
+                  && refusedStart.captureFailure == meetingWait && refusedStart.attention == Attention(message: meetingWait, page: .dictate),
+                  "A start the Dictate page's mic cannot make is reported on Dictate: \(String(describing: refusedStart.attention))")
+        // History's Open while Dictate is busy says why on History and changes nothing; once Dictate
+        // is idle, Open goes ahead and takes that wait away, since History's notice has no Dismiss.
+        let busyOpen = CaptureHarness(directory: folder("history-open-busy"))
+        let saved = Transcript(text: "Saved words from History", seconds: 2)
+        busyOpen.openHistory()
+        busyOpen.toggleRecording()
+        try check(busyOpen.phase == .requesting, "Dictate is busy")
+        busyOpen.openTranscript(saved)
+        try check(busyOpen.page == "history" && busyOpen.pendingTranscript == nil && busyOpen.transcript == "Old draft"
+                  && busyOpen.attention == Attention(message: "Finish the current dictation or processing before replacing its draft.", page: .history),
+                  "History's Open while Dictate is busy is refused on History: \(String(describing: busyOpen.attention))")
+        busyOpen.cancelRecording()
+        busyOpen.openTranscript(saved)
+        try check(busyOpen.page == "dictate" && busyOpen.pendingTranscript?.id == saved.id && busyOpen.transcript == "Old draft" && busyOpen.attention == nil,
+                  "Open goes ahead once Dictate is idle, behind Keep or Replace, and History's wait goes")
 
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }
 }
 '''
-values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState'])])
+values = '\n'.join([core.imports(), core.extract(['VoiceError', 'SavedState', 'extension SavedState']),
+                    SwiftFile(PROJECT / 'Sources/LocalVoice/HistoryView.swift').extract(['HistoryFilter', 'HistoryDoor'])])
 fixture = fixture.replace('__CLEAR_CALL_SITES__', '[' + ', '.join('"%s"' % site for site in sorted(clear_sites)) + ']')
 fixture = fixture.replace('__UNDELIVERED_WRITERS__', '[' + ', '.join('"%s"' % site for site in sorted(writers)) + ']')
 fixture = fixture.replace('__STAGE_START__', stage_start)
+# Expose only the destination's access level to the fixture; keep its actual observer body.
+fixture = fixture.replace('__LIFECYCLE_PROPERTIES__', model.extract(['phase', 'destination']).replace('private var destination', 'var destination'))
 fixture = fixture.replace('__VALUES__', values).replace('__REQUEST__', request).replace('__LABELS__', labels).replace('__METHODS__', methods)
 with tempfile.TemporaryDirectory(prefix='workbench-capture-persistence-') as temporary:
     directory = Path(temporary)

@@ -75,6 +75,7 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
     private var closed: ((ToolbarChooserClose) -> Void)?
     private var monitors: [Any] = []
     private weak var launcher: NSView?
+    private var resizeContent: (() -> Void)?
     /// The surface gallery opens the real panel invisibly to check where it lands: no
     /// keyboard, no pointer and no click monitors, so a local run never takes anyone's input.
     var offscreenForChecks = false
@@ -86,6 +87,8 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
     ///     click only closes an open chooser, so the launcher toggles it.
     func show(from launcherFrame: NSRect, view: NSView?, level: NSWindow.Level, growsLeftward: Bool, choices: [ToolbarToolChoice],
               anchor: ToolbarAnchor = .bottom, toolbar: NSRect? = nil,
+              activities: ToolbarChooserActivities = .init(), perform: @escaping (ToolbarChooserAction) -> Void = { _ in },
+              openTool: @escaping (ToolbarMode) -> Void = { _ in },
               textScale: CGFloat = 1, choose: @escaping (ToolbarMode) -> Void, closed: @escaping (ToolbarChooserClose) -> Void) {
         close()
         let centre = NSPoint(x: launcherFrame.midX, y: launcherFrame.midY)
@@ -93,16 +96,18 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
             closed(.dismissed); return
         }
         let model = ToolbarChooserModel(choices: choices)
+        model.refreshActivities(activities)
         model.choose = { [weak self] mode in self?.close(.chose); choose(mode) }
+        model.perform = { [weak self] action in self?.close(.chose); perform(action) }
+        model.openTool = { [weak self] mode in self?.close(.dismissed); openTool(mode) }
         model.dismiss = { [weak self] in self?.close(.escape) }
-        let room = ToolbarChooserPlacement.room(launcher: launcherFrame, visible: visible)
-        let natural = NSHostingView(rootView: ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent)).fittingSize
+        let availableWidth = min(ToolbarChooserLayout.width * textScale, visible.width - 2 * ToolbarChooserPlacement.edgeMargin)
+        let natural = NSHostingView(rootView: ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent,
+            availableWidth: availableWidth)).fittingSize
         let frame = ToolbarChooserPlacement.frame(content: natural, launcher: launcherFrame, visible: visible, growsLeftward: growsLeftward,
                                                   anchor: anchor, toolbar: toolbar)
-        let above = natural.height <= room.above || room.above >= room.below
-        let available = anchor.isVertical ? visible.height - 2 * ToolbarChooserPlacement.edgeMargin : above ? room.above : room.below
         let hosting = ToolbarChooserContent(rootView: ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent,
-                                                                          available: available, availableWidth: frame.width))
+                                                                          available: frame.height, availableWidth: frame.width))
         hosting.sizingOptions = []
         let panel = ToolbarChooserWindow(contentRect: NSRect(origin: .zero, size: frame.size),
                                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -112,8 +117,10 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        let keys: (NSEvent) -> Bool = { [weak model] event in
-            model?.handle(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers, time: event.timestamp) ?? false
+        let keys: (NSEvent) -> Bool = { [weak model, weak panel] event in
+            if let panel, ToolbarChooserKeyboard.tab(event, in: panel) { return true }
+            guard !event.modifierFlags.contains(.command) else { return false }
+            return model?.handle(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers, time: event.timestamp) ?? false
         }
         panel.keyHandler = keys; hosting.keyHandler = keys
         panel.escape = { [weak model] in model?.dismiss() }
@@ -121,6 +128,16 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
         panel.setFrame(frame, display: false)
         panel.delegate = self
         self.panel = panel; self.model = model; self.closed = closed; launcher = view
+        resizeContent = { [weak panel, weak model, weak hosting] in
+            guard let panel, let model, let hosting else { return }
+            let natural = NSHostingView(rootView: ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent,
+                availableWidth: availableWidth)).fittingSize
+            let frame = ToolbarChooserPlacement.frame(content: natural, launcher: launcherFrame, visible: visible,
+                growsLeftward: growsLeftward, anchor: anchor, toolbar: toolbar)
+            hosting.rootView = ToolbarChooserView(model: model, textScale: textScale, accent: Workbench.accent,
+                available: frame.height, availableWidth: frame.width)
+            panel.setFrame(frame, display: true)
+        }
         if offscreenForChecks {
             panel.alphaValue = 0; panel.ignoresMouseEvents = true
             panel.orderFrontRegardless()
@@ -139,7 +156,8 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
     }
 
     /// New live facts while open: rows update, the highlight stays on the same tool.
-    func refresh(_ choices: [ToolbarToolChoice]) { model?.refresh(choices) }
+    func refresh(_ choices: [ToolbarToolChoice]) { model?.refresh(choices); resizeContent?() }
+    func refreshActivities(_ activities: ToolbarChooserActivities) { model?.refreshActivities(activities); resizeContent?() }
 
     /// A click outside closes the chooser. On the launcher the click only closes it.
     private func consumes(_ event: NSEvent) -> Bool {
@@ -156,7 +174,7 @@ private final class ToolbarChooserContent<Content: View>: NSHostingView<Content>
     func close(_ reason: ToolbarChooserClose = .dismissed) {
         guard let panel else { return }
         let closed = self.closed
-        self.panel = nil; self.closed = nil; model = nil; launcher = nil
+        self.panel = nil; self.closed = nil; model = nil; launcher = nil; resizeContent = nil
         monitors.forEach(NSEvent.removeMonitor); monitors.removeAll()
         panel.delegate = nil
         panel.orderOut(nil)

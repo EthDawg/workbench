@@ -125,18 +125,75 @@ public final class StageKitController: ObservableObject {
         coordinator.demoScenes.usesSharedControls = true
         coordinator.demoScenes.personas.usesSharedControls = true
     }
-    public var hasActivePersona: Bool { hasActivePersonaSession || coordinator.demoScenes.personas.overlayVisible }
+    /// Persona has something on screen, or is opening a source for it, so its
+    /// doors offer that source's ending rather than a new start.
+    public var hasActivePersona: Bool {
+        hasActivePersonaSession || coordinator.demoScenes.personas.overlayVisible
+            || coordinator.demoScenes.personas.camera.isStarting
+    }
+    /// Anything a live door can hide, show again or end, including a camera visit
+    /// that is still starting or has stopped with a reason.
+    public var hasLivePersonaSource: Bool {
+        let library = coordinator.demoScenes.personas
+        return hasActivePersonaSession || library.overlayVisible || library.hasHiddenCard || library.cameraOwnsSlot
+    }
+    /// A projection of the single camera owner for Home, the panel and toolbar.
+    public enum PersonaCameraPhase: Sendable { case off, starting, live, hidden, failed }
+    public var personaCameraPhase: PersonaCameraPhase {
+        let library = coordinator.demoScenes.personas
+        guard library.cameraOwnsSlot else { return .off }
+        switch library.camera.state {
+        case .off: return .off
+        case .permission, .starting: return .starting
+        case .live: return .live
+        case .hidden: return .hidden
+        case .failed: return .failed
+        }
+    }
+    public var personaCameraMayResume: Bool {
+        coordinator.demoScenes.personas.camera.failure?.offersRetry != false
+    }
     public var personaStatus: String {
         let library = coordinator.demoScenes.personas
+        if library.cameraOwnsSlot { return library.camera.status }
         if library.sessionState.phase == .paused { return "Hidden" }
         if library.sessionState.phase != .idle { return "\(library.sessionState.instances.filter(\.visible).count) Overlays" }
         if library.overlayVisible { return "Shown" }
         // A hidden card is kept for Show again, like a paused set.
         return library.hasHiddenCard ? "Hidden" : ""
     }
+    /// The live source is kept but off screen: a paused set, a hidden card, or a
+    /// camera bubble that is hidden or stopped and waiting to be started again.
+    public var isPersonaHidden: Bool {
+        let library = coordinator.demoScenes.personas
+        if library.cameraOwnsSlot { return library.camera.isHidden || library.camera.failure != nil }
+        if library.sessionState.phase == .paused { return true }
+        return library.sessionState.phase == .idle && library.hasHiddenCard
+    }
+    /// Exactly what `togglePersona()` will do to the live source now, for a
+    /// control that must name the operation it performs.
+    public var personaVisibilityTitle: String {
+        let library = coordinator.demoScenes.personas
+        if library.cameraOwnsSlot {
+            switch library.camera.state {
+            case .permission, .starting: return "Cancel"
+            case .live: return "Hide camera"
+            case .hidden: return "Show camera again"
+            case .failed: return "Try again"
+            case .off: break
+            }
+        }
+        return isPersonaHidden ? "Show again" : "Hide"
+    }
+    /// End names the source it releases.
+    public var personaEndTitle: String {
+        coordinator.demoScenes.personas.cameraOwnsSlot ? "End camera" : "End Persona"
+    }
     public func togglePersona() {
         if case .failure = coordinator.demoScenes.personas.togglePersonaVisibility() { showPersonas() }
     }
+    public func endPersona() { coordinator.demoScenes.personas.endLivePersona() }
+    public var personaSessionIdentity: UUID { coordinator.demoScenes.personas.liveControlsGeneration }
     public func makePersonaMenu(includePreparation: Bool = false) -> NSMenu {
         let menu = coordinator.demoScenes.personas.makeControlsMenu()
         if includePreparation {
@@ -146,6 +203,30 @@ public final class StageKitController: ObservableObject {
         return menu
     }
     public func makePresentationMenu() -> NSMenu { coordinator.demoScenes.makeControlsMenu() }
+    public func makePresentationViewMenu() -> NSMenu { coordinator.demoScenes.makeViewMenu() }
+    public struct PersonaCycle: Equatable {
+        let generation: UUID
+        let revision: UUID
+        let selection: UUID
+        public let title: String
+        public let isSet: Bool
+        public let canAdvance: Bool
+    }
+    public var personaCycle: PersonaCycle? { coordinator.demoScenes.personas.toolbarCycle }
+    public var personaCycleNotice: String? { coordinator.demoScenes.personas.cardFeedback ?? coordinator.demoScenes.personas.sessionState.feedback }
+    public func stepPersona(expected: PersonaCycle, offset: Int = 1) {
+        coordinator.demoScenes.personas.stepToolbarPersona(expected: expected, offset: offset)
+    }
+    /// The pill's one Persona picker: a prepared set's current set, or the shown
+    /// card, the camera or nothing yet among Persona's choices.
+    public struct PersonaPicker: Equatable {
+        /// The current choice's public name; empty while nothing is live.
+        public let title: String
+        public let isSet: Bool
+    }
+    public var personaPicker: PersonaPicker? { coordinator.demoScenes.personas.toolbarPicker }
+    /// The cards Persona can show now, then Camera; a prepared set's sets.
+    public func makePersonaPickerMenu() -> NSMenu { coordinator.demoScenes.personas.makeToolbarPickerMenu() }
     /// One live persona copy, named exactly: the one floating card, or one copy of
     /// a prepared set. Capture it when a control is drawn, so a later choice
     /// changes that copy and never another (#169, #134).
@@ -180,42 +261,61 @@ public final class StageKitController: ObservableObject {
         guard let look = PersonaAppearance.Shape(rawValue: shape.rawValue) else { return }
         coordinator.demoScenes.personas.setLiveShape(look, for: copy.copy)
     }
-    /// The panel row starts and stops the timer; the overlay keeps pause and reset.
+    /// The panel row starts and stops the timer; its Options, Home, the chooser and the
+    /// timer's own window carry the next step and Show or Hide timer.
     public func startTimer() { coordinator.startTimer() }
+    /// Stop timer: the countdown ends and its window closes.
     public func stopTimer() { coordinator.resetTimer(); coordinator.hideTimer() }
-    /// The panel's persona options: the set, the persona, add, hide or show,
-    /// the layout and End. Selection-scoped adjustments (size, lock, position, appearance,
-    /// replace, order, remove) stay in the HUD and toolbar menus.
+    /// Whether the timer's window is on screen; hiding it leaves the countdown running.
+    public var isTimerShown: Bool { coordinator.timerShown }
+    /// Show timer or Hide timer, for the window alone. Show needs a started countdown.
+    public func setTimerShown(_ shown: Bool) { shown ? coordinator.revealTimer() : coordinator.hideTimer() }
+    /// One line for a started timer on every surface: its time, then Paused, Time is up
+    /// or Hidden when they apply. Empty before it starts.
+    public var timerStateDetail: String {
+        guard coordinator.timerSessionStarted else { return "" }
+        var parts = [coordinator.timerFinished ? "Time is up" : coordinator.timerText]
+        if coordinator.timerTransport == .paused { parts.append("Paused") }
+        if !coordinator.timerShown { parts.append("Hidden") }
+        return parts.joined(separator: " · ")
+    }
+    /// The panel retains the live-copy adjustments as an alternate home to the Persona
+    /// workspace. Feedback already shown by the panel is not repeated in its menu.
     public func makePersonaPanelMenu() -> NSMenu {
         let library = coordinator.demoScenes.personas
         let menu = library.makeControlsMenu()
         // The panel already shows these in its own feedback line.
         let feedback = library.sessionState.feedback ?? library.cardFeedback
-        let selectionScoped = ["Lock Artwork · Clicks Pass Through", "Position Artwork", "Appearance", "Replace Selected", "Hide Selected",
-                               "Show Selected", "Bring Forward", "Send Backward", "Remove Selected"]
         for item in menu.items {
-            let dropped = item.view != nil || (feedback != nil && item.title == feedback)
-                || selectionScoped.contains(item.title)
+            let dropped = (feedback != nil && item.title == feedback)
                 || (!item.isEnabled && item.submenu == nil && item.title.hasSuffix("first."))
             if dropped { menu.removeItem(item) }
         }
         while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
         return menu
     }
-    /// `optionsOnly` leaves out the transport (start, pause, stop, reset): the
-    /// panel row starts and stops, and the overlay keeps pause and reset.
+    /// One word set for the timer (1 October): its next step (Start, Pause, Resume or
+    /// Restart Timer), Show or Hide Timer for the window alone, and Stop Timer, which ends
+    /// the countdown and closes its window. `optionsOnly` leaves out Start and Stop, which
+    /// the panel row does; a started timer's next step and Show or Hide stay in its Options.
     public func makeTimerMenu(optionsOnly: Bool = false) -> NSMenu {
         let app = coordinator
         let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
-        if !optionsOnly {
-            menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
-            // Pause or Resume as shown now, and only that (#174).
-            let transport = TimerTransportAction(app)
-            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer",
-                                         enabled: transport.transport == .running || transport.transport == .paused) { transport() })
-            menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
-            menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
+        // The one next step as shown now, and only that (#174): a running countdown offers
+        // Pause, never a second Start that would silently restart it.
+        let transport = TimerTransportAction(app)
+        if !optionsOnly || app.timerSessionStarted {
+            menu.addItem(StageMenuAction(transport.transport.title + " Timer",
+                                         enabled: !transport.transport.starts || mayBeginInteraction?() != false) { transport() })
         }
+        if app.timerSessionStarted {
+            let shown = app.timerShown
+            menu.addItem(StageMenuAction(shown ? "Hide Timer" : "Show Timer") { [weak app] in
+                if shown { app?.hideTimer() } else { app?.revealTimer() }
+            })
+            if !optionsOnly { menu.addItem(StageMenuAction("Stop Timer") { [weak app] in app?.resetTimer(); app?.hideTimer() }) }
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
         menu.addSubmenu("Duration", items: [1, 5, 10, 15, 30, 60].map { minutes in
             StageMenuAction("\(minutes) min", checked: app.settings.value.timerMinutes == Double(minutes)) { [weak app] in
                 app?.settings.value.timerMinutes = Double(minutes)
@@ -272,13 +372,26 @@ public final class StageKitController: ObservableObject {
     public func backdropReplacementView(imageURL: URL, title: String) -> AnyView {
         AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, imageURL: imageURL, title: title))
     }
+    /// Library holds file access only while reading; these views own immutable
+    /// bytes and wait for Use backdrop/Create scene or Add persona before saving.
+    public func backdropReplacementView(imageData: Data, title: String) throws -> AnyView {
+        let image = try BackdropImage.decode(imageData)
+        return AnyView(PhotoBackdropChooser(model: coordinator.demoScenes, image: image, title: title))
+    }
+    public func personaImportView(imageData: Data, title: String) throws -> AnyView {
+        let library = coordinator.demoScenes.personas
+        let draft = try library.portraitDraft(imageData: imageData, name: title)
+        return AnyView(PersonaImageImportView(library: library, draft: draft))
+    }
     public var isDrawing: Bool { coordinator.isDrawing }
+    public var drawingIdentity: UUID? { isDrawing ? coordinator.drawingGeneration : nil }
     public enum ShortcutGesture { case press, hold, release }
     /// Only presentation metadata; shortcut execution stays with the coordinator.
     public var penShortcutGesture: ShortcutGesture? { coordinator.penShortcutGesture }
     public var drawingActivationTitle: String { coordinator.settings.value.activation.rawValue }
     public var drawingToolTitle: String { coordinator.tool.title }
     public var isPresenting: Bool { coordinator.demoScenes.isPresenting }
+    public var presentationIdentity: UUID? { coordinator.demoScenes.presentationIdentity }
     public var hasActivePersonaSession: Bool { coordinator.demoScenes.personas.sessionState.phase != .idle }
     public var isPersonaSessionPaused: Bool { coordinator.demoScenes.personas.sessionState.phase == .paused }
     public var isTakingScreenshot: Bool { coordinator.screenshotHandoffActive }
@@ -335,9 +448,15 @@ public final class StageKitController: ObservableObject {
         started = false
         coordinator.shutdown()
     }
-    public func draw() { coordinator.startDrawing(.pen, latched: true) }
-    /// Return input without clearing the current ink or removing a board.
-    public func finishDrawing() { coordinator.stopDrawing() }
+    /// Draw starts with the tool Tools shows as chosen. Text and Eraser need a place or ink
+    /// first, so a toolbar or panel start uses the Pen for them.
+    public func draw() {
+        let chosen = coordinator.tool
+        coordinator.startDrawing(chosen == .text || chosen == .eraser ? .pen : chosen, latched: true)
+    }
+    /// Return input without clearing the current ink. A whiteboard closes too, since it would keep
+    /// taking clicks; its ink stays with the board for the next time it opens.
+    public func finishDrawing() { coordinator.finishDrawing() }
     public func clear() { coordinator.perform(.clear) }
     public func showBoard() { coordinator.toggleBoard(.white) }
     public func showTimer() { coordinator.toggleTimer() }
@@ -386,11 +505,18 @@ public final class StageKitController: ObservableObject {
 }
 
 @MainActor
-private struct PhotoBackdropChooser: View {
+struct PhotoBackdropChooser: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: DemoScenes
-    let imageURL: URL
+    private let imageURL: URL?
+    private let preparedImage: BackdropImage?
     let title: String
+    init(model: DemoScenes, imageURL: URL, title: String) {
+        self.model = model; self.imageURL = imageURL; self.preparedImage = nil; self.title = title
+    }
+    init(model: DemoScenes, image: BackdropImage, title: String) {
+        self.model = model; self.imageURL = nil; self.preparedImage = image; self.title = title
+    }
     @State private var sceneID: UUID?
     @State private var draft: BackdropReplacement?
     @State private var notice: String?
@@ -403,7 +529,7 @@ private struct PhotoBackdropChooser: View {
             } else {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {
-                        Text("Use photo as backdrop").font(.title2.weight(.semibold))
+                        Text(preparedImage == nil ? "Use photo as backdrop" : "Use in Present").font(.title2.weight(.semibold))
                         Spacer()
                         Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                     }
@@ -414,13 +540,18 @@ private struct PhotoBackdropChooser: View {
                         }.frame(width: 120, height: 90).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                         VStack(alignment: .leading, spacing: 6) {
                             Text(title).font(.headline).lineLimit(2)
-                            Text("Choose a saved scene. Review the crop next, then apply when it looks right.")
+                            Text(model.scenes.isEmpty && preparedImage != nil
+                                 ? "Create your first scene from this image. It will be saved for you to prepare in Present."
+                                 : "Choose a saved scene. Review the crop next, then apply when it looks right.")
                                 .foregroundStyle(.secondary)
                         }
                     }
                     if model.storageBlocked {
                         ContentUnavailableView("Saved scenes need attention", systemImage: "exclamationmark.folder",
                             description: Text("The scene library could not be read. Its original files are preserved. You can still save a separate copy of this photo."))
+                    } else if model.scenes.isEmpty && preparedImage != nil {
+                        Label("Your image stays unchanged. Creating a scene saves an independent copy.", systemImage: "photo.on.rectangle")
+                            .font(.callout).foregroundStyle(.secondary)
                     } else if model.scenes.isEmpty {
                         ContentUnavailableView("Prepare a scene first", systemImage: "rectangle.on.rectangle",
                             description: Text("Create a scene in Present, then return to this photo. Choosing a backdrop never creates a duplicate scene."))
@@ -437,24 +568,39 @@ private struct PhotoBackdropChooser: View {
                     Spacer(minLength: 0)
                     Divider()
                     HStack {
-                        Text("Only the backdrop changes. Foreground layers and the current presentation stay as they are.")
+                        Text(model.scenes.isEmpty && preparedImage != nil
+                             ? "Create scene saves your choice. Choose Present when you are ready."
+                             : "Only the backdrop changes. Foreground layers and the current presentation stay as they are.")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Preview backdrop") {
-                            guard let sceneID else { return }
-                            do { draft = try model.makeBackdropReplacement(sceneID: sceneID, imageURL: imageURL, title: title) }
-                            catch { notice = error.localizedDescription }
-                        }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                            .disabled(model.storageBlocked || thumbnail == nil || !model.scenes.contains { $0.id == sceneID })
-                            .accessibilityIdentifier("handoff.preview-backdrop")
+                        if model.scenes.isEmpty, let preparedImage {
+                            Button("Create scene") {
+                                guard model.scenes.isEmpty else { notice = "A scene is now available. Choose it before previewing this backdrop."; return }
+                                do { try model.addImage(preparedImage, name: title); dismiss() }
+                                catch { notice = error.localizedDescription }
+                            }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                                .disabled(model.storageBlocked)
+                        } else {
+                            Button("Preview backdrop") {
+                                guard let sceneID else { return }
+                                do {
+                                    if let preparedImage { draft = try model.makeBackdropReplacement(sceneID: sceneID, image: preparedImage, title: title) }
+                                    else if let imageURL { draft = try model.makeBackdropReplacement(sceneID: sceneID, imageURL: imageURL, title: title) }
+                                } catch { notice = error.localizedDescription }
+                            }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                                .disabled(model.storageBlocked || thumbnail == nil || !model.scenes.contains { $0.id == sceneID })
+                                .accessibilityIdentifier("handoff.preview-backdrop")
+                        }
                     }
-                }.padding(20).frame(width: 840, height: 660)
+                }.padding(20).frame(width: 840, height: model.scenes.isEmpty && preparedImage != nil ? 320 : 660)
                     .background(Workbench.background).tint(Workbench.accent).workbenchTheme()
             }
         }.onAppear {
             sceneID = model.selected?.id ?? model.scenes.first?.id
-            do { thumbnail = try BackdropImage.thumbnail(imageURL) }
-            catch { notice = "The photo could not be opened. " + error.localizedDescription }
+            do {
+                if let preparedImage { thumbnail = preparedImage.image }
+                else if let imageURL { thumbnail = try BackdropImage.thumbnail(imageURL) }
+            } catch { notice = "The photo could not be opened. " + error.localizedDescription }
         }.onDisappear { draft?.cancel() }
     }
 }

@@ -165,6 +165,8 @@ final class CaptureImagePreviewModel: ObservableObject {
     let item: CaptureImagePreviewItem
     @Published private(set) var state: State = .loading
     @Published var notice: String?
+    /// Offered only when Edit was refused because another Snap is unfinished.
+    @Published var reviewPendingDraft: (() -> Void)?
     @Published fileprivate(set) var percent = 100
     fileprivate weak var view: PreviewImageScrollView?
     private var loading: Task<Void, Never>?
@@ -173,6 +175,7 @@ final class CaptureImagePreviewModel: ObservableObject {
 
     init(item: CaptureImagePreviewItem) { self.item = item }
     func report(_ message: String, success: Bool) {
+        reviewPendingDraft = nil
         notice = message; noticeEvent = UUID()
         guard success else { return }
         FeedbackAnnouncement.post(message)
@@ -251,7 +254,12 @@ struct CaptureImagePreviewView: View {
                     Text(message).multilineTextAlignment(.center).frame(maxWidth: 420)
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            if let notice = model.notice { Text(notice).font(.callout).padding(8) }
+            if let notice = model.notice {
+                HStack(spacing: 12) {
+                    Text(notice).font(.callout).fixedSize(horizontal: false, vertical: true)
+                    if let review = model.reviewPendingDraft { Button("Review unfinished Snap", action: review) }
+                }.padding(.horizontal, 16).padding(.vertical, 8)
+            }
             Divider()
             HStack(spacing: 10) {
                 if !position.isEmpty {
@@ -428,6 +436,8 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
 
     weak var snapOwner: SnapModel?
     private(set) var editing: ImageWorkspaceEditing?
+    /// A retained editor may be suspended while this same window previews another image.
+    var isShowingEditor: Bool { panel != nil && editing != nil && model == nil }
     private(set) var items: [CaptureImagePreviewItem] = []
     private(set) var index = 0
     private var editingFromPreview = false
@@ -445,7 +455,8 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
 
     func show(_ item: CaptureImagePreviewItem, over parent: NSWindow? = nil,
               collection: [CaptureImagePreviewItem] = []) {
-        guard editing == nil else { if let panel { present(panel) }; return }
+        preserveDraft()
+        editingFromPreview = false
         onClose?(); onClose = nil
         items = collection.contains(item) ? collection : [item]
         index = items.firstIndex(of: item) ?? 0
@@ -453,7 +464,7 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
     }
 
     func step(_ offset: Int) {
-        guard editing == nil, items.indices.contains(index + offset) else { return }
+        guard model != nil, items.indices.contains(index + offset) else { return }
         index += offset; showCurrent()
     }
 
@@ -497,27 +508,35 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         return id
     }
     func beginEditing() {
-        guard let snap = snapOwner, let item = model?.item, editing == nil else { return }
-        if snap.isBusy { model?.notice = "Finish the open Snap before editing another image."; return }
+        guard let snap = snapOwner, let model else { return }
+        let item = model.item
+        if let draft = snap.draft {
+            model.report("Save or discard “\(draft.title)” before editing this image.", success: false)
+            model.reviewPendingDraft = { [weak snap] in snap?.reviewDraft() }
+            return
+        }
+        if snap.isBusy { model.report("Finish or cancel the current capture before editing this image.", success: false); return }
         editingFromPreview = true
         if let id = editableSnapID(item) { snap.edit(id) }
         else {
             do { try snap.editCopy(shownBytes(), title: item.title) }
-            catch { model?.notice = error.localizedDescription }
+            catch { model.notice = error.localizedDescription }
         }
         if let draft = snap.draft { showEditor(snap: snap, draft: draft) }
         else {
-            if let message = snap.notice { model?.report(message, success: false) }
+            if let message = snap.notice { model.report(message, success: false) }
             editingFromPreview = false
         }
     }
 
     func showEditor(snap: SnapModel, draft: SnapDraft, over parent: NSWindow? = nil) {
-        if editing?.draft.id == draft.id { if let panel { present(panel) }; return }
-        guard editing == nil else { return }
+        if editing?.draft.id == draft.id, isShowingEditor, let panel { present(panel); return }
+        guard editing == nil || editing?.draft.id == draft.id else { return }
         do {
-            let editor = try ImageWorkspaceEditing(draft: draft)
+            // Closing the window suspends this same edit, including undo and tool state.
+            let editor = try editing ?? ImageWorkspaceEditing(draft: draft)
             snapOwner = snap; editing = editor
+            model?.cancel(); model = nil
             let panel = self.panel ?? makePanel(over: parent ?? NSApp.mainWindow)
             panel.title = draft.existing == nil ? "New Snap" : draft.title
             panel.setAccessibilityTitle(panel.title)
@@ -527,9 +546,10 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
                 panel.setContentSize(NSSize(width: min(1_180, visible.width - 40), height: min(780, visible.height - 60)))
             }
             panel.command = { [weak editor] in editor?.zoom($0) }; panel.navigate = nil
-            panel.requestClose = { [weak self] in self?.cancelEditing() }
+            panel.requestClose = { [weak self] in self?.close() }
             let content = NSHostingView(rootView: SnapEditorView(model: snap, editing: editor,
-                save: { [weak self] in self?.saveEditing(copy: $0) }, cancel: { [weak self] in self?.cancelEditing() }))
+                save: { [weak self] in self?.saveEditing(copy: $0) }, close: { [weak self] in self?.close() },
+                discard: { [weak self] in self?.cancelEditing() }))
             content.sizingOptions = [.minSize]; panel.contentView = content; present(panel)
         } catch { snap.notice = error.localizedDescription }
     }
@@ -540,7 +560,7 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         draft.tags = Array(Set(draft.tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
         var savedItem: SnapItem?
         if snap.saveDraft(draft, copyAfterSaving: copy, didSave: { savedItem = $0 }) {
-            if let savedItem, items.indices.contains(index) {
+            if editingFromPreview, let savedItem, items.indices.contains(index) {
                 // After Edit a copy, show what was just saved while keeping the original source untouched.
                 items[index] = .snap(savedItem, store: snap.store)
             }
@@ -549,16 +569,19 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
             if let message { model?.report(message, success: snap.notice == nil) }
         }
     }
+    /// The explicit Discard action. Close and Escape never resolve a draft.
     func cancelEditing() {
         guard resolveDiscard() else { return }
         snapOwner?.draft = nil; finishEditing()
     }
     private func resolveDiscard() -> Bool {
-        guard editing?.dirty == true else { return true }
+        guard let draft = snapOwner?.draft else { return true }
         if let approveDiscard { return approveDiscard() }
-        let alert = NSAlert(); alert.messageText = "Discard these image edits?"
-        alert.informativeText = "Your saved image and original will stay unchanged."
-        alert.addButton(withTitle: "Keep editing"); alert.addButton(withTitle: "Discard edits")
+        let alert = NSAlert(); alert.messageText = "Discard this Snap draft?"
+        alert.informativeText = draft.existing == nil
+            ? "This image has not been saved to History."
+            : "Your saved image and original will stay unchanged."
+        alert.addButton(withTitle: "Keep draft"); alert.addButton(withTitle: "Discard")
         return alert.runModal() == .alertSecondButtonReturn
     }
     /// Decide before shutdown starts, without discarding if another activity later cancels Quit.
@@ -590,20 +613,9 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         }
         return bytes
     }
-    func close() {
-        guard admitClose() else { return }
-        panel?.close()
-    }
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        admitClose()
-    }
-    private func admitClose() -> Bool {
-        guard resolveDiscard() else { return false }
-        if editing != nil { editing = nil; snapOwner?.draft = nil; editingFromPreview = false }
-        return true
-    }
+    func close() { panel?.close() }
     private func parentWillClose() {
-        guard editing != nil, let panel else { close(); return }
+        guard isShowingEditor, let panel else { close(); return }
         // The main window can close independently. Keep the draft's own window alive.
         panel.parent?.removeChildWindow(panel)
         if let parentObserver { NotificationCenter.default.removeObserver(parentObserver) }
@@ -633,13 +645,23 @@ final class CaptureImagePreview: NSObject, NSWindowDelegate {
         return panel
     }
 
+    private func preserveDraft() {
+        // Flush the latest editor value before SwiftUI releases its subscription.
+        // Keeping the same UUID does not publish a new editor-open transition.
+        if let editing, snapOwner?.draft?.id == editing.draft.id {
+            snapOwner?.draft = editing.draft
+        } else { editing = nil }
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === panel else { return }
+        preserveDraft()
+        editingFromPreview = false
         window.parent?.removeChildWindow(window)
         window.delegate = nil
         if let parentObserver { NotificationCenter.default.removeObserver(parentObserver) }
         parentObserver = nil
-        model?.cancel(); model = nil; panel = nil; editing = nil; items = []
+        model?.cancel(); model = nil; panel = nil; items = []
         onClose?(); onClose = nil
     }
 }

@@ -227,11 +227,11 @@ struct Countdown {
     }
 }
 
-/// The break timer's one transport state. The Draw page, the quick controls,
-/// the Timer menu, the floating timer and the toolbar's More all show its next
-/// action, so none can offer Resume for a countdown that has not started or has
-/// already finished.
-public enum TimerTransport: Equatable, Sendable {
+/// The timer's one transport state. The Draw page, the quick controls, the
+/// Timer menu, the panel row, Home, the floating timer and the toolbar's
+/// chooser all show its next action, so none can offer Resume for a countdown
+/// that has not started or has already finished.
+public enum TimerTransport: Hashable, Sendable {
     /// Not started, or reset: Start.
     case idle
     case running
@@ -261,7 +261,7 @@ public enum TimerTransport: Equatable, Sendable {
 /// The timer's next transport as a control shows it, tied to the countdown it belongs to
 /// (#174). A control keeps the step it drew and performs only that: a Pause or Resume on screen
 /// never becomes a Start or a Restart, and a new countdown's step of the same name is not it.
-public struct TimerStep: Equatable, Sendable {
+public struct TimerStep: Hashable, Sendable {
     public let transport: TimerTransport
     /// Each Start or Restart begins a new countdown.
     let countdown: Int

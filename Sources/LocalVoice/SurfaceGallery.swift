@@ -1,10 +1,23 @@
 import AppKit
+import AVFoundation
 import ObjectiveC
 import PhotoHandoffKit
 import SwiftUI
 import StageKit
 import ToolbarCore
 import ToolbarKit
+
+/// AppKit attaches SwiftUI sheets only after their owner is ordered. This host is invisible
+/// before either window reaches the window server and never receives user input or focus.
+@MainActor private final class SurfaceSheetHostWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+    override func beginSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        sheetWindow.alphaValue = 0
+        sheetWindow.ignoresMouseEvents = true
+        super.beginSheet(sheetWindow, completionHandler: handler)
+    }
+}
 
 /// `LocalVoice --render-surfaces DIR` draws the menu-bar quick panel in fixed states, the production
 /// floating toolbar host in every mode at rest and revealed, and the top of every Home page at the
@@ -20,11 +33,16 @@ enum SurfaceGallery {
     /// Speko.swift and PackCredentials.swift check this same argument and never query Keychain in a pass.
     static let passFlag = "--render-surfaces-pass"
     static let workPrefix = ".surface-pass-"
+    /// A bounded desktop pass uses the same child-process and store isolation as the full gallery.
+    static var desktopOnly: Bool {
+        ProcessInfo.processInfo.arguments.contains("--desktop-only")
+            || ProcessInfo.processInfo.environment["WORKBENCH_DESKTOP_GALLERY_ONLY"] == "1"
+    }
     /// AppDelegate opens Home at 1180 × 800. Its 1050 × 730 minimum grows by the title bar.
     static let sizes: [(name: String, size: NSSize)] = [("default", NSSize(width: 1180, height: 800)), ("narrow", NSSize(width: 1050, height: 730))]
     /// Routes with no sidebar item, all from the page record: every section but a page's first,
-    /// which is the page itself, then the pages Dictate opens (Your dictionary, Transcribe meeting
-    /// or call).
+    /// which is the page itself, then subsidiary pages such as Your dictionary.
+    /// Meetings is a first-class sidebar destination and keeps its historical route, "meeting".
     static var extraPages: [(String, String)] {
         WorkbenchHome.sections.filter { section in !WorkbenchHome.navItems.contains { $0.id == section.id } }
             .map { ($0.id, WorkbenchHome.name(of: $0.page) + " › " + $0.title) }
@@ -66,7 +84,10 @@ enum SurfaceGallery {
         }
         func clipViews(_ view: NSView) -> [NSClipView] { ((view as? NSClipView).map { [$0] } ?? []) + view.subviews.flatMap(clipViews) }
         let scrolled = clipViews(root).filter { !$0.isHiddenOrHasHiddenAncestor }.compactMap { clip in clip.documentView.map { (clip, $0) } }
-        let documents = scrolled.compactMap { $0.1.layer }.filter { !$0.isHidden }
+        // Native scroll documents are drawn separately below. Draw the actual window-level
+        // hint layer after them as well, preserving its production z-order and measured frame.
+        let overlays = sidebarHints(in: root).filter { !$0.isHiddenOrHasHiddenAncestor }
+        let documents = (scrolled.compactMap { $0.1.layer } + overlays.compactMap { $0.layer }).filter { !$0.isHidden }
         let opacities = documents.map(\.opacity)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         defer { for (layer, opacity) in zip(documents, opacities) { layer.isHidden = false; layer.opacity = opacity }; CATransaction.commit() }
@@ -79,8 +100,23 @@ enum SurfaceGallery {
             draw(document, in: SurfacePass.unflipped(document.bounds, of: document, in: root))
             context.restoreGState()
         }
+        for overlay in overlays {
+            overlay.layer?.isHidden = false
+            draw(overlay, in: SurfacePass.unflipped(overlay.bounds, of: overlay, in: root))
+        }
+        // CALayer can clear the destination while rendering transparent scroll documents.
+        // Composite the actual window colour behind the completed tree so the exported PNG
+        // has the same backing as the window, including translucent result backgrounds.
+        context.saveGState()
+        context.setBlendMode(.destinationOver)
+        context.setFillColor(background); context.fill(bounds)
+        context.restoreGState()
         guard let image = context.makeImage() else { throw VoiceError.message("Could not finish a render.") }
         return NSBitmapImageRep(cgImage: image)
+    }
+
+    @MainActor static func sidebarHints(in view: NSView) -> [SidebarHintHostingView] {
+        ((view as? SidebarHintHostingView).map { [$0] } ?? []) + view.subviews.flatMap { sidebarHints(in: $0) }
     }
 
     struct Shot: Codable { var id: String; var title: String; var detail: String; var file: String; var width: Int; var height: Int }
@@ -101,7 +137,8 @@ enum SurfaceGallery {
     struct Pass: Codable { var theme: String; var panels: [Shot]; var toolbar: [Shot]; var host: [HostCheck]; var pickers: [Shot]; var pickerHost: [PickerHostCheck]
         var pages: [Page]; var entries: [Entry]; var menus: [Listing]; var placement: [PlacementCheck] = []
         /// Home's review and the floating toolbar's switch, checked with the pass's own models (#134).
-        var checks: [String] = [] }
+        var checks: [String] = []
+        var scope = "full" }
 
     /// Parent process: the two appearances render at once in isolated passes, then the contact sheet.
     static func run(output: URL) throws {
@@ -130,6 +167,7 @@ enum SurfaceGallery {
             // A fixed language, region and time zone keep text and dates identical between runs.
             pass.arguments = [passFlag, output.path, theme, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
             var environment = ProcessInfo.processInfo.environment
+            if desktopOnly { environment["WORKBENCH_DESKTOP_GALLERY_ONLY"] = "1" }
             environment["CFFIXED_USER_HOME"] = home.path; environment["HOME"] = home.path
             environment["TMPDIR"] = temporary.path + "/"; environment["TZ"] = "UTC"
             pass.environment = environment
@@ -246,6 +284,7 @@ enum SurfaceGallery {
 @MainActor private final class SurfacePass {
     let theme: String
     let home: URL
+    private var toolbarSettingsControls: CaptureHUDControls?
     let model: AppModel
     let stage: StageKitController
     let readback: ReadbackModel
@@ -276,7 +315,30 @@ enum SurfaceGallery {
         // Never look for a legacy StageMark preferences domain.
         stageDefaults.set(true, forKey: "legacyStagePreferencesSeeded.v1")
         let preferences = VoicePreferences.load(reserving: StageShortcutSettings.migrationReservations(defaults: stageDefaults))
+        // The bounded Home pass keeps real synthetic recovery pending throughout the visit.
+        // This must not become a Home task or be cleared merely by navigating.
+        if SurfaceGallery.desktopOnly || ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" {
+            let directory = Workbench.supportDirectory(component: "LocalVoice")
+                .appendingPathComponent("CaptureRecovery", isDirectory: true)
+            // verifiedHome already checks the store root before any model is created. Keep
+            // the write's own precondition explicit too: a fresh folder in this pass only.
+            guard directory.resolvingSymlinksInPath().path.hasPrefix(home.resolvingSymlinksInPath().path + "/"),
+                  !FileManager.default.fileExists(atPath: directory.path) else {
+                throw VoiceError.message("Synthetic recovery requires a new folder inside the verified temporary home: directory \(directory.resolvingSymlinksInPath().path), home \(home.resolvingSymlinksInPath().path), exists \(FileManager.default.fileExists(atPath: directory.path)).")
+            }
+            let recovery = CaptureRecoveryStore(directory: directory)
+            let url = try recovery.beginRecording()
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 160)!
+            buffer.frameLength = 160
+            for index in 0..<160 { buffer.floatChannelData![0][index] = 0 }
+            try file.write(from: buffer)
+        }
         model = AppModel(preferences: preferences)
+        toolbarSettingsControls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarSettings", home: home))
+        model.toolbarControls = toolbarSettingsControls
         // Before anything reads the app's lazy meeting owner, which would list live audio processes.
         let support = Workbench.supportDirectory(component: "Meetings")
         meetings = SurfacePass.syntheticMeetings(support)
@@ -323,6 +385,7 @@ enum SurfaceGallery {
     }
 
     func render(to output: URL) throws -> SurfaceGallery.Pass {
+        if SurfaceGallery.desktopOnly { return try renderDesktopOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_HOME_GALLERY_ONLY"] == "1" { return try renderHomeOnly(to: output) }
         if ProcessInfo.processInfo.environment["WORKBENCH_TOOLBAR_GALLERY_ONLY"] == "1" {
             let (shots, host) = try renderToolbarHost(to: output)
@@ -370,7 +433,10 @@ enum SurfaceGallery {
         }
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
-        let checks = try dictateStates.checks + review.checks + checkToolbarVisibility() + header.checks
+        let meetingReview = try renderMeetingReview(to: output)
+        if let meeting = pages.firstIndex(where: { $0.route == "meeting" }) { pages[meeting].shots += [meetingReview.meeting, try renderMeetingKept(to: output)] }
+        if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(meetingReview.history) }
+        let checks = try dictateStates.checks + review.checks + meetingReview.checks + checkToolbarVisibility() + header.checks
         // History's states render last, so the pages above show no Hand off task.
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots += try renderHistoryStates(to: output) }
         // The read-only image preview that capture thumbnails open (#154), shown with the Snap page.
@@ -478,7 +544,7 @@ enum SurfaceGallery {
         // Copy prompt writes only to this pasteboard; nothing is pasted or typed anywhere.
         let board = NSPasteboard(name: .init("Workbench.PickerHostCheck." + UUID().uuidString))
         defer { board.releaseGlobally() }
-        let isolated = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false }, preparePaste: { nil })
+        let isolated = TextDelivery.System(pasteboard: board, isTrusted: { false }, isEligible: { _ in false }, preparePaste: { _ in nil })
         let receipts = ClipboardReceiptModel(clipboardChangeCount: { board.changeCount }, automaticallySchedules: false)
         let delivery = PromptInsertion()
         let controller = PromptPickerController()
@@ -583,7 +649,7 @@ enum SurfaceGallery {
             let size = CaptureHUDLayout.compact
             let content = Group {
                 if let result { FloatingResultView(result: result, model: model, controls: controls) }
-                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, snapModel: snap,
+                else { WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: controls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snap,
                                                 dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}) }
             }
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
@@ -623,14 +689,14 @@ enum SurfaceGallery {
         try mirrored("floating-dictation-failure-right", "Floating: dictation failure, right-hand dock", .dictationFailure, size: CaptureHUDLayout.message)
         model.dismissCaptureFailure()
 
-        // The receipt's own countdown ring (#134 T5), frozen by a pointer hold so the render repeats.
+        // The brief delivery cue, held for a deterministic render.
         model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                      wasPasted: false, destinationName: nil), wordCount: 42)
         model.clipboardReceipt.holdHUD(true)
         do {
-            // The receipt as the toolbar reveals it from the mark's clipboard status (#134 T4).
-            let size = CaptureHUDLayout.message
-            let content = FloatingResultView(result: .receipt, model: model, controls: controls)
+            // The same button-free card used by the production host.
+            let size = CaptureHUDLayout.compact
+            let content = ClipboardCueHUD(receipts: model.clipboardReceipt)
             let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height)
                 .background(Color(nsColor: .windowBackgroundColor)))
             let window = offscreenWindow(size: size, styleMask: [.borderless])
@@ -638,10 +704,10 @@ enum SurfaceGallery {
             defer { window.contentView = nil; window.close() }
             settle(host)
             shots.append(try save(try snapshot(host), id: "floating-receipt", title: "Floating: copied receipt",
-                                  detail: "Its ring counts the receipt's own eight seconds; the pointer or a pin holds it.",
+                                  detail: "A brief two-line cue, with no buttons or countdown. Words stay in History.",
                                   file: "panel-floating-receipt-\(theme).png", to: output))
         }
-        try mirrored("floating-receipt-right", "Floating: copied receipt, right-hand dock", .receipt, size: CaptureHUDLayout.message)
+
         model.clipboardReceipt.holdHUD(false)
         model.clipboardReceipt.clear()
 
@@ -731,13 +797,13 @@ enum SurfaceGallery {
         let modelsShot = try save(models, id: "state-dictating", title: "Models while a dictation records, minimum window, \(Int(modelsSize.width)) × \(Int(modelsSize.height)) pt",
                                   detail: "A recording holds the speech model: the controls wait until it finishes.", file: "page-models-state-dictating-\(theme).png", to: output)
         model.phase = .idle; model.elapsed = 0
-        // General before any dictation: Show me a first dictation sits beside Dictate options… (#15).
+        // General before any dictation: Show me a first dictation sits beside Dictate settings… (#15).
         let before = (history: model.history, guide: model.preferences.firstDictationGuide)
         model.history = []; model.preferences.firstDictationGuide = nil
         defer { model.history = before.history; model.preferences.firstDictationGuide = before.guide }
         let (general, generalSize) = try renderPage("settings", in: window)
         let generalShot = try save(general, id: "state-before-first-dictation", title: "General before the first dictation, minimum window, \(Int(generalSize.width)) × \(Int(generalSize.height)) pt",
-                                   detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate options… and opens Home on the guide.",
+                                   detail: "Nothing dictated yet: Show me a first dictation sits beside Dictate settings… and opens Home on the guide.",
                                    file: "page-settings-state-before-first-dictation-\(theme).png", to: output)
         return [("library", [libraryShot]), ("models", [modelsShot]), ("settings", [generalShot])]
     }
@@ -758,14 +824,15 @@ enum SurfaceGallery {
                               detail: "The reading stopped; the text is editable again and Retry makes new audio.",
                               file: "page-speak-state-audio-unreadable-\(theme).png", to: output)]
         model.dismissReadingFailure()
-        // Home's tile refused 50,001 copied characters (#173): the draft stays, and Read says why.
+        // The existing import owner rejects 50,001 synthetic characters before any audio or
+        // provider request. This is an admission check, not a Home clipboard action.
         let announce = model.announceForAccessibility
         model.announceForAccessibility = { _ in }
         model.listen(to: String(repeating: "x", count: 50_001))
         model.announceForAccessibility = announce
         (rep, drawn) = try renderPage("speak", in: window)
-        shots.append(try save(rep, id: "state-copied-text-refused", title: "Read, after Home's tile refused copied text, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                              detail: "50,001 copied characters are more than Mac reading accepts: the draft is unchanged, nothing started, and the banner says why.",
+        shots.append(try save(rep, id: "state-copied-text-refused", title: "Read, oversized text refused, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                              detail: "50,001 supplied synthetic characters exceed Mac reading's limit: the draft stays unchanged, no audio starts, and the owned banner says why.",
                               file: "page-speak-state-copied-text-refused-\(theme).png", to: output))
         model.dismissError()
         model.importReading(SurfacePass.history[0].text, from: .transcript)
@@ -778,7 +845,30 @@ enum SurfaceGallery {
                                   detail: "Read aloud on a History transcript while a different draft is in Read: nothing changes until Replace reading or Keep current.",
                                   file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
         }
+        shots.append(try renderReadingSettings(to: output))
         return shots
+    }
+
+    /// The production settings sheet, rendered directly without playing audio, saving a key or
+    /// requesting a voice catalogue. Its scroll viewport and complete host must both lay out.
+    func renderReadingSettings(to output: URL) throws -> SurfaceGallery.Shot {
+        final class Frames { var byID: [String: CGRect] = [:] }
+        let frames = Frames(), size = NSSize(width: 570, height: 510)
+        let provider = model.readingProvider
+        model.readingProvider = .mac
+        let host = NSHostingView(rootView: ReadingSettingsView(model: model, done: {})
+            .environment(\.pageSectionFrames, { id, frame in frames.byID[id] = frame }))
+        let window = offscreenWindow(size: size, styleMask: [.borderless])
+        window.contentView = host
+        defer { window.contentView = nil; window.close(); model.readingProvider = provider }
+        settle(host)
+        guard let root = frames.byID["read.settings"], let viewport = frames.byID["read.settings.visible"],
+              abs(root.width - 570) < 1, abs(root.height - 510) < 1, !viewport.isEmpty else {
+            throw VoiceError.message("Read's Voice & pace settings did not lay out at 570 × 510 with a visible scroll viewport.")
+        }
+        return try save(try snapshot(host), id: "voice-settings", title: "Voice & pace settings, 570 × 510 pt",
+                        detail: "The production Read settings sheet with Mac voices and pace. The reading draft stays on the page; no audio is played.",
+                        file: "page-speak-voice-settings-\(theme).png", to: output)
     }
 
     // MARK: Home checks
@@ -790,8 +880,8 @@ enum SurfaceGallery {
         let window = homeWindow(size: SurfaceGallery.sizes[1].size)
         defer { window.contentViewController = nil; window.close() }
         let draft = "An edited Dictate draft that must survive: " + model.transcript
-        let keptDraft = model.transcript, keptSelection = model.historyLibrary.selected
-        defer { model.transcript = keptDraft; model.historyLibrary.setSelected(keptSelection) }
+        let keptDraft = model.transcript, keptRaw = model.rawTranscript, keptPhase = model.phase, keptSelection = model.historyLibrary.selected
+        defer { model.keepCurrentTranscript(); model.phase = keptPhase; model.rawTranscript = keptRaw; model.transcript = keptDraft; model.historyLibrary.setSelected(keptSelection) }
         model.transcript = draft
         let selection: Set<WorkbenchItemReference> = [.init(kind: .transcript, id: SurfacePass.history[0].id)]
         model.historyLibrary.setSelected(selection)
@@ -815,8 +905,49 @@ enum SurfaceGallery {
         let shot = try save(history, id: "state-from-home", title: "History, showing a transcript Home opened, \(Int(size.width)) × \(Int(size.height)) pt",
                             detail: "Home's Recent work opened the oldest synthetic transcript: History shows All, scrolled to it and outlined; the selected transcript stays selected.",
                             file: "page-history-state-from-home-\(theme).png", to: output)
+        model.phase = .idle
+        model.openTranscript(older)
+        guard model.pendingTranscript?.id == older.id, model.transcript == draft, model.rawTranscript == keptRaw,
+              model.saveBeforeUpdate() else { throw VoiceError.message("History Open replaced a different Dictate draft without a decision.") }
+        let persisted = try model.store.load()
+        guard persisted.draft == draft, persisted.rawDraft == keptRaw else { throw VoiceError.message("History review failed to preserve the saved Dictate draft across reload.") }
+        model.keepCurrentTranscript(); model.page = "home"
+        guard model.pendingTranscript == nil, model.transcript == draft else { throw VoiceError.message("Keep current changed the Dictate draft.") }
+        model.phase = .recording; model.openTranscript(older)
+        guard model.pendingTranscript == nil, model.transcript == draft, model.rawTranscript == keptRaw else { throw VoiceError.message("Live dictation admitted an older transcript replacement.") }
+        model.dismissError(); model.phase = .idle; model.openTranscript(older)
+        model.phase = .recording; model.replaceDraftWithTranscript()
+        guard model.transcript == draft, model.pendingTranscript?.id == older.id else { throw VoiceError.message("Replace draft changed a capture that began after review opened.") }
+        model.phase = .idle; model.replaceDraftWithTranscript()
+        guard model.pendingTranscript == nil, model.transcript == older.text, model.rawTranscript == (older.rawText ?? older.text), model.saveBeforeUpdate() else {
+            throw VoiceError.message("Explicit Replace draft did not apply the selected saved transcript and original.")
+        }
+        let retainedOriginal = "Original narration remains available after clearing the displayed draft.\nKeep these exact words."
+        model.rawTranscript = retainedOriginal; model.transcript = ""
+        model.openTranscript(older)
+        guard model.pendingTranscript?.id == older.id, model.transcript.isEmpty, model.rawTranscript == retainedOriginal else {
+            throw VoiceError.message("History Open replaced a retained original after the displayed draft was cleared.")
+        }
+        model.keepCurrentTranscript(); model.page = "home"
+        guard model.pendingTranscript == nil, model.transcript.isEmpty, model.rawTranscript == retainedOriginal,
+              model.saveBeforeUpdate() else { throw VoiceError.message("Keep current failed to retain the cleared draft and its original.") }
+        let clearedState = try model.store.load()
+        guard clearedState.draft.isEmpty, clearedState.rawDraft == retainedOriginal else {
+            throw VoiceError.message("The cleared draft's original did not survive saved-state reload.")
+        }
+        _ = model.useOriginal()
+        guard model.transcript == retainedOriginal else { throw VoiceError.message("Original could not restore the retained words after Keep current.") }
+        model.transcript = ""; model.openTranscript(older); model.replaceDraftWithTranscript()
+        guard model.pendingTranscript == nil, model.transcript == older.text, model.rawTranscript == (older.rawText ?? older.text),
+              model.saveBeforeUpdate() else { throw VoiceError.message("Explicit Replace did not replace the cleared draft and its original.") }
+        let replacedState = try model.store.load()
+        guard replacedState.draft == older.text, replacedState.rawDraft == (older.rawText ?? older.text) else {
+            throw VoiceError.message("Explicit replacement of a cleared draft did not survive saved-state reload.")
+        }
         return (["Drawing Home twice leaves History's door unset, the Dictate draft and the shared selection as they were.",
-                 "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept."], shot)
+                 "An older transcript's title opens History on All, showing it; the edited Dictate draft is unchanged byte for byte and the selection is kept.",
+                 "History Open preserves a different Dictate draft and original in the actual saved store until Replace draft; Keep current, navigation and live capture preserve them, including capture beginning after the decision opens.",
+                 "Clearing the displayed draft keeps its original behind the same Keep/Replace decision. Keep and saved-state reload preserve it, Original restores it, and explicit Replace commits the selected transcript and original."], shot)
     }
 
     /// Home at 1.35 times its text in the minimum window's content column. SwiftUI's text styles do
@@ -876,23 +1007,35 @@ enum SurfaceGallery {
     // MARK: Floating toolbar visibility
 
     /// The floating toolbar's one switch from its doors (#134 H3): the panel's header switch,
-    /// Settings › General's switch, the Window menu and the toolbar's own More › Hide toolbar
-    /// read and change the one saved preference, and each shows what the others did. More's item
-    /// is read from the menu the toolbar builds when More opens, and chosen as a menu chooses it.
+    /// Settings › General's switch, the Window menu and the toolbar’s context menu › Hide toolbar
+    /// read and change the one saved preference, and each shows what the others did. The context item
+    /// is read from the menu the toolbar builds when its context menu opens, and chosen as a menu chooses it.
     /// The panel header's whole 32 point row is the switch's target, and the switch is its one
     /// accessibility element. Which surface shows over live work is CaptureHUDChecks' (#155).
     func checkToolbarVisibility() throws -> [String] {
         let kept = model.floatingToolbarVisible
         defer { model.floatingToolbarVisible = kept }
         func switches(in view: NSView) -> [NSSwitch] { (view as? NSSwitch).map { [$0] } ?? view.subviews.flatMap(switches) }
+        func visibilitySwitches(in view: NSView) -> [NSSwitch] { switches(in: view).filter { $0.accessibilityLabel() == "Floating toolbar" } }
+        func isOn(_ element: NSSwitch) -> Bool { element.state == .on }
         let panelHost = NSHostingView(rootView: quickPanel(readback).background(Color(nsColor: .windowBackgroundColor)))
         let panelWindow = offscreenWindow(size: panelHost.fittingSize, styleMask: [.borderless])
         panelWindow.contentView = panelHost
         defer { panelWindow.contentView = nil; panelWindow.close() }
-        let settingsWindow = homeWindow(size: SurfaceGallery.sizes[0].size)
+        // Offscreen SwiftUI does not materialize its labelled accessibility proxy. Use
+        // the actual labelled row's reported frame, never switch order or bound value.
+        var settingsFrames: [String: CGRect] = [:]
+        let settingsWindow = homeWindow(size: SurfaceGallery.sizes[0].size, sectionFrames: { settingsFrames[$0] = $1 })
         defer { settingsWindow.contentViewController = nil; settingsWindow.close() }
         model.page = "settings"
         let settingsFrame = settingsWindow.contentView?.superview ?? settingsWindow.contentView!
+        func settingsSwitches(_ name: String) -> [NSSwitch] {
+            guard let region = settingsFrames[name], let root = settingsWindow.contentView else { return [] }
+            return switches(in: root).filter { region.insetBy(dx: -1, dy: -1).contains($0.convert($0.bounds, to: root)) }
+        }
+        guard let settingsControls = model.toolbarControls else { throw VoiceError.message("General has no toolbar settings owner.") }
+        let keptOpen = settingsControls.toolbar.state.keepsOpen
+        defer { settingsControls.toolbar.setKeepsOpen(keptOpen) }
         let windowMenu = shell.makeMainMenu().main.items.compactMap(\.submenu).first { $0.title == "Window" }
         guard let item = windowMenu?.items.first(where: { $0.action == #selector(AppDelegate.toggleFloatingToolbar) }) else {
             throw VoiceError.message("The Window menu has no floating toolbar item.")
@@ -900,37 +1043,38 @@ enum SurfaceGallery {
         func agree(_ visible: Bool, after door: String) throws {
             settle(panelHost, seconds: 0.15); settle(settingsFrame, seconds: 0.15)
             _ = shell.validateMenuItem(item)
-            let panel = switches(in: panelHost), settings = switches(in: settingsFrame)
+            let panel = visibilitySwitches(in: panelHost), settings = settingsSwitches("settings.toolbar.visibility")
             guard model.floatingToolbarVisible == visible, panel.count == 1, settings.count == 1,
-                  (panel[0].state == .on) == visible, (settings[0].state == .on) == visible,
-                  item.title == AppDelegate.floatingToolbarTitle(visible: visible) else {
+                  isOn(panel[0]) == visible, isOn(settings[0]) == visible,
+                  item.title == AppDelegate.floatingToolbarTitle(visible: visible),
+                  settingsControls.toolbar.state.keepsOpen == keptOpen else {
                 throw VoiceError.message("After \(door), the floating toolbar's doors disagree: saved \(model.floatingToolbarVisible), "
-                    + "panel \(panel.map(\.state.rawValue)), Settings \(settings.map(\.state.rawValue)), Window \(item.title).")
+                    + "panel \(panel.map(isOn)), Settings \(settings.map(isOn)), measured rows \(settingsFrames), Window \(item.title).")
             }
         }
         model.floatingToolbarVisible = true
         try agree(true, after: "turning it on")
-        switches(in: panelHost).first?.performClick(nil)
+        visibilitySwitches(in: panelHost).first?.performClick(nil)
         try agree(false, after: "the panel's switch")
-        switches(in: settingsFrame).first?.performClick(nil)
+        settingsSwitches("settings.toolbar.visibility").first?.performClick(nil)
         try agree(true, after: "Settings' switch")
         NSApp.sendAction(item.action!, to: shell, from: item)
         try agree(false, after: "the Window menu")
         NSApp.sendAction(item.action!, to: shell, from: item)
         try agree(true, after: "the Window menu again")
-        // The fourth door, the toolbar's own More › Hide toolbar (#134 T4, H3): the item as More
+        // The fourth door, the toolbar’s context menu › Hide toolbar (#134 T4, H3): the item as the context menu
         // builds it for a toolbar that is showing, chosen as a menu chooses it.
         let controls = CaptureHUDControls(defaults: try SurfaceGallery.isolatedDefaults("ToolbarVisibility", home: home))
         let toolbar = FloatingToolbar(model: model, readback: readback, stage: stage, controls: controls, promptInsertion: model.promptInsertion,
                                       meetings: model.meetings, snapModel: snap, receipts: model.clipboardReceipt,
                                       dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
-        guard let hide = toolbar.moreMenu().items.first(where: { $0.title == "Hide toolbar" }), let action = hide.action else {
-            throw VoiceError.message("The toolbar's More has no Hide toolbar.")
+        guard let hide = toolbar.toolbarContextMenu().items.first(where: { $0.title == "Hide toolbar" }), let action = hide.action else {
+            throw VoiceError.message("The toolbar's context menu has no Hide toolbar.")
         }
         NSApp.sendAction(action, to: hide.target, from: hide)
-        try agree(false, after: "the toolbar's More › Hide toolbar")
-        switches(in: panelHost).first?.performClick(nil)
-        try agree(true, after: "the panel's switch, after More › Hide toolbar")
+        try agree(false, after: "the toolbar’s context menu › Hide toolbar")
+        visibilitySwitches(in: panelHost).first?.performClick(nil)
+        try agree(true, after: "the panel's switch, after context-menu Hide toolbar")
 
         // The header's whole switch row is one control (#134 review): a click on the words, beside
         // them, above or below them or on the switch toggles once, and a click just outside the
@@ -976,10 +1120,21 @@ enum SurfaceGallery {
                                                    charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49)!)
         }
         try agree(!before, after: "Space on the focused switch")
-        return ["The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
+        let visibilityBeforeKeepOpen = model.floatingToolbarVisible
+        let keepOpenSwitches = settingsSwitches("settings.toolbar.keepOpen")
+        guard keepOpenSwitches.count == 1 else { throw VoiceError.message("General needs one named Keep open switch beside its separate visibility switch.") }
+        settingsSwitches("settings.toolbar.keepOpen").first?.performClick(nil)
+        settle(settingsFrame, seconds: 0.15)
+        guard settingsControls.toolbar.state.keepsOpen != keptOpen, model.floatingToolbarVisible == visibilityBeforeKeepOpen else {
+            throw VoiceError.message("Keep open did not change its own preference independently of toolbar visibility.")
+        }
+        settingsSwitches("settings.toolbar.keepOpen").first?.performClick(nil)
+        try agree(visibilityBeforeKeepOpen, after: "restoring Keep open")
+        return ["Keep open and Floating toolbar are separately named controls; changing either preserves the other preference.",
+                "The panel's switch, Settings › General's switch and the Window menu each turned the floating toolbar off or on, and every other door then showed the same: the switches' states and Show or Hide floating toolbar.",
                 "In the panel header, a click on the words Floating toolbar, the gap beside the switch, the row above and below the words, the row above the switch and the switch itself each toggled it once; a click 3 points above the 32 point row missed it.",
                 "The header switch is the one accessibility element, named Floating toolbar with its On or Off value; VoiceOver's press and Space on the focused switch each toggled it once.",
-                "The toolbar's own More › Hide toolbar, as More builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
+                "The toolbar's context-menu Hide toolbar, as that menu builds it, turned it off, and every other door then showed the same; the panel's switch turned it back on. Which surface shows during drawing, presenting, personas, recording, reading and insertion is checked by CaptureHUDChecks (#155)."]
     }
 
     /// The panel header's switch rows under `view`.
@@ -1045,12 +1200,8 @@ enum SurfaceGallery {
 
     // MARK: Dictate states
 
-    /// The newcomer's manual copy (#134 C10, #165): Paste automatically waits for an Accessibility
-    /// approval an organisation may have to give, so the finished transcript was copied. The task
-    /// region shows the words with the copy as the result, and Set up automatic paste… beside
-    /// Delivery as an option; nothing waits on the approval. Only the model's status is set, as a
-    /// dictation leaves it; the clipboard is not touched. The pass's draft, status, delivery and
-    /// approval are restored afterwards.
+    /// The copy fallback needs no Accessibility grant. This draws the actual preference state;
+    /// it neither copies text nor invents a completed delivery receipt.
     func renderDictateStates(to output: URL) throws -> (shots: [SurfaceGallery.Shot], checks: [String]) {
         let kept = (draft: model.transcript, raw: model.rawTranscript, status: model.status,
                     delivery: model.preferences.delivery, granted: model.accessibilityGranted)
@@ -1060,106 +1211,279 @@ enum SurfaceGallery {
         }
         let words = SurfacePass.history[1].text
         model.preferences.delivery = .paste; model.accessibilityGranted = false
-        model.rawTranscript = words; model.transcript = words; model.status = TextDelivery.copiedMessage
-        // Its window closes before the options check, so that check's window is the only Home open.
-        func manualCopy() throws -> SurfaceGallery.Shot {
+        model.rawTranscript = words; model.transcript = words
+        func copyFallback() throws -> SurfaceGallery.Shot {
             let window = homeWindow(size: SurfaceGallery.sizes[0].size)
             defer { window.contentViewController = nil; window.close() }
             let (rep, drawn) = try renderPage("dictate", in: window)
-            return try save(rep, id: "state-manual-copy", title: "Dictate, copied for ⌘V, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
-                            detail: "Paste automatically is chosen and waits for Accessibility approval, so the transcript was copied: the result reads Copied. Paste with ⌘V., and Set up automatic paste… sits beside Delivery.",
-                            file: "page-dictate-state-manual-copy-\(theme).png", to: output)
+            return try save(rep, id: "state-copy-fallback", title: "Dictate, automatic paste not approved, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                            detail: "The transcript leads. Copies text · Paste with ⌘V stays available, with optional automatic-paste setup. Delivery, text style and activation are in Settings.",
+                            file: "page-dictate-state-copy-fallback-\(theme).png", to: output)
         }
-        let manual = try manualCopy()
-        let options = try renderDictateOptionsFocused(to: output)
-        return (shots: [manual, options.shot], checks: [options.check])
+        let fallback = try copyFallback()
+        let settings = try renderDictateOptionsFocused(to: output)
+        return (shots: [fallback, settings.shot], checks: [settings.check])
     }
 
-    /// Settings' Dictate options… lands on Dictate's Options (#134 H2). The window is the only
-    /// Home open, so no other page can take the request, and its Dictate reports where Options and
-    /// the visible scroll area were laid out (`pageSectionFrames`, nil in the app). Both frames
-    /// must have an area. Options must first lie outside the visible area, judged after a settle,
-    /// or a page that never scrolled would pass. Then the request is set on Settings, and the check
-    /// waits, up to a deadline, until the page has taken it and Options lies inside the visible
-    /// area, and judges that again after the last settle, just before the shot.
+    /// Settings' existing focus request must attach the production sheet to this Home window.
+    /// Merely consuming the request, changing the route or rendering a detached mock is not enough.
     func renderDictateOptionsFocused(to output: URL) throws -> (shot: SurfaceGallery.Shot, check: String) {
         final class Frames { var byID: [String: CGRect] = [:] }
         let frames = Frames()
-        let window = homeWindow(size: SurfaceGallery.sizes[1].size) { id, frame in frames.byID[id] = frame }
-        defer { window.contentViewController = nil; window.close(); model.focusRequest = nil }
+        let kept = (page: model.page, draft: model.transcript, raw: model.rawTranscript,
+                    selection: model.historyLibrary.selected, phase: model.phase, recovery: model.hasCaptureRecovery)
+        model.page = "settings"; model.focusRequest = nil
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size, hostsSheets: true) { id, frame in frames.byID[id] = frame }
         let root = window.contentView?.superview ?? window.contentView!
-        func text(_ rect: CGRect?) -> String {
-            rect.map { "\(Int($0.width)) × \(Int($0.height)) at (\(Int($0.minX)), \(Int($0.minY)))" } ?? "not laid out"
+        defer {
+            if let sheet = window.attachedSheet { window.endSheet(sheet); sheet.orderOut(nil) }
+            window.contentViewController = nil; window.close()
+            model.focusRequest = nil; model.page = kept.page
         }
-        func state() -> String {
-            "page \(model.page), request \(model.focusRequest == nil ? "taken" : "not taken"), Options \(text(frames.byID["dictate.options"])), "
-                + "visible scroll area \(text(frames.byID["dictate.visible"]))"
-        }
-        /// Both frames reported with an area. A rect with no width or height is "contained" by any
-        /// rect around its origin, so a collapsed Options or a transient empty report proves nothing.
-        func laidOut() -> Bool {
-            guard let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
-            return !options.isEmpty && !visible.isEmpty
-        }
-        func optionsInView() -> Bool {
-            guard laidOut(), let options = frames.byID["dictate.options"], let visible = frames.byID["dictate.visible"] else { return false }
-            return visible.insetBy(dx: -0.5, dy: -0.5).contains(options)
-        }
-        func wait(until done: () -> Bool) {
-            let deadline = Date().addingTimeInterval(3)
-            repeat { settle(root, seconds: 0.1) } while !done() && Date() < deadline
-        }
-        model.focusRequest = nil
-        model.page = "dictate"
-        wait { laidOut() }
-        // One more settle, so a first layout pass cannot decide where Options starts.
         settle(root)
-        guard laidOut(), !optionsInView() else {
-            throw VoiceError.message("Dictate's Options must be laid out outside the visible scroll area first, or the options door cannot be checked: \(state()).")
-        }
-        let before = frames.byID["dictate.options"]
-        model.page = "settings"; settle(root)
-        frames.byID = [:]
+        guard window.attachedSheet == nil else { throw VoiceError.message("Dictate settings was already open before the Settings route was used.") }
         model.focusRequest = PageFocusRequest(target: .dictateOptions)
         model.page = "dictate"
-        wait { model.focusRequest == nil && optionsInView() }
-        guard model.focusRequest == nil, optionsInView() else {
-            throw VoiceError.message("Settings' Dictate options… did not bring Dictate's Options into view: \(state()).")
+        let deadline = Date().addingTimeInterval(4)
+        repeat { settle(root, seconds: 0.1) }
+        while (model.focusRequest != nil || window.attachedSheet == nil || frames.byID["dictate.settings.visible"]?.isEmpty != false) && Date() < deadline
+        guard model.focusRequest == nil, let sheet = window.attachedSheet, let content = sheet.contentView,
+              let drawn = frames.byID["dictate.settings"], let viewport = frames.byID["dictate.settings.visible"],
+              abs(drawn.width - 570) < 1, abs(drawn.height - 510) < 1, !viewport.isEmpty else {
+            throw VoiceError.message("Settings' Dictate settings… did not attach its 570 × 510 sheet and visible scroll viewport: request \(model.focusRequest == nil ? "taken" : "pending"), attached \(window.attachedSheet != nil), frames \(frames.byID).")
         }
-        settle(root)
-        // Judged again after the last settle, so the shot and the assertion describe the same moment.
-        guard model.focusRequest == nil, optionsInView() else {
-            throw VoiceError.message("Dictate's Options did not stay inside the visible scroll area once the page settled: \(state()).")
+        settle(content)
+        guard model.transcript == kept.draft, model.rawTranscript == kept.raw,
+              model.historyLibrary.selected == kept.selection, model.phase == kept.phase,
+              model.hasCaptureRecovery == kept.recovery else {
+            throw VoiceError.message("Opening Dictate settings changed the draft, original, History selection, capture phase or recovery availability.")
         }
-        let size = root.bounds.size, landed = frames.byID["dictate.options"], visible = frames.byID["dictate.visible"]
-        let shot = try save(try snapshot(root), id: "state-options-focused", title: "Dictate, from Settings › Dictate options…, \(Int(size.width)) × \(Int(size.height)) pt",
-                            detail: "The page opens scrolled so its Options lie inside the visible area, where VoiceOver starts; the check waits for that and fails otherwise.",
+        let shot = try save(try snapshot(content), id: "state-options-focused", title: "Dictate settings, opened from Settings, 570 × 510 pt",
+                            detail: "The existing Settings request attached this production sheet and was consumed. Delivery, style, activation, dictionary and Shortcuts share the sheet; the draft and recovery were preserved.",
                             file: "page-dictate-state-options-focused-\(theme).png", to: output)
-        return (shot, "Settings' Dictate options…, in the only Workbench window open, moved Dictate's Options from \(text(before)) to \(text(landed)), "
-                    + "inside the visible scroll area \(text(visible)) below the title bar, and the page took the request.")
+        // The production Done button declares the standard default action. Deliver Return
+        // inside this synthetic window; no key event is sent to the user's active application.
+        let done = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber, context: nil,
+            characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+        guard sheet.performKeyEquivalent(with: done) else {
+            throw VoiceError.message("The Dictate settings sheet did not handle its standard Done action.")
+        }
+        let closed = Date().addingTimeInterval(3)
+        repeat { settle(root, seconds: 0.1) } while window.attachedSheet != nil && Date() < closed
+        guard window.attachedSheet == nil else { throw VoiceError.message("The Dictate settings sheet did not detach cleanly after Done.") }
+        return (shot, "Settings → Dictate settings attached the production 570 × 510 sheet with a nonempty scroll viewport, consumed its request, preserved the exact draft/original/selection/capture/recovery state, and Done closed it cleanly.")
     }
 
     // MARK: Home states
 
-    /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
-    /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
-    func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
-        var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
-        guard let homeIndex = pages.firstIndex(where: { $0.route == "home" }) else { throw VoiceError.message("Home is missing from the page record.") }
+    /// The desktop redesign's bounded acceptance: pages, their sheets and safe navigation.
+    /// The full gallery keeps the separate toolbar, picker and placement passes.
+    func renderDesktopOnly(to output: URL) throws -> SurfaceGallery.Pass {
+        let dictate = try renderDictateStates(to: output)
+        let completed = try renderMeetingReview(to: output)
+        var pass = try renderHomeOnly(to: output)
+        pass.scope = "desktop"
         for (name, size) in SurfaceGallery.sizes {
             let window = homeWindow(size: size)
             defer { window.contentViewController = nil; window.close() }
+            let fallback = name == "default" ? SurfacePass.contentPixels(try renderPage(SurfaceGallery.unknownRoute, in: window).0) : nil
+            for index in pass.pages.indices where pass.pages[index].route != "home" {
+                let route = pass.pages[index].route
+                let (rep, drawn) = try renderPage(route, in: window)
+                if let fallback { pass.pages[index].fallsThrough = SurfacePass.contentPixels(rep) == fallback }
+                if SurfacePass.isBlank(rep, size: size) { pass.pages[index].blank = true }
+                pass.pages[index].shots.append(try save(rep, id: name,
+                    title: "\(name == "default" ? "Default" : "Minimum") window, \(Int(drawn.width)) × \(Int(drawn.height)) pt",
+                    detail: "The production desktop page with synthetic saved work.", file: "page-\(route)-\(name)-\(theme).png", to: output))
+            }
+        }
+        for (route, shots) in try renderFoldedStates(to: output) {
+            if let index = pass.pages.firstIndex(where: { $0.route == route }) { pass.pages[index].shots += shots }
+        }
+        if let index = pass.pages.firstIndex(where: { $0.route == "speak" }) { pass.pages[index].shots += try renderReadStates(to: output) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
+        if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
+        if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
+        pass.checks += dictate.checks + completed.checks
+        pass.menus = menus()
+        pass.entries = entries() + menuEntries
+        return pass
+    }
+
+    /// Complete a short synthetic meeting through its real recovery/commit owner, then review
+    /// that exact ID through History's typed door. No device, recognizer or clipboard is used.
+    func renderMeetingReview(to output: URL) throws -> (meeting: SurfaceGallery.Shot, history: SurfaceGallery.Shot, checks: [String]) {
+        let kept = (meetings: model.meetings, history: model.history, draft: model.transcript,
+                    raw: model.rawTranscript, selection: model.historyLibrary.selected, page: model.page)
+        defer {
+            model.meetings = kept.meetings; model.history = kept.history
+            model.historyLibrary.setSelected(kept.selection); model.page = kept.page; model.historyDoor = nil
+        }
+        // A fresh direct child of the already verified home avoids comparing macOS's
+        // Data-volume aliases for a path whose final components do not exist yet.
+        let root = home.appendingPathComponent("Completed meeting fixture", isDirectory: true)
+        guard root.deletingLastPathComponent().standardizedFileURL == home.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: root.path) else {
+            throw VoiceError.message("A completed meeting fixture must stay inside the verified temporary home.")
+        }
+        let date = Date(timeIntervalSince1970: 1_789_400_000)
+        var manifest = MeetingManifest(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000099")!, createdAt: date, updatedAt: date,
+            purpose: "meeting", appName: "Zoom", appBundleID: "us.zoom.xos", includesMicrophone: false, includesRemote: true,
+            state: .stopped, seconds: 1)
+        let session = try MeetingStore.create(root: root, manifest: manifest)
+        let relative = "tracks/remote.caf", audio = try MeetingStore.safeURL(session: session, relative: relative)
+        let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+            AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+        do {
+            let file = try AVAudioFile(forWriting: audio, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 16_000)!
+            buffer.frameLength = 16_000
+            for index in 0..<16_000 { buffer.floatChannelData![0][index] = 0.2 }
+            try file.write(from: buffer)
+        }
+        let previous = manifest
+        manifest.tracks = [MeetingTrack(source: .remote, file: relative, startSeconds: 0, seconds: 1, sampleRate: 16_000, peak: 0.2, droppedSeconds: 0)]
+        try MeetingStore.save(manifest, at: session, replacing: previous)
+        let completed = MeetingModel(directory: root, defaults: .standard, processSource: SyntheticAudioApps(),
+            transcribe: { _ in "Maya will send the revised agenda before Thursday. Sam will confirm the room." },
+            microphonePermission: { false }, captureFactory: { SilentMeetingCapture() })
+        model.meetings = completed
+        completed.saveTranscript = { [weak model] transcript, purpose in try model?.retainMeetingTranscript(transcript, purpose: purpose) }
+        Task { await completed.retry() }
+        try wait("a completed synthetic meeting") { (completed.completedTranscriptID != nil || completed.error != nil) && !completed.isBusy }
+        guard completed.completedTranscriptID == manifest.id, !completed.isBusy,
+              model.history.contains(where: { $0.id == manifest.id }) else {
+            throw VoiceError.message("The synthetic meeting did not commit its exact transcript: \(completed.error ?? completed.notice).")
+        }
+        let original = try Data(contentsOf: audio)
+        let journal = session.appendingPathComponent(MeetingStore.manifestName)
+        let committed = try Data(contentsOf: journal)
+        let window = homeWindow(size: SurfaceGallery.sizes[1].size)
+        defer { window.contentViewController = nil; window.close() }
+        let (meetingImage, size) = try renderPage("meeting", in: window)
+        let meeting = try save(meetingImage, id: "state-completed", title: "Meetings, transcript saved, minimum window",
+            detail: "The real meeting owner committed synthetic audio and text. Review transcript carries that completed transcript's ID; newer transcripts exist in History.",
+            file: "page-meeting-state-completed-\(theme).png", to: output)
+        model.openHistory(HistoryDoor(transcript: manifest.id))
+        guard model.historyDoor?.transcript == manifest.id, model.historyDoor?.filter == .all else {
+            throw VoiceError.message("The completed meeting's History door did not name its exact transcript.")
+        }
+        let (historyImage, _) = try renderPage("history", in: window)
+        guard model.historyDoor == nil, model.transcript == kept.draft, model.rawTranscript == kept.raw,
+              model.historyLibrary.selected == kept.selection,
+              try Data(contentsOf: audio) == original, try Data(contentsOf: journal) == committed else {
+            throw VoiceError.message("Reviewing the completed meeting changed the draft, original, selection, audio or completion journal.")
+        }
+        let history = try save(historyImage, id: "state-from-meeting", title: "History, exact completed meeting, \(Int(size.width)) × \(Int(size.height)) pt",
+            detail: "History consumed a typed door for the completed meeting even though newer transcripts exist. The Dictate draft, selection and saved recording stayed unchanged.",
+            file: "page-history-state-from-meeting-\(theme).png", to: output)
+        return (meeting, history, ["A real synthetic meeting commit published its exact transcript ID. History consumed that typed review door while preserving the draft, original, selection and the saved recording/journal bytes."])
+    }
+
+    /// Meetings holding one recording kept for later and one that heard no speech. The real owner
+    /// settles the silent one, which is shown once and never offered for retry, and lists the kept
+    /// one with its own Transcribe, Show in Finder and Move to Trash.
+    func renderMeetingKept(to output: URL) throws -> SurfaceGallery.Shot {
+        let kept = model.meetings
+        defer { model.meetings = kept }
+        let root = home.appendingPathComponent("Kept meeting fixture", isDirectory: true)
+        guard root.deletingLastPathComponent().standardizedFileURL == home.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: root.path) else {
+            throw VoiceError.message("A kept meeting fixture must stay inside the verified temporary home.")
+        }
+        func recording(_ id: String, purpose: String, app: String?, at seconds: TimeInterval) throws -> URL {
+            let date = Date(timeIntervalSince1970: 1_789_400_000 + seconds)
+            var manifest = MeetingManifest(id: UUID(uuidString: id)!, createdAt: date, updatedAt: date, purpose: purpose,
+                appName: app, appBundleID: app == nil ? nil : "us.zoom.xos", includesMicrophone: app == nil, includesRemote: app != nil,
+                state: .stopped, seconds: 1)
+            let session = try MeetingStore.create(root: root, manifest: manifest)
+            let source: MeetingTrackSource = app == nil ? .local : .remote
+            let relative = "tracks/\(source.rawValue).caf", audio = try MeetingStore.safeURL(session: session, relative: relative)
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            do {
+                let file = try AVAudioFile(forWriting: audio, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 16_000)!
+                buffer.frameLength = 16_000
+                for index in 0..<16_000 { buffer.floatChannelData![0][index] = 0.2 }
+                try file.write(from: buffer)
+            }
+            let previous = manifest
+            manifest.tracks = [MeetingTrack(source: source, file: relative, startSeconds: 0, seconds: 1, sampleRate: 16_000, peak: 0.2, droppedSeconds: 0)]
+            try MeetingStore.save(manifest, at: session, replacing: previous)
+            return session
+        }
+        let call = try recording("5D1C0A1E-0000-4000-8000-000000000101", purpose: "call", app: "Zoom", at: 0)
+        let silent = try recording("5D1C0A1E-0000-4000-8000-000000000102", purpose: "meeting", app: nil, at: 3_600)
+        let meetings = MeetingModel(directory: root, defaults: .standard, processSource: SyntheticAudioApps(),
+            transcribe: { _ in "" }, microphonePermission: { false }, captureFactory: { SilentMeetingCapture() })
+        model.meetings = meetings
+        try wait("two kept synthetic meetings") { meetings.recoveries.count == 2 }
+        let entry = meetings.recoveries.first { $0.id == silent.lastPathComponent }
+        Task { await meetings.retry(entry) }
+        try wait("a settled silent meeting") { (meetings.keptWithoutSpeech != nil || meetings.error != nil) && !meetings.isBusy }
+        guard meetings.keptWithoutSpeech?.session.lastPathComponent == silent.lastPathComponent, meetings.error == nil,
+              meetings.recoveries.map(\.id) == [call.lastPathComponent] else {
+            throw VoiceError.message("The silent meeting was not settled apart from the kept call: \(meetings.error ?? meetings.notice), kept \(meetings.recoveries.map(\.id)).")
+        }
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer { window.contentViewController = nil; window.close() }
+        let (image, size) = try renderPage("meeting", in: window)
+        return try save(image, id: "state-kept", title: "Meetings, one call kept for later and one without speech, \(Int(size.width)) × \(Int(size.height)) pt",
+            detail: "The real meeting owner settled a recording that heard no speech: it is shown once with its audio kept and is not offered for retry. The call kept for later is listed with its own Transcribe, Show in Finder and Move to Trash.",
+            file: "page-meeting-state-kept-\(theme).png", to: output)
+    }
+
+    /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
+    /// SwiftUI views as the full gallery, including History's draft/selection preservation check.
+    func renderHomeOnly(to output: URL) throws -> SurfaceGallery.Pass {
+        try HomeJourneyChecks.run()
+        try WorkbenchPageChecks.run()
+        try HomeRecentWorkChecks.run()
+        let recovery = CaptureRecoveryStore(directory: Workbench.supportDirectory(component: "LocalVoice")
+            .appendingPathComponent("CaptureRecovery", isDirectory: true))
+        guard let pending = try recovery.load(), let audio = try recovery.audioURL(for: pending),
+              model.hasCaptureRecovery, model.canRetry, model.canDiscardCaptureRecovery else {
+            throw VoiceError.message("The Home pass must start with retryable, discardable synthetic audio.")
+        }
+        let audioBytes = try Data(contentsOf: audio)
+        let journal = recovery.directory.appendingPathComponent("pending.json")
+        let journalBytes = try Data(contentsOf: journal)
+        var pages = SurfacePass.pages.map { SurfaceGallery.Page(route: $0.0, title: $0.1, fallsThrough: false, shots: []) }
+        guard let homeIndex = pages.firstIndex(where: { $0.route == "home" }) else { throw VoiceError.message("Home is missing from the page record.") }
+        for (name, size) in SurfaceGallery.sizes {
+            // Match a preceding toolbar-host fixture's teardown, then verify that
+            // desktop rendering retains this pass's actual settings owner.
+            model.toolbarControls = nil
+            let window = homeWindow(size: size)
+            defer { window.contentViewController = nil; window.close() }
+            guard let owner = toolbarSettingsControls, model.toolbarControls === owner else {
+                throw VoiceError.message("General lost the retained toolbar settings owner.")
+            }
             let (rep, drawn) = try renderPage("home", in: window)
             pages[homeIndex].shots.append(try save(rep, id: name, title: "Expanded sidebar, " + name,
                 detail: "Actual Home at \(Int(drawn.width)) × \(Int(drawn.height)) pt, with synthetic saved work.",
                 file: "page-home-\(name)-\(theme).png", to: output))
+            if let settings = pages.firstIndex(where: { $0.route == "settings" }) {
+                let (general, _) = try renderPage("settings", in: window)
+                pages[settings].shots.append(try save(general, id: "toolbar-" + name, title: "General toolbar controls, " + name,
+                    detail: "The same retained toolbar owner supplies Keep open and Position after another fixture closes its host.",
+                    file: "page-settings-toolbar-\(name)-\(theme).png", to: output))
+            }
         }
         pages[homeIndex].shots += try renderHomeChrome(to: output) + renderHomeStates(to: output)
             + [renderHomeLargerText(to: output), renderHomeSavedPhotos(to: output)]
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
+        guard model.hasCaptureRecovery, model.canRetry, model.canDiscardCaptureRecovery,
+              try Data(contentsOf: audio) == audioBytes, try Data(contentsOf: journal) == journalBytes else {
+            throw VoiceError.message("Visiting Home or History changed the pending recording or its recovery controls.")
+        }
         return SurfaceGallery.Pass(theme: theme, panels: [], toolbar: [], host: [], pickers: [], pickerHost: [],
-            pages: pages, entries: entries(), menus: [], checks: review.checks)
+            pages: pages, entries: entries(), menus: [], checks: try review.checks + checkToolbarVisibility() + [
+                "Home and History visits preserve the pending recording and its journal byte for byte; Retry and explicit Discard remain available on Dictate."])
     }
 
     /// Both sidebar widths and the local-profile sheet, without ordering a window on screen,
@@ -1173,14 +1497,49 @@ enum SurfaceGallery {
             window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
             defer { window.contentViewController = nil; window.close() }
             model.page = "home"
-            window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
-                readback: sessionReadback, snap: snap, sidebarCollapsed: true))
-            window.setContentSize(size)
+            // Both widths share one icon column: collapsing moves only the trailing edge, so the
+            // toggle and every row's icon keep their place.
+            var placed: [[String: CGRect]] = []
+            for collapsed in [false, true] {
+                var frames: [String: CGRect] = [:]
+                window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                    readback: sessionReadback, snap: snap, sidebarCollapsed: collapsed)
+                    .environment(\.pageSectionFrames, { id, frame in if id.hasPrefix("sidebar.") { frames[id] = frame } }))
+                window.setContentSize(size)
+                settle(window.contentView?.superview ?? window.contentView!)
+                placed.append(frames)
+            }
+            let (open, closed) = (placed[0], placed[1])
+            let moved = open.keys.sorted().filter { id in
+                guard let a = open[id], let b = closed[id] else { return true }
+                return [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height].contains { abs($0) >= 0.5 }
+            }
+            guard open["sidebar.toggle"] != nil, open.count > WorkbenchHome.navItems.count, Set(open.keys) == Set(closed.keys), moved.isEmpty else {
+                throw VoiceError.message("Collapsing the sidebar must move only its edge: \(moved.isEmpty ? "controls differ" : moved.joined(separator: ", ") + " moved"), \(name) (\(open.count) and \(closed.count) found).")
+            }
             let frame = window.contentView?.superview ?? window.contentView!
             settle(frame)
             shots.append(try save(try snapshot(frame), id: "collapsed-" + name, title: "Collapsed sidebar, " + name,
                 detail: "A loaded Snap & Talk session continues from its workflow card. Every icon keeps a tooltip and accessible name.",
                 file: "page-home-collapsed-\(name)-\(theme).png", to: output))
+            for hint in ["readback", "settings", "toggle"] {
+                window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard,
+                    readback: sessionReadback, snap: snap, sidebarCollapsed: true, sidebarHint: hint))
+                window.setContentSize(size)
+                settle(frame)
+                let hints = SurfaceGallery.sidebarHints(in: frame)
+                let title = hint == "toggle" ? "Expand sidebar" : WorkbenchHome.name(of: hint)
+                guard hints.count == 1, let label = hints.first, label.rootView.title == title,
+                      label.bounds.width > 30, label.bounds.height > 15,
+                      frame.bounds.contains(label.convert(label.bounds, to: frame)),
+                      label.hitTest(NSPoint(x: label.bounds.midX, y: label.bounds.midY)) == nil else {
+                    throw VoiceError.message("The collapsed sidebar hint must fit, name its destination and pass clicks through: \(hint), \(name).")
+                }
+                shots.append(try save(try snapshot(frame), id: "hint-" + hint + "-" + name,
+                    title: "Collapsed sidebar hint, " + hint + ", " + name,
+                    detail: "The production hint overlay, outside the sidebar's scrolling clip; the fixture selects the hovered item. Pointer timing requires installed testing.",
+                    file: "page-home-hint-\(hint)-\(name)-\(theme).png", to: output))
+            }
         }
         let host = NSHostingView(rootView: stage.localProfileView)
         let window = offscreenWindow(size: NSSize(width: 470, height: 370), styleMask: [.borderless])
@@ -1230,18 +1589,10 @@ enum SurfaceGallery {
         model.history = kept.history; model.transcript = kept.draft; model.rawTranscript = kept.raw
         model.preferences.firstDictationGuide = .completed
         let phase = model.phase
-        try shot("current-work", "Current work", "A dictation recording, then a paused reading, each with its own action; the Dictate and Read tiles step aside.") { [self] in
+        try shot("current-work", "Current work", "A dictation recording and a paused reading keep their own controls above the four workspace cards.") { [self] in
             model.phase = .recording; model.elapsed = 12; model.paused = true
         }
         model.phase = phase; model.elapsed = 0; model.paused = false
-        // Home's Read tile with copied text Mac reading cannot take (#173): nothing starts, and the
-        // reason shows under the quick starts, where it was clicked.
-        let announce = model.announceForAccessibility
-        model.announceForAccessibility = { _ in }
-        defer { model.announceForAccessibility = announce; model.dismissError() }
-        try shot("read-refused", "Read tile, copied text refused", "50,001 copied characters: the reading draft is unchanged, nothing starts, and the reason shows beside the tile.") { [self] in
-            model.listen(to: String(repeating: "x", count: 50_001))
-        }
         return shots
     }
 
@@ -1404,6 +1755,94 @@ enum SurfaceGallery {
 
     // MARK: Fixtures
 
+    /// Valid portable media and a long session exercise the real review layout. No device,
+    /// live data or provider runs. Recording is a presentation-only override in the same view.
+    func renderSnapTalkStates(to output: URL) throws -> [SurfaceGallery.Shot] {
+        var shots: [SurfaceGallery.Shot] = []
+        for state in ["review", "processing", "recovery", "unavailable", "unsaved", "recording", "settings", "sessions", "deleted"] {
+            let base = home.appendingPathComponent("SnapTalk gallery \(theme) \(state)")
+            let root = try Self.makeSession(in: base, count: 39)
+            var manifest = try ReadbackStore.load(from: root)
+            if state == "processing" { manifest.sections[0].status = .queued }
+            if state == "recovery" {
+                manifest.sections[0].status = .failed
+                manifest.sections[0].failure = "Transcription stopped. Your screenshot and original recording are saved; retry when ready."
+            }
+            try ReadbackStore.save(manifest, at: root)
+            let defaults = try SurfaceGallery.isolatedDefaults("SnapTalk \(state)", home: home)
+            defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")
+            let session = ReadbackModel(engine: model.engine, defaults: defaults,
+                captureDisplay: { throw ReadbackError.message("The gallery never captures the screen.") },
+                transcribeAudio: { _ in try await Task.sleep(nanoseconds: 3_600_000_000_000); throw CancellationError() },
+                screenAccess: .fixed(true), microphoneAccess: { .authorized })
+            defer { session.shutdown() }
+            if state == "deleted", let id = session.activeSections.last?.id { session.deleteSection(id) }
+            let id = session.activeSections[state == "review" ? 24 : 0].id
+            session.reviewSection(id)
+            if state == "unsaved" {
+                session.transcriptWriter = { _, _ in throw ReadbackError.message("The session folder is temporarily read-only.") }
+                session.updateTranscript("This unsaved edit stays available to copy or retry. The screenshot and original narration remain intact.", for: id)
+            }
+            if state == "review" {
+                session.updateTranscript(Array(repeating: "Show the workspace first, then explain what changes on this screen. Keep the screenshot paired with its narration and review the wording before sharing.", count: 10).joined(separator: "\n\n"), for: id)
+            }
+            var moved: URL?
+            if state == "unavailable" {
+                let destination = base.appendingPathComponent("Moved session")
+                try FileManager.default.moveItem(at: root, to: destination); moved = destination
+                session.refreshSessionAvailability()
+            }
+            defer { if let moved { try? FileManager.default.moveItem(at: moved, to: root) } }
+            let sizes = ["review", "recording"].contains(state) ? SurfaceGallery.sizes : [SurfaceGallery.sizes[1]]
+            for (name, size) in sizes {
+                final class Frames { var capture: CGRect? }
+                let frames = Frames()
+                let measure: (String, CGRect) -> Void = { if $0 == "readback.capture-controls" { frames.capture = $1 } }
+                let sheet: ReadbackView.Sheet? = state == "settings" ? .settings : state == "sessions" ? .sessions : state == "deleted" ? .deleted : nil
+                let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .fullSizeContentView], hostsSheets: sheet != nil)
+                window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
+                model.page = "readback"
+                if state == "recording" || sheet != nil {
+                    window.contentViewController = NSHostingController(rootView: ReadbackView(model: session, initialSheet: sheet,
+                        capturePresentation: state == "recording" ? .init(recording: true, elapsed: 74) : nil).workbenchTheme().environment(\.pageSectionFrames, measure))
+                    window.setContentSize(NSSize(width: size.width - 215, height: size.height))
+                } else {
+                    window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: session, snap: snap).environment(\.pageSectionFrames, measure))
+                    window.setContentSize(size)
+                }
+                if sheet != nil { window.alphaValue = 0; window.ignoresMouseEvents = true; window.orderFront(nil) }
+                let frame = window.contentView?.superview ?? window.contentView!
+                settle(frame, seconds: 0.6)
+                guard let transport = frames.capture, transport.height >= 40, transport.maxY < 300 else {
+                    throw VoiceError.message("Snap & Talk's fixed capture controls did not fit near the top of the workspace.")
+                }
+                if state == "review" {
+                    session.reviewSection(session.activeSections.last!.id); settle(frame)
+                    guard frames.capture == transport else { throw VoiceError.message("Reviewing another section moved the capture controls.") }
+                    session.reviewSection(id); settle(frame)
+                }
+                let target: NSView
+                if sheet != nil {
+                    guard let content = window.attachedSheet?.contentView else { throw VoiceError.message("Snap & Talk \(state) did not attach its native sheet.") }
+                    target = content; settle(content)
+                } else { target = frame }
+                shots.append(try save(try snapshot(target), id: "session-\(state)-\(name)", title: "Snap & Talk · \(state) · \(name)",
+                    detail: "39 sections with valid synthetic PNG and WAV files. Selected section and drafts belong to the real session model; recording is visual state only, with no recorder.",
+                    file: "page-readback-session-\(state)-\(name)-\(theme).png", to: output))
+                if let attached = window.attachedSheet {
+                    let done = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: attached.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+                    guard attached.performKeyEquivalent(with: done) else { throw VoiceError.message("Snap & Talk \(state) Done is unavailable.") }
+                    settle(frame)
+                    guard window.attachedSheet == nil else { throw VoiceError.message("Snap & Talk \(state) Done did not close its sheet.") }
+                }
+                window.contentViewController = nil; window.close()
+                guard session.reviewedSectionID == id else { throw VoiceError.message("Snap & Talk rendering or settings moved the reviewed section.") }
+            }
+        }
+        return shots
+    }
+
     static let history: [Transcript] = [
         Transcript(id: UUID(uuidString: "5D1C0A1E-0000-4000-8000-000000000001")!, date: Date(timeIntervalSince1970: 1_789_546_320),
                    text: "Send Sam the revised agenda before the Thursday review and ask which slides need the new numbers.", seconds: 9, cleanupMethod: "Light cleanup"),
@@ -1413,19 +1852,44 @@ enum SurfaceGallery {
                    text: "The demo starts with the overview, then the workspace, then the finished deck.", seconds: 7, cleanupMethod: "Original")]
 
     /// A three-section Snap & Talk session in the temporary home, opened only as a recent session.
-    static func makeSession(in home: URL) throws -> URL {
+    static func makeSession(in home: URL, count: Int = 3) throws -> URL {
         let root = home.appendingPathComponent("Snap & Talk/Synthetic walkthrough", isDirectory: true)
         var manifest = try ReadbackStore.create(at: root, title: "Synthetic walkthrough")
-        for (index, title) in ["Start with the overview", "Choose the right workspace", "Share the finished work"].enumerated() {
-            let id = UUID(uuidString: "5D1C0A1E-0000-4000-8000-00000000010\(index)")!
+        let titles = ["Start with the overview", "Choose the right workspace", "Share the finished work"]
+        for index in 0..<count {
+            let title = titles[index % titles.count]
+            let id = UUID()
             let directory = "items/\(id.uuidString.lowercased())"
             try ReadbackStore.createPrivateDirectory(root.appendingPathComponent(directory))
             let section = ReadbackSection(id: id, capturedAt: Date(timeIntervalSince1970: 1_789_546_320 + Double(index * 60)), displayName: "Synthetic display",
                 directory: directory, screenshot: directory + "/screen.png", audio: directory + "/narration.wav",
                 originalTranscript: directory + "/narration-original.txt", transcript: directory + "/narration.txt", status: .ready, failure: nil, deletedAt: nil)
-            for path in [section.screenshot, section.audio!, section.originalTranscript!, section.transcript!] {
-                try ReadbackStore.writePrivate(Data(title.utf8), to: root.appendingPathComponent(path))
+            let image = NSImage(size: NSSize(width: 960, height: 540))
+            image.lockFocus()
+            NSColor(calibratedRed: 0.94, green: 0.96, blue: 0.95, alpha: 1).setFill()
+            NSRect(x: 0, y: 0, width: 960, height: 540).fill()
+            NSColor.white.setFill(); NSBezierPath(roundedRect: NSRect(x: 48, y: 48, width: 864, height: 444), xRadius: 16, yRadius: 16).fill()
+            ("SYNTHETIC WALKTHROUGH · \(index + 1)" as NSString).draw(at: NSPoint(x: 88, y: 438), withAttributes: [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.gray])
+            (title as NSString).draw(in: NSRect(x: 88, y: 300, width: 770, height: 96), withAttributes: [.font: NSFont.systemFont(ofSize: 42, weight: .semibold), .foregroundColor: NSColor.black])
+            for row in 0..<3 {
+                NSColor(calibratedRed: 0.84 - Double(row) * 0.04, green: 0.91, blue: 0.88, alpha: 1).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 88, y: 108 + row * 54, width: 680 - row * 100, height: 28), xRadius: 6, yRadius: 6).fill()
             }
+            image.unlockFocus()
+            let bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!
+            try ReadbackStore.writePrivate(bitmap.representation(using: .png, properties: [:])!, to: root.appendingPathComponent(section.screenshot))
+            let narration = "\(title). This screen explains the next step in the walkthrough. Keep the important detail visible, review the narration, and share the complete session when it is ready."
+            for path in [section.originalTranscript!, section.transcript!] {
+                try ReadbackStore.writePrivate(Data(narration.utf8), to: root.appendingPathComponent(path))
+            }
+            let audioSettings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            let audio = try AVAudioFile(forWriting: root.appendingPathComponent(section.audio!), settings: audioSettings,
+                                        commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: 4_000)!
+            buffer.frameLength = 4_000
+            for frame in 0..<4_000 { buffer.floatChannelData![0][frame] = 0 }
+            try audio.write(from: buffer)
             manifest.sections.append(section)
         }
         try ReadbackStore.save(manifest, at: root)
@@ -1547,7 +2011,7 @@ enum SurfaceGallery {
                                                                              wasPasted: false, destinationName: nil), wordCount: 42) },
                        reset: { model.clipboardReceipt.clear() }),
             PanelState(id: "microphone-denied", title: "Microphone denied", detail: "The error a denied microphone leaves in the panel.", readback: readback,
-                       apply: { model.report("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow Workbench.", on: .dictate) },
+                       apply: { model.report("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow Workbench.", on: .dictate) },
                        reset: { model.dismissError() }),
             PanelState(id: "reading-audio-unreadable", title: "Reading audio unreadable", detail: "The error a reading leaves when its audio cannot be read.", readback: readback,
                        apply: { model.reportReadingFailure(.audioUnreadable) }, reset: { model.dismissReadingFailure() }),
@@ -1605,7 +2069,7 @@ enum SurfaceGallery {
         // The twin has its own controls, so its size reports never reach the host under test.
         let twinControls = CaptureHUDControls(defaults: defaults)
         twinControls.toolbar.activate()
-        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, snapModel: snap,
+        let twin = NSHostingView(rootView: WorkbenchFloatingContent(model: model, readback: readback, stage: stage, controls: twinControls, receipts: model.clipboardReceipt, meetings: model.meetings, snapModel: snap,
                                                                      dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}))
         let twinWindow = offscreenWindow(size: NSSize(width: 600, height: 60), styleMask: [.borderless])
         twinWindow.contentView = twin
@@ -1805,6 +2269,7 @@ enum SurfaceGallery {
             let controls = CaptureHUDControls(defaults: defaults)
             let host = CapturePanelController(model: model, readback: readback, stage: stage, snapModel: snap,
                                               dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {}, controls: controls)
+            host.placementScreenOverride = screen
             host.window?.alphaValue = 0; host.window?.ignoresMouseEvents = true
             return (host, controls)
         }
@@ -1888,6 +2353,30 @@ enum SurfaceGallery {
         let beyond = CGPoint(x: dock.x - (FloatingControlPlacement.snapDistance + 4), y: dock.y)
         host.releaseTools(atLauncher: beyond); settle(.resting)
         expect("Released \(Int(FloatingControlPlacement.snapDistance + 4)) pt from the bottom-right dock", [free(beyond), at(beyond, "beyond the snap distance")])
+        // Exercise the production drag host, including the compact capture
+        // surface when the ordinary toolbar is hidden. Its release used to save
+        // a position without moving the visible window back onto the display.
+        for capture in [false, true] {
+            model.floatingToolbarVisible = !capture
+            model.phase = capture ? .recording : .idle
+            host.update(model: model)
+            for offset in [CGVector(dx: -screen.width, dy: 0), CGVector(dx: screen.width, dy: 0),
+                           CGVector(dx: 0, dy: -screen.height), CGVector(dx: 0, dy: screen.height)] {
+                host.beginDragging()
+                if let window = host.window {
+                    let proposed = CGRect(origin: CGPoint(x: screen.midX + offset.dx, y: screen.midY + offset.dy), size: window.frame.size)
+                    window.setFrame(host.constrainDragFrame(proposed), display: true)
+                    host.previewDragging()
+                    expect("\(capture ? "Capture" : "Toolbar") stays visible during edge drag",
+                           [screen.contains(window.frame) ? nil : "the native host escaped the display while dragging"])
+                }
+                host.finishDragging()
+                settle(capture ? .resting : controls.toolbar.state.tier)
+                expect("\(capture ? "Capture" : "Toolbar") settles inside the display",
+                       [host.window.map { screen.contains($0.frame) } == true ? nil : "the released host stayed offscreen"])
+            }
+        }
+        model.phase = .idle; model.floatingToolbarVisible = true; host.update(model: model)
         // A new host reads the saved position, as Workbench does after a relaunch.
         let kept = CGPoint(x: (screen.minX + screen.width * 0.4).rounded(), y: (screen.minY + screen.height * 0.5).rounded())
         host.releaseTools(atLauncher: kept); settle(.resting)
@@ -2031,13 +2520,13 @@ enum SurfaceGallery {
         expect("At rest while transcribing", rests("while transcribing", .processing))
         model.phase = .idle; model.elapsed = 0
         model.captureFailure = failure
-        expect("A new failure, at rest", rests("with a new failure", .failure))
+        expect("A new failure, at rest", rests("with a new failure", .idle))
         reveal()
         expect("The failure, revealed", [controls.revealsResult ? nil : "revealing did not show the failure's own controls",
             abs((host.window?.frame.width ?? 0) - CaptureHUDLayout.message.width) > 0.5 ? "the failure's controls are not their own size" : nil,
             grewFromTheCentre("the failure")])
         collapse()
-        expect("The failure, collapsed again", rests("after the failure was revealed", .failure)
+        expect("The failure, collapsed again", rests("after the failure was revealed", .idle)
             + [model.captureFailure == nil ? "collapsing dismissed the failure" : nil])
         model.dismissCaptureFailure(); settle(.resting)
         // A result that arrives while the row is open never replaces the row under the pointer.
@@ -2065,12 +2554,14 @@ enum SurfaceGallery {
         controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
         model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                      wasPasted: false, destinationName: nil), wordCount: 12)
-        expect("A new receipt, at rest", rests("with a new receipt", .pendingDelivery))
-        reveal()
-        expect("The receipt, revealed", [controls.revealsResult ? nil : "revealing did not show the receipt", grewFromTheCentre("the receipt")])
-        collapse()
-        expect("The receipt, collapsed again", rests("after the receipt was revealed", .pendingDelivery)
-            + [model.clipboardReceipt.receipt == nil ? "collapsing dismissed the receipt" : nil])
+        settle(.resting)
+        expect("A copied cue uses the no-speech card's size", [
+            CapturePanelController.showsDeliveryCue(model) ? nil : "the cue is missing",
+            host.window?.frame.size == CaptureHUDLayout.compact ? nil : "the cue has the old review-panel size",
+            FloatingResult.pending(model) == nil ? nil : "the receipt would replace the revealed tools"])
+        model.clipboardReceipt.dismissHUD(); settle(.resting)
+        expect("After the copied cue", rests("after the cue", .idle)
+            + [model.clipboardReceipt.receipt == nil ? "expiry discarded current clipboard metadata" : nil])
         model.clipboardReceipt.clear(); settle(.resting)
         // The no-speech cue shows at the toolbar's own place, then the mark again. Too short, not
         // too quiet: a second quiet capture in a row is a failure, and the floating shots had one.
@@ -2146,62 +2637,74 @@ enum SurfaceGallery {
     func checkResultsInTheHost(host: CapturePanelController, controls: CaptureHUDControls,
                                expect: (String, [String?]) -> Void, settle: (ToolbarTier) -> Void) {
         func buttons(_ view: NSView) -> [NSButton] { (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons) }
-        /// A receipt pinned, so its own eight seconds never end it while the steps run.
+        /// Hold the cue only while this synthetic check inspects it.
         func receipt() {
             model.clipboardReceipt.record(outcome: .init(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                                          wasPasted: false, destinationName: nil), wordCount: 12)
-            model.clipboardReceipt.keepVisible = true
+            model.clipboardReceipt.holdHUD(true)
         }
         /// The pointer's reveal, held by a menu's hold, as the real pointer is elsewhere and the host
         /// would otherwise find it gone and collapse the row.
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft) }
-        func escape() {
-            guard let window = host.window, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-                windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
-                isARepeat: false, keyCode: 53) else { return }
-            window.sendEvent(event)
-        }
         model.toolbarMode = .dictate
         receipt(); settle(.resting)
-        controls.focusToolbar(); settle(.revealed)
-        let launcher = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.launcher" }
-        controls.focusFirstControl?()
-        let focused = launcher != nil && host.window?.firstResponder === launcher
-        let showedResult = controls.revealsResult
-        escape(); settle(.resting)
-        expect("Keyboard entry onto a waiting receipt", [
-            showedResult ? "the receipt's controls took the launcher row's place" : nil,
-            launcher == nil ? "the row has no launcher" : focused ? nil : "the launcher did not take the keyboard's focus",
-            controls.toolbar.state.holds.contains(.keyboard) ? "Escape left the keyboard's hold in place" : nil,
-            controls.toolbar.state.tier == .resting ? nil : "the row stayed open after Escape",
-            model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
-        // The pointer's reveal shows the receipt's own controls; the keyboard taken after it, and
-        // Escape from them, leave as from the launcher row.
+        let cueButtons = host.window?.contentView.map(buttons) ?? []
+        expect("A copied result is a brief cue without commands", [
+            CapturePanelController.showsDeliveryCue(model) ? nil : "the copied cue is not visible",
+            FloatingResult.pending(model) == nil ? nil : "the receipt is still a toolbar result",
+            cueButtons.isEmpty ? nil : "the cue still contains Review, pin or dismiss controls"])
+        // A cue can appear beneath an unmoving pointer. Exercise the actual native
+        // sensor in its production view; no mouse movement or live clipboard writes.
+        func sensors(_ view: NSView) -> [PointerPresenceView] {
+            (view as? PointerPresenceView).map { [$0] } ?? view.subviews.flatMap(sensors)
+        }
+        model.clipboardReceipt.holdHUD(false)
+        if let sensor = host.window?.contentView.flatMap({ sensors($0).first }), let window = sensor.window {
+            sensor.windowShows = { _ in true }; sensor.deliver = { $0() }
+            let centre = window.convertPoint(toScreen: sensor.convert(NSPoint(x: sensor.bounds.midX, y: sensor.bounds.midY), to: nil))
+            sensor.pointer = { centre }; sensor.refresh(); settle(.resting)
+            expect("A copied cue appearing under a stationary pointer holds its time", [
+                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == true ? nil : "the actual cue missed the resting pointer"])
+            sensor.pointer = { NSPoint(x: centre.x + 10_000, y: centre.y + 10_000) }; sensor.refresh(); settle(.resting)
+            expect("Leaving the copied cue releases its pointer hold", [
+                model.clipboardReceipt.lifetime?.holds.contains(.pointer) == false ? nil : "the pointer hold stayed after leaving"])
+        } else { expect("The copied cue measures a stationary pointer", ["the production cue has no passive pointer sensor"]) }
+        model.clipboardReceipt.holdHUD(false)
+        model.clipboardReceipt.dismissHUD(); settle(.resting)
         reveal(); settle(.revealed)
-        let pointerShowed = controls.revealsResult
-        controls.focusToolbar(); escape()
-        let released = !controls.toolbar.state.holds.contains(.keyboard)
-        collapse(); settle(.resting)
-        expect("Escape from a waiting receipt's own controls", [pointerShowed ? nil : "the pointer's reveal did not show the receipt",
-            released ? nil : "Escape left the keyboard's hold in place", model.clipboardReceipt.receipt == nil ? "Escape dismissed the receipt" : nil])
-        model.clipboardReceipt.clear(); settle(.resting)
-        // Position… holds a kept-open row's result back while it is open (a menu's hold stands in
-        // for it here); closing it hands the keyboard back first, and only then does the host update.
-        controls.toolbar.send(.keepOpenChanged(true)); settle(.revealed)
-        controls.toolbar.send(.holdBegan(.menu))
-        receipt(); settle(.revealed)
-        let waited = !controls.revealsResult
-        controls.toolbar.send(.holdEnded(.menu))
-        host.positionClosed(returnsKeyboard: true) { controls.focusToolbar() }
-        let keptRow = !controls.revealsResult, keyboard = controls.toolbar.state.holds.contains(.keyboard)
-        settle(.revealed)
-        expect("Position… closing onto a receipt waiting on a kept-open row", [
-            waited ? nil : "the receipt took the row while Position… was open",
-            keptRow && !controls.revealsResult ? nil : "the receipt took the place of the row the keyboard came back to",
-            keyboard ? nil : "the keyboard did not come back"])
-        model.clipboardReceipt.clear(); controls.endKeyboardInteraction()
-        controls.toolbar.send(.keepOpenChanged(false)); settle(.resting)
+        expect("After the cue, hover reveals tools", [
+            controls.revealsResult ? "the expired receipt still replaces the toolbar" : nil,
+            host.window?.contentView.map(buttons)?.contains { $0.accessibilityIdentifier() == "toolbar.launcher" } == true
+                ? nil : "Switch tool is missing"])
+        collapse(); model.clipboardReceipt.clear(); settle(.resting)
+        // Reverse order: a meeting is already recording when old History text is copied.
+        // The brief feedback must not cover the recording signal or its Stop action.
+        do {
+            try drive(model.meetings, start: true); settle(.resting)
+            receipt(); settle(.resting)
+            expect("Copying during an active meeting keeps the recording signal", [
+                CapturePanelController.showsDeliveryCue(model) ? "copy feedback covers the meeting" : nil,
+                controls.status.indicator == .capture ? nil : "the meeting recording signal disappeared"])
+            reveal(); settle(.revealed)
+            let stop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
+            expect("Copying during an active meeting keeps Stop reachable", [
+                model.meetings.isRecording ? nil : "the meeting ended",
+                stop?.accessibilityLabel() == "Stop & transcribe" && stop?.isEnabled == true ? nil : "Stop & transcribe is not reachable"])
+            collapse(); model.clipboardReceipt.clear()
+            try drive(model.meetings, start: false); settle(.resting)
+            receipt(); settle(.resting)
+            try drive(model.meetings, start: true); settle(.resting)
+            expect("A meeting starting during a copied cue takes back its controls", [
+                CapturePanelController.showsDeliveryCue(model) ? "the earlier cue still has the surface" : nil,
+                host.window?.frame.size == ToolbarLayout.mark(for: controls.rowAnchor) ? nil : "the host still has the cue's frame"])
+            reveal(); settle(.revealed)
+            let nextStop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
+            expect("Stop is reachable when a meeting supersedes a copied cue", [
+                nextStop?.accessibilityLabel() == "Stop & transcribe" && nextStop?.isEnabled == true ? nil : "the row did not return"])
+            collapse(); model.clipboardReceipt.clear()
+            try drive(model.meetings, start: false); settle(.resting)
+        } catch { expect("Copy during an active meeting", [error.localizedDescription]) }
         // At the right-hand dock each result grows leftward from the launcher's centre: its actions
         // must sit clear of the mark the pointer came from, never Retry, Dismiss or the like there.
         controls.choosePosition?(.right); settle(.resting)
@@ -2209,7 +2712,6 @@ enum SurfaceGallery {
         let failure = "The speech engine stopped before it finished."
         let results: [(String, () -> Void, () -> Void)] = [
             ("A dictation failure", { self.model.captureFailure = failure }, { self.model.dismissCaptureFailure() }),
-            ("The clipboard receipt", receipt, { self.model.clipboardReceipt.clear() }),
             ("A stopped reading", { self.model.reportReadingFailure(.audioUnreadable) }, { self.model.dismissReadingFailure() })]
         for (name, show, clear) in results {
             show(); settle(.resting)
@@ -2249,7 +2751,7 @@ enum SurfaceGallery {
         func reveal() { controls.toolbar.send(.pointerEntered); controls.toolbar.send(.holdBegan(.menu)); settle(.revealed) }
         func collapse() { controls.toolbar.send(.holdEnded(.menu)); controls.toolbar.send(.pointerLeft); settle(.resting) }
         func receipt(_ outcome: @escaping () -> TextDelivery.Outcome) -> () -> Void {
-            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.keepVisible = true }
+            { self.model.clipboardReceipt.record(outcome: outcome(), wordCount: 12); self.model.clipboardReceipt.holdHUD(true) }
         }
         /// A receipt goes the moment the clipboard changes, so a copy made on this Mac while a local
         /// run is under way would end a receipt case early. A case runs again, twice at most, when
@@ -2270,21 +2772,15 @@ enum SurfaceGallery {
                                       dictate: {}, snap: {}, snapCapture: {}, draw: {}, present: {})
         let copied = { TextDelivery.Outcome(message: TextDelivery.copiedMessage, clipboardChangeCount: NSPasteboard.general.changeCount,
                                             wasPasted: false, destinationName: nil) }
-        let notCopied = { TextDelivery.Outcome(message: "Could not copy the transcript.", clipboardChangeCount: nil, wasPasted: false,
-                                               destinationName: nil, failure: .copyFailed) }
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
-            ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() }),
-            ("A receipt", .receipt, receipt(copied), { self.model.clipboardReceipt.clear() }),
-            ("An undelivered result", .receipt, receipt(notCopied), { self.model.clipboardReceipt.clear() })]
-        // More's section carries the result's title; a receipt's is read as it was recorded.
-        func header(_ kind: FloatingResult) -> String {
-            kind == .dictationFailure ? "Dictation needs attention" : model.clipboardReceipt.receipt?.title ?? "a receipt"
-        }
+            ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
         let readings: [(state: String, start: () -> Void, action: String)] = [
             ("preparing", { self.model.rendering = true }, "Cancel"),
             ("playing", { self.model.playing = true }, "Pause reading"),
-            ("paused", { self.model.paused = true }, "Resume reading")]
+            // A paused reading consumes nothing, so in Dictate the row keeps Dictate's own action;
+            // the result is still held back and Resume reading stays in the chooser's Read row.
+            ("paused", { self.model.paused = true }, "Dictate")]
         func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
         model.toolbarMode = .dictate
         for result in results {
@@ -2296,7 +2792,8 @@ enum SurfaceGallery {
                     let warning = controls.status.description
                     reveal()
                     let row = !controls.revealsResult, reads = primary(), goesOn = model.rendering || model.playing || model.paused
-                    let more = toolbar.moreMenu().items.map(\.title), section = header(result.kind)
+                    let commands = toolbar.chooserCommands.map { $0.value.title }
+                    let recovery = toolbar.chooserChoices.contains { $0.detail?.contains("attention") == true || $0.detail?.contains("stopped") == true }
                     collapse()
                     endReading(); settle(.resting)
                     reveal()
@@ -2307,9 +2804,10 @@ enum SurfaceGallery {
                         row ? nil : "the pointer's reveal showed the older result over the reading",
                         reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
                         goesOn ? nil : "revealing ended the reading",
-                        result.kind != .dictationFailure || warning.contains("Needs attention") ? nil : "the mark lost the result's warning: \"\(warning)\"",
-                        more.contains(section) ? nil : "More lost the result's commands (\(section))",
-                        reading.state == "preparing" || more.contains("Stop reading") ? nil : "More has no Stop reading",
+                        warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
+                        recovery ? nil : "The chooser lost the result's recovery route",
+                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
+                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading",
                         back ? nil : "once the reading ended the pointer's reveal did not show the result"]
                 })
                 // Arriving during the reading: revealed as any new result, with the reading still reachable.
@@ -2319,13 +2817,14 @@ enum SurfaceGallery {
                     reveal()
                     let shown = controls.revealsResult, over = primary()
                     collapse()
-                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.moreMenu().items.map(\.title)
+                    let entry = ToolbarNextAction.resolve(toolbar.live).title, commands = toolbar.chooserCommands.map { $0.value.title }
                     result.clear(); endReading(); settle(.resting)
                     return [
                         shown ? nil : "the pointer's reveal held a new result back",
                         over == nil ? nil : "the reveal showed the row, reading \(described(over)), over the new result",
                         entry == reading.action ? nil : "keyboard entry's row would read \"\(entry)\", not \"\(reading.action)\"",
-                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "More has no Stop reading"]
+                        reading.state == "preparing" || commands.contains("Stop reading") ? nil : "The Read row has no Stop reading",
+                        reading.state != "paused" || commands.contains("Resume reading") ? nil : "The Read row has no Resume reading"]
                 })
             }
         }
@@ -2461,9 +2960,9 @@ enum SurfaceGallery {
             }
         }
         defer { controls.endKeyboardInteraction(); controls.choosePosition?(.bottom); model.toolbarMode = .dictate; settle(.resting) }
-        let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "more", "launcher"]),
-                                                              (.read, .bottom, ["primary", "more", "launcher"]),
-                                                              (.draw, .right, ["primary", "accessory", "more", "launcher"])]
+        let rows: [(ToolbarMode, FloatingControlAnchor, [String])] = [(.draw, .bottom, ["primary", "accessory", "launcher"]),
+                                                              (.read, .bottom, ["primary", "launcher"]),
+                                                              (.draw, .right, ["primary", "accessory", "launcher"])]
         for (mode, anchor, cycle) in rows {
             model.toolbarMode = mode
             controls.choosePosition?(anchor)
@@ -2513,14 +3012,19 @@ enum SurfaceGallery {
         let tools = plain.accessoryMenu(.tools).items.map(\.title), drawing = stage.makeAnnotationMenu(includeSettings: false).items.map(\.title)
         expect("Draw's Tools", [!tools.isEmpty && tools == drawing ? nil : "Tools lists \(tools), not Draw's drawing choices \(drawing)"])
         model.toolbarMode = .persona
-        let more = plain.moreMenu(), before = opened.count
-        let door = more.items.firstIndex { $0.title == "Open Persona…" }
-        if let door, let action = more.items[door].action { NSApp.sendAction(action, to: more.items[door].target, from: more.items[door]) }
+        let chooser = ToolbarChooserModel(choices: plain.chooserChoices)
+        chooser.openTool = { self.model.onShowEditor?($0.page) }
+        let before = routes.count
+        chooser.openTool(.persona)
+        // Nothing is live, but the camera is always one of Persona's choices, so the revealed pill
+        // offers the picker; its last choice is Camera (Ethan, 1 October).
+        let personaChoices = plain.accessoryMenu(plain.accessory(plain.live)).items.map(\.title)
         expect("Persona with no live copy", [
-            plain.accessory(plain.live) == nil ? nil : "Persona offers an accessory with no copy to change",
-            door == nil ? "More has no Open Persona…" : nil,
-            door == nil || Array(opened.dropFirst(before)) == ["personas"] ? nil : "Open Persona… opened \(Array(opened.dropFirst(before)))",
-            more.items.contains { $0.title == ToolbarAccessory.appearance.title } ? "More offers Appearance with no copy to change" : nil])
+            plain.accessory(plain.live) == .personaPicker ? nil : "Persona offers no picker, so the camera is not one click away",
+            personaChoices.last == "Camera" ? nil : "The Persona picker lists \(personaChoices), not the cards and then Camera",
+            plain.accessoryDescription(plain.live) == "Choose Persona" ? nil : "The picker reads \(plain.accessoryDescription(plain.live) ?? "nothing")",
+            Array(routes.dropFirst(before)) == ["personas"] ? nil : "The chooser's Open Persona route failed"])
+        routes.removeAll()
         model.toolbarMode = .snapAndTalk
         let session = toolbar(sessionReadback), review = session.accessory(session.live)
         session.accessoryPanel(review)?(NSView())
@@ -2534,12 +3038,20 @@ enum SurfaceGallery {
     /// (Home asks macOS for the login item status each time it is created, which can be slow).
     /// The Workbench window at `size`. `sectionFrames`, when given, hears where this window's pages
     /// lay out their named sections (`pageSectionFrames`), and no other window's.
-    func homeWindow(size: NSSize, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
-        let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+    func homeWindow(size: NSSize, hostsSheets: Bool = false, sectionFrames: ((String, CGRect) -> Void)? = nil) -> NSWindow {
+        // A preceding toolbar-host fixture closes its controller. Restore this pass's
+        // retained settings owner before rendering desktop pages, as the live app has one.
+        if model.toolbarControls == nil { model.toolbarControls = toolbarSettingsControls }
+        let window = offscreenWindow(size: size, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], hostsSheets: hostsSheets)
         window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
         window.contentViewController = NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)
             .environment(\.pageSectionFrames, sectionFrames))
         window.setContentSize(size)
+        if hostsSheets {
+            window.alphaValue = 0
+            window.ignoresMouseEvents = true
+            window.orderFront(nil)
+        }
         return window
     }
 
@@ -2551,14 +3063,16 @@ enum SurfaceGallery {
         return (try snapshot(frame), frame.bounds.size)
     }
 
-    func offscreenWindow(size: NSSize, styleMask: NSWindow.StyleMask) -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: styleMask, backing: .buffered, defer: false)
+    func offscreenWindow(size: NSSize, styleMask: NSWindow.StyleMask, hostsSheets: Bool = false) -> NSWindow {
+        let window: NSWindow = hostsSheets
+            ? SurfaceSheetHostWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: styleMask, backing: .buffered, defer: false)
+            : NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: styleMask, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
         return window
     }
 
-    /// Lets layout, `onAppear` and SwiftUI tasks finish. The window is never ordered on screen.
+    /// Lets layout, `onAppear` and SwiftUI tasks finish. Render hosts remain invisible.
     func settle(_ view: NSView, seconds: TimeInterval = 0.3) {
         let deadline = Date().addingTimeInterval(seconds)
         repeat {
@@ -2621,7 +3135,7 @@ enum SurfaceGallery {
             ["Delivery"] + DeliveryMode.allCases.map { "  " + $0.rawValue }
             + ["Copies for ⌘V until automatic paste is approved (while Paste automatically waits for Accessibility approval)", "  Set up automatic paste…"]
             + ["Text style"] + CleanupStyle.allCases.map { "  " + $0.rawValue }
-            + ["---", "History… → history, on Transcripts", "Transcribe meeting or call… → meeting", "Open Dictate… → dictate"])]
+            + ["---", "History… → history, on Transcripts", "Meetings… → meeting", "Open Dictate… → dictate"])]
         for tool in WorkbenchControlTool.allCases {
             guard let menu = panel.nativeOptions(tool) else { continue }
             let title = "\(tool.title) · Options"
@@ -2664,12 +3178,21 @@ enum SurfaceGallery {
         let panel = "Menu-bar panel", home = "Home page", menu = "App menus", other = "Keys and handoffs"
         // Rows and their Options are named by the panel's own tools, as the toolbar and sidebar are (#134).
         var list: [E] = [action(panel, "Floating toolbar switch", "Shows or hides the floating toolbar between actions, as Settings and the Window menu do")]
+        list += ToolbarMode.allCases.map { page("Floating toolbar chooser", "Open " + $0.title + "…", $0.page) }
+        list += [action("Floating toolbar chooser", "Activity commands", "Each visible command acts on its named owner and operation; choosing a tool starts nothing"),
+                 action("Floating toolbar", "Choose Persona / Next Persona / Next set", "Selects or advances the frozen live cards or prepared sets"),
+                 action("Floating toolbar", "View", "Current presentation window, source and motion controls"),
+                 action("Settings · General", "Keep open / Position…", "Uses the toolbar's existing preference and placement owner"),
+                 action("Persona workspace", "Live copy controls", "Appearance, size, lock, position, replace, update, visibility and explicit layout saving"),
+                 action("Present workspace", "Live presentation", "Controls the running snapshot while saved scene preparation stays separate"),
+                 action("Present workspace", "Switch to Browser Tab…", "Opens the existing Switch to panel"),
+                 action("Present workspace", "Saved Prompts…", "The same picker and delivery owner as the pill's Prompts")]
         for tool in WorkbenchControlTool.allCases {
             let options = "\(tool.title) · Options"
             switch tool {
             case .dictate:
                 list += [action(panel, "Dictate", "Starts or finishes dictation into the app that was in front"),
-                         E(surface: panel, label: "Dictate · Options · History…", leads: "Page: history, on Transcripts", route: "history"), page(panel, "Dictate · Options · Transcribe meeting or call…", "meeting"),
+                         E(surface: panel, label: "Dictate · Options · History…", leads: "Page: history, on Transcripts", route: "history"), page(panel, "Dictate · Options · Meetings…", "meeting"),
                          page(panel, "Dictate · Options · Open Dictate…", "dictate"),
                          action(panel, "Dictate · Options · Delivery and Text style", "Changes the saved dictation settings"),
                          action(panel, "Dictate · Options · Set up automatic paste…", "Asks macOS for Accessibility approval; shown while Paste automatically waits for it")]
@@ -2681,7 +3204,7 @@ enum SurfaceGallery {
                          page(panel, "Snap · Options · Open Snap…", "snap")]
             case .snapAndTalk:
                 list += [action(panel, "Snap & Talk, with a ready session", "Captures the display under the pointer and starts narration"),
-                         page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Options · Review Snap & Talk…", "readback")]
+                         page(panel, "Snap & Talk, without a session or access", "readback"), page(panel, "Snap & Talk · Options · Open Snap & Talk…", "readback")]
             case .annotate:
                 list += [action(panel, tool.title, "Starts drawing on screen"), action(panel, options, "Native menu, listed below")]
             case .present:
@@ -2713,10 +3236,9 @@ enum SurfaceGallery {
             E(surface: "Section switcher", label: WorkbenchHome.name(of: $0.page) + " › " + $0.title, leads: "Page: \($0.id)", route: $0.id, ran: true)
         }
         list += [page("Home sidebar", "Update button, when an update is waiting", "settings")]
-        // Home (#134 H1): three quick starts that act, Recent work's reviews, a loaded session and saved photos.
-        list += [action(home, "Dictate · Start dictating", "Starts dictating"), action(home, "Read the clipboard aloud", "Reads the clipboard aloud"),
-                 action(home, "Snap · Capture a region", "Captures a region, saved in History"),
-                 page(home, "Snap & Talk · Open or continue", "readback"),
+        // Home opens four workspaces. Capturing begins only from the chosen workspace.
+        list += [page(home, "Start here · Dictate", "dictate"), page(home, "Start here · Meetings", "meeting"),
+                 page(home, "Start here · Snap", "snap"), page(home, "Start here · Snap & Talk", "readback"),
                  action(home, "Me · Your profile", "Opens local photo and Persona preparation"),
                  action("Home sidebar", "Expand or collapse sidebar · Control-Command-S", "Keeps the chosen sidebar width"),
                  E(surface: home, label: "Recent work · a transcript's title", leads: "Page: history, showing that transcript", route: "history"),
@@ -2724,24 +3246,27 @@ enum SurfaceGallery {
                  action(home, "Recent work · a Snap's thumbnail and title", "Opens its read-only preview"),
                  page(home, "Open History", "history"),
                  page(home, "Saved from iPhone, when photos are in Library", "photos"),
-                 page(home, "Current work · Open Dictate, for a kept capture without a retry", "dictate"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
-                 page(home, "Speech settings, while speech is not ready", "models"),
-                 E(surface: "Settings page", label: "Dictate options…", leads: "Page: dictate, scrolled to and focused on its options", route: "dictate"),
+                 page(home, "Models…, while speech is not ready", "models"),
+                 E(surface: "Settings page", label: "Dictate settings…", leads: "Page: dictate, with its settings sheet open", route: "dictate"),
                  page("Settings page", "Show me a first dictation, until the first dictation", "home"),
                  action("Settings page", "Appearance · Floating toolbar switch", "Shows or hides the floating toolbar between actions"),
-                 page("Dictate page", "Your dictionary", "dictionary"), action("Dictate page", "Position floating toolbar…", "Opens Position… at the floating toolbar"),
+                 action("Dictate page", "Settings…", "Opens Dictate settings"),
+                 page("Dictate settings", "Your dictionary", "dictionary"),
+                 page("Dictionary page", "Back to Dictate", "dictate"),
+                 action("Dictate settings", "Open Apple Shortcuts", "Opens Apple Shortcuts"),
                  page("Snap & Talk page", "Manage packs…", "packs"), page("Snap & Talk page", "Choose Snaps", "snap"),
                  page("Snap page", "Add to narrated session", "readback"),
                  action("Snap page", "Use selected · Organise… · Hand off for synthesis…", "Opens the handoff review for a Snap review"),
                  action("Snap page", "Add image · Paste image or Import image…", "Opens a Snap draft from the clipboard or a chosen file"),
                  action("Snap page", "Add image · Import Desktop screenshots…", "Lists screenshots on the Desktop, then asks before importing them and moving the originals to the Trash"),
                  action("Transcript details", "Suggest details · Ask an assistant…", "Opens the handoff review to suggest names and tags"),
-                 action("Read page", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
-                 page("Dictate page", "Transcribe a meeting or call…", "meeting"), page("Meeting page", "History", "history"),
+                 action("Read page", "Voice & pace…", "Opens Read settings"),
+                 action("Read settings", "Open Read & Speak", "Opens System Settings to add a Mac voice"),
+                 page("Meetings page", "History", "history"),
+                 E(surface: "Meetings page", label: "Review transcript", leads: "Page: history, showing the exact completed transcript", route: "history"),
                  E(surface: "Handoff review", label: "Copy instructions or Start task", leads: "Page: history, revealing the task it prepared", route: "history"),
                  page("Remember correction", "Open Dictionary", "dictionary"),
-                 page(home, "Clipboard receipt · Review text", "history"),
                  page("History page", "Transcript · Open", "dictate"), page("History page", "Transcript · More… · Read aloud", "speak"),
                  action("History page", "Connections…", "Shows provider connections over History"),
                  action("History page", "Hand off…", "Opens the handoff review for the selected items"),
@@ -2833,6 +3358,7 @@ private struct SurfaceIndex {
         <p>\(esc(WorkbenchBuild().label)). Synthetic fixtures only. Each appearance rendered in its own process with a temporary home, which was removed afterwards. Nothing was launched, recorded, captured or sent.</p>
         <h2>Checks</h2>
         """
+        if light.scope == "desktop" { html += "<p>Bounded desktop pass: pages, workspace settings and safe navigation. Floating toolbar, placement and Saved Prompts picker checks were omitted.</p>" }
         html += flags.isEmpty ? "<p class=\"ok\">Every entry leads to an existing page or an action, and every page has an entry.</p>"
             : "<ul>" + flags.map { "<li class=\"flag\">\(esc($0))</li>" }.joined() + "</ul>"
         html += "<p>An unknown route falls through to the Dictate page with no error, so a mistyped route looks like a working entry. Pages are compared with that fallback to catch it.</p>"
@@ -2845,7 +3371,7 @@ private struct SurfaceIndex {
         html += "<h2>Home and the floating toolbar's switch</h2><p>Checked with the pass's own models; the pass fails if any of these does not hold (#134).</p><ul>"
             + light.checks.map { "<li class=\"ok\">\(esc($0))</li>" }.joined() + "</ul>"
         html += "<h2>Floating toolbar host</h2><p>The production host (<code>CapturePanelController</code>) driven offscreen for every mode, at rest and revealed, then switched between Dictate and Present while revealed, with its panel invisible. Each window is compared with what its row wants; a smaller window clips the row and its corners.</p>"
-        if light.host.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
+        if light.host.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>Not run: this Mac reported no display.</p>" }
         html += "<table><tr><th>State</th><th>Window</th><th>Row wants</th><th>Host heard the row</th><th>Twin heard its row</th><th>Check</th></tr>"
         for check in light.host {
             html += "<tr><td>\(esc(check.title))</td><td>\(points(check.window))</td><td>\(points(check.wants))</td><td>\(check.measured ? "Yes" : "No")</td><td>\(check.twinMeasured ? "Yes" : "No")</td>"
@@ -2853,7 +3379,7 @@ private struct SurfaceIndex {
         }
         html += "</table>"
         html += "<h3>Placement</h3><p>The same host released in free space and near an edge, after an update, revealed and collapsed, and read again by a new host as after a relaunch (#163); every position is read at its resting reference, and the chooser opens from three docks (#134).</p>"
-        if light.placement.isEmpty { html += "<p>Not run: this Mac reported no display.</p>" }
+        if light.placement.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>Not run: this Mac reported no display.</p>" }
         // Both passes' tables: they run at once, so a step can fail in one theme only.
         html += "<table><tr><th>Step</th><th>Light</th><th>Dark</th></tr>" + light.placement.enumerated().map { index, check in
             func cell(_ check: SurfaceGallery.PlacementCheck?) -> String {
@@ -2867,7 +3393,7 @@ private struct SurfaceIndex {
                 + (index < dark.toolbar.count ? figure(dark.toolbar[index], "Dark") : "") + "</div>"
         }
         html += "<h2>Saved Prompts picker</h2><p>Present's Prompts accessory and the glyph menu's Saved Prompts… open this picker. Its states are drawn at its 420-point width on the window background from synthetic prompts; its keyboard and choices are covered by --check-core. The production panel (<code>PromptPickerController</code>) is then opened invisibly over a bottom-docked Prompts button, narrowed to one row, given a status line and its Details, and widened to every prompt again. Each time its panel is compared with what its content wants.</p>"
-        if light.pickerHost.isEmpty { html += "<p>The production panel was not opened: this Mac reported no display.</p>" }
+        if light.pickerHost.isEmpty { html += light.scope == "desktop" ? "<p>Omitted by the bounded desktop pass.</p>" : "<p>The production panel was not opened: this Mac reported no display.</p>" }
         else {
             html += "<table><tr><th>State</th><th>Panel</th><th>Content wants</th><th>Panel heard its content</th><th>Check</th></tr>"
             for check in light.pickerHost {
