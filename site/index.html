@@ -2,92 +2,226 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Workbench — native Mac tools, made better together</title>
-  <meta name="description" content="Turn a thought into text, mark up a screenshot, or talk through a demo. Download Workbench, your free, open-source Mac companion.">
-  <meta name="theme-color" content="#142b31">
-  <meta property="og:title" content="Workbench — try it, shape it">
-  <meta property="og:description" content="Speak, explain and present with one native Mac app. Free, open source, and ready for better local models.">
+  <title>Workbench · Free tools on top of every app on your Mac</title>
+  <meta name="description" content="Workbench is a free set of tools that sit on top of every app on your Mac. Talk and it types. Snap a few screens and get a deck. Draw on anything, and put yourself in the demo.">
+  <meta name="theme-color" content="#e9f2f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f252d" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="Workbench · Say it. Snap it. Show it.">
+  <meta property="og:description" content="Free smart tools on top of every app on your Mac: dictation, snaps that become decks, drawing on screen and presenting with your face and phone.">
   <meta property="og:type" content="website">
   <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/app.mjs"></script>
+  <link rel="preload" href="/assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/home.css">
+  <script src="/home-boot.js"></script>
+  <script type="module" src="/home.mjs"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="header wrap">
-  <a class="brand" href="#" aria-label="Workbench home"><img src="/assets/icon.svg" width="32" height="32" alt="">Workbench</a>
-  <nav aria-label="Main navigation"><a href="#apps">Get Workbench</a><a href="/guide/">Guide</a><a href="#contribute">Contribute <span aria-hidden="true">↗</span></a></nav>
+
+<header class="menubar" id="menubar">
+  <a class="brand" href="/" aria-label="Workbench home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#142b31"/><path d="M10 12h20M10 20h15M10 28h8" stroke="#9af0c6" stroke-width="4" stroke-linecap="round"/></svg>Workbench</a>
+  <nav aria-label="Main navigation"><a href="#tools">Tools</a><a href="/guide/">Guide</a><a href="#teams">Teams</a></nav>
+  <span class="menubar-right"><a class="btn dl small" href="#download">Download</a><span class="clock" aria-hidden="true">Thu 9:41</span></span>
 </header>
+
 <main id="main">
-  <section class="hero wrap">
-    <div><p class="eyebrow">ONE FREE, OPEN-SOURCE MAC APP</p><h1>Speak. Explain. Present.<br><span>Keep your flow.</span></h1><p class="lede">Turn a thought into text, mark up a screenshot, or talk through a demo. Your everyday Mac tools, a shortcut away.</p><div class="card-actions hero-actions"><a class="button primary" href="{{DOWNLOAD_URL}}">Download for Mac ↓</a><a href="{{RELEASE_URL}}">What’s new in {{RELEASE_VERSION}} ↗</a></div><p class="fine">Apple Silicon · macOS 14+ · Free<br><a href="#install-workbench">First time? Get set up in three steps →</a></p></div>
-    <div class="hero-note"><span class="status-dot"></span><strong>Built for real workflows.</strong><p>A note. A quick explanation.<br>A live mobile demo.<br>Start with the thing you do every day.</p><a href="#try">Take the 10-minute trial <span aria-hidden="true">↓</span></a></div>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="screen" id="screen">
+      <div class="wall" aria-hidden="true"></div>
+      <div class="hero-body">
+        <div class="hero-copy">
+          <p class="eyebrow">Free Mac app for demos, calls and walkthroughs</p>
+          <h1 class="hero-title" id="hero-title"><span class="nb"><span class="w hl">Say</span> <span class="w hl">it.</span></span> <span class="nb"><span class="w hl">Snap</span> <span class="w hl">it.</span></span> <span class="nb" id="mark-target"><span class="w hl">Show</span> <span class="w hl">it.</span></span></h1>
+          <p class="lede">Workbench puts a set of tools on top of every app on your Mac. Talk and it types. Snap a few screens and get a deck. Draw on anything, and put yourself in the demo.</p>
+          <div class="cta"><a class="btn dl" href="{{DOWNLOAD_URL}}">Download for Mac</a><a class="btn ghost" href="#tools">See what it does ↓</a></div>
+          <p class="fine"><span>Free</span><span>Macs with M1 or later</span><span>macOS 14 or later</span><span>Version {{RELEASE_VERSION}}</span></p>
+          <p class="on-phone">Workbench is a Mac app. Open this page on your Mac to download it.</p>
+        </div>
+
+        <div class="stage" aria-hidden="true">
+          <div class="win">
+            <div class="win-bar"><i></i><i></i><i></i><span>Launch plan</span></div>
+            <div class="slide">
+              <p class="slide-kicker">Weekly update</p>
+              <p class="slide-title">Launch update</p>
+              <p class="typed"><span class="w">The</span> <span class="w">launch</span> <span class="w">moves</span> <span class="w">to</span> <span class="w">Thursday.</span><span class="caret"></span></p>
+              <div class="chart"><span class="bar" data-d="M"></span><span class="bar" data-d="T"></span><span class="bar" data-d="W"></span><span class="bar hot" data-d="T"></span><span class="bar" data-d="F"></span></div>
+            </div>
+          </div>
+          <div class="deck">
+            <div class="deck-cards">
+              <div class="card c3"><i></i><i></i><i></i></div>
+              <div class="card c2"><b></b><i></i><i></i></div>
+              <div class="card c1"><span></span><span></span><span></span><span class="hot"></span><span></span><em>PPTX</em></div>
+            </div>
+            <p class="deck-hand"><span class="ai-mark claude"></span>Hand off to Claude</p>
+            <p class="deck-name"><b>Launch walkthrough.pptx</b><span>3 slides</span></p>
+            <p class="deck-tag"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>Saved to History · searchable</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="fx" aria-hidden="true">
+        <div class="marquee"><span class="mq-size"></span></div>
+        <div class="cross"></div>
+        <div class="flash"></div>
+        <svg class="marks"><path class="circle"/><path class="arrow"/><path class="head"/><text class="note">even this page!</text></svg>
+        <div class="pen"><svg viewBox="0 0 24 24"><path d="M3 21l1.6-5.4L15.8 4.4a2.2 2.2 0 0 1 3.1 3.1L7.7 18.7z" fill="#fff" stroke="#12282e" stroke-width="1.4" stroke-linejoin="round"/><path d="M3 21l1.6-5.4 3.1 3.1z" fill="#ff5446"/></svg></div>
+        <div class="persona"><svg class="ring" viewBox="0 0 100 100"></svg><img src="/assets/home/persona-site-manager.png" width="400" height="400" alt=""></div>
+        <div class="capsule"><span class="cap-handle"></span><span class="cap-rec"><i></i><svg viewBox="0 0 50 22"></svg></span><span class="cap-row"></span></div>
+        <span class="cap-hint"></span>
+        <span class="u-probe"></span>
+      </div>
+    </div>
   </section>
-  <section class="wrap apps-section" id="apps" aria-labelledby="apps-title">
-    <div class="section-top"><h2 id="apps-title">Everyday tools. One home.</h2><span>Free · MIT licensed · macOS 14+ · Apple Silicon</span></div>
-    <article class="unified-card">
-      <div class="unified-intro"><img src="/assets/icon.svg" width="64" height="64" alt=""><div><p class="eyebrow">YOUR EVERYDAY MAC TOOLS</p><h3>{{RELEASE_NAME}}</h3><p>Open the app to explore. Use the menu bar or your own shortcuts when you are in the middle of something.</p></div></div>
-      <div class="primitive-grid"><div><span aria-hidden="true">01</span><h4>Dictate</h4><p>Say it while it’s fresh. Turn a thought into text, review your words, then copy them where you need them.</p></div><div><span aria-hidden="true">02</span><h4>Snap</h4><p>Capture the detail that matters. Crop, add a mark, and share the picture. Your original stays saved.</p></div><div><span aria-hidden="true">03</span><h4>Snap &amp; Talk</h4><p>Show it as you explain it. Pair screenshots with your narration and keep the session to reuse.</p></div><div><span aria-hidden="true">04</span><h4>Present</h4><p>Set the scene for a demo. Frame your device, bring in your Persona, and use Draw to point things out.</p></div></div>
-      <div class="card-actions"><a class="button primary" href="#install-workbench">Let’s get you set up ↓</a><a href="/guide/">Find your first workflow →</a></div>
-      <p class="fine">Read a draft aloud. Give the room a break with Timer. Explore at your own pace.<br>English dictation · no account needed for the tools</p>
-    </article>
-    <div class="compatibility"><strong>Built for your Mac.</strong><span>Check <strong>Apple menu → About This Mac</strong> for an Apple M-series chip. Intel and Windows are not supported. iPhone Mirroring requires a supported Mac, iPhone and region.</span></div>
-  </section>
-  <section class="wrap example-section" aria-labelledby="example-title">
-    <div class="section-top"><div><p class="eyebrow">A SMALL TOOL, IN THE MOMENT</p><h2 id="example-title">Draw attention. Then get out of the way.</h2></div><p>A nine-second illustrated example.<br>Made-up content, with no sound.</p></div>
-    <video controls muted playsinline preload="metadata" poster="/assets/annotation-example.png" aria-describedby="example-description"><source src="/assets/annotation-example.mp4" type="video/mp4">Your browser cannot play this example. <a href="/assets/annotation-example.mp4">Open the video</a>.</video>
-    <p id="example-description" class="fine">A circle and arrow highlight the next step in a demo, then disappear so the conversation can continue. This is an illustration of the workflow, not a recording of the app.</p>
-  </section>
-  <section class="install-section" id="install">
-    <div class="wrap install-grid"><div class="section-intro"><p class="eyebrow">01 / GET SET UP</p><h2>Your next idea<br>starts here.</h2><p>Start with a quick thought, a screenshot or a short demo. You can learn one tool at a time.</p><div class="notice"><strong>{{RELEASE_STATUS}}</strong><p>{{RELEASE_NOTICE}}</p><a href="{{RELEASE_URL}}">What’s new in {{RELEASE_VERSION}} ↗</a></div></div>
-    <div class="install-content">
-      <article id="install-workbench" class="install-card"><div class="install-title"><h3>{{RELEASE_NAME}} <span>{{RELEASE_VERSION}}</span></h3><a class="button download" href="{{DOWNLOAD_URL}}">Download for Mac ↓</a></div>
-      <p class="fine">Apple Silicon · macOS 14 or later</p>
-      <div class="update-route"><h4>Already using {{RELEASE_NAME}}?</h4><p>{{UPDATE_QUICK_START}}</p><a href="#update-from-downloads">Update stopped in Downloads? Here’s the fix →</a></div>
-      <h4 class="install-heading">First time here?</h4>
-      <ol class="install-steps"><li><strong>Unzip your download.</strong> Open the downloaded ZIP to unpack <strong>{{APP_BUNDLE}}</strong>.</li><li><strong>Give the app a home.</strong> Quit Workbench and any older Voice or StageMark app. Move the app into your home folder’s <strong>Applications</strong> folder (<code>~/Applications</code>). In Finder, choose <strong>Go → Home</strong> and create Applications if needed. If this edition is already installed, replace it in the <strong>same Applications folder</strong>, including <code>/Applications</code> if that is where it lives.</li><li><strong>Open it from Applications.</strong> Double-click that copy, then try <strong>Dictate</strong> with a thought you want to keep. The built-in speech model prepares on first launch; its download can take a few minutes.</li></ol>
-      <p class="install-tip">Keep Workbench in Applications so future updates can finish. If you opened the copy in Downloads, quit it and relaunch the Applications copy.</p>
-      <p class="fine">{{UPDATE_INSTALL_NOTE}}</p>
-      <p class="fine">Make it yours in <strong>Settings → Keyboard</strong>: see your shortcuts and practise them. Inside Workbench, <strong>Say hello to Ethan and Matt</strong> opens an optional email draft for you to review and send.</p>
-      <details><summary>Connect dictation to Apple Shortcuts</summary><p>Add <strong>Record Audio → Transcribe with Workbench → Create Note</strong>, or another text action. Apple owns recording and its Stop button. Workbench uses your selected speech engine and returns text.</p><p>Changing a model does not require rebuilding your workflow. Some local servers choose their model at startup; check your server’s instructions.</p></details>
-      <details><summary>Share a mobile demo</summary><p>Open <strong>Present</strong> for saved scenes and a USB device presentation. A USB iPhone must be connected, unlocked and trusted. Availability depends on the device and macOS.</p><p><strong>iPhone Mirroring</strong> opens Apple’s separate app and uses a nearby locked iPhone on supported systems. Share that app window directly in your meeting. <strong>QuickTime</strong> also opens separately. Workbench does not embed or control either Apple app.</p></details>
+
+  <section class="tools wrap" id="tools" aria-labelledby="tools-title">
+    <div class="section-head">
+      <h2 id="tools-title">It works where you already are.</h2>
+      <p>No new place to move your work into. Workbench floats over whatever is open, does its job in a few seconds and gets out of the way.</p>
+    </div>
+
+    <div class="tool-grid">
+      <article class="tool">
+        <div class="tool-art art-dictate" aria-hidden="true">
+          <div class="prompt"><span class="ai-mark spark"></span><p><span>Summarise</span> <span>the</span> <span>launch</span> <span>plan</span> <span>and</span> <span>flag</span> <span>risks</span><i class="caret static"></i></p><span class="mic-pill"><i></i><b></b><b></b><b></b><b></b><b></b></span></div>
+          <div class="call">
+            <p class="call-head"><span class="rec">Rec</span>Launch sync<span class="time">12:04</span></p>
+            <p class="call-people"><span>SK</span><span>AL</span><span>You</span></p>
+            <p class="line l1"><b>Sam</b>Can we ship on Thursday?</p>
+            <p class="line l2"><b>You</b>Yes, once QA signs off.</p>
+          </div>
+        </div>
+        <p class="tool-name">Dictate and Meetings</p>
+        <h3>Talk, and it types.</h3>
+        <p>Speak a prompt, a note or a whole email into any app. Turn on Meetings and Workbench writes up your calls too. Speech recognition runs on your Mac, and your original words are always kept.</p>
       </article>
-      <details id="update-from-downloads"><summary>Update stopped because the app is in Downloads?</summary><div><p>Workbench can’t update while it is running from the location it was downloaded to. Quit Workbench, move <strong>{{APP_BUNDLE}}</strong> into Applications, then open it from there and try the update again.</p><p>If you already have this edition installed, replace it in the same Applications folder and open that copy. Keep your saved-data folders. Once you have checked your work, you can remove the spare extracted app from Downloads.</p></div></details>
-      <details id="first-open"><summary>First-open permissions and Mac checks</summary><div><p>This download is Developer ID signed and notarized by Apple. <a href="{{RELEASE_URL}}">Release notes and testing details</a> · <a href="{{CHECKSUM_URL}}">Download checksum</a></p><p>Nothing is requested at first launch; each permission is asked for when you first use what needs it. Microphone access is requested when you first dictate, record a meeting or turn on React to my voice; Snap &amp; Talk asks for it, with Screen Recording, when you open a session. Accessibility is optional, for automatic paste. Snap and Snap &amp; Talk need Screen Recording access. Transcribing a call app needs Audio Recording access and macOS 14.2 or later. Camera access is used when you take a profile photo, start Persona’s camera bubble or choose device video. Drawing overlays alone need no permission.</p><p>If macOS reports a damaged or unsafe app, stop and report the exact message. <a href="https://support.apple.com/en-au/102445">Apple’s opening guidance</a> explains the normal checks. A managed work Mac may need your IT team’s approval.</p></div></details>
-      <details><summary>Updates and your saved work</summary><div><p>{{UPDATE_DETAILS}} Saved text, scenes and settings live outside the application and survive replacement.</p><p>{{RELEASE_INSTALL_CONTEXT}}</p><p>{{RELEASE_DATA_NOTE}} This edition stores its saved work under <code>~/Library/Application Support/{{APP_DATA_DIRECTORY}}</code>.</p><p>Built-in speech runs locally after model download. A local server may forward audio if you configure it that way. Optional Speko reading sends your selected text to its service. <a href="/privacy.html">See privacy details</a>.</p></div></details>
-      <details><summary>Mac compatibility and other platforms</summary><div><p>Use an Apple Silicon Mac running macOS 14 or later. Work on iPhone, iPad and the Chrome extension is paused while we refine the desktop app. The download includes the app; no Xcode or developer account is needed.</p></div></details>
-    </div></div>
-  </section>
-  <section class="wrap trial-section" id="try" aria-labelledby="try-title">
-    <div class="section-top"><div><p class="eyebrow">02 / USE IT BEFORE YOU FIX IT</p><h2 id="try-title">Ten minutes. One honest observation.</h2></div><p>Use a blank note or a made-up demo.<br>Notice what you expected to happen.</p></div>
-    <div class="trial-tabs" role="tablist" aria-label="Choose a workflow to try"><button id="tab-voice" role="tab" aria-selected="true" aria-controls="trial-voice" data-app="voice">Speak and listen <span>5 min</span></button><button id="tab-stagemark" role="tab" aria-selected="false" aria-controls="trial-stagemark" data-app="stagemark" tabindex="-1">Explain and present <span>5 min</span></button></div>
-    <div id="trial-voice" class="trial-panel" role="tabpanel" aria-labelledby="tab-voice" tabindex="0">
-      <div class="trial-context"><span class="large-number">01</span><h3>Turn a thought<br>into a useful note.</h3><p>Keep this page beside the installed app. The checks below track your trial; they do not control your microphone.</p><a href="#feedback" data-feedback-app="voice">Record a speech observation →</a></div>
-      <div class="trial-steps"><label><input type="checkbox"><span><strong>Capture without preparing a perfect sentence.</strong><span>Open a blank TextEdit document. Dictate: “Bring the blue notebook tomorrow. Actually, bring the green one.” Stop and read what came back. Was the result faithful?</span></span></label><label><input type="checkbox"><span><strong>Recover and reuse the original.</strong><span>Open History, choose a capture, then Original. Compare it with the cleaned text. Copy the capture into TextEdit. Could you find each action without hunting?</span></span></label><label><input type="checkbox"><span><strong>Try the handoff.</strong><span>If you want automatic paste, enable it and grant Accessibility. Start from your blank TextEdit field using the shortcut shown in Settings → Keyboard. If delivery falls back to copying, is the explanation clear?</span></span></label><label><input type="checkbox"><span><strong>Listen to what you wrote.</strong><span>Use Read aloud, then pause and resume. What interrupted your flow? Record one observation below—even if everything worked.</span></span></label></div>
+
+      <article class="tool">
+        <div class="tool-art art-snaptalk" aria-hidden="true">
+          <div class="st">
+            <div class="st-stack">
+              <div class="card c3"><i></i><i></i><i></i></div>
+              <div class="card c2"><b></b><i></i><i></i></div>
+              <div class="card c1"><span></span><span></span><span></span><span class="hot"></span><span></span><em>PPTX</em></div>
+            </div>
+            <div class="st-hand">
+              <span class="st-btn">Hand off<span class="ai-mark claude"></span><span class="ai-mark codex"></span></span>
+              <span class="st-menu"><span class="pick"><span class="ai-mark claude"></span>Claude</span><span><span class="ai-mark codex"></span>Codex</span></span>
+            </div>
+            <p class="st-file"><b>Launch walkthrough.pptx</b><span>3 slides</span></p>
+          </div>
+        </div>
+        <p class="tool-name">Snap &amp; Talk</p>
+        <h3>Talk through your screens. Get a deck.</h3>
+        <p>Snap a few screens while you explain them. Workbench keeps each snap with what you said, then hands the set to Claude or Codex to build the deck. Every snap stays searchable, even the words inside the picture.</p>
+      </article>
+
+      <article class="tool">
+        <div class="tool-art art-draw" aria-hidden="true">
+          <svg viewBox="0 0 320 180">
+            <rect class="sheet" x="40" y="24" width="240" height="138" rx="10"/>
+            <rect class="bar" x="66" y="102" width="30" height="38" rx="3"/><rect class="bar" x="110" y="86" width="30" height="54" rx="3"/><rect class="bar" x="154" y="94" width="30" height="46" rx="3"/><rect class="bar hot" x="198" y="50" width="30" height="90" rx="3"/><rect class="bar" x="242" y="78" width="30" height="62" rx="3"/>
+            <path class="base" d="M58 140.5h224"/>
+            <path class="m circle" pathLength="1" d="M191.3 40.5 L192.6 37.8 L194.8 35.6 L197.8 34.0 L201.4 33.1 L204.9 32.6 L208.3 32.1 L211.6 31.4 L215.1 30.7 L218.9 30.5 L222.6 31.1 L225.7 32.6 L228.3 34.7 L230.4 36.9 L232.6 39.0 L234.9 41.0 L237.3 43.1 L239.2 45.7 L239.9 48.5 L239.3 51.4 L237.9 54.0 L236.3 56.5 L234.8 58.9 L233.5 61.4 L231.9 64.1 L229.5 66.4 L226.4 68.0 L222.7 68.8 L218.9 69.0 L215.2 69.0 L211.7 69.1 L208.0 69.3 L204.2 69.3 L200.4 68.6 L197.1 67.0 L194.6 64.8 L192.7 62.2 L191.1 59.7 L189.4 57.3 L187.4 54.9 L185.8 52.2 L185.1 49.2 L185.7 46.3 L187.4 43.6 L189.6 41.2 L191.9 39.0 L193.9 36.7 L196.0 34.2 L198.6 31.9"/>
+            <path class="m arrow" pathLength="1" d="M112 40Q150 18 186 50"/>
+            <path class="m head" d="M182.2 39.7L186 50L175.3 47.4"/>
+            <text class="hand" x="50" y="50">here!</text>
+          </svg>
+        </div>
+        <p class="tool-name">Draw</p>
+        <h3>Point at anything.</h3>
+        <p>Pen, arrows and shapes over whatever is on screen, in any app. Press Escape and you are back in your work. A whiteboard and a break timer are one click away.</p>
+      </article>
+
+      <article class="tool tool-wide">
+        <div class="tool-art art-present" aria-hidden="true">
+          <div class="bd b1"></div><div class="bd b2"></div><div class="bd b3"></div>
+          <p class="bd-name"><span class="n1">Campus</span><span class="n2">Mine site</span><span class="n3">Office</span></p>
+          <div class="cable"><span class="plug"></span></div>
+          <div class="phone">
+            <div class="phone-off">Connect your iPhone</div>
+            <div class="home">
+              <p class="status"><b>9:41</b><span></span></p>
+              <div class="apps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="dock"><i></i><i></i><i></i><i></i></div>
+            </div>
+            <span class="island"></span>
+          </div>
+          <div class="pc p1"><img src="/assets/home/persona-site-manager.png" width="400" height="400" alt="" loading="lazy"></div>
+          <div class="pc p2"><span class="disc"><img src="/assets/home/persona-operations-lead.png" width="300" height="300" alt="" loading="lazy"></span><b>Operations lead</b></div>
+          <div class="bd b1 cover"></div>
+        </div>
+        <div class="tool-text">
+          <p class="tool-name">Present and Persona</p>
+          <h3>Put yourself in the demo.</h3>
+          <p>Plug in your iPhone and it shows up on a clean backdrop you can share in any call. Switch scenes for each audience, and add your face or a persona card for the role you are playing.</p>
+        </div>
+      </article>
     </div>
-    <div id="trial-stagemark" class="trial-panel" role="tabpanel" aria-labelledby="tab-stagemark" tabindex="0">
-      <div class="trial-context"><span class="large-number">02</span><h3>Explain something.<br>Keep your flow.</h3><p>Open a blank slide or a harmless demo. Try Workbench’s Draw tools, then return here with one thing you noticed.</p><a href="#feedback" data-feedback-app="stagemark">Record a presentation observation →</a></div>
-      <div class="trial-steps"><label><input type="checkbox"><span><strong>Point out one thing.</strong><span>Choose Draw on screen and draw a circle. Press Escape to return to the underlying app. Try Undo, then Clear. Did entering and leaving drawing feel predictable?</span></span></label><label><input type="checkbox"><span><strong>Keep a thought on a board.</strong><span>Open Whiteboard, draw a simple diagram, then press Escape. Reopen Whiteboard. Is your drawing there? Was it clear that Escape hides rather than deletes?</span></span></label><label><input type="checkbox"><span><strong>Run a short break.</strong><span>Open the timer, start it, pause, close its window and reopen it. Are the state and remaining time easy to understand?</span></span></label><label><input type="checkbox"><span><strong>Check the audience’s view, if you can.</strong><span>Share your entire display with a second device or person. Ask what they can see. If you cannot test this, leave it unchecked—local visibility is not audience verification.</span></span></label></div>
-    </div>
-    <p class="trial-progress" id="trial-progress" role="status" aria-live="polite">Your trial progress stays on this page only.</p>
   </section>
-  <section class="feedback-section" id="feedback"><div class="wrap feedback-grid">
-    <div class="section-intro"><p class="eyebrow">03 / TELL US WHAT YOU NOTICED</p><h2>“I expected…”<br>is a contribution.</h2><p>You do not need to diagnose the code. Describe the moment, what you expected, and what actually happened.</p><p class="fine">Drafted only in this page’s memory. Copy it before closing. Nothing is submitted automatically. Opening GitHub sends the draft there for your review; posting requires a GitHub account.</p><a href="https://github.com/EthDawg/workbench/blob/{{RELEASE_TAG}}/CONTRIBUTING.md">Read the contributor guide →</a></div>
-    <form id="feedback-form">
-      <div class="field-row"><label>Area<select id="feedback-app" name="app"><option value="voice">Speech</option><option value="stagemark">Annotation and presentation</option></select></label><label>Build details<textarea id="version" name="version" placeholder="In Workbench, choose Copy build details, then paste here." maxlength="1200" required></textarea></label></div>
-      <label>Your Mac and macOS version<input name="environment" placeholder="e.g. MacBook Air M2, macOS 26.5.1" maxlength="160" required></label>
-      <label>What were you trying to do?<input name="task" placeholder="e.g. copy an earlier dictation into a note" maxlength="200" required></label>
-      <label>What did you expect?<textarea name="expected" rows="2" maxlength="1000" required></textarea></label>
-      <label>What happened instead—or what worked well?<textarea name="observed" rows="3" maxlength="1500" required></textarea></label>
-      <div class="field-row"><label>Impact<select name="impact"><option>Small friction</option><option>Blocked the task</option><option>Lost or changed content</option><option>Worked well</option></select></label><label>What next?<select name="help"><option>I can test a fix</option><option>I would like to contribute</option><option>I am sharing feedback</option></select></label></div>
-      <p class="fine">Use made-up examples. Remove private text, audio, file paths and screen contents. For a security problem, use the app’s private reporting link on GitHub instead.</p>
-      <div class="card-actions"><button type="submit" class="button primary">Preview my report →</button></div>
-      <div id="report-result" hidden><h3 tabindex="-1" id="report-title">Your report is ready to review</h3><pre id="report-preview"></pre><div class="report-actions"><a id="github-report" class="button primary" rel="noreferrer" target="_blank">Review on GitHub ↗</a><button type="button" class="button secondary" id="copy-report">Copy report</button><button type="button" class="button secondary" id="copy-feedback-agent">Copy for my agent</button></div><p class="fine">Review on GitHub opens a prefilled issue. You still choose whether to submit it.</p></div>
-      <p id="copy-status" role="status" aria-live="polite"></p>
-    </form>
-  </div></section>
-  <section class="wrap contribute-section" id="contribute"><div><p class="eyebrow">04 / MAKE A SMALL THING BETTER</p><h2>Bring your curiosity.<br>Or your coding agent.</h2><p>Start with something you actually noticed. A clear bug report, a better instruction or a small interface improvement all count.</p><div class="card-actions"><button class="button primary" id="copy-agent" type="button">Copy agent handoff</button><a href="https://github.com/EthDawg/workbench/blob/{{RELEASE_TAG}}/CONTRIBUTING.md">Read the contributor guide →</a></div><p id="agent-status" role="status" aria-live="polite"></p><noscript><p>JavaScript is needed for the interactive trial and report builder. Downloads and guides still work. To hand off to an agent, share the contributor guide above and ask it to read CONTRIBUTING.md, choose a scoped issue, verify the native workflow, and open a tested PR.</p></noscript></div><div class="contribution-links"><a href="https://github.com/EthDawg/workbench/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><span><strong>Workbench starter issues</strong><small>Setup, accessibility and everyday dictation</small></span><span aria-hidden="true">↗</span></a><a href="https://github.com/EthDawg/workbench/blob/main/docs/updating.md"><span><strong>Test a change in Workbench Preview</strong><small>A separate edition for contributors</small></span><span aria-hidden="true">↗</span></a><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}/site"><span><strong>Improve this website</strong><small>App and website share one source repository</small></span><span aria-hidden="true">↗</span></a></div></section>
+
+  <section class="pair wrap" aria-label="History and team packs">
+    <article class="panel" id="history">
+      <p class="tool-name">History</p>
+      <h2>Nothing gets lost.</h2>
+      <p>Dictations, meetings, snaps and decks all land in one place. Search across everything, then hand a selection to Claude or Codex. The result comes back to History too.</p>
+      <div class="history" aria-hidden="true">
+        <div class="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span>launch</span></div>
+        <ul>
+          <li><b>Launch walkthrough</b><span>Deck · 3 snaps</span></li>
+          <li><b>Moves to Thursday</b><span>Dictation · 9:41</span></li>
+          <li><b>Launch sync with Sam</b><span>Meeting · 14 min</span></li>
+        </ul>
+        <p class="handoff">Hand off <span>→ Claude</span></p>
+      </div>
+    </article>
+    <article class="panel" id="teams">
+      <p class="tool-name">Teams</p>
+      <h2>Give your whole team the same kit.</h2>
+      <p>Keep your team’s scenes, personas and deck templates in one private pack. Colleagues add the link once and start from the same place. Updates never overwrite anyone’s own work.</p>
+      <div class="pack" aria-hidden="true">
+        <p class="pack-head"><b>Field team pack</b><span>Private</span></p>
+        <ul><li><span>Scenes</span><b>4</b></li><li><span>Personas</span><b>6</b></li><li><span>Deck template</span><b>1</b></li></ul>
+      </div>
+      <a class="more" href="/guide/#servicenow-pack">How team packs work →</a>
+    </article>
+  </section>
+
+  <section class="trust wrap" aria-label="What you can count on">
+    <ul>
+      <li><b>Free</b><span>No trial, no subscription.</span></li>
+      <li><b>No account</b><span>Open it and start.</span></li>
+      <li><b>Speech stays on your Mac</b><span>Built-in recognition runs locally.</span></li>
+      <li><b>Signed by Apple</b><span>Developer ID signed and notarized.</span></li>
+      <li><b>Open source</b><span><a href="https://github.com/EthDawg/workbench">MIT licensed on GitHub</a></span></li>
+    </ul>
+  </section>
+
+  <section class="get wrap" id="download" aria-labelledby="get-title">
+    <div class="get-intro">
+      <h2 id="get-title">Get Workbench.</h2>
+      <p>One download. Setup takes about a minute.</p>
+      <a class="btn dl big" href="{{DOWNLOAD_URL}}">Download for Mac</a>
+      <p class="fine"><span>{{RELEASE_NAME}} {{RELEASE_VERSION}}</span><span>Macs with M1 or later</span><span>macOS 14 or later</span><span><a href="{{RELEASE_URL}}">What’s new</a></span></p>
+    </div>
+    <div class="get-steps">
+      <ol id="install-workbench">
+        <li><b>Open the download.</b><span>It unzips to <strong>{{APP_BUNDLE}}</strong>.</span></li>
+        <li><b>Drag it into Applications.</b><span>Updates can only install there, not from Downloads.</span></li>
+        <li><b>Open it and try Dictate.</b><span>The speech model downloads the first time, which can take a few minutes.</span></li>
+      </ol>
+      <p class="already"><b>Already using Workbench?</b> {{UPDATE_QUICK_START}}</p>
+      <details id="first-open"><summary>What it asks permission for, and when</summary><div><p>Nothing is requested at first launch; each permission is asked for when you first use what needs it. Microphone access is requested when you first dictate, record a meeting or turn on React to my voice; Snap &amp; Talk asks for it, with Screen Recording, when you open a session. Accessibility is optional, for automatic paste. Snap and Snap &amp; Talk need Screen Recording access. Transcribing a call app needs Audio Recording access and macOS 14.2 or later. Camera access is used when you take a profile photo, start Persona’s camera bubble or choose device video. Drawing overlays alone need no permission.</p><p>This download is Developer ID signed and notarized by Apple. <a href="{{RELEASE_URL}}">Release notes and testing details</a> · <a href="{{CHECKSUM_URL}}">Download checksum</a>. If macOS reports a damaged or unsafe app, stop and report the exact message. <a href="https://support.apple.com/en-au/102445">Apple’s opening guidance</a> explains the normal checks. A managed work Mac may need your IT team’s approval.</p></div></details>
+      <details id="update-from-downloads"><summary>Updates and your saved work</summary><div><p>{{UPDATE_INSTALL_NOTE}}</p><p>{{UPDATE_DETAILS}} Saved text, scenes and settings live outside the application and survive replacement. To install a download over an existing copy, quit Workbench and replace it in the same Applications folder. If an update stopped because the app is in Downloads, quit Workbench, move <strong>{{APP_BUNDLE}}</strong> into Applications, open it from there and try again.</p><p>{{RELEASE_INSTALL_CONTEXT}} {{RELEASE_DATA_NOTE}} This edition stores its saved work under <code>~/Library/Application Support/{{APP_DATA_DIRECTORY}}</code>.</p><p>Built-in speech runs locally after model download. A local server may forward audio if you configure it that way. Optional Speko reading sends your selected text to its service. <a href="/privacy.html">See privacy details</a>.</p></div></details>
+      <details><summary>Which Macs it runs on</summary><div><p>Workbench needs a Mac with an Apple M-series chip running macOS 14 or later. Check <strong>Apple menu → About This Mac</strong>. Intel Macs and Windows are not supported. Work on iPhone, iPad and the Chrome extension is paused while the Mac app comes first.</p></div></details>
+    </div>
+  </section>
 </main>
-<footer class="wrap"><a class="brand" href="#">Workbench</a><span>Made to be useful. Open to contribution.</span><div><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}">Workbench source</a><a href="https://github.com/EthDawg/workbench/blob/main/LICENSE">MIT licence</a><a href="/privacy.html">Privacy</a></div></footer>
+
+<footer class="foot wrap">
+  <a class="brand" href="/"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#142b31"/><path d="M10 12h20M10 20h15M10 28h8" stroke="#9af0c6" stroke-width="4" stroke-linecap="round"/></svg>Workbench</a>
+  <nav aria-label="More about Workbench"><a href="/guide/">Guide</a><a href="/handbook/">Handbook</a><a href="/contribute/">Help shape Workbench</a><a href="/privacy.html">Privacy</a><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}">Source</a><a href="https://github.com/EthDawg/workbench/blob/main/LICENSE">MIT licence</a></nav>
+</footer>
 </body>
 </html>

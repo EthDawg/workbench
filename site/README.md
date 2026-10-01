@@ -2,7 +2,9 @@
 
 Public site: https://workbench-mac.vercel.app
 
-A small static website for downloading Workbench, learning its jobs and controls, trying a real workflow, and preparing a user-experience report or coding-agent handoff. Voice and StageMark are modules in one native app. GitHub Releases own binaries and issues own feedback. No browser reimplementation, backend, analytics, or stored feedback.
+A small static website for downloading Workbench, learning its jobs and controls, trying a real workflow, and preparing a user-experience report or coding-agent handoff.
+
+The homepage (`index.html`, `home.css`, `home.mjs`, `home-boot.js`) is written for someone who has never heard of Workbench: what it is, who it is for, that it is free, and how to get it. Its hero is a Mac desktop whose menu bar is the site navigation; `home.mjs` plays the four moments (Say it, Snap it, Mark it, Show it) as a pure function of time and shows a finished still frame when motion is reduced. It never names other apps. The guided trial, feedback report and agent handoff live on `contribute/index.html`, which keeps `app.mjs`, `report.mjs` and `style.css`. Headline and handwriting fonts (Bricolage Grotesque and Caveat, SIL Open Font License, files and licences in `assets/fonts/`) are self-hosted because the Content Security Policy allows no font host. The persona in the hero is the bundled Site manager card. Voice and StageMark are modules in one native app. GitHub Releases own binaries and issues own feedback. No browser reimplementation, backend, analytics, or stored feedback.
 
 The working guide is `guide/index.html`. The product handbook is `handbook/index.html`: two independent visual journeys, lifecycle exploration, native boundaries and contributor entry points. `handbook/contract.json` is the single structured source for its capability records, lifecycle rules, acceptance scenarios and generated agent brief. Edit that source rather than separately updating human and agent copies. The repository-wide product contract remains `../docs/workbench.md`.
 
@@ -19,11 +21,11 @@ node build.mjs
 python3 -m http.server 4173 --directory public --bind 127.0.0.1
 ```
 
-Open http://127.0.0.1:4173. Check desktop/mobile layout, keyboard tab switching, trial checkboxes, report validation, per-app issue routing, and copy actions. For the handbook, check every lifecycle event, keyboard activation, expanded capability records and the matching JSON/agent brief. Read the fallback lifecycle table with JavaScript unavailable. Use synthetic feedback and do not submit QA issues to GitHub. Edit source files, then rebuild; do not edit `public/` output.
+Open http://127.0.0.1:4173. Check desktop/mobile layout in light and dark, the hero loop and its reduced-motion still frame, then on `/contribute/` keyboard tab switching, trial checkboxes, report validation, per-app issue routing, and copy actions. For the handbook, check every lifecycle event, keyboard activation, expanded capability records and the matching JSON/agent brief. Read the fallback lifecycle table with JavaScript unavailable. Use synthetic feedback and do not submit QA issues to GitHub. Edit source files, then rebuild; do not edit `public/` output.
 
 ## Publish
 
-The app page is `/`, everyday instructions are `/guide/`, and `/handbook/` is the deeper capability/lifecycle reference. Keep design studies, development history and QA detail in the repository or reference pages, not in the getting-started flow. GitHub issues remain the only work queue.
+The app page is `/`, contribution and feedback are `/contribute/`, everyday instructions are `/guide/`, and `/handbook/` is the deeper capability/lifecycle reference. Keep design studies, development history and QA detail in the repository or reference pages, not in the getting-started flow. GitHub issues remain the only work queue.
 
 The custom domain `workbench.mwdm.cloud` and any domain migration are deferred. The existing `https://workbench-mac.vercel.app` site on `less-go/workbench-mac` remains the canonical website and signed-update-feed host until a separate hosting decision. No domain, DNS or redirect migration is part of the current Mac release work.
 

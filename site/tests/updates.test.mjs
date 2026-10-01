@@ -75,7 +75,7 @@ test('one receipt changes every current download and notes link together', async
 test('production copy names Workbench and makes the Mac focus and separate data explicit', async () => {
   const html = renderPublishedRelease(await readFile(new URL('../index.html', import.meta.url), 'utf8'), production);
   assert.ok(html.includes(production.download_url));
-  assert.ok(html.includes('<h3>Workbench</h3>'));
+  assert.ok(html.includes(`<span>Workbench ${production.version}</span>`));
   assert.ok(html.includes('<strong>Workbench.app</strong>'));
   assert.ok(!html.includes('Workbench.Preview.zip'));
   assert.ok(!html.includes('Get Workbench Preview'));
