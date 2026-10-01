@@ -8,13 +8,13 @@ struct MeetingQuickStatus: View {
     var body: some View {
         if model.isBusy {
             HStack {
-                Button(model.isRecording ? "Meeting · recording" : "Meeting · processing", action: review)
+                Button(model.isRecording ? "Meetings · recording" : "Meetings · transcribing", action: review)
                     .buttonStyle(.plain).font(.caption)
                 Spacer()
                 if model.isRecording {
-                    Button("Stop") { Task { await model.stop() } }.font(.caption).foregroundStyle(.red)
+                    Button("Stop & transcribe") { Task { await model.stop() } }.font(.caption).foregroundStyle(.red)
                 } else {
-                    Button("Cancel") { Task { await model.cancel() } }.font(.caption)
+                    Button("Stop processing") { Task { await model.cancel() } }.font(.caption)
                 }
             }.padding(.vertical, 4)
         }
@@ -24,10 +24,10 @@ struct MeetingQuickStatus: View {
 struct MeetingDetectionSettings: View {
     @ObservedObject var model: MeetingModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle("Detect Meetings & Calls", isOn: $model.detectionEnabled)
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Detect Meetings & Calls", isOn: $model.detectionEnabled).toggleStyle(.switch)
             Text("Offer to transcribe when a supported call uses audio on this Mac. Detection checks activity only; you choose whether to record.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if #unavailable(macOS 14.2) {
                 Text("Meeting detection and app audio capture require macOS 14.2 or later. Dictate remains available.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -36,15 +36,20 @@ struct MeetingDetectionSettings: View {
     }
 }
 
+/// Meetings owns everything about recording a conversation: its sources, its offer to start
+/// when a call begins, and the recordings it kept. A recording kept for later or left without
+/// text is listed once with its own actions, so nothing waits behind an unexplained message.
 struct MeetingWorkspaceView: View {
     @ObservedObject var model: MeetingModel
     var engineName: String
     var openHistory: (UUID?) -> Void
+    /// Where the speech engine is chosen and downloaded: Settings › Models.
+    var openModels: () -> Void = {}
     @State private var showingOptions = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
                 WorkbenchPageHeader("meeting", summary: "Transcribe a meeting or call.") {
                     Button("History") { openHistory(nil) }
                 }
@@ -71,42 +76,34 @@ struct MeetingWorkspaceView: View {
                         Spacer()
                     }
                     Divider()
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .firstTextBaseline, spacing: 16) {
-                            Text("Audio source").frame(width: 100, alignment: .leading)
-                            Picker("Audio source", selection: Binding(get: { model.selectedAppID }, set: model.selectAudioSource)) {
-                                Text("Microphone only").tag(Int32?.none)
-                                ForEach(model.apps) { app in Text(app.name).tag(Optional(app.id)) }
-                            }.labelsHidden().frame(maxWidth: 360)
-                            Button { model.refreshApps() } label: { Image(systemName: "arrow.clockwise") }
-                                .help("Refresh audio apps").accessibilityLabel("Refresh audio apps")
-                            Spacer(minLength: 0)
-                        }
-                        if model.selectedAppID != nil {
-                            Toggle("Include my microphone", isOn: $model.includeMicrophone)
-                                .padding(.leading, 116)
-                        }
-                        if model.selectedAppID == nil {
-                            Text("Microphone only records what this Mac can hear. Choose the call app to include people speaking through headphones.")
-                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Text("A browser source can include audio from its other tabs.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }.disabled(model.isBusy)
+                    sources.disabled(model.isBusy)
                     HStack(spacing: 12) {
                         transport
                         Spacer()
                         Text("Up to 2 hours").font(.caption).foregroundStyle(.secondary)
                     }.controlSize(.large)
-                    Label(engineName, systemImage: "waveform")
-                        .font(.caption).foregroundStyle(.secondary)
+                    // Progress belongs beside the control that started it.
+                    if model.isStarting || model.isProcessing {
+                        Text(model.notice).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 8) {
+                        Label(engineName, systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
+                        Button("Models…", action: openModels).buttonStyle(.link).font(.caption)
+                    }
+                    Divider()
+                    MeetingDetectionSettings(model: model)
                 }.padding(22).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 16))
                     .accessibilityIdentifier("meeting.recording")
 
                 if let error = model.error {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+                        Text(error).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button { model.dismissError() } label: { Image(systemName: "xmark") }
+                            .buttonStyle(.plain).accessibilityLabel("Dismiss meeting problem")
+                    }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 }
                 if !model.isBusy, let id = model.completedTranscriptID {
                     HStack(spacing: 12) {
@@ -114,20 +111,35 @@ struct MeetingWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Transcript saved").font(Workbench.sectionTitle)
                             Text("Review, copy or prepare follow-up notes in History.").font(.callout).foregroundStyle(.secondary)
+                            ForEach(model.pendingTranscriptNotes, id: \.self) { note in
+                                Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         Spacer()
                         Button("Review transcript") { openHistory(id) }
                     }.padding(18).background(Workbench.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                 }
-                if model.isStarting || model.isProcessing || model.error != nil || model.hasRecovery || !model.pendingTranscriptNotes.isEmpty {
-                    Text(model.notice).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-                if model.hasRecovery && !model.isBusy {
-                    HStack(spacing: 12) {
-                        Label("Unfinished recording", systemImage: "waveform")
+                if !model.isBusy, let kept = model.keptWithoutSpeech {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "waveform.slash").foregroundStyle(.secondary).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("No speech heard").font(Workbench.sectionTitle)
+                            Text(kept.message).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 12) {
+                                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([kept.session]) }
+                                Button("Move to Trash") { Task { await model.moveRecordingToTrash(kept.session) } }
+                            }.controlSize(.small).padding(.top, 4)
+                        }
                         Spacer()
-                        Button("Retry saved recording") { Task { await model.retry() } }
+                        Button { model.dismissKeptWithoutSpeech() } label: { Image(systemName: "xmark") }
+                            .buttonStyle(.plain).accessibilityLabel("Dismiss")
                     }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                }
+                if !model.recoveries.isEmpty {
+                    keptForLater
+                }
+                if !model.isBusy, let receipt = model.receipt {
+                    Label(receipt, systemImage: "checkmark").font(.caption).foregroundStyle(.secondary)
                 }
                 DisclosureGroup("Recording options", isExpanded: $showingOptions) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -143,6 +155,72 @@ struct MeetingWorkspaceView: View {
             }.padding(Workbench.pagePadding).frame(maxWidth: 960, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }.onAppear { if !model.isBusy { model.refreshApps() } }
+    }
+
+    /// One label column, so the source, its microphone choice and their note line up.
+    private var sources: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 10) {
+            GridRow {
+                Text("Audio source")
+                HStack(spacing: 8) {
+                    Picker("Audio source", selection: Binding(get: { model.selectedAppID }, set: model.selectAudioSource)) {
+                        Text("Microphone only").tag(Int32?.none)
+                        ForEach(model.apps) { app in Text(app.name).tag(Optional(app.id)) }
+                    }.labelsHidden().fixedSize()
+                    Button { model.refreshApps() } label: { Image(systemName: "arrow.clockwise") }
+                        .help("Refresh audio apps").accessibilityLabel("Refresh audio apps")
+                }
+            }
+            if model.selectedAppID != nil {
+                GridRow {
+                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    Toggle("Include my microphone", isOn: $model.includeMicrophone)
+                }
+            }
+            GridRow {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                Text(model.selectedAppID == nil
+                     ? "Microphone only records what this Mac can hear. Choose the call app to include people speaking through headphones."
+                     : "A browser source can include audio from its other tabs.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Every recording that still holds audio without text, newest first, each with its own
+    /// actions. Transcribe works on that row's recording, never on whichever sorts first.
+    private var keptForLater: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            WorkbenchSectionTitle("Kept for later")
+            ForEach(model.recoveries) { entry in
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: entry.isReadable ? "waveform" : "exclamationmark.triangle").foregroundStyle(entry.isReadable ? Workbench.accent : .orange)
+                        .frame(width: 20).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Self.title(entry)).font(.callout.weight(.medium))
+                        Text(entry.manifest.map(Self.detail) ?? entry.problem ?? "This recording could not be read.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    if entry.isReadable {
+                        Button("Transcribe") { Task { await model.retry(entry) } }.disabled(model.isBusy)
+                    }
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.session]) }
+                    Button("Move to Trash") { Task { await model.moveRecordingToTrash(entry.session) } }.disabled(model.isBusy)
+                }.controlSize(.small).padding(12).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityElement(children: .contain).accessibilityLabel(Self.title(entry))
+            }
+        }
+    }
+
+    private static func title(_ entry: MeetingRecoveryEntry) -> String {
+        guard let manifest = entry.manifest else { return "Unreadable recording" }
+        let kind = manifest.purpose == "call" ? "Call" : "Meeting"
+        return manifest.appName.map { "\(kind) · \($0)" } ?? kind
+    }
+
+    private static func detail(_ manifest: MeetingManifest) -> String {
+        manifest.createdAt.formatted(date: .abbreviated, time: .shortened) + " · " + time(manifest.seconds)
     }
 
     @ViewBuilder private var transport: some View {

@@ -230,7 +230,7 @@ final class ToolbarNextActionTests: XCTestCase {
         next.drawing = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Pause reading")
         next.reading = .idle
-        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop transcribing", "Dictate owns the meeting")
+        XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Stop & transcribe", "Dictate owns the meeting")
         next.meetingRecording = false
         XCTAssertEqual(ToolbarNextAction.resolve(next).title, "Dictate", "presenting and personas belong to other modes")
         next.mode = .present

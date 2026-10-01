@@ -195,7 +195,7 @@ struct ContentView: View {
                     HStack(spacing: 10) {
                         WaveBars(level: model.level).frame(width: 100, height: 20)
                         Text(time(model.elapsed)).monospacedDigit()
-                        Button("Discard") { model.cancelRecording() }.buttonStyle(.link)
+                        Button("Cancel") { model.cancelRecording() }.buttonStyle(.link).help("Stop and discard this recording")
                     }.font(.caption)
                 } else if model.phase == .requesting {
                     Text("Allow access in the macOS prompt, or cancel.").font(.caption).foregroundStyle(.secondary)
@@ -373,8 +373,12 @@ struct ContentView: View {
     private var readingDestination: some View {
         VStack(alignment: .leading, spacing: 6) {
             if model.readingProvider == .mac {
-                Label(model.voiceChoice?.voice.map { "\($0.name) · \(Int(model.rate)) words/min · On this Mac" } ?? "On this Mac",
+                // The voice's quality and the free better-voices hint stay on the page (workbench.md, Models).
+                Label(model.voiceChoice?.voice.map { "\($0.name), \($0.quality.label) · \(Int(model.rate)) words/min · On this Mac" } ?? "On this Mac",
                       systemImage: "desktopcomputer").font(.callout).foregroundStyle(.secondary)
+                if model.voiceChoice?.voice != nil, let hint = model.voiceHint {
+                    MacVoiceHintRow(hint: hint, open: model.openVoiceSettings)
+                }
                 if model.voiceChoice?.voice == nil {
                     HStack {
                         Label(model.missingVoiceMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -508,27 +512,27 @@ struct DictateSettingsView: View {
 
     var body: some View {
         VoiceWorkspaceSettingsSheet(title: "Dictate settings", identifier: "dictate.settings", done: done) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 16) {
                 DictateTaskOptions(model: model)
                 Divider()
-                VoiceOptions(model: model, showShortcut: false)
+                VoiceOptions(model: model)
                 Divider()
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        WorkbenchSectionTitle("Dictionary")
-                        Text("Remember names and spellings for future dictations.").font(.caption).foregroundStyle(.secondary)
+                SettingsRow("Dictionary") {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Names and spellings to get right.").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Your dictionary", action: openDictionary)
                     }
-                    Spacer()
-                    Button("Your dictionary", action: openDictionary)
                 }
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    WorkbenchSectionTitle("Apple Shortcuts")
-                    Text(Bundle.main.url(forResource: "Metadata", withExtension: "appintents") != nil
-                         ? "Add Record Audio, then Transcribe with Workbench, then a text action. Shortcuts records; Workbench returns the transcript."
-                         : "This development build has no Apple Shortcuts metadata. Use the full-Xcode package for Transcribe with Workbench.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("Open Apple Shortcuts") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app")) }
+                SettingsRow("Shortcuts app") {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(Bundle.main.url(forResource: "Metadata", withExtension: "appintents") != nil
+                             ? "Record Audio, then Transcribe with Workbench, then any text action."
+                             : "This development build has no Shortcuts actions.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Open Apple Shortcuts") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app")) }
+                    }
                 }
             }
         }

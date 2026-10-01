@@ -434,7 +434,7 @@ enum SurfaceGallery {
         let review = try checkHomeReview(to: output)
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(review.shot) }
         let meetingReview = try renderMeetingReview(to: output)
-        if let meeting = pages.firstIndex(where: { $0.route == "meeting" }) { pages[meeting].shots.append(meetingReview.meeting) }
+        if let meeting = pages.firstIndex(where: { $0.route == "meeting" }) { pages[meeting].shots += [meetingReview.meeting, try renderMeetingKept(to: output)] }
         if let history = pages.firstIndex(where: { $0.route == "history" }) { pages[history].shots.append(meetingReview.history) }
         let checks = try dictateStates.checks + review.checks + meetingReview.checks + checkToolbarVisibility() + header.checks
         // History's states render last, so the pages above show no Hand off task.
@@ -1303,7 +1303,7 @@ enum SurfaceGallery {
         }
         if let index = pass.pages.firstIndex(where: { $0.route == "speak" }) { pass.pages[index].shots += try renderReadStates(to: output) }
         if let index = pass.pages.firstIndex(where: { $0.route == "dictate" }) { pass.pages[index].shots += dictate.shots }
-        if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots.append(completed.meeting) }
+        if let index = pass.pages.firstIndex(where: { $0.route == "meeting" }) { pass.pages[index].shots += [completed.meeting, try renderMeetingKept(to: output)] }
         if let index = pass.pages.firstIndex(where: { $0.route == "history" }) { pass.pages[index].shots.append(completed.history) }
         if let index = pass.pages.firstIndex(where: { $0.route == "readback" }) { pass.pages[index].shots += try renderSnapTalkStates(to: output) }
         pass.checks += dictate.checks + completed.checks
@@ -1352,7 +1352,7 @@ enum SurfaceGallery {
         model.meetings = completed
         completed.saveTranscript = { [weak model] transcript, purpose in try model?.retainMeetingTranscript(transcript, purpose: purpose) }
         Task { await completed.retry() }
-        try wait("a completed synthetic meeting") { completed.completedTranscriptID != nil || completed.error != nil }
+        try wait("a completed synthetic meeting") { (completed.completedTranscriptID != nil || completed.error != nil) && !completed.isBusy }
         guard completed.completedTranscriptID == manifest.id, !completed.isBusy,
               model.history.contains(where: { $0.id == manifest.id }) else {
             throw VoiceError.message("The synthetic meeting did not commit its exact transcript: \(completed.error ?? completed.notice).")
@@ -1380,6 +1380,60 @@ enum SurfaceGallery {
             detail: "History consumed a typed door for the completed meeting even though newer transcripts exist. The Dictate draft, selection and saved recording stayed unchanged.",
             file: "page-history-state-from-meeting-\(theme).png", to: output)
         return (meeting, history, ["A real synthetic meeting commit published its exact transcript ID. History consumed that typed review door while preserving the draft, original, selection and the saved recording/journal bytes."])
+    }
+
+    /// Meetings holding one recording kept for later and one that heard no speech. The real owner
+    /// settles the silent one, which is shown once and never offered for retry, and lists the kept
+    /// one with its own Transcribe, Show in Finder and Move to Trash.
+    func renderMeetingKept(to output: URL) throws -> SurfaceGallery.Shot {
+        let kept = model.meetings
+        defer { model.meetings = kept }
+        let root = home.appendingPathComponent("Kept meeting fixture", isDirectory: true)
+        guard root.deletingLastPathComponent().standardizedFileURL == home.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: root.path) else {
+            throw VoiceError.message("A kept meeting fixture must stay inside the verified temporary home.")
+        }
+        func recording(_ id: String, purpose: String, app: String?, at seconds: TimeInterval) throws -> URL {
+            let date = Date(timeIntervalSince1970: 1_789_400_000 + seconds)
+            var manifest = MeetingManifest(id: UUID(uuidString: id)!, createdAt: date, updatedAt: date, purpose: purpose,
+                appName: app, appBundleID: app == nil ? nil : "us.zoom.xos", includesMicrophone: app == nil, includesRemote: app != nil,
+                state: .stopped, seconds: 1)
+            let session = try MeetingStore.create(root: root, manifest: manifest)
+            let source: MeetingTrackSource = app == nil ? .local : .remote
+            let relative = "tracks/\(source.rawValue).caf", audio = try MeetingStore.safeURL(session: session, relative: relative)
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
+            do {
+                let file = try AVAudioFile(forWriting: audio, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 16_000)!
+                buffer.frameLength = 16_000
+                for index in 0..<16_000 { buffer.floatChannelData![0][index] = 0.2 }
+                try file.write(from: buffer)
+            }
+            let previous = manifest
+            manifest.tracks = [MeetingTrack(source: source, file: relative, startSeconds: 0, seconds: 1, sampleRate: 16_000, peak: 0.2, droppedSeconds: 0)]
+            try MeetingStore.save(manifest, at: session, replacing: previous)
+            return session
+        }
+        let call = try recording("5D1C0A1E-0000-4000-8000-000000000101", purpose: "call", app: "Zoom", at: 0)
+        let silent = try recording("5D1C0A1E-0000-4000-8000-000000000102", purpose: "meeting", app: nil, at: 3_600)
+        let meetings = MeetingModel(directory: root, defaults: .standard, processSource: SyntheticAudioApps(),
+            transcribe: { _ in "" }, microphonePermission: { false }, captureFactory: { SilentMeetingCapture() })
+        model.meetings = meetings
+        try wait("two kept synthetic meetings") { meetings.recoveries.count == 2 }
+        let entry = meetings.recoveries.first { $0.id == silent.lastPathComponent }
+        Task { await meetings.retry(entry) }
+        try wait("a settled silent meeting") { (meetings.keptWithoutSpeech != nil || meetings.error != nil) && !meetings.isBusy }
+        guard meetings.keptWithoutSpeech?.session.lastPathComponent == silent.lastPathComponent, meetings.error == nil,
+              meetings.recoveries.map(\.id) == [call.lastPathComponent] else {
+            throw VoiceError.message("The silent meeting was not settled apart from the kept call: \(meetings.error ?? meetings.notice), kept \(meetings.recoveries.map(\.id)).")
+        }
+        let window = homeWindow(size: SurfaceGallery.sizes[0].size)
+        defer { window.contentViewController = nil; window.close() }
+        let (image, size) = try renderPage("meeting", in: window)
+        return try save(image, id: "state-kept", title: "Meetings, one call kept for later and one without speech, \(Int(size.width)) × \(Int(size.height)) pt",
+            detail: "The real meeting owner settled a recording that heard no speech: it is shown once with its audio kept and is not offered for retry. The call kept for later is listed with its own Transcribe, Show in Finder and Move to Trash.",
+            file: "page-meeting-state-kept-\(theme).png", to: output)
     }
 
     /// A bounded pass for desktop Home changes. It uses the same isolated fixtures and actual
@@ -2636,7 +2690,7 @@ enum SurfaceGallery {
             let stop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
             expect("Copying during an active meeting keeps Stop reachable", [
                 model.meetings.isRecording ? nil : "the meeting ended",
-                stop?.accessibilityLabel() == "Stop transcribing" && stop?.isEnabled == true ? nil : "Stop transcribing is not reachable"])
+                stop?.accessibilityLabel() == "Stop & transcribe" && stop?.isEnabled == true ? nil : "Stop & transcribe is not reachable"])
             collapse(); model.clipboardReceipt.clear()
             try drive(model.meetings, start: false); settle(.resting)
             receipt(); settle(.resting)
@@ -2647,7 +2701,7 @@ enum SurfaceGallery {
             reveal(); settle(.revealed)
             let nextStop = host.window?.contentView.map(buttons)?.first { $0.accessibilityIdentifier() == "toolbar.primary" }
             expect("Stop is reachable when a meeting supersedes a copied cue", [
-                nextStop?.accessibilityLabel() == "Stop transcribing" && nextStop?.isEnabled == true ? nil : "the row did not return"])
+                nextStop?.accessibilityLabel() == "Stop & transcribe" && nextStop?.isEnabled == true ? nil : "the row did not return"])
             collapse(); model.clipboardReceipt.clear()
             try drive(model.meetings, start: false); settle(.resting)
         } catch { expect("Copy during an active meeting", [error.localizedDescription]) }
@@ -3184,7 +3238,7 @@ enum SurfaceGallery {
                  page(home, "Open History", "history"),
                  page(home, "Saved from iPhone, when photos are in Library", "photos"),
                  action(home, "Show me a first dictation, after Skip for now", "Shows the first-dictation guide again"),
-                 page(home, "Speech settings, while speech is not ready", "models"),
+                 page(home, "Models…, while speech is not ready", "models"),
                  E(surface: "Settings page", label: "Dictate settings…", leads: "Page: dictate, with its settings sheet open", route: "dictate"),
                  page("Settings page", "Show me a first dictation, until the first dictation", "home"),
                  action("Settings page", "Appearance · Floating toolbar switch", "Shows or hides the floating toolbar between actions"),

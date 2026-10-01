@@ -193,8 +193,16 @@ struct MeetingManifest: Codable, Equatable, Sendable {
     var isFullyRecognized: Bool {
         !segments.isEmpty && segments.allSatisfy { $0.text != nil }
     }
-    /// Anything that still holds audio the person has not received text for.
-    var needsRecovery: Bool { state != .committed && (state == .recording || seconds > 0 || !tracks.isEmpty || !segments.isEmpty) }
+    /// Anything that still holds audio the person has not received text for. A recording that
+    /// was recognised to the end without a word is finished, not unfinished: retrying it only
+    /// repeats the empty result and, by rewriting it, hid older recordings behind it.
+    var needsRecovery: Bool {
+        state != .committed && !isSettledWithoutSpeech
+            && (state == .recording || seconds > 0 || !tracks.isEmpty || !segments.isEmpty)
+    }
+    /// Recognised to the end with no words, or too short to hold any. Its audio stays on this
+    /// Mac until the person shows or removes it; nothing offers to retry it.
+    var isSettledWithoutSpeech: Bool { state == .recognized && recognizedText.isEmpty }
 }
 
 /// Sizes for the shared recognition engine. A meeting is chunked so no request

@@ -72,7 +72,7 @@ extension FloatingToolbar {
             command(end, id: "persona.end", .persona, identity: stage.personaSessionIdentity.uuidString + end + String(describing: stage.selectedPersonaCopy)) { stage.endPersona() }
         }
         if let identity = meetings.recordingIdentity {
-            command("Stop transcribing", id: "meeting.stop", nil, identity: identity.uuidString) {
+            command("Stop & transcribe", id: "meeting.stop", nil, identity: identity.uuidString) {
                 Task { await meetings.stop(expected: identity) }
             }
         }
