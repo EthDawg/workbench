@@ -3,6 +3,8 @@ import Security
 
 enum ReadingProvider: String, CaseIterable {
     case mac = "Mac voices"
+    /// Downloaded once, then made on this Mac (NeuralVoice.swift).
+    case neural = "Neural voices"
     case speko = "Speko · online"
 }
 

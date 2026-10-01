@@ -345,7 +345,8 @@ enum SurfaceGallery {
         recordingMeetings = SurfacePass.syntheticMeetings(support.deletingLastPathComponent().appendingPathComponent("Meetings (panel state)"))
         model.meetings = meetings
         // Set before the initialiser's prepare() task runs, so no speech model is loaded or downloaded.
-        model.ready = true
+        // A ready model says what it is, as it does once the app has prepared it.
+        model.ready = true; model.modelMessage = RecognitionConfiguration().summary
         model.accessibilityGranted = false
         model.history = SurfacePass.history
         model.transcript = SurfacePass.history[0].text; model.rawTranscript = model.transcript
@@ -846,16 +847,19 @@ enum SurfaceGallery {
                                   file: "page-speak-state-import-review-\(name)-\(theme).png", to: output))
         }
         shots.append(try renderReadingSettings(to: output))
+        shots.append(try renderReadingSettings(to: output, with: .neural))
         return shots
     }
 
     /// The production settings sheet, rendered directly without playing audio, saving a key or
     /// requesting a voice catalogue. Its scroll viewport and complete host must both lay out.
-    func renderReadingSettings(to output: URL) throws -> SurfaceGallery.Shot {
+    /// With Neural voices chosen, the temporary home holds no download, so the sheet shows the
+    /// one download they need. Nothing is fetched.
+    func renderReadingSettings(to output: URL, with source: ReadingProvider = .mac) throws -> SurfaceGallery.Shot {
         final class Frames { var byID: [String: CGRect] = [:] }
         let frames = Frames(), size = NSSize(width: 570, height: 510)
         let provider = model.readingProvider
-        model.readingProvider = .mac
+        model.readingProvider = source
         let host = NSHostingView(rootView: ReadingSettingsView(model: model, done: {})
             .environment(\.pageSectionFrames, { id, frame in frames.byID[id] = frame }))
         let window = offscreenWindow(size: size, styleMask: [.borderless])
@@ -865,6 +869,12 @@ enum SurfaceGallery {
         guard let root = frames.byID["read.settings"], let viewport = frames.byID["read.settings.visible"],
               abs(root.width - 570) < 1, abs(root.height - 510) < 1, !viewport.isEmpty else {
             throw VoiceError.message("Read's Voice & pace settings did not lay out at 570 × 510 with a visible scroll viewport.")
+        }
+        if source == .neural {
+            guard !model.neuralVoicesDownloaded else { throw VoiceError.message("The temporary home already held neural voices; the gallery downloads none.") }
+            return try save(try snapshot(host), id: "voice-settings-neural", title: "Voice & pace settings, Neural voices before their download, 570 × 510 pt",
+                            detail: "Neural voices chosen with nothing downloaded: what they are, their size and the one Download button. Nothing is fetched.",
+                            file: "page-speak-voice-settings-neural-\(theme).png", to: output)
         }
         return try save(try snapshot(host), id: "voice-settings", title: "Voice & pace settings, 570 × 510 pt",
                         detail: "The production Read settings sheet with Mac voices and pace. The reading draft stays on the page; no audio is played.",
@@ -1989,7 +1999,7 @@ enum SurfaceGallery {
                        apply: { model.floatingToolbarVisible = false }, reset: { model.floatingToolbarVisible = true }),
             PanelState(id: "speech-not-ready", title: "Speech not ready", detail: "First run while the on-device model prepares.", readback: readback,
                        apply: { model.ready = false; model.preparing = true; model.modelMessage = "Preparing speech · first setup may take a few minutes" },
-                       reset: { model.ready = true; model.preparing = false; model.modelMessage = "Preparing local speech…" }),
+                       reset: { model.ready = true; model.preparing = false; model.modelMessage = RecognitionConfiguration().summary }),
             PanelState(id: "dictating", title: "Dictating", detail: "Recording for 14 seconds.", readback: readback,
                        apply: { model.phase = .recording; model.elapsed = 14 }, reset: { model.phase = .idle; model.elapsed = 0 }),
             PanelState(id: "combined-live", title: "Drawing, presenting, Persona and timer",

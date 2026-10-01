@@ -133,6 +133,61 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             UserDefaults.standard.set(readingProvider.rawValue, forKey: "readingProvider.v1")
             stopPlayback()
             if readingProvider == .speko { Task { await refreshSpekoVoices() } }
+            // The neural model holds memory only while Read uses it.
+            if oldValue == .neural, readingProvider != .neural { let store = neuralVoices; Task { await store.release() } }
+        }
+    }
+    /// The neural voice Read uses, by its name in the download.
+    @Published var neuralVoice = NeuralVoiceCatalog.resolve(UserDefaults.standard.string(forKey: "readingProvider.neuralVoice.v1")) {
+        didSet {
+            guard oldValue != neuralVoice else { return }
+            UserDefaults.standard.set(neuralVoice, forKey: "readingProvider.neuralVoice.v1")
+            invalidateAudio()
+        }
+    }
+    let neuralVoices = NeuralVoiceStore()
+    @Published private(set) var neuralVoicesDownloaded = false
+    /// The download's one line ("Downloading neural voices · 42%") while it runs.
+    @Published private(set) var neuralVoiceProgress: String?
+    @Published private(set) var neuralVoiceNotice = ""
+    private var neuralVoiceDownload: Task<Void, Never>?
+    func refreshNeuralVoices() { neuralVoicesDownloaded = neuralVoices.isDownloaded }
+    /// The one download Read's neural voices need, started only from its button.
+    func downloadNeuralVoices() {
+        guard neuralVoiceDownload == nil, !neuralVoicesDownloaded else { return }
+        neuralVoiceProgress = "Checking neural voices files…"; neuralVoiceNotice = ""
+        let store = neuralVoices, sink = ModelProgressSink(self)
+        neuralVoiceDownload = Task {
+            do {
+                try await store.download { line in Task { @MainActor in
+                    if sink.model?.neuralVoiceProgress != nil { sink.model?.neuralVoiceProgress = line }
+                } }
+                // The first load prepares the voices for this Mac, so the first Listen need not.
+                // If it fails here, the download is still good and Listen will say why.
+                neuralVoiceProgress = "Preparing neural voices for this Mac…"
+                _ = try? await store.ready()
+                if readingProvider != .neural { await store.release() }
+                neuralVoiceNotice = ""
+            } catch is CancellationError {
+                neuralVoiceNotice = "Download stopped. What arrived is kept for next time."
+            } catch {
+                neuralVoiceNotice = Task.isCancelled ? "Download stopped. What arrived is kept for next time."
+                    : "The neural voices couldn’t be downloaded. \(error.localizedDescription)"
+            }
+            neuralVoiceProgress = nil; neuralVoiceDownload = nil
+            refreshNeuralVoices()
+        }
+    }
+    func cancelNeuralVoiceDownload() { neuralVoiceDownload?.cancel() }
+    func removeNeuralVoices() {
+        guard neuralVoiceDownload == nil, !rendering, !playing, !paused else { return }
+        stopVoicePreview()
+        invalidateAudio()
+        let store = neuralVoices
+        Task {
+            do { try await store.remove(); neuralVoiceNotice = "Removed. Download them again at any time." }
+            catch { neuralVoiceNotice = error.localizedDescription }
+            refreshNeuralVoices()
         }
     }
     @Published var selectedSpekoVoice = SpekoVoicePreference.load() {
@@ -270,11 +325,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private var audio: ReadingTrack?
     /// What the current player plays; it can differ after Save audio.
     private var playingTrack: ReadingTrack?
-    /// A Mac voice render that has not produced playable audio yet.
-    private var pendingRender: MacSpeechRenderer?
+    /// A render on this Mac that has not produced playable audio yet.
+    private var pendingRender: (any ReadingRenderer)?
     private var audioURL: URL? { audio?.url }
     private var audioSignature: String { audio?.signature ?? "" }
     private var voicePreview: AVSpeechSynthesizer?
+    private var neuralPreview: NeuralSpeechRenderer?
+    private var neuralPreviewPlayer: AVAudioPlayer?
     private var voiceObservers: [AnyCancellable] = []
     private var voiceRefresh: Task<Void, Never>?
     private var peakPower: Float = -160
@@ -352,6 +409,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // A saved voice that is missing stays chosen and is reported; it is
         // never silently replaced. Voices added in Settings appear without a relaunch.
         refreshVoices()
+        refreshNeuralVoices()
         voiceObservers = [
             NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)
                 .receive(on: RunLoop.main).sink { [weak self] _ in self?.refreshVoices(inBackground: true) },
@@ -492,7 +550,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard text.count > readingLimit else { return nil }
         return "This text has \(text.count.formatted()) characters. \(readingProviderName) accepts up to \(readingLimit.formatted()); shorten the draft before choosing Listen or Save audio."
     }
-    private var readingProviderName: String { readingProvider == .speko ? "Speko" : "Mac reading" }
+    private var readingProviderName: String {
+        switch readingProvider {
+        case .mac: return "Mac reading"
+        case .neural: return "Neural reading"
+        case .speko: return "Speko"
+        }
+    }
 
     /// Why the selected provider cannot read a text (#173).
     enum ReadingRejection: Equatable {
@@ -1108,7 +1172,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
 
     private var signature: String {
-        let selectedVoice = readingProvider == .speko ? selectedSpekoVoice?.requestSignature ?? "automatic" : voiceChoice?.voice?.id ?? "missing:" + voice
+        let selectedVoice: String
+        switch readingProvider {
+        case .mac: selectedVoice = voiceChoice?.voice?.id ?? "missing:" + voice
+        case .neural: selectedVoice = neuralVoice
+        case .speko: selectedVoice = selectedSpekoVoice?.requestSignature ?? "automatic"
+        }
         return "\(readingProvider.rawValue)|\(selectedVoice)|\(Int(rate))|listening-\(ListeningText.version)|\(speechText)"
     }
 
@@ -1152,6 +1221,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// A short sample in the chosen voice and pace, so voices can be compared.
     func toggleVoicePreview() {
         if previewingVoice { stopVoicePreview(); return }
+        if readingProvider == .neural { previewNeuralVoice(); return }
         guard !rendering, !playing, phase == .idle, !meetings.isBusy, let voice = voiceChoice?.voice, !voice.sayOnly,
               let systemVoice = AVSpeechSynthesisVoice(identifier: voice.id) else { return }
         let utterance = AVSpeechUtterance(string: "This is \(voice.name). Here is how your readings will sound.")
@@ -1163,7 +1233,33 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         previewingVoice = true
         synthesizer.speak(utterance)
     }
+    /// The same sample in the chosen neural voice. It is made first, then played.
+    private func previewNeuralVoice() {
+        guard !rendering, !playing, phase == .idle, !meetings.isBusy, neuralVoicesDownloaded,
+              let render = try? NeuralSpeechRenderer(text: ListeningText("This is \(NeuralVoiceCatalog.title(neuralVoice)). Here is how your readings will sound.")) else { return }
+        previewingVoice = true
+        neuralPreview = render
+        render.start(voice: neuralVoice, store: neuralVoices)
+        Task {
+            do {
+                try await render.ready(complete: true)
+                guard neuralPreview === render, let url = render.audio?.url else { return }
+                let player = try AVAudioPlayer(contentsOf: url)
+                neuralPreviewPlayer = player
+                player.play()
+                try await Task.sleep(nanoseconds: UInt64((player.duration + 0.2) * 1_000_000_000))
+            } catch {
+                if !(error is CancellationError), neuralPreview === render { report(error.localizedDescription, on: .read) }
+            }
+            if neuralPreview === render { stopVoicePreview() }
+        }
+    }
     func stopVoicePreview() {
+        if let render = neuralPreview {
+            neuralPreview = nil; previewingVoice = false
+            neuralPreviewPlayer?.stop(); neuralPreviewPlayer = nil
+            render.cancel()
+        }
         guard let preview = voicePreview else { return }
         voicePreview = nil
         previewingVoice = false
@@ -1276,7 +1372,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if let audio, signature == audioSignature, audio.isComplete || (!complete && audio.isRendering) { return audio }
         guard readingGenerationID == generationID else { throw CancellationError() }
         rendering = true; readingGenerationActive = true; attention = nil
-        let text = speechText, prepared = ListeningText(text), selectedChoice = voiceChoice, selectedSpekoVoice = self.selectedSpekoVoice, selectedRate = rate, selectedProvider = readingProvider, originalSignature = signature
+        let text = speechText, prepared = ListeningText(text), selectedChoice = voiceChoice, selectedSpekoVoice = self.selectedSpekoVoice, selectedNeuralVoice = neuralVoice, selectedRate = rate, selectedProvider = readingProvider, originalSignature = signature
         // The same admission Home's tile runs before it replaces the draft (#173).
         if let rejection = readingRejection(for: text, prepared: prepared) { throw VoiceError.message(rejection.message) }
         defer {
@@ -1289,11 +1385,20 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let key = try SpekoKeychain.read()
             cloudRequestActive = true
             url = try await SpekoRenderer.render(text: prepared.spoken, key: key, voice: selectedSpekoVoice)
+        } else if selectedProvider == .neural {
+            // Never a download in passing: a reading with no voices says where to get them.
+            guard neuralVoices.isDownloaded else { refreshNeuralVoices(); throw VoiceError.message(NeuralVoiceStore.missingMessage) }
+            let render = try NeuralSpeechRenderer(text: prepared), store = neuralVoices
+            return try await stream(render, text: text, signature: originalSignature, generationID: generationID, complete: complete) {
+                render.start(voice: selectedNeuralVoice, store: store)
+            }
         } else {
             guard let voice = selectedChoice?.voice else { throw VoiceError.message(missingVoiceMessage) }
             if !voice.sayOnly {
-                return try await streamMacVoice(voice, text: text, prepared: prepared, rate: selectedRate, signature: originalSignature,
-                                                generationID: generationID, complete: complete)
+                let render = try MacSpeechRenderer(text: prepared)
+                return try await stream(render, text: text, signature: originalSignature, generationID: generationID, complete: complete) {
+                    try render.start(voiceIdentifier: voice.id, rate: MacVoicePace.utteranceRate(forWordsPerMinute: selectedRate))
+                }
             }
             url = try await AudioRenderer.renderCancellable(text: prepared.spoken, voice: voice.sayName, rate: Int(selectedRate))
         }
@@ -1307,9 +1412,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             AudioRenderer.remove(url); throw error
         }
     }
-    private func streamMacVoice(_ voice: MacVoice, text: String, prepared: ListeningText, rate: Double, signature: String,
-                                generationID: UUID, complete: Bool) async throws -> ReadingTrack {
-        let render = try MacSpeechRenderer(text: prepared)
+    /// Plays a voice on this Mac while it renders: a Mac voice or a neural voice.
+    private func stream(_ render: any ReadingRenderer, text: String, signature: String, generationID: UUID, complete: Bool,
+                        start: () throws -> Void) async throws -> ReadingTrack {
         pendingRender?.cancel()
         pendingRender = render
         defer { if pendingRender === render { pendingRender = nil } }
@@ -1331,7 +1436,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             }
         }
         do {
-            try render.start(voiceIdentifier: voice.id, rate: MacVoicePace.utteranceRate(forWordsPerMinute: rate))
+            try start()
             try await render.ready(complete: complete)
             try Task.checkCancellation()
             guard readingGenerationID == generationID, pendingRender === render, let file = render.audio else { throw CancellationError() }

@@ -8,6 +8,7 @@ struct ReadingProviderView: View {
             Picker("Read with", selection: $model.readingProvider) {
                 ForEach(ReadingProvider.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
+            if model.readingProvider == .neural { NeuralVoiceSetupView(model: model) }
             if model.readingProvider == .speko {
                 Text("Speko sends this reading to its cloud service and selected voice provider. Your Speko account may be charged. Your dictation engine is selected separately in Settings › Models.")
                     .font(.callout).foregroundStyle(.secondary)

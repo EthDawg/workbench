@@ -332,6 +332,18 @@ struct WorkbenchHome: View {
                     }
                     Divider()
                     CleanupModelSettingsView(isBusy: model.phase != .idle || model.preparing || model.rendering)
+                    Divider()
+                    // Read's voice source is an engine too, so Models shows it with the others (rule 9).
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top) {
+                            Image(systemName: "speaker.wave.2").font(.title2).foregroundStyle(Workbench.accent)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Reading voice").font(Workbench.sectionTitle).accessibilityAddTraits(.isHeader)
+                                Text("Choose what reads your text aloud. The voice itself is in Read › Voice & pace.").foregroundStyle(.secondary)
+                            }
+                        }
+                        ReadingProviderView(model: model)
+                    }
                 }.padding(Workbench.pagePadding) }
             case "connections":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {

@@ -14,6 +14,9 @@ struct CleanupConfiguration: Codable, Equatable, Sendable {
     // Damaged saved settings deliberately choose Light fallback, without overwriting the file.
     var settingsIssue: String? = nil
 
+    /// The writing model Natural uses, as a status line names it.
+    var naturalSummary: String { naturalProvider == .ollama ? "\(model) with Ollama on this Mac" : "Apple Intelligence on this Mac" }
+
     func validated() throws -> Self {
         if let settingsIssue { throw LocalRefinementError.message(settingsIssue) }
         var copy = self
