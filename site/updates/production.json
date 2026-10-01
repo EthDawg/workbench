@@ -1,11 +1,11 @@
 {
   "channel": "production",
-  "version": "2.3.1",
-  "build": "20260930054504",
-  "tag": "v2.3.1+20260930054504",
-  "source": "85e63436ae8f139f5f51d2f05407eb5445a7fc8b",
-  "download_url": "https://github.com/EthDawg/workbench/releases/download/v2.3.1+20260930054504/Workbench.zip",
-  "sha256": "b18bfb70404849c59d7c35d6183c0cbecb1fa42357fc5b1bf77b85f7e69ab0ca",
+  "version": "2.4.0",
+  "build": "20261001032329",
+  "tag": "v2.4.0",
+  "source": "d6b36af7122520c6a47bec157d1d55cc934f6e26",
+  "download_url": "https://github.com/EthDawg/workbench/releases/download/v2.4.0/Workbench.zip",
+  "sha256": "b1852d9270f0f6ea353af6ae15325ccf85b2ebc7aa46675f36b8c25edef9bd63",
   "feed_url": "https://workbench-mac.vercel.app/updates/production.xml",
-  "feed_sha256": "4eefce250d09dabc574df5766382ed4897df53a9d84d55cf29683ff4503f1f2e"
+  "feed_sha256": "5b680e83e40ad1d5a0f7dc215f0a18d3c28d9a9fc44084d004b89ccc8648d82d"
 }
