@@ -207,11 +207,22 @@ For the first updater release, install an older updater-enabled test artifact an
 
 Use one release owner and the existing helpers. Capture the source SHA, CI run IDs,
 immutable package path and completed stage before waiting. Let a command such as
-`gh run watch RUN_ID --exit-status --interval 60` wait for the pinned run; do not
+`gh run watch RUN_ID --exit-status --interval 300` wait for the pinned run; do not
 start a second polling loop or repeatedly reread the repository while it waits.
 Resume investigation only when new evidence, a failure or a changed source requires it.
 Give progress updates at stage changes and keep any required interim updates brief.
 Do not rebuild an already verified immutable package merely because a wait was interrupted.
+
+For Ethan's shipping requests, default to ending the chat turn at an external
+wait instead of keeping the model active to poll. State the completed stage, the
+exact run or job still pending, and whether a verified background process will
+continue the authorised sequence or execution is waiting for his next message.
+Do not imply that later steps will run unless that continuation was actually
+started. When he asks how it went, inspect the saved receipt and remote state once,
+then continue from the first incomplete stage. Do not create a watchdog or
+scheduled model wakeups for routine release waiting. A background script may poll
+at five-minute intervals without model involvement; stop on failure or changed
+source and retain a concise result for the next check-in.
 
 CI omits the native build only for pull requests whose complete diff contains
 production feed records, `docs/distribution.md` and/or Markdown release notes.
