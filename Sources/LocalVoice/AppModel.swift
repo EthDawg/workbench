@@ -1653,6 +1653,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         showCaptureCue(reason)
     }
+    /// A Snap & Talk narration that heard nothing gets the same brief cue at the toolbar's
+    /// place, so a quiet take never looks saved. Dictation's own work and failures come first.
+    func showNarrationCue() {
+        guard phase == .idle, captureFailure == nil else { return }
+        showCaptureCue(.narrationNotHeard)
+    }
     /// The host could not show the lesson it was offered: the attempt gets
     /// #156's cue after all, unless something newer has begun.
     private func showDroppedLessonCue(_ reason: CaptureCue.Reason) {

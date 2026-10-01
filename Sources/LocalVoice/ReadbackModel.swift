@@ -414,6 +414,8 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var onHideForEditorCapture: (() -> Void)?
     var onRestoreAfterEditorCapture: (() -> Void)?
     var onEditShortcut: (() -> Void)?
+    /// A narration too short or quiet to keep, for the toolbar's brief cue where the person acted.
+    var onNarrationNotHeard: (() -> Void)?
     var onSaveCapturedSnap: ((Data, String) throws -> SnapHandoffSnapshot)?
     var mayBeginCapture: (() -> String?)?
     var activeSections: [ReadbackSection] { manifest?.sections.filter { $0.deletedAt == nil } ?? [] }
@@ -907,6 +909,7 @@ final class ReadbackModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
             guard duration >= 0.35, peakPower > -55 else {
                 try? FileManager.default.removeItem(at: context.pendingURL)
                 restoreNarration(context, message: "No clear speech was captured. The screenshot and any earlier narration were kept.")
+                onNarrationNotHeard?()
                 return
             }
             var current = try ReadbackStore.load(from: context.root)

@@ -13,6 +13,8 @@ struct CaptureCue: Identifiable, Equatable {
         case tooQuiet
         /// The engine returned no words. A recording of our own is kept for Retry.
         case nothingRecognised(keptAudio: Bool)
+        /// A Snap & Talk narration too short or quiet to keep. Its screenshot stays.
+        case narrationNotHeard
     }
     let id = UUID()
     let reason: Reason
@@ -27,6 +29,7 @@ struct CaptureCue: Identifiable, Equatable {
         case .tooShort, .nothingRecognised(keptAudio: false): return "Nothing was added."
         case .tooQuiet: return "Check the microphone if you spoke."
         case .nothingRecognised(keptAudio: true): return "Recording kept on the Dictate page."
+        case .narrationNotHeard: return "The screenshot was kept."
         }
     }
     /// The window's status line, which has room to say a little more.
@@ -36,6 +39,7 @@ struct CaptureCue: Identifiable, Equatable {
         case .tooQuiet: return "No speech heard. Nothing was added. If you spoke, check Sound → Input; on a MacBook, open the lid."
         case .nothingRecognised(keptAudio: false): return "No speech heard. Nothing was added."
         case .nothingRecognised(keptAudio: true): return "No speech heard. The recording is kept here if you want to retry it."
+        case .narrationNotHeard: return "No speech heard. The screenshot and any earlier narration were kept."
         }
     }
 }
