@@ -19,7 +19,7 @@ Where every verb can be found, started, controlled, recovered and finished, on e
 | Remove the pill's "…" (30 Sep, again 30 Sep 11:01: "still there") | Gone. Each tool keeps one contextual accessory; live work owns its own actions (`4355a71`, `47fc7b7`). | S, G (`toolbar-present-revealed`) | Ethan's eyes on the installed build. Toolbar owner. |
 | Pill: no blur at rest, grow from the centre, steady tooltips, snap to edges, horizontal at top and bottom, vertical at the sides (29 Sep) | In (`bd6d2ba`, `4d485a4`, `9d78bad`). The drag clamp moves the pill once per event (`d002b07`). | S, G | Physical drag to every edge, on one and two displays (N). Toolbar owner. |
 | The pill can be dropped off the screen; Persona can't be dragged (30 Sep 20:46) | Clamp before move (`d002b07`); a locked Persona keeps one move handle. | S, A | Physical drag (N). The handle shows in a full-display share (audit row 12). Persona owner. |
-| Live webcam as a persona (30 Sep), reachable from the pill (1 Oct) | Webcam bubble in (`4b9a51b`); the missing-camera and End fixes in `f091bc0`. | S, A | Camera from the expanded pill. Persona owner. |
+| Live webcam as a persona (30 Sep), reachable from the pill (1 Oct) | Webcam bubble in (`4b9a51b`); the missing-camera and End fixes in `f091bc0`. The revealed pill's Choose Persona always lists the cards, then Camera; choosing it is the explicit start (`74eb285`). | S, A, G (`toolbar` 54 renders) | Choosing Camera from the installed pill: permission, first frame and the card kept until it (N). |
 | Auto-paste fails in Sublime, Claude and ChatGPT (30 Sep) | Guarded paste with bounded AX reads and a quiet "Sent to" receipt (`1116a08`, `d002b07`). | S, A | Ethan's own ⌥V test in those three apps (N). Nobody else can type into them. |
 | Dictate page and its options feel disorganised (30 Sep 07:57) | Page is microphone, transcript, Copy text and More. Options are one sheet with one label column: Delivery, Text style, Shortcut, Activation, Dictionary, Shortcuts app. Paste automatically says what happens before Accessibility is approved. | S, G (`page-dictate-state-options-focused`) | None. |
 | Transcribe a meeting or call is hard to find (30 Sep 07:57) | Meetings is a sidebar page, a Home card and a Window menu door. Detect Meetings & Calls now lives on Meetings, not in Settings. | S, R, G | A real call with headphones has never been confirmed (N). |
@@ -28,8 +28,8 @@ Where every verb can be found, started, controlled, recovered and finished, on e
 | Snap hover should offer Region, Window and Screen (29 Sep) | In (`76a01ee`). | S, R | None. |
 | One image workspace for viewing and editing (29 Sep) | In (`72ee015`, `aa0e626`). | S, G (`page-snap-workspace-*`) | None. |
 | Take photo hangs (29 Sep) | Fixed (`4f2909d`). | S, A | None. |
-| Timer feels like an afterthought (1 Oct) | Panel row, live strip, toolbar live controls and Break timer shortcut exist; no page by contract ("Timer remains within Draw and the quick controls"). | S, R | Consistency across surfaces. Timer owner. |
-| Local model download visibility dropped (1 Oct) | Parakeet and Ollama setup rows survive in Settings › Models. Meetings and Home now have a Models… door. | S, R | Download progress and failure reasons. Models owner. |
+| Timer feels like an afterthought (1 Oct) | One name (Timer, not Break timer) and one word set everywhere: the next step, Show or Hide timer, Stop timer. There is no silent second Start; a finished timer stays on Home; one state line on every surface; Position works before the window opens (`74b2269`). | S, A | Panel Options, Home and chooser in the installed app (N). |
+| Local model download visibility dropped (1 Oct) | Parakeet's first setup shows live progress (checking files, Downloading Parakeet · n%, preparing for this Mac) wherever readiness shows. Models keeps the failure reason, and its button says Download, Try download again, Use or In use (`69a7436`, `15a4a1c`). Meetings and Home have a Models… door. | S, A | A real first download needs a fresh cache and network (N). Ollama downloads still stop when you leave Models (follow-up). |
 
 ## Where each verb is found and started
 
@@ -45,7 +45,7 @@ From the registry (R); default shortcuts from `VoicePreferences` and StageKit `S
 | Draw | — | Draw | Draw, plus the Draw tools menu | row | mode | ⌥D pen, ⌥A arrow, ⌥S box, ⌥Z undo, ⌥X clear |
 | Present | — | Present | Present, plus Switch to… | row | mode | ⌥Q |
 | Persona | Me profile | Persona | Persona | row | mode | ⌥F show or hide, ⌥R next |
-| Timer | live strip only | — (inside Draw and quick controls) | — | row | live controls | off, Break timer assignable |
+| Timer | live strip, kept until stopped | — (inside Draw and quick controls) | — | row, Options carry the next step and Show or Hide | chooser row: next step, Show or Hide, Stop | off, Timer assignable |
 
 This pass added Dictate, Read, Snap, Draw and Present to the Window menu, so it now lists every sidebar page in the sidebar's order. Read, Snap and Timer shortcuts are opt-in on purpose: defaults cover only the presenter essentials.
 
