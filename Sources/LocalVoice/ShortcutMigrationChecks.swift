@@ -28,7 +28,7 @@ enum ShortcutMigrationChecks {
             return VoiceShortcut(keyCode: entry.keyCode, modifiers: entry.modifiers, enabled: entry.enabled)
         }
         func fixture(_ body: (UserDefaults, UserDefaults) throws -> Void) throws {
-            let suite = "WorkbenchShortcutMigration.\(UUID().uuidString)"
+            let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchShortcutMigration.\(UUID().uuidString)").path
             let voice = UserDefaults(suiteName: suite + ".voice")!, stage = UserDefaults(suiteName: suite + ".stage")!
             defer { voice.removePersistentDomain(forName: suite + ".voice"); stage.removePersistentDomain(forName: suite + ".stage") }
             try body(voice, stage)

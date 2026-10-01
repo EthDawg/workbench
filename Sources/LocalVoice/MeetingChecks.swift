@@ -357,7 +357,7 @@ enum MeetingChecks {
     }
 
     private static func offerLifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
-        let suite = "Workbench-MeetingOffers-" + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-MeetingOffers-" + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ProcessFixture()
@@ -439,7 +439,7 @@ enum MeetingChecks {
     }
 
     private static func lifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
-        let suite = "Workbench-MeetingChecks-" + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-MeetingChecks-" + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ProcessFixture()

@@ -89,7 +89,7 @@ final class ToolbarInteractionTests: XCTestCase {
                 track?(); return true
             }
         }
-        let defaults = UserDefaults(suiteName: "toolbar-menu-test-\(UUID().uuidString)")!
+        let defaults = UserDefaults(suiteName: FileManager.default.temporaryDirectory.appendingPathComponent("toolbar-menu-test-\(UUID().uuidString)").path)!
         let session = ToolbarSession(defaults: defaults)
         session.activate(); session.send(.pointerEntered)
         let menu = Menu(title: "Options")

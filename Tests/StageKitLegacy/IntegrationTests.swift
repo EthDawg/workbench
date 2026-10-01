@@ -3,7 +3,7 @@ import Carbon
 
 final class IntegrationTests: XCTestCase {
     func testFirstStrokeAfterActivationReachesInactiveCanvas() throws {
-        let suite = "StageMarkFirstClick.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkFirstClick.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
@@ -50,7 +50,7 @@ final class IntegrationTests: XCTestCase {
     }
     func testMenuBarAccessAndQuickAdjustmentsPreserveBoard() throws {
         _ = NSApplication.shared
-        let suite = "StageMarkMenu.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkMenu.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
@@ -95,7 +95,7 @@ final class IntegrationTests: XCTestCase {
     }
     func testActualMouseHandlersAndTextCommit() throws {
         _ = NSApplication.shared
-        let suite = "StageMarkInput.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkInput.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
@@ -135,7 +135,7 @@ final class IntegrationTests: XCTestCase {
     }
     func testDrawingLifecycleAndBoardIsolation() throws {
         _ = NSApplication.shared
-        let suite = "StageMarkIntegration.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkIntegration.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
@@ -215,7 +215,7 @@ final class IntegrationTests: XCTestCase {
     }
     func testScreenshotHandoffPreservesInkAndSuspendsInput() throws {
         _ = NSApplication.shared
-        let suite = "WorkbenchScreenshotHandoff.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchScreenshotHandoff.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }

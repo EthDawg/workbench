@@ -22,7 +22,7 @@ enum ProviderChecks {
         try rejects("multipart model injection") { _ = try RecognitionConfiguration(model: "whisper\r\nInjected: value").validated() }
         try rejects("empty model") { _ = try RecognitionConfiguration(model: "  ").validated() }
         try rejects("oversized model") { _ = try RecognitionConfiguration(model: String(repeating: "m", count: 257)).validated() }
-        let suiteName = "Workbench.ProviderChecks." + UUID().uuidString
+        let suiteName = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.ProviderChecks." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = RecognitionConfigurationStore(defaults: defaults)
@@ -116,7 +116,7 @@ enum ProviderChecks {
         catch is CancellationError { }
 
         step("model switch isolation")
-        let suiteName = "Workbench.ProviderEngineChecks." + UUID().uuidString
+        let suiteName = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.ProviderEngineChecks." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let engine = RecognitionEngine(store: RecognitionConfigurationStore(defaults: defaults))

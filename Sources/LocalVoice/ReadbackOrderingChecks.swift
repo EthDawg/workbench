@@ -117,9 +117,9 @@ enum ReadbackOrderingChecks {
         let defaults: UserDefaults
         let model: ReadbackModel
         init(thumbnails: Bool = false) throws {
-            domain = "Workbench.OrderingChecks.\(UUID().uuidString)"
+            domain = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.OrderingChecks.\(UUID().uuidString)").path
             defaults = UserDefaults(suiteName: domain)!
-            root = FileManager.default.temporaryDirectory.appendingPathComponent(domain)
+            root = URL(fileURLWithPath: domain, isDirectory: true)
             var manifest = try ReadbackStore.create(at: root, title: "Synthetic walkthrough")
             let titles = ["Start with the overview", "Choose the right workspace", "Review the draft together", "Check the final details", "Share the finished work", "Keep an original for later", "Deleted example"]
             for (index, title) in titles.enumerated() {

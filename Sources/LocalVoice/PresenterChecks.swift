@@ -12,7 +12,7 @@ enum PresenterChecks {
         }
         let root = URL(fileURLWithPath: "/tmp/wb-presenter-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let suite = "workbench.presenter.check.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("workbench.presenter.check.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let library = DemoLibraryModel(store: DemoLibraryStore(directory: root))
         let path = root.appendingPathComponent("socket").path
@@ -55,7 +55,7 @@ enum PresenterChecks {
         try check(merged[0].browserTarget == nil, "import never accepts a foreign machine binding")
         let reloaded = DemoLibraryModel(store: library.store)
         try check(reloaded.resources.first?.browserTarget?.profileID == profileB, "local resource restart retains profile binding")
-        let otherSuite = "workbench.presenter.other.\(UUID().uuidString)", otherDefaults: UserDefaults
+        let otherSuite = FileManager.default.temporaryDirectory.appendingPathComponent("workbench.presenter.other.\(UUID().uuidString)").path, otherDefaults: UserDefaults
         otherDefaults = UserDefaults(suiteName: otherSuite)!
         let other = PresenterModel(library: reloaded, defaults: otherDefaults); other.refresh()
         try check(other.destinations.isEmpty, "copied resource cannot silently route on another Mac")
@@ -114,7 +114,7 @@ enum PresenterChecks {
     init(root: URL) { self.root = root }
     func applicationDidFinishLaunching(_ notification: Notification) {
         let library = DemoLibraryModel(store: DemoLibraryStore(directory: root))
-        let defaults = UserDefaults(suiteName: "workbench.presenter.fixture.\(root.lastPathComponent)")!
+        let defaults = UserDefaults(suiteName: FileManager.default.temporaryDirectory.appendingPathComponent("workbench.presenter.fixture.\(root.lastPathComponent)").path)!
         presenter = PresenterModel(library: library, defaults: defaults)
         presenter.start()
         panel = PresenterPanelController(model: presenter, setup: { [weak self] in self?.window.makeKeyAndOrderFront(nil) })

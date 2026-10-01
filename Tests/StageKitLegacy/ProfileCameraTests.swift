@@ -165,7 +165,7 @@ final class ProfileCameraTests {
         MainActor.assumeIsolated {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("ProfileCamera-" + UUID().uuidString)
             let library = PersonaLibrary(root: root)
-            let defaults = UserDefaults(suiteName: "ProfileCameraTests-" + UUID().uuidString)!
+            let defaults = UserDefaults(suiteName: FileManager.default.temporaryDirectory.appendingPathComponent("ProfileCameraTests-" + UUID().uuidString).path)!
             defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
             let f = Fixture()
             var changed = 0
