@@ -1,14 +1,13 @@
 # Playable homepage toolbar — 1 October 2026
 
-Evidence for the homepage's opt-in toolbar (`site/home-play.mjs`, `site/home-play.css`). The pages were built with `node build.mjs --require-production` and served locally with the response headers from `site/vercel.json`, including the production Content Security Policy. Captures came from headless Chrome through the DevTools protocol. Headless Chrome draws no pointer, so the recording session added one; it is not part of the site. Nothing was deployed.
+Evidence for the homepage's playable toolbar (`site/home-play.mjs`, `site/home-play.css`). Ethan chose to keep it an Easter egg: nothing on the page advertises it. The pages were built with `node build.mjs --require-production` and served locally with the response headers from `site/vercel.json`, including the production Content Security Policy. Captures came from headless Chrome through the DevTools protocol. Headless Chrome draws no pointer, so the recording session added one; it is not part of the site. Nothing was deployed.
 
 | File | What it shows |
 | --- | --- |
 | `play.gif` | 1440×900, about 22 s. The tour runs, the capsule is hovered and opened, Snap & Talk plays to its saved deck, Draw circles the headline, the visitor loops "Download for Mac", the first Esc clears the ink, and the second Esc lets the tour carry on into Persona. |
-| `invite-hover-light.png` | The closed toolbar with its "try it!" note and the hover ring. |
+| `hover-light.png` | The closed toolbar on hover. Apart from the pointer and a faint mint ring, the page is unchanged. |
 | `snap-rest-light.png` | Snap & Talk picked from the open toolbar, resting on the saved deck. |
 | `draw-page-light.png` | Draw picked: the headline circle, the visitor's own ink on the page, and the Esc / Done bar. |
-| `phone-invite-dark.png` | 375×812, dark, touch: the note under the window. |
 | `phone-persona-dark.png` | 375×812, dark, touch: Persona picked. The tray sits above the capsule to keep clear of the persona card. |
 | `reduced-motion-draw-light.png` | Reduced motion: Draw shows its finished frame at once, and the pen is still offered. |
 

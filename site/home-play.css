@@ -3,19 +3,13 @@
 .toolbar-try{position:absolute;inset:0;max-width:1280px;margin-inline:auto;z-index:4;pointer-events:none}
 .toolbar-try button{font:inherit;-webkit-tap-highlight-color:transparent}
 
-/* An invisible button over the capsule; the ring shows it can be pressed. */
+/* An invisible button over the capsule. It is an Easter egg: nothing advertises it, and only a
+   quiet ring on hover says the toolbar can be pressed. */
 .cap-hit{position:absolute;left:var(--cap-x,50%);top:var(--cap-y,80%);transform:translate(-50%,-50%);width:var(--cap-w,calc(var(--u)*6.4));height:calc(var(--u)*4);padding:0;border:0;border-radius:999px;background:transparent;cursor:pointer;pointer-events:auto;transition:width .4s cubic-bezier(.2,.85,.25,1),box-shadow .2s}
-.cap-hit:hover{box-shadow:0 0 0 2px var(--mint),0 0 calc(var(--u)*2.4) rgba(154,240,198,.45)}
+.cap-hit:hover{box-shadow:0 0 0 1.5px color-mix(in srgb,var(--mint) 75%,transparent)}
 .cap-hit:focus-visible{outline:3px solid var(--mint);outline-offset:3px;border-radius:999px}
 @media (pointer:coarse){.cap-hit{min-width:48px;min-height:44px}}
 .try-open .cap-hit{visibility:hidden}
-
-/* A handwritten nudge under the window, gone once the toolbar has been opened. */
-.try-note{position:absolute;left:calc(var(--cap-x,50%) - var(--u)*.6);top:calc(var(--cap-y,80%) + var(--u)*2.2);transform:translateX(-100%);margin:0;display:flex;align-items:flex-end;gap:calc(var(--u)*.2);font-family:var(--hand);font-weight:700;font-size:max(17px,calc(var(--u)*2.7));line-height:1;color:var(--mark);white-space:nowrap}
-.try-note svg{width:max(26px,calc(var(--u)*4.2));height:max(20px,calc(var(--u)*3.2));fill:none;stroke:var(--mark);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:calc(var(--u)*.9)}
-.anim .try-note{animation:try-note .5s 4.6s both}
-@keyframes try-note{from{opacity:0;transform:translateX(-100%) translateY(6px) rotate(-3deg)}}
-.tried .try-note{visibility:hidden}
 
 /* The open toolbar: the four moments, then close. home-play.mjs places it and its origin. */
 .try-tray{position:absolute;left:0;top:0;display:flex;align-items:center;gap:2px;padding:5px;border-radius:16px;background:rgba(22,24,26,.95);color:#fff;box-shadow:0 calc(var(--u)*.8) calc(var(--u)*2.8) rgba(0,0,0,.3),inset 0 0 0 1px rgba(255,255,255,.08);transform:scale(.55);opacity:0;visibility:hidden;pointer-events:auto;transition:opacity .16s,transform .32s cubic-bezier(.2,.9,.25,1.15),visibility 0s .32s}

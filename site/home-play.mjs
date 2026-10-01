@@ -1,7 +1,8 @@
-// The hero's toolbar is playable. Click it and it opens into four tools. Each one jumps the hero
-// to that moment, plays it once and rests there. Draw also hands over the pen for the whole page,
-// until Esc or Done clears it. Closing the toolbar lets the tour carry on from where it rests.
-// Nothing here starts on its own, and reduced motion gets each moment's still frame.
+// The hero's toolbar is playable, as an unadvertised Easter egg. Click it and it opens into four
+// tools. Each one jumps the hero to that moment, plays it once and rests there. Draw also hands
+// over the pen for the whole page, until Esc or Done clears it. Closing the toolbar lets the tour
+// carry on from where it rests. Nothing here starts on its own, and reduced motion gets each
+// moment's still frame.
 import { hero } from './home.mjs';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -44,7 +45,7 @@ if (hero && layer) {
   function show() {
     if (open) return;
     open = true; hero.hold(); place();
-    screen.classList.add('try-open', 'tried'); hit.setAttribute('aria-expanded', 'true');
+    screen.classList.add('try-open'); hit.setAttribute('aria-expanded', 'true');
     picks[0].focus({ preventScroll: true });
   }
   function hide(refocus) {
