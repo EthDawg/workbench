@@ -35,6 +35,14 @@ const ROWS = {
 };
 // Where the circle sits in persona-site-manager.png, as a share of the image.
 const FACE = { cx: 50.2, cy: 46.7, r: 39.2 };
+// The stretches a visitor can play from the toolbar (home-play.mjs): where each starts, the
+// frame it rests on once played, and the frame that stands for it when motion is reduced.
+const MOMENTS = {
+  dictate: { from: 0, to: 4.25, still: 3 },
+  snap: { from: 4.3, to: 8.85, still: 6 },
+  draw: { from: 9.5, to: 11.95, still: 11.9 },
+  persona: { from: 12.5, to: 17.85, still: STILL }
+};
 
 class Hero {
   constructor(screen) {
@@ -64,6 +72,7 @@ class Hero {
       this.trace.push({ line, amp: Math.exp(-Math.pow((i - 4)/2.5, 2)), w: 7 + rand(i, 4)*8, p: rand(i, 5)*6.28 });
     }
     this.t0 = performance.now(); this.prevT = -1; this.visible = true; this.cap = ''; this.tool = '';
+    this.offset = 0; this.play = null; this.cut = false;
   }
   rel(el) {
     const a = el.getBoundingClientRect(), b = this.fx.getBoundingClientRect();
@@ -77,6 +86,7 @@ class Hero {
     const st = this.rel(this.stage), cx = st.x + st.w/2, cy = st.y + st.h - 4*u;
     this.capsule.style.left = `${cx}px`; this.capsule.style.top = `${cy}px`;
     this.hint.style.left = `${cx}px`; this.hint.style.top = `${cy - 2.6*u}px`;
+    S.style.setProperty('--cap-x', `${cx}px`); S.style.setProperty('--cap-y', `${cy}px`);
     this.capWidth(this.cap || 'idle');
     for (const w of [...this.words, ...this.hl]) {
       const r = this.rel(w);
@@ -123,7 +133,7 @@ class Hero {
   capWidth(state) {
     const u = this.u || 8, n = state === 'tool' ? ROWS[this.tool].icons.length + 2 : 0;
     const w = state === 'rec' ? 9.4*u : state === 'tool' ? n*3*u + (n - 1)*.35*u + 1.6*u + 1.4*u : 6.4*u;
-    this.capsule.style.width = `${w}px`;
+    this.capsule.style.width = `${w}px`; this.s.style.setProperty('--cap-w', `${w}px`);
   }
   setCap(state, tool) {
     if (tool && tool !== this.tool) {
@@ -140,14 +150,41 @@ class Hero {
       this.hint.classList.toggle('on', state !== 'idle');
     }
   }
-  tick(now, force) {
+  // Loop time at `now`. A visitor's pick plays its stretch once and rests on the last frame;
+  // otherwise the tour runs on from wherever the visitor left it.
+  time(now) {
+    const p = this.play;
+    if (p) return reduce ? p.still : p.from + Math.min((now - p.at)/1000, p.to - p.from);
     const e = (now - this.t0)/1000;
-    const t = reduce ? STILL : (e < INTRO ? -1 : mod(e - INTRO, LOOP));
-    const wrapped = !force && t >= 0 && this.prevT >= 0 && t < this.prevT;
-    if (wrapped) this.s.classList.add('no-tx');
-    this.apply(t, e);
-    if (wrapped) { void this.s.offsetWidth; this.s.classList.remove('no-tx'); }
-    this.prevT = t;
+    return reduce ? STILL : (e < INTRO ? -1 : mod(e - INTRO + this.offset, LOOP));
+  }
+  tick(now, force) {
+    const e = (now - this.t0)/1000, t = this.time(now);
+    const cut = this.cut || (!force && t >= 0 && this.prevT >= 0 && t < this.prevT);
+    if (cut) this.s.classList.add('no-tx');
+    this.apply(t, this.play ? Math.max(e, INTRO) : e);
+    if (cut) { void this.s.offsetWidth; this.s.classList.remove('no-tx'); }
+    this.prevT = t; this.cut = false;
+  }
+  // Jump straight to a moment (no transitions across the cut) and play it once.
+  playMoment(name) {
+    const now = performance.now();
+    this.play = { ...MOMENTS[name], at: now }; this.cut = true; this.tick(now, true);
+  }
+  // Rest where the tour is while the visitor chooses, but never on the snap's flash.
+  hold() {
+    if (this.play) return;
+    let t = this.time(performance.now());
+    if (t >= 6.12 && t < 6.26) t = 6.26;
+    this.play = { from: t, to: t, still: STILL, at: 0 };
+  }
+  // Hand back to the tour, carrying on from the frame the visitor left.
+  resume() {
+    if (!this.play) return;
+    const now = performance.now(), t = Math.max(0, this.time(now));
+    this.play = null; this.t0 = Math.min(this.t0, now - INTRO*1000);
+    this.offset = t - mod((now - this.t0)/1000 - INTRO, LOOP);
+    this.tick(now, true);
   }
   apply(t, e) {
     const on = (el, c, v) => el.classList.toggle(c, !!v);
@@ -207,8 +244,8 @@ class Hero {
 }
 
 const screen = document.getElementById('screen');
-if (screen) {
-  const hero = new Hero(screen);
+export const hero = screen ? new Hero(screen) : null;
+if (hero) {
   let ready = false;
   const start = () => {
     hero.layout(); ready = true;
