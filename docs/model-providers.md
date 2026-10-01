@@ -65,7 +65,7 @@ Measured on the same Mac with the vendor's release build: first audio 0.04 to 0.
 
 Two other voices in the same library were measured and not offered. Kokoro reads one English voice, refuses text over about 470 characters per call, and crashed on this macOS (26.5.1) in the way its vendor warns of for 26.4 to 26.5. Supertonic-3 does not stop when cancelled and misread numbers ("2,450" as "two, four-fifty").
 
-`--check-neural-voice` drives the renderer with synthetic frames and needs no download: sentence marks, the running filter against the vendor's whole-reading filter, cancellation, failure and the refusal without a download. `--check-neural-voice-render [FOLDER]` reads with the real model when the voices are present and is skipped otherwise.
+`--check-neural-voice` drives the renderer with synthetic frames and needs no download: sentence marks, the running filter against the vendor's whole-reading filter, cancellation, failure and the refusal without a download. `--check-neural-voice-render [FOLDER]` reads with the real model when the voices are present and is skipped otherwise. `--check-neural-voice-download NEW_FOLDER` runs the real download into a new folder and then removes it; on 1 October 2026 it fetched 529 MB in 57 seconds with one progress line per percent, found all 21 voices, loaded in 3.4 seconds and left the folder empty of voices.
 
 ## Adding another provider
 

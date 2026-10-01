@@ -5,6 +5,7 @@ import Foundation
 /// `--check-neural-voice` needs no download: it drives the renderer with synthetic frames.
 /// `--check-neural-voice-render [FOLDER]` reads with the real model, from Workbench's own
 /// download or from FOLDER, and is skipped when the voices are not there.
+/// `--check-neural-voice-download NEW_FOLDER` runs the real download there, then removes it.
 @MainActor
 enum NeuralVoiceChecks {
     private struct Failure: LocalizedError {
@@ -137,6 +138,48 @@ enum NeuralVoiceChecks {
         catch let error as VoiceError { try check(error.localizedDescription == "This text has nothing to read aloud.", "empty text says so") }
 
         print("NEURAL_VOICE_CHECKS_OK: \(count) checks passed")
+    }
+
+    /// The real download, into a new folder the caller names: about 530 MB over the network.
+    /// It follows the Download button's path (progress, then the files, then a first load)
+    /// and Remove download's, and leaves the folder empty of voices.
+    static func runDownload(root: URL) async throws {
+        guard !FileManager.default.fileExists(atPath: root.path) else { throw Failure(label: "the download check needs a new folder") }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var count = 0
+        func check(_ value: @autoclosure () throws -> Bool, _ label: String) throws {
+            guard try value() else { throw Failure(label: label) }
+            count += 1
+        }
+        final class Lines: @unchecked Sendable {
+            private let lock = NSLock(); private var lines: [String] = []
+            func add(_ line: String) { lock.lock(); lines.append(line); lock.unlock() }
+            var all: [String] { lock.lock(); defer { lock.unlock() }; return lines }
+        }
+        let store = NeuralVoiceStore(root: root), lines = Lines()
+        try check(!store.isDownloaded, "a new folder holds no voices")
+        let started = Date()
+        try await store.download { lines.add($0) }
+        let seconds = Date().timeIntervalSince(started), seen = lines.all
+        try check(store.isDownloaded, "the download leaves every file a reading loads")
+        try check(seen.contains { $0.hasPrefix("Downloading neural voices · ") } && seen.count <= 110 && Set(seen).count == seen.count,
+                  "progress arrives as distinct lines, at most one per percent (\(seen.count) lines)")
+        let pack = root.appendingPathComponent("Models/pocket-tts")
+        let bytes = (FileManager.default.enumerator(at: pack, includingPropertiesForKeys: [.fileSizeKey])?.compactMap {
+            (try? ($0 as? URL)?.resourceValues(forKeys: [.fileSizeKey]))?.fileSize } ?? []).reduce(0, +)
+        try check(bytes > 300_000_000 && bytes < 900_000_000, "the download is about the size the button says (\(bytes / 1_000_000) MB)")
+        try check(NeuralVoiceCatalog.voices.allSatisfy { FileManager.default.fileExists(atPath: pack.appendingPathComponent("v2.1/english/constants_bin/\($0).safetensors").path) },
+                  "every listed voice is in the download")
+        let loadStarted = Date()
+        _ = try await store.ready()
+        let loadSeconds = Date().timeIntervalSince(loadStarted)
+        try await store.download { lines.add($0) }
+        try check(lines.all.count == seen.count || lines.all.count == seen.count + 1, "downloading again fetches nothing")
+        try await store.remove()
+        try check(!store.isDownloaded && !FileManager.default.fileExists(atPath: pack.path), "Remove download deletes the voices and nothing else in the folder")
+        do { _ = try await store.ready(); throw Failure(label: "a reading after removal is refused") }
+        catch let error as VoiceError { try check(error.localizedDescription == NeuralVoiceStore.missingMessage, "after removal a reading says where to download") }
+        print(String(format: "NEURAL_VOICE_DOWNLOAD_OK: %d MB in %.0f s, first load %.1f s, last line \"%@\"; %d checks passed", bytes / 1_000_000, seconds, loadSeconds, seen.last ?? "", count))
     }
 
     /// The real model. Writes nothing outside temporary folders and plays nothing aloud.

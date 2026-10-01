@@ -755,6 +755,9 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await ReadingChecks.runRender()
         case "--check-neural-voice":
             try await NeuralVoiceChecks.run()
+        case "--check-neural-voice-download":
+            guard args.count == 2 else { throw VoiceError.message("Usage: --check-neural-voice-download NEW_FOLDER") }
+            try await NeuralVoiceChecks.runDownload(root: URL(fileURLWithPath: args[1]))
         case "--check-neural-voice-render":
             // --check-neural-voice-render [FOLDER holding Models/pocket-tts]
             try await NeuralVoiceChecks.runRender(root: args.count > 1 ? URL(fileURLWithPath: args[1]) : nil)
