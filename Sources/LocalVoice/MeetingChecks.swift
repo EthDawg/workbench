@@ -391,7 +391,7 @@ enum MeetingChecks {
         try expect(playback.recording == nil && !playback.playing && !playback.ready,
                    "closing recording review releases its player and cannot leave hidden playback")
         // Exercise the real owner admission and removal hold, using silent synthetic audio.
-        let suite = "Workbench-RecordingReview-" + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-RecordingReview-" + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let model = MeetingModel(directory: session.deletingLastPathComponent(), defaults: defaults,
@@ -724,7 +724,7 @@ enum MeetingChecks {
     /// kept, never offered for retry, and never hides an older kept recording. Transcribe acts on
     /// the row it belongs to, and Move to Trash removes only that recording.
     private static func keptRecordingChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
-        let suite = "Workbench-MeetingChecks-" + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench-MeetingChecks-" + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = root.appendingPathComponent("kept")
