@@ -62,7 +62,7 @@ enum SpekoChecks {
             && explicitRoute?["mode"] == "explicit"
             && explicitRoute?["provider"] == "cartesia"
             && explicitRoute?["model"] == "sonic-3.5", "selected voice pins its compatible provider and model")
-        let defaultsName = "Workbench.SpekoVoiceChecks." + UUID().uuidString
+        let defaultsName = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.SpekoVoiceChecks." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: defaultsName)!
         defer { defaults.removePersistentDomain(forName: defaultsName) }
         SpekoVoicePreference.save(selectedVoice, defaults: defaults)

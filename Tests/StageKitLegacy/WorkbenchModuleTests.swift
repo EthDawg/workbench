@@ -3,9 +3,9 @@ import Carbon
 
 final class WorkbenchModuleTests: XCTestCase {
     private func withDrawingFixture(_ body: (AppCoordinator) throws -> Void) throws {
-        let suite = "WorkbenchDrawingTests." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchDrawingTests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let root = URL(fileURLWithPath: suite, isDirectory: true)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
         let settings = SettingsStore(defaults: defaults)
         settings.value.onboardingComplete = true
@@ -165,7 +165,7 @@ final class WorkbenchModuleTests: XCTestCase {
 
     func testMigrationCopiesPreviewOnceAndPreservesMalformedFiles() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchMigration-" + UUID().uuidString)
-        let suite = "WorkbenchMigrationTests." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchMigrationTests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
         let source = root.appendingPathComponent("StageMark Preview")
@@ -197,7 +197,7 @@ final class WorkbenchModuleTests: XCTestCase {
 
     func testMigrationRejectsSymlinksAndRetriesCleanly() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchMigrationLinks-" + UUID().uuidString)
-        let suite = "WorkbenchMigrationTests." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchMigrationTests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
         defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
         let source = root.appendingPathComponent("StageMark")
@@ -216,9 +216,9 @@ final class WorkbenchModuleTests: XCTestCase {
     }
 
     func testEmbeddedCallbacksAndSuspendedShortcutSettings() throws {
-        let suite = "WorkbenchEmbeddedTests." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchEmbeddedTests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let root = URL(fileURLWithPath: suite, isDirectory: true)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
         let settings = SettingsStore(defaults: defaults)
         for action in Action.allCases { var shortcut = action.defaultShortcut; shortcut.enabled = false; settings.value.shortcuts[action.rawValue] = shortcut }

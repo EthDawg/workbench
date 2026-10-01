@@ -69,7 +69,7 @@ final class ToolbarNextActionTests: XCTestCase {
     /// Input-consuming work claims the label whatever the mode.
     private static func inputLive(_ live: ToolbarLiveState) -> Bool {
         live.insertingPrompt || live.dictation != .idle || live.capturingScreen || live.narrating || live.drawing
-            || live.reading != .idle
+            || live.reading == .preparing || live.reading == .playing || live.reading == .paused && live.mode == .read
     }
 
     /// Input work that claims the label: as `inputLive`, except that a paused reading leads only

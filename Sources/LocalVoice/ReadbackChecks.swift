@@ -205,7 +205,7 @@ enum ReadbackChecks {
         }
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("Workbench-readback-admission-\(UUID().uuidString)")
-        let domain = "Workbench.ReadbackAdmissionChecks.\(UUID().uuidString)"
+        let domain = fm.temporaryDirectory.appendingPathComponent("Workbench.ReadbackAdmissionChecks.\(UUID().uuidString)").path
         guard let defaults = UserDefaults(suiteName: domain) else { throw ReadbackError.message("Unable to isolate check preferences") }
         defer { defaults.removePersistentDomain(forName: domain); try? fm.removeItem(at: root) }
         var manifest = try ReadbackStore.create(at: root, title: "Synthetic admission")
@@ -286,7 +286,7 @@ enum ReadbackChecks {
         try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
         let root = fixture.appendingPathComponent("Original"), moved = fixture.appendingPathComponent("Moved")
         let other = fixture.appendingPathComponent("Different")
-        let domain = "Workbench.SessionAvailability.\(UUID().uuidString)"
+        let domain = fm.temporaryDirectory.appendingPathComponent("Workbench.SessionAvailability.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: domain)!
         defer { defaults.removePersistentDomain(forName: domain); try? fm.removeItem(at: fixture) }
         let original = try ReadbackStore.create(at: root, title: "Synthetic session")
@@ -368,7 +368,7 @@ enum ReadbackChecks {
             try? fm.removeItem(at: fixture)
         }
         func preferences(_ root: URL) -> UserDefaults {
-            let domain = "Workbench.SessionRecovery.\(UUID().uuidString)"
+            let domain = fm.temporaryDirectory.appendingPathComponent("Workbench.SessionRecovery.\(UUID().uuidString)").path
             domains.append(domain)
             let defaults = UserDefaults(suiteName: domain)!
             defaults.set([root.path], forKey: "readback.recentSessionPaths.v1")

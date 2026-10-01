@@ -187,7 +187,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(underline.asBoxOrLine().tool, .line)
     }
     func testUpdateMovesOnlyUntouchedShortcutsToPresenterDefaults() throws {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         var previous = Preferences()
@@ -205,7 +205,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: defaults).value.shortcuts, updated.value.shortcuts, "The move is saved, not recomputed on every launch")
     }
     func testNewDefaultNeverTakesAChosenCombination() throws {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         var previous = Preferences()
@@ -220,7 +220,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(updated.value.shortcut(for: .personaToggle).label, "⌥F", "Other untouched essentials still move")
     }
     func testUpdateReturnsAppCommandsToOtherApps() throws {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         var previous = Preferences()
@@ -245,7 +245,7 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(updated.value.shortcut(for: .eraser).enabled)
     }
     func testFreshInstallKeepsLaterChoicesOfOldKeys() throws {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let fresh = SettingsStore(defaults: defaults)
@@ -280,7 +280,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(actions, 0)
     }
     func testPreferencesPersistAndClamp() throws {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = SettingsStore(defaults: defaults)
@@ -293,7 +293,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(reread.value.activation, .toggle)
     }
     func testPersonaShortcutMigrationPreservesExistingOverlayKeys() throws {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         var previous = Preferences()
@@ -314,7 +314,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(defaults.integer(forKey: "preferences.schema"), 4)
     }
     func testCorruptPreferencesArePreservedForRecovery() {
-        let suite = "StageMarkTests.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkTests.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let corrupt = Data("invalid".utf8); defaults.set(corrupt, forKey: "preferences.v1")

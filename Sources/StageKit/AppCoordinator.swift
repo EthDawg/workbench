@@ -274,7 +274,11 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     /// current tool and the actual held session matter, not just a preference.
     var penShortcutGesture: StageKitController.ShortcutGesture? {
         let toggles = settings.value.activation == .toggle || !boards.isEmpty
-        if !isDrawing { return toggles ? .press : .hold }
+        if !isDrawing {
+            // Draw starts the chosen tool (Pen for Text and Eraser); the Pen key would start a different one.
+            guard tool == .pen || tool == .text || tool == .eraser else { return nil }
+            return toggles ? .press : .hold
+        }
         guard tool == .pen else { return nil }
         if toggles { return .press }
         return heldAction == .pen && !latched ? .release : nil
@@ -287,7 +291,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         if let selected = action.tool {
             if down {
                 let toggle = settings.value.activation == .toggle || selected == .text || !boards.isEmpty
-                if toggle && isDrawing && tool == selected { stopDrawing() }
+                // With a board up, toggling off leaves drawing as Stop drawing does, so the board never stays taking clicks.
+                if toggle && isDrawing && tool == selected { if boards.isEmpty { stopDrawing() } else { finishDrawing() } }
                 else if startDrawing(selected, latched: toggle) { heldAction = toggle ? nil : action }
             } else if heldAction == action && !latched { stopDrawing() }
         } else if down { perform(action) }

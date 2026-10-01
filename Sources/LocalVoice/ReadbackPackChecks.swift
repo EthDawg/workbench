@@ -11,7 +11,7 @@ enum ReadbackPackChecks {
         }
         let fm = FileManager.default
         let fixture = fm.temporaryDirectory.appendingPathComponent("Workbench-skill-pack-check-\(UUID().uuidString)")
-        let domain = "Workbench.SkillPackChecks.\(UUID().uuidString)"
+        let domain = fm.temporaryDirectory.appendingPathComponent("Workbench.SkillPackChecks.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: domain)!
         defer { defaults.removePersistentDomain(forName: domain); try? fm.removeItem(at: fixture) }
         try fm.createDirectory(at: fixture, withIntermediateDirectories: true)

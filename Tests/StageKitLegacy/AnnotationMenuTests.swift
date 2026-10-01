@@ -3,9 +3,9 @@ import Carbon
 
 final class AnnotationMenuTests: XCTestCase {
     private func withFixture(start: Bool = true, _ body: (AppCoordinator, AnnotationMenu) throws -> Void) throws {
-        let suite = "WorkbenchAnnotationMenuTests." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchAnnotationMenuTests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let root = URL(fileURLWithPath: suite, isDirectory: true)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
         let settings = SettingsStore(defaults: defaults)
         settings.value.onboardingComplete = true
@@ -201,6 +201,24 @@ final class AnnotationMenuTests: XCTestCase {
             XCTAssertTrue(app.boards.isEmpty, "Stop drawing closes the board")
             app.toggleBoard(.white)
             XCTAssertEqual(app.history(for: display)?.annotations, [mark], "The board's ink survives Stop drawing")
+        }
+    }
+
+    /// The Pen key toggling drawing off with a board up leaves drawing as Stop drawing does, and
+    /// Draw's hint names the Pen key only while Draw would start the Pen.
+    func testPenKeyLeavesTheBoardAndTheHintMatchesDraw() throws {
+        try withFixture { app, menu in
+            invoke("whiteboard", in: menu)
+            XCTAssertTrue(app.isDrawing && !app.boards.isEmpty)
+            app.handleHotkey(.pen, down: true)
+            XCTAssertFalse(app.isDrawing)
+            XCTAssertTrue(app.boards.isEmpty, "the Pen key does not leave the board taking clicks")
+            app.tool = .pen
+            XCTAssertTrue(app.penShortcutGesture != nil, "Draw starts the Pen, so its key is named")
+            app.tool = .arrow
+            XCTAssertTrue(app.penShortcutGesture == nil, "Draw starts the Arrow, which the Pen key would not")
+            app.tool = .eraser
+            XCTAssertTrue(app.penShortcutGesture != nil, "Draw starts the Pen for the Eraser")
         }
     }
 
