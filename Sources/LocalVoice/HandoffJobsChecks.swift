@@ -417,6 +417,133 @@ enum HandoffJobsChecks {
         try check(reported.count == 2 && doors.error != nil, "a task that could not start reports nothing to reveal")
         doors.error = nil
 
+        // Connected tasks, through a scripted runner so no provider process ever
+        // starts, as the surface gallery already does: the connection switch, a
+        // run that completes, one that fails and is retried, an empty reply, a
+        // run stopped by the person and by quitting, and the receipts each leaves.
+        final class Switches { var on: Set<SubscriptionProvider> = [] }
+        final class Script { var runs = 0; var prompts: [String] = []; var images: [[URL]] = []; var folders: [URL] = [] }
+        let switches = Switches(), script = Script()
+        let live = HandoffJobsModel(directory: root.appendingPathComponent("live"),
+                                         switches: ({ switches.on.contains($0) }, { if $1 { _ = switches.on.insert($0) } else { _ = switches.on.remove($0) } }),
+                                         pasteboard: pasteboard)
+        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        var stateChanges = 0
+        live.clock = { now }
+        live.onStateChange = { stateChanges += 1 }
+        func scripted(_ reply: @escaping @Sendable () async throws -> SubscriptionCLIResult) -> HandoffRunner {
+            HandoffRunner(discover: { provider in
+                SubscriptionConnection(provider: provider, executable: URL(fileURLWithPath: "/usr/bin/false"), version: "scripted",
+                                       ready: provider == .claude, detail: provider == .claude ? "Scripted connection; nothing is sent." : "Not installed.")
+            }, run: { _, prompt, images, folder, onSession in
+                script.runs += 1; script.prompts.append(prompt); script.images.append(images); script.folders.append(folder)
+                onSession("scripted-session-\(script.runs)")
+                // A real provider announces its session well before it finishes; give the receipt that order.
+                try await Task.sleep(nanoseconds: 50_000_000)
+                return try await reply()
+            })
+        }
+        func settle(_ what: String, until done: () -> Bool) async throws {
+            for _ in 0..<500 where !done() { try await Task.sleep(nanoseconds: 20_000_000) }
+            guard done() else { throw VoiceError.message("HANDOFF_JOBS_CHECK_FAILED: did not settle: " + what) }
+        }
+        func job(_ id: UUID) throws -> HandoffJob {
+            try live.jobs.first(where: { $0.id == id }) ?? { throw VoiceError.message("HANDOFF_JOBS_CHECK_FAILED: task \(id) is missing") }()
+        }
+        live.runner = scripted { SubscriptionCLIResult(providerSessionID: "scripted-final", text: "# Decision\n\nA scripted result.") }
+        try check(live.connections.isEmpty, "nothing is discovered before a provider is switched on")
+        live.setEnabled(.claude, true)
+        try await settle("the scripted connection") { live.connections[.claude]?.ready == true }
+        try check(live.enabled(.claude) && live.connections[.codex] == nil, "switching a provider on discovers that provider only")
+        let completes = try live.prepare(sources: sources, task: "Summarize the decision.", skill: skill)
+        try check(!live.canRun(completes, with: .claude), "a task cannot run before its folder has been read")
+        await live.loadTaskFiles([completes])
+        try check(live.canRun(completes, with: .claude) && !live.canRun(completes, with: .codex),
+                  "a read task fits the live provider, and only a live one")
+        live.start(completes, provider: .claude)
+        let started = try job(completes.id)
+        try check(live.isBusy && live.activeID == completes.id && stateChanges == 1
+                  && started.status == .running && started.attempts == 1 && started.provider == .claude && started.attemptStartedAt == now
+                  && started.detail.hasPrefix("Starting " + SubscriptionProvider.claude.title),
+                  "starting marks the task running with its provider and clock, and tells the host once")
+        try await settle("the scripted run") { !live.isBusy }
+        let completed = try job(completes.id)
+        try check(completed.status == .completed && completed.providerSessionID == "scripted-final" && stateChanges == 2
+                  && completed.detail == "Result saved. Review it before using or sending it.",
+                  "a completed run saves the provider's final session on the receipt and tells the host again")
+        try check(script.runs == 1 && script.folders == [live.folder(completes)] && script.images[0].count == 1
+                  && script.images[0][0].path.hasPrefix(live.folder(completes).path)
+                  && script.prompts[0].contains("Task: Summarize the decision.") && script.prompts[0].contains("REFERENCE"),
+                  "the runner receives the task folder, the frozen image inside it and the live prompt")
+        try check(live.result(completed) == "# Decision\n\nA scripted result."
+                  && (try HandoffJobStore.read(HandoffJob.self, at: live.folder(completes).appendingPathComponent("receipt.json"))).status == .completed,
+                  "the result and the receipt are on disk")
+        live.start(completed, provider: .claude)
+        try check(!live.isBusy && script.runs == 1 && live.notice == "This selection already has a result, shown in History.",
+                  "a completed task does not run again")
+        live.notice = nil
+
+        live.runner = scripted { throw SubscriptionCLIError.failed("The scripted provider stopped before it finished.") }
+        let fails = try live.prepare(sources: sources, task: "Draft the booking note.", skill: skill)
+        now = now.addingTimeInterval(60)
+        live.start(fails, provider: .claude)
+        try await settle("the scripted failure") { !live.isBusy }
+        let failed = try job(fails.id)
+        try check(failed.status == .failed && failed.attempts == 1 && failed.providerSessionID == "scripted-session-2"
+                  && failed.detail == "The scripted provider stopped before it finished." && failed.updatedAt == now
+                  && !FileManager.default.fileExists(atPath: live.folder(fails).appendingPathComponent("result.md").path),
+                  "a failed run keeps the session the provider announced, says why, and writes no result")
+        live.start(failed, provider: .claude)
+        try check(!live.isBusy && live.notice == "Review this handoff before retrying.", "a failed task needs an explicit retry")
+        live.notice = nil
+        live.runner = scripted { SubscriptionCLIResult(providerSessionID: nil, text: "Second attempt.") }
+        now = now.addingTimeInterval(60)
+        live.start(failed, provider: .claude, retry: true)
+        try await settle("the retry") { !live.isBusy }
+        let retried = try job(fails.id)
+        try check(retried.status == .completed && retried.attempts == 2 && retried.previousAttempts.count == 1
+                  && retried.previousAttempts[0].number == 1 && retried.previousAttempts[0].status == .failed
+                  && retried.previousAttempts[0].providerSessionID == "scripted-session-2" && retried.providerSessionID == "scripted-session-3"
+                  && live.result(retried) == "Second attempt.",
+                  "a retry keeps the failed attempt in the receipt and the announced session when the reply names none")
+
+        live.runner = scripted { SubscriptionCLIResult(providerSessionID: nil, text: " \n") }
+        let empty = try live.prepare(sources: sources, task: "Prepare another draft.", skill: skill)
+        live.start(empty, provider: .claude)
+        try await settle("the empty reply") { !live.isBusy }
+        try check(try job(empty.id).status == .failed && (try job(empty.id)).detail == "The provider returned no usable result.",
+                  "an empty reply is a failure, not a result")
+
+        live.runner = scripted { try await Task.sleep(nanoseconds: 3_600 * 1_000_000_000); return SubscriptionCLIResult(providerSessionID: nil, text: "Never.") }
+        let stopped = try live.prepare(sources: sources, task: "Plan the walkthrough.", skill: skill)
+        live.start(stopped, provider: .claude)
+        try await settle("the long run's session") { (try? job(stopped.id))?.providerSessionID != nil }
+        let waiting = try live.prepare(sources: sources, task: "A request made while one runs.", skill: skill)
+        live.start(waiting, provider: .claude)
+        try check(live.notice == "A handoff is already running." && live.activeID == stopped.id, "one live task runs at a time")
+        live.notice = nil
+        live.cancel()
+        try await settle("the stopped run") { !live.isBusy }
+        try check(try job(stopped.id).status == .cancelled && (try job(stopped.id)).detail.hasPrefix("Stopped locally.")
+                  && (try job(waiting.id)).status == .ready,
+                  "stopping a run marks it cancelled and leaves the waiting task ready")
+        live.start(waiting, provider: .claude)
+        try await settle("the quitting run's session") { (try? job(waiting.id))?.providerSessionID != nil }
+        await live.prepareForShutdown()
+        try check(!live.isBusy && (try job(waiting.id)).status == .cancelled, "quitting waits for the running task to stop and records that")
+        live.setEnabled(.claude, false)
+        try check(live.connections[.claude] == nil && !live.enabled(.claude), "switching a provider off forgets its connection")
+        let unconnected = try live.prepare(sources: sources, task: "A request with no connection.", skill: skill)
+        live.start(unconnected, provider: .claude)
+        try check(!live.isBusy && live.error?.hasPrefix("Connect the installed " + SubscriptionProvider.claude.title) == true,
+                  "a task cannot start without a connection")
+        live.error = nil
+        let reopenedConnected = HandoffJobsModel(directory: live.directory, switches: ({ _ in false }, { _, _ in }), pasteboard: pasteboard)
+        let statuses = Dictionary(uniqueKeysWithValues: reopenedConnected.jobs.map { ($0.id, $0.status) })
+        try check(reopenedConnected.error == nil && !reopenedConnected.isBusy
+                  && statuses == [completes.id: .completed, fails.id: .completed, empty.id: .failed, stopped.id: .cancelled, waiting.id: .cancelled, unconnected.id: .ready],
+                  "every receipt survives a relaunch with the status its run ended in")
+
         try check(doors.files(madeFrom) == nil, "nothing is read from a task folder on the main thread before it is asked for")
         await doors.loadTaskFiles(doors.jobs)
         let inputs = try doors.files(madeFrom).map(\.inputs) ?? { throw VoiceError.message("HANDOFF_JOBS_CHECK_FAILED: task files not loaded") }()

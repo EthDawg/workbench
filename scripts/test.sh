@@ -12,7 +12,9 @@ suite_plists() {
     | /usr/bin/grep -E '[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}.*\.plist$' | LC_ALL=C sort || true
 }
 SUITES_BEFORE="$(mktemp)"
-trap 'rm -f -- "$SUITES_BEFORE"' EXIT
+# New folders for checks that keep their stores and a receipt in one.
+CHECK_FOLDERS="$(mktemp -d)"
+trap 'rm -f -- "$SUITES_BEFORE"; rm -rf -- "$CHECK_FOLDERS"' EXIT
 suite_plists > "$SUITES_BEFORE"
 python3 scripts/check-surfaces.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-check-surfaces.py
@@ -52,6 +54,8 @@ bash scripts/test-stage.sh --ci
 "$BIN_DIR/LocalVoice" --check-capture-preview
 "$BIN_DIR/LocalVoice" --check-image-workspace
 "$BIN_DIR/LocalVoice" --check-history-library
+# The History journey from #137 at model level: one search, a shared selection, Hand off, a restart.
+"$BIN_DIR/LocalVoice" --check-history-journey "$CHECK_FOLDERS/history-journey"
 "$BIN_DIR/LocalVoice" --check-handoff-jobs
 "$BIN_DIR/LocalVoice" --check-subscription-cli
 "$BIN_DIR/LocalVoice" --check-meetings
