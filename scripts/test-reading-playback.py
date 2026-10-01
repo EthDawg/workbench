@@ -115,6 +115,8 @@ enum AudioRenderer {
     static var holdNextExport = false, writeBeforeHold = false, heldExportCancelled = false
     static var heldExport: CheckedContinuation<Void, Never>?
     static func exportBounded(_ source: URL, to destination: URL) async throws {
+        // Exercise executor latency explicitly so waits cannot rely on rapid yields.
+        try await Task.sleep(nanoseconds: 20_000_000)
         exports.append((source, destination))
         guard holdNextExport else { return }
         holdNextExport = false
@@ -328,8 +330,19 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         func check(_ condition: Bool, _ description: String) throws {
             guard condition else { throw CheckFailure(description: description) }; count += 1
         }
-        func settle(_ condition: () -> Bool = { false }) async {
-            for _ in 0..<500 where !condition() { await Task.yield() }
+        func settle(_ condition: (() -> Bool)? = nil) async {
+            guard let condition else {
+                for _ in 0..<500 { await Task.yield() }
+                return
+            }
+            // Yield counts are not a deadline: a busy CI runner can exhaust them
+            // before an export's executor runs. Wait for the observed state, with
+            // a bounded monotonic deadline; callers still assert the full result.
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while !condition(), clock.now < deadline {
+                try? await Task.sleep(nanoseconds: 1_000_000)
+            }
         }
         func exists(_ url: URL?) -> Bool { url.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
         func highlighted(_ model: ReadingHarness) -> String? {
