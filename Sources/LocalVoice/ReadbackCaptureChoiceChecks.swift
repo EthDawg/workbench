@@ -31,7 +31,7 @@ enum ReadbackCaptureChoiceChecks {
         let image = bitmap.representation(using: .png, properties: [:])!
 
         for scenario in ["cancel", "permission", "late-denial", "close", "replace", "shutdown", "shutdown-settle", "task-cancel", "commit"] {
-            let domain = "Workbench.CaptureChoices.\(UUID().uuidString)"
+            let domain = fm.temporaryDirectory.appendingPathComponent("Workbench.CaptureChoices.\(UUID().uuidString)").path
             let defaults = UserDefaults(suiteName: domain)!
             defer { defaults.removePersistentDomain(forName: domain) }
             let directory = fixture.appendingPathComponent(scenario)

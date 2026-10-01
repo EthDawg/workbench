@@ -207,7 +207,7 @@ enum KeyboardCoachChecks {
         }
         let fresh = VoicePreferences()
         try check([UInt32(1), 2, 5, 7].allSatisfy { fresh.shortcut($0).enabled && fresh.shortcut($0).modifiers == UInt32(optionKey) } && ![UInt32(3), 4, 6].contains { fresh.shortcut($0).enabled }, "only Dictate, Quick controls, Snap & Talk and Present start on, each Option plus one key")
-        let suite = "WorkbenchShortcutChecks.\(UUID().uuidString)"
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchShortcutChecks.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         var previous = VoicePreferences()

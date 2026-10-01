@@ -3,9 +3,9 @@ import Carbon
 
 final class AnnotationMenuTests: XCTestCase {
     private func withFixture(start: Bool = true, _ body: (AppCoordinator, AnnotationMenu) throws -> Void) throws {
-        let suite = "WorkbenchAnnotationMenuTests." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchAnnotationMenuTests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let root = URL(fileURLWithPath: suite, isDirectory: true)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
         let settings = SettingsStore(defaults: defaults)
         settings.value.onboardingComplete = true

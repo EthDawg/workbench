@@ -13,7 +13,7 @@ enum WorkbenchControlChecks {
             count += 1
         }
         do {
-            let suite = "Workbench.ToolbarOrientationChecks." + UUID().uuidString
+            let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.ToolbarOrientationChecks." + UUID().uuidString).path
             let defaults = UserDefaults(suiteName: suite)!
             defer { defaults.removePersistentDomain(forName: suite) }
             let controls = CaptureHUDControls(defaults: defaults)
@@ -296,7 +296,7 @@ enum WorkbenchControlChecks {
         // result's controls, and a row that Keep open brings back waits for the pointer and holds
         // as the kept-open swap does (#211 F1, F8).
         do {
-            let suite = "Workbench.ToolbarResultChecks." + UUID().uuidString
+            let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.ToolbarResultChecks." + UUID().uuidString).path
             guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
             defer { defaults.removePersistentDomain(forName: suite) }
             func toolbar() -> CaptureHUDControls {
@@ -396,7 +396,7 @@ enum WorkbenchControlChecks {
         // Every earlier save keeps its place (#134): a dock by name, this build's launcher centre,
         // #163's glyph edge, a move an earlier build made since, and the resting element alone.
         do {
-            let suite = "Workbench.ToolbarPositionChecks." + UUID().uuidString
+            let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.ToolbarPositionChecks." + UUID().uuidString).path
             guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
             defer { defaults.removePersistentDomain(forName: suite) }
             let screen = NSRect(x: 0, y: 25, width: 1440, height: 875)

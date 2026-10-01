@@ -13,7 +13,7 @@ import ToolbarCore
 
 final class ToolbarSessionTests: XCTestCase {
     @MainActor private func fixture() -> (ToolbarSession, ManualClock, UserDefaults, String) {
-        let domain = "workbench.toolbar.tests." + UUID().uuidString
+        let domain = FileManager.default.temporaryDirectory.appendingPathComponent("workbench.toolbar.tests." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: domain)!
         let clock = ManualClock()
         return (ToolbarSession(defaults: defaults, clock: clock), clock, defaults, domain)

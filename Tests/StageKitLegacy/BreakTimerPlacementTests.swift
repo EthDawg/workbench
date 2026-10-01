@@ -59,9 +59,9 @@ final class BreakTimerPlacementTests {
     }
 
     func testNativeTimerReopensAtItsSavedAnchor() throws {
-        let suite = "WorkbenchTimerNative." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchTimerNative." + UUID().uuidString).path
         let defaults = UserDefaults(suiteName: suite)!
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let root = URL(fileURLWithPath: suite, isDirectory: true)
         defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
         let settings = SettingsStore(defaults: defaults)
         for action in Action.allCases {

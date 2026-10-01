@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 final class BoardPresentationFixture: NSObject, NSApplicationDelegate {
     private let root: URL
-    private let defaultsName = "WorkbenchFixture." + UUID().uuidString
+    private let defaultsName = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchFixture." + UUID().uuidString).path
     private let defaults: UserDefaults
     private let app: AppCoordinator
     private var window: NSWindow?

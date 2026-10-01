@@ -8,7 +8,7 @@ enum HandoffJobsChecks {
         guard !FileManager.default.fileExists(atPath: output.path) else {
             throw VoiceError.message("Choose a new verification output directory; existing evidence was kept.")
         }
-        let suite = "Workbench.synthetic.metadata." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.synthetic.metadata." + UUID().uuidString).path
         guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "handoff.cli.codex")
@@ -81,7 +81,7 @@ enum HandoffJobsChecks {
                 capturedAt: Date(timeIntervalSince1970: 100 + Double(index)), text: "Synthetic visual acceptance source " + name,
                 originalText: "Synthetic visual acceptance source " + name, role: .reference, images: [bytes]))
         }
-        let suite = "Workbench.synthetic.visual." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.synthetic.visual." + UUID().uuidString).path
         guard let defaults = UserDefaults(suiteName: suite) else { throw VoiceError.message("Could not create isolated test preferences.") }
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "handoff.cli.codex")

@@ -43,7 +43,7 @@ enum LocalRefinementChecks {
         let list = "Shopping list:\n• Apples\n• Pears"
         try check(!DictationCleanup.isFaithful("Shopping list: • Apples • Pears", to: list), "flattened list rejected despite matching words")
         try check(DictationCleanup.isFaithful("Shopping list:\n- Apples.\n- Pears.", to: list), "bullet punctuation preserves item boundaries")
-        let suite = "Workbench.RefinementChecks." + UUID().uuidString
+        let suite = FileManager.default.temporaryDirectory.appendingPathComponent("Workbench.RefinementChecks." + UUID().uuidString).path
         guard let defaults = UserDefaults(suiteName: suite) else { throw LocalRefinementError.message("Cannot create isolated test defaults") }
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = CleanupConfigurationStore(defaults: defaults)
