@@ -29,7 +29,7 @@ final class TimerTransportTests {
         try body(app, settings, clock)
     }
 
-    private var timerVisible: Bool { NSApp.windows.contains { $0.title == "Workbench · Break timer" && $0.isVisible } }
+    private var timerVisible: Bool { NSApp.windows.contains { $0.title == "Workbench · Timer" && $0.isVisible } }
 
     /// Lets the periodic countdown update run, as it does between the presenter's clicks.
     private func settle(until ready: () -> Bool = { false }) {
@@ -259,4 +259,69 @@ final class TimerTransportTests {
             XCTAssertTrue(app.boards.isEmpty); XCTAssertFalse(app.isDrawing)
         }
     }
+    /// One name and one word set on every surface (1 October): the Timer menu, the panel's
+    /// Options, Home and the chooser offer the one next step, Show or Hide timer for the
+    /// window alone and Stop timer; never a second Start that silently restarts a running
+    /// countdown. Every surface reads one state line, a finished timer stays until it is
+    /// stopped, and Position is kept before the window has ever opened.
+    func testOneNameAndWordSetFollowTheTimerEverywhere() throws {
+        try withTimer { app, settings, clock in
+            try MainActor.assumeIsolated {
+                settings.value.timerMinutes = 1
+                let stage = StageKitController(coordinator: app)
+                func titles(_ menu: NSMenu) -> [String] { menu.items.map(\.title) }
+                func item(_ menu: NSMenu, _ title: String) throws -> NSMenuItem {
+                    guard let found = menu.items.first(where: { $0.title == title }) else {
+                        throw TimerWordsError.missing(title, titles(menu))
+                    }
+                    return found
+                }
+                XCTAssertEqual(Action.timer.title, "Timer", "The shortcut has the capability's name")
+                // Position is a Timer option, kept before the window first opens.
+                app.setTimerPosition(.topLeft)
+                XCTAssertEqual(app.timerPlacementAnchor, .topLeft, "Position from the panel works before the timer has opened")
+                XCTAssertFalse(timerVisible, "Choosing a position opens nothing")
+
+                XCTAssertEqual(titles(stage.makeTimerMenu()).prefix(1), ["Start Timer"])
+                XCTAssertFalse(titles(stage.makeTimerMenu(optionsOnly: true)).contains("Start Timer"), "The panel row starts it")
+                XCTAssertEqual(stage.timerStateDetail, "")
+                choose(try item(stage.makeTimerMenu(), "Start Timer"))
+                XCTAssertEqual(app.timerTransport, .running)
+                XCTAssertTrue(timerVisible && stage.isTimerShown)
+                let running = titles(stage.makeTimerMenu())
+                XCTAssertEqual(Array(running.prefix(3)), ["Pause Timer", "Hide Timer", "Stop Timer"], "\(running)")
+                XCTAssertFalse(running.contains("Start Timer") || running.contains("Reset Timer") || running.contains("End Timer"),
+                               "No second Start, Reset or End beside the one word set: \(running)")
+                XCTAssertEqual(Array(titles(stage.makeTimerMenu(optionsOnly: true)).prefix(2)), ["Pause Timer", "Hide Timer"],
+                               "The panel's Options keep the next step and Show or Hide; its row stops")
+                XCTAssertEqual(stage.timerStateDetail, "01:00")
+
+                let hide = try item(stage.makeTimerMenu(), "Hide Timer")
+                choose(hide)
+                XCTAssertFalse(timerVisible || stage.isTimerShown, "Hide timer hides the window")
+                XCTAssertEqual(app.timerTransport, .running, "and leaves the countdown running")
+                XCTAssertEqual(stage.timerStateDetail, "01:00 · Hidden")
+                choose(hide)
+                XCTAssertFalse(timerVisible, "A Hide drawn before never shows it again")
+                choose(try item(stage.makeTimerMenu(), "Show Timer"))
+                XCTAssertTrue(timerVisible && stage.isTimerShown, "Show timer brings the window back")
+
+                choose(try item(stage.makeTimerMenu(), "Pause Timer"))
+                XCTAssertEqual(stage.timerStateDetail, "01:00 · Paused")
+                choose(try item(stage.makeTimerMenu(), "Resume Timer"))
+                clock.now += 61
+                settle { app.timerFinished }
+                XCTAssertEqual(stage.timerStateDetail, "Time is up")
+                XCTAssertTrue(stage.hasTimerSession, "A finished timer stays, as its window keeps it, until it is stopped")
+                XCTAssertEqual(titles(stage.makeTimerMenu()).first, "Restart Timer")
+
+                choose(try item(stage.makeTimerMenu(), "Stop Timer"))
+                XCTAssertEqual(app.timerTransport, .idle)
+                XCTAssertFalse(timerVisible || stage.hasTimerSession, "Stop timer ends the countdown and closes its window")
+                XCTAssertEqual(stage.timerStateDetail, "")
+            }
+        }
+    }
 }
+
+private enum TimerWordsError: Error { case missing(String, [String]) }

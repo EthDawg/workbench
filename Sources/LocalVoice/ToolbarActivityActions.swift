@@ -72,17 +72,20 @@ extension FloatingToolbar {
             command(end, id: "persona.end", .persona, identity: stage.personaSessionIdentity.uuidString + end + String(describing: stage.selectedPersonaCopy)) { stage.endPersona() }
         }
         if let identity = meetings.recordingIdentity {
-            command("Stop transcribing", id: "meeting.stop", nil, identity: identity.uuidString) {
+            command("Stop & transcribe", id: "meeting.stop", nil, identity: identity.uuidString) {
                 Task { await meetings.stop(expected: identity) }
             }
         }
         if meetings.isBusy || meetings.hasRecovery {
             command("Open Meetings…", id: "meeting.review", nil) { model.onShowEditor?("meeting") }
         }
+        // The timer's one word set on every surface: its next step, Show or Hide timer for the
+        // window alone, and Stop timer, which ends the countdown and closes its window.
         if stage.hasTimerSession {
-            let step = stage.timerStep
+            let step = stage.timerStep, shown = stage.isTimerShown
             command(step.transport.title + " timer", id: "timer.transport", nil, identity: String(describing: step)) { stage.performTimerTransport(expected: step) }
-            command("End timer", id: "timer.end", nil, identity: String(describing: step)) { stage.stopTimer() }
+            command(shown ? "Hide timer" : "Show timer", id: "timer.visibility", nil, identity: String(describing: step) + String(shown)) { stage.setTimerShown(!shown) }
+            command("Stop timer", id: "timer.stop", nil, identity: String(describing: step)) { stage.stopTimer() }
         }
         return commands
     }
@@ -122,7 +125,7 @@ extension FloatingToolbar {
                 detail: meetings.isRecording ? "Recording" : meetings.isBusy ? "Processing" : "Recording kept for recovery", actions: meeting))
         }
         let timer = actions.filter { $0.id.hasPrefix("timer.") }
-        if !timer.isEmpty { rows.append(.init(id: "timer", title: "Timer", symbol: "timer", detail: stage.timerText, actions: timer)) }
+        if !timer.isEmpty { rows.append(.init(id: "timer", title: "Timer", symbol: "timer", detail: stage.timerStateDetail, actions: timer)) }
         return .init(rows)
     }
 

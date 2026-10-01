@@ -32,7 +32,7 @@ Persona. Starting anything from any door (a key, a panel row, Home, an app menu,
 the toolbar itself) makes it the mode; ending leaves the mode where it was.
 Before anything has ever been started the seed is Dictate, because it works in
 every app with only the microphone. The choice persists across relaunch under
-`workbench.toolbarMode.v1`. Timer is a panel row and a Present option, not a mode.
+`workbench.toolbarMode.v1`. Timer is a panel row and part of Draw, not a mode; its chooser row offers the next step, Show or Hide timer and Stop timer.
 
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle,
 recording, playing, paused, processing, drawing, presenting, a persona, a timer,
@@ -123,7 +123,7 @@ The next action is the label for where you are in the journey, from one pure
 function of what is live (`ToolbarNextAction`) with a fixed priority: what is
 consuming your input now (inserting, dictating, capturing, narrating, drawing,
 reading) whatever the mode, then the selected mode's own step or ending
-(`Capture next · 3`, `Stop transcribing`, `End presentation`, `Hide personas`),
+(`Capture next · 3`, `Stop & transcribe`, `End presentation`, `Hide personas`),
 then its start verb. Another mode's ending never claims the label: presenting
 while Draw is the mode reads `Draw`, the accessible value names live work, and
 the Present chooser row offers `End presentation`. Two identical screens never
@@ -224,12 +224,17 @@ explicit persistent preference.
 Draw has Tools; Present has Prompts, plus View while a presentation is live. View
 contains only the current presentation’s applicable source, motion and window
 controls. End stays the primary/chooser action, and Apple handoffs stay in the
-connection guide. Persona has Choose Persona for a shown card, or Choose Set for
-a running prepared set, plus Next Persona or Next set when more than one frozen
-choice exists. Next advances once without opening a menu. The picker uses frozen
-public labels. Hidden Persona has Show again and no picker/Next; one-item sets
-have no inert Next. Failure preserves the shown artwork and exposes its notice
-through the chooser and picker. Dictate, Read and Snap have no settings accessory.
+connection guide. Persona always has Choose Persona, because the live camera is
+one of its sources beside the saved cards (1 October): the picker lists the cards
+(the shown or kept card's frozen candidates, or the saved cards when nothing is
+live) and then Camera. Choosing Camera is the explicit Start camera and the shown
+card stays up until the first frame; choosing a card ends a live camera and shows
+that card. Restricted camera access leaves Camera disabled. A running prepared set
+has Choose Set instead. Next Persona or Next set appears when more than one frozen
+choice exists and advances once without opening a menu; it never cycles into the
+camera. The picker uses frozen public labels and every choice checks again that
+Persona is as it was drawn. One-item sets have no inert Next. Failure preserves the
+shown artwork and exposes its notice through the chooser and picker. Dictate, Read and Snap have no settings accessory.
 Review and Next act directly; Tools, Prompts, View and Persona selection open their
 focused menus/picker. Space, Return, Enter or Down open admitted menus. The full
 contextual group hides together when it cannot fit; the chooser’s workspace door

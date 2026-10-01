@@ -161,11 +161,14 @@ final class ToolbarGalleryTests: XCTestCase {
         XCTAssertEqual(offered(ToolbarLiveState(mode: .draw)), .tools)
         XCTAssertEqual(offered(ToolbarLiveState(mode: .draw, drawing: true)), .tools)
         XCTAssertEqual(offered(ToolbarLiveState(mode: .present, presenting: true)), .prompts)
-        XCTAssertNil(offered(ToolbarLiveState(mode: .persona)), "no live copy: More opens Persona instead")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .persona)), .personaPicker, "nothing live: the cards and the camera are one click away")
+        for camera in [ToolbarLiveState.Persona.cameraStarting, .cameraShown, .cameraHidden, .cameraFailed] {
+            XCTAssertEqual(offered(ToolbarLiveState(mode: .persona, persona: camera)), .personaPicker, "the camera is one of Persona's choices: \(camera)")
+        }
         XCTAssertNil(offered(ToolbarLiveState(mode: .persona, persona: .session)), "a live set with no copy selected")
         XCTAssertEqual(offered(ToolbarLiveState(mode: .persona, persona: .shown), copy: true), .personaPicker)
         XCTAssertNil(offered(ToolbarLiveState(mode: .persona, persona: .sessionHidden), copy: true), "show a hidden set before cycling")
-        XCTAssertNil(offered(ToolbarLiveState(mode: .persona), copy: true), "show the retained card before cycling")
+        XCTAssertEqual(offered(ToolbarLiveState(mode: .persona), copy: true), .personaPicker, "a kept card is chosen again from the same picker")
         // Whatever is live elsewhere, a tool offers only its own accessory, and these three none.
         for mode in ToolbarMode.allCases {
             let states = [ToolbarLiveState(mode: mode), ToolbarLiveState(mode: mode, dictation: .recording),
@@ -195,11 +198,12 @@ final class ToolbarGalleryTests: XCTestCase {
             if let accessory = state.accessory { XCTAssertEqual(accessory.mode, state.mode, state.name) }
         }
         let modes = Dictionary(uniqueKeysWithValues: ToolbarGallery.modes.filter { $0.tier == .revealed }.map { ($0.mode, $0.accessory) })
-        XCTAssertEqual(modes, [.dictate: nil, .read: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: .prompts, .persona: nil],
-                       "idle, Draw and Present show theirs, and nothing else has one to show")
+        XCTAssertEqual(modes, [.dictate: nil, .read: nil, .snap: nil, .snapAndTalk: nil, .draw: .tools, .present: .prompts, .persona: .personaPicker],
+                       "idle, Draw and Present show theirs, Persona offers its cards and camera, and nothing else has one to show")
         let hidden = ToolbarGallery.states.first { $0.name == "accessory-persona-hidden" }
-        XCTAssertNil(hidden?.accessory)
-        XCTAssertNil(hidden?.quickControl)
+        XCTAssertEqual(hidden?.accessory, .personaPicker, "a kept card is chosen again from the picker")
+        XCTAssertNil(hidden?.quickControl, "Next waits until the card shows")
+        XCTAssertEqual(ToolbarGallery.states.first { $0.name == "accessory-persona-camera" }?.accessoryDescription, "Choose Persona · Camera")
         XCTAssertTrue(ToolbarGallery.accessories.contains { $0.accessory == .personaPicker && $0.anchor.growsLeftward })
     }
 

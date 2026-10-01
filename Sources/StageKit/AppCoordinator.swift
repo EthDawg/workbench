@@ -32,6 +32,8 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     @Published var timerProgress: Double = 1
     @Published var timerFinished = false
     @Published private(set) var timerPlacementAnchor: FloatingControlAnchor?
+    /// Whether the timer's window is on screen. Hiding it leaves the countdown running.
+    @Published private(set) var timerShown = false
     @Published private(set) var timerPlacementNotice: String?
     @Published var shortcutFailures: [Action: String] = [:]
     var onShortcutsChanged: (() -> Void)?
@@ -174,7 +176,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         palette?.orderOut(nil); timerWindow?.orderOut(nil); mainWindow?.orderOut(nil)
         quickPopover?.contentViewController = nil; quickPopover = nil
         palette?.contentView = nil; palette = nil
-        timerWindow?.contentView = nil; timerWindow = nil
+        timerWindow?.contentView = nil; timerWindow = nil; timerShown = false
         mainWindow?.contentView = nil; mainWindow = nil
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         NotificationCenter.default.removeObserver(self)
@@ -631,6 +633,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     }
     func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow, window === mainWindow { finishRecording() }
+        if let window = notification.object as? NSWindow, window === timerWindow { timerShown = false }
     }
     private func refreshPalette() {
         let shouldShow = !embedded && !boardExportInProgress && isDrawing && (!boards.isEmpty ? settings.value.boardPalette != .hide : settings.value.showDrawingPalette)
@@ -658,7 +661,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     func toggleTimer() {
         guard mayBeginInteraction?() != false else { return }
         hideQuickControls()
-        if timerWindow?.isVisible == true { timerWindow?.orderOut(nil); return }
+        if timerWindow?.isVisible == true { hideTimer(); return }
         if !timerSessionStarted { startTimer() } else { showTimer() }
     }
     /// Start and Restart take the normal start path; Pause and Resume keep the window as it is.
@@ -708,9 +711,13 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         countdown.reset(seconds: settings.value.timerMinutes * 60); timerFinished = false
         countdownTimer?.invalidate(); countdownTimer = nil; updateCountdown()
     }
-    func hideTimer() { timerWindow?.orderOut(nil) }
+    func hideTimer() { timerWindow?.orderOut(nil); timerShown = false }
+    /// Show timer: the window of a started countdown, which keeps running meanwhile.
+    func revealTimer() { guard timerSessionStarted else { return }; showTimer() }
+    /// Position is a Timer option, so it is kept even before the window first opens:
+    /// it applies to the display the window is on, or the current one.
     func setTimerPosition(_ anchor: FloatingControlAnchor) {
-        guard let timerWindow, let display = timerDisplay(containing: timerWindow.frame) else { return }
+        guard let display = timerDisplay(containing: timerWindow?.frame ?? .zero) else { return }
         timerPlacement.setAnchor(anchor, on: display)
         timerPlacementAnchor = timerPlacement.value.position.anchor
         timerPlacementNotice = timerPlacement.notice
@@ -738,7 +745,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
     private func showTimer() {
         if timerWindow == nil {
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 570, height: 330), styleMask: [.titled, .closable, .resizable, .miniaturizable, .nonactivatingPanel], backing: .buffered, defer: false)
-            panel.title = "Workbench · Break timer"; panel.titlebarAppearsTransparent = true
+            panel.title = "Workbench · Timer"; panel.titlebarAppearsTransparent = true
             panel.level = .floating; panel.hidesOnDeactivate = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.minSize = NSSize(width: 360, height: 240); panel.isReleasedWhenClosed = false
@@ -746,7 +753,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
             panel.contentView = NSHostingView(rootView: BreakTimerView(app: self, settings: settings)); timerWindow = panel
         }
         restoreTimerPosition()
-        timerWindow?.alphaValue = settings.value.timerOpacity; timerWindow?.orderFrontRegardless()
+        timerWindow?.alphaValue = settings.value.timerOpacity; timerWindow?.orderFrontRegardless(); timerShown = true
     }
     private func timerDisplay(containing frame: NSRect) -> BreakTimerDisplay? {
         let displays = availableTimerDisplays()

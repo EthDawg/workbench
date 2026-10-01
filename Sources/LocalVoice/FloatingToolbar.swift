@@ -152,9 +152,10 @@ struct FloatingToolbar: View {
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
-    /// Draw's Tools, Present's Prompts, and Persona's frozen picker while artwork is shown.
+    /// Draw's Tools, Present's Prompts, and Persona's picker, whose choices are the cards and the
+    /// live camera, so the camera is one click from the revealed pill.
     func accessory(_ live: ToolbarLiveState) -> ToolbarAccessory? {
-        if live.mode == .persona { return stage.personaCycle == nil ? nil : .personaPicker }
+        if live.mode == .persona { return stage.personaPicker == nil ? nil : .personaPicker }
         return ToolbarAccessory.offered(for: live, selectedPersonaCopy: live.mode == .persona && stage.selectedPersonaCopy != nil)
     }
     var quickControl: ToolbarQuickControl? {
@@ -170,8 +171,9 @@ struct FloatingToolbar: View {
     }
     /// The current frozen Persona label or the exact session capture count.
     func accessoryDescription(_ live: ToolbarLiveState) -> String? {
-        if live.mode == .persona, let cycle = stage.personaCycle {
-            return (cycle.isSet ? "Choose set · " : "Choose Persona · ") + cycle.title
+        if live.mode == .persona, let picker = stage.personaPicker {
+            if picker.isSet { return "Choose set · " + picker.title }
+            return picker.title.isEmpty ? "Choose Persona" : "Choose Persona · " + picker.title
         }
         if accessory(live) == .review, let count = live.captureCount {
             return "Review Snap & Talk · \(count) " + (count == 1 ? "capture" : "captures")

@@ -124,6 +124,8 @@ ENTRY_POINTS = [
     # the shown card's controls on the same page.
     ('StageKit/PersonaCamera.swift', 'PersonaCameraPanel', 'Persona live camera', 'controls'),
     ('StageKit/Persona.swift', 'PersonaLibrary.cameraItems', 'Persona camera menu', 'controls'),
+    # The pill's one Persona picker offers the cards and the live camera beside them.
+    ('StageKit/Persona.swift', 'PersonaLibrary.makeToolbarPickerMenu', 'floating toolbar Persona picker', 'controls'),
     ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
     ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
@@ -164,6 +166,8 @@ ENTRY_POINTS = [
     # onOpenPacks, counts because the page cannot know where it leads.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page', 'doors'),
     ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingWorkspaceView', 'meeting page', 'doors'),
+    # Meetings owns its offer to start when a call begins (Grammar: options live with their capability).
+    ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingDetectionSettings', 'meeting page', 'page'),
     ('LocalVoice/ReadbackView.swift', 'ReadbackView', 'snap & talk page', 'doors'),
     ('LocalVoice/SnapWorkspaceView.swift', 'SnapWorkspaceView', 'snap page', 'doors'),
     # History is one page made of several views: its header, the transcript,

@@ -9,7 +9,7 @@ struct ControlCenter: View {
     @ObservedObject var app: AppCoordinator
     @ObservedObject var settings: SettingsStore
     @State private var choosingPersonas = false
-    private let tabs: [(String, String)] = [("Present", "play.rectangle"), ("Drawing", "pencil.tip"), ("Pointer", "cursorarrow.rays"), ("Boards", "rectangle.on.rectangle"), ("Break timer", "timer"), ("Shortcuts", "command")]
+    private let tabs: [(String, String)] = [("Present", "play.rectangle"), ("Drawing", "pencil.tip"), ("Pointer", "cursorarrow.rays"), ("Boards", "rectangle.on.rectangle"), ("Timer", "timer"), ("Shortcuts", "command")]
     var body: some View {
         HStack(spacing: 0) {
             if !app.embedded {
@@ -94,7 +94,7 @@ struct ControlCenter: View {
                         case "Drawing": drawing
                         case "Pointer": pointer
                         case "Boards": boardSettings
-                        case "Break timer": timerSettings
+                        case "Timer": timerSettings
                         case "Shortcuts": shortcuts
                         default: present
                         }
@@ -136,7 +136,7 @@ struct ControlCenter: View {
             HStack(spacing: 10) {
                 utilityButton("Cursor", detail: app.pointerEnabled ? "Highlight is on" : "Help them follow", symbol: "cursorarrow.rays", active: app.pointerEnabled) { app.perform(.pointer) }
                 utilityButton("Whiteboard", detail: "Explain an idea", symbol: "rectangle") { app.perform(.whiteboard) }
-                utilityButton("Break timer", detail: "Keep the room on time", symbol: "timer") { app.perform(.timer) }
+                utilityButton("Timer", detail: "Keep the room on time", symbol: "timer") { app.perform(.timer) }
             }
         }
     }
@@ -294,7 +294,7 @@ struct ControlCenter: View {
                 // One transport action for the current state: Start, Pause, Resume or Restart, and
                 // only the one it shows (#174).
                 let transport = TimerTransportAction(app)
-                Button { transport() } label: { Label(transport.transport == .idle ? "Start break" : transport.transport.title, systemImage: transport.transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
+                Button { transport() } label: { Label(transport.transport.title + " timer", systemImage: transport.transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
                 Button("Reset") { app.resetTimer() }.controlSize(.large)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .timer).label)
             }
@@ -480,7 +480,7 @@ struct BreakTimerView: View {
         GeometryReader { geometry in
             VStack(spacing: 12) {
                 Spacer(minLength: 8)
-                TextField("Break message", text: $settings.value.timerMessage).textFieldStyle(.plain)
+                TextField("Message", text: $settings.value.timerMessage).textFieldStyle(.plain)
                     .multilineTextAlignment(.center).font(.system(size: max(14, geometry.size.width * 0.034), weight: .medium))
                     .foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.7))
                 Text(app.timerFinished ? "00:00" : app.timerText)

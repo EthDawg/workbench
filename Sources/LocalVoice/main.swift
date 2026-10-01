@@ -449,8 +449,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(pageItem("readback")); menu.addItem(pageItem("personas")); menu.addItem(pageItem("history"))
-        menu.addItem(pageItem("library", key: "l")); menu.addItem(pageItem("meeting", more: true))
+        // Every sidebar page, in the sidebar's order and by its name, so the Window menu's doors never
+        // differ from the window's own list (#134).
+        menu.addItem(pageItem("dictate")); menu.addItem(pageItem("meeting", more: true)); menu.addItem(pageItem("speak"))
+        menu.addItem(pageItem("snap")); menu.addItem(pageItem("readback")); menu.addItem(pageItem("annotate"))
+        menu.addItem(pageItem("present")); menu.addItem(pageItem("personas"))
+        menu.addItem(.separator())
+        menu.addItem(pageItem("history")); menu.addItem(pageItem("library", key: "l"))
         windows.submenu = menu; main.addItem(windows)
         let help = NSMenuItem(); help.title = "Help"
         let helpMenu = NSMenu(title: "Help")

@@ -225,7 +225,7 @@ struct QuickControlsView: View {
                     Button("\(Int(value)) min") { settings.value.timerMinutes = value }.frame(maxWidth: .infinity)
                 }
             }
-            TextField("Break message", text: $settings.value.timerMessage).textFieldStyle(.roundedBorder)
+            TextField("Message", text: $settings.value.timerMessage).textFieldStyle(.roundedBorder)
             HStack(spacing: 8) {
                 // Start and Restart show the timer, so these controls step aside first. The button
                 // performs the step it shows, and only that (#174).

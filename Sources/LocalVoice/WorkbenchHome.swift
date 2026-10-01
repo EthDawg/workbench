@@ -200,7 +200,8 @@ struct WorkbenchHome: View {
                     catch { model.handoffJobs.error = error.localizedDescription }
                 })
                 case "meeting": MeetingWorkspaceView(model: model.meetings, engineName: model.modelMessage,
-                    openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) })
+                    openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) },
+                    openModels: { model.page = "models" })
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
                 case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
                 case "personas": stage.personasView
@@ -324,7 +325,8 @@ struct WorkbenchHome: View {
                 ScrollView { KeyboardCoachView(model: keyboard) }
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
+                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()
@@ -345,36 +347,42 @@ struct WorkbenchHome: View {
                     if let notice = stage.notice(on: .general) {
                         Text(notice).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                     }
-                    // Appearance first: the suite's look, and the one floating-toolbar switch the panel,
-                    // the Window menu and the toolbar's own Hide toolbar share (#134).
                     VStack(alignment: .leading, spacing: 8) {
                         WorkbenchSectionTitle("Appearance")
                         WorkbenchAppearancePicker().fixedSize()
+                    }
+                    // The one floating-toolbar switch the panel, the Window menu and the toolbar's own
+                    // Hide toolbar share (#134), with the toolbar's own choices grouped under it.
+                    VStack(alignment: .leading, spacing: 8) {
                         Toggle("Floating toolbar", isOn: $model.floatingToolbarVisible).toggleStyle(.switch)
                             .help(WorkbenchHome.floatingToolbarHelp)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("settings.toolbar.visibility", $0) }
+                        ToolbarSettingsView(model: model).padding(.leading, 18)
                     }
-                    ToolbarSettingsView(model: model)
                     Toggle("Open Workbench at login", isOn: Binding(get: { loginEnabled }, set: { value in
                         do { if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginEnabled = SMAppService.mainApp.status == .enabled }
                         catch { loginError = error.localizedDescription }
-                    }))
+                    })).toggleStyle(.switch)
                     if let loginError { Text(loginError).foregroundStyle(.orange) }
                     Divider()
                     WorkbenchUpdateSettings()
                     Divider()
-                    MeetingDetectionSettings(model: model.meetings)
-                    Divider()
-                    HStack(spacing: 12) {
-                        // Opens Dictate on its options and focuses them (#134).
-                        Button("Dictate settings…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
-                        // Until the first dictation, Home's guide can be asked for here too (#15).
-                        if !HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide).hasDictated {
-                            Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
+                    // Each capability keeps its options on its own page: Meetings holds Detect Meetings
+                    // & Calls and Read its voice, so General names only Dictate's door (#134).
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 12) {
+                            // Opens Dictate on its options and focuses them (#134).
+                            Button("Dictate settings…") { model.focusRequest = PageFocusRequest(target: .dictateOptions); model.page = "dictate" }
+                            // Until the first dictation, Home's guide can be asked for here too (#15).
+                            if !HomeJourney(transcripts: model.history.count, guide: model.preferences.firstDictationGuide).hasDictated {
+                                Button("Show me a first dictation") { model.preferences.firstDictationGuide = .offered; model.page = "home" }
+                            }
                         }
+                        Text("Delivery, text style, shortcut, activation and your dictionary.").font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("Delivery, text style and your dictionary stay together in Dictate settings.").font(.caption).foregroundStyle(.secondary)
-                    Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
+                    if Workbench.isPreview {
+                        Text("Workbench and Workbench Preview keep separate libraries. Your previous Voice and StageMark data remains in place.").font(.caption).foregroundStyle(.secondary)
+                    }
                     Divider()
                     FounderIntroductionCard(model: introduction, canDismiss: false)
                 }.padding(Workbench.pagePadding).frame(maxWidth: .infinity, alignment: .leading) }
@@ -590,7 +598,7 @@ struct WorkbenchHomePage: View {
     private var hasCurrentWork: Bool {
         dictationLive || readingLive || model.readingFailure != nil || !model.ready
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
-            || personaControl.isCurrentWork || stage.hasActiveTimer || meetings.isBusy || jobs.isBusy
+            || personaControl.isCurrentWork || stage.hasTimerSession || meetings.isBusy || jobs.isBusy
     }
     /// Active input first, then stopped reading and other running or resumable work, each with its
     /// own truthful action. Leaving Home collapses, acknowledges or discards none of it.
@@ -636,9 +644,10 @@ struct WorkbenchHomePage: View {
                         .id(persona.operation).disabled(!persona.isEnabled)
                 }
             }
-            if stage.hasActiveTimer {
-                // Pause, Stop and Reset live in the Timer menu the panel already uses.
-                liveRow("Timer · " + stage.timerText, "timer") { NativeControlMenu(title: "Timer") { stage.makeTimerMenu() }.frame(width: 64, height: 24) }
+            if stage.hasTimerSession {
+                // The timer's next step, Show or Hide timer and Stop timer, in the one Timer menu.
+                // A finished countdown stays here until it is stopped, as its window keeps it.
+                liveRow("Timer · " + stage.timerStateDetail, "timer") { NativeControlMenu(title: "Timer") { stage.makeTimerMenu() }.frame(width: 64, height: 24) }
             }
             if jobs.isBusy {
                 liveRow("Running · " + (jobs.jobs.first { $0.id == jobs.activeID }?.title ?? "Hand off task"), "arrow.up.forward.app") {
@@ -680,7 +689,7 @@ struct WorkbenchHomePage: View {
             }
             Spacer()
             if !model.preparing { Button("Retry model") { Task { await model.prepare() } } }
-            Button("Speech settings") { model.page = "models" }
+            Button("Models…") { model.page = "models" }
         }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
     }
 

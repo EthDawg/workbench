@@ -252,7 +252,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .showPersonaCamera: return "Show camera again"
         case .retryPersonaCamera: return "Try again"
         case .captureNext: return "Capture next · \(live.captureCount ?? 0)"
-        case .stopMeetingTranscription: return "Stop transcribing"
+        case .stopMeetingTranscription: return "Stop & transcribe"
         case .endPresentation: return "End presentation"
         case .wait: return live.dictation == .cancelling ? "Cancelling…" : live.dictation == .processing || live.dictation == .waitingForDrawing ? "Processing…" : "Capturing…"
         case .start(let mode):

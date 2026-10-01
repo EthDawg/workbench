@@ -54,6 +54,21 @@ actor RecognitionEngine {
     private var preparation: Task<AsrManager, Error>?
     private var preparedConfiguration: RecognitionConfiguration?
     private var transcribing = false
+    /// Told what a model setup is doing now, from whichever door started it: Home, Settings ›
+    /// Models or a first transcription. Each word is the person's, never a file name.
+    private var progressObserver: (@Sendable (String) -> Void)?
+    func observeProgress(_ observer: @escaping @Sendable (String) -> Void) { progressObserver = observer }
+    /// One line for a download step: checking the files, the share downloaded, then the
+    /// one-time preparation for this Mac.
+    static func progressLine(_ progress: DownloadProgress, model: String = "Parakeet") -> String {
+        switch progress.phase {
+        case .listing: return "Checking \(model) files…"
+        case .downloading:
+            let percent = Int((min(1, max(0, progress.fractionCompleted)) * 100).rounded(.down))
+            return "Downloading \(model) · \(percent)%"
+        case .compiling: return "Preparing \(model) for this Mac…"
+        }
+    }
 
     init(store: RecognitionConfigurationStore = RecognitionConfigurationStore()) {
         self.store = store
@@ -89,8 +104,11 @@ actor RecognitionEngine {
                 let task: Task<AsrManager, Error>
                 if let preparation { task = preparation }
                 else {
+                    let observer = progressObserver
                     task = Task {
-                        let models = try await AsrModels.downloadAndLoad(version: .v2)
+                        let models = try await AsrModels.downloadAndLoad(version: .v2, progressHandler: { progress in
+                            observer?(RecognitionEngine.progressLine(progress))
+                        })
                         try Task.checkCancellation()
                         let engine = AsrManager(config: .default)
                         try await engine.loadModels(models)

@@ -137,7 +137,7 @@ enum ShortcutMigrationChecks {
             try saveStage(["timer": option(kVK_ANSI_Y)], to: stage)
             let (v, s) = load(voice, stage), catalogue = entries(v, s)
             let failures = ShortcutConflict.duplicateFailures(in: catalogue)
-            try check(failures["voice.6"]?.contains("Break timer") == true && failures["stage.timer"]?.contains("Read") == true, "both duplicate rows name the other saved action")
+            try check(failures["voice.6"]?.contains("Timer") == true && failures["stage.timer"]?.contains("Read") == true, "both duplicate rows name the other saved action")
             try check(failures.values.allSatisfy { $0.contains("paused") && $0.contains("Settings › Keyboard") }, "collision errors explain the pause and repair route")
             let registration = ShortcutConflict.voiceRegistrationPreferences(v, failures: failures)
             try check(!registration.shortcut(6).enabled && v.shortcut(6).enabled && stageKey("timer", in: s).enabled, "registration pauses Voice without changing either saved choice")

@@ -62,6 +62,7 @@ struct TestRunner {
                 ("camera stall and disconnection need explicit retry", suite.testStalledAndDisconnectedFeedsRecoverOnlyOnExplicitRetry),
                 ("camera in use is reported, not taken", suite.testABusyCameraIsReportedInsteadOfTaken),
                 ("camera choice starts only the chosen camera", suite.testChoosingAnotherCameraStartsOnlyThatOneAndDropsTheOldFeed),
+                ("camera is a choice in the pill's Persona picker", suite.testThePillPickerOffersTheCameraBesideTheCards),
                 ("camera gone while hidden is named, never replaced", suite.testShowAgainAfterTheChosenCameraHasGoneNamesItAndOpensNoOther),
                 ("camera End overlays shortcut ends the live source", suite.testEndOverlaysShortcutEndsTheLiveCameraAndKeepsTheReplacedCard),
                 ("camera keeps saved and prepared artwork", suite.testTheCameraTakesTheSlotWithoutLosingSavedOrPreparedArtwork),
@@ -488,7 +489,8 @@ struct TestRunner {
                 ("timer finished restarts through the normal start path", timerTransport.testFinishedOffersRestartThroughTheNormalStartPath),
                 ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
                 ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
-                ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms)
+                ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms),
+                ("timer one name and word set on every surface", timerTransport.testOneNameAndWordSetFollowTheTimerEverywhere)
             ]
             for (name, test) in tests {
                 let before = assertionFailures
@@ -653,6 +655,7 @@ struct TestRunner {
             ("timer paused resume and visibility-only shortcut", timerTransport.testPausedResumeKeepsItsTimeAndTheShortcutOnlyShowsOrHides),
             ("timer transport keeps marks and boards", timerTransport.testTransportLeavesMarksAndBoardsAlone),
             ("timer controls perform only the transport they showed", timerTransport.testAShownTransportIsTheOnlyOneItPerforms),
+            ("timer one name and word set on every surface", timerTransport.testOneNameAndWordSetFollowTheTimerEverywhere),
             ("full-height frame persistence and edges", viewportFit.testFullHeightSurvivesSavingAndReachesBothEdges),
             ("maximum frame size across displays", viewportFit.testMaximumSizeFitsDisplayAndPreservesScreenShape),
             ("full-height export and live geometry", viewportFit.testExportAndLiveScreenUseFullHeightBorder),
@@ -690,6 +693,7 @@ struct TestRunner {
                 ("persona camera stall and disconnection", personaCamera.testStalledAndDisconnectedFeedsRecoverOnlyOnExplicitRetry),
                 ("persona camera in use is reported, not taken", personaCamera.testABusyCameraIsReportedInsteadOfTaken),
                 ("persona camera choice starts only that camera", personaCamera.testChoosingAnotherCameraStartsOnlyThatOneAndDropsTheOldFeed),
+                ("persona camera is a choice in the pill's Persona picker", personaCamera.testThePillPickerOffersTheCameraBesideTheCards),
                 ("persona camera gone while hidden is named, never replaced", personaCamera.testShowAgainAfterTheChosenCameraHasGoneNamesItAndOpensNoOther),
                 ("persona camera End overlays shortcut ends the live source", personaCamera.testEndOverlaysShortcutEndsTheLiveCameraAndKeepsTheReplacedCard),
                 ("persona camera keeps saved and prepared artwork", personaCamera.testTheCameraTakesTheSlotWithoutLosingSavedOrPreparedArtwork),

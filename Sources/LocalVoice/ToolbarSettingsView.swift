@@ -15,8 +15,8 @@ private struct ToolbarSettingsControls: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controls: CaptureHUDControls
     var body: some View {
+        // Grouped under General's Floating toolbar switch, which names the group.
         VStack(alignment: .leading, spacing: 8) {
-            WorkbenchSectionTitle("Floating toolbar")
             Toggle("Keep open", isOn: Binding(get: { controls.toolbar.state.keepsOpen }, set: {
                 controls.toolbar.setKeepsOpen($0)
             })).toggleStyle(.switch)

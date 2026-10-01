@@ -33,7 +33,7 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
         }
     }
     /// The toolbar mode for this capability. Timer has none:
-    /// it is a panel row and a Present option, never a toolbar mode.
+    /// it is a panel row and part of Draw, never a toolbar mode.
     var mode: ToolbarMode? {
         switch self {
         case .dictate: return .dictate
@@ -400,7 +400,8 @@ struct WorkbenchControlContext {
         case .dictate:
             if state.meetingBusy { return "Finish the meeting recording or transcription before dictating." }
             if readback.blocksDictation { return "Finish Snap & Talk before dictating." }
-            if !model.ready { return "Prepare speech in Workbench." }
+            // The one readiness line: a setup's progress, or why it stopped, then where to act.
+            if !model.ready { return model.modelMessage + (model.preparing ? "" : " · Settings › Models") }
             return model.preferences.cleanup.rawValue + " · " + (model.preferences.delivery == .clipboard ? "Copy text"
                 : model.accessibilityGranted ? "Paste in a Mac field" : "Copy for ⌘V until automatic paste is approved")
         case .snap: return snap?.isBusy == true ? "Finish or cancel the current Snap first." : "Capture a region of the screen into Snap."
@@ -416,7 +417,7 @@ struct WorkbenchControlContext {
         case .annotate: return state.drawing ? stage.drawingToolTitle + " · Stop keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
         case .present: return state.presenting ? "End the scene; it stays saved." : "Present your selected device scene."
         case .persona: return state.personaDetail
-        case .timer: return state.timerStarted ? stage.timerText : "Start your saved timer."
+        case .timer: return state.timerStarted ? stage.timerStateDetail : "Start your saved timer."
         case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }
     }

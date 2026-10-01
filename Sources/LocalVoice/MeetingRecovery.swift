@@ -113,7 +113,12 @@ struct MeetingProcessor {
             let segments = try await MeetingFileWork.run { try MeetingMixer.writeSegments(tracks: tracks, session: session) }
             try check()
             guard !segments.isEmpty else {
-                throw MeetingError.message("This recording was too short to transcribe. Its original audio was kept.")
+                // Nothing long enough to recognise is settled like silence, so it is never
+                // offered for retry again. Its audio stays until the person removes it.
+                var next = manifest
+                next.state = .recognized; next.failure = "This recording was too short to transcribe. Its original audio was kept."
+                try await persist(next, replacing: manifest)
+                return Outcome(manifest: next, committed: false, notes: notes(next))
             }
             var next = manifest
             next.segments = segments; next.state = .segmented; next.failure = nil
@@ -153,7 +158,7 @@ struct MeetingProcessor {
             var next = manifest
             next.failure = "No speech was recognised. Original audio was kept in the Meetings folder."
             try await persist(next, replacing: manifest)
-            return Outcome(manifest: next, committed: false, notes: notes(next) + [next.failure!])
+            return Outcome(manifest: next, committed: false, notes: notes(next))
         }
         try check()
         let conversation = await separatedConversation(manifest)

@@ -103,6 +103,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var ready = false
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
+    /// Why the speech model could not be prepared, for Settings › Models beside its Try again.
+    @Published var modelFailure: String?
     @Published var status = "Ready when you are."
     /// What needs attention, with the page that shows it in full. It is raised only with
     /// `report(_:on:)`, so its page is chosen where the problem happens (#134).
@@ -204,9 +206,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
     private func invalidateAudio() { stopPlayback(); audio?.discard(); audio = nil }
+    /// What Read's Cancel ends: audio being made, or Save audio's whole run, whose
+    /// export continues after the audio is made.
+    var canCancelReading: Bool { readingGenerationActive || savingAudio }
     func cancelReading() {
-        guard readingGenerationActive else { return }
-        let mayBeBilled = readingProvider == .speko
+        guard canCancelReading else { return }
+        // Only making audio sends text to Speko; an export sends nothing.
+        let mayBeBilled = readingGenerationActive && readingProvider == .speko
+        let cancelled = savingAudio ? "Save audio cancelled." : "Reading generation cancelled."
         let task = readingTask
         if savingAudioID == readingGenerationID { savingAudioID = nil }
         readingGenerationID = nil
@@ -216,7 +223,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         rendering = false
         task?.cancel()
         pendingRender?.cancel(); pendingRender = nil
-        status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
+        status = mayBeBilled ? cancelled + " Speko may still bill text already accepted." : cancelled
     }
     @Published private(set) var readingGenerationActive = false
     /// Save audio's whole run, from making the audio to writing the file.
@@ -310,6 +317,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         self.preferences = preferences
         super.init()
         Self.intentModel = self
+        // Any door that prepares the speech model shows its progress in the one readiness
+        // line Home, the panel and Dictate read.
+        let engine = self.engine, sink = ModelProgressSink(self)
+        Task { await engine.observeProgress { line in Task { @MainActor in sink.model?.showModelProgress(line) } } }
         photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled() }
         refreshPhotoHandoffIfEnabled()
@@ -364,12 +375,23 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
 
+    /// A model setup's progress, shown while speech is not ready yet.
+    func showModelProgress(_ line: String) {
+        guard !ready else { return }
+        modelMessage = line
+    }
+
     func prepare() async {
         guard !preparing, !ready else { return }
-        preparing = true; modelMessage = "Preparing speech · first setup may take a few minutes"
+        preparing = true; modelFailure = nil; modelMessage = "Preparing speech · first setup may take a few minutes"
         do { try await engine.prepare(); ready = true; modelMessage = await engine.statusDescription() }
-        // Retry model is on Home's engine banner, so Home owns the failure (#134 review).
-        catch { modelMessage = "Speech model needs attention"; report("Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)", on: .home) }
+        // Retry model is on Home's engine banner, so Home owns the failure (#134 review); Settings
+        // › Models shows the same reason beside its own Try again.
+        catch {
+            modelFailure = error.localizedDescription
+            modelMessage = "The speech model couldn’t be prepared"
+            report("Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)", on: .home)
+        }
         preparing = false
     }
 
@@ -549,7 +571,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard phase == .idle, ready, !rendering else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
-            captureFailure = reason; status = reason; return
+            // Dictate's banner shows it beside the page's mic, as admitNewCapture's refusals are.
+            captureFailure = reason; report(reason, on: .dictate); status = reason; return
         }
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
@@ -1019,10 +1042,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         onPhaseChange?()
     }
     func openTranscript(_ item: Transcript) {
-        guard phase == .idle else {
-            report("Finish the current dictation or processing before replacing its draft.", on: .dictate)
-            return
-        }
+        // The wait is said on History, where Open was clicked.
+        let wait = "Finish the current dictation or processing before replacing its draft."
+        guard phase == .idle else { report(wait, on: .history); return }
+        // History's notice has no Dismiss, so an Open that goes ahead takes its earlier wait away.
+        if attention == Attention(message: wait, page: .history) { attention = nil }
         page = "dictate"
         if (!transcript.isEmpty || !rawTranscript.isEmpty) && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
             pendingTranscript = item
@@ -1358,8 +1382,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 try await AudioRenderer.exportBounded(url, to: destination)
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
+                // A Cancel that landed as the file was written leaves no file behind.
+                guard !Task.isCancelled, readingGenerationID == generationID else {
+                    try? FileManager.default.removeItem(at: destination); throw CancellationError()
+                }
                 status = "Audio saved to \(destination.lastPathComponent)."
                 completion?(status)
             } catch {
@@ -1698,4 +1724,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // Quit stops work. Only a durable capture commit or explicit Cancel may
         // delete the owned audio/journal; the next launch discovers unfinished work.
     }
+}
+
+/// Carries model-setup progress from the recognition engine back to the app's one model,
+/// without keeping it alive.
+private final class ModelProgressSink: @unchecked Sendable {
+    weak var model: AppModel?
+    init(_ model: AppModel) { self.model = model }
 }
