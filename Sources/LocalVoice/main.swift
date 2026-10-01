@@ -169,7 +169,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         readback.mayBeginCapture = { [weak self] in
             guard let self else { return "Workbench is unavailable." }
-            return self.model.phase == .idle && !self.model.rendering && !self.shortcutsSuspended && !self.model.meetings.isBusy && !self.snap.isCapturing
+            if self.shortcutsSuspended { return "Finish changing the shortcut before starting Snap & Talk." }
+            if self.snap.isCapturing { return "Finish the current Snap before starting Snap & Talk." }
+            return self.model.phase == .idle && !self.model.rendering && !self.model.meetings.isBusy
                 ? nil : "Finish the current dictation, reading or meeting before starting Snap & Talk narration."
         }
         readback.onEditShortcut = { [weak self] in self?.navigate("shortcuts") }
@@ -577,9 +579,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard readback.sessionURL != nil, readback.permissionsReady, readback.currentSessionProblem == nil else {
             navigate("readback"); return
         }
-        if let reason = readback.mayBeginCapture?() {
-            readback.notice = reason; navigate("readback"); return
-        }
+        // Refused by other work: say so where Snap & Talk's notices show, without leaving
+        // what the person is doing (navigating would end a shortcut being changed).
+        if let reason = readback.mayBeginCapture?() { readback.notice = reason; return }
         closeControls(); window.orderOut(nil)
         Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }

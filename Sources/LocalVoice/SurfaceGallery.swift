@@ -2775,12 +2775,12 @@ enum SurfaceGallery {
         let words = "A recording was recovered. Use Retry transcription."
         let results: [(name: String, kind: FloatingResult, show: () -> Void, clear: () -> Void)] = [
             ("A dictation failure", .dictationFailure, { self.model.captureFailure = words }, { self.model.dismissCaptureFailure() })]
-        let readings: [(state: String, start: () -> Void, action: String)] = [
-            ("preparing", { self.model.rendering = true }, "Cancel"),
-            ("playing", { self.model.playing = true }, "Pause reading"),
-            // A paused reading consumes nothing, so in Dictate the row keeps Dictate's own action;
-            // the result is still held back and Resume reading stays in the chooser's Read row.
-            ("paused", { self.model.paused = true }, "Dictate")]
+        // A paused reading belongs to Read. In Dictate it neither leads the row nor holds Dictate's own
+        // failure back, and Resume reading stays in the chooser's Read row.
+        let readings: [(state: String, start: () -> Void, action: String, holdsBack: Bool)] = [
+            ("preparing", { self.model.rendering = true }, "Cancel", true),
+            ("playing", { self.model.playing = true }, "Pause reading", true),
+            ("paused", { self.model.paused = true }, "Dictate", false)]
         func pendingIdentity() -> FloatingResult.Identity? { FloatingResult.pending(model)?.identity(in: model) }
         model.toolbarMode = .dictate
         for result in results {
@@ -2801,8 +2801,9 @@ enum SurfaceGallery {
                     collapse()
                     result.clear(); endReading(); settle(.resting)
                     return [
-                        row ? nil : "the pointer's reveal showed the older result over the reading",
-                        reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
+                        row == reading.holdsBack ? nil : reading.holdsBack ? "the pointer's reveal showed the older result over the reading"
+                            : "the pointer's reveal held Dictate's failure back behind a paused reading",
+                        !reading.holdsBack || reads == reading.action ? nil : "the revealed row reads \(described(reads)), not \"\(reading.action)\"",
                         goesOn ? nil : "revealing ended the reading",
                         warning.contains("Needs attention") ? "saved recovery leaked into live activity" : nil,
                         recovery ? nil : "The chooser lost the result's recovery route",
