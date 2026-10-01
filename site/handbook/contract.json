@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "visual-experiences",
   "title": "A desktop and a presentation are different commitments",
-  "reviewedOn": "2026-09-29",
+  "reviewedOn": "2026-10-01",
   "implementationRevision": "bca3ecf1d7bbc0152f88c0dfb5083835189f8c85",
   "scope": "Presentation preparation, independent Persona overlays, deliberate Snap capture and history, break-timer placement, desktop appearance and coordination with annotation and Mac audio workflows. Issue #112 capabilities were first published in Workbench 2.2.0 build 20260927101737 from source f2b8dfa, and Workbench 2.3.0 build 20260928035156 from source 6392286 adds the persona voice ring and the 28 September features. The notarized archives and remaining hardware and fresh-Mac limits are recorded in docs/releases/2026-09-27-capability-preview.md and docs/releases/2026-09-28-workbench-2.3.0.md. Earlier evidence entries retain their original source and test boundaries. App-wide history, assistant and meeting contracts are in docs/workbench.md and docs/product-spec.md.",
   "statusMeaning": {
@@ -31,31 +31,41 @@
       "id": "persona-workspace",
       "name": "Use Persona independently of a presentation",
       "status": "implemented",
-      "entry": "Workbench → Persona; Home → Me; existing scene-specific persona selector",
+      "entry": "Workbench → Persona; chooser → Open Persona…; Home → Me; existing scene-specific persona selector",
       "effect": "Show saved artwork immediately from its own workspace. Hide/resume retains a prepared arrangement and per-copy visibility; End releases live overlays. A scene keeps its own frozen persona binding. Optional React to my voice outlines the shown persona, or a prepared set's selected overlay, with a quiet line that brightens while the presenter speaks. Home’s local Me profile references a saved Persona. Taking or choosing a photo opens an appearance draft; Use photo saves it. Photo replacement preserves the Persona identity, groups and artwork already used by scenes or shown copies.",
       "limit": "Mac screen-positioned artwork, not browser-tab attachment. React to my voice meters loudness only while its persona shows and records nothing; it owns no recording and adds no saved-library schema or app identity. Live browser/window persistence, click-through, physical display recovery and receiver behavior remain native checks. Taking a profile photo requests Camera access explicitly; no account, remote profile or automatic camera access is introduced. Native camera capture and denial remain separate acceptance checks.",
       "source": "Sources/StageKit/PersonaLibraryView.swift",
-      "evidence": "At a2b6513, 16 focused workspace/quick/control tests with 418 assertions passed, including parent rerun. Offscreen 620px and 834px workspace layouts were reviewed with synthetic artwork. Signed Preview 9d4aff1 passed combined navigation and Persona display/hide. Focus, click-through, physical display recovery and receiver checks remain open; see docs/releases/2026-09-27-capability-preview.md. React to my voice at 413a397: 11 focused tests (104 assertions); a signed Preview native check opened the microphone only while the ring was on and its persona showed, closed it within 3 ms of hide, off, the persona key and Quit, and kept recording beside Dictate, narration and meeting capture settings; see docs/verification/2026-09-28-persona-voice-ring.md. At bca3ecf, the integrated local suite passed 243 StageKit tests / 4,808 assertions, and the surface gallery passed 260 renders with zero flags. Signed Preview build 20260929121540 passed Home profile choose-photo and Cancel without changing Me. The final microphone probe received zero-valued audio while the lid was closed; speech response and camera capture remain unverified. See docs/verification/2026-09-29-mac-experience/README.md for the exact source, installed checks and limits."
+      "evidence": "At a2b6513, 16 focused workspace/quick/control tests with 418 assertions passed, including parent rerun. Offscreen 620px and 834px workspace layouts were reviewed with synthetic artwork. Signed Preview 9d4aff1 passed combined navigation and Persona display/hide. Focus, click-through, physical display recovery and receiver checks remain open; see docs/releases/2026-09-27-capability-preview.md. React to my voice at 413a397: 11 focused tests (104 assertions); a signed Preview native check opened the microphone only while the ring was on and its persona showed, closed it within 3 ms of hide, off, the persona key and Quit, and kept recording beside Dictate, narration and meeting capture settings; see docs/verification/2026-09-28-persona-voice-ring.md. At bca3ecf, the integrated local suite passed 243 StageKit tests / 4,808 assertions, and the surface gallery passed 260 renders with zero flags. Signed Preview build 20260929121540 passed Home profile choose-photo and Cancel without changing Me. The final microphone probe received zero-valued audio while the lid was closed; speech response and camera capture remain unverified. See docs/verification/2026-09-29-mac-experience/README.md for the exact source, installed checks and limits. Overflow removal source and offscreen evidence is tracked in docs/verification/2026-09-30-pill-actions.md; combined installed acceptance remains pending."
+    },
+    {
+      "id": "persona-camera",
+      "name": "Show a local webcam bubble",
+      "status": "implemented",
+      "entry": "Workbench → Persona → Camera → Start camera",
+      "effect": "Show a mirrored camera in Persona’s movable, resizable circle. Hide releases capture and keeps the place for Show camera again; End, Quit and sleep release it. Existing artwork and prepared layouts remain intact. Every live Persona door follows the same camera visit.",
+      "limit": "Local video preview only: no recording, microphone, saved photograph or network stream. Choosing a source starts nothing. A prepared overlay set owns the slot until End; a camera held by Present or another app is refused. Actual permission, camera, disconnect, movement and receiver behavior require installed acceptance.",
+      "source": "Sources/StageKit/PersonaCamera.swift",
+      "evidence": "Source and synthetic lifecycle coverage added for #134 on 1 October 2026. The signed installed candidate and hardware acceptance are tracked separately in issue #134; this status is not a release claim."
     },
     {
       "id": "compact-present-preparation",
       "name": "Keep Present actions visible in a small window",
       "status": "implemented",
       "entry": "Present → scene heading Persona control, fixed presentation footer and Connection & audio…",
-      "effect": "Use a compact Persona popover near the scene heading, expand secondary Scene details on demand, and keep Full screen/Window actions fixed. Connection & audio opens the existing guide and Apple alternatives.",
+      "effect": "Keep scene preparation and fixed Full screen/Window actions together. A live presentation has its own controls bound to the running snapshot: Show window, End, full-screen, size/position, applicable source, reconnect, device proportions and motion. Selecting a saved scene does not retarget them; read-only preparation does not disable them. Connection & audio opens the existing guide and Apple alternatives. Present also exposes the existing Saved Prompts and Switch to Browser Tab controls.",
       "limit": "The layout does not change device capture, phone audio routing or safe native-app handoff. Opening QuickTime is not proof of a connection or receiving-participant audio. Native keyboard, popover-to-sheet and device-route acceptance remain required.",
       "source": "Sources/StageKit/DemoScenesView.swift",
-      "evidence": "At a2b6513, compact geometry checks passed within the focused Persona suite. Synthetic offscreen 620×650, 834×730 and 1085×780 layouts, including long scene/device names, showed no clipped primary footer controls. Signed Preview 9d4aff1 exercised compact Present controls. Full native keyboard, device-route and receiver acceptance remain open; see docs/releases/2026-09-27-capability-preview.md."
+      "evidence": "At a2b6513, compact geometry checks passed within the focused Persona suite. Synthetic offscreen 620×650, 834×730 and 1085×780 layouts, including long scene/device names, showed no clipped primary footer controls. Signed Preview 9d4aff1 exercised compact Present controls. Full native keyboard, device-route and receiver acceptance remain open; see docs/releases/2026-09-27-capability-preview.md. Overflow removal source and offscreen evidence is tracked in docs/verification/2026-09-30-pill-actions.md; combined installed acceptance remains pending."
     },
     {
       "id": "scene-backdrop",
       "name": "Change a scene backdrop",
       "status": "implemented",
-      "entry": "Present \u2192 Change backdrop\u2026",
-      "effect": "Preview a file, starter or saved scene image with the retained foreground; apply only the background and crop.",
+      "entry": "Present → Change backdrop…",
+      "effect": "Preview a file, starter or saved scene image with the retained foreground; apply only the background and crop. Library Resources can prepare a supported image through this same transaction, or explicitly create the first scene when no scenes exist. Cancel writes nothing.",
       "limit": "Changes the saved scene and later outputs, not a running presentation or an already-applied desktop image.",
       "source": "Sources/StageKit/BackdropReplacement.swift",
-      "evidence": "Six focused tests with 126 assertions; native picker Cancel, Escape, Return Apply and missing-image repair checked with disposable scenes."
+      "evidence": "Six focused tests with 126 assertions; native picker Cancel, Escape, Return Apply and missing-image repair checked with disposable scenes. Library image reuse passed 30 bounded-byte and export/reference checks plus three focused StageKit checks with 45 assertions covering preparation, cancellation, explicit first-scene creation and Persona frozen live copies with fake displays. Source and offscreen renders are separate from pending combined installed Preview acceptance."
     },
     {
       "id": "scene-session",
@@ -71,7 +81,7 @@
       "id": "phone-routes",
       "name": "Choose a phone connection and audio route",
       "status": "implemented",
-      "entry": "Present \u2192 Connection & audio\u2026; also available in live Source",
+      "entry": "Present → Connection & audio…; also available in live Source",
       "effect": "Separate phone picture, voice conversation and Mac control; guide six native routes. Explicit End preview & open releases capture and closes the presentation before launching an installed Apple app.",
       "limit": "Workbench USB remains video only. The guide does not detect policy, forward a microphone, configure a meeting or establish a working duplex voice route.",
       "source": "Sources/StageKit/NativePresentationApps.swift",
@@ -81,7 +91,7 @@
       "id": "desktop-still",
       "name": "Apply a scene as a desktop picture",
       "status": "implemented",
-      "entry": "Present \u2192 More \u2192 Use as desktop (Preview build)",
+      "entry": "Present → More → Use as desktop (Preview build)",
       "effect": "Render the whole scene to a retained PNG, record recovery information and request the desktop change through macOS.",
       "limit": "Includes foreground artwork; it is not a background-photo-only picker. Uses the editor window's display or the main display. No dedicated display chooser. Excluded from APP_STORE builds.",
       "source": "Sources/StageKit/DemoScenes.swift",
@@ -121,17 +131,17 @@
       "id": "wallpaper-motion",
       "name": "Gentle desktop motion, while Workbench is open",
       "status": "implemented",
-      "entry": "Present \u2192 More beside the presentation buttons \u2192 Use as animated desktop (non-App-Store build)",
+      "entry": "Present → More beside the presentation buttons → Use as animated desktop (non-App-Store build)",
       "effect": "Apply and verify a rendered native still, then show an independent click-through desktop layer. Authored starters move clouds or foliage; ordinary photos use gentle zoom. Foreground artwork stays still. Pause/Resume/Stop controls appear in the scene window.",
       "limit": "App-owned, one display and the current Space only. Stops on Quit or Space change; checks native wallpaper ownership periodically. A direct photo-only wallpaper picker is still proposed. No video import, Lock Screen installation, automatic login restart or energy claim.",
       "source": "Sources/StageKit/DesktopMotion.swift",
-      "evidence": "Native isolated Mac host checked desktop-layer Start/Pause/Resume/Stop and presentation-End independence without changing the user\u2019s wallpaper. Ownership, nested sleep and removal policies passed unit checks. Actual native still apply is separately implemented; physical multi-display/Spaces and energy remain unverified. The signed Mac Preview at source 9fe7959 was installed and opened with existing scenes present; the new toggle and desktop menu action were confirmed. It is not notarized or in the public download. The authored starter increment at 48c00dc is installed as signed local Preview build 20260914180524; exact archive/resource identity and new gallery verified. Not notarized or in the public download."
+      "evidence": "Native isolated Mac host checked desktop-layer Start/Pause/Resume/Stop and presentation-End independence without changing the user’s wallpaper. Ownership, nested sleep and removal policies passed unit checks. Actual native still apply is separately implemented; physical multi-display/Spaces and energy remain unverified. The signed Mac Preview at source 9fe7959 was installed and opened with existing scenes present; the new toggle and desktop menu action were confirmed. It is not notarized or in the public download. The authored starter increment at 48c00dc is installed as signed local Preview build 20260914180524; exact archive/resource identity and new gallery verified. Not notarized or in the public download."
     },
     {
       "id": "scene-motion",
       "name": "Gentle motion in a prepared scene",
       "status": "implemented",
-      "entry": "Choose a starter \u2192 Window light, Campus breeze or Coastal sky. Gentle motion in scene settings; Pause/Play in presentation controls or the iOS editor preview.",
+      "entry": "Choose a starter → Window light, Campus breeze or Coastal sky. Gentle motion in scene settings; Pause/Play in presentation controls or the iOS editor preview.",
       "effect": "For ordinary photos, an optional 3.5% zoom. Three authored starters instead move clouds or branches while the architecture and foreground remain still. Complete posters, clean plates and details travel in version 2 packages; the prior library manifest is preserved before upgrade.",
       "limit": "The visible active Mac editor previews enabled motion, with Play/Pause and a reason when paused. Drag, layout controls and sheets pause it. Galleries remain still. iOS animates only the active visible scene preview. PNG/Photos exports stay still; no Live Photo export or continuous iOS Home Screen animation. Reduce Motion, disabled animated-image autoplay, low power and high thermal state suppress animation. Device video and meeting receivers need separate validation.",
       "source": "Sources/StageKit/MovingSceneView.swift",
@@ -142,16 +152,16 @@
       "name": "Present several native overlays",
       "status": "implemented",
       "entry": "Overlay cards → Arrange overlays → Demo groups → Start overlays",
-      "effect": "Show several independently placed cards, with Size, Add Overlay and Remove Selected in the shared toolbar or menu-panel Persona Overlay controls. Switch among explicitly prepared sets and Hide/Show/End through the native menu. Live images, labels and allowed choices are frozen; layout saving is explicit. Removing a live copy does not remove its saved persona.",
+      "effect": "Show several independently placed cards. The floating pill offers frozen Choose Set and Next set; its chooser hides, resumes or ends the session. Persona’s workspace and menu-bar Options retain per-copy Appearance, size, position, lock, replace/update, visibility, add/remove, front/back and explicit layout saving. Live images, labels and allowed choices are frozen. Removing a live copy does not remove its saved persona.",
       "limit": "Mac screen-positioned windows, not browser-tab attachments or captured-app composition. Up to 8 sets / 8 copies each / 32 prepared personas / 256 MB rendered imagery. Three editable single-persona shortcuts default on; the five multi-overlay session actions remain opt-in. No new cloud service or scene schema. Whole-display receiver checks remain separate.",
       "source": "Sources/StageKit/PersonaSession.swift",
-      "evidence": "88 integrated native Mac scene tests /2367 assertions and 114 StageKit CI-mode tests /2533 assertions passed (live menu-bar popover check excluded). Native keyboard focus and click menu, per-card hide, paused set switching, return and restoration checked with disposable artwork. Signed local Preview 20260914204356 installed; signature, preparation entry and disabled optional shortcuts verified. Source and delivery limits are in /personas/."
+      "evidence": "88 integrated native Mac scene tests /2367 assertions and 114 StageKit CI-mode tests /2533 assertions passed (live menu-bar popover check excluded). Native keyboard focus and click menu, per-card hide, paused set switching, return and restoration checked with disposable artwork. Signed local Preview 20260914204356 installed; signature, preparation entry and disabled optional shortcuts verified. Source and delivery limits are in /personas/. Overflow removal source and offscreen evidence is tracked in docs/verification/2026-09-30-pill-actions.md; combined installed acceptance remains pending."
     },
     {
       "id": "break-timer-placement",
       "name": "Remember the separate break timer position",
       "status": "implemented",
-      "entry": "Break timer \u2192 drag or Position",
+      "entry": "Timer → drag or Position",
       "effect": "Snap on drag release; persist a free normalized position or one of eight anchors and recover on an available display after hiding, closing or restarting.",
       "limit": "Countdown and presentation remain independent. Corrupt, future or concurrently changed placement files are preserved. Physical display removal, VoiceOver and meeting receivers remain acceptance checks.",
       "source": "Sources/StageKit/BreakTimerPlacement.swift",
@@ -161,11 +171,11 @@
       "id": "continuous-presentation-controls",
       "name": "Use annotation and Mac dictation during a live scene",
       "status": "implemented",
-      "entry": "Menu bar primary actions, native Draw menu, contextual floating toolbar or configured hotkeys",
+      "entry": "Menu bar primary actions, native Draw menu, contextual floating toolbar and its activity chooser, or configured hotkeys",
       "effect": "Choose controls without ending running work. The compact menus expose direct actions and configured shortcuts. Native annotation tools refresh on opening; Done drawing retains ink and boards. Failed audio-only capture can be kept in Saved recordings while starting fresh. A saved transcript waits while drawing owns input, then revalidates its original Mac target; Copy now completes without ending drawing. Explicit clipboard capture also works without a Mac field during presentation.",
       "limit": "No Mac input is forwarded to a phone. Final insertion, screenshot acquisition, export, shortcut practice and shutdown keep their input guards. Shared history supplies metadata, saved selections and reviewed handoff without a separate Notes store. Real microphone/device/receiver coexistence requires hardware acceptance.",
       "source": "docs/contextual-controls.md",
-      "evidence": "Host action-state and delivery-gate checks; exact AppModel capture-method tests with injected input/output; focused StageKit drawing tests; disposable native sizing and light/dark view renders. See the scoped acceptance record."
+      "evidence": "Host action-state and delivery-gate checks; exact AppModel capture-method tests with injected input/output; focused StageKit drawing tests; disposable native sizing and light/dark view renders. See the scoped acceptance record. Overflow removal source and offscreen evidence is tracked in docs/verification/2026-09-30-pill-actions.md; combined installed acceptance remains pending."
     }
   ],
   "events": [
@@ -197,7 +207,7 @@
       "id": "restore-desktop",
       "label": "Restore desktop",
       "status": "implemented",
-      "stops": "The app-owned desktop-motion layer immediately, then use of Workbench\u2019s still output on eligible matched displays after macOS confirms restoration.",
+      "stops": "The app-owned desktop-motion layer immediately, then use of Workbench’s still output on eligible matched displays after macOS confirms restoration.",
       "keeps": "A later manual picture choice, unmatched recovery records and any active presentation.",
       "check": "Read the current desktop before restoring. A recorded old URL is not authority to overwrite a later user choice."
     },
@@ -213,7 +223,7 @@
       "id": "pause-motion",
       "label": "Pause wallpaper motion",
       "status": "implemented",
-      "stops": "The desktop layer\u2019s animation and visibility; the underlying native still shows.",
+      "stops": "The desktop layer’s animation and visibility; the underlying native still shows.",
       "keeps": "The applied still, independent saved scene and any presentation. Resume checks that Workbench still owns the desktop picture.",
       "check": "Explicit Pause survives sleep/wake. Reduce Motion, Low Power Mode, high thermal state and occlusion separately suppress animation. No automatic login restart."
     },
@@ -263,19 +273,27 @@
       "id": "snap-source-and-layout",
       "test": "Run the 66 synthetic Snap checks against actual store/model/render/organisation/portable importer sources, including stale edits, oversize records, crop pixels, input snapshots, pack/order preservation, idempotent narrated capture and named overview updates. Inspect normal/compact offscreen workspace and editor with a save error. These passed at a0e9cca plus 8041117; app shell/native acquisition were stubbed. Subsequent partial installed evidence and the remaining native gates are recorded in docs/releases/2026-09-27-capability-preview.md.",
       "status": "passed-source-and-offscreen",
-      "capabilities": ["snap-history"]
+      "capabilities": [
+        "snap-history"
+      ]
     },
     {
       "id": "snap-native-journey",
       "test": "On the signed Preview identified by Copy build details, capture region/window/screen, Escape, crop, annotate, copy/paste, save and restart. In the expanded toolbar at both docks, each named source must start that capture; Snap & Talk must move from selection to narration, then Stop must return to sources beside Review. Escape must add no image or audio. Verify no Desktop clutter, restore archive, named/mixed selection and targeted exclusion. Connection setup must retain the draft; Ready tasks must start later. Verify rendered-only provider review, prior-context review, source links and one current named result after membership changes, failures and intervening document edits. A new Snap & Talk shortcut capture must appear once in Snap History; add it back without a duplicate and cancel narration without losing the image.",
       "status": "partially-passed-native",
-      "capabilities": ["snap-history"]
+      "capabilities": [
+        "snap-history"
+      ]
     },
     {
       "id": "persona-present-workspaces",
-      "test": "Focused a2b6513 tests and synthetic compact renders passed. On the signed combined candidate, verify independent Persona show/hide/resume/end over a browser, move/lock/click-through/display recovery, scene Persona selection and popover-to-sheet keyboard flow. Exercise fixed Present actions, expanded details, long device names, QuickTime fallback and actual audio/receiver routes separately.",
+      "test": "Focused a2b6513 tests and synthetic compact renders passed. On the signed combined candidate, verify independent Persona show/hide/resume/end over a browser, move/lock/click-through/display recovery, scene Persona selection and popover-to-sheet keyboard flow. Exercise fixed Present actions, expanded details, long device names, QuickTime fallback and actual audio/receiver routes separately. Verify one-click Persona/set cycling, no Next for one choice, hidden artwork recovery, and live Present/Persona settings while a different saved item is selected.",
       "status": "passed-source-and-offscreen-native-partial",
-      "capabilities": ["persona-workspace", "compact-present-preparation", "persona-session"]
+      "capabilities": [
+        "persona-workspace",
+        "compact-present-preparation",
+        "persona-session"
+      ]
     },
     {
       "id": "presentation-snapshot",
@@ -418,8 +436,16 @@
       "capabilities": [
         "continuous-presentation-controls"
       ],
-      "test": "Start a scene, dictate into a Mac field, annotate with a held or toggle shortcut, then finish voice before drawing. Verify saved text waits, original-target revalidation or Copy now, retained ink, and scene continuity. Repeat with Snap & Talk narration, denied permissions and a changed target. Physical microphone, phone and meeting receiver results are separate from synthetic checks.",
+      "test": "Start a scene, dictate into a Mac field, annotate with a held or toggle shortcut, then finish voice before drawing. Verify saved text waits, original-target revalidation or Copy now, retained ink, and scene continuity. Repeat with Snap & Talk narration, denied permissions and a changed target. Physical microphone, phone and meeting receiver results are separate from synthetic checks. Verify the overflow-free pill, all seven workspace routes, concurrent chooser commands, keyboard/VoiceOver traversal, recovery after dismissal and stale held commands across operation replacement. Hide toolbar must preserve independent jobs.",
       "status": "passed-synthetic-hardware-pending"
+    },
+    {
+      "id": "persona-camera-lifecycle",
+      "test": "On the signed Preview, choose Camera without starting capture, Start and observe a live frame, move/resize the bubble, Hide and verify release, Show again, then End. Check late permission after cancel/sleep, stalled/disconnected recovery, source switching, prepared-set refusal and preservation of saved artwork and independent Present. Synthetic owner/render checks remain separate from hardware and receiver evidence.",
+      "status": "source-implemented-native-pending",
+      "capabilities": [
+        "persona-camera"
+      ]
     }
   ],
   "agentContract": {

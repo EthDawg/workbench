@@ -11,7 +11,7 @@ struct Attention: Equatable {
         case read
         /// Preparing the speech model, whose Retry model is on Home.
         case home
-        /// Removing or exporting a saved transcript.
+        /// Removing, exporting or opening a saved transcript.
         case history
 
         /// The route that opens the page.

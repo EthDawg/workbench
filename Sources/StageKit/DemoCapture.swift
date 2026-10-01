@@ -30,7 +30,7 @@ enum CaptureVideoAccess {
         case .restricted:
             return "Device video access is restricted on this Mac. Use an approved presentation route or ask your IT administrator for help."
         case .denied:
-            return "Device video access is off. Enable Workbench in System Settings → Privacy & Security → Camera, then choose Reconnect."
+            return "Device video access is off. Enable Workbench in System Settings › Privacy & Security › Camera, then choose Reconnect."
         default: return nil
         }
     }
@@ -43,6 +43,9 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var selectedID: String?
     @Published private(set) var message = "Connect and unlock your device."
     @Published private(set) var live = false
+    /// The device this capture currently holds, so another camera owner can keep
+    /// clear of it instead of taking it away. nil whenever no session is open.
+    @Published private(set) var heldDeviceID: String?
     @Published private(set) var dimensions = CGSize.zero
     let previewLayer = AVCaptureVideoPreviewLayer()
     private let queue = DispatchQueue(label: "StageMark.device-preview", qos: .userInitiated)
@@ -208,6 +211,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             // Explicit video-only wiring avoids connecting a muxed device
             // microphone as an accidental side effect of auto-connection.
             session = newSession; activeID = id; activeToken = recovery.generation
+            DispatchQueue.main.async { [weak self] in self?.heldDeviceID = id }
             deliveryLock.lock(); deliveryToken = activeToken; deliveryLock.unlock()
             lastFrame = .distantPast; startedAt = Date()
             newSession.startRunning()
@@ -220,7 +224,7 @@ final class DemoCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         recovery.invalidateSession()
         deliveryLock.lock(); deliveryToken = -1; deliveryLock.unlock()
         session?.stopRunning(); previewLayer.session = nil; session = nil; activeID = nil
-        DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero }
+        DispatchQueue.main.async { [weak self] in self?.live = false; self?.dimensions = .zero; self?.heldDeviceID = nil }
     }
     private func checkHealth() {
         guard enabled else { return }

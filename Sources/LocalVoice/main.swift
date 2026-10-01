@@ -112,6 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return self.model.phase == .idle && !self.model.rendering && !self.readback.blocksDictation && !self.shortcutsSuspended
                 ? nil : "Finish Dictate, reading or Snap & Talk before starting a meeting."
         }
+        model.meetings.mayPlayRecording = { [weak self] in
+            guard let self, !self.terminating else { return false }
+            return self.model.phase == .idle && !self.model.rendering && !self.model.playing
+                && !self.model.meetings.isBusy && !self.readback.blocksDictation
+        }
         model.meetings.onStateChange = { [weak self] in self?.updateRecordingUI() }
         PackLibraryModel.shared.onSkillsChanged = { [weak self] skills in self?.readback.setPackSkills(skills) }
         PackLibraryModel.shared.start()
@@ -168,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 ? nil : "Finish the current dictation, reading or meeting before starting Snap & Talk narration."
         }
         readback.onEditShortcut = { [weak self] in self?.navigate("shortcuts") }
+        readback.onNarrationNotHeard = { [weak self] in self?.model.showNarrationCue() }
         keyboard = KeyboardCoachModel(entries: shortcutEntries(), update: { [weak self] id, shortcut in guard let self else { return "Workbench is unavailable." }; return self.saveShortcut(id, shortcut) }, suspend: { [weak self] suspended in
             guard let self else { return }
             self.shortcutsSuspended = suspended
@@ -176,7 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         })
         panelEditor = PanelShortcutEditor(keyboard: keyboard)
         let homeWindow = WorkbenchHomeWindow(contentViewController: NSHostingController(rootView: WorkbenchHome(model: model, stage: stage, keyboard: keyboard, readback: readback, snap: snap)))
-        homeWindow.onHide = { [weak self] in self?.model.library.closePreview() }
+        homeWindow.onHide = { [weak self] in
+            self?.model.library.closePreview()
+            self?.model.meetings.recordingPlayback.pause()
+        }
         window = homeWindow
         window.title = Workbench.displayName
         window.setContentSize(NSSize(width: 1180, height: 800))
@@ -441,8 +450,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Restore menu-bar icon", action: #selector(restoreMenuBarIcon), keyEquivalent: "")
         menu.addItem(withTitle: "Switch to…", action: #selector(showPresenter), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(pageItem("readback")); menu.addItem(pageItem("personas")); menu.addItem(pageItem("history"))
-        menu.addItem(pageItem("library", key: "l")); menu.addItem(pageItem("meeting", more: true))
+        // Every sidebar page, in the sidebar's order and by its name, so the Window menu's doors never
+        // differ from the window's own list (#134).
+        menu.addItem(pageItem("dictate")); menu.addItem(pageItem("meeting", more: true)); menu.addItem(pageItem("speak"))
+        menu.addItem(pageItem("snap")); menu.addItem(pageItem("readback")); menu.addItem(pageItem("annotate"))
+        menu.addItem(pageItem("present")); menu.addItem(pageItem("personas"))
+        menu.addItem(.separator())
+        menu.addItem(pageItem("history")); menu.addItem(pageItem("library", key: "l"))
         windows.submenu = menu; main.addItem(windows)
         let help = NSMenuItem(); help.title = "Help"
         let helpMenu = NSMenu(title: "Help")
@@ -557,13 +571,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if readback.isRecording { readback.stopNarration(); return }
         model.toolbarMode = .snapAndTalk
         readback.refreshPermissionState()
-        guard readback.sessionURL != nil, readback.permissionsReady else {
+        readback.refreshSessionAvailability()
+        // A missing session folder or a refused start is explained on the page, as the
+        // capture key does; hiding Workbench first made the press look like nothing happened.
+        guard readback.sessionURL != nil, readback.permissionsReady, readback.currentSessionProblem == nil else {
             navigate("readback"); return
+        }
+        if let reason = readback.mayBeginCapture?() {
+            readback.notice = reason; navigate("readback"); return
         }
         closeControls(); window.orderOut(nil)
         Task { await readback.captureNewSection(fromEditor: false, mode: mode) }
     }
     func updateRecordingUI() {
+        model.meetings.updateRecordingPlaybackAdmission()
         let receipt = model.clipboardReceipt.receipt
         let state: String
         switch model.phase {
@@ -626,6 +647,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if readback?.hasUnsavedNarration == true {
+            readback.reviewUnsavedNarration(); model?.page = "readback"; showWindow()
+            return .terminateCancel
+        }
         guard WorkbenchUpdates.shared.canTerminate(saveSession: { model?.saveBeforeUpdate() == true }) else { return .terminateCancel }
         if terminationPending { return .terminateLater }
         guard CaptureImagePreview.shared.canTerminate() else { return .terminateCancel }

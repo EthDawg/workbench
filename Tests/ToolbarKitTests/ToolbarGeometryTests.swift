@@ -31,8 +31,8 @@ final class ToolbarGeometryTests: XCTestCase {
             XCTAssertEqual(frame.size, ToolbarLayout.mark(for: anchor))
             XCTAssertEqual(NSPoint(x: frame.midX, y: frame.midY), ToolbarGeometry.launcherCentre(.docked(anchor), screen: screen), anchor.rawValue)
         }
-        XCTAssertEqual(ToolbarLayout.standardWidth, 132)
-        XCTAssertEqual(ToolbarLayout.accessoryStandardWidth, 172)
+        XCTAssertEqual(ToolbarLayout.standardWidth, 96)
+        XCTAssertEqual(ToolbarLayout.accessoryStandardWidth, 136)
     }
 
     /// Named positions use the same eight-point outer inset in either orientation.

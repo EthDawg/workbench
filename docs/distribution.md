@@ -4,7 +4,7 @@ Workbench is a free, MIT-licensed native Mac app. Developer ID signing and Apple
 
 ## Production, Preview and earlier releases
 
-The [production release record](../site/updates/production.json) identifies the public package, its source revision, ZIP digest and signed update feed. At this review, [Workbench 2.3.0](https://github.com/EthDawg/workbench/releases/tag/v2.3.0) is published as build `20260928035156` from `63922860adf2bb918d6a93d9bab79183f10c88fc`; its [release record](releases/2026-09-28-workbench-2.3.0.md) lists what it contains and what remains unverified.
+The [production release record](../site/updates/production.json) identifies the public package, its source revision, ZIP digest and signed update feed. At this review, [Workbench 2.3.1](https://github.com/EthDawg/workbench/releases/tag/v2.3.1%2B20260930054504) is published as build `20260930054504` from `85e63436ae8f139f5f51d2f05407eb5445a7fc8b`; its release notes list what it contains and what remains unverified. The next Stable is drafted in [the 2.4.0 record](releases/2026-10-01-workbench-2.4.0.md).
 
 Earlier Voice, StageMark and Workbench Preview releases retain their own package-specific evidence. The historical [Preview 2.0 record](preview-2.0.md) is not the current production or candidate acceptance record.
 

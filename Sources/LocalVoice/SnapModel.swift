@@ -74,7 +74,7 @@ final class SnapModel: ObservableObject {
     /// host shows the editor, or the problem, on the Snap page, or puts back
     /// what was on screen before a cancelled capture.
     var onRestoreAfterCapture: ((SnapCaptureOutcome) -> Void)?
-    /// A draft left the editor: saved, saved and copied (true), or cancelled.
+    /// A draft was resolved: saved, saved and copied (true), or explicitly discarded.
     var onDraftClosed: ((UUID, Bool) -> Void)?
     var mayBeginCapture: (() -> String?)?
     /// Text Vision found in each image, so search finds a Snap by what it shows.
@@ -265,7 +265,7 @@ final class SnapModel: ObservableObject {
     func desktopScreenshots() -> [URL]? {
         do { return try SnapScreenshots.listScreenCaptures(in: desktop) }
         catch {
-            notice = "Workbench could not read the Desktop. Allow it in System Settings > Privacy & Security > Files and Folders, then try again."
+            notice = "Workbench could not read the Desktop. Allow it in System Settings › Privacy & Security › Files and Folders, then try again."
             return nil
         }
     }
@@ -330,12 +330,18 @@ final class SnapModel: ObservableObject {
         }
     }
 
+    /// Reopen the current draft through the same editor host as every capture door.
+    func reviewDraft() {
+        guard draft != nil else { return }
+        onStateChange?()
+    }
+
     func capture(_ mode: SnapCapture.Mode, origin: pid_t? = nil) async {
         guard !isCapturing else { notice = "Finish or cancel the current Snap first."; return }
         if let reason = mayBeginCapture?() { notice = reason; return }
         // An open editor, even one hidden with its window, never silently
-        // blocks a capture door: the host brings it back to finish or cancel.
-        guard draft == nil else { notice = "Finish or cancel the current Snap first."; onRestoreAfterCapture?(.pending); onStateChange?(); return }
+        // blocks a capture door: the host brings it back to save or discard.
+        guard draft == nil else { notice = "Save or discard the current Snap first."; onRestoreAfterCapture?(.pending); onStateChange?(); return }
         refreshScreenAccess()
         guard screenAccessGranted else {
             // Asked from the person's own action: the first request lists Workbench
@@ -362,7 +368,7 @@ final class SnapModel: ObservableObject {
     func cancelCapture() { captureRequest = nil; captureService.cancel(); notice = "Capture cancelled. Nothing was added to history." }
 
     func pasteImage() {
-        guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
+        guard !isBusy else { notice = "Save or discard the current Snap first."; return }
         do {
             let board = pasteboard
             guard let bytes = board.data(forType: .png) ?? board.data(forType: .tiff) else {
@@ -373,7 +379,7 @@ final class SnapModel: ObservableObject {
     }
 
     func importImage() {
-        guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
+        guard !isBusy else { notice = "Save or discard the current Snap first."; return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false; panel.prompt = "Open in Snap"
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -394,7 +400,7 @@ final class SnapModel: ObservableObject {
     }
 
     func edit(_ id: UUID) {
-        guard !isBusy else { notice = "Finish or cancel the current Snap first."; return }
+        guard !isBusy else { notice = "Save or discard the current Snap first."; return }
         do {
             let snapshot = try store.snapshot(id)
             guard snapshot.item.archivedAt == nil else { throw SnapError.message("Restore this Snap before editing it.") }
@@ -406,7 +412,7 @@ final class SnapModel: ObservableObject {
     /// A session, task, scene or external file remains owned by its source.
     /// Editing it explicitly creates an unsaved Snap from the full image.
     func editCopy(_ bytes: Data, title: String) throws {
-        guard !isBusy else { throw SnapError.message("Finish or cancel the current Snap first.") }
+        guard !isBusy else { throw SnapError.message("Save or discard the current Snap first.") }
         notice = nil
         try beginDraft(SnapRendering.png(bytes), source: .imported, title: String(title.prefix(240)))
     }

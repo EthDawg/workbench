@@ -25,38 +25,21 @@
     "aliasOf": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position"
   },
   {
-    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Menu.runtime-e93c1d1636eb",
+    "id": "LocalVoice.CapturePanel.CapturePositionMenu.Menu.runtime-251931a1542e",
     "surface": "floating toolbar live controls",
     "label": null,
-    "expression": "Image ( systemName : \"ellipsis\" )",
+    "expression": "Image ( systemName : \"arrow.up.and.down.and.arrow.left.and.right\" )",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : \"ellipsis\" ); no rendered text assumed."
+    "note": "Runtime label from Image ( systemName : \"arrow.up.and.down.and.arrow.left.and.right\" ); no rendered text assumed."
   },
   {
-    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.review",
+    "id": "LocalVoice.CapturePanel.DictationResultView.Button.microphone-settings",
     "surface": "floating toolbar live controls",
-    "label": "Review",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.runtime-772d4201867d",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : \"xmark\" )",
+    "label": "Microphone Settings…",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : \"xmark\" ); no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.CapturePanel.CaptureReceiptView.Button.runtime-7b59630aeb09",
-    "surface": "floating toolbar live controls",
-    "label": null,
-    "expression": "Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" )",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from Image ( systemName : receipts . keepVisible ? \"pin.fill\" : \"pin\" ); no rendered text assumed."
+    "note": "Quality: a dictation refused the microphone opens its System Settings pane where the person acted, in place of Open Workbench; Snap, Snap & Talk and Camera already offer their settings."
   },
   {
     "id": "LocalVoice.CapturePanel.DictationResultView.Button.open-workbench",
@@ -215,282 +198,56 @@
     "note": "Existing door: opens the saved text on the Read page (Option of read; #134). Quality (#173): it goes through Read's import decision, so a different draft waits behind Replace reading / Keep current."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.NSMenuItem.appearance",
-    "surface": "floating toolbar More menu",
-    "label": "Appearance",
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-persona",
+    "surface": "library page",
+    "label": "Use in Persona…",
     "kind": "option",
     "belongsTo": "persona",
-    "aliasOf": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance",
-    "note": "Persona's Appearance accessory waiting in More when the row has no room for it (#134 part B), for a hidden card, whose Persona menu has no Appearance; a shown card's or a set's Appearance above already holds the same Circle, Card and Original. The same choice and word as the Persona menu's Appearance (#169)."
+    "note": "Accepted Library reuse option: prepares this local image in the existing Persona owner. Choosing and cancelling write nothing; live output changes only through an explicit Present or Show."
   },
   {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel",
-    "surface": "floating toolbar More menu",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "aliasOf": "dictate",
-    "note": "Quality (#134 T4): the dictation panel's Cancel, moved into More under Dictate while a recording or its processing can still be cancelled. Existing contextual \"Cancel\" label inside dictate; the row's next action is Stop."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel.2",
-    "surface": "floating toolbar More menu",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "aliasOf": "snapAndTalk",
-    "note": "Quality (#134 T4): the Snap & Talk narration panel's Cancel, moved into More under Snap & Talk while narration records; it keeps the screenshot. Existing contextual \"Cancel\" label inside snapAndTalk; the row's next action is Stop narration."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.cancel.3",
-    "surface": "floating toolbar More menu",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "read",
-    "aliasOf": "read",
-    "note": "Quality (#211 F6): a preparing reading's own Cancel, in More's Read section while drawing or an insertion holds the next action; the same owner as the row's Cancel. Shared wording, not a separate capability."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again",
-    "surface": "floating toolbar More menu",
-    "label": "Copy again",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#134 T4): the clipboard shelf's Copy again, first in More under the undelivered result's own title once its receipt has gone, so the compact mark's warning reaches its recovery from the toolbar. Only where it cannot lead to a second insertion, as on the shelf."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-again.2",
-    "surface": "floating toolbar More menu",
-    "label": "Copy again",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#211 F1): the undelivered words' Copy again under the waiting receipt, which leads More, only where a second copy cannot insert twice; the same owner as its own section's."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.copy-now",
-    "surface": "floating toolbar More menu",
-    "label": "Copy now",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#134 T4): the dictation panel's Copy now, moved into More under Dictate while finished text waits for drawing to end."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.dismiss",
-    "surface": "floating toolbar More menu",
-    "label": "Dismiss",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#134 T4): the clipboard shelf's Dismiss, in the same More section: the person sets the undelivered result aside; the words stay in History. Revealing or collapsing the toolbar never does this."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.dismiss.2",
-    "surface": "floating toolbar More menu",
-    "label": "Dismiss",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#211 F1): the waiting result's own dismiss, as its view's ×, first in More now that keyboard entry keeps the launcher row: a dictation failure, the receipt, or a stopped reading, each through its own owner."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.end-presentation",
-    "surface": "floating toolbar More menu",
-    "label": "End presentation",
-    "kind": "action",
-    "belongsTo": "present"
+    "id": "LocalVoice.DemoLibraryView.DemoLibraryView.Button.use-in-present",
+    "surface": "library page",
+    "label": "Use in Present…",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Accepted Library reuse option: prepares this local image in the existing Present owner. Choosing and cancelling write nothing; live output changes only through an explicit Present or Show."
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.hide-toolbar",
-    "surface": "floating toolbar More menu",
+    "surface": "floating toolbar context menu",
     "label": "Hide toolbar",
     "kind": "action",
-    "belongsTo": "app"
+    "belongsTo": "app",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.keep-open",
-    "surface": "floating toolbar More menu",
+    "surface": "floating toolbar context menu",
     "label": "Keep open",
     "kind": "action",
-    "belongsTo": "app"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-dictate",
-    "surface": "floating toolbar More menu",
-    "label": "Open Dictate…",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-persona",
-    "surface": "floating toolbar More menu",
-    "label": "Open Persona…",
-    "kind": "action",
-    "belongsTo": "persona",
-    "note": "Persona's door to its preparation while no live copy is selected (#134 part B), as Open Dictate…, Open Read… and Open Snap… are for theirs. The same door as the quick panel's Persona options, to the same page."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-read",
-    "surface": "floating toolbar More menu",
-    "label": "Open Read…",
-    "kind": "action",
-    "belongsTo": "read"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap",
-    "surface": "floating toolbar More menu",
-    "label": "Open Snap…",
-    "kind": "action",
-    "belongsTo": "snap"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-snap.2",
-    "surface": "floating toolbar More menu",
-    "label": "Open Snap…",
-    "kind": "action",
-    "belongsTo": "snap",
-    "note": "Quality (#205 review): under Active work while another tool is chosen, the same Open Snap… door, so an unsaved Snap capture the compact mark shows reaches its editor. Snap's own options already offer it."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.open-workbench",
-    "surface": "floating toolbar More menu",
-    "label": "Open Workbench",
-    "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (#211 F1): a dictation failure's Open Workbench, as its view offers it, under the failure first in More."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.pause-reading",
-    "surface": "floating toolbar More menu",
-    "label": "Pause reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality (#211 F6): reading's own next action, in More's Read section while drawing or an insertion holds the row's; the row's own words and owner."
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
-    "surface": "floating toolbar More menu",
+    "surface": "floating toolbar context menu",
     "label": "Position…",
-    "kind": "option",
+    "kind": "action",
     "belongsTo": "app",
-    "note": "Quality (#163): replaces the eight-item Position submenu in the same place with one command. It opens the placement control, which offers the same named docks (FloatingControlAnchor) and Reset position."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.record-again",
-    "surface": "floating toolbar More menu",
-    "label": "Record again",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#211 F1): a dictation failure's Record again, as its view offers it, under the failure first in More."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.resume-reading",
-    "surface": "floating toolbar More menu",
-    "label": "Resume reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality (#211 F6): reading's own next action, in More's Read section while drawing or an insertion holds the row's; the row's own words and owner."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.retry",
-    "surface": "floating toolbar More menu",
-    "label": "Retry",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality (#211 F1): a stopped reading's Retry, as its view offers it, under the reading first in More."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.review",
-    "surface": "floating toolbar More menu",
-    "label": "Review",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality (#211 F1): the waiting receipt's Review, as its view offers it, first in More: Library for a copied prompt, History for a transcript."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-2a736db79384",
-    "surface": "floating toolbar More menu",
-    "label": null,
-    "expression": "transport . title + \" timer\"",
-    "kind": "action",
-    "belongsTo": "timer",
-    "note": "Quality (#205 review): under Active work, the break timer's next transport as TimerTransport names it (Pause timer, Resume timer or Restart timer), the same command as the Timer menu's, whichever tool is chosen, since Timer is not a tool. Runtime label from transport . title + \" timer\"; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-343c7a0bb03c",
-    "surface": "floating toolbar More menu",
-    "label": null,
-    "expression": "model . retryCaptureLabel",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label from model . retryCaptureLabel: Retry transcription or Retry saving, as the failure's own Retry reads, under the failure first in More (#211 F1). No rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-894c4cc35124",
-    "surface": "floating toolbar More menu",
-    "label": null,
-    "expression": "\"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"",
-    "kind": "action",
-    "belongsTo": "snapAndTalk",
-    "note": "Runtime label from \"Review Snap & Talk · \\(readback.activeSections.count) Captures…\"; no rendered text assumed."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.runtime-aaf232064610",
-    "surface": "floating toolbar More menu",
-    "label": null,
-    "expression": "title",
-    "note": "Runtime label from title: Hide persona, Hide personas or Show personas, as Persona's own label reads, under Active work while another tool is chosen (#134). No rendered text assumed.",
-    "kind": "action",
-    "belongsTo": "persona"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.saved-prompts",
-    "surface": "floating toolbar More menu",
-    "label": "Saved Prompts…",
-    "kind": "action",
-    "belongsTo": "present",
-    "note": "Quality: Saved Prompts in More (the glyph menu before #134) opens the one searchable picker after the menu closes, instead of a submenu tree (#159)."
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.settings",
-    "surface": "floating toolbar More menu",
+    "surface": "floating toolbar context menu",
     "label": "Settings…",
     "kind": "action",
-    "belongsTo": "settings"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-drawing",
-    "surface": "floating toolbar More menu",
-    "label": "Stop drawing",
-    "kind": "action",
-    "belongsTo": "draw"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-reading",
-    "surface": "floating toolbar More menu",
-    "label": "Stop reading",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "Quality (#134 T4): the reading controls' Stop, moved into More under Read; the row's next action pauses, resumes or cancels. Same words as the panel's Read row."
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.stop-transcribing",
-    "surface": "floating toolbar More menu",
-    "label": "Stop transcribing",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.switch-to-browser-tab",
-    "surface": "floating toolbar More menu",
-    "label": "Switch to Browser Tab…",
-    "kind": "action",
-    "belongsTo": "present"
-  },
-  {
-    "id": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.transcribe-meeting-or-call",
-    "surface": "floating toolbar More menu",
-    "label": "Transcribe meeting or call…",
-    "kind": "workflow",
-    "belongsTo": "dictate",
-    "note": "Quality (#205 review): under Active work, the existing door to the meeting page, named as the panel and app menu name it, so a meeting recording saved for retry, which the compact mark shows as needing attention, reaches its recovery from any tool."
+    "belongsTo": "app",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "app"
   },
   {
     "id": "LocalVoice.FloatingToolbar.ReadingStoppedView.Button.retry",
@@ -612,6 +369,14 @@
     "note": "Existing control in a transcript's Details sheet: opens the Hand off review to suggest that transcript's details, an action on a History item (#137)."
   },
   {
+    "id": "LocalVoice.HistoryView.HistorySnapRow.Button.save-image-to-library",
+    "surface": "history page",
+    "label": "Save image to Library…",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Accepted image reuse option in #134: export the explicitly chosen rendered image to a user-chosen file, then commit its Library reference. Cancel preserves all records; a different unfinished Snap is never an input."
+  },
+  {
     "id": "LocalVoice.HistoryView.HistoryView.Button.connections",
     "surface": "history page",
     "label": "Connections…",
@@ -620,8 +385,25 @@
     "note": "Option of Settings: opens the Connections settings over History, moved from the removed Handoffs page so a Ready or failed task can connect a provider without leaving History (#137)."
   },
   {
+    "id": "LocalVoice.HistoryView.HistoryView.Button.snap-talk-sessions",
+    "surface": "history page",
+    "label": "Snap & Talk sessions…",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option of Snap & Talk (#134): History opens the existing portable Sessions picker without changing the current session. Explicit Open retains capture and unsaved-edit guards; no new store or selectable evidence kind."
+  },
+  {
+    "id": "LocalVoice.HistoryView.HistoryView.Button.snap-talk-sessions.2",
+    "surface": "history page",
+    "label": "Snap & Talk sessions…",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Option of Snap & Talk (#134): History opens the existing portable Sessions picker without changing the current session. Explicit Open retains capture and unsaved-edit guards; no new store or selectable evidence kind.",
+    "aliasOf": "LocalVoice.HistoryView.HistoryView.Button.snap-talk-sessions"
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingDetectionSettings.Toggle.detect-meetings-calls",
-    "surface": "settings page",
+    "surface": "meeting page",
     "label": "Detect Meetings & Calls",
     "kind": "setting",
     "belongsTo": "dictate"
@@ -659,27 +441,29 @@
     "note": "The meeting offer title: \"Possible call in <app>\" or \"Possible call on this Mac\". Runtime label from MeetingDetector . offerTitle ( for : offer )."
   },
   {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.cancel",
-    "surface": "quick panel status rows",
-    "label": "Cancel",
-    "kind": "action",
-    "belongsTo": "dictate"
-  },
-  {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-aeac18b23690",
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.runtime-a49b2fc5da5d",
     "surface": "quick panel status rows",
     "label": null,
-    "expression": "model . isRecording ? \"Meeting · recording\" : \"Meeting · processing\"",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Live state of Transcribe meeting or call; opens its page. Runtime label from model . isRecording ? \"Meeting · recording\" : \"Meeting · processing\"."
-  },
-  {
-    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop",
-    "surface": "quick panel status rows",
-    "label": "Stop",
+    "expression": "model . isRecording ? \"Meetings · recording\" : \"Meetings · transcribing\"",
+    "note": "Live state of Transcribe meeting or call; opens its page. Quality: names the Meetings page, and says transcribing rather than processing (1 Oct). Runtime label from model . isRecording ? \"Meetings · recording\" : \"Meetings · transcribing\".",
     "kind": "action",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop-processing",
+    "surface": "quick panel status rows",
+    "label": "Stop processing",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: was Cancel, which kept the audio. Stop processing is the page's own word for the same action (1 Oct)."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingQuickStatus.Button.stop-transcribe",
+    "surface": "quick panel status rows",
+    "label": "Stop & transcribe",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: was Stop. The same action and words as the page and the floating toolbar: it stops recording and transcribes (1 Oct)."
   },
   {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.history",
@@ -690,13 +474,38 @@
     "note": "Quality: the meeting page's existing door to History takes the place's name (was Recent transcripts; #137)."
   },
   {
-    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-aeb8a4573b22",
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.models",
+    "surface": "meeting page",
+    "label": "Models…",
+    "kind": "action",
+    "belongsTo": "settings",
+    "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct)."
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.microphone-settings",
+    "surface": "meeting page",
+    "label": "Microphone Settings…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: a meeting refused the microphone opens its System Settings pane beside the problem, as the toolbar's dictation failure does (1 Oct).",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.review-transcript",
+    "surface": "meeting page",
+    "label": "Review transcript",
+    "kind": "action",
+    "belongsTo": "history",
+    "note": "Opens this committed meeting transcript in History without replacing the Dictate draft."
+  },
+  {
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-53b2ce09b5d8",
     "surface": "settings page",
     "label": null,
-    "expression": "applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"",
+    "expression": "actionTitle",
+    "note": "Quality (1 October: local model download visibility). The same Models button now says what it does: Download Parakeet before its first setup, Try download again after a failure (with the reason beside it), Use Parakeet or Use local server to switch, In use once ready; its status line shows the setup's live progress from any door.",
     "kind": "setting",
-    "belongsTo": "settings",
-    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Runtime label from applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"; no rendered text assumed."
+    "belongsTo": "settings"
   },
   {
     "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Picker.transcribe-with",
@@ -744,6 +553,24 @@
     "belongsTo": "library",
     "aliasOf": "library",
     "note": "Existing contextual \"Turn off\" label inside library; shared wording, not a separate capability."
+  },
+  {
+    "id": "LocalVoice.PresentWorkspaceView.PresentPromptButton.button-title.view",
+    "surface": "Present workspace",
+    "label": "Saved Prompts…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "LocalVoice.PresentWorkspaceView.PresentWorkspaceView.Button.switch-to-browser-tab",
+    "surface": "Present workspace",
+    "label": "Switch to Browser Tab…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
   },
   {
     "id": "LocalVoice.PromptPicker.PromptPickerView.Button.open-library",
@@ -814,35 +641,31 @@
   },
   {
     "id": "LocalVoice.QuickControls.DictateTaskOptions.Button.set-up-automatic-paste",
-    "surface": "dictate page options",
+    "surface": "dictate settings",
     "label": "Set up automatic paste…",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Quality: beside Delivery in Dictate's task region, the same action (#134). Shown only while Paste automatically waits for Accessibility approval; transcripts are copied for ⌘V until then, which is a finished result (#165)."
+    "kind": "option",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.QuickControls.DictateTaskOptions.Picker.delivery",
-    "surface": "dictate page options",
+    "surface": "dictate settings",
     "label": "Delivery",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the options below the page into its task region, beside the microphone and the result, same control (#134)."
+    "kind": "option",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.QuickControls.DictateTaskOptions.Picker.text-style",
-    "surface": "dictate page options",
+    "surface": "dictate settings",
     "label": "Text style",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Quality: Cleanup takes the Grammar's name, Text style, which the menu-bar panel's options already use, and moves into Dictate's task region with its description and one example per style, each checked against the real cleanup (#134)."
+    "kind": "option",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.QuickControls.VoiceOptions.Picker.activation",
-    "surface": "dictate page options",
+    "surface": "dictate settings",
     "label": "Activation",
-    "kind": "setting",
-    "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
+    "kind": "option",
+    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.ReadbackView.ReadbackView.Button.add-from-snap-history",
@@ -869,12 +692,365 @@
     "note": "Existing door, recorded, no change: Opens the Hand off review, an action on History items (Option of history; #134)."
   },
   {
+    "id": "LocalVoice.ReadbackView.ReadbackView.Button.save-image-to-library",
+    "surface": "snap & talk page",
+    "label": "Save image to Library…",
+    "kind": "option",
+    "belongsTo": "library",
+    "note": "Accepted image reuse option in #134: export the explicitly chosen rendered image to a user-chosen file, then commit its Library reference. Cancel preserves all records; a different unfinished Snap is never an input."
+  },
+  {
+    "id": "LocalVoice.ReadingFollowAlong.MacVoiceHintRow.Button.runtime-2e29afee6d79",
+    "surface": "read settings",
+    "label": null,
+    "expression": "hint . buttonTitle",
+    "note": "Runtime label from hint . buttonTitle; no rendered text assumed.",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.refresh-voices",
+    "surface": "read settings",
+    "label": "Refresh voices",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.remove-key",
+    "surface": "read settings",
+    "label": "Remove key",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Button.save-key",
+    "surface": "read settings",
+    "label": "Save key",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Link.speko-account",
+    "surface": "read settings",
+    "label": "Speko account ↗",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Picker.read-with",
+    "surface": "read settings",
+    "label": "Read with",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.Picker.speko-voice",
+    "surface": "read settings",
+    "label": "Speko voice",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.SecureField.personal-speko-api-key",
+    "surface": "read settings",
+    "label": "Personal Speko API key",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.ReadingProviderView.ReadingProviderView.choice.automatic-balanced-route",
+    "surface": "read settings",
+    "label": "Automatic · balanced route",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
     "id": "LocalVoice.SnapWorkspaceView.SnapWorkspaceView.Button.add-to-snap-talk",
     "surface": "snap page",
     "label": "Add to Snap & Talk",
     "kind": "action",
     "belongsTo": "snapAndTalk",
     "note": "Existing door, recorded, no change: Sends selected Snaps to Snap & Talk and opens it (Option of snapAndTalk; #134)."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.cancel",
+    "surface": "floating toolbar activity chooser",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.cancel-narration",
+    "surface": "floating toolbar activity chooser",
+    "label": "Cancel narration",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "snapAndTalk"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.cancel.2",
+    "surface": "floating toolbar activity chooser",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.copy-again",
+    "surface": "floating toolbar activity chooser",
+    "label": "Copy again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.copy-now",
+    "surface": "floating toolbar activity chooser",
+    "label": "Copy now",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.dismiss-delivery",
+    "surface": "floating toolbar activity chooser",
+    "label": "Dismiss delivery",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.dismiss-message",
+    "surface": "floating toolbar activity chooser",
+    "label": "Dismiss message",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.dismiss-message.2",
+    "surface": "floating toolbar activity chooser",
+    "label": "Dismiss message",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.end-presentation",
+    "surface": "floating toolbar activity chooser",
+    "label": "End presentation",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.open-meetings",
+    "surface": "floating toolbar activity chooser",
+    "label": "Open Meetings…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.pause-reading",
+    "surface": "floating toolbar activity chooser",
+    "label": "Pause reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.record-again",
+    "surface": "floating toolbar activity chooser",
+    "label": "Record again",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.resume-reading",
+    "surface": "floating toolbar activity chooser",
+    "label": "Resume reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.retry",
+    "surface": "floating toolbar activity chooser",
+    "label": "Retry",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review",
+    "surface": "floating toolbar activity chooser",
+    "label": "Review",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Review captures to match the pill's Review control."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-delivery",
+    "surface": "floating toolbar activity chooser",
+    "label": "Review delivery",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-recordings",
+    "surface": "floating toolbar activity chooser",
+    "label": "Review recordings",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.review-unfinished-snap",
+    "surface": "floating toolbar activity chooser",
+    "label": "Review unfinished Snap",
+    "kind": "action",
+    "belongsTo": "snap",
+    "aliasOf": "snap",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Review unsaved Snap to the Review unfinished Snap wording snap.md and the image viewer use."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-343c7a0bb03c",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "model . retryCaptureLabel",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "kind": "action",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-361e48d0308f",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "end",
+    "note": "Quality: the existing Persona End command names the active artwork or camera visit and revalidates that visit before ending it.",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-7179df6049fe",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "step . transport . title + \" timer\"",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "kind": "action",
+    "belongsTo": "timer"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-7d2fb3da93a0",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "visibility",
+    "note": "Quality: the existing Persona visibility command follows the current artwork or camera visit and keeps an old control from affecting a newer visit.",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-d6afe28227ed",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "shown ? \"Hide timer\" : \"Show timer\"",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Show timer or Hide timer acts on the timer's window alone; the countdown keeps running.",
+    "kind": "action",
+    "belongsTo": "timer",
+    "aliasOf": "timer"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-dictating",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop dictating",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "dictate"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-drawing",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop drawing",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "draw"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-inserting",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop inserting",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-narration",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop narration",
+    "kind": "action",
+    "belongsTo": "snapAndTalk",
+    "aliasOf": "snapAndTalk",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work. Quality: renamed from Finish narration so every door says Stop narration."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-reading.2",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop reading",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-timer",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop timer",
+    "kind": "action",
+    "belongsTo": "timer",
+    "aliasOf": "timer",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Stop timer ends the countdown and closes its window, as the panel row and the Timer menu say; it replaces End timer."
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-transcribe",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop & transcribe",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "aliasOf": "dictate",
+    "note": "Quality: was Stop transcribing, which read as ending transcription while it stops recording and transcribes; the page's words (1 Oct). Approved #134 overflow removal: this existing action lives with its activity or live owner."
   },
   {
     "id": "LocalVoice.ToolbarPositionControl.ToolbarPositionControl.Button.reset-position",
@@ -885,29 +1061,109 @@
     "note": "Quality (#163): in Position…, docks the toolbar at bottom centre, its default. A result's own Position menu offers the same reset under the same name."
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.position-floating-toolbar",
-    "surface": "dictate page options",
+    "id": "LocalVoice.ToolbarSettingsView.ToolbarSettingsControls.Button.position-floating-toolbar",
+    "surface": "settings page",
     "label": "Position floating toolbar…",
     "kind": "action",
-    "belongsTo": "dictate",
-    "aliasOf": "LocalVoice.FloatingToolbar.FloatingToolbar.ToolbarMenuAction.position",
-    "note": "Quality (#211 follow-up): renamed from Position dictation panel…, since #134 T4 made the dictation panel part of the one floating toolbar host. It opens the floating toolbar's Position…, the control More's Position… opens, from Dictate's options, as the old entry did (Option of Dictate: moved from the Settings page to the Dictate page, same control, #134 W3)."
+    "belongsTo": "settings",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "settings"
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.transcribe-a-meeting-or-call",
+    "id": "LocalVoice.ToolbarSettingsView.ToolbarSettingsControls.Toggle.keep-open",
+    "surface": "settings page",
+    "label": "Keep open",
+    "kind": "setting",
+    "belongsTo": "settings",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "settings"
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.import-audio",
     "surface": "dictate page",
-    "label": "Transcribe a meeting or call…",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Existing door, recorded, no change: Opens Transcribe meeting or call, Dictate’s named workflow (Option of dictate; #134)."
+    "label": "Import audio…",
+    "kind": "option",
+    "belongsTo": "dictate"
   },
   {
-    "id": "LocalVoice.Views.ContentView.Button.your-dictionary",
-    "surface": "dictate page options",
-    "label": "Your dictionary",
+    "id": "LocalVoice.Views.ContentView.Button.import-text",
+    "surface": "read page",
+    "label": "Import text…",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality: imports one bounded local plain-text file through Read’s existing Keep current / Replace reading owner; no playback or new destination."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.review-text",
+    "surface": "dictate page",
+    "label": "Review text",
     "kind": "action",
     "belongsTo": "dictate",
-    "note": "Option of Dictate: moved from the Settings page to the Dictate page, same control (#134 W3)."
+    "note": "Quality: durable delivery recovery uses its existing typed draft or History record; opens review without replacing the draft."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.settings",
+    "surface": "dictate page",
+    "label": "Settings…",
+    "kind": "option",
+    "belongsTo": "dictate",
+    "aliasOf": "settings",
+    "note": "Contextual Dictate settings sheet; the pinned Settings page owns app-wide configuration."
+  },
+  {
+    "id": "LocalVoice.Views.ContentView.Button.voice-pace",
+    "surface": "read page",
+    "label": "Voice & pace…",
+    "kind": "option",
+    "belongsTo": "read",
+    "note": "Opens the existing provider, voice and pace controls in one workspace settings sheet."
+  },
+  {
+    "id": "LocalVoice.Views.DictateSettingsView.Button.open-apple-shortcuts",
+    "surface": "dictate settings",
+    "label": "Open Apple Shortcuts",
+    "kind": "option",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.Views.DictateSettingsView.Button.your-dictionary",
+    "surface": "dictate settings",
+    "label": "Your dictionary",
+    "kind": "option",
+    "belongsTo": "dictate"
+  },
+  {
+    "id": "LocalVoice.Views.DictionaryView.Button.back-to-dictate",
+    "surface": "dictionary page",
+    "label": "Back to Dictate",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Returns to the current Dictate draft without replacing it."
+  },
+  {
+    "id": "LocalVoice.Views.MacVoicePanel.Button.runtime-e4c15dda5475",
+    "surface": "read settings",
+    "label": null,
+    "expression": "Image ( systemName : previewing ? \"stop.fill\" : \"speaker.wave.2\" )",
+    "note": "Runtime label from Image ( systemName : previewing ? \"stop.fill\" : \"speaker.wave.2\" ); no rendered text assumed.",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.Views.MacVoicePanel.Picker.voice",
+    "surface": "read settings",
+    "label": "Voice",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "LocalVoice.Views.MacVoicePanel.choice.runtime-976b51a7b9d6",
+    "surface": "read settings",
+    "label": null,
+    "expression": "\"\\(name) (not installed)\"",
+    "note": "Runtime label from \"\\(name) (not installed)\"; no rendered text assumed.",
+    "kind": "option",
+    "belongsTo": "read"
   },
   {
     "id": "LocalVoice.Workbench.WorkbenchAppearancePicker.Picker.suite-appearance",
@@ -1027,12 +1283,12 @@
     "note": "Quality (#134 T5): what happened and where the words are. Runtime label from unresolved . detail; no rendered text assumed."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.dictate-options",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.dictate-settings",
     "surface": "settings page",
-    "label": "Dictate options…",
-    "kind": "action",
+    "label": "Dictate settings…",
+    "kind": "option",
     "belongsTo": "dictate",
-    "note": "Option (a door): Dictate's options live on the Dictate page; this keeps Settings free of dead ends (#134 W3)."
+    "note": "Opens the same Dictate settings sheet as the Dictate header."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.Button.runtime-154195417da5",
@@ -1182,6 +1438,15 @@
     "note": "Quality: Saved resources takes its Grammar place name, Library, in the same place. The alias it needed is gone (#134)."
   },
   {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.meeting",
+    "surface": "window sidebar",
+    "label": "Meetings",
+    "page": "meeting",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Existing meeting/call transcription workflow promoted to a visible Meetings destination by the desktop redesign. Navigation starts no recording."
+  },
+  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHome.sidebar.personas",
     "surface": "window sidebar",
     "label": "Persona",
@@ -1298,12 +1563,12 @@
     "note": "Home entry to the requested local Me profile, backed by an ordinary saved Persona; no account or duplicate library."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-dictate",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.models",
     "surface": "window home",
-    "label": "Open Dictate",
+    "label": "Models…",
     "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Option: Current work's door to Dictate for a kept capture that has no retry here, where its recovery files and Discard are (#134 H1)."
+    "belongsTo": "settings",
+    "note": "Quality: was Speech settings; the door names the Settings section it opens, Models (Fit rule 6; 1 Oct)."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.open-history",
@@ -1322,14 +1587,6 @@
     "note": "Option: a door on Home to History, shown once right after the first dictation so its result can be found again; it opens History on Transcripts, where that dictation is newest (#15). Same words as the recent transcript's Open in Dictate."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.read-the-clipboard-aloud",
-    "surface": "window home",
-    "label": "Read the clipboard aloud",
-    "kind": "action",
-    "belongsTo": "read",
-    "note": "The existing Home clipboard reading action, moved from a card to a secondary link with the same admission and draft-preservation checks."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.retry",
     "surface": "window home",
     "label": "Retry",
@@ -1345,15 +1602,6 @@
     "kind": "action",
     "belongsTo": "settings",
     "note": "Quality: the existing engine banner gains Retry when preparation fails (#134 W9)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-343c7a0bb03c",
-    "surface": "window home",
-    "label": null,
-    "expression": "model . retryCaptureLabel",
-    "kind": "action",
-    "belongsTo": "dictate",
-    "note": "Runtime label: Retry transcription or Retry saving, Current work's recovery for a kept capture, the same action Dictate offers (#134 H1). Home never discards the recovery."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.runtime-690989861a19",
@@ -1407,14 +1655,6 @@
     "note": "Option: hides Home's first-dictation guide and saves that choice with the Dictate preferences; Show me a first dictation brings it back until the first dictation (#15)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.speech-settings",
-    "surface": "window home",
-    "label": "Speech settings",
-    "kind": "action",
-    "belongsTo": "settings",
-    "note": "Quality: same door with a new ID (Home moved into WorkbenchHomePage)."
-  },
-  {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop",
     "surface": "window home",
     "label": "Stop",
@@ -1447,13 +1687,12 @@
     "note": "Option: Current work's action for a running Hand off task, the same Stop task as History's running strip (#134 H1)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop.2",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-narration",
     "surface": "window home",
-    "label": "Stop",
+    "label": "Stop narration",
     "kind": "action",
     "belongsTo": "snapAndTalk",
-    "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability. Stops narration from Home.",
-    "aliasOf": "snapAndTalk"
+    "note": "Quality: was Stop. Home's live row ends narration with the words the page, panel and toolbar use (1 Oct). Stops narration from Home."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-snap",
@@ -1472,28 +1711,40 @@
     "note": "Option: live strip action, the one way to end what is running from Home (#134 W9). Reuses the Timer menu (Pause, Stop, Reset)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.dictate",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.dictate",
     "surface": "window home",
     "label": "Dictate",
+    "page": "dictate",
     "kind": "capability",
     "belongsTo": "dictate",
-    "note": "Quality: a Quick start tile (#134 H1): the whole tile starts dictating and does nothing else; Dictate's page is its sidebar item. The guide's own Start dictating replaces it while the guide shows, and it steps aside while dictation is current work."
+    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.meetings",
+    "surface": "window home",
+    "label": "Meetings",
+    "page": "meeting",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
+  },
+  {
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap",
     "surface": "window home",
     "label": "Snap",
+    "page": "snap",
     "kind": "capability",
     "belongsTo": "snap",
-    "note": "Quality: a Quick start tile (#134 H1): the whole tile captures a region and does nothing else; Snap's page is its sidebar item."
+    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.card.snap-talk",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.workspaceCard.snap-talk",
     "surface": "window home",
     "label": "Snap & Talk",
-    "kind": "action",
+    "page": "readback",
+    "kind": "workflow",
     "belongsTo": "snapAndTalk",
-    "note": "The Home workflow card opens Snap & Talk and continues a loaded valid session in place. Replaces the separate Continue section."
+    "note": "Opens the prepared workspace only; never starts capture, playback, processing or a new session. Desktop cohesion requested 30 September 2026."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.PanelRecoveryRow.Button.runtime-27f7b4321a3d",
@@ -1539,6 +1790,14 @@
     "note": "Quality: Dictate's recent-transcripts option in the same slot, renamed to the place it opens. It opens History on Transcripts (#137)."
   },
   {
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.meetings",
+    "surface": "quick panel dictate options",
+    "label": "Meetings…",
+    "kind": "workflow",
+    "belongsTo": "dictate",
+    "note": "Existing meeting/call transcription workflow promoted to a visible Meetings destination by the desktop redesign. Navigation starts no recording."
+  },
+  {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.open-dictate",
     "surface": "quick panel dictate options",
     "label": "Open Dictate…",
@@ -1552,13 +1811,6 @@
     "kind": "action",
     "belongsTo": "dictate",
     "note": "Option of Dictate: the Dictate page's Set up automatic paste… beside the delivery choice it serves, so the panel, Home and Dictate agree. Shown only while Paste automatically waits for Accessibility approval, under a header saying transcripts are copied for ⌘V until then (#165)."
-  },
-  {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Button.transcribe-meeting-or-call",
-    "surface": "quick panel dictate options",
-    "label": "Transcribe meeting or call…",
-    "kind": "workflow",
-    "belongsTo": "dictate"
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-dictate-options.Menu.options",
@@ -1690,11 +1942,12 @@
     "note": "Shared \"Options\" wording for the Snap & Talk row; the row owns it."
   },
   {
-    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-snapandtalk-options.ToolbarMenuAction.review-snap-talk",
+    "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-snapandtalk-options.ToolbarMenuAction.open-snap-talk",
     "surface": "quick panel snapAndTalk options",
-    "label": "Review Snap & Talk…",
+    "label": "Open Snap & Talk…",
     "kind": "action",
-    "belongsTo": "snapAndTalk"
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: renamed from Review Snap & Talk… to match the other Options doors (Open Snap…, Open Draw…)."
   },
   {
     "id": "LocalVoice.WorkbenchQuickPanel.WorkbenchQuickPanel.quick-panel-status-rows.status.runtime-b9f66b1c9f83",
@@ -1917,6 +2170,24 @@
     "belongsTo": "app"
   },
   {
+    "id": "LocalVoice.main.AppDelegate.page-item.annotate",
+    "surface": "app menu bar",
+    "label": "Draw",
+    "page": "annotate",
+    "kind": "action",
+    "belongsTo": "draw",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Opens the Draw page; the top-level Draw menu holds the tools."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.dictate",
+    "surface": "app menu bar",
+    "label": "Dictate",
+    "page": "dictate",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
+  },
+  {
     "id": "LocalVoice.main.AppDelegate.page-item.history",
     "surface": "app menu bar",
     "label": "History",
@@ -1937,11 +2208,11 @@
   {
     "id": "LocalVoice.main.AppDelegate.page-item.meeting",
     "surface": "app menu bar",
-    "label": "Transcribe meeting or call…",
+    "label": "Meetings…",
     "page": "meeting",
     "kind": "workflow",
     "belongsTo": "dictate",
-    "note": "Quality: Window › Transcribe meeting or call… takes its name and route from the page record, with the native … because the page asks for a source before anything records (#134)."
+    "note": "Existing meeting/call transcription workflow promoted to a visible Meetings destination by the desktop redesign. Navigation starts no recording."
   },
   {
     "id": "LocalVoice.main.AppDelegate.page-item.personas",
@@ -1951,6 +2222,15 @@
     "kind": "action",
     "belongsTo": "persona",
     "note": "Quality: Window › Persona takes its name and route from the page record (#134)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.present",
+    "surface": "app menu bar",
+    "label": "Present",
+    "page": "present",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct). Switch to… stays the presenter's own door."
   },
   {
     "id": "LocalVoice.main.AppDelegate.page-item.readback",
@@ -1980,11 +2260,30 @@
     "note": "Quality: Workbench › Keyboard shortcuts… becomes Keyboard…, the name of the Settings section it opens, read from the page record (#134)."
   },
   {
+    "id": "LocalVoice.main.AppDelegate.page-item.snap",
+    "surface": "app menu bar",
+    "label": "Snap",
+    "page": "snap",
+    "kind": "action",
+    "belongsTo": "snap",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
+  },
+  {
+    "id": "LocalVoice.main.AppDelegate.page-item.speak",
+    "surface": "app menu bar",
+    "label": "Read",
+    "page": "speak",
+    "kind": "action",
+    "belongsTo": "read",
+    "note": "Quality: Window lists every sidebar page in the sidebar's order, named by the page record (#134; 1 Oct)."
+  },
+  {
     "id": "StageKit.ActivityMenus.PersonaSizeMenuView.native-control.persona-size",
-    "surface": "Persona menu",
+    "surface": "Persona camera menu",
     "label": "Persona Size",
     "kind": "option",
-    "belongsTo": "persona"
+    "belongsTo": "persona",
+    "note": "Option of Persona: the existing size control changes only the camera bubble placement while that visit owns the live slot."
   },
   {
     "id": "StageKit.AnnotationMenu.AnnotationMenu.NSMenuItem.ink-colour",
@@ -2072,6 +2371,96 @@
     "label": "Drawing Controls…",
     "kind": "action",
     "belongsTo": "draw"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.end-presentation",
+    "surface": "Present live window",
+    "label": "End presentation",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.reconnect",
+    "surface": "Present live window",
+    "label": "Reconnect",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.show-presentation-window",
+    "surface": "Present live window",
+    "label": "Show presentation window",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Button.source-connection-help",
+    "surface": "Present live window",
+    "label": "Source & connection help…",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.full-screen",
+    "surface": "Present live window",
+    "label": "Full screen",
+    "kind": "setting",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.match-device-proportions",
+    "surface": "Present live window",
+    "label": "Match device proportions",
+    "kind": "setting",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.Toggle.pause-background-motion",
+    "surface": "Present live window",
+    "label": "Pause background motion",
+    "kind": "setting",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.source",
+    "surface": "Present live window",
+    "label": "Source",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.window-position",
+    "surface": "Present live window",
+    "label": "Window Position",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
+  },
+  {
+    "id": "StageKit.DemoPresentation.DemoPresentation.LiveSettings.submenu.window-size",
+    "surface": "Present live window",
+    "label": "Window Size",
+    "kind": "option",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
   },
   {
     "id": "StageKit.DemoPresentation.DemoPresentation.StageMenuAction.compact",
@@ -2235,6 +2624,46 @@
     "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.position-camera",
+    "surface": "Persona camera menu",
+    "label": "Position camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: named positions act on the current camera bubble and preserve the saved artwork placement."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.NSMenuItem.switch-camera",
+    "surface": "Persona camera menu",
+    "label": "Switch camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.camera",
+    "surface": "floating toolbar Persona picker",
+    "label": "Camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona (Ethan, 1 Oct 2026: the camera is effectively its own persona and must be quick from the revealed pill). The pill's Persona picker lists the cards and then Camera; choosing it is the explicit Start camera, the shown card stays up until the first frame, and choosing a card ends a live camera. Each choice revalidates the live state it was drawn for."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.cancel-starting-camera",
+    "surface": "Persona camera menu",
+    "label": "Cancel starting camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality: cancellation ends only the current permission or startup request and drops late replies."
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-camera",
+    "surface": "Persona camera menu",
+    "label": "End camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: end the current camera visit, release the device and preserve saved artwork and independent Present work."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.end-overlay",
     "surface": "Persona menu",
     "label": "End Overlay",
@@ -2242,11 +2671,27 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.hide-camera",
+    "surface": "Persona camera menu",
+    "label": "Hide camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: hide releases the camera and keeps its temporary placement for Show camera again."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.lock-artwork-clicks-pass-through",
     "surface": "Persona menu",
     "label": "Lock Artwork · Clicks Pass Through",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.lock-camera-clicks-pass-through",
+    "surface": "Persona camera menu",
+    "label": "Lock camera · clicks pass through",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.react-to-my-voice-uses-microphone",
@@ -2275,11 +2720,28 @@
     "note": "Quality within Persona (#170): Hide keeps the one floating card, and Show Again brings back that card, the same words as a paused set's Show Again."
   },
   {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-camera-again",
+    "surface": "Persona camera menu",
+    "label": "Show camera again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: explicitly restart the selected camera in the retained placement."
+  },
+  {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.show-selected-persona",
     "surface": "Persona menu",
     "label": "Show Selected Persona",
     "kind": "action",
     "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.try-again",
+    "surface": "Persona camera menu",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Quality: contextual camera recovery opens only the prepared camera on explicit retry.",
+    "aliasOf": "persona"
   },
   {
     "id": "StageKit.Persona.PersonaLibrary.StageMenuAction.update-shown-card",
@@ -2431,6 +2893,108 @@
     "belongsTo": "persona"
   },
   {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.cancel",
+    "surface": "Persona live camera",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The existing contextual dismissal wording: it stops opening the camera and leaves the shown artwork and saved work as they were."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.end-camera",
+    "surface": "Persona live camera",
+    "label": "End camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona (#134 camera source): ends the live camera visit and releases the device. It keeps saved personas, prepared layouts and any running presentation."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.hide-camera",
+    "surface": "Persona live camera",
+    "label": "Hide camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: releases the camera at once and keeps the bubble's place for Show camera again. The same words as Hide elsewhere in Persona."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.open-camera-settings",
+    "surface": "Persona live camera",
+    "label": "Open Camera settings",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The same refused-access recovery the profile camera offers, beside the explanation."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.show-camera-again",
+    "surface": "Persona live camera",
+    "label": "Show camera again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: starts the same camera again and returns the bubble to its kept place, as Show again does for a hidden card."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.start-camera",
+    "surface": "Persona live camera",
+    "label": "Start camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: the one door that opens this Mac's camera. Off at launch; visiting Persona or choosing Camera as the source starts nothing."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.switch-camera",
+    "surface": "Persona live camera",
+    "label": "Switch camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Option of Persona: an explicit switch opens the chosen camera and releases the old one; a workspace source choice alone starts nothing."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Button.try-again",
+    "surface": "Persona live camera",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: explicitly retry the prepared camera after a failure, without silently selecting a fallback."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Menu.position",
+    "surface": "Persona live camera",
+    "label": "Position",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "The shown card's own Position control, acting on the camera bubble while it is the live source; it uses the shared named anchors."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Picker.camera",
+    "surface": "Persona live camera",
+    "label": "Camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Option of Persona: prepare a camera choice without opening hardware; Start, Show again, Try again or Switch camera explicitly applies it."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.Toggle.lock-camera-clicks-pass-through",
+    "surface": "Persona live camera",
+    "label": "Lock camera · clicks pass through",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: the existing click-through lock applies to the camera bubble, while its move and resize handles remain usable."
+  },
+  {
+    "id": "StageKit.PersonaCamera.PersonaCameraPanel.choice.choose-a-camera",
+    "surface": "Persona live camera",
+    "label": "Choose a camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Temporary empty choice when no camera has been chosen yet and several are available; it requires an explicit source."
+  },
+  {
     "id": "StageKit.PersonaLibraryView.PersonaCardEditor.Button.cancel",
     "surface": "local profile",
     "label": "Cancel",
@@ -2479,6 +3043,238 @@
     "kind": "option",
     "belongsTo": "persona",
     "note": "Local Me profile uses the existing Persona library and appearance editor. Changes save only on explicit confirmation; Cancel preserves prior work."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.bottom-centre",
+    "surface": "Persona live copy",
+    "label": "Bottom centre",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.bottom-left",
+    "surface": "Persona live copy",
+    "label": "Bottom left",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.bottom-right",
+    "surface": "Persona live copy",
+    "label": "Bottom right",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.left-centre",
+    "surface": "Persona live copy",
+    "label": "Left centre",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.right-centre",
+    "surface": "Persona live copy",
+    "label": "Right centre",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.top-centre",
+    "surface": "Persona live copy",
+    "label": "Top centre",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.top-left",
+    "surface": "Persona live copy",
+    "label": "Top left",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Button.top-right",
+    "surface": "Persona live copy",
+    "label": "Top right",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Menu.position",
+    "surface": "Persona live copy",
+    "label": "Position",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Picker.live-appearance",
+    "surface": "Persona live copy",
+    "label": "Live appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Picker.live-source",
+    "surface": "Persona source",
+    "label": "Live source",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: prepare artwork or a local camera bubble in the same workspace. Changing this selector starts no capture."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.Toggle.lock-artwork-clicks-pass-through",
+    "surface": "Persona live copy",
+    "label": "Lock artwork · clicks pass through",
+    "kind": "setting",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.choice.artwork",
+    "surface": "Persona source",
+    "label": "Artwork",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: prepare the existing saved-artwork source without changing the live output."
+  },
+  {
+    "id": "StageKit.PersonaLibraryView.PersonaLibraryView.choice.camera",
+    "surface": "Persona source",
+    "label": "Camera",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Option of Persona: prepare a local webcam bubble. Start camera remains the explicit capture action.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Button.bring-forward",
+    "surface": "Persona live copies",
+    "label": "Bring forward",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Button.remove-selected",
+    "surface": "Persona live copies",
+    "label": "Remove selected",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Button.runtime-ddf97fd23a75",
+    "surface": "Persona live copies",
+    "label": null,
+    "expression": "copy . visible ? \"Hide selected\" : \"Show selected\"",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "kind": "action",
+    "belongsTo": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Button.save-live-layout",
+    "surface": "Persona live copies",
+    "label": "Save live layout",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Button.send-backward",
+    "surface": "Persona live copies",
+    "label": "Send backward",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Button.update-selected",
+    "surface": "Persona live copies",
+    "label": "Update selected",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Menu.add-overlay",
+    "surface": "Persona live copies",
+    "label": "Add overlay",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Menu.position-artwork",
+    "surface": "Persona live copies",
+    "label": "Position artwork",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Menu.replace-selected",
+    "surface": "Persona live copies",
+    "label": "Replace selected",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Picker.appearance",
+    "surface": "Persona live copies",
+    "label": "Appearance",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Picker.choose-overlay",
+    "surface": "Persona live copies",
+    "label": "Choose overlay",
+    "kind": "option",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "StageKit.PersonaLiveSettings.PersonaLiveSettings.Toggle.lock-artwork-clicks-pass-through",
+    "surface": "Persona live copies",
+    "label": "Lock artwork · clicks pass through",
+    "kind": "setting",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
   },
   {
     "id": "StageKit.ProfileCamera.ProfileCameraPreviewHost.native-control.live-camera-preview",
@@ -2609,25 +3405,20 @@
     "belongsTo": "persona"
   },
   {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.reset-timer",
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-caae27b8e4c8",
     "surface": "Timer menu",
-    "label": "Reset Timer",
+    "label": null,
+    "expression": "shown ? \"Hide Timer\" : \"Show Timer\"",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Show Timer or Hide Timer acts on the timer's window alone; the countdown keeps running.",
     "kind": "action",
     "belongsTo": "timer"
   },
   {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-be0e55863d8d",
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-e05ea4b54e12",
     "surface": "Timer menu",
     "label": null,
-    "expression": "app . timerRunning ? \"Pause Timer\" : \"Resume Timer\"",
-    "kind": "action",
-    "belongsTo": "timer",
-    "note": "Runtime label from app . timerRunning ? \"Pause Timer\" : \"Resume Timer\"; no rendered text assumed."
-  },
-  {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.start-timer",
-    "surface": "Timer menu",
-    "label": "Start Timer",
+    "expression": "transport . transport . title + \" Timer\"",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. The one next step (Start, Pause, Resume or Restart Timer) for the countdown shown (#174). It replaces a separate Start Timer that silently restarted a running countdown, and Reset Timer, which Stop and Restart cover.",
     "kind": "action",
     "belongsTo": "timer"
   },
@@ -2688,6 +3479,15 @@
     "label": "Cancel request",
     "kind": "action",
     "belongsTo": "dictate"
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelPersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Cancel",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.cancelReading",
@@ -2752,6 +3552,15 @@
     "belongsTo": "persona"
   },
   {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.hidePersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Hide camera",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
+  },
+  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.pauseOverlays",
     "surface": "floating toolbar next action",
     "label": "Hide personas",
@@ -2801,6 +3610,24 @@
     "belongsTo": "read"
   },
   {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.retryPersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Try again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
+  },
+  {
+    "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.showPersonaCamera",
+    "surface": "floating toolbar next action",
+    "label": "Show camera again",
+    "kind": "action",
+    "belongsTo": "persona",
+    "aliasOf": "persona",
+    "note": "Quality: the shared Persona action names the current camera operation, respects admission and rejects stale camera visits."
+  },
+  {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.snap",
     "surface": "floating toolbar next action",
     "label": "Snap",
@@ -2810,9 +3637,10 @@
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.snapAndTalk",
     "surface": "floating toolbar next action",
-    "label": "Capture",
+    "label": "Snap & Talk",
     "kind": "workflow",
-    "belongsTo": "snapAndTalk"
+    "belongsTo": "snapAndTalk",
+    "note": "Quality: the start without a session opens its setup, so it names the workflow rather than Capture."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopDictation",
@@ -2831,9 +3659,10 @@
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopMeetingTranscription",
     "surface": "floating toolbar next action",
-    "label": "Stop transcribing",
+    "label": "Stop & transcribe",
     "kind": "action",
-    "belongsTo": "dictate"
+    "belongsTo": "dictate",
+    "note": "Quality: was Stop transcribing; it stops recording and transcribes, so it says so, as the Meetings page does (1 Oct)."
   },
   {
     "id": "ToolbarCore.ToolbarNextAction.ToolbarNextAction.hover-title.stopReading",
@@ -2852,14 +3681,14 @@
     "belongsTo": "app"
   },
   {
-    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.appearance",
+    "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.personaPicker",
     "surface": "floating toolbar accessory",
-    "label": "Appearance",
-    "case": "appearance",
-    "kind": "option",
+    "label": "Choose Persona",
+    "case": "personaPicker",
+    "kind": "action",
     "belongsTo": "persona",
-    "aliasOf": "StageKit.Persona.PersonaLibrary.addSubmenu.appearance",
-    "note": "Persona's one accessory while a live copy is selected, a hidden one included (#134 part B, which called it Shape): Circle, Card or Original for that copy only, the same choice and word as the Persona menu's Appearance (#169, #170). VoiceOver hears whose appearance it is, and that the copy is hidden when it is."
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
   },
   {
     "id": "ToolbarCore.ToolbarViewState.ToolbarAccessory.title.prompts",
@@ -2944,6 +3773,36 @@
     "case": "snapAndTalk",
     "kind": "workflow",
     "belongsTo": "snapAndTalk"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarQuickControl.title.nextPersona",
+    "surface": "floating toolbar contextual actions",
+    "label": "Next Persona",
+    "case": "nextPersona",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarQuickControl.title.nextSet",
+    "surface": "floating toolbar contextual actions",
+    "label": "Next set",
+    "case": "nextSet",
+    "kind": "action",
+    "belongsTo": "persona",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "persona"
+  },
+  {
+    "id": "ToolbarCore.ToolbarViewState.ToolbarQuickControl.title.presentationView",
+    "surface": "floating toolbar contextual actions",
+    "label": "View",
+    "case": "presentationView",
+    "kind": "action",
+    "belongsTo": "present",
+    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
+    "aliasOf": "present"
   },
   {
     "id": "choices.CaptureMode.hold",
@@ -3176,6 +4035,22 @@
     "note": "One of Persona's three appearances (#169), chosen in the Persona workspace or the shown copy's Appearance. Shows the image unchanged, the same sense of the word as Dictate's Original text style: the source kept as it is."
   },
   {
+    "id": "choices.ReadingProvider.mac",
+    "surface": "choices ReadingProvider",
+    "label": "Mac voices",
+    "case": "mac",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
+    "id": "choices.ReadingProvider.speko",
+    "surface": "choices ReadingProvider",
+    "label": "Speko · online",
+    "case": "speko",
+    "kind": "option",
+    "belongsTo": "read"
+  },
+  {
     "id": "choices.RecognitionProvider.localServer",
     "surface": "choices RecognitionProvider",
     "label": "Local model server",
@@ -3399,10 +4274,11 @@
   {
     "id": "shortcut.stage.controls",
     "surface": "global shortcuts",
-    "label": "Open drawing controls",
+    "label": "Open Draw",
     "case": "controls",
     "kind": "action",
-    "belongsTo": "draw"
+    "belongsTo": "draw",
+    "note": "Quality: renamed from Open drawing controls to name the page it opens, as the panel's Open Draw… does."
   },
   {
     "id": "shortcut.stage.ellipse",
@@ -3543,10 +4419,11 @@
   {
     "id": "shortcut.stage.scenes",
     "surface": "global shortcuts",
-    "label": "Demo scenes",
+    "label": "Open Present",
     "case": "scenes",
     "kind": "action",
-    "belongsTo": "present"
+    "belongsTo": "present",
+    "note": "Quality: renamed from Demo scenes to name the page it opens, as the panel's Open Present… does."
   },
   {
     "id": "shortcut.stage.text",
@@ -3559,10 +4436,11 @@
   {
     "id": "shortcut.stage.timer",
     "surface": "global shortcuts",
-    "label": "Break timer",
+    "label": "Timer",
     "case": "timer",
     "kind": "action",
-    "belongsTo": "timer"
+    "belongsTo": "timer",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. The shortcut is named Timer, not Break timer; its action and saved key are unchanged."
   },
   {
     "id": "shortcut.stage.undo",

@@ -113,8 +113,20 @@ GUIDANCE = ("Workbench keeps a small grammar (docs/workbench.md#grammar). "
 #             calls a closure the host injected into the view; nothing is followed
 ENTRY_POINTS = [
     ('LocalVoice/WorkbenchQuickPanel.swift', 'WorkbenchQuickPanel', 'quick panel', 'panel'),
-    # More: the tool's options, the work running elsewhere and the toolbar's own items (#134).
-    ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar More menu', 'controls'),
+    ('LocalVoice/FloatingToolbar.swift', 'FloatingToolbar', 'floating toolbar context menu', 'controls'),
+    ('LocalVoice/ToolbarActivityActions.swift', 'FloatingToolbar', 'floating toolbar activity chooser', 'controls'),
+    ('LocalVoice/PresentWorkspaceView.swift', 'PresentWorkspaceView', 'Present workspace', 'page'),
+    ('LocalVoice/PresentWorkspaceView.swift', 'PresentPromptButton', 'Present workspace', 'controls'),
+    ('StageKit/PersonaLiveSettings.swift', 'PersonaLiveSettings', 'Persona live copies', 'controls'),
+    ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.shownPanel', 'Persona live copy', 'controls'),
+    ('StageKit/PersonaLibraryView.swift', 'PersonaLibraryView.liveSourceControl', 'Persona source', 'controls'),
+    # Persona's other live source: the local camera bubble, prepared and run beside
+    # the shown card's controls on the same page.
+    ('StageKit/PersonaCamera.swift', 'PersonaCameraPanel', 'Persona live camera', 'controls'),
+    ('StageKit/Persona.swift', 'PersonaLibrary.cameraItems', 'Persona camera menu', 'controls'),
+    # The pill's one Persona picker offers the cards and the live camera beside them.
+    ('StageKit/Persona.swift', 'PersonaLibrary.makeToolbarPickerMenu', 'floating toolbar Persona picker', 'controls'),
+    ('StageKit/DemoPresentation.swift', 'LiveSettings', 'Present live window', 'controls'),
     # Position… in that menu opens the toolbar's placement control (#163).
     ('LocalVoice/ToolbarPositionControl.swift', 'ToolbarPositionControl', 'floating toolbar position control', 'controls'),
     # The same window's live controls: the no-speech cue, and a result's own controls, which the
@@ -140,19 +152,22 @@ ENTRY_POINTS = [
     # capability). The page body is scanned in mode 'options', so its transient
     # controls (editor buttons, selection, the current draft) stay out while a
     # new persistent preference on it is found. The page's options area is an
-    # ordinary page surface: its buttons are doors or setting actions, as on
+    # ordinary sheet surface: its buttons are doors or setting actions, as on
     # Settings, and the views it embeds (VoiceOptions) are followed.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page options', 'options'),
-    ('LocalVoice/Views.swift', 'ContentView.dictateOptions', 'dictate page options', 'page'),
-    # Delivery and Text style sit in Dictate's task region beside the microphone and the
-    # result (#134); their view is followed as the options area's is.
-    ('LocalVoice/Views.swift', 'ContentView.dictateChoices', 'dictate page options', 'page'),
+    ('LocalVoice/Views.swift', 'ContentView.dictateHeader', 'dictate page', 'page'),
+    ('LocalVoice/Views.swift', 'ContentView.readingHeader', 'read page', 'page'),
+    ('LocalVoice/Views.swift', 'DictateSettingsView', 'dictate settings', 'page'),
+    ('LocalVoice/Views.swift', 'ReadingSettingsView', 'read settings', 'page'),
+    ('LocalVoice/Views.swift', 'DictionaryView', 'dictionary page', 'doors'),
     # Capability pages also carry doors (rule 8: opens a place or page, wherever
     # it appears). Mode 'doors' keeps the page's own actions (editor, selection,
     # copy, save) out. A closure the host injects, such as ReadbackView's
     # onOpenPacks, counts because the page cannot know where it leads.
     ('LocalVoice/Views.swift', 'ContentView.dictate', 'dictate page', 'doors'),
     ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingWorkspaceView', 'meeting page', 'doors'),
+    # Meetings owns its offer to start when a call begins (Grammar: options live with their capability).
+    ('LocalVoice/MeetingWorkspaceView.swift', 'MeetingDetectionSettings', 'meeting page', 'page'),
     ('LocalVoice/ReadbackView.swift', 'ReadbackView', 'snap & talk page', 'doors'),
     ('LocalVoice/SnapWorkspaceView.swift', 'SnapWorkspaceView', 'snap page', 'doors'),
     # History is one page made of several views: its header, the transcript,
@@ -175,7 +190,7 @@ ENTRY_POINTS = [
 # openHistory opens History with a door's starting view; openTranscript opens
 # a transcript on the Dictate page; importReading opens text on the Read page
 # through its import decision.
-ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading'}
+ROUTES = {'navigate', 'onShowEditor', 'showHistory', 'showLibrary', 'showControls', 'openHistory', 'openTranscript', 'importReading', 'reviewUnresolvedDelivery'}
 # Calls in a menu action's own body that open a page (Inventory.menu_page): None takes
 # the route from the call's literal argument; otherwise the call always opens that page.
 MENU_ROUTES = {'navigate': None, 'onShowEditor': None, 'openHistory': 'history', 'showLibrary': 'library'}
@@ -198,6 +213,7 @@ CATALOGUES = [
     # The floating toolbar's next action, one title per operation and start verb.
     ('ToolbarCore/ToolbarNextAction.swift', 'ToolbarNextAction.title'),
     ('ToolbarCore/ToolbarCaptureKind.swift', 'ToolbarCaptureKind'),
+    ('ToolbarCore/ToolbarViewState.swift', 'ToolbarQuickControl'),
 ]
 OFFER_NAME = re.compile(r'\b(?:struct|class)\s+(\w*Offer\w*|\w+Cue)\b')
 OFFER_TYPES = ['FounderIntroductionCard']
@@ -208,9 +224,9 @@ ROWS = {'WorkbenchControlTool': ('quick-panel.row.', 'quick panel rows')}
 # first argument is its accessible name. PanelSwitch is the panel header's switch row.
 CONTROLS = set('''Button Toggle Picker Menu Label ColorPicker TextField SecureField
     Stepper Slider Link NativeControlMenu PanelSwitch ToolbarMenuAction StageMenuAction
-    NSMenuItem NSButton addItem addSubmenu card command actionItem action CapturePreviewButton'''.split())
+    NSMenuItem NSButton addItem addSubmenu card workspaceCard command actionItem action CapturePreviewButton StageLiveMenu submenu'''.split())
 # Label-taking helpers, counted only in the file that declares them.
-HELPERS = {'card', 'command', 'actionItem', 'action'}
+HELPERS = {'card', 'workspaceCard', 'command', 'actionItem', 'action', 'submenu'}
 IDENT = r'[A-Za-z_$][\w$]*'
 KEYWORDS = set('''return in let var case try await if guard else where for while
     switch throw defer do catch is as some any'''.split())
@@ -911,6 +927,15 @@ class Inventory:
         for i, api, args, end in swift.calls(CONTROLS):
             if not inside(i) or i in consumed or (api in HELPERS and api not in declared):
                 continue
+            # Home's preparation cards take a route and draw its canonical page name. Record
+            # every literal door; a new route must resolve before it can enter the registry.
+            if api == 'workspaceCard' and args:
+                route = literal(args[0])
+                name = self.tree.page_names().get(route)
+                if not name:
+                    raise ValueError(f'{swift.path}: workspaceCard must name an existing page route, got {expression(args[0])}.')
+                record(i, api, lex(json.dumps(name)), page=route)
+                continue
             if api == 'Label' and (in_closure(i) or mode == 'page'):
                 continue  # Outside a control, a Label is a heading or a status line.
             if self.note(swift, i, args, end):
@@ -1004,6 +1029,8 @@ class Inventory:
             # Native menu titles assigned after construction.
             if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'main' and literal([swift.tokens[i + 3]]):
                 self.add(swift, i, 'menu-title', [swift.tokens[i + 3]], 'app menu bar', identity=v[i - 1])
+            if v[i:i + 3] == ['.', 'title', '='] and swift.stem == 'PresentWorkspaceView' and literal([swift.tokens[i + 3]]):
+                self.add(swift, i, 'button-title', [swift.tokens[i + 3]], 'Present workspace', identity=v[i - 1])
             # The floating toolbar resolves its action title before rendering the row.
             # A title computed by another function is recorded where that function is.
             if v[i:i + 2] == ['title', '='] and v[i - 1] != '.' and swift.stem == 'FloatingToolbar':
@@ -1058,6 +1085,10 @@ class Inventory:
         for start, end in ranges[:1]:
             for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
                 self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar capture sources', identity=case, case=case)
+        swift, ranges = self.owner(*CATALOGUES[8], kinds=('enum',))
+        for start, end in ranges[:1]:
+            for case, (label, expr) in choice_labels(swift, start, end, 'title').items():
+                self.add(swift, start + 1, 'title', labelled(label, expr), 'floating toolbar contextual actions', identity=case, case=case)
         # Stage shortcuts: every Action case, titled as the shortcut list shows it.
         swift, ranges = self.owner(*CATALOGUES[3], kinds=('enum',))
         for start, end in ranges[:1]:

@@ -64,7 +64,7 @@ final class ToolbarInteractionTests: XCTestCase {
             XCTAssertNil(controls.first { $0.accessibilityIdentifier() == "toolbar.primary" }, "no duplicate generic capture")
             let tab = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
                 windowNumber: panel.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48))
-            let ids = ["toolbar.launcher"] + ToolbarCaptureKind.allCases.map { "toolbar.capture." + $0.rawValue } + ["toolbar.accessory", "toolbar.more"]
+            let ids = ["toolbar.launcher"] + ToolbarCaptureKind.allCases.map { "toolbar.capture." + $0.rawValue } + ["toolbar.accessory"]
             for (index, identifier) in ids.enumerated() {
                 let button = try XCTUnwrap(controls.first { $0.accessibilityIdentifier() == identifier })
                 XCTAssertTrue(panel.makeFirstResponder(button))
@@ -102,10 +102,10 @@ final class ToolbarInteractionTests: XCTestCase {
             session.afterMenuTracking { events.append("action") }
             XCTAssertEqual(events, ["tracking"], "the action waits for tracking to return")
         }
-        let (panel, view) = host(ToolbarRow(state: .init(name: "menu", tier: .revealed), makeMenu: { menu },
+        let (panel, view) = host(ToolbarRow(state: .init(name: "menu", tier: .revealed, mode: .present, quickControl: .presentationView), makeViewMenu: { menu },
             menuBegan: session.beginMenu, menuEnded: { events.append("ended"); session.endMenu(pointerInside: false) }))
         defer { panel.close(); session.suspend() }
-        let more = try XCTUnwrap(descendants(view).first { $0.accessibilityIdentifier() == "toolbar.more" } as? NSButton)
+        let more = try XCTUnwrap(descendants(view).first { $0.accessibilityIdentifier() == "toolbar.view" } as? NSButton)
         let point = more.convert(NSPoint(x: more.bounds.midX, y: more.bounds.midY), to: nil)
         func event(_ type: NSEvent.EventType, window: Int) -> NSEvent {
             NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
@@ -283,7 +283,7 @@ final class ToolbarInteractionTests: XCTestCase {
                 XCTAssertEqual(captures, ready ? 3 : 0, "invisible controls cannot start a capture")
                 let returnKey = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
                     windowNumber: panel.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
-                for control in descendants(view).compactMap({ $0 as? NSButton }) where ["toolbar.launcher", "toolbar.more", "toolbar.accessory"].contains(control.accessibilityIdentifier()) {
+                for control in descendants(view).compactMap({ $0 as? NSButton }) where ["toolbar.launcher", "toolbar.accessory"].contains(control.accessibilityIdentifier()) {
                     XCTAssertEqual(control.isEnabled, ready)
                     control.performClick(nil); control.keyDown(with: returnKey)
                 }

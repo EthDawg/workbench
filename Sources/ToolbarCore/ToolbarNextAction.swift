@@ -6,7 +6,7 @@ public struct ToolbarLiveState: Hashable, Sendable {
     /// delivered, or for Copy now (#211 F5).
     public enum Dictation: CaseIterable, Sendable { case idle, requesting, recording, processing, cancelling, waitingForDrawing }
     public enum Reading: CaseIterable, Sendable { case idle, preparing, playing, paused }
-    public enum Persona: CaseIterable, Sendable { case none, shown, session, sessionHidden }
+    public enum Persona: CaseIterable, Sendable { case none, shown, session, sessionHidden, cameraStarting, cameraShown, cameraHidden, cameraFailed }
     public enum Timer: CaseIterable, Sendable { case none, running, paused, finished }
 
     public var mode: ToolbarMode
@@ -77,6 +77,7 @@ public enum ToolbarOperation: Hashable, Sendable {
     /// stops instead, and dispatches through the same owner switch.
     case stopReading
     case hidePersona, pauseOverlays, resumeOverlays
+    case cancelPersonaCamera, hidePersonaCamera, showPersonaCamera, retryPersonaCamera
     case captureNext, stopMeetingTranscription, endPresentation
     case start(ToolbarMode)
     /// Nothing to do but wait; the label says why and is disabled.
@@ -88,13 +89,14 @@ public enum ToolbarOperation: Hashable, Sendable {
         switch self {
         case .stopInserting, .stopDictation, .finishNarration, .finishDrawing,
              .stopReading, .stopMeetingTranscription, .endPresentation: return "stop.fill"
-        case .cancelDictationRequest, .cancelReading: return "xmark"
+        case .cancelDictationRequest, .cancelReading, .cancelPersonaCamera: return "xmark"
         case .pauseReading: return "pause.fill"
         case .resumeReading: return "play.fill"
-        case .hidePersona, .pauseOverlays: return "eye.slash"
-        case .resumeOverlays: return "eye"
+        case .hidePersona, .pauseOverlays, .hidePersonaCamera: return "eye.slash"
+        case .resumeOverlays, .showPersonaCamera: return "eye"
+        case .retryPersonaCamera: return "arrow.clockwise"
         case .captureNext: return "viewfinder"
-        case .wait: return "ellipsis"
+        case .wait: return "hourglass"
         case .start(let mode): return mode == .dictate ? "mic.fill" : mode.symbol
         }
     }
@@ -107,7 +109,7 @@ public enum ToolbarOperation: Hashable, Sendable {
         case .finishNarration, .captureNext: return .snapAndTalk
         case .finishDrawing: return .draw
         case .stopInserting, .endPresentation: return .present
-        case .hidePersona, .pauseOverlays, .resumeOverlays: return .persona
+        case .hidePersona, .pauseOverlays, .resumeOverlays, .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera: return .persona
         case .start(let mode): return mode
         case .wait: return nil
         }
@@ -130,7 +132,7 @@ public enum ToolbarOperation: Hashable, Sendable {
 /// never read differently: what is consuming your input now, then the cheapest
 /// to undo, then the mode's own session steps and endings, then its start verb.
 /// Work that runs in another mode never claims the label; its chooser row says
-/// it is live and More offers its finish item.
+/// it is live and its chooser row offers its finish item.
 public struct ToolbarNextAction: Equatable, Sendable {
     public var title: String
     public var symbol: String
@@ -147,7 +149,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
         let enabled: Bool
         switch operation {
         case .wait: enabled = false
-        case .start, .captureNext: enabled = live.mayStart
+        case .start, .captureNext, .showPersonaCamera, .retryPersonaCamera: enabled = live.mayStart
         default: enabled = true
         }
         var detail: String?
@@ -186,10 +188,13 @@ public struct ToolbarNextAction: Equatable, Sendable {
         switch live.dictation {
         case .requesting: return .cancelDictationRequest
         case .recording: return .stopDictation
-        // Words waiting for drawing to end: stopping drawing is what delivers them, and More has
+        // Words waiting for drawing to end: stopping drawing is what delivers them, and the Dictate chooser row has
         // Copy now (#211 F5). Drawing that has already ended is a moment's processing.
         case .waitingForDrawing where live.drawing: return .finishDrawing
-        case .processing, .cancelling, .waitingForDrawing: return .wait
+        // Processing consumes nothing: only Dictate waits on it. Another tool keeps its own
+        // action, and the chooser's Dictate row keeps the dictation's commands.
+        case .processing, .cancelling, .waitingForDrawing:
+            if live.mode == .dictate { return .wait }
         case .idle: break
         }
         if live.capturingScreen { return .wait }
@@ -198,8 +203,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
         switch live.reading {
         case .preparing: return .cancelReading
         case .playing: return .pauseReading
-        case .paused: return .resumeReading
-        case .idle: break
+        // A paused reading consumes nothing and has no timeout: it leads only in Read, so it
+        // never hides another tool's start, such as Snap's sources. The chooser's Read row resumes it.
+        case .paused where live.mode == .read: return .resumeReading
+        case .paused, .idle: break
         }
         // From here the label belongs to the selected mode alone.
         switch live.mode {
@@ -208,6 +215,10 @@ public struct ToolbarNextAction: Equatable, Sendable {
             case .session: return .pauseOverlays
             case .sessionHidden: return .resumeOverlays
             case .shown: return .hidePersona
+            case .cameraStarting: return .cancelPersonaCamera
+            case .cameraShown: return .hidePersonaCamera
+            case .cameraHidden: return .showPersonaCamera
+            case .cameraFailed: return .retryPersonaCamera
             case .none: break
             }
         case .snapAndTalk:
@@ -236,8 +247,12 @@ public struct ToolbarNextAction: Equatable, Sendable {
         case .pauseOverlays: return "Hide personas"
         case .resumeOverlays: return "Show personas"
         case .hidePersona: return "Hide persona"
+        case .cancelPersonaCamera: return "Cancel"
+        case .hidePersonaCamera: return "Hide camera"
+        case .showPersonaCamera: return "Show camera again"
+        case .retryPersonaCamera: return "Try again"
         case .captureNext: return "Capture next · \(live.captureCount ?? 0)"
-        case .stopMeetingTranscription: return "Stop transcribing"
+        case .stopMeetingTranscription: return "Stop & transcribe"
         case .endPresentation: return "End presentation"
         case .wait: return live.dictation == .cancelling ? "Cancelling…" : live.dictation == .processing || live.dictation == .waitingForDrawing ? "Processing…" : "Capturing…"
         case .start(let mode):
@@ -245,7 +260,7 @@ public struct ToolbarNextAction: Equatable, Sendable {
             case .dictate: return live.canRecordAgain ? "Record again" : "Dictate"
             case .read: return "Read"
             case .snap: return "Snap"
-            case .snapAndTalk: return "Capture"
+            case .snapAndTalk: return "Snap & Talk"
             case .draw: return "Draw"
             case .present: return "Present"
             case .persona: return "Show persona"

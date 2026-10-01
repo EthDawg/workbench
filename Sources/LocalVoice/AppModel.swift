@@ -97,10 +97,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     /// clears it; without one, History opens on All.
     @Published var historyDoor: HistoryDoor?
     @Published var libraryFocusToken = UUID()
-    @Published var phase: Phase = .idle
+    @Published var phase: Phase = .idle {
+        didSet { if phase == .idle { destination?.opaqueEditor?.end() } }
+    }
     @Published var ready = false
     @Published var preparing = false
     @Published var modelMessage = "Preparing local speech…"
+    /// Why the speech model could not be prepared, for Settings › Models beside its Try again.
+    @Published var modelFailure: String?
     @Published var status = "Ready when you are."
     /// What needs attention, with the page that shows it in full. It is raised only with
     /// `report(_:on:)`, so its page is chosen where the problem happens (#134).
@@ -202,9 +206,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
     private func invalidateAudio() { stopPlayback(); audio?.discard(); audio = nil }
+    /// What Read's Cancel ends: audio being made, or Save audio's whole run, whose
+    /// export continues after the audio is made.
+    var canCancelReading: Bool { readingGenerationActive || savingAudio }
     func cancelReading() {
-        guard readingGenerationActive else { return }
-        let mayBeBilled = readingProvider == .speko
+        guard canCancelReading else { return }
+        // Only making audio sends text to Speko; an export sends nothing.
+        let mayBeBilled = readingGenerationActive && readingProvider == .speko
+        let cancelled = savingAudio ? "Save audio cancelled." : "Reading generation cancelled."
         let task = readingTask
         if savingAudioID == readingGenerationID { savingAudioID = nil }
         readingGenerationID = nil
@@ -214,7 +223,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         rendering = false
         task?.cancel()
         pendingRender?.cancel(); pendingRender = nil
-        status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
+        status = mayBeBilled ? cancelled + " Speko may still bill text already accepted." : cancelled
     }
     @Published private(set) var readingGenerationActive = false
     /// Save audio's whole run, from making the audio to writing the file.
@@ -227,6 +236,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     @Published var audioDuration = 0.0
     @Published var playbackTime = 0.0
     @Published private(set) var pendingReadingSelection: ReadingSelectionImport?
+    @Published private(set) var pendingTranscript: Transcript?
     @Published private(set) var readingFailure: ReadingFailure?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var canRetry = false
@@ -268,16 +278,25 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private var voiceObservers: [AnyCancellable] = []
     private var voiceRefresh: Task<Void, Never>?
     private var peakPower: Float = -160
-    private var destination: TextDelivery.Target?
+    private var destination: TextDelivery.Target? {
+        didSet { oldValue?.opaqueEditor?.end() }
+    }
     private var recordingAttempt: UUID?
     private var recordingSettings: CaptureSettings?
     private var permissionRequest: Task<Bool, Never>?
     private var transcriptionTask: Task<Void, Never>?
     private var transcriptionID: UUID?
+    var toolbarCaptureIdentity: String {
+        [recordingAttempt, transcriptionID, captureRecovery.pending?.id].compactMap { $0?.uuidString }.joined(separator: ":")
+    }
+    var toolbarReadingIdentity: String {
+        [readingGenerationID, playbackID].compactMap { $0?.uuidString }.joined(separator: ":")
+    }
     private var persistWork: DispatchWorkItem?
     var onPhaseChange: (() -> Void)?
     var onShortcutsChanged: (() -> Void)?
     var onEditShortcut: ((UInt32) -> Void)?
+    @Published var toolbarControls: CaptureHUDControls?
     var onShowEditor: ((String) -> Void)?
     var onShowAnnotationMenu: (() -> Void)?
     var onUsePhotoAsBackdrop: ((URL, String) -> Void)?
@@ -298,6 +317,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         self.preferences = preferences
         super.init()
         Self.intentModel = self
+        // Any door that prepares the speech model shows its progress in the one readiness
+        // line Home, the panel and Dictate read.
+        let engine = self.engine, sink = ModelProgressSink(self)
+        Task { await engine.observeProgress { line in Task { @MainActor in sink.model?.showModelProgress(line) } } }
         photoHandoffActivation = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in self?.refreshPhotoHandoffIfEnabled() }
         refreshPhotoHandoffIfEnabled()
@@ -320,7 +343,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
             do {
                 try FileManager.default.copyItem(at: store.url, to: backup)
-                report("Your saved session could not be opened. A recovery copy was preserved as \(backup.lastPathComponent) in Application Support/LocalVoice.", on: .dictate)
+                report("Your saved session could not be opened. A recovery copy was preserved as \(backup.lastPathComponent) in \(backup.deletingLastPathComponent().path).", on: .dictate)
             } catch {
                 report("Your saved session could not be opened or backed up. Automatic saving is disabled to protect the original file.", on: .dictate)
                 return
@@ -352,12 +375,23 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
 
+    /// A model setup's progress, shown while speech is not ready yet.
+    func showModelProgress(_ line: String) {
+        guard !ready else { return }
+        modelMessage = line
+    }
+
     func prepare() async {
         guard !preparing, !ready else { return }
-        preparing = true; modelMessage = "Preparing speech · first setup may take a few minutes"
+        preparing = true; modelFailure = nil; modelMessage = "Preparing speech · first setup may take a few minutes"
         do { try await engine.prepare(); ready = true; modelMessage = await engine.statusDescription() }
-        // Retry model is on Home's engine banner, so Home owns the failure (#134 review).
-        catch { modelMessage = "Speech model needs attention"; report("Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)", on: .home) }
+        // Retry model is on Home's engine banner, so Home owns the failure (#134 review); Settings
+        // › Models shows the same reason beside its own Try again.
+        catch {
+            modelFailure = error.localizedDescription
+            modelMessage = "The speech model couldn’t be prepared"
+            report("Could not prepare the speech model. Check your connection and click Retry model. \(error.localizedDescription)", on: .home)
+        }
         preparing = false
     }
 
@@ -388,6 +422,22 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             page = "speak"; onShowEditor?("speak")
             report(error.localizedDescription, on: .read)
         }
+    }
+
+    func importReadingFile() {
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        let panel = NSOpenPanel()
+        panel.title = "Import text"; panel.prompt = "Import"
+        panel.allowedContentTypes = [.plainText]
+        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK else { return }
+        importReadingFile(panel.url)
+    }
+    func importReadingFile(_ url: URL?) {
+        guard let url else { return }
+        guard canReplaceReading else { status = Self.replaceWaitsForSave; return }
+        do { receiveReadingSelection(try ReadingSelectionImport.readFile(url)) }
+        catch { report(error.localizedDescription, on: .read) }
     }
 
     /// Home's Read tile: the click is the choice. Different text replaces the
@@ -521,7 +571,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard phase == .idle, ready, !rendering else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
-            captureFailure = reason; status = reason; return
+            // Dictate's banner shows it beside the page's mic, as admitNewCapture's refusals are.
+            captureFailure = reason; report(reason, on: .dictate); status = reason; return
         }
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
@@ -534,6 +585,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         isMicrophoneQuiet = false
         let attempt = UUID(); recordingAttempt = attempt
         destination = intendedTarget
+        destination?.opaqueEditor?.begin(shortcut: preferences.dictationShortcut)
         phase = .requesting
         Task { await startRecording(attempt) }
     }
@@ -577,7 +629,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         guard recordingAttempt == attempt else { return }
         guard granted else {
-            fail("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow \(Workbench.displayName)."); return
+            fail("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow \(Workbench.displayName)."); return
         }
         var startedAudio: URL?
         do {
@@ -930,6 +982,13 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     /// The person's own choice to set it aside. Hiding a notice never does this.
     func dismissUnresolvedDelivery() { undelivered.dismiss() }
+    func reviewUnresolvedDelivery() {
+        guard let entry = unresolvedDelivery else { return }
+        switch entry.reference {
+        case .transcript(let id): openHistory(HistoryDoor(transcript: id))
+        case .draft: page = "dictate"
+        }
+    }
     func showLibrary() { page = "library"; onShowEditor?("library"); libraryFocusToken = UUID() }
     /// Every door opens History on All, even when History is already showing.
     /// Dictate's own option asks for Transcripts, and Hand off for its task.
@@ -951,7 +1010,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         previewingPanel = true; onPhaseChange?()
     }
     func closePanelPreview() { previewingPanel = false; onPhaseChange?() }
-    func cleanCurrentDraft() {
+    func cleanCurrentDraft(completion: ((String) -> Void)? = nil) {
         guard phase == .idle, !transcript.isEmpty else { return }
         let original = transcript
         let revision = draftRevision
@@ -971,21 +1030,46 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let cleaned = await cleanupEngine.clean(original, style: settings.preferences.cleanup, configuration: settings.cleanup)
             guard transcriptionID == invocation else { return }
             guard !Task.isCancelled else {
-                status = "Cleanup cancelled. Your draft was kept."; return
+                status = "Cleanup cancelled. Your draft was kept."; completion?(status); return
             }
             guard revision == draftRevision else {
-                status = "Your draft changed during cleanup. Your latest text was kept."; return
+                status = "Your draft changed during cleanup. Your latest text was kept."; completion?(status); return
             }
             rawTranscript = original; transcript = TextRules.apply(cleaned.text, replacements: settings.replacements)
             cleanupMethod = cleaned.method; status = cleaned.method + " · original retained"; persist()
+            completion?(status)
         }
         onPhaseChange?()
     }
     func openTranscript(_ item: Transcript) {
-        rememberedCorrection = nil
-        transcript = item.text; rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"; page = "dictate"; persist()
+        // The wait is said on History, where Open was clicked.
+        let wait = "Finish the current dictation or processing before replacing its draft."
+        guard phase == .idle else { report(wait, on: .history); return }
+        // History's notice has no Dismiss, so an Open that goes ahead takes its earlier wait away.
+        if attention == Attention(message: wait, page: .history) { attention = nil }
+        page = "dictate"
+        if (!transcript.isEmpty || !rawTranscript.isEmpty) && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
+            pendingTranscript = item
+            return
+        }
+        applyHistoryTranscript(item)
     }
-    func useOriginal() { rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"; status = "Original transcript restored."; persist() }
+    func keepCurrentTranscript() { pendingTranscript = nil }
+    func replaceDraftWithTranscript() {
+        guard phase == .idle, let item = pendingTranscript else { return }
+        applyHistoryTranscript(item)
+    }
+    private func applyHistoryTranscript(_ item: Transcript) {
+        pendingTranscript = nil
+        rememberedCorrection = nil
+        rawTranscript = item.rawText ?? item.text; cleanupMethod = item.cleanupMethod ?? "Original"
+        transcript = item.text; page = "dictate"; persist()
+    }
+    @discardableResult func useOriginal() -> String {
+        rememberedCorrection = nil; transcript = rawTranscript; cleanupMethod = "Original restored"
+        status = "Original transcript restored."; persist()
+        return status
+    }
     /// Set up automatic paste: the first click may show macOS's request; later
     /// clicks open Privacy & Security › Accessibility, so none is a dead end.
     func requestAccessibility() {
@@ -998,11 +1082,17 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
     func openMicrophoneSettings() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
-    func exportTranscript() {
+    /// Whether macOS refuses the microphone, so a failure can offer its settings directly.
+    var microphoneAccessDenied: Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        return status == .denied || status == .restricted
+    }
+    func exportTranscript() -> String? {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.plainText]; panel.nameFieldStringValue = "Transcript.txt"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try transcript.write(to: url, atomically: true, encoding: .utf8); status = "Transcript saved." }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        do { try transcript.write(to: url, atomically: true, encoding: .utf8); status = "Transcript saved."; return status }
         catch { fail(error.localizedDescription) }
+        return nil
     }
     func exportCapture(_ item: Transcript, version: TranscriptExportVersion) {
         let panel = NSSavePanel()
@@ -1115,7 +1205,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         seekReading(to: player.currentTime + seconds)
     }
     func listen() {
-        guard !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
+        // A meeting can start while a reading plays. Pause still pauses it, so the
+        // reading never keeps playing into the meeting; Listen and Resume wait.
+        let pausing = playing && !rendering && phase == .idle
+        guard pausing || !meetings.isBusy else { report("Finish the meeting recording or transcription before playing a reading.", on: .read); return }
         guard !rendering, phase == .idle else { return }
         stopVoicePreview()
         clearReadingFailure()
@@ -1262,15 +1355,15 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         audio = track
     }
     var canSaveAudio: Bool { !rendering && !renderingAhead && !speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    func saveAudio() {
+    func saveAudio(completion: ((String) -> Void)? = nil) {
         guard canSaveAudio else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = "Reading.m4a"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        saveAudio(to: destination)
+        saveAudio(to: destination, completion: completion)
     }
     /// The save the person chose. Replace and Home's Read tile wait for it
     /// rather than cancel it; only Cancel generation ends it early.
-    func saveAudio(to destination: URL) {
+    func saveAudio(to destination: URL, completion: ((String) -> Void)? = nil) {
         guard canSaveAudio else { return }
         let generationID = UUID()
         readingGenerationID = generationID
@@ -1289,9 +1382,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 try await AudioRenderer.exportBounded(url, to: destination)
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
+                // A Cancel that landed as the file was written leaves no file behind.
+                guard !Task.isCancelled, readingGenerationID == generationID else {
+                    try? FileManager.default.removeItem(at: destination); throw CancellationError()
+                }
                 status = "Audio saved to \(destination.lastPathComponent)."
+                completion?(status)
             } catch {
                 if !(error is CancellationError), readingGenerationID == generationID { report(error.localizedDescription, on: .read) }
             }
@@ -1448,6 +1544,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             try self.store.save(self.session(draft: self.transcript, history: next, replacements: self.replacements))
             self.persistWork?.cancel()
             self.history = next
+            self.meetings.transcriptRemoved(item.id)
             // Removing the transcript is the person's choice: nothing is left to deliver.
             self.undelivered.transcriptRemoved(item.id)
         }
@@ -1533,7 +1630,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
         if quietCapturesInARow >= 2 {
             quietCapturesInARow = 0
-            fail("No speech heard twice in a row. Check the input in System Settings → Sound, and open the lid of a MacBook.")
+            fail("No speech heard twice in a row. Check the input in System Settings › Sound, and open the lid of a MacBook.")
             return
         }
         if let id = shortcutRequest.id {
@@ -1555,6 +1652,12 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             return
         }
         showCaptureCue(reason)
+    }
+    /// A Snap & Talk narration that heard nothing gets the same brief cue at the toolbar's
+    /// place, so a quiet take never looks saved. Dictation's own work and failures come first.
+    func showNarrationCue() {
+        guard phase == .idle, captureFailure == nil else { return }
+        showCaptureCue(.narrationNotHeard)
     }
     /// The host could not show the lesson it was offered: the attempt gets
     /// #156's cue after all, unless something newer has begun.

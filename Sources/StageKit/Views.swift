@@ -9,7 +9,7 @@ struct ControlCenter: View {
     @ObservedObject var app: AppCoordinator
     @ObservedObject var settings: SettingsStore
     @State private var choosingPersonas = false
-    private let tabs: [(String, String)] = [("Present", "play.rectangle"), ("Drawing", "pencil.tip"), ("Pointer", "cursorarrow.rays"), ("Boards", "rectangle.on.rectangle"), ("Break timer", "timer"), ("Shortcuts", "command")]
+    private let tabs: [(String, String)] = [("Present", "play.rectangle"), ("Drawing", "pencil.tip"), ("Pointer", "cursorarrow.rays"), ("Boards", "rectangle.on.rectangle"), ("Timer", "timer"), ("Shortcuts", "command")]
     var body: some View {
         HStack(spacing: 0) {
             if !app.embedded {
@@ -61,10 +61,11 @@ struct ControlCenter: View {
                         }
                 }
                 HStack {
-                    Text(app.embedded && app.selectedTab == "Present" ? "Drawing & presentation" : app.selectedTab).font(.body.weight(.semibold))
+                    Text(app.embedded && app.selectedTab == "Present" ? "Overview" : app.selectedTab).font(.body.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Spacer()
-                    Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") }
+                    // In Workbench, Persona is its own page; a second library sheet here was a parallel door.
+                    if !app.embedded { Button { choosingPersonas = true } label: { Label("Persona…", systemImage: "person.crop.rectangle") } }
                     HStack(spacing: 6) {
                         Circle().fill(inkAccent).frame(width: 6, height: 6)
                         Text("Ready on \(app.displayCount) \(app.displayCount == 1 ? "display" : "displays")")
@@ -93,7 +94,7 @@ struct ControlCenter: View {
                         case "Drawing": drawing
                         case "Pointer": pointer
                         case "Boards": boardSettings
-                        case "Break timer": timerSettings
+                        case "Timer": timerSettings
                         case "Shortcuts": shortcuts
                         default: present
                         }
@@ -135,7 +136,7 @@ struct ControlCenter: View {
             HStack(spacing: 10) {
                 utilityButton("Cursor", detail: app.pointerEnabled ? "Highlight is on" : "Help them follow", symbol: "cursorarrow.rays", active: app.pointerEnabled) { app.perform(.pointer) }
                 utilityButton("Whiteboard", detail: "Explain an idea", symbol: "rectangle") { app.perform(.whiteboard) }
-                utilityButton("Break timer", detail: "Keep the room on time", symbol: "timer") { app.perform(.timer) }
+                utilityButton("Timer", detail: "Keep the room on time", symbol: "timer") { app.perform(.timer) }
             }
         }
     }
@@ -293,7 +294,7 @@ struct ControlCenter: View {
                 // One transport action for the current state: Start, Pause, Resume or Restart, and
                 // only the one it shows (#174).
                 let transport = TimerTransportAction(app)
-                Button { transport() } label: { Label(transport.transport == .idle ? "Start break" : transport.transport.title, systemImage: transport.transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
+                Button { transport() } label: { Label(transport.transport.title + " timer", systemImage: transport.transport.symbol) }.buttonStyle(.borderedProminent).controlSize(.large)
                 Button("Reset") { app.resetTimer() }.controlSize(.large)
                 Spacer(); Keycap(text: settings.value.shortcut(for: .timer).label)
             }
@@ -366,9 +367,9 @@ struct Keycap: View {
     let text: String
     var body: some View {
         Text(text).font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(Color.white.opacity(0.85)).padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.08)))
+            .foregroundStyle(Color.primary.opacity(0.85)).padding(.horizontal, 9).padding(.vertical, 5)
+            .background(Color.primary.opacity(0.065), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(0.12)))
     }
 }
 
@@ -479,7 +480,7 @@ struct BreakTimerView: View {
         GeometryReader { geometry in
             VStack(spacing: 12) {
                 Spacer(minLength: 8)
-                TextField("Break message", text: $settings.value.timerMessage).textFieldStyle(.plain)
+                TextField("Message", text: $settings.value.timerMessage).textFieldStyle(.plain)
                     .multilineTextAlignment(.center).font(.system(size: max(14, geometry.size.width * 0.034), weight: .medium))
                     .foregroundStyle(Color(nsColor: settings.value.timerColor.nsColor).opacity(0.7))
                 Text(app.timerFinished ? "00:00" : app.timerText)

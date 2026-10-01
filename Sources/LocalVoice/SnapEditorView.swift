@@ -7,7 +7,8 @@ struct SnapEditorView: View {
     @ObservedObject var editing: ImageWorkspaceEditing
     @ObservedObject private var appearance = WorkbenchSettings.shared
     let save: (Bool) -> Void
-    let cancel: () -> Void
+    let close: () -> Void
+    let discard: () -> Void
     @FocusState private var textFocused: Bool
 
     var body: some View {
@@ -19,7 +20,9 @@ struct SnapEditorView: View {
                     Text("Edit image · Original preserved").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
+                Button("Discard…", role: .destructive, action: discard)
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
+                    .help("Keep this draft to review later on the Snap page")
                 Button("Save") { save(false) }.keyboardShortcut("s", modifiers: .command)
                 Button("Save & Copy") { save(true) }.buttonStyle(.borderedProminent).keyboardShortcut("s", modifiers: [.command, .shift])
             }.padding(.horizontal, 16).padding(.vertical, 12)

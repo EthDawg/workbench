@@ -6,6 +6,13 @@ import SwiftUI
 struct ModelSettingsView: View {
     let engine: RecognitionEngine
     var isBusy: Bool
+    /// The app's one readiness line, which carries a model setup's progress (checking files,
+    /// Downloading Parakeet · 42%, preparing for this Mac) from whichever door started it.
+    var progress: String? = nil
+    /// The app is preparing the model itself, as it does at launch or from Home's Retry model.
+    var hostPreparing = false
+    /// Why the app's own preparation failed, shown here beside Try download again.
+    var hostFailure: String? = nil
     var onChange: @MainActor (Bool, String) -> Void = { _, _ in }
     @State private var draft = RecognitionConfiguration()
     @State private var active = RecognitionConfiguration()
@@ -24,7 +31,7 @@ struct ModelSettingsView: View {
                     Text("Choose what turns your recordings into text.").foregroundStyle(.secondary)
                 }
             }
-            Label(status, systemImage: ready ? "checkmark.circle" : "circle.dotted")
+            Label((applying || hostPreparing) ? (progress ?? status) : status, systemImage: ready ? "checkmark.circle" : "circle.dotted")
                 .font(.callout).foregroundStyle(ready ? .primary : .secondary)
                 .accessibilityLabel("Active model: \(status)")
 
@@ -58,14 +65,16 @@ struct ModelSettingsView: View {
                 }
             }
 
-            if let failure { Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled) }
+            if let failure = failure ?? (hostPreparing || ready ? nil : hostFailure) {
+                Label(failure, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
             HStack(spacing: 10) {
                 Button {
                     Task { await apply() }
                 } label: {
-                    Text(applying ? "Preparing…" : draft.provider == .parakeet ? "Use Parakeet" : "Use local server")
-                }.buttonStyle(.borderedProminent)
-                if applying { ProgressView().controlSize(.small) }
+                    Text(actionTitle)
+                }.buttonStyle(.borderedProminent).disabled(ready && draft == active)
+                if applying || hostPreparing { ProgressView().controlSize(.small) }
                 else if draft != active { Text("Changes apply to the next recording.").font(.caption).foregroundStyle(.secondary) }
             }
             if isBusy && !applying {
@@ -81,6 +90,16 @@ struct ModelSettingsView: View {
             guard !busy, !applying else { return }
             Task { ready = await engine.isReady; status = await engine.statusDescription() }
         }
+    }
+
+    /// What the one button does now: download or retry the model in use, switch to another,
+    /// or nothing while the chosen model is ready.
+    private var actionTitle: String {
+        if applying || hostPreparing { return "Preparing…" }
+        if draft != active { return draft.provider == .parakeet ? "Use Parakeet" : "Use local server" }
+        if ready { return "In use" }
+        guard draft.provider == .parakeet else { return "Use local server" }
+        return (failure ?? hostFailure) == nil ? "Download Parakeet" : "Try download again"
     }
 
     @MainActor private func apply() async {

@@ -344,6 +344,82 @@ final class DemoLibraryModel: ObservableObject {
         catch { self.error = "File access could not be saved. Choose the file again. \(error.localizedDescription)"; return }
         draft = item
     }
+    /// Reads the currently saved reference once. Cancel in the receiving editor
+    /// drops these bytes without changing Library, a scene, a persona or a group.
+    func prepareImage(_ item: DemoResource, for use: DemoLibraryImageUse) -> DemoLibraryImageSnapshot? {
+        guard draft == nil, importReview == nil else { return nil }
+        do {
+            guard resources.contains(item), use.supports(item), let resolved = item.resolvedFile,
+                  !resolved.stale, resolved.url.standardizedFileURL == URL(fileURLWithPath: item.content).standardizedFileURL else {
+                throw VoiceError.message("This image reference changed or is unavailable. Use Locate file to review it before preparing it.")
+            }
+            let access = makePreviewAccess(resolved.url)
+            defer { access.release() }
+            let data = try DemoLibraryImageFile.read(resolved.url, maximumBytes: DemoLibraryImageFile.maximumPreparationBytes)
+            try DemoLibraryImageFile.validate(data, contentTypes: use.contentTypes, maximumBytes: DemoLibraryImageFile.maximumPreparationBytes)
+            if !savingDisabled { error = nil }
+            return DemoLibraryImageSnapshot(data: data, title: item.title)
+        } catch {
+            self.error = "The image could not be prepared. " + error.localizedDescription
+                + " The original and Library are unchanged. Use Locate file if the file moved."
+            return nil
+        }
+    }
+
+    /// The caller supplies the actual rendered PNG, as Copy/Export does. A file
+    /// reference is added only after a chosen file contains those exact bytes.
+    @discardableResult func saveImageToLibrary(renderedPNG: Data, title: String,
+        chooseDestination: ((String) -> URL?)? = nil,
+        write: ((Data, URL) throws -> Void)? = nil) -> Bool {
+        guard !savingDisabled else { return false }
+        guard draft == nil, importReview == nil else {
+            notice = nil; error = "Finish the current Library review before saving an image to Library."
+            return false
+        }
+        error = nil; notice = nil
+        var exported: URL?
+        do {
+            try DemoLibraryImageFile.validate(renderedPNG, contentTypes: [.png],
+                maximumBytes: DemoLibraryImageFile.maximumExportBytes, maximumPixels: 100_000_000)
+            guard try store.currentData() == savedData else {
+                throw VoiceError.message("The Library changed outside this window. Reopen Workbench before saving; the newer file is preserved.")
+            }
+            let proposedName = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160))
+            let name = proposedName.isEmpty ? "Saved image" : proposedName
+            let destination: URL?
+            if let chooseDestination { destination = chooseDestination(name) }
+            else {
+                let panel = NSSavePanel(); panel.allowedContentTypes = [.png]
+                panel.nameFieldStringValue = (name as NSString).lastPathComponent + ".png"
+                panel.message = "Save this rendered image in your chosen folder. Library will keep a reference to that file."
+                destination = panel.runModal() == .OK ? panel.url : nil
+            }
+            guard let url = destination else { return false }
+            guard url.isFileURL else { throw VoiceError.message("Choose a local file for this image.") }
+            let access = makePreviewAccess(url)
+            defer { access.release() }
+            try (write ?? { try $0.write(to: $1, options: .atomic) })(renderedPNG, url)
+            exported = url
+            guard try DemoLibraryImageFile.read(url, maximumBytes: DemoLibraryImageFile.maximumExportBytes) == renderedPNG else {
+                throw VoiceError.message("The exported file did not match the rendered image. Library was not changed.")
+            }
+            #if APP_STORE
+            let options: URL.BookmarkCreationOptions = [.withSecurityScope]
+            #else
+            let options: URL.BookmarkCreationOptions = [.minimalBookmark]
+            #endif
+            let bookmark = try url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil)
+            let item = DemoResource(kind: .file, title: name, content: url.path, bookmark: bookmark)
+            guard save(item) else { throw VoiceError.message(error ?? "Library could not be saved.") }
+            notice = "Image saved to Library. Its file is in \(url.deletingLastPathComponent().lastPathComponent)."
+            return true
+        } catch {
+            notice = nil
+            let outcome = exported.map { "The image was exported to \($0.path), but was not added to Library. " } ?? "The image was not saved to Library. "
+            self.error = outcome + error.localizedDescription
+            return false
+        }
+    }
     func open(_ item: DemoResource, reveal: Bool = false) {
         if !reveal && showImage(item) { return }
         if item.kind == .link {

@@ -61,7 +61,8 @@ enum CaptureHUDChecks {
         try check(FloatingToolbarSurface.resolve(enabled: false, capturingScreen: false, dictation: false, narration: false, reading: true) == .tools,
                   "a stopped reading keeps the shared host, and its controls, even with the toolbar hidden")
         let cues = [CaptureCue(reason: .tooShort), CaptureCue(reason: .tooQuiet),
-                    CaptureCue(reason: .nothingRecognised(keptAudio: true)), CaptureCue(reason: .nothingRecognised(keptAudio: false))]
+                    CaptureCue(reason: .nothingRecognised(keptAudio: true)), CaptureCue(reason: .nothingRecognised(keptAudio: false)),
+                    CaptureCue(reason: .narrationNotHeard)]
         let words = cues.flatMap { [$0.message, $0.hint, $0.status] }.joined(separator: " ")
         try check(cues.allSatisfy { $0.message == "No speech heard" && $0.hint.count <= 40 } && !words.lowercased().contains("attention")
                   && !words.contains("—") && !words.contains("–") && !words.contains(" - "),

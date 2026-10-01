@@ -15,7 +15,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.3.1</string>
+	<string>2.4.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>WorkbenchGitHubClientID</key>
@@ -34,9 +34,11 @@
 	<key>NSCameraUseContinuityCameraDeviceType</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Workbench uses the camera when you take a profile photo or select device video for a presentation.</string>
+	<string>Workbench uses the camera when you take a profile photo, show a live camera bubble, or select device video for a presentation.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Workbench reads your Desktop only when you choose Import Desktop screenshots, to save those screenshots in History.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Workbench records your microphone only when you start dictation, narration or a meeting, and your chosen speech engine processes the recording. A persona's voice ring, when you turn it on, measures loudness and records nothing.</string>
 	<key>NSAudioCaptureUsageDescription</key>

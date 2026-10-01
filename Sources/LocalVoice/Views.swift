@@ -7,58 +7,64 @@ private let mint = Workbench.accent
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
-    /// The Workbench window embeds this view for the dictate, speak, library and
-    /// dictionary pages; each page draws its own title, so no shared chrome.
+    /// Workbench supplies the window and navigation; each workspace owns its content.
     var embedded = true
+    var onUseImageInPresent: ((DemoLibraryImageSnapshot) -> Void)? = nil
+    var onUseImageInPersona: ((DemoLibraryImageSnapshot) -> Void)? = nil
     @State private var showOriginal = false
     @State private var showCorrection = false
+    @State private var showDictateSettings = false
+    @State private var showReadingSettings = false
+    @State private var showRecovery = false
     @State private var selectedCorrection = ""
     @State private var correctionSeed = ""
     @State private var correctionDraft = ""
     @State private var confirmingRecoveryDiscard = false
-    /// Where Settings' Dictate options… lands: VoiceOver starts at the options it opened (#134).
-    @AccessibilityFocusState private var optionsFocused: Bool
-    /// Where Options and the visible scroll area were laid out, for checks only; nil in the app.
+    @State private var dictateResult: String?
+    @State private var readingResult: String?
+    @State private var dictateActionID = UUID()
+    @State private var readingActionID = UUID()
     @Environment(\.pageSectionFrames) private var sectionFrames
-    /// On Read, a stopped reading shows beside Listen with Retry, not in the banner as well.
+
+    /// A problem stays on the workspace that owns it. Read's typed playback failure already
+    /// has its own Retry beside the transport, so it is never repeated in the page banner.
     private var bannerError: String? {
-        guard let error = model.error else { return nil }
-        if model.page == "speak", let failure = model.readingFailure, error == failure.message { return nil }
-        return error
+        guard let attention = model.attention else { return nil }
+        let belongsHere = model.page == "speak" ? attention.page == .read
+            : ["dictate", "dictionary"].contains(model.page) && attention.page == .dictate
+        guard belongsHere else { return nil }
+        if model.page == "speak", attention.message == model.readingFailure?.message { return nil }
+        return attention.message
     }
-    /// What just happened. On Dictate a copy for ⌘V reads as the finished result it is (#165).
-    private var statusLine: some View {
-        HStack(spacing: 8) {
-            Circle().fill(model.phase == .recording ? .red : mint).frame(width: 6, height: 6).accessibilityHidden(true)
-            Text(model.status).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
-            Spacer()
-        }
-    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                if let error = bannerError {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-                        Text(error).font(.system(size: 12)).textSelection(.enabled)
-                        Spacer()
-                        Button { model.dismissError() } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("Dismiss error")
-                    }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-                }
-                Group {
-                    switch model.page {
-                    case "speak": speak
-                    case "library": DemoLibraryView(library: model.library, model: model)
-                    case "dictionary": DictionaryView(model: model)
-                    default: dictate
+        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+            if let error = bannerError {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+                    Text(error).font(.system(size: 12)).textSelection(.enabled)
+                    Spacer()
+                    // The fix is in System Settings, so the page opens it beside the microphone refusal
+                    // itself. The Mac's microphone setting says nothing about which problem this is.
+                    if model.page != "speak", error.hasPrefix("Microphone access is off") {
+                        Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
+                            .help("Open Privacy & Security › Microphone in System Settings")
                     }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Read and the dictionary show the model's status here. Dictate shows it inside its
-                // task region with the result it reports, and Library's sections keep their own.
-                if ["speak", "dictionary"].contains(model.page) { statusLine }
-            }.padding(Workbench.pagePadding).background(ink)
+                    Button { model.dismissError() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain).accessibilityLabel("Dismiss error")
+                }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+            }
+            Group {
+                switch model.page {
+                case "speak": speak
+                case "library": DemoLibraryView(library: model.library, model: model,
+                    onUseImageInPresent: onUseImageInPresent, onUseImageInPersona: onUseImageInPersona)
+                case "dictionary": DictionaryView(model: model)
+                default: dictate
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        // Embedded, a page takes the height its window gives it, below Library's switcher too.
+        .padding(Workbench.pagePadding).background(ink)
         .frame(minWidth: 650, minHeight: embedded ? nil : 680)
         .tint(mint).workbenchTheme()
         .sheet(isPresented: $showOriginal) {
@@ -66,10 +72,22 @@ struct ContentView: View {
                 Text("Original transcript").font(.title2.weight(.semibold))
                 Text("Your unedited words are kept so you can check any cleanup.").foregroundStyle(.secondary)
                 ScrollView { Text(model.rawTranscript).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(minHeight: 240)
-                HStack { Button("Restore original") { model.useOriginal(); showOriginal = false }; Spacer(); Button("Done") { showOriginal = false }.keyboardShortcut(.defaultAction) }
+                HStack {
+                    Button("Restore original") { dictateActionID = UUID(); dictateResult = model.useOriginal(); showOriginal = false }
+                    Spacer()
+                    Button("Done") { showOriginal = false }.keyboardShortcut(.defaultAction)
+                }
             }.padding(24).frame(width: 560, height: 380)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshPermissions() }
+        .sheet(isPresented: $showDictateSettings) {
+            DictateSettingsView(model: model, openDictionary: {
+                showDictateSettings = false
+                model.page = "dictionary"
+            }, done: { showDictateSettings = false })
+        }
+        .sheet(isPresented: $showReadingSettings) {
+            ReadingSettingsView(model: model, done: { showReadingSettings = false })
+        }
         .sheet(isPresented: $showCorrection) {
             RememberCorrectionView(model: model, heard: correctionSeed, draft: correctionDraft)
         }
@@ -79,236 +97,471 @@ struct ContentView: View {
         } message: {
             Text("This removes the kept recording and its pending save. Your current draft stays open. Copy or Save text first if you need another copy.")
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshPermissions() }
+        .onChange(of: model.page) { _, _ in
+            dictateResult = nil; readingResult = nil; dictateActionID = UUID(); readingActionID = UUID()
+        }
+        .onChange(of: model.phase) { _, phase in
+            if phase != .idle { dictateResult = nil }
+        }
         .modifier(CorrectionSelectionObserver(transcript: model.transcript,
-            active: model.page == "dictate" && !showCorrection, selection: $selectedCorrection))
+            active: model.page == "dictate" && !showCorrection && !showOriginal && !showDictateSettings,
+            selection: $selectedCorrection))
     }
 
-    /// One task region (#134): the microphone, where the words go and how they are tidied, and
-    /// the result, in one card; then the meeting link, recovery, Dictate's other options and the
-    /// Apple Shortcuts caption. The page scrolls only when the window is shorter than that, and
-    /// the editor takes any spare height. The microphone is the page's one accent action; Copy
-    /// text and the result's other actions stay neutral.
+    /// The transcript is the workspace. Routine preferences have one named sheet; recoverable
+    /// work keeps a separate, visible door and none of these navigation changes retries it.
     private var dictate: some View {
-        GeometryReader { proxy in ScrollViewReader { reader in ScrollView {
-            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            WorkbenchPageHeader("dictate", summary: "Turn a thought into text. Record here, or use the shortcut from any app.")
-            VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            HStack(spacing: 22) {
-                Button { model.toggleRecording() } label: {
-                    Image(systemName: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 27)).frame(width: 66, height: 66)
-                        .foregroundStyle(ink).background(model.phase == .recording ? Color.red.opacity(0.9) : mint, in: Circle())
-                }.buttonStyle(.plain).disabled(!model.ready || ![.idle, .requesting, .recording].contains(model.phase) || model.rendering)
-                    .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Stop recording" : "Start recording")
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(model.phase == .requesting ? "Waiting for microphone access" : model.phase == .recording ? "Listening to you" : model.phase == .cleaning ? "Tidying your words…" : model.phase == .transcribing ? "Finding your words…" : model.phase == .delivering ? "Delivering text…" : model.phase == .cancelling ? "Cancelling…" : "Ready for your next thought")
-                        .font(Workbench.sectionTitle)
-                    HStack(spacing: 10) {
-                        if model.phase == .recording {
-                            WaveBars(level: model.level).frame(width: 100, height: 22)
-                            Text(time(model.elapsed)).monospacedDigit()
-                            Button("Discard") { model.cancelRecording() }.buttonStyle(.plain).foregroundStyle(.secondary)
-                        } else if model.phase == .requesting {
-                            Text("Allow access in the macOS prompt, or cancel this attempt.")
-                        } else if [.transcribing, .cleaning, .delivering, .cancelling].contains(model.phase) || model.preparing {
-                            ProgressView().controlSize(.small)
-                            Text(model.preparing ? "Preparing your speech engine" : model.phase == .cancelling ? "Waiting for the speech engine to stop" : model.phase == .delivering ? "Checking the destination" : model.captureProcessingLabel)
-                            if model.canCancelCurrentCapture { Button("Cancel") { model.cancelCurrentCapture() } }
-                        } else if model.canRecordAgain {
-                            Text("Record again with \(model.preferences.dictationShortcut.label). Previous audio will be kept in Saved recordings.")
-                        } else { Text("Click the microphone or use \(model.preferences.dictationShortcut.label). Up to 5 minutes per recording.") }
-                    }.font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Spacer()
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                    dictateHeader
+                    if let delivery = model.unresolvedDelivery {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label(delivery.title, systemImage: delivery.symbolName).font(.headline)
+                            Text(delivery.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            HStack {
+                                Button("Review text") { model.reviewUnresolvedDelivery() }
+                                if delivery.offersCopy { Button("Copy again") { model.copyUnresolvedDelivery() } }
+                                Spacer()
+                                Button("Dismiss") { model.dismissUnresolvedDelivery() }.accessibilityLabel("Dismiss unfinished delivery")
+                            }
+                        }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    if let incoming = model.pendingTranscript {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Open saved transcript?").font(.headline)
+                            Text("Your current draft stays here until you choose Replace draft.").font(.callout).foregroundStyle(.secondary)
+                            Text(incoming.text).font(.callout).lineLimit(3).textSelection(.enabled)
+                            HStack {
+                                Button("Keep current") { model.keepCurrentTranscript() }
+                                Spacer()
+                                Button("Replace draft") { model.replaceDraftWithTranscript() }.disabled(model.phase != .idle)
+                            }
+                        }.padding(16).background(Workbench.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    VStack(alignment: .leading, spacing: 16) {
+                        captureControls
+                        Divider()
+                        HStack {
+                            WorkbenchSectionTitle("Transcript")
+                            Spacer()
+                            Text("\(TextRules.wordCount(model.transcript)) words").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        editor(text: $model.transcript, placeholder: "Your words appear here. Edit, copy or save them.", label: "Transcript")
+                        rememberedCorrection
+                        HStack(spacing: 12) {
+                            Button { dictateResult = nil; model.copyTranscript() } label: { Label("Copy text", systemImage: "doc.on.doc") }
+                                .buttonStyle(PrimaryButton()).disabled(model.transcript.isEmpty)
+                            transcriptActions
+                            Spacer()
+                        }
+                        if let dictateResult { workspaceResult(dictateResult) { self.dictateResult = nil } }
+                        else { DictateDeliveryReceipt(receipts: model.clipboardReceipt) }
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, minHeight: max(360, proxy.size.height - (hasRecoverySection ? 102 : 48)), alignment: .topLeading)
+                    .background(panelColor, in: RoundedRectangle(cornerRadius: 16))
+                    if hasRecoverySection { captureRecovery }
+                }.frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            dictateChoices
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("dictate.visible", $0) }
+            .onAppear { showRequestedSettings() }
+            .onChange(of: model.focusRequest) { _, _ in showRequestedSettings() }
+        }
+    }
+
+    private var dictateHeader: some View {
+        WorkbenchPageHeader("dictate") {
+            Button("Import audio…") { dictateResult = nil; model.importAudio() }.disabled(!model.ready || model.phase != .idle)
+            Button("Settings…") { showDictateSettings = true }.accessibilityLabel("Dictate settings")
+        }
+    }
+
+    private var readingHeader: some View {
+        WorkbenchPageHeader("speak") {
+            Button("Import text…") { model.importReadingFile() }.disabled(model.savingAudio)
+            Button("Voice & pace…") { showReadingSettings = true }
+        }
+    }
+
+    private var captureControls: some View {
+        HStack(spacing: 14) {
+            Button { dictateResult = nil; model.toggleRecording() } label: {
+                Image(systemName: model.phase == .requesting ? "xmark" : model.phase == .recording ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 21)).frame(width: 48, height: 48)
+                    .foregroundStyle(ink).background(model.phase == .recording ? Color.red.opacity(0.9) : mint, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!model.ready || ![.idle, .requesting, .recording].contains(model.phase) || model.rendering)
+            .accessibilityLabel(model.phase == .requesting ? "Cancel microphone request" : model.phase == .recording ? "Stop recording" : "Start recording")
+            VStack(alignment: .leading, spacing: 5) {
+                Text(captureTitle).font(Workbench.sectionTitle)
+                if model.phase == .recording {
+                    HStack(spacing: 10) {
+                        WaveBars(level: model.level).frame(width: 100, height: 20)
+                        Text(time(model.elapsed)).monospacedDigit()
+                        Button("Cancel") { model.cancelRecording() }.buttonStyle(.link).help("Stop and discard this recording")
+                    }.font(.caption)
+                } else if model.phase == .requesting {
+                    Text("Allow access in the macOS prompt, or cancel.").font(.caption).foregroundStyle(.secondary)
+                } else if model.preparing || [.transcribing, .cleaning, .delivering, .cancelling].contains(model.phase) {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(model.preparing ? "Preparing your speech engine" : model.phase == .cancelling ? "Waiting for the speech engine to stop" : model.phase == .delivering ? "Checking the destination" : model.captureProcessingLabel)
+                        if model.canCancelCurrentCapture { Button("Cancel") { model.cancelCurrentCapture() } }
+                    }.font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(model.ready ? recordingHint : model.modelMessage)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 12)
+            if model.phase == .idle && !model.preparing {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(deliverySummary).font(.caption).foregroundStyle(.secondary)
+                    if model.preferences.delivery == .paste && !model.accessibilityGranted {
+                        Button("Set up automatic paste…") { model.requestAccessibility() }.font(.caption).buttonStyle(.link)
+                    }
+                }
+            }
+        }
+    }
+
+    private var captureTitle: String {
+        if model.preparing { return "Preparing dictation…" }
+        switch model.phase {
+        case .idle: return model.ready ? "Ready to dictate" : "Dictation unavailable"
+        case .requesting: return "Waiting for microphone access"
+        case .recording: return "Recording"
+        case .transcribing: return "Transcribing…"
+        case .cleaning: return "Cleaning text…"
+        case .delivering: return "Delivering text…"
+        case .cancelling: return "Cancelling…"
+        }
+    }
+
+    private var recordingHint: String {
+        let shortcut = model.preferences.dictationShortcut
+        guard shortcut.enabled else { return "Click the microphone · Up to 5 minutes" }
+        return (model.preferences.capture == .hold ? "Hold " : "") + shortcut.label + " · Up to 5 minutes"
+    }
+
+    private var deliverySummary: String {
+        switch model.preferences.delivery {
+        case .clipboard: return "Copies text · Paste with ⌘V"
+        case .paste where model.accessibilityGranted: return "Automatic paste ready"
+        case .paste: return "Copies text · Paste with ⌘V"
+        }
+    }
+
+    private var transcriptActions: some View {
+        Menu("More") {
+            Button("Clean text") {
+                dictateResult = nil
+                let invocation = UUID(); dictateActionID = invocation
+                model.cleanCurrentDraft { result in
+                    guard dictateActionID == invocation, model.page == "dictate" else { return }
+                    dictateResult = result
+                }
+            }.disabled(model.transcript.isEmpty || model.phase != .idle)
+            Button("Save text…") { dictateActionID = UUID(); dictateResult = nil; dictateResult = model.exportTranscript() }.disabled(model.transcript.isEmpty)
+            Button("Save prompt") { model.savePrompt(model.transcript) }.disabled(model.transcript.isEmpty)
             Divider()
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    WorkbenchSectionTitle("Your words")
-                    Spacer()
-                    Button("Remember correction…") {
-                        correctionSeed = selectedCorrection
-                        correctionDraft = model.transcript
-                        showCorrection = true
-                    }.disabled(model.transcript.isEmpty || model.phase != .idle)
-                        .help("Select a mistaken word or phrase, then remember its spelling for future dictations.")
-                    Button("Original…") { showOriginal = true }.disabled(model.rawTranscript.isEmpty)
-                    Text("\(TextRules.wordCount(model.transcript)) words").font(.system(size: 11)).foregroundStyle(.tertiary)
-                }
-                editor(text: $model.transcript, placeholder: "Your transcript will appear here.\nYou can edit it before copying or saving.", label: "Transcript")
-                if let correction = model.rememberedCorrection {
-                    HStack(spacing: 10) {
-                        Image(systemName: "text.book.closed").foregroundStyle(mint).accessibilityHidden(true)
-                        Text("Remembered “\(correction.written)”").lineLimit(2)
-                        Spacer()
-                        Button("Undo") {
-                            do { try model.undoRememberedCorrection() }
-                            catch { model.report(error.localizedDescription, on: .dictate) }
-                        }.disabled(model.phase != .idle)
-                        Button { model.dismissRememberedCorrection() } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.plain).accessibilityLabel("Dismiss remembered correction")
-                    }.font(.system(size: 12)).padding(12).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
-            }.frame(maxHeight: .infinity)
-            HStack(spacing: 12) {
-                Button { model.copyTranscript() } label: { Label("Copy text", systemImage: "doc.on.doc") }.disabled(model.transcript.isEmpty)
-                Button("Clean text") { model.cleanCurrentDraft() }.disabled(model.transcript.isEmpty || model.phase != .idle)
-                Button("Save text…") { model.exportTranscript() }.disabled(model.transcript.isEmpty)
-                Button("Save prompt") { model.savePrompt(model.transcript) }.disabled(model.transcript.isEmpty)
-                Spacer()
-                if model.canRetry { Button(model.retryCaptureLabel) { model.retryTranscription() }.help(model.retryCaptureHelp) }
-                Button { model.importAudio() } label: { Label("Import audio…", systemImage: "arrow.up.doc") }.disabled(!model.ready || model.phase != .idle)
-            }.controlSize(.large)
-            statusLine
-            }.padding(22).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(panelColor, in: RoundedRectangle(cornerRadius: 16))
-            Button("Transcribe a meeting or call…") { model.page = "meeting"; model.onShowEditor?("meeting") }
-                .buttonStyle(.link).disabled(model.phase != .idle)
-            if model.hasCaptureRecovery && model.phase == .idle {
-                HStack {
-                    Text(model.canRecordAgain ? "Retry this audio, or record again and keep it for later." : "A capture is kept for recovery.").foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Show recovery files") { model.showCaptureRecoveryFiles() }
-                    Button("Discard recovery…", role: .destructive) { confirmingRecoveryDiscard = true }
-                        .disabled(!model.canDiscardCaptureRecovery)
-                }.font(.caption)
-            }
-            if model.hasSavedRecordings {
-                Button("Saved recordings…") { model.showSavedRecordings() }
-                    .font(.caption).help("Previous audio is kept here. Use Import audio to transcribe a recording again.")
-            }
-            dictateOptions
-            appleShortcutsCaption
-            }.frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
-        }
-        // What the scroll view shows: its frame less the insets it scrolls under, such as the title bar.
-        .onGeometryChange(for: CGRect.self) { proxy in
-            let frame = proxy.frame(in: .global), insets = proxy.safeAreaInsets
-            return CGRect(x: frame.minX + insets.leading, y: frame.minY + insets.top, width: frame.width - insets.leading - insets.trailing,
-                          height: frame.height - insets.top - insets.bottom)
-        } action: { sectionFrames?("dictate.visible", $0) }
-        .onAppear { showRequestedSection(reader) }
-        .onChange(of: model.focusRequest) { _, _ in showRequestedSection(reader) }
-        } }
+            Button("Original…") { showOriginal = true }.disabled(model.rawTranscript.isEmpty)
+            Button("Remember correction…") {
+                correctionSeed = selectedCorrection
+                correctionDraft = model.transcript
+                showCorrection = true
+            }.disabled(model.transcript.isEmpty || model.phase != .idle)
+        }.fixedSize().accessibilityLabel("More transcript actions")
     }
 
-    /// A named door's section, once: Settings' Dictate options… scrolls to Dictate's options and
-    /// moves VoiceOver there, instead of leaving the page at its top (#134).
-    private func showRequestedSection(_ reader: ScrollViewProxy) {
-        guard model.focusRequest?.target == .dictateOptions else { return }
+    @ViewBuilder private var rememberedCorrection: some View {
+        if let correction = model.rememberedCorrection {
+            HStack(spacing: 10) {
+                Image(systemName: "text.book.closed").foregroundStyle(mint).accessibilityHidden(true)
+                Text("Remembered “\(correction.written)”").lineLimit(2)
+                Spacer()
+                Button("Undo") {
+                    do { try model.undoRememberedCorrection() }
+                    catch { model.report(error.localizedDescription, on: .dictate) }
+                }.disabled(model.phase != .idle)
+                Button { model.dismissRememberedCorrection() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).accessibilityLabel("Dismiss remembered correction")
+            }.font(.system(size: 12)).padding(12).background(mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var hasCurrentRecovery: Bool { model.phase == .idle && (model.hasCaptureRecovery || model.canRetry) }
+    private var hasRecoverySection: Bool { hasCurrentRecovery || model.hasSavedRecordings }
+    private var captureRecovery: some View {
+        DisclosureGroup(isExpanded: $showRecovery) {
+            VStack(alignment: .leading, spacing: 10) {
+                if hasCurrentRecovery, let failure = model.captureFailure, failure != bannerError {
+                    Text(failure).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                if model.canRecordAgain {
+                    Text("Record again to keep this audio in Saved recordings, or retry it here.").font(.caption).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    if hasCurrentRecovery && model.canRetry {
+                        Button(model.retryCaptureLabel) { model.retryTranscription() }
+                            .disabled(model.phase != .idle).help(model.retryCaptureHelp)
+                    }
+                    if hasCurrentRecovery && model.hasCaptureRecovery {
+                        Button("Show recovery files") { model.showCaptureRecoveryFiles() }
+                        Button("Discard recovery…", role: .destructive) { confirmingRecoveryDiscard = true }
+                            .disabled(!model.canDiscardCaptureRecovery)
+                    }
+                    if model.hasSavedRecordings {
+                        Button("Saved recordings…") { model.showSavedRecordings() }
+                            .help("Use Import audio to transcribe a saved recording again.")
+                    }
+                }.controlSize(.small)
+            }.padding(.top, 10)
+        } label: {
+            Label(hasCurrentRecovery ? "Capture recovery" : "Saved recordings", systemImage: hasCurrentRecovery ? "arrow.counterclockwise" : "archivebox")
+                .font(.callout)
+        }.padding(12).background(panelColor, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// The existing Settings door now opens this workspace's settings sheet, once.
+    private func showRequestedSettings() {
+        guard let request = model.focusRequest, request.target == .dictateOptions else { return }
         DispatchQueue.main.async {
+            guard model.page == "dictate", model.focusRequest?.id == request.id else { return }
             model.focusRequest = nil
-            withAnimation { reader.scrollTo(Self.optionsID, anchor: .top) }
-            optionsFocused = true
+            showDictateSettings = true
         }
     }
-    private static let optionsID = "dictate-options"
 
-    /// Where the words go and how they are tidied, inside the task region. The surface check
-    /// scans this as Dictate's options.
-    private var dictateChoices: some View { DictateTaskOptions(model: model) }
-
-    /// Dictate's options live with Dictate (Grammar: options live with their
-    /// capability). Same controls and labels as before; Settings keeps one
-    /// "Dictate options…" door to here.
-    private var dictateOptions: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            WorkbenchSectionTitle("Options").accessibilityFocused($optionsFocused)
-            VoiceOptions(model: model, showShortcut: false)
-            HStack(spacing: 12) {
-                Button("Your dictionary") { model.page = "dictionary" }
-                Button("Position floating toolbar…") { model.showPanelPreview() }.disabled(model.phase != .idle)
+    private var speak: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
+                    readingHeader
+                    if let selection = model.pendingReadingSelection {
+                        ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
+                                                   replacingDisabled: !model.canReplaceReading,
+                                                   waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
+                                                   keep: { performReadingAction(model.keepCurrentReading) },
+                                                   replace: { performReadingAction(model.replaceReadingWithSelection) })
+                    }
+                    VStack(alignment: .leading, spacing: 16) {
+                        readingDestination
+                        if let reading = model.followAlongText {
+                            ReadingFollowAlongView(text: reading, highlight: model.readingHighlight)
+                                .background(RoundedRectangle(cornerRadius: 12).fill(panelColor.opacity(0.6)))
+                                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.07)))
+                                .frame(minHeight: 200, maxHeight: .infinity)
+                        } else {
+                            editor(text: $model.speechText, placeholder: "Paste text to hear it read aloud.", label: "Text to read").disabled(model.rendering)
+                        }
+                        Text("\(model.speechText.count.formatted()) / \(model.readingLimit.formatted()) characters")
+                            .font(.caption).foregroundStyle(model.speechText.count > model.readingLimit ? Color.orange : Color.secondary)
+                        if let limit = model.readingLimitMessage(for: model.speechText) {
+                            Label(limit, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
+                                .accessibilityLabel("Reading limit: \(limit)")
+                        }
+                        readingPlayback
+                        readingActions
+                        if let readingResult { workspaceResult(readingResult) { self.readingResult = nil } }
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, minHeight: max(390, proxy.size.height - (model.pendingReadingSelection == nil ? 48 : 250)), alignment: .topLeading)
+                    .background(panelColor, in: RoundedRectangle(cornerRadius: 16))
+                }.frame(maxWidth: .infinity, alignment: .topLeading)
             }
-        }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(panelColor, in: RoundedRectangle(cornerRadius: 16))
-            .id(Self.optionsID)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?("dictate.options", $0) }
+        }
     }
 
-    /// Audio in, text out through Apple Shortcuts: Dictate's job, so it is noted here.
-    private var appleShortcutsCaption: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(Bundle.main.url(forResource: "Metadata", withExtension: "appintents") != nil ? "Apple Shortcuts: add Record Audio, then Transcribe with Workbench, then Create Note, Copy to Clipboard, or another text action. Shortcuts handles recording; Workbench returns your words." : "Apple Shortcuts: this development build has no Apple Shortcuts metadata. Use the full-Xcode package for the Transcribe with Workbench action.")
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Open Apple Shortcuts") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app")) }
-                .buttonStyle(.link).fixedSize()
-        }.font(.system(size: 10)).foregroundStyle(.tertiary)
-    }
-
-    /// While text waits for Replace reading or Keep current, the page scrolls,
-    /// so the incoming text, the choice and the current draft all stay readable
-    /// in a small window. Otherwise the draft fills the page as before.
-    @ViewBuilder private var speak: some View {
-        if model.pendingReadingSelection != nil { ScrollView { speakPage.padding(.trailing, 12) } }
-        else { speakPage }
-    }
-
-    private var speakPage: some View {
-        VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            WorkbenchPageHeader("speak", summary: "Paste something to hear it aloud, or save a reading to take with you.")
-            if let selection = model.pendingReadingSelection {
-                ReadingSelectionReviewCard(selection: selection, limitMessage: model.readingLimitMessage(for: selection.text),
-                                           replacingDisabled: !model.canReplaceReading,
-                                           waitReason: model.canReplaceReading ? nil : AppModel.replaceWaitsForSave,
-                                           keep: model.keepCurrentReading, replace: model.replaceReadingWithSelection)
-            }
-            ReadingProviderView(model: model)
+    private var readingDestination: some View {
+        VStack(alignment: .leading, spacing: 6) {
             if model.readingProvider == .mac {
-                MacVoicePanel(voices: model.macVoices, choice: model.voiceChoice, hint: model.voiceHint, rate: $model.rate,
-                              previewing: model.previewingVoice, choose: model.chooseVoice, preview: model.toggleVoicePreview,
-                              openSettings: model.openVoiceSettings)
-                    .disabled(model.rendering)
-            }
-            if let reading = model.followAlongText {
-                ReadingFollowAlongView(text: reading, highlight: model.readingHighlight)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(panelColor.opacity(0.6)))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.07)))
-                    .frame(minHeight: 150, maxHeight: .infinity)
+                // The voice's quality and the free better-voices hint stay on the page (workbench.md, Models).
+                Label(model.voiceChoice?.voice.map { "\($0.name), \($0.quality.label) · \(Int(model.rate)) words/min · On this Mac" } ?? "On this Mac",
+                      systemImage: "desktopcomputer").font(.callout).foregroundStyle(.secondary)
+                if model.voiceChoice?.voice != nil, let hint = model.voiceHint {
+                    MacVoiceHintRow(hint: hint, open: model.openVoiceSettings)
+                }
+                if model.voiceChoice?.voice == nil {
+                    HStack {
+                        Label(model.missingVoiceMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Button("Choose voice…") { showReadingSettings = true }
+                    }.font(.caption)
+                }
             } else {
-                editor(text: $model.speechText, placeholder: "Paste an article, a draft, or a thought.\nLet your Mac do the reading.", label: "Text to read").disabled(model.rendering)
-            }
-            HStack {
-                Text("\(model.speechText.count.formatted()) / \(model.readingLimit.formatted()) characters").font(.system(size: 10))
-                    .foregroundStyle(model.speechText.count > model.readingLimit ? Color.orange : Color.secondary.opacity(0.6))
-                Spacer()
-            }
-            if let limit = model.readingLimitMessage(for: model.speechText) {
-                Label(limit, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
-                    .accessibilityLabel("Reading limit: \(limit)")
-            }
-            if model.playing || model.paused {
-                ReadingPlaybackStrip(elapsed: model.playbackTime, duration: model.audioDuration, renderingAhead: model.renderingAhead,
-                                     seek: model.seekReading, skip: model.skipReading)
-                    .disabled(!model.canSeekReading)
-            } else if let failure = model.readingFailure {
-                HStack(spacing: 10) {
-                    Label(failure.message, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(.orange)
-                    Spacer()
-                    Button("Retry") { model.retryReading() }.disabled(!model.canRetryReading)
-                        .accessibilityHint("Makes new audio and reads from the start")
-                    Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-                        .accessibilityLabel("Dismiss reading error")
+                Label("\(model.selectedSpekoVoice?.name ?? "Automatic voice") · Online with Speko", systemImage: "cloud")
+                    .font(.callout).foregroundStyle(.secondary)
+                Text("Listen and Save audio send this text to Speko. Usage may be charged.").font(.caption).foregroundStyle(.secondary)
+                if !SpekoKeychain.hasKey {
+                    HStack {
+                        Text("Add your Speko key to read online.")
+                        Button("Set up…") { showReadingSettings = true }.accessibilityLabel("Set up Speko reading")
+                    }.font(.caption)
                 }
             }
-            HStack(spacing: 12) {
-                Button { model.listen() } label: { Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill") }
-                    .buttonStyle(PrimaryButton()).disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.phase != .idle || model.speechText.count > model.readingLimit)
-                if model.readingGenerationActive { Button("Cancel generation") { model.cancelReading() } }
-                if model.playing || model.paused { Button("Stop") { model.stopPlayback() } }
+        }
+    }
+
+    @ViewBuilder private var readingPlayback: some View {
+        if model.playing || model.paused {
+            ReadingPlaybackStrip(elapsed: model.playbackTime, duration: model.audioDuration, renderingAhead: model.renderingAhead,
+                                 seek: model.seekReading, skip: model.skipReading)
+                .disabled(!model.canSeekReading)
+        } else if let failure = model.readingFailure {
+            HStack(spacing: 10) {
+                Label(failure.message, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(.orange)
                 Spacer()
-                Button { model.saveAudio() } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }.disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.renderingAhead || model.speechText.count > model.readingLimit)
-            }.controlSize(.large)
-            Text("Saved audio is M4A, ready for QuickTime, Music, or sharing.")
-                .font(.system(size: 10)).foregroundStyle(.tertiary)
+                Button("Retry") { readingResult = nil; model.retryReading() }.disabled(!model.canRetryReading)
+                    .accessibilityHint("Makes new audio and reads from the start")
+                Button { model.dismissReadingFailure() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss reading error")
+            }
+        }
+    }
+
+    private var readingActions: some View {
+        HStack(spacing: 12) {
+            Button { readingResult = nil; model.listen() } label: {
+                Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill")
+            }.buttonStyle(PrimaryButton())
+                .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.phase != .idle || model.speechText.count > model.readingLimit)
+            // One Cancel ends making audio or Save audio's export: the word every other Read door uses.
+            if model.canCancelReading { Button("Cancel") { performReadingAction(model.cancelReading) }.help(model.savingAudio ? "Stop saving this audio" : "Stop making this audio") }
+            if model.playing || model.paused { Button("Stop") { performReadingAction(model.stopPlayback) } }
+            Spacer()
+            Button {
+                readingResult = nil
+                let invocation = UUID(); readingActionID = invocation
+                model.saveAudio { result in
+                    guard readingActionID == invocation, model.page == "speak" else { return }
+                    readingResult = result
+                }
+            } label: { Label("Save audio…", systemImage: "square.and.arrow.down") }
+                .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.renderingAhead || model.speechText.count > model.readingLimit)
+                .help("Save an M4A file for QuickTime, Music or sharing.")
+        }.controlSize(.large)
+    }
+
+    /// These synchronous transport/import actions complete in this call. File exports and
+    /// cleanup report their own outcomes instead of sampling a shared status after a wait.
+    private func performReadingAction(_ action: () -> Void) {
+        readingResult = nil
+        let previous = model.status
+        action()
+        if model.status != previous, model.attention?.page != .read { readingResult = model.status }
+    }
+
+    private func workspaceResult(_ message: String, dismiss: @escaping () -> Void) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Spacer()
+            Button(action: dismiss) { Image(systemName: "xmark") }
+                .buttonStyle(.plain).accessibilityLabel("Dismiss result")
         }
     }
 
     private func editor(text: Binding<String>, placeholder: String, label: String) -> some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 12).fill(panelColor.opacity(0.6))
+            RoundedRectangle(cornerRadius: 12).fill(ink.opacity(0.5))
             if text.wrappedValue.isEmpty { Text(placeholder).font(.system(size: 15)).foregroundStyle(.tertiary).lineSpacing(7).padding(20).allowsHitTesting(false) }
             TextEditor(text: text).font(.system(size: 15)).lineSpacing(6).scrollContentBackground(.hidden).padding(14).accessibilityLabel(label)
-        }.overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.07))).frame(minHeight: 150, maxHeight: .infinity)
+        }.overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.07))).frame(minHeight: 200, maxHeight: .infinity)
+    }
+}
+
+/// Delivery feedback follows the existing receipt owner and its lifetime. A reading status
+/// cannot appear here, and opening this workspace never restarts or dismisses a receipt.
+private struct DictateDeliveryReceipt: View {
+    @ObservedObject var receipts: ClipboardReceiptModel
+    var body: some View {
+        if let receipt = receipts.receipt, receipt.source == .transcript, receipts.isHUDVisible {
+            Label(receipt.title + ". " + receipt.detail, systemImage: receipt.symbolName)
+                .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        }
+    }
+}
+
+/// One settings sheet per workspace, shared by its header and the existing Settings route.
+/// The geometry reports let the gallery verify the actual sheet that received the request.
+struct VoiceWorkspaceSettingsSheet<Content: View>: View {
+    let title: String
+    let identifier: String
+    let done: () -> Void
+    @ViewBuilder var content: () -> Content
+    @Environment(\.pageSectionFrames) private var sectionFrames
+    @AccessibilityFocusState private var titleFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title).font(Workbench.pageTitle).accessibilityAddTraits(.isHeader).accessibilityFocused($titleFocused)
+            ScrollView {
+                content().frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 8)
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?(identifier + ".visible", $0) }
+            Divider()
+            HStack { Spacer(); Button("Done", action: done).keyboardShortcut(.defaultAction) }
+        }
+        .padding(24).frame(width: 570, height: 510).workbenchTheme().tint(mint)
+        .accessibilityIdentifier(identifier)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sectionFrames?(identifier, $0) }
+        .onAppear { titleFocused = true }
+        .onExitCommand(perform: done)
+    }
+}
+
+struct DictateSettingsView: View {
+    @ObservedObject var model: AppModel
+    let openDictionary: () -> Void
+    let done: () -> Void
+
+    var body: some View {
+        VoiceWorkspaceSettingsSheet(title: "Dictate settings", identifier: "dictate.settings", done: done) {
+            VStack(alignment: .leading, spacing: 16) {
+                DictateTaskOptions(model: model)
+                Divider()
+                VoiceOptions(model: model)
+                Divider()
+                SettingsRow("Dictionary") {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Names and spellings to get right.").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Your dictionary", action: openDictionary)
+                    }
+                }
+                SettingsRow("Shortcuts app") {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(Bundle.main.url(forResource: "Metadata", withExtension: "appintents") != nil
+                             ? "Record Audio, then Transcribe with Workbench, then any text action."
+                             : "This development build has no Shortcuts actions.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Open Apple Shortcuts") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Shortcuts.app")) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ReadingSettingsView: View {
+    @ObservedObject var model: AppModel
+    let done: () -> Void
+
+    var body: some View {
+        VoiceWorkspaceSettingsSheet(title: "Voice & pace", identifier: "read.settings", done: done) {
+            VStack(alignment: .leading, spacing: 20) {
+                ReadingProviderView(model: model)
+                if model.readingProvider == .mac {
+                    MacVoicePanel(voices: model.macVoices, choice: model.voiceChoice, hint: model.voiceHint, rate: $model.rate,
+                                  previewing: model.previewingVoice, choose: model.chooseVoice, preview: model.toggleVoicePreview,
+                                  openSettings: model.openVoiceSettings)
+                        .disabled(model.rendering)
+                }
+            }
+        }
     }
 }
 
@@ -405,7 +658,9 @@ struct DictionaryView: View {
         let change = self.change
         let pending = try? change?.get()
         VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-            WorkbenchPageHeader("dictionary", summary: "Correct names and specialist terms after transcription. Matches whole words and phrases, ignoring case.")
+            Button { model.page = "dictate" } label: { Label("Back to Dictate", systemImage: "chevron.left") }
+                .buttonStyle(.link)
+            WorkbenchPageHeader("dictionary", summary: "Names and spellings for future dictations.")
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) { Text("Heard").font(Workbench.sectionTitle); TextField("e.g. git hub", text: $heard).accessibilityLabel("Heard") }

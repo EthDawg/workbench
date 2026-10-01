@@ -31,8 +31,8 @@ model = SwiftFile(SOURCES / "AppModel.swift").type("AppModel")
 methods = model.extract([
     # Listen, pause, seek and the reading's own failure.
     "followAlongText", "canSeekReading", "seekReading", "skipReading", "listen()", "followPlayback",
-    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:)",
-    "cancelReading", "stopPlayback", "ReadingFailure", "canRetryReading", "retryReading", "reportReadingFailure",
+    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:completion:)",
+    "canCancelReading", "cancelReading", "stopPlayback", "ReadingFailure", "canRetryReading", "retryReading", "reportReadingFailure",
     "dismissReadingFailure", "report", "dismissError", "clearReadingFailure", "readingPlayerDidFinish",
     # The one owner of text arriving in Read, with the step that ends the old reading.
     "invalidateAudio", "receiveReadingSelection", "importReading", "listen(to:)", "canReplaceReading",
@@ -109,9 +109,23 @@ enum AudioRenderer {
         sayCalls.append((text, voice, rate))
         return try silentFile(seconds: 45)
     }
-    /// Save audio's M4A export, recorded instead of running afconvert.
+    /// Save audio's M4A export, recorded instead of running afconvert. A held export waits for
+    /// the check to let it go, as afconvert runs until it finishes or Cancel terminates it.
     static var exports: [(source: URL, destination: URL)] = []
-    static func exportBounded(_ source: URL, to destination: URL) async throws { exports.append((source, destination)) }
+    static var holdNextExport = false, writeBeforeHold = false, heldExportCancelled = false
+    static var heldExport: CheckedContinuation<Void, Never>?
+    static func exportBounded(_ source: URL, to destination: URL) async throws {
+        exports.append((source, destination))
+        guard holdNextExport else { return }
+        holdNextExport = false
+        // A written export models a Cancel that lands as the file is written: it returns as saved.
+        let written = writeBeforeHold; writeBeforeHold = false
+        if written { try Data("synthetic m4a".utf8).write(to: destination) }
+        await withCheckedContinuation { heldExport = $0 }
+        heldExportCancelled = Task.isCancelled
+        // Terminated partway, the real conversion throws and writes nothing.
+        if !written { try Task.checkCancellation() }
+    }
 }
 enum SpekoKeychain { static func read() throws -> String { "synthetic-key" } }
 enum SpekoRenderer {
@@ -715,6 +729,24 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         playingA.replaceReadingWithSelection()
         try check(playingA.player == nil && !playingA.playing && playingA.speechText == promptB, "Replace stops a playing reading too")
 
+        // A meeting can start while a reading plays. Pause then still pauses it, from
+        // every door that calls listen(), so the reading never keeps playing into the
+        // meeting; Resume waits for the meeting and says why.
+        let duringMeeting = try await pausedReading(passageA)
+        duringMeeting.listen()
+        try check(duringMeeting.playing, "The reading is playing when the meeting starts")
+        duringMeeting.meetings.isBusy = true
+        duringMeeting.listen()
+        try check(duringMeeting.paused && !duringMeeting.playing && duringMeeting.player?.isPlaying == false
+                  && duringMeeting.status == "Reading paused.", "Pause pauses a reading while a meeting is busy")
+        let heldTime = duringMeeting.playbackTime
+        duringMeeting.listen()
+        try check(duringMeeting.paused && !duringMeeting.playing && duringMeeting.playbackTime == heldTime
+                  && duringMeeting.error?.contains("meeting") == true, "Resume waits for the meeting, keeps the position and says why")
+        duringMeeting.meetings.isBusy = false
+        duringMeeting.listen()
+        try check(duringMeeting.playing, "Resume plays once the meeting is done")
+
         // During generation: Keep current lets it finish; Replace cancels it and drops anything late.
         let generating = ReadingHarness()
         generating.speechText = passageA
@@ -776,7 +808,8 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         saving.speechText = passageA
         renders = MacSpeechRenderer.created.count
         let savePath = scratch.appendingPathComponent("Saved reading.m4a")
-        saving.saveAudio(to: savePath)
+        var saveResults: [String] = []
+        saving.saveAudio(to: savePath) { saveResults.append($0) }
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         let savingRender = MacSpeechRenderer.created.last!
         try check(saving.savingAudio && saving.readingGenerationActive && !saving.canReplaceReading, "Save audio is making its audio")
@@ -791,6 +824,10 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         await saving.readingTask?.value
         try check(!saving.savingAudio && AudioRenderer.exports.last?.destination == savePath && saving.status == "Audio saved to Saved reading.m4a.",
                   "The save finishes with A's audio")
+        saving.saveAudio(to: savePath) { saveResults.append($0) }
+        await saving.readingTask?.value
+        try check(saveResults == ["Audio saved to Saved reading.m4a.", "Audio saved to Saved reading.m4a."],
+                  "saving the same cached audio twice reports both completed exports")
         saving.replaceReadingWithSelection()
         try check(saving.speechText == promptB && saving.pendingReadingSelection == nil, "Replace goes ahead once the save is done")
 
@@ -807,10 +844,52 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         let cancelSave = ReadingHarness()
         cancelSave.speechText = passageA
         renders = MacSpeechRenderer.created.count
-        cancelSave.saveAudio(to: savePath)
+        var cancelledSaveResults: [String] = []
+        cancelSave.saveAudio(to: savePath) { cancelledSaveResults.append($0) }
         await settle { MacSpeechRenderer.created.count == renders + 1 }
         cancelSave.cancelReading()
         try check(!cancelSave.savingAudio && cancelSave.canReplaceReading && !cancelSave.rendering, "Cancel generation ends a save, so it no longer holds Replace")
+        try check(cancelledSaveResults.isEmpty && cancelSave.status == "Save audio cancelled.", "cancelled audio export never reports a successful save")
+
+        // Save audio's export runs after its audio is made, with no generation left to cancel. Read's
+        // Cancel stays shown and every Cancel door still ends it: the conversion is stopped, nothing
+        // is written and Read is idle again (1 October audit, finding 6).
+        let exporting = ReadingHarness()
+        exporting.speechText = passageA
+        renders = MacSpeechRenderer.created.count
+        var exportResults: [String] = []
+        let exportPath = scratch.appendingPathComponent("Cancelled export.m4a")
+        AudioRenderer.holdNextExport = true
+        exporting.saveAudio(to: exportPath) { exportResults.append($0) }
+        await settle { MacSpeechRenderer.created.count == renders + 1 }
+        let exportRender = MacSpeechRenderer.created.last!
+        try exportRender.deliver(seconds: 0.5)
+        try exportRender.complete()
+        await settle { AudioRenderer.heldExport != nil }
+        try check(AudioRenderer.heldExport != nil && exporting.savingAudio && exporting.rendering && !exporting.readingGenerationActive
+                  && exporting.canCancelReading, "During the export Read's Cancel is still shown")
+        let exportTask = exporting.readingTask
+        exporting.cancelReading()
+        try check(!exporting.savingAudio && !exporting.rendering && exporting.readingTask == nil && exporting.readingGenerationID == nil
+                  && !exporting.canCancelReading && exporting.canReplaceReading && exporting.canSaveAudio && exporting.status == "Save audio cancelled.",
+                  "Cancel during the export restores idle Read and says so: \(exporting.status)")
+        AudioRenderer.heldExport?.resume(); AudioRenderer.heldExport = nil
+        await exportTask?.value
+        try check(AudioRenderer.heldExportCancelled && !exists(exportPath) && exportResults.isEmpty && exporting.error == nil
+                  && exporting.status == "Save audio cancelled.", "The cancelled export is stopped, writes no file and reports no save")
+        // Reused audio goes straight to its export; a Cancel landing as the file is written removes it.
+        let writtenPath = scratch.appendingPathComponent("Written export.m4a")
+        AudioRenderer.holdNextExport = true; AudioRenderer.writeBeforeHold = true
+        exporting.saveAudio(to: writtenPath) { exportResults.append($0) }
+        await settle { AudioRenderer.heldExport != nil }
+        try check(AudioRenderer.heldExport != nil && exists(writtenPath) && exporting.canCancelReading && MacSpeechRenderer.created.count == renders + 1,
+                  "A second save reuses the audio and is in its export")
+        let writtenTask = exporting.readingTask
+        exporting.cancelReading()
+        AudioRenderer.heldExport?.resume(); AudioRenderer.heldExport = nil
+        await writtenTask?.value
+        try check(!exists(writtenPath) && exportResults.isEmpty && !exporting.savingAudio && exporting.status == "Save audio cancelled.",
+                  "A Cancel that lands as the file is written leaves no file and no saved report")
 
         // Listen's generation has not begun yet: Replace still cancels it cleanly.
         let preListen = ReadingHarness()
@@ -1003,7 +1082,7 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         }
 
         // Stopping and discarding every reading leaves no audio behind.
-        for harness in [model, busy, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, preListen] {
+        for harness in [model, busy, duringMeeting, missing, speko, legacy, remote, early, late, waiting, kept, replaced, playingA, generating, cancelling, online, retried, tile, typed, resuming, pausing, saving, unsaved, aheadSave, cancelSave, exporting, preListen] {
             harness.stopPlayback(); harness.audio?.discard(); harness.audio = nil
         }
         try check(scratchFolders().isEmpty, "No temporary reading audio remains: \(scratchFolders())")

@@ -22,8 +22,8 @@ public enum ToolbarMode: String, CaseIterable, Sendable {
         case .persona: return "Persona"
         }
     }
-    /// One symbol per job, shared by the launcher, the chooser and the menu-bar
-    /// panel, so the same job always looks the same wherever it appears.
+    /// One symbol per job, shared by the chooser and menu-bar panel.
+    /// The toolbar launcher has its own fixed Switch tool icon.
     public var symbol: String {
         switch self {
         case .dictate: return "mic"
@@ -131,24 +131,23 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     case tools
     /// Present: Saved Prompts.
     case prompts
-    /// Persona: the selected live copy's appearance, Circle, Card or Original. It carries the
-    /// Persona menus' word for that choice (#169), which #134 called Shape.
-    case appearance
+    /// Persona: the frozen card or prepared-set choices currently on screen.
+    case personaPicker
 
     public var title: String {
         switch self {
         case .review: return "Review"
         case .tools: return "Tools"
         case .prompts: return "Prompts"
-        case .appearance: return "Appearance"
+        case .personaPicker: return "Choose Persona"
         }
     }
     public var symbol: String {
         switch self {
         case .review: return "rectangle.stack"
-        case .tools: return "pencil.tip.crop.circle"
+        case .tools: return "paintpalette"
         case .prompts: return "text.bubble"
-        case .appearance: return "person.crop.circle"
+        case .personaPicker: return "person.crop.rectangle.stack"
         }
     }
     /// The tool it belongs to.
@@ -157,7 +156,7 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
         case .review: return .snapAndTalk
         case .tools: return .draw
         case .prompts: return .present
-        case .appearance: return .persona
+        case .personaPicker: return .persona
         }
     }
     /// Opens a list, a menu or the picker, rather than going somewhere at once.
@@ -170,17 +169,36 @@ public enum ToolbarAccessory: String, CaseIterable, Sendable {
     }
 
     /// What the chosen tool offers now: Snap & Talk's Review once a session is open, Draw's Tools,
-    /// Present's Prompts, and Persona's Appearance while a live copy is selected, a hidden one
-    /// included. With no live copy, Persona's preparation is a door in More instead.
+    /// Present's Prompts, and Persona's picker. The cards and the live camera are always Persona's
+    /// choices, so its picker is one click away whatever is live; a prepared set offers its sets
+    /// while it shows. Preparation stays reachable through the chooser's workspace door.
     public static func offered(for live: ToolbarLiveState, selectedPersonaCopy: Bool) -> ToolbarAccessory? {
         switch live.mode {
         case .snapAndTalk: return live.captureCount != nil ? .review : nil
         case .draw: return .tools
         case .present: return .prompts
-        case .persona: return selectedPersonaCopy ? .appearance : nil
+        case .persona:
+            switch live.persona {
+            case .session: return selectedPersonaCopy ? .personaPicker : nil
+            case .sessionHidden: return nil
+            case .none, .shown, .cameraStarting, .cameraShown, .cameraHidden, .cameraFailed: return .personaPicker
+            }
         case .dictate, .read, .snap: return nil
         }
     }
+}
+
+/// A second control exists only where it saves a repeated action.
+public enum ToolbarQuickControl: String, Equatable, Sendable {
+    case nextPersona, nextSet, presentationView
+    public var title: String {
+        switch self {
+        case .nextPersona: return "Next Persona"
+        case .nextSet: return "Next set"
+        case .presentationView: return "View"
+        }
+    }
+    public var symbol: String { self == .presentationView ? "rectangle.on.rectangle" : "chevron.right" }
 }
 
 public struct ToolbarViewState: Equatable, Sendable {
@@ -205,14 +223,16 @@ public struct ToolbarViewState: Equatable, Sendable {
     /// All seven tools, for the launcher's chooser: which one is chosen, which have live
     /// work, and their keys (#134).
     public var choices: [ToolbarToolChoice]
-    /// The chosen tool's one accessory, when it applies (#134 part B). None unless given: the
+    /// The chosen tool's main contextual control, when it applies. None unless given: the
     /// host decides it from the live state, with `ToolbarAccessory.offered(for:selectedPersonaCopy:)`.
     public var accessory: ToolbarAccessory?
     /// What VoiceOver and the tooltip say for it in place of its title, when the title alone
-    /// would not say enough: whose appearance Appearance changes, and that the copy is hidden.
+    /// would not say enough, such as the current frozen Persona label or capture count.
     public var accessoryDescription: String?
+    public var quickControl: ToolbarQuickControl?
+    public var accessoryCount: Int { (accessory == nil ? 0 : 1) + (quickControl == nil ? 0 : 1) }
     public var accessoryTitle: String? { accessory?.title }
-    /// The accessory fits on this display. When it does not, it waits in More instead.
+    /// The full contextual group fits on this display; otherwise its workspace remains reachable.
     public var showsAccessory: Bool
     /// The selected tool's work is running.
     public var isBusy: Bool
@@ -224,7 +244,7 @@ public struct ToolbarViewState: Equatable, Sendable {
                 isActionEnabled: Bool = true, actionHint: String? = nil,
                 choices: [ToolbarToolChoice]? = nil, isBusy: Bool = false,
                 status: ToolbarStatus = .idle, showsAccessory: Bool = true, accessory: ToolbarAccessory? = nil,
-                accessoryDescription: String? = nil, captureChoices: [ToolbarCaptureKind] = []) {
+                accessoryDescription: String? = nil, captureChoices: [ToolbarCaptureKind] = [], quickControl: ToolbarQuickControl? = nil) {
         self.name = name
         self.tier = tier
         self.anchor = anchor
@@ -238,6 +258,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         self.choices = choices ?? ToolbarMode.allCases.map { ToolbarToolChoice(mode: $0, isSelected: $0 == mode) }
         self.accessory = accessory
         self.accessoryDescription = accessoryDescription
+        self.quickControl = quickControl
         self.showsAccessory = showsAccessory
         self.isBusy = isBusy
         self.status = status
@@ -261,7 +282,7 @@ public struct ToolbarViewState: Equatable, Sendable {
         var state = self; state.anchor = anchor; return state
     }
 
-    /// The accessory as the revealed row shows it: nil when there is none or it waits in More.
+    /// The accessory as the revealed row shows it: nil when absent or omitted to fit the display.
     public var shownAccessory: String? { showsAccessory ? accessoryTitle : nil }
     /// Work is live in any tool: the launcher's one aggregate indicator.
     public var hasLiveWork: Bool { choices.contains(where: \.isLive) }

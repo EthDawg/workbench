@@ -95,6 +95,27 @@ final class PersonaOneCardTests {
         XCTAssertEqual(many.library.liveSelection?.currentID, many.items[7].id)
         XCTAssertEqual(many.library.liveSelection?.candidateIDs, many.items.map(\.id), "Every saved card stays available to cycle")
         XCTAssertTrue(many.library.cardDeck?.images.keys.map { $0 } == [many.items[7].id], "Only the requested card is decoded")
+        guard let cycle = many.library.toolbarCycle else { XCTAssertTrue(false, "Shown artwork needs its cycle identity"); return }
+        XCTAssertTrue(cycle.canAdvance)
+        XCTAssertFalse(cycle.isSet)
+        many.library.stepToolbarPersona(expected: cycle, offset: 1)
+        let advanced = many.library.liveSelection?.currentID
+        many.library.stepQuickPersona(-1)
+        many.library.stepToolbarPersona(expected: cycle, offset: 1)
+        XCTAssertEqual(many.library.liveSelection?.currentID, many.items[7].id, "Returning to a card does not revive a held Next")
+        many.library.stepQuickPersona(1)
+        XCTAssertEqual(advanced, many.items[8].id)
+        many.library.stepToolbarPersona(expected: cycle, offset: 1)
+        XCTAssertEqual(many.library.liveSelection?.currentID, advanced, "a stale Next cannot advance another card")
+        try many.library.togglePersonaVisibility().get()
+        XCTAssertTrue(many.library.toolbarCycle == nil, "hidden artwork has Show again, not Next")
+        try many.library.togglePersonaVisibility().get()
+        XCTAssertEqual(many.library.liveSelection?.currentID, advanced, "Show again preserves the frozen card")
+
+        let single = try fixture([Card()])
+        defer { cleanup(single) }
+        try single.library.showOverlay().get()
+        XCTAssertFalse(single.library.toolbarCycle?.canAdvance ?? true, "one candidate has no cycle action")
 
         let missing = try fixture([Card(), Card(missing: true), Card()], group: [0, 1, 2])
         defer { cleanup(missing) }

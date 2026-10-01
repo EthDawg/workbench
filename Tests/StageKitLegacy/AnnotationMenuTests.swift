@@ -187,6 +187,23 @@ final class AnnotationMenuTests: XCTestCase {
         }
     }
 
+    /// The shared Stop drawing door leaves drawing entirely: a whiteboard left up kept taking
+    /// every click while the toolbar read Draw. Its ink stays for the next time it opens.
+    func testStopDrawingClosesTheBoardAndKeepsItsInk() throws {
+        try withFixture { app, menu in
+            invoke("whiteboard", in: menu)
+            let display = app.currentID
+            let mark = Annotation(tool: .pen, color: .coral, width: 4,
+                points: [InkPoint(CGPoint(x: 15, y: 15)), InkPoint(CGPoint(x: 45, y: 45))])
+            app.history(for: display)?.append(mark)
+            app.finishDrawing()
+            XCTAssertFalse(app.isDrawing)
+            XCTAssertTrue(app.boards.isEmpty, "Stop drawing closes the board")
+            app.toggleBoard(.white)
+            XCTAssertEqual(app.history(for: display)?.annotations, [mark], "The board's ink survives Stop drawing")
+        }
+    }
+
     func testStaleMenuCannotBypassChangedAdmission() throws {
         try withFixture { app, menu in
             XCTAssertEqual(item("pen", in: menu)?.isEnabled, true)

@@ -31,6 +31,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-speko-catalog.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py
 PYTHONDONTWRITEBYTECODE=1 python3 BrowserExtension/tests/package_test.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py --import-review
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-library-recall.py --image-reuse
 swift test --disable-sandbox
 swift build -c release --disable-sandbox
 BIN_DIR="$(swift build -c release --disable-sandbox --show-bin-path)"

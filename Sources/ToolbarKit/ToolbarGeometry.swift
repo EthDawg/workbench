@@ -12,24 +12,22 @@ public enum ToolbarLayout {
     public static func mark(for anchor: ToolbarAnchor) -> NSSize { oriented(mark, for: anchor) }
     /// The quiet handle, inside the larger pointer target. Tool identity appears on reveal.
     public static let markCapsule = NSSize(width: 48, height: 8)
-    /// Make room for a recording, transport or recovery signal without moving the target.
+    /// Only recording needs extra room; all other collapsed states stay icon-free.
     static func restingCapsuleHeight(for indicator: ToolbarStatus.Indicator) -> CGFloat {
         switch indicator {
-        case .idle, .live: return markCapsule.height
-        default: return 20
+        case .capture: return 20
+        default: return markCapsule.height
         }
     }
     /// The box for a resting status glyph or voice signal.
     public static let statusHeight: CGFloat = 12
-    /// A badge on the capture signal or the launcher: a fixed square, whatever its symbol's metrics.
-    public static let badge: CGFloat = 7
     public static let rowHeight: CGFloat = 40
     public static let controlHeight: CGFloat = 32
     public static let launcherWidth: CGFloat = 48
+    public static let captureSignalWidth: CGFloat = 44
     /// Icon actions keep stable, generous targets; their words live in the hint and VoiceOver.
     public static let primaryMinimum: CGFloat = 36
     public static let accessoryWidth: CGFloat = 36
-    public static let moreWidth: CGFloat = 32
     public static let gap: CGFloat = 4
     /// At the far end of the row.
     public static let padding: CGFloat = 8
@@ -40,17 +38,17 @@ public enum ToolbarLayout {
     public static let dockSlot = NSSize(width: 48, height: 40)
     /// A dock keeps the row this far inside the visible display.
     public static let dockInset: CGFloat = 8
-    /// Row widths: 132 points without an accessory, 172 with one, at standard scale.
-    public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + gap + moreWidth + padding
+    /// Row widths: 96 points alone, 136 with one contextual control, 176 with two.
+    public static let standardWidth: CGFloat = launcherWidth + gap + primaryMinimum + padding
     public static let accessoryStandardWidth: CGFloat = standardWidth + accessoryWidth + gap
-    /// The accessory waits in More unless the row with it fits the display less this.
+    /// Contextual controls fit together when the row fits the display less this.
     public static let accessoryScreenMargin: CGFloat = 24
 
     /// Predict the destination row before a drag commits its orientation. Preview and
-    /// release use the same measurement, including large text and an accessory in More.
+    /// release use the same measurement, including large text and omitted contextual controls.
     public static func fittedRow(_ horizontal: NSSize, accessoryAvailable: Bool, accessoryShown: Bool,
-                                 anchor: ToolbarAnchor, screen: NSRect) -> (size: NSSize, accessoryFits: Bool) {
-        let accessory = (accessoryWidth + gap) * horizontal.height / rowHeight
+                                 anchor: ToolbarAnchor, screen: NSRect, accessoryCount: Int = 1) -> (size: NSSize, accessoryFits: Bool) {
+        let accessory = CGFloat(accessoryCount) * (accessoryWidth + gap) * horizontal.height / rowHeight
         let without = horizontal.width - (accessoryShown ? accessory : 0)
         let withAccessory = without + (accessoryAvailable ? accessory : 0)
         let fits = withAccessory <= (anchor.isVertical ? screen.height : screen.width) - accessoryScreenMargin
@@ -217,6 +215,16 @@ public struct ToolbarFreePosition: Equatable, Sendable {
 /// moves the toolbar only after this much travel; less is a click and its action runs (#163). StageKit's
 /// `FloatingControlPlacement.dragThreshold` is the same value for other floating controls.
 public enum ToolbarDrag {
+    /// Clamp before moving the window. While crossing adjacent displays, keep
+    /// following the hand across their shared area; release chooses one display.
+    public static func bounded(_ frame: CGRect, screens: [CGRect], fallback: CGRect) -> CGRect {
+        let overlapping = screens.filter { !$0.intersection(frame).isEmpty }
+        let area = overlapping.reduce(CGRect.null) { $0.union($1) }
+        let bounds = area.isNull ? fallback : area
+        return CGRect(x: min(max(frame.minX, bounds.minX), max(bounds.minX, bounds.maxX - frame.width)),
+                      y: min(max(frame.minY, bounds.minY), max(bounds.minY, bounds.maxY - frame.height)),
+                      width: frame.width, height: frame.height)
+    }
     public static let threshold: CGFloat = 4
     public static func isDrag(from start: CGPoint, to point: CGPoint) -> Bool {
         hypot(point.x - start.x, point.y - start.y) >= threshold

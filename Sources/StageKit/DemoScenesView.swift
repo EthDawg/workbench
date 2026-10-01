@@ -61,6 +61,8 @@ struct DemoScenesView: View {
             VStack(spacing: 0) {
             ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                if let live = model.liveSettingsView { live; Divider() }
+                Group {
                 if let scene = model.selected {
                     HStack {
                         Text(scene.name).font(.title2.weight(.semibold)).lineLimit(2).truncationMode(.tail)
@@ -200,8 +202,9 @@ struct DemoScenesView: View {
                     }
                 }
                 #endif
+                }.disabled(model.selected.map { model.isSceneReadOnly($0) } ?? false)
             }.padding(DemoScenesLayout.padding).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }.disabled(model.selected.map { model.isSceneReadOnly($0) } ?? false)
+            }
             #if !APP_STORE
             DesktopMotionControls(controller: model.desktopMotion).padding(.horizontal, DemoScenesLayout.padding)
             #endif

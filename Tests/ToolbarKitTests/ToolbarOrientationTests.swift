@@ -53,7 +53,7 @@ final class ToolbarOrientationTests: XCTestCase {
                     $0.convert($0.bounds, to: host).minY < $1.convert($1.bounds, to: host).minY
                 }
                 XCTAssertEqual(buttons.map { $0.accessibilityIdentifier() },
-                    ["toolbar.launcher", "toolbar.capture.region", "toolbar.capture.window", "toolbar.capture.screen", "toolbar.accessory", "toolbar.more"])
+                    ["toolbar.launcher", "toolbar.capture.region", "toolbar.capture.window", "toolbar.capture.screen", "toolbar.accessory"])
                 for button in buttons {
                     XCTAssertTrue(button.isEnabled)
                     XCTAssertTrue(host.bounds.contains(button.convert(button.bounds, to: host)))
@@ -88,27 +88,21 @@ final class ToolbarOrientationTests: XCTestCase {
         }
     }
 
-    @MainActor func testBothRecordingBadgesStayInsideSideTargetsInBothTiers() throws {
+    @MainActor func testRecordingSignalLeavesSwitchToolAndStopTheirOwnTargetsAtSideDocks() throws {
         _ = NSApplication.shared
         for anchor in [ToolbarAnchor.left, .right] {
-            for tier in ToolbarTier.allCases {
-                var frames: [String: CGRect] = [:]
-                let state = ToolbarViewState(name: "recording", tier: tier, anchor: anchor,
-                    status: .resolve(ToolbarActivity(capture: .dictation, level: 0.5, failure: true, stopsSoon: true)))
-                let host = NSHostingView(rootView: ToolbarRow(state: state).environment(\.toolbarBadgeFrames) { frames[$0] = $1 })
-                let panel = NSPanel(contentRect: NSRect(origin: CGPoint(x: -19000, y: -19000), size: host.fittingSize),
-                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-                panel.isReleasedWhenClosed = false; panel.contentView = host
-                defer { panel.close() }
-                panel.orderFrontRegardless(); host.layoutSubtreeIfNeeded()
-                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-                let target = tier == .resting ? host.bounds : try XCTUnwrap(descendants(host).first { $0.accessibilityIdentifier() == "toolbar.launcher" }).convert(
-                    CGRect(x: 0, y: 0, width: 40, height: 48), to: host)
-                let timer = try XCTUnwrap(frames["stopsSoon"]), warning = try XCTUnwrap(frames["attention"])
-                XCTAssertTrue(target.contains(timer)); XCTAssertTrue(target.contains(warning))
-                XCTAssertFalse(timer.intersects(warning))
-                XCTAssertEqual(timer.size, CGSize(width: 7, height: 7)); XCTAssertEqual(warning.size, timer.size)
-            }
+            let state = ToolbarViewState(name: "recording", tier: .revealed, anchor: anchor,
+                status: .resolve(ToolbarActivity(capture: .dictation, level: 0.5, failure: true, stopsSoon: true)))
+            let host = NSHostingView(rootView: ToolbarRow(state: state))
+            host.frame = CGRect(origin: .zero, size: host.fittingSize)
+            host.layoutSubtreeIfNeeded()
+            let launcher = try XCTUnwrap(descendants(host).first { $0.accessibilityIdentifier() == "toolbar.launcher" })
+            let primary = try XCTUnwrap(descendants(host).first { $0.accessibilityIdentifier() == "toolbar.primary" })
+            let chooserFrame = launcher.convert(launcher.bounds, to: host)
+            let actionFrame = primary.convert(primary.bounds, to: host)
+            XCTAssertEqual(chooserFrame.height, 48)
+            XCTAssertFalse(chooserFrame.intersects(actionFrame))
+            XCTAssertGreaterThan(host.fittingSize.height, ToolbarLayout.standardWidth + ToolbarLayout.captureSignalWidth)
         }
     }
 }
