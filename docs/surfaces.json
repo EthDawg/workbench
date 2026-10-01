@@ -34,6 +34,14 @@
     "note": "Runtime label from Image ( systemName : \"arrow.up.and.down.and.arrow.left.and.right\" ); no rendered text assumed."
   },
   {
+    "id": "LocalVoice.CapturePanel.DictationResultView.Button.microphone-settings",
+    "surface": "floating toolbar live controls",
+    "label": "Microphone Settings…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: a dictation refused the microphone opens its System Settings pane where the person acted, in place of Open Workbench; Snap, Snap & Talk and Camera already offer their settings."
+  },
+  {
     "id": "LocalVoice.CapturePanel.DictationResultView.Button.open-workbench",
     "surface": "floating toolbar live controls",
     "label": "Open Workbench",

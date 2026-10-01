@@ -332,7 +332,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let backup = store.url.deletingLastPathComponent().appendingPathComponent("state-unreadable-\(UUID().uuidString).json")
             do {
                 try FileManager.default.copyItem(at: store.url, to: backup)
-                report("Your saved session could not be opened. A recovery copy was preserved as \(backup.lastPathComponent) in Application Support/LocalVoice.", on: .dictate)
+                report("Your saved session could not be opened. A recovery copy was preserved as \(backup.lastPathComponent) in \(backup.deletingLastPathComponent().path).", on: .dictate)
             } catch {
                 report("Your saved session could not be opened or backed up. Automatic saving is disabled to protect the original file.", on: .dictate)
                 return
@@ -1058,6 +1058,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     }
     func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
     func openMicrophoneSettings() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!) }
+    /// Whether macOS refuses the microphone, so a failure can offer its settings directly.
+    var microphoneAccessDenied: Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        return status == .denied || status == .restricted
+    }
     func exportTranscript() -> String? {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.plainText]; panel.nameFieldStringValue = "Transcript.txt"
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
