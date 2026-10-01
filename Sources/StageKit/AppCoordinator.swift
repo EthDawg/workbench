@@ -252,6 +252,14 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         refreshWindows(); refreshPalette(); refreshEffects(); updateStatus()
         if wasDrawing { onDrawingChanged?(false) }
     }
+    /// The shared Stop drawing door (toolbar, panel, Home): leave drawing entirely, as Escape
+    /// does. A whiteboard left up would keep taking every click while the toolbar reads Draw.
+    func finishDrawing() {
+        stopDrawing()
+        guard !boards.isEmpty else { return }
+        boards.removeAll(); palette?.orderOut(nil)
+        refreshWindows(); refreshEffects(); updateStatus()
+    }
     func escape() {
         if screenshotHandoffActive { return }
         if boardExportInProgress { boardSavePanel?.cancel(nil); return }

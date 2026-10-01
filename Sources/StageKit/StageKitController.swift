@@ -423,9 +423,15 @@ public final class StageKitController: ObservableObject {
         started = false
         coordinator.shutdown()
     }
-    public func draw() { coordinator.startDrawing(.pen, latched: true) }
-    /// Return input without clearing the current ink or removing a board.
-    public func finishDrawing() { coordinator.stopDrawing() }
+    /// Draw starts with the tool Tools shows as chosen. Text and Eraser need a place or ink
+    /// first, so a toolbar or panel start uses the Pen for them.
+    public func draw() {
+        let chosen = coordinator.tool
+        coordinator.startDrawing(chosen == .text || chosen == .eraser ? .pen : chosen, latched: true)
+    }
+    /// Return input without clearing the current ink. A whiteboard closes too, since it would keep
+    /// taking clicks; its ink stays with the board for the next time it opens.
+    public func finishDrawing() { coordinator.finishDrawing() }
     public func clear() { coordinator.perform(.clear) }
     public func showBoard() { coordinator.toggleBoard(.white) }
     public func showTimer() { coordinator.toggleTimer() }

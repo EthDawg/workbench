@@ -373,6 +373,7 @@ struct TestRunner {
                 ("annotation menu live shortcuts and single key owner", suite.testMenuUsesLiveShortcutsWithoutAddingAKeyRoute),
                 ("annotation menu native actions and live state", suite.testNativeActionsRefreshSelectionAndHistory),
                 ("annotation menu preserves ink and boards", suite.testBoardsAndControlsPreserveInkUntilExplicitClear),
+                ("stop drawing closes the board and keeps its ink", suite.testStopDrawingClosesTheBoardAndKeepsItsInk),
                 ("annotation menu rechecks admission", suite.testStaleMenuCannotBypassChangedAdmission)
             ]
             for (name, test) in tests {
@@ -894,6 +895,7 @@ struct TestRunner {
                 ("annotation menu live shortcuts and single key owner", annotationMenu.testMenuUsesLiveShortcutsWithoutAddingAKeyRoute),
                 ("annotation menu native actions and live state", annotationMenu.testNativeActionsRefreshSelectionAndHistory),
                 ("annotation menu preserves ink and boards", annotationMenu.testBoardsAndControlsPreserveInkUntilExplicitClear),
+                ("stop drawing closes the board and keeps its ink", annotationMenu.testStopDrawingClosesTheBoardAndKeepsItsInk),
                 ("annotation menu rechecks admission", annotationMenu.testStaleMenuCannotBypassChangedAdmission)
             ])
         }
