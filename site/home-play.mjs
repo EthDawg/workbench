@@ -18,7 +18,8 @@ if (hero && layer) {
   const screen = hero.s, hit = layer.querySelector('.cap-hit'), tray = layer.querySelector('.try-tray');
   const picks = [...tray.querySelectorAll('[data-moment]')], status = layer.querySelector('[role="status"]');
   const done = layer.querySelector('.ink-bar button');
-  let open = false, ink = null, stroke = null;
+  let open = false, ink = null;
+  const strokes = new Map(); // one per finger or pen, by pointer id
 
   const press = name => picks.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.moment === name)));
   const say = text => { status.textContent = text; };
@@ -80,26 +81,29 @@ if (hero && layer) {
   }
   function stopDrawing() {
     if (!ink) return;
-    ink.remove(); ink = null; stroke = null;
+    ink.remove(); ink = null; strokes.clear();
     screen.classList.remove('try-drawing');
   }
   function down(e) {
     if (e.button !== 0) return;
     e.preventDefault(); ink.setPointerCapture(e.pointerId);
     const path = document.createElementNS(NS, 'path'); ink.append(path);
-    stroke = { id: e.pointerId, path, pts: [[e.pageX, e.pageY]] }; trace();
+    const stroke = { path, pts: [[e.pageX, e.pageY]] };
+    strokes.set(e.pointerId, stroke); trace(stroke);
   }
   function move(e) {
-    if (!stroke || e.pointerId !== stroke.id) return;
-    for (const p of e.getCoalescedEvents?.() ?? [e]) {
+    const stroke = strokes.get(e.pointerId);
+    if (!stroke) return;
+    const events = e.getCoalescedEvents?.();
+    for (const p of events?.length ? events : [e]) {
       const [lx, ly] = stroke.pts[stroke.pts.length - 1];
       if (Math.hypot(p.pageX - lx, p.pageY - ly) >= 1.5) stroke.pts.push([p.pageX, p.pageY]);
     }
-    trace();
+    trace(stroke);
   }
-  function up(e) { if (stroke && e.pointerId === stroke.id) stroke = null; }
+  function up(e) { strokes.delete(e.pointerId); }
   // A smooth line through the midpoints of what the pointer reported; a tap leaves a dot.
-  function trace() {
+  function trace(stroke) {
     const pts = stroke.pts, f = n => n.toFixed(1);
     let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
     if (pts.length === 1) d += 'l.01 0';
