@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests each queued group with main before it lands.
+  merge_group:
   workflow_dispatch:
 permissions:
   contents: read
