@@ -554,7 +554,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard phase == .idle, ready, !rendering else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
-            captureFailure = reason; status = reason; return
+            // Dictate's banner shows it beside the page's mic, as admitNewCapture's refusals are.
+            captureFailure = reason; report(reason, on: .dictate); status = reason; return
         }
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
@@ -1024,10 +1025,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         onPhaseChange?()
     }
     func openTranscript(_ item: Transcript) {
-        guard phase == .idle else {
-            report("Finish the current dictation or processing before replacing its draft.", on: .dictate)
-            return
-        }
+        // The wait is said on History, where Open was clicked.
+        let wait = "Finish the current dictation or processing before replacing its draft."
+        guard phase == .idle else { report(wait, on: .history); return }
+        // History's notice has no Dismiss, so an Open that goes ahead takes its earlier wait away.
+        if attention == Attention(message: wait, page: .history) { attention = nil }
         page = "dictate"
         if (!transcript.isEmpty || !rawTranscript.isEmpty) && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
             pendingTranscript = item
