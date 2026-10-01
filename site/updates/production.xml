@@ -6,6 +6,28 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Workbench</title>
         <item>
+            <title>2.4.0</title>
+            <pubDate>Thu, 01 Oct 2026 13:24:26 +1000</pubDate>
+            <sparkle:version>20261001032329</sparkle:version>
+            <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Workbench 2.4.0</h2>
+<p>Keep dictation, capture and presentation controls close to the work you are doing.</p>
+<ul>
+<li><strong>A clearer floating toolbar.</strong> The three-dot menu is gone. Each tool shows its next action, and Switch tool keeps running jobs and their controls together.</li>
+<li><strong>A live Persona camera bubble.</strong> Show a mirrored webcam over your other apps, with Start, Hide, Show again and End controls. Nothing is recorded by the bubble; camera availability depends on other apps using the device.</li>
+<li><strong>Pick up unfinished captures.</strong> Snap &amp; Talk brings capture, narration and review into one workspace. Review unfinished Snap reopens its draft directly, and a narration that hears nothing keeps the screenshot.</li>
+<li><strong>More useful speech controls.</strong> Meetings has its own page with Pause and Stop &amp; transcribe. Sublime dictation uses one guarded paste and keeps your words copied; a changed or unreadable destination retains the copied fallback.</li>
+<li><strong>Consistent everyday actions.</strong> Timer uses the same Start, Pause, Resume and Stop controls across surfaces. Stop drawing closes a whiteboard while keeping its ink, and microphone-refusal messages offer the relevant settings shortcut.</li>
+</ul>
+<p>Choose Settings → Workbench updates when you are ready. Your saved work stays in this edition’s library.</p>
+<p>First download: unzip Workbench, move it to Applications in your home folder, then open it there. When replacing an existing copy, quit it and use the same Applications folder.</p>
+<p><small>Fresh-Mac setup, macOS 14/15, camera sharing with Zoom, camera disconnect/permission changes, additional displays and full VoiceOver were not newly certified for this release. Remaining click-through refinements stay in issue #134; this release does not claim every physical-input scenario passed.</small></p>
+]]></description>
+            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.4.0/Workbench.zip" length="72207648" type="application/octet-stream" sparkle:edSignature="JHsM7mK+oDmVfQ4oOLs3hk043d1BkKu6Dh2tn4s+t2J4qmk8nXpkAWyX/UgRfOTAiRh37FgyYDfI/NsrK5pfBw=="/>
+        </item>
+        <item>
             <title>2.3.1</title>
             <pubDate>Wed, 30 Sep 2026 15:48:25 +1000</pubDate>
             <sparkle:version>20260930054504</sparkle:version>
@@ -45,30 +67,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.1/Workbench.zip" length="71020601" type="application/octet-stream" sparkle:edSignature="AI9FBpzsFp529+9VkYa44BKsHG8n5+NigZYLY8sya1WBGHg96wYXtDAHG/ADudhT5yoWe5K4nvwzFmzXGb9NCg=="/>
         </item>
-        <item>
-            <title>2.3.0</title>
-            <pubDate>Mon, 28 Sep 2026 13:52:52 +1000</pubDate>
-            <sparkle:version>20260928035156</sparkle:version>
-            <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Workbench 2.3.0</h2>
-<p>A voice-reactive persona ring, faster reading aloud and searchable Snaps.</p>
-<ul>
-<li>React to my voice rings the persona you are showing as you speak. It uses the microphone only while that persona shows and records nothing.</li>
-<li>Read aloud starts almost at once and highlights each word as a Mac voice speaks it. Voices show their accent and quality.</li>
-<li>Find a Snap by the words in its image, see repeated captures proposed when you organise, and import Desktop screenshots into Snap History.</li>
-<li>Meeting and call transcripts label turns You and Others when you include the microphone.</li>
-<li>Suggest details fills in people, companies and tags on this Mac. Built-in skills add meeting notes and a follow-up message.</li>
-</ul>
-<p>Developer ID signed and notarized by Apple. Existing Stable saved work is preserved; Preview keeps a separate library.</p>
-<p>Automated regressions, packaged self-checks and a real-microphone check of the voice ring passed. Listening with your own voice, real calls, Bluetooth headsets and first installation on another Mac remain unverified.</p>
-]]></description>
-            <enclosure url="https://github.com/EthDawg/workbench/releases/download/v2.3.0/Workbench.zip" length="69018501" type="application/octet-stream" sparkle:edSignature="qbA6D5xckonGLaAYpw5td73/ZDLCHgKrRLZUOvq2HwLlTTVVTymLftEp7L6GchXsH7FWIgWu33EI65EVE+cPBw=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: bCt4P3SGTrrGmHUi6MMx2NDZnre8iwc42ARqTikM0vQAQoART9Lhv+XO26BPuFCC/H/QLTDolaoD4VQ+Y4ELCw==
-length: 5944
+edSignature: VMxjaNP3xA8pq7VskfC4gX8PmZ3OE7KGdehKP/XKx1HvLqIhXTGMaYpXzc1nm0x4ShUMqQhUsySkVikR++HsDQ==
+length: 6733
 -->
