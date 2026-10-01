@@ -60,7 +60,7 @@ Follow [the shared installation and release workflow](docs/updating.md). One int
 
 ## Data and privacy
 
-The core Mac app needs no account or subscription. Parakeet recognition and installed Mac reading voices run locally after setup. Original transcripts remain available. Optional text refinement and online reading have explicit model/provider choices; there is no automatic cloud fallback. See [model setup and limits](docs/model-providers.md).
+The core Mac app needs no account or subscription. Parakeet recognition and installed Mac reading voices run locally after setup, as do the optional neural reading voices after their one download. Original transcripts remain available. Optional text refinement and online reading have explicit model/provider choices; there is no automatic cloud fallback. See [model setup and limits](docs/model-providers.md).
 
 Automatic text delivery checks the original destination, excludes secure fields and never submits it. Review any unconfirmed insertion. Screen captures and narrated sessions can contain sensitive information: inspect a session before sharing it. Workbench's handoff opens your chosen tool and copies a prompt; you still grant access and submit it.
 
@@ -77,6 +77,7 @@ Use [GitHub issues](https://github.com/EthDawg/workbench/issues) as the work que
 - Voice and [StageMark](https://github.com/EthDawg/StageMark) are the sources of this consolidation; [source provenance](docs/consolidation-source.md) records the import.
 - [FluidAudio](https://github.com/FluidInference/FluidAudio), pinned to 0.15.6: Apache 2.0.
 - [Parakeet TDT v2 CoreML](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml): see its upstream model card and license.
+- [Pocket TTS](https://huggingface.co/kyutai/pocket-tts) by Kyutai, in [FluidInference's Core ML conversion](https://huggingface.co/FluidInference/pocket-tts-coreml): CC BY 4.0. Downloaded only when someone chooses Neural voices.
 - Apple AppKit, SwiftUI, AVFoundation and installed macOS voices.
 - Workflow inspiration: [Pat Simmons's local Wispr Flow replacement](https://www.youtube.com/watch?v=IMQw3aHjf2Q&t=437s).
 - Matt ([@mattywhitenz](https://github.com/mattywhitenz)) proposed Apple Shortcuts dictation and optional Speko reading in [#10](https://github.com/EthDawg/workbench/issues/10) and [#11](https://github.com/EthDawg/workbench/issues/11).

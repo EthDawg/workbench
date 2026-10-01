@@ -23,6 +23,50 @@ An audio upload is limited to 64 MB and a response to 2 MB as it arrives. A requ
 
 Saved settings live in the current app's defaults domain, under `workbench.recognition.configuration.v1`. The preview bundle therefore keeps its choice separate from production and the old Voice app. Unreadable settings prevent inference and remain untouched until the user explicitly applies a valid choice. Changing provider releases the unused in-memory Parakeet manager; it preserves the downloaded cache for later reuse.
 
+## Long recordings: the ending is read twice
+
+Parakeet reads audio longer than 15 seconds in windows of about 15 seconds. FluidAudio 0.15.6 fills a short last window with real audio only for the v3 family; for v2 the short last window can drop the final words, cut one mid-word or invent a few. `TranscriptEnding` reads the ending again as a single 11.5-second window that stops half a second after the speech does, and joins it to the transcript at the last run of at least four words both share. With no such run, or when both end alike, the transcript is unchanged. Only the last 45 words can change. The second reading takes under a tenth of a second.
+
+Measured on every LibriSpeech test-clean and test-other recording of 15 seconds or more (411 recordings, 15 to 35 seconds), with the app's own code, under four ways a recording can end. An ending counts as wrong when its last three words differ from the reference, which includes spelling differences such as "jackknife" for "jack knife"; about 30 of the 411 are of that kind.
+
+| The recording ends | Wrong endings before | After | Word errors before | After |
+| --- | --- | --- | --- | --- |
+| With the last word | 63 | 33 | 3.11% | 2.54% |
+| After 1.5 seconds of silence | 41 | 32 | 2.78% | 2.68% |
+| After 1.5 seconds of faint noise | 41 | 33 | 2.75% | 2.66% |
+| After 3 seconds of room noise | 40 | 34 | 2.74% | 2.65% |
+
+The noise is random, so those two rows move by a recording or two between runs. These are read-speech recordings with synthetic pauses, not microphone dictation. A dictation that stops the moment the last word is spoken, as hold-to-record does, is the first row. `--check-providers` covers the joining rules, where speech ends and the window taken from a file.
+
+## Speech models measured and not offered (1 October 2026)
+
+FluidAudio 0.15.6 also ships Parakeet Unified, Cohere Transcribe and Parakeet TDT v3. Each was measured against Parakeet TDT v2 on the same Mac (Apple M5, 16 GB, macOS 26.5.1) with the same 300 LibriSpeech recordings: the first 150 of test-clean and of test-other, one scoring rule, 2,205 seconds of audio. None is offered, because none gave better English dictation than the default.
+
+| Model | Word errors, clean / other | Speed | Download | Why it is not offered |
+| --- | --- | --- | --- | --- |
+| Parakeet TDT v2 (default) | 2.41% / 3.31% | 105× real time | 443 MB | |
+| Parakeet Unified 0.6B | 2.17% / 3.10% | 107× | 595 MB | The difference from v2 is within the measurement's error (−0.23 points, 95% interval −0.69 to +0.23), and it ended 114 of 300 recordings with a full stop, question mark or exclamation mark where v2 ended 204. |
+| Cohere Transcribe (q8) | 2.11% / 2.72% | 3.3× | 2.1 GB, plus about 2.1 GB of Core ML cache | Also within error (−0.42, −0.87 to +0.05). It held about 11 GB of memory, took 80 to 126 seconds for the first transcription of every launch and 1.4 to 2 seconds for each later one, and lost words in any 35-second window holding more than about 27 seconds of speech. |
+| Parakeet TDT v3 | 3.73% / 3.90% | 91× | 470 MB | Worse than v2 for English (+1.01 points, +0.29 to +1.86). It is the multilingual model. |
+
+These are read-speech recordings, not microphone dictation, and one Mac. A model that later beats the default on the same recordings can be added as an explicit provider.
+
+## Reading voices
+
+| Choice | Model and execution | Setup | Follow-along |
+| --- | --- | --- | --- |
+| Mac voices (default) | Installed macOS voices through `AVSpeechSynthesizer` | None. Free Enhanced and Premium voices are added in System Settings | Word by word |
+| Neural voices | Pocket TTS by Kyutai (CC BY 4.0), FluidInference's Core ML conversion through FluidAudio 0.15.6, on this Mac | One explicit download of about 530 MB from Read › Voice & pace or Settings › Models | Sentence by sentence |
+| Speko · online | The Speko service, with the person's own key | Key saved in Keychain | None |
+
+Neural voices are an option Ethan asked for on 1 October 2026; Mac voices stay the default. Nothing downloads in passing: Listen with Neural voices chosen and no download reports where to get it, and no other voice reads in its place. The download lives in `~/Library/Application Support/FluidAudio/Models/pocket-tts`, beside the speech model, and Remove download… deletes only that folder. The model loads on the first reading and is released when Read moves to another source. Each reading is made a sentence at a time and plays while the rest renders; Cancel stops the model. The pack's 21 English voices are listed by name, with a sample beside the picker. They read at their own pace, so Pace applies to Mac voices only.
+
+Measured on the same Mac with the vendor's release build: first audio 0.04 to 0.09 seconds once loaded, about 3 to 4.5 times faster than real time, about 0.7 GB of memory while reading, and a one-time first load of several seconds, which the download step does so the first Listen need not. Read back by Parakeet, a 144-word paragraph came out with 0 to 2 wrong words across two readings; the Mac voices had none. Naturalness was not judged by ear: compare the voices with the sample button. This Mac has only compact Mac voices installed, so the free Premium voice the Read page points to remains worth adding either way.
+
+Two other voices in the same library were measured and not offered. Kokoro reads one English voice, refuses text over about 470 characters per call, and crashed on this macOS (26.5.1) in the way its vendor warns of for 26.4 to 26.5. Supertonic-3 does not stop when cancelled and misread numbers ("2,450" as "two, four-fifty").
+
+`--check-neural-voice` drives the renderer with synthetic frames and needs no download: sentence marks, the running filter against the vendor's whole-reading filter, cancellation, failure and the refusal without a download. `--check-neural-voice-render [FOLDER]` reads with the real model when the voices are present and is skipped otherwise.
+
 ## Adding another provider
 
 Add an explicit `RecognitionProvider` choice and one dispatch branch in `RecognitionEngine`, including its readiness, availability, cancellation and input contract. Keep microphone capture, text cleanup, history, hotkeys and presentation outside provider implementations. Changes should not alter the public `prepare`, `isReady` or `transcribe` call pattern.

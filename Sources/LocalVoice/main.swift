@@ -740,6 +740,7 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try WorkbenchPageChecks.run(); try HomeRecentWorkChecks.run() }
             try CoreChecks.run(); try CleanupChecks.run(); try DemoLibraryChecks.run(); try ReadbackChecks.run(); try await ReadbackChecks.runAdmissionChecks(); try ProviderChecks.run(); try CaptureHUDChecks.run(); try CaptureSettingsChecks.run(); try LocalRefinementChecks.run()
             try await AudioRendererCancellationChecks.run()
+            try await NeuralVoiceChecks.run()
             try await MainActor.run { try ReadSelectionChecks.run(); try DemoLibraryChecks.runModelChecks(); try IntegrationChecks.run(); try KeyboardCoachChecks.run(); try ClipboardReceiptChecks.run(); try FeedbackChecks.run(); try ReadingChecks.run() }
         case "--check-feedback":
             // Brief feedback alone (#134 T5): no check here writes preferences outside its own temporary folder.
@@ -752,6 +753,11 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await MainActor.run { try ReadingChecks.run() }
         case "--check-reading-render":
             try await ReadingChecks.runRender()
+        case "--check-neural-voice":
+            try await NeuralVoiceChecks.run()
+        case "--check-neural-voice-render":
+            // --check-neural-voice-render [FOLDER holding Models/pocket-tts]
+            try await NeuralVoiceChecks.runRender(root: args.count > 1 ? URL(fileURLWithPath: args[1]) : nil)
         case "--measure-reading-latency":
             // --measure-reading-latency VOICE_ID[,VOICE_ID] TEXT_FILE…
             guard args.count >= 3 else { throw VoiceError.message("Usage: --measure-reading-latency VOICE_ID[,VOICE_ID] TEXT_FILE…") }

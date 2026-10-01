@@ -7,7 +7,7 @@ import Foundation
 /// rendering, not playback, so each word is recorded at the audio frame reached
 /// when its callback arrives; playback then follows its own clock.
 @MainActor
-final class MacSpeechRenderer: NSObject, AVSpeechSynthesizerDelegate {
+final class MacSpeechRenderer: NSObject, AVSpeechSynthesizerDelegate, ReadingRenderer {
     /// Playback may start once this much audio exists (or the reading ended).
     static let startSeconds = 0.25
     /// No audio for this long means the voice stopped responding.

@@ -153,19 +153,35 @@ final class ReadingFileSource: ReadingAudioSource {
     }
 }
 
-/// One rendered reading: its audio, the text it was made from and, for a Mac
-/// voice, where each word starts. It is reused while its signature matches.
+/// A voice on this Mac that is still making a reading: a Mac voice or a neural voice.
+/// Playback reads the growing audio while it renders the rest.
+@MainActor
+protocol ReadingRenderer: AnyObject {
+    var audio: ReadingAudioFile? { get }
+    /// Where each word, or for a neural voice each sentence, starts in the audio.
+    var marks: ReadingMarks { get }
+    var isFinished: Bool { get }
+    /// New audio exists. Called for every rendered buffer, so keep it cheap.
+    var onAudio: (() -> Void)? { get set }
+    /// Called once, when the reading has completely rendered or failed.
+    var onFinish: ((Error?) -> Void)? { get set }
+    func ready(complete: Bool) async throws
+    func cancel()
+}
+
+/// One rendered reading: its audio, the text it was made from and, for a voice on
+/// this Mac, where each word or sentence starts. It is reused while its signature matches.
 @MainActor
 final class ReadingTrack {
     let url: URL
     let source: ReadingAudioSource
     let text: String
     let signature: String
-    /// Set while a Mac voice is still rendering this track.
-    private(set) var renderer: MacSpeechRenderer?
+    /// Set while a voice on this Mac is still rendering this track.
+    private(set) var renderer: (any ReadingRenderer)?
     private var finishedMarks: ReadingMarks?
 
-    init(url: URL, source: ReadingAudioSource, text: String, signature: String, renderer: MacSpeechRenderer? = nil) {
+    init(url: URL, source: ReadingAudioSource, text: String, signature: String, renderer: (any ReadingRenderer)? = nil) {
         self.url = url
         self.source = source
         self.text = text

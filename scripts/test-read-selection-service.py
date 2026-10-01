@@ -41,7 +41,7 @@ enum VoiceError: LocalizedError {
     case message(String)
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
 }
-enum ReadingProvider: String { case mac, speko }
+enum ReadingProvider: String { case mac, neural, speko }
 final class Receipt { func dismissHUD() {} }
 @MainActor final class SelectionHarness {
     var attention: Attention?

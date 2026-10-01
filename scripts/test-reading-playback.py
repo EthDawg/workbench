@@ -31,7 +31,7 @@ model = SwiftFile(SOURCES / "AppModel.swift").type("AppModel")
 methods = model.extract([
     # Listen, pause, seek and the reading's own failure.
     "followAlongText", "canSeekReading", "seekReading", "skipReading", "listen()", "followPlayback",
-    "showReadingPosition", "generateAudio", "streamMacVoice", "keepAudio", "canSaveAudio", "saveAudio(to:completion:)",
+    "showReadingPosition", "generateAudio", "stream", "keepAudio", "canSaveAudio", "saveAudio(to:completion:)",
     "canCancelReading", "cancelReading", "stopPlayback", "ReadingFailure", "canRetryReading", "retryReading", "reportReadingFailure",
     "dismissReadingFailure", "report", "dismissError", "clearReadingFailure", "readingPlayerDidFinish",
     # The one owner of text arriving in Read, with the step that ends the old reading.
@@ -77,7 +77,7 @@ enum VoiceError: LocalizedError {
     case message(String)
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
 }
-enum ReadingProvider: String { case mac = "Mac voices", speko = "Speko · online" }
+enum ReadingProvider: String { case mac = "Mac voices", neural = "Neural voices", speko = "Speko · online" }
 struct SpekoVoice { let requestSignature: String }
 
 /// Every synthetic file lives under the disposable folder the script passes in.
@@ -140,9 +140,40 @@ enum SpekoRenderer {
     }
 }
 
+/// Stand-ins for the neural voices: a download that is or is not there, and a renderer
+/// that records what a reading asked of it and never produces audio.
+final class NeuralVoiceStore {
+    static let missingMessage = "Neural voices are not downloaded yet. Download them in Settings › Models, or choose Mac voices."
+    var isDownloaded = false
+}
+@MainActor final class NeuralSpeechRenderer: ReadingRenderer {
+    static var created: [NeuralSpeechRenderer] = []
+    let text: ListeningText
+    private(set) var audio: ReadingAudioFile?
+    private(set) var marks = ReadingMarks()
+    private(set) var isFinished = false
+    var onAudio: (() -> Void)?
+    var onFinish: ((Error?) -> Void)?
+    var startedVoice: String?
+    var cancelled = false
+    private var waiters: [CheckedContinuation<Void, Error>] = []
+    init(text: ListeningText) throws { self.text = text; Self.created.append(self) }
+    func start(voice: String, store: NeuralVoiceStore) { startedVoice = voice }
+    func ready(complete: Bool) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            if cancelled { continuation.resume(throwing: CancellationError()) } else { waiters.append(continuation) }
+        }
+    }
+    func cancel() {
+        cancelled = true
+        let pending = waiters; waiters.removeAll()
+        pending.forEach { $0.resume(throwing: CancellationError()) }
+    }
+}
+
 /// Scripted stand-in for the AVSpeechSynthesizer renderer, with the same
 /// readiness, cancellation and callback contract.
-@MainActor final class MacSpeechRenderer {
+@MainActor final class MacSpeechRenderer: ReadingRenderer {
     static var created: [MacSpeechRenderer] = []
     static let startSeconds = 0.25
     let text: ListeningText
@@ -264,7 +295,7 @@ final class FailingSource: ReadingAudioSource {
     var playbackID: UUID?
     var audio: ReadingTrack?
     var playingTrack: ReadingTrack?
-    var pendingRender: MacSpeechRenderer?
+    var pendingRender: (any ReadingRenderer)?
     var audioSignature: String { audio?.signature ?? "" }
     var renderingAhead = false
     var readingHighlight: NSRange?
@@ -284,6 +315,10 @@ final class FailingSource: ReadingAudioSource {
     var rate = 180.0
     var readingProvider = ReadingProvider.mac
     var selectedSpekoVoice: SpekoVoice?
+    var neuralVoice = "alba"
+    let neuralVoices = NeuralVoiceStore()
+    var neuralRefreshes = 0
+    func refreshNeuralVoices() { neuralRefreshes += 1 }
     var voiceChoice: MacVoiceChoice? = .installed(MacVoice(id: "com.apple.voice.super-compact.en-AU.Karen", name: "Karen", language: "en-AU", quality: .compact))
     var missingVoiceMessage: String {
         if case .missing(let name) = voiceChoice { return "\(name) is not installed on this Mac. Choose another voice." }
@@ -477,6 +512,27 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         try check(missing.error == "Matilda is not installed on this Mac. Choose another voice." && MacSpeechRenderer.created.count == before
                   && missing.player == nil, "A missing chosen voice is reported instead of replaced")
         try check(missing.attention?.page == .read, "Audio that could not be made is Read's problem, so the menu-bar panel opens Read (#134)")
+        // Neural voices: no download means a refusal that says where to get them, and no render.
+        let neural = ReadingHarness()
+        neural.readingProvider = .neural
+        let macRenders = MacSpeechRenderer.created.count
+        neural.listen(); await neural.readingTask?.value
+        try check(neural.error == NeuralVoiceStore.missingMessage && neural.attention?.page == .read && NeuralSpeechRenderer.created.isEmpty
+                  && MacSpeechRenderer.created.count == macRenders && neural.player == nil && neural.neuralRefreshes == 1,
+                  "A neural reading without its download is refused on Read, with no render and no other voice in its place")
+        neural.neuralVoices.isDownloaded = true
+        neural.neuralVoice = "jane"
+        neural.dismissError()
+        neural.listen()
+        await settle { NeuralSpeechRenderer.created.count == 1 }
+        let neuralRender = NeuralSpeechRenderer.created[0]
+        try check(neuralRender.startedVoice == "jane" && neuralRender.text.spoken == "Notes.\nHello there. Read this with file Core.swift open."
+                  && neural.rendering && neural.canCancelReading && MacSpeechRenderer.created.count == macRenders,
+                  "With the download, the chosen neural voice reads the prepared text and no Mac voice starts")
+        neural.cancelReading()
+        await neural.readingTask?.value
+        try check(neuralRender.cancelled && !neural.rendering && neural.status == "Reading generation cancelled." && neural.error == nil,
+                  "Cancel stops a neural reading like any other, with no billing note")
         let speko = ReadingHarness()
         speko.readingProvider = .speko
         speko.listen(); await speko.readingTask?.value

@@ -83,6 +83,9 @@ struct ContentView: View {
             DictateSettingsView(model: model, openDictionary: {
                 showDictateSettings = false
                 model.page = "dictionary"
+            }, openModels: {
+                showDictateSettings = false
+                model.page = "models"
             }, done: { showDictateSettings = false })
         }
         .sheet(isPresented: $showReadingSettings) {
@@ -142,6 +145,7 @@ struct ContentView: View {
                     }
                     VStack(alignment: .leading, spacing: 16) {
                         captureControls
+                        dictateEngine
                         Divider()
                         HStack {
                             WorkbenchSectionTitle("Transcript")
@@ -224,6 +228,19 @@ struct ContentView: View {
                         Button("Set up automatic paste…") { model.requestAccessibility() }.font(.caption).buttonStyle(.link)
                     }
                 }
+            }
+        }
+    }
+
+    /// What turns this page's recordings into text, where it runs, and the way to change it
+    /// (workbench.md, rule 9). While the model is not ready, the line above already says why.
+    @ViewBuilder private var dictateEngine: some View {
+        if model.ready {
+            HStack(spacing: 8) {
+                Label("\(model.modelMessage) · \(model.preferences.cleanup.rawValue) text style", systemImage: "waveform")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Models…") { model.page = "models" }.buttonStyle(.link).font(.caption)
+                    .help("Choose the speech and writing models in Settings › Models")
             }
         }
     }
@@ -391,6 +408,15 @@ struct ContentView: View {
                         Button("Choose voice…") { showReadingSettings = true }
                     }.font(.caption)
                 }
+            } else if model.readingProvider == .neural {
+                Label("\(NeuralVoiceCatalog.title(model.neuralVoice)) · Neural voice · On this Mac", systemImage: "desktopcomputer")
+                    .font(.callout).foregroundStyle(.secondary)
+                if !model.neuralVoicesDownloaded {
+                    HStack {
+                        Text(model.neuralVoiceProgress ?? "Neural voices need one download before they can read.")
+                        Button("Set up…") { showReadingSettings = true }.accessibilityLabel("Set up neural voices")
+                    }.font(.caption)
+                }
             } else {
                 Label("\(model.selectedSpekoVoice?.name ?? "Automatic voice") · Online with Speko", systemImage: "cloud")
                     .font(.callout).foregroundStyle(.secondary)
@@ -515,12 +541,23 @@ struct VoiceWorkspaceSettingsSheet<Content: View>: View {
 struct DictateSettingsView: View {
     @ObservedObject var model: AppModel
     let openDictionary: () -> Void
+    var openModels: () -> Void = {}
     let done: () -> Void
 
     var body: some View {
         VoiceWorkspaceSettingsSheet(title: "Dictate settings", identifier: "dictate.settings", done: done) {
             VStack(alignment: .leading, spacing: 16) {
                 DictateTaskOptions(model: model)
+                SettingsRow("Models") {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.modelMessage)
+                            Text("Natural text style uses \(CleanupConfigurationStore().snapshot().naturalSummary).")
+                        }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Models…", action: openModels).help("Choose the speech and writing models in Settings › Models")
+                    }
+                }
                 Divider()
                 VoiceOptions(model: model)
                 Divider()
@@ -559,6 +596,9 @@ struct ReadingSettingsView: View {
                                   previewing: model.previewingVoice, choose: model.chooseVoice, preview: model.toggleVoicePreview,
                                   openSettings: model.openVoiceSettings)
                         .disabled(model.rendering)
+                }
+                if model.readingProvider == .neural, model.neuralVoicesDownloaded {
+                    NeuralVoicePanel(model: model).disabled(model.rendering)
                 }
             }
         }
