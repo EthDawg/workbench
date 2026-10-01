@@ -422,7 +422,8 @@ struct ContentView: View {
                 Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill")
             }.buttonStyle(PrimaryButton())
                 .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.phase != .idle || model.speechText.count > model.readingLimit)
-            if model.canCancelReading { Button("Cancel generation") { performReadingAction(model.cancelReading) } }
+            // One Cancel ends making audio or Save audio's export: the word every other Read door uses.
+            if model.canCancelReading { Button("Cancel") { performReadingAction(model.cancelReading) }.help(model.savingAudio ? "Stop saving this audio" : "Stop making this audio") }
             if model.playing || model.paused { Button("Stop") { performReadingAction(model.stopPlayback) } }
             Spacer()
             Button {
