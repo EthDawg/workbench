@@ -2,6 +2,18 @@
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
+# A settings suite in a test or check is an absolute path in a temporary folder.
+# A named suite lands in the real ~/Library/Preferences, even under a temporary
+# HOME, so the run notes the UUID-named plists there now and fails at the end if
+# it added any (#128).
+PREFERENCES="$(python3 -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)')/Library/Preferences"
+suite_plists() {
+  ls -1 "$PREFERENCES" 2>/dev/null \
+    | /usr/bin/grep -E '[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}.*\.plist$' | LC_ALL=C sort || true
+}
+SUITES_BEFORE="$(mktemp)"
+trap 'rm -f -- "$SUITES_BEFORE"' EXIT
+suite_plists > "$SUITES_BEFORE"
 python3 scripts/check-surfaces.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-check-surfaces.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-swift-extract.py
@@ -43,3 +55,14 @@ bash scripts/test-stage.sh --ci
 "$BIN_DIR/LocalVoice" --check-subscription-cli
 "$BIN_DIR/LocalVoice" --check-meetings
 bash scripts/test-snap.sh
+
+# cfprefsd writes a suite's plist about 10 s after its process exits.
+sleep 20
+LEFT_BEHIND="$(suite_plists | LC_ALL=C comm -13 "$SUITES_BEFORE" -)"
+if [ -n "$LEFT_BEHIND" ]; then
+  echo "This run left $(echo "$LEFT_BEHIND" | wc -l | tr -d ' ') settings suites in $PREFERENCES." >&2
+  echo "Give each UserDefaults(suiteName:) an absolute path in a temporary folder (#128):" >&2
+  echo "$LEFT_BEHIND" | sed 's/^/  /' >&2
+  exit 1
+fi
+echo "No settings suites left in $PREFERENCES."
