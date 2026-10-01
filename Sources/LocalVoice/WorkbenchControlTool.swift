@@ -33,7 +33,7 @@ enum WorkbenchControlTool: String, CaseIterable, Identifiable {
         }
     }
     /// The toolbar mode for this capability. Timer has none:
-    /// it is a panel row and a Present option, never a toolbar mode.
+    /// it is a panel row and part of Draw, never a toolbar mode.
     var mode: ToolbarMode? {
         switch self {
         case .dictate: return .dictate
@@ -416,7 +416,7 @@ struct WorkbenchControlContext {
         case .annotate: return state.drawing ? stage.drawingToolTitle + " · Stop keeps your marks" : stage.drawingActivationTitle + " shortcut · click to draw"
         case .present: return state.presenting ? "End the scene; it stays saved." : "Present your selected device scene."
         case .persona: return state.personaDetail
-        case .timer: return state.timerStarted ? stage.timerText : "Start your saved timer."
+        case .timer: return state.timerStarted ? stage.timerStateDetail : "Start your saved timer."
         case .read: return model.rendering ? "Preparing audio…" : model.playing ? "Reading aloud" : model.paused ? "Reading paused" : "Listen to text from Workbench."
         }
     }

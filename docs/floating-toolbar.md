@@ -32,7 +32,7 @@ Persona. Starting anything from any door (a key, a panel row, Home, an app menu,
 the toolbar itself) makes it the mode; ending leaves the mode where it was.
 Before anything has ever been started the seed is Dictate, because it works in
 every app with only the microphone. The choice persists across relaunch under
-`workbench.toolbarMode.v1`. Timer is a panel row and a Present option, not a mode.
+`workbench.toolbarMode.v1`. Timer is a panel row and part of Draw, not a mode; its chooser row offers the next step, Show or Hide timer and Stop timer.
 
 **At rest the toolbar is a compact mark** (#134), whatever is running: idle,
 recording, playing, paused, processing, drawing, presenting, a persona, a timer,

@@ -590,7 +590,7 @@ struct WorkbenchHomePage: View {
     private var hasCurrentWork: Bool {
         dictationLive || readingLive || model.readingFailure != nil || !model.ready
             || readback.isRecording || readback.hasPendingTranscriptions || stage.isDrawing || stage.isPresenting
-            || personaControl.isCurrentWork || stage.hasActiveTimer || meetings.isBusy || jobs.isBusy
+            || personaControl.isCurrentWork || stage.hasTimerSession || meetings.isBusy || jobs.isBusy
     }
     /// Active input first, then stopped reading and other running or resumable work, each with its
     /// own truthful action. Leaving Home collapses, acknowledges or discards none of it.
@@ -636,9 +636,10 @@ struct WorkbenchHomePage: View {
                         .id(persona.operation).disabled(!persona.isEnabled)
                 }
             }
-            if stage.hasActiveTimer {
-                // Pause, Stop and Reset live in the Timer menu the panel already uses.
-                liveRow("Timer · " + stage.timerText, "timer") { NativeControlMenu(title: "Timer") { stage.makeTimerMenu() }.frame(width: 64, height: 24) }
+            if stage.hasTimerSession {
+                // The timer's next step, Show or Hide timer and Stop timer, in the one Timer menu.
+                // A finished countdown stays here until it is stopped, as its window keeps it.
+                liveRow("Timer · " + stage.timerStateDetail, "timer") { NativeControlMenu(title: "Timer") { stage.makeTimerMenu() }.frame(width: 64, height: 24) }
             }
             if jobs.isBusy {
                 liveRow("Running · " + (jobs.jobs.first { $0.id == jobs.activeID }?.title ?? "Hand off task"), "arrow.up.forward.app") {

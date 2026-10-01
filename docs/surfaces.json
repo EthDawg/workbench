@@ -827,15 +827,6 @@
     "aliasOf": "present"
   },
   {
-    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.end-timer",
-    "surface": "floating toolbar activity chooser",
-    "label": "End timer",
-    "kind": "action",
-    "belongsTo": "timer",
-    "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
-    "aliasOf": "timer"
-  },
-  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.finish-narration",
     "surface": "floating toolbar activity chooser",
     "label": "Finish narration",
@@ -962,6 +953,16 @@
     "belongsTo": "persona"
   },
   {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.runtime-d6afe28227ed",
+    "surface": "floating toolbar activity chooser",
+    "label": null,
+    "expression": "shown ? \"Hide timer\" : \"Show timer\"",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Show timer or Hide timer acts on the timer's window alone; the countdown keeps running.",
+    "kind": "action",
+    "belongsTo": "timer",
+    "aliasOf": "timer"
+  },
+  {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-dictating",
     "surface": "floating toolbar activity chooser",
     "label": "Stop dictating",
@@ -1005,6 +1006,15 @@
     "belongsTo": "read",
     "note": "Approved #134 overflow removal: this existing action now lives with its activity or live owner; selection alone never starts or ends work.",
     "aliasOf": "read"
+  },
+  {
+    "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-timer",
+    "surface": "floating toolbar activity chooser",
+    "label": "Stop timer",
+    "kind": "action",
+    "belongsTo": "timer",
+    "aliasOf": "timer",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Stop timer ends the countdown and closes its window, as the panel row and the Timer menu say; it replaces End timer."
   },
   {
     "id": "LocalVoice.ToolbarActivityActions.FloatingToolbar.command.stop-transcribing",
@@ -3323,25 +3333,20 @@
     "belongsTo": "persona"
   },
   {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.reset-timer",
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-caae27b8e4c8",
     "surface": "Timer menu",
-    "label": "Reset Timer",
+    "label": null,
+    "expression": "shown ? \"Hide Timer\" : \"Show Timer\"",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. Show Timer or Hide Timer acts on the timer's window alone; the countdown keeps running.",
     "kind": "action",
     "belongsTo": "timer"
   },
   {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-be0e55863d8d",
+    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.runtime-e05ea4b54e12",
     "surface": "Timer menu",
     "label": null,
-    "expression": "app . timerRunning ? \"Pause Timer\" : \"Resume Timer\"",
-    "kind": "action",
-    "belongsTo": "timer",
-    "note": "Runtime label from app . timerRunning ? \"Pause Timer\" : \"Resume Timer\"; no rendered text assumed."
-  },
-  {
-    "id": "StageKit.StageKitController.StageKitController.StageMenuAction.start-timer",
-    "surface": "Timer menu",
-    "label": "Start Timer",
+    "expression": "transport . transport . title + \" Timer\"",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. The one next step (Start, Pause, Resume or Restart Timer) for the countdown shown (#174). It replaces a separate Start Timer that silently restarted a running countdown, and Reset Timer, which Stop and Restart cover.",
     "kind": "action",
     "belongsTo": "timer"
   },
@@ -4355,10 +4360,11 @@
   {
     "id": "shortcut.stage.timer",
     "surface": "global shortcuts",
-    "label": "Break timer",
+    "label": "Timer",
     "case": "timer",
     "kind": "action",
-    "belongsTo": "timer"
+    "belongsTo": "timer",
+    "note": "Quality (1 October, Ethan: the timer must not be an afterthought): one name, Timer, and one word set on every surface. The shortcut is named Timer, not Break timer; its action and saved key are unchanged."
   },
   {
     "id": "shortcut.stage.undo",

@@ -25,7 +25,7 @@ enum Action: String, CaseIterable, Codable, Identifiable {
         case .blackboard: return "Blackboard"
         case .pointer: return "Cursor highlight"
         case .fade: return "Auto-fade"
-        case .timer: return "Break timer"
+        case .timer: return "Timer"
         case .controls: return "Open drawing controls"
         case .scenes: return "Demo scenes"
         case .personaToggle: return "Show or hide one persona"

@@ -261,9 +261,24 @@ public final class StageKitController: ObservableObject {
         guard let look = PersonaAppearance.Shape(rawValue: shape.rawValue) else { return }
         coordinator.demoScenes.personas.setLiveShape(look, for: copy.copy)
     }
-    /// The panel row starts and stops the timer; the overlay keeps pause and reset.
+    /// The panel row starts and stops the timer; its Options, Home, the chooser and the
+    /// timer's own window carry the next step and Show or Hide timer.
     public func startTimer() { coordinator.startTimer() }
+    /// Stop timer: the countdown ends and its window closes.
     public func stopTimer() { coordinator.resetTimer(); coordinator.hideTimer() }
+    /// Whether the timer's window is on screen; hiding it leaves the countdown running.
+    public var isTimerShown: Bool { coordinator.timerShown }
+    /// Show timer or Hide timer, for the window alone. Show needs a started countdown.
+    public func setTimerShown(_ shown: Bool) { shown ? coordinator.revealTimer() : coordinator.hideTimer() }
+    /// One line for a started timer on every surface: its time, then Paused, Time is up
+    /// or Hidden when they apply. Empty before it starts.
+    public var timerStateDetail: String {
+        guard coordinator.timerSessionStarted else { return "" }
+        var parts = [coordinator.timerFinished ? "Time is up" : coordinator.timerText]
+        if coordinator.timerTransport == .paused { parts.append("Paused") }
+        if !coordinator.timerShown { parts.append("Hidden") }
+        return parts.joined(separator: " · ")
+    }
     /// The panel retains the live-copy adjustments as an alternate home to the Persona
     /// workspace. Feedback already shown by the panel is not repeated in its menu.
     public func makePersonaPanelMenu() -> NSMenu {
@@ -279,20 +294,28 @@ public final class StageKitController: ObservableObject {
         while let last = menu.items.last, last.isSeparatorItem { menu.removeItem(last) }
         return menu
     }
-    /// `optionsOnly` leaves out the transport (start, pause, stop, reset): the
-    /// panel row starts and stops, and the overlay keeps pause and reset.
+    /// One word set for the timer (1 October): its next step (Start, Pause, Resume or
+    /// Restart Timer), Show or Hide Timer for the window alone, and Stop Timer, which ends
+    /// the countdown and closes its window. `optionsOnly` leaves out Start and Stop, which
+    /// the panel row does; a started timer's next step and Show or Hide stay in its Options.
     public func makeTimerMenu(optionsOnly: Bool = false) -> NSMenu {
         let app = coordinator
         let menu = NSMenu(title: "Timer"); menu.autoenablesItems = false
-        if !optionsOnly {
-            menu.addItem(StageMenuAction("Start Timer", enabled: mayBeginInteraction?() != false) { [weak app] in app?.startTimer() })
-            // Pause or Resume as shown now, and only that (#174).
-            let transport = TimerTransportAction(app)
-            menu.addItem(StageMenuAction(app.timerRunning ? "Pause Timer" : "Resume Timer",
-                                         enabled: transport.transport == .running || transport.transport == .paused) { transport() })
-            menu.addItem(StageMenuAction("Stop Timer", enabled: app.timerSessionStarted) { [weak app] in app?.resetTimer(); app?.hideTimer() })
-            menu.addItem(StageMenuAction("Reset Timer") { [weak app] in app?.resetTimer() })
+        // The one next step as shown now, and only that (#174): a running countdown offers
+        // Pause, never a second Start that would silently restart it.
+        let transport = TimerTransportAction(app)
+        if !optionsOnly || app.timerSessionStarted {
+            menu.addItem(StageMenuAction(transport.transport.title + " Timer",
+                                         enabled: !transport.transport.starts || mayBeginInteraction?() != false) { transport() })
         }
+        if app.timerSessionStarted {
+            let shown = app.timerShown
+            menu.addItem(StageMenuAction(shown ? "Hide Timer" : "Show Timer") { [weak app] in
+                if shown { app?.hideTimer() } else { app?.revealTimer() }
+            })
+            if !optionsOnly { menu.addItem(StageMenuAction("Stop Timer") { [weak app] in app?.resetTimer(); app?.hideTimer() }) }
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
         menu.addSubmenu("Duration", items: [1, 5, 10, 15, 30, 60].map { minutes in
             StageMenuAction("\(minutes) min", checked: app.settings.value.timerMinutes == Double(minutes)) { [weak app] in
                 app?.settings.value.timerMinutes = Double(minutes)

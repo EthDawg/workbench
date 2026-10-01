@@ -73,7 +73,7 @@ final class BreakTimerPlacementTests {
                                  timerDisplays: { [testDisplay] }, timerFallbackID: { testDisplay.id })
         app.start(); defer { app.shutdown() }
         app.startTimer()
-        guard let window = NSApp.windows.first(where: { $0.title == "Workbench · Break timer" }) else {
+        guard let window = NSApp.windows.first(where: { $0.title == "Workbench · Timer" }) else {
             XCTAssertTrue(false, "The native break timer window must open"); return
         }
         app.setTimerPosition(.topLeft)
