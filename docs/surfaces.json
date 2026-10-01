@@ -482,6 +482,15 @@
     "note": "Door to Settings › Models beside the engine Meetings uses, the one place an engine is chosen (Grammar rule 9; 1 Oct)."
   },
   {
+    "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.microphone-settings",
+    "surface": "meeting page",
+    "label": "Microphone Settings…",
+    "kind": "action",
+    "belongsTo": "dictate",
+    "note": "Quality: a meeting refused the microphone opens its System Settings pane beside the problem, as the toolbar's dictation failure does (1 Oct).",
+    "aliasOf": "dictate"
+  },
+  {
     "id": "LocalVoice.MeetingWorkspaceView.MeetingWorkspaceView.Button.review-transcript",
     "surface": "meeting page",
     "label": "Review transcript",
@@ -1678,13 +1687,12 @@
     "note": "Option: Current work's action for a running Hand off task, the same Stop task as History's running strip (#134 H1)."
   },
   {
-    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop.2",
+    "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.Button.stop-narration",
     "surface": "window home",
-    "label": "Stop",
+    "label": "Stop narration",
     "kind": "action",
     "belongsTo": "snapAndTalk",
-    "note": "Existing contextual \"Stop\" label inside snapAndTalk; shared wording, not a separate capability. Stops narration from Home.",
-    "aliasOf": "snapAndTalk"
+    "note": "Quality: was Stop. Home's live row ends narration with the words the page, panel and toolbar use (1 Oct). Stops narration from Home."
   },
   {
     "id": "LocalVoice.WorkbenchHome.WorkbenchHomePage.CapturePreviewButton.view-snap",
