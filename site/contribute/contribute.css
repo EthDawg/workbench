@@ -1,0 +1,24 @@
+/* Contribute: a form and a few links, in the same calm cards as the guide. */
+#feedback-form{display:grid;gap:14px;min-width:0}
+#feedback-form label{display:grid;gap:6px;font-size:14px;font-weight:650}
+.field-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#feedback-form input,#feedback-form select,#feedback-form textarea{font:inherit;font-weight:400;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-width:0}
+#feedback-form textarea{resize:vertical}
+#feedback-form input:focus,#feedback-form select:focus,#feedback-form textarea:focus{outline:2px solid var(--mint-ink);outline-offset:1px}
+#feedback-form button[type=submit]{justify-self:start}
+.topic .btn.dl{background:var(--ink);color:var(--bg);border:0;cursor:pointer;font:inherit;font-weight:650;padding:12px 22px;min-height:46px}
+.btn.line{background:transparent;color:var(--ink);border:1px solid var(--line);cursor:pointer;font:inherit;font-weight:650;padding:11px 18px}
+#report-result{display:grid;gap:12px}
+#report-result h3{margin:4px 0 0}
+#report-preview{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:13px;max-height:320px;overflow:auto;margin:0}
+.report-actions{display:flex;flex-wrap:wrap;gap:10px}
+#copy-status textarea,#agent-status textarea{width:100%;min-height:120px;margin-top:8px}
+#agent-status,#copy-status{font-size:14px;color:var(--muted);margin:10px 0 0}
+.links{list-style:none!important;gap:0!important}
+.links li{padding:0!important;border-top:1px solid var(--line)}
+.links li:first-child{border-top:0}
+.links li:before{display:none}
+.links a{display:grid;gap:2px;padding:12px 0;text-decoration:none}
+.links a:hover b{text-decoration:underline;text-underline-offset:3px}
+.links span{color:var(--muted);font-size:14px}
+@media (max-width:760px){.field-row{grid-template-columns:minmax(0,1fr)}}

@@ -2,13 +2,18 @@
 
 Public site: https://workbench-mac.vercel.app
 
-A small static website for downloading Workbench, learning its jobs and controls, trying a real workflow, and preparing a user-experience report or coding-agent handoff.
+A small static website with one job: help someone who has never heard of Workbench understand it and download it. Every page shares one design (`site.css`, `site.mjs`) and one menu bar and footer (`partials/`), which `build.mjs` stamps into each page.
 
-The homepage (`index.html`, `home.css`, `home.mjs`, `home-boot.js`) is written for someone who has never heard of Workbench: what it is, who it is for, that it is free, and how to get it. Its hero is a Mac desktop whose menu bar is the site navigation; `home.mjs` plays the four moments (Say it, Snap it, Mark it, Show it) as a pure function of time and shows a finished still frame when motion is reduced. The hero's toolbar is also an unadvertised Easter egg that visitors can play: `home-play.mjs` and `home-play.css` open the capsule into Dictate, Snap & Talk, Draw and Persona, jump the hero to that moment, and let Draw ink the whole page until Esc or Done clears it. It never names other apps. The guided trial, feedback report and agent handoff live on `contribute/index.html`, which keeps `app.mjs`, `report.mjs` and `style.css`. Headline and handwriting fonts (Bricolage Grotesque and Caveat, SIL Open Font License, files and licences in `assets/fonts/`) are self-hosted because the Content Security Policy allows no font host. The persona in the hero is the bundled Site manager card. Voice and StageMark are modules in one native app. GitHub Releases own binaries and issues own feedback. No browser reimplementation, backend, analytics, or stored feedback.
+- `/` (`index.html`, `home.css`, `home.mjs`, `home-boot.js`): what it is, who it is for, that it is free, and how to get it. The hero is a Mac desktop whose menu bar is the site navigation; `home.mjs` plays Say it, Snap it, Mark it and Show it as a pure function of time, with a finished still frame when motion is reduced. Its toolbar is also an unadvertised Easter egg: `home-play.mjs` and `home-play.css` open the capsule into Dictate, Snap & Talk, Draw and Persona, jump the hero to that moment, and let Draw ink the whole page until Esc or Done clears it. It never names other apps.
+- `/guide/`: a short welcome, closer to an unboxing than a manual. Three setup steps, where things live, and a line or two per tool. It deliberately avoids shortcut lists and button-by-button steps, which go stale and which people customise; the app itself teaches the details. Old anchors (`#servicenow-pack`, `#presenting`, `#phone-share`, `#scenes`, `#persona`, `#mac-only`) still resolve.
+- `/privacy.html`: five promises up front, then every audited data, permission and storage fact, with the fine print in collapsed sections.
+- `/contribute/`: feedback report, coding-agent handoff and source links, for people who already like the app (`app.mjs`, `report.mjs`).
+- `/packs/`: opens a shared team pack in the app (`packs/open.mjs`).
+- `/handbook/`: the contributor reference generated from `handbook/contract.json`, linked from Contribute. It keeps its own body styles in light mode.
 
-The working guide is `guide/index.html`. The product handbook is `handbook/index.html`: two independent visual journeys, lifecycle exploration, native boundaries and contributor entry points. `handbook/contract.json` is the single structured source for its capability records, lifecycle rules, acceptance scenarios and generated agent brief. Edit that source rather than separately updating human and agent copies. The repository-wide product contract remains `../docs/workbench.md`.
+The earlier feature essays (`/scenes/`, `/scenes/ambient/`, `/personas/`, `/phone-presenting/`, `/handoff/`, `/mobile/`) are retired. `vercel.json` redirects each to its Guide section, so links from installed apps and docs still land. Their history and evidence remain in git and `docs/`.
 
-`assets/guide/` contains explicitly labelled generated studies and separate actual native screenshots. Generation prompts and critique live in `../docs/design-images.md`. The build uses an explicit file allowlist; it publishes no source tests, rendering helper, environment files or local deployment state. No backend, agent endpoint or wallpaper automation is added by the handbook.
+Headline and handwriting fonts (Bricolage Grotesque and Caveat, SIL Open Font License, files and licences in `assets/fonts/`) are self-hosted because the Content Security Policy allows no font host. Hero persona, backdrops and portraits are resized copies of the app's bundled resources in `assets/home/`. GitHub Releases own binaries and issues own feedback. No backend, analytics or stored feedback.
 
 ## Local development
 
@@ -21,11 +26,11 @@ node build.mjs
 python3 -m http.server 4173 --directory public --bind 127.0.0.1
 ```
 
-Open http://127.0.0.1:4173. Check desktop/mobile layout in light and dark, the hero loop and its reduced-motion still frame, then on `/contribute/` keyboard tab switching, trial checkboxes, report validation, per-app issue routing, and copy actions. For the handbook, check every lifecycle event, keyboard activation, expanded capability records and the matching JSON/agent brief. Read the fallback lifecycle table with JavaScript unavailable. Use synthetic feedback and do not submit QA issues to GitHub. Edit source files, then rebuild; do not edit `public/` output.
+Open http://127.0.0.1:4173. Check every page at desktop and phone width in light and dark, the hero loop and its reduced-motion still frame, the retired-page redirects, and on `/contribute/` report validation, per-area issue routing and copy actions. For the handbook, check lifecycle events, expanded capability records and the matching JSON and agent brief. Use synthetic feedback and do not submit QA issues to GitHub. Edit source files, then rebuild; do not edit `public/` output.
 
 ## Publish
 
-The app page is `/`, contribution and feedback are `/contribute/`, everyday instructions are `/guide/`, and `/handbook/` is the deeper capability/lifecycle reference. Keep design studies, development history and QA detail in the repository or reference pages, not in the getting-started flow. GitHub issues remain the only work queue.
+Keep design studies, development history and QA detail in the repository, not on the public pages. GitHub issues remain the only work queue.
 
 The custom domain `workbench.mwdm.cloud` and any domain migration are deferred. The existing `https://workbench-mac.vercel.app` site on `less-go/workbench-mac` remains the canonical website and signed-update-feed host until a separate hosting decision. No domain, DNS or redirect migration is part of the current Mac release work.
 

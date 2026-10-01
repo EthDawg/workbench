@@ -11,20 +11,18 @@
   <meta property="og:type" content="website">
   <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
   <link rel="preload" href="/assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css">
   <link rel="stylesheet" href="/home.css">
   <link rel="stylesheet" href="/home-play.css">
   <script src="/home-boot.js"></script>
+  <script type="module" src="/site.mjs"></script>
   <script type="module" src="/home.mjs"></script>
   <script type="module" src="/home-play.mjs"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="menubar" id="menubar">
-  <a class="brand" href="/" aria-label="Workbench home"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#142b31"/><path d="M10 12h20M10 20h15M10 28h8" stroke="#9af0c6" stroke-width="4" stroke-linecap="round"/></svg>Workbench</a>
-  <nav aria-label="Main navigation"><a href="#tools">Tools</a><a href="/guide/">Guide</a><a href="#teams">Teams</a></nav>
-  <span class="menubar-right"><a class="btn dl small" href="#download">Download</a><span class="clock" aria-hidden="true">Thu 9:41</span></span>
-</header>
+<!-- menubar -->
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
@@ -235,9 +233,6 @@
   </section>
 </main>
 
-<footer class="foot wrap">
-  <a class="brand" href="/"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#142b31"/><path d="M10 12h20M10 20h15M10 28h8" stroke="#9af0c6" stroke-width="4" stroke-linecap="round"/></svg>Workbench</a>
-  <nav aria-label="More about Workbench"><a href="/guide/">Guide</a><a href="/handbook/">Handbook</a><a href="/contribute/">Help shape Workbench</a><a href="/privacy.html">Privacy</a><a href="https://github.com/EthDawg/workbench/tree/{{RELEASE_TAG}}">Source</a><a href="https://github.com/EthDawg/workbench/blob/main/LICENSE">MIT licence</a></nav>
-</footer>
+<!-- footer -->
 </body>
 </html>

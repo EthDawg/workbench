@@ -19,14 +19,10 @@ await rm(new URL('./public/',import.meta.url),{recursive:true,force:true});
 await mkdir(new URL('./public/packs/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/guide/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/handbook/',import.meta.url),{recursive:true});
-await mkdir(new URL('./public/mobile/',import.meta.url),{recursive:true});
-await mkdir(new URL('./public/handoff/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/contribute/',import.meta.url),{recursive:true});
-await mkdir(new URL('./public/scenes/',import.meta.url),{recursive:true});
-await mkdir(new URL('./public/personas/',import.meta.url),{recursive:true});
-await mkdir(new URL('./public/phone-presenting/',import.meta.url),{recursive:true});
-await mkdir(new URL('./public/scenes/ambient/',import.meta.url),{recursive:true});
-for (const name of ['packs/index.html','packs/open.mjs','packs/packs.css','index.html','home.css','home.mjs','home-boot.js','home-play.mjs','home-play.css','contribute/index.html','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css','mobile/index.html','mobile/mobile.css','handoff/index.html','handoff/handoff.css','scenes/index.html','scenes/scenes.css','personas/index.html','phone-presenting/index.html','scenes/ambient/index.html','scenes/ambient/ambient.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
+// The retired feature pages (scenes, personas, phone presenting, photo handoff, mobile)
+// redirect to their Guide sections in vercel.json, so links from installed apps still land.
+for (const name of ['packs/index.html','packs/open.mjs','packs/packs.css','index.html','site.css','site.mjs','home.css','home.mjs','home-boot.js','home-play.mjs','home-play.css','contribute/index.html','contribute/contribute.css','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
 await mkdir(new URL('./public/updates/', import.meta.url), { recursive: true });
 for (const channel of ['production', 'preview']) for (const extension of ['json', 'xml']) {
     try {
@@ -44,9 +40,15 @@ await writeFile(new URL('./public/handbook/contract.json', import.meta.url), JSO
 await writeFile(new URL('./public/handbook/contract.mjs', import.meta.url), `export default ${JSON.stringify(contract)};\n`);
 await writeFile(new URL('./public/handbook/agent-brief.txt', import.meta.url), agentBrief(contract));
 for (const name of ['handbook.css', 'handbook.mjs']) await copyFile(new URL(`handbook/${name}`, import.meta.url), new URL(`public/handbook/${name}`, import.meta.url));
-// One published release record owns the website download and source links.
-for (const name of ['index.html', 'contribute/index.html', 'guide/index.html']) {
+// Every page shares one menu bar and footer, and one published release record owns
+// the website download and source links.
+const partials = {
+    menubar: await readFile(new URL('./partials/menubar.html', import.meta.url), 'utf8'),
+    footer: await readFile(new URL('./partials/footer.html', import.meta.url), 'utf8')
+};
+for (const name of ['index.html', 'contribute/index.html', 'guide/index.html', 'privacy.html', 'packs/index.html', 'handbook/index.html']) {
     const path = new URL(`public/${name}`, import.meta.url);
-    await writeFile(path, renderPublishedRelease(await readFile(path, 'utf8')));
+    const html = (await readFile(path, 'utf8')).replace(/<!-- (menubar|footer) -->/g, (marker, key) => partials[key].trim());
+    await writeFile(path, renderPublishedRelease(html));
 }
 console.log(`Built Workbench site for ${currentRelease.channel} ${currentRelease.tag} (build ${currentRelease.build}) in site/public`);

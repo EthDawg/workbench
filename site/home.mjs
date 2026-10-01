@@ -96,7 +96,11 @@ class Hero {
     const ch = this.rel(this.chart);
     let w = ch.w + 2.8*u, h = ch.h + 4.6*u; const mx = ch.x + ch.w/2, my = ch.y + ch.h/2 + 1.1*u;
     if (w/h > 1.6) h = w/1.6; else w = h*1.6;
-    this.mqR = { x: mx - w/2, y: my - h/2, w, h };
+    // Keep the snap inside the window: shrink it to fit, then slide it in from the edges.
+    const win = this.rel(this.stage.querySelector('.win')), top = win.y + 3*u + u, left = win.x + u;
+    const k = Math.min(1, (win.w - 2*u)/w, (win.y + win.h - u - top)/h); w *= k; h *= k;
+    const x = Math.min(Math.max(mx - w/2, left), win.x + win.w - u - w), y = Math.min(Math.max(my - h/2, top), win.y + win.h - u - h);
+    this.mqR = { x, y, w, h };
     this.mq.style.left = `${this.mqR.x}px`; this.mq.style.top = `${this.mqR.y}px`;
     const c1 = this.rel(this.c1);
     this.c1.style.setProperty('--from', `translate(${this.mqR.x - c1.x}px,${this.mqR.y - c1.y}px) scale(${this.mqR.w/c1.w})`);
@@ -268,21 +272,3 @@ if (!reduce) {
   }), { threshold: .35 });
   document.querySelectorAll('.tool-art').forEach(art => arts.observe(art));
 }
-
-// The menu bar clock shows the visitor's own time, like the real one.
-const clock = document.querySelector('.clock');
-if (clock) {
-  const day = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
-  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-  const show = () => { const now = new Date(); clock.textContent = `${day.format(now)} ${time.format(now)}`; };
-  show(); setInterval(show, 15000);
-}
-
-// Open a linked help section, including direct links and browser Back.
-function reveal(hash) {
-  const target = hash && document.getElementById(hash.slice(1));
-  if (target instanceof HTMLDetailsElement) target.open = true;
-}
-document.querySelectorAll('a[href^="#"]').forEach(link => link.addEventListener('click', () => reveal(link.hash)));
-addEventListener('hashchange', () => reveal(location.hash));
-reveal(location.hash);

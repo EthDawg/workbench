@@ -1,57 +1,5 @@
 /* Workbench homepage. The hero is a Mac desktop: the site menu is its menu bar,
-   and Workbench's own tools play across it. Everything below is calm and plain. */
-@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:400 800;font-display:swap;src:url(/assets/fonts/bricolage-grotesque-latin.woff2) format("woff2")}
-@font-face{font-family:"Caveat";font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/caveat-bold-latin.woff2) format("woff2")}
-:root{
-  --bg:#f3f7f6; --surface:#ffffff; --ink:#12282e; --muted:#4e656a; --line:#d5e0df;
-  --mint:#9af0c6; --mint-ink:#17714f; --mark:#ff5446;
-  --panel:#12282e; --panel-ink:#eef6f4; --panel-muted:#b3c8ca; --panel-line:#2c464d;
-  --wall-a:#c4f1dc; --wall-b:#e8f1f4; --wall-c:#f8e6bd; --wall-ink:#12282e; --wall-muted:#3f565b;
-  --bar:color-mix(in srgb,#ffffff 58%,transparent);
-  --display:"Bricolage Grotesque",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
-  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
-  --hand:"Caveat","Bradley Hand","Segoe Print",cursive;
-  --menubar:44px;
-  color-scheme:light;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0b181c; --surface:#11242a; --ink:#e5efed; --muted:#9ab0b2; --line:#22393f; --mint-ink:#86e6b9;
-    --panel:#152d34; --panel-ink:#eef6f4; --panel-muted:#a9c0c2; --panel-line:#2e4a51;
-    --wall-a:#1b4740; --wall-b:#0f252d; --wall-c:#3a301e; --wall-ink:#eef6f4; --wall-muted:#b3c6c8;
-    --bar:color-mix(in srgb,#0f252d 62%,transparent);
-    color-scheme:dark;
-  }
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:calc(var(--menubar) + 16px);-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;font-synthesis:none;-webkit-font-smoothing:antialiased}
-a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
-:focus-visible{outline:3px solid var(--mint-ink);outline-offset:3px;border-radius:4px}
-.wrap{max-width:1200px;margin-inline:auto;padding-inline:clamp(16px,4vw,40px)}
-.skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--surface);padding:10px 14px;border-radius:8px}
-.skip:focus{top:8px}
-.nb{white-space:nowrap}
-.fine{font-size:13px;color:var(--muted);margin:14px 0 0}
-.fine span+span:before{content:"·";margin:0 7px}
-.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:650;text-decoration:none;white-space:nowrap;transition:transform .15s,filter .15s}
-.btn:hover{filter:brightness(1.08)}
-.btn:active{transform:scale(.98)}
-.btn.dl{background:var(--wall-ink);color:var(--wall-b);padding:14px 24px;font-size:16px;min-height:48px}
-.btn.dl.small{padding:6px 14px;font-size:13px;min-height:0}
-.btn.ghost{padding:14px 6px;font-size:16px;color:var(--wall-ink)}
-.tool-name{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mint-ink);margin:0}
-
-/* ---------- menu bar = site navigation ---------- */
-.menubar{position:sticky;top:0;z-index:50;height:var(--menubar);display:flex;align-items:center;gap:24px;padding-inline:clamp(14px,3vw,32px);font-size:14px;color:var(--wall-ink);background:color-mix(in srgb,var(--surface) 55%,transparent);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4);border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
-.brand{display:inline-flex;align-items:center;gap:9px;font-weight:760;font-size:16px;letter-spacing:-.01em;text-decoration:none}
-.brand svg{width:22px;height:22px;border-radius:6px;box-shadow:0 0 0 1px color-mix(in srgb,var(--wall-ink) 18%,transparent)}
-.menubar nav{display:flex;gap:22px}
-.menubar nav a{text-decoration:none;font-weight:560;color:var(--wall-muted)}
-.menubar nav a:hover{color:var(--wall-ink)}
-.menubar-right{margin-left:auto;display:flex;align-items:center;gap:16px}
-.clock{color:var(--wall-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-
+   and Workbench's own tools play across it. Shared tokens, menu bar and footer live in site.css. */
 /* =================================================================
    Hero: the desktop. Sizes inside it scale with --u.
    ================================================================= */
@@ -62,7 +10,6 @@ a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
   radial-gradient(50% 60% at 92% 92%,var(--wall-c) 0,transparent 70%),
   var(--wall-b)}
 .hero-body{position:relative;z-index:2;max-width:1280px;margin-inline:auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:calc(var(--u)*6);align-items:center;padding-inline:clamp(16px,4vw,48px)}
-.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mint-ink);margin:0 0 16px}
 .hero-title{font-family:var(--display);font-weight:780;font-variation-settings:"opsz" 96;font-size:clamp(46px,7.2vw,104px);line-height:.95;letter-spacing:-.045em;margin:0;text-wrap:balance}
 .lede{font-size:clamp(17px,1.45vw,20px);line-height:1.5;color:var(--wall-muted);margin:24px 0 0;max-width:34em}
 .cta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;margin-top:28px}
@@ -381,7 +328,6 @@ a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
 .get{margin-block:clamp(56px,7vw,96px);background:var(--panel);color:var(--panel-ink);border-radius:28px;padding:clamp(28px,5vw,56px);display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:32px 56px;max-width:1200px;margin-inline:auto}
 .get-intro p{color:var(--panel-muted);margin:14px 0 26px;font-size:18px}
 .get .btn.dl{background:var(--mint);color:#0f2b25}
-.btn.big{padding:16px 30px;font-size:17px}
 .get .fine{color:var(--panel-muted)}
 .get ol{list-style:none;counter-reset:step;margin:0;padding:0;display:grid;gap:18px}
 .get li{counter-increment:step;display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:14px}
@@ -397,18 +343,12 @@ a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
 .get details a{color:var(--panel-ink)}
 .get code{font-size:.92em}
 
-.foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px 28px;padding-block:8px 48px;color:var(--muted);font-size:14px}
-.foot nav{display:flex;flex-wrap:wrap;gap:8px 22px}
-.foot nav a{text-decoration:none}
-.foot nav a:hover{text-decoration:underline}
-.foot .brand{color:var(--ink)}
 
 @media (max-width:980px){
   .tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .trust ul{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-width:760px){
-  .menubar nav,.clock{display:none}
   .screen{--u:clamp(5.5px,1.6vw,8px);padding-bottom:calc(var(--u)*16)}
   .hero-body{grid-template-columns:minmax(0,1fr);gap:calc(var(--u)*9)}
   .persona{width:calc(var(--u)*16)}
