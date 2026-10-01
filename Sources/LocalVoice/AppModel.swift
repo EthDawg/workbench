@@ -204,9 +204,14 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
     }
     private func invalidateAudio() { stopPlayback(); audio?.discard(); audio = nil }
+    /// What Read's Cancel ends: audio being made, or Save audio's whole run, whose
+    /// export continues after the audio is made.
+    var canCancelReading: Bool { readingGenerationActive || savingAudio }
     func cancelReading() {
-        guard readingGenerationActive else { return }
-        let mayBeBilled = readingProvider == .speko
+        guard canCancelReading else { return }
+        // Only making audio sends text to Speko; an export sends nothing.
+        let mayBeBilled = readingGenerationActive && readingProvider == .speko
+        let cancelled = savingAudio ? "Save audio cancelled." : "Reading generation cancelled."
         let task = readingTask
         if savingAudioID == readingGenerationID { savingAudioID = nil }
         readingGenerationID = nil
@@ -216,7 +221,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         rendering = false
         task?.cancel()
         pendingRender?.cancel(); pendingRender = nil
-        status = mayBeBilled ? "Reading generation cancelled. Speko may still bill text already accepted." : "Reading generation cancelled."
+        status = mayBeBilled ? cancelled + " Speko may still bill text already accepted." : cancelled
     }
     @Published private(set) var readingGenerationActive = false
     /// Save audio's whole run, from making the audio to writing the file.
@@ -549,7 +554,8 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         guard phase == .idle, ready, !rendering else { return }
         let intendedTarget = target ?? (fromShortcut ? TextDelivery.capture() : nil)
         if let reason = microphoneStartFailure?(intendedTarget) {
-            captureFailure = reason; status = reason; return
+            // Dictate's banner shows it beside the page's mic, as admitNewCapture's refusals are.
+            captureFailure = reason; report(reason, on: .dictate); status = reason; return
         }
         guard admitNewCapture() else { return }
         clipboardReceipt.clear()
@@ -1019,10 +1025,11 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         onPhaseChange?()
     }
     func openTranscript(_ item: Transcript) {
-        guard phase == .idle else {
-            report("Finish the current dictation or processing before replacing its draft.", on: .dictate)
-            return
-        }
+        // The wait is said on History, where Open was clicked.
+        let wait = "Finish the current dictation or processing before replacing its draft."
+        guard phase == .idle else { report(wait, on: .history); return }
+        // History's notice has no Dismiss, so an Open that goes ahead takes its earlier wait away.
+        if attention == Attention(message: wait, page: .history) { attention = nil }
         page = "dictate"
         if (!transcript.isEmpty || !rawTranscript.isEmpty) && (transcript != item.text || rawTranscript != (item.rawText ?? item.text)) {
             pendingTranscript = item
@@ -1353,8 +1360,10 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 try Task.checkCancellation()
                 guard readingGenerationID == generationID else { throw CancellationError() }
                 try await AudioRenderer.exportBounded(url, to: destination)
-                try Task.checkCancellation()
-                guard readingGenerationID == generationID else { throw CancellationError() }
+                // A Cancel that landed as the file was written leaves no file behind.
+                guard !Task.isCancelled, readingGenerationID == generationID else {
+                    try? FileManager.default.removeItem(at: destination); throw CancellationError()
+                }
                 status = "Audio saved to \(destination.lastPathComponent)."
                 completion?(status)
             } catch {

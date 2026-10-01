@@ -422,7 +422,7 @@ struct ContentView: View {
                 Label(model.rendering ? "Making audio…" : model.playing ? "Pause" : model.paused ? "Resume" : "Listen", systemImage: model.playing ? "pause.fill" : "play.fill")
             }.buttonStyle(PrimaryButton())
                 .disabled(model.speechText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.rendering || model.phase != .idle || model.speechText.count > model.readingLimit)
-            if model.readingGenerationActive { Button("Cancel generation") { performReadingAction(model.cancelReading) } }
+            if model.canCancelReading { Button("Cancel generation") { performReadingAction(model.cancelReading) } }
             if model.playing || model.paused { Button("Stop") { performReadingAction(model.stopPlayback) } }
             Spacer()
             Button {

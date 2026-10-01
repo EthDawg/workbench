@@ -31,6 +31,8 @@ methods = model.extract([
     # Manual copies and the undelivered result they resolve (#134 T5).
     'copyTranscript', 'deliveryRecords', 'unresolvedDelivery', 'copyTextWithReceipt', 'copyUnresolvedDelivery',
     'dismissUnresolvedDelivery', 'reviewUnresolvedDelivery', 'openHistory', 'copyCapture',
+    # History's Open, refused on History while Dictate is busy (1 October audit, finding 7).
+    'openTranscript', 'applyHistoryTranscript', 'persist',
     # Removing a transcript drops an undelivered result that names it (#134 T5 review).
     'removeTranscript',
     # Failures, the routine no-speech cue (#156) and the hold lesson that can take its place (#134 T5).
@@ -243,6 +245,7 @@ struct FixtureVoicePreferences { var capture = CaptureMode.hold; var dictationSh
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     __LIFECYCLE_PROPERTIES__
     var page = "home", historyDoor: HistoryDoor?
+    var pendingTranscript: Transcript?, rememberedCorrection: String?
     // The press path and the coach (#134 T5).
     var preferences = FixtureVoicePreferences()
     var coach: FeedbackCoachModel
@@ -1020,6 +1023,32 @@ struct CheckFailure: Error, CustomStringConvertible { let description: String }
         unprepared.engine.prepareFailure = nil
         await unprepared.prepare()
         try check(unprepared.ready && unprepared.modelMessage == "Fixture model ready", "Retry model prepares it")
+
+        // A refusal is shown where the person acted (1 October audit, finding 7). The Dictate page's
+        // mic: the reason is Dictate's, whose banner is beside that mic, and the capture HUD's.
+        let refusedStart = CaptureHarness(directory: folder("start-refused"))
+        let meetingWait = "Finish the meeting recording or transcription before starting Dictate."
+        refusedStart.microphoneStartFailure = { _ in meetingWait }
+        refusedStart.page = "dictate"
+        refusedStart.toggleRecording()
+        try check(refusedStart.phase == .idle && refusedStart.recordingAttempt == nil && refusedStart.startedAttempts.isEmpty
+                  && refusedStart.captureFailure == meetingWait && refusedStart.attention == Attention(message: meetingWait, page: .dictate),
+                  "A start the Dictate page's mic cannot make is reported on Dictate: \(String(describing: refusedStart.attention))")
+        // History's Open while Dictate is busy says why on History and changes nothing; once Dictate
+        // is idle, Open goes ahead and takes that wait away, since History's notice has no Dismiss.
+        let busyOpen = CaptureHarness(directory: folder("history-open-busy"))
+        let saved = Transcript(text: "Saved words from History", seconds: 2)
+        busyOpen.openHistory()
+        busyOpen.toggleRecording()
+        try check(busyOpen.phase == .requesting, "Dictate is busy")
+        busyOpen.openTranscript(saved)
+        try check(busyOpen.page == "history" && busyOpen.pendingTranscript == nil && busyOpen.transcript == "Old draft"
+                  && busyOpen.attention == Attention(message: "Finish the current dictation or processing before replacing its draft.", page: .history),
+                  "History's Open while Dictate is busy is refused on History: \(String(describing: busyOpen.attention))")
+        busyOpen.cancelRecording()
+        busyOpen.openTranscript(saved)
+        try check(busyOpen.page == "dictate" && busyOpen.pendingTranscript?.id == saved.id && busyOpen.transcript == "Old draft" && busyOpen.attention == nil,
+                  "Open goes ahead once Dictate is idle, behind Keep or Replace, and History's wait goes")
 
         print("CAPTURE_PERSISTENCE_CHECKS_OK: \(assertions) checks; exact AppModel capture methods, real recovery files, synthetic audio, injected recognition/delivery/state writes")
     }
