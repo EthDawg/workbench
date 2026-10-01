@@ -1,9 +1,9 @@
 import AppKit
 
-/// Workbench's one stroke character for a voice: a fine, rounded line in the
-/// Workbench accent, quiet at rest, that speech brightens and weights a little
-/// and a raised voice lights further. The input trace stays legible at rest;
-/// the audience-facing outline recedes more quietly between phrases.
+/// How bright Workbench draws a voice: quiet at rest, full while a voice is
+/// present, for the dots and rounded bars every voice surface is made of. The
+/// input trace stays legible at rest; the audience-facing ring recedes more
+/// quietly between phrases.
 public enum VoiceStyle {
     /// How a stroke reads at one moment.
     public struct Stroke: Equatable, Sendable {
@@ -33,11 +33,11 @@ public enum VoiceStyle {
         return Stroke(opacity: rest + (1 - rest) * voice, weight: (voice + raised) / 2, glow: raised)
     }
 
-    public static func outlineRestOpacity(increaseContrast: Bool) -> Double { increaseContrast ? 0.55 : 0.18 }
+    public static func outlineRestOpacity(increaseContrast: Bool) -> Double { increaseContrast ? 0.6 : 0.34 }
 
-    /// A Persona is watched by the audience. Its quiet outline recedes so
-    /// speaking is a clear change, while keeping the same accent and stroke.
-    /// The recorder's trace stays legible at rest for the person recording.
+    /// A Persona is watched by the audience. Its resting ring recedes so
+    /// speaking is a clear change. The recorder's trace stays legible at rest
+    /// for the person recording.
     public static func outlineStroke(_ envelope: VoiceEnvelope, reduceMotion: Bool, increaseContrast: Bool) -> Stroke {
         var result = stroke(envelope, reduceMotion: reduceMotion, increaseContrast: increaseContrast)
         let rest = restOpacity(increaseContrast: increaseContrast)
@@ -55,6 +55,17 @@ public enum VoiceStyle {
         let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let opposite = NSAppearance(named: dark ? .aqua : .darkAqua) ?? appearance
         return (resolved(accent, in: appearance), resolved(accent, in: opposite))
+    }
+
+    /// A colour the person chose, over content Workbench does not own: the
+    /// colour itself, with a rim of its own hue, dark around a light colour
+    /// and light around a dark one, so it reads on any content.
+    public static func overlayColors(chosen color: CGColor) -> (line: CGColor, rim: CGColor) {
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let parts = color.converted(to: space, intent: .defaultIntent, options: nil)?.components, parts.count >= 3 else { return (color, color) }
+        let light = 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2] > 0.45
+        let rim = parts.prefix(3).map { light ? $0 * 0.3 : $0 + (1 - $0) * 0.78 }
+        return (color, CGColor(colorSpace: space, components: rim + [1]) ?? color)
     }
 
     /// `color` as `appearance` draws it.

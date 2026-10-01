@@ -40,7 +40,7 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         for (index, color) in InkColor.presets.enumerated() {
             guard let action = Action(rawValue: "color\(index + 1)") else { continue }
             let item = actionItem(action, title: InkColor.presetName(at: index), checked: app.settings.value.color == color)
-            item.image = colourSwatch(color)
+            item.image = color.menuSwatch
             colours.addItem(item)
         }
         let black = command("Black", id: "black", enabled: app.canUseAnnotationMenuAction(.color1)) { [weak app] in
@@ -48,7 +48,7 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
             app.settings.value.color = .black
         }
         black.state = app.settings.value.color == .black ? .on : .off
-        black.image = colourSwatch(.black)
+        black.image = InkColor.black.menuSwatch
         colours.addItem(black)
         colours.addItem(.separator())
         let custom = command("Choose Colour…", id: "customColour", enabled: app.canUseAnnotationMenuAction(.color1)) { [weak app] in
@@ -116,17 +116,6 @@ final class AnnotationMenu: AnnotationShortcutMenu, NSMenuDelegate {
         return item
     }
 
-    private func colourSwatch(_ color: InkColor) -> NSImage {
-        NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
-            color.nsColor.setFill()
-            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2))
-            circle.fill()
-            NSColor.secondaryLabelColor.withAlphaComponent(0.4).setStroke()
-            circle.lineWidth = 0.5
-            circle.stroke()
-            return true
-        }
-    }
 
     private static func modifiers(_ carbon: UInt32) -> NSEvent.ModifierFlags {
         var result: NSEvent.ModifierFlags = []
@@ -173,5 +162,21 @@ private final class AnnotationMenuCommand: NSMenuItem {
     @objc private func invoke() {
         guard isEnabled else { return }
         perform()
+    }
+}
+
+extension InkColor {
+    /// This colour as a menu item's swatch, the same in every colour menu.
+    var menuSwatch: NSImage {
+        let color = nsColor
+        return NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
+            color.setFill()
+            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2))
+            circle.fill()
+            NSColor.secondaryLabelColor.withAlphaComponent(0.4).setStroke()
+            circle.lineWidth = 0.5
+            circle.stroke()
+            return true
+        }
     }
 }
