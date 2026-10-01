@@ -161,7 +161,7 @@
       "id": "break-timer-placement",
       "name": "Remember the separate break timer position",
       "status": "implemented",
-      "entry": "Break timer → drag or Position",
+      "entry": "Timer → drag or Position",
       "effect": "Snap on drag release; persist a free normalized position or one of eight anchors and recover on an available display after hiding, closing or restarting.",
       "limit": "Countdown and presentation remain independent. Corrupt, future or concurrently changed placement files are preserved. Physical display removal, VoiceOver and meeting receivers remain acceptance checks.",
       "source": "Sources/StageKit/BreakTimerPlacement.swift",
