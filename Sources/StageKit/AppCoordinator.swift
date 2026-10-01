@@ -914,7 +914,7 @@ final class AppCoordinator: NSObject, ObservableObject, NSWindowDelegate, NSPopo
         do {
             let status = try loginItem(enabled)
             launchAtLogin = status == .enabled
-            if status == .requiresApproval { post("Approve Workbench in System Settings → General → Login Items.", on: .general); SMAppService.openSystemSettingsLoginItems() }
+            if status == .requiresApproval { post("Approve Workbench in System Settings › General › Login Items.", on: .general); SMAppService.openSystemSettingsLoginItems() }
         } catch { post("Login setting could not be changed: \(error.localizedDescription)", on: .general) }
     }
     func openZoomSettings() {

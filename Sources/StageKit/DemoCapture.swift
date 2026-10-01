@@ -30,7 +30,7 @@ enum CaptureVideoAccess {
         case .restricted:
             return "Device video access is restricted on this Mac. Use an approved presentation route or ask your IT administrator for help."
         case .denied:
-            return "Device video access is off. Enable Workbench in System Settings → Privacy & Security → Camera, then choose Reconnect."
+            return "Device video access is off. Enable Workbench in System Settings › Privacy & Security › Camera, then choose Reconnect."
         default: return nil
         }
     }

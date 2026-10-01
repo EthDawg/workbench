@@ -629,7 +629,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         guard recordingAttempt == attempt else { return }
         guard granted else {
-            fail("Microphone access is off. Open System Settings → Privacy & Security → Microphone and allow \(Workbench.displayName)."); return
+            fail("Microphone access is off. Open System Settings › Privacy & Security › Microphone and allow \(Workbench.displayName)."); return
         }
         var startedAudio: URL?
         do {
@@ -1625,7 +1625,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         if case .tooQuiet = reason { quietCapturesInARow += 1 } else { quietCapturesInARow = 0 }
         if quietCapturesInARow >= 2 {
             quietCapturesInARow = 0
-            fail("No speech heard twice in a row. Check the input in System Settings → Sound, and open the lid of a MacBook.")
+            fail("No speech heard twice in a row. Check the input in System Settings › Sound, and open the lid of a MacBook.")
             return
         }
         if let id = shortcutRequest.id {
@@ -1725,11 +1725,4 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // Quit stops work. Only a durable capture commit or explicit Cancel may
         // delete the owned audio/journal; the next launch discovers unfinished work.
     }
-}
-
-/// Carries model-setup progress from the recognition engine back to the app's one model,
-/// without keeping it alive.
-private final class ModelProgressSink: @unchecked Sendable {
-    weak var model: AppModel?
-    init(_ model: AppModel) { self.model = model }
 }

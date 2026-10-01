@@ -44,6 +44,12 @@ struct ContentView: View {
                     Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                     Text(error).font(.system(size: 12)).textSelection(.enabled)
                     Spacer()
+                    // The fix is in System Settings, so the page opens it beside the microphone refusal
+                    // itself. The Mac's microphone setting says nothing about which problem this is.
+                    if model.page != "speak", error.hasPrefix("Microphone access is off") {
+                        Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
+                            .help("Open Privacy & Security › Microphone in System Settings")
+                    }
                     Button { model.dismissError() } label: { Image(systemName: "xmark") }
                         .buttonStyle(.plain).accessibilityLabel("Dismiss error")
                 }.padding(14).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))

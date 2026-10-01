@@ -59,6 +59,8 @@ final class MeetingModel: ObservableObject {
 
     static let detectionKey = "workbench.meeting.detect.v1"
     static let keptForLater = "Recording was cancelled. Original audio was kept."
+    /// The one refusal whose fix is in System Settings, so the page can offer it beside this message only.
+    static let microphoneRefused = "Allow Microphone access in Privacy & Security to include your voice, or choose app audio only."
     static let disabledAppsKey = "workbench.meeting.disabled-apps.v1"
     private let directory: URL
     private let defaults: UserDefaults
@@ -199,7 +201,7 @@ final class MeetingModel: ObservableObject {
             if microphone {
                 let allowed = await microphonePermission()
                 try check(token)
-                guard allowed else { throw MeetingError.message("Allow Microphone access in Privacy & Security to include your voice, or choose app audio only.") }
+                guard allowed else { throw MeetingError.message(Self.microphoneRefused) }
             }
             try check(token)
             notice = app != nil ? "Starting app audio… macOS may ask for Audio Recording access." : "Starting microphone…"

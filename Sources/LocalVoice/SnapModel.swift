@@ -265,7 +265,7 @@ final class SnapModel: ObservableObject {
     func desktopScreenshots() -> [URL]? {
         do { return try SnapScreenshots.listScreenCaptures(in: desktop) }
         catch {
-            notice = "Workbench could not read the Desktop. Allow it in System Settings > Privacy & Security > Files and Folders, then try again."
+            notice = "Workbench could not read the Desktop. Allow it in System Settings › Privacy & Security › Files and Folders, then try again."
             return nil
         }
     }
