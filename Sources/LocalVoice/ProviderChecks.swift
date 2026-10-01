@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import FluidAudio
 import Network
@@ -70,7 +71,78 @@ enum ProviderChecks {
                   == "Downloading Parakeet · 100%", "progress never reads past 100%")
         try check(RecognitionEngine.progressLine(DownloadProgress(fractionCompleted: 0.95, phase: .compiling(modelName: "Encoder")))
                   == "Preparing Parakeet for this Mac…", "the one-time compile says it is preparing for this Mac, never a file name")
+        try checkEnding(check)
         print("PROVIDER_CHECKS_OK: \(count) checks passed")
+    }
+
+    /// The ending repair for recordings longer than one window. The transcripts are the kinds
+    /// Parakeet produced on public-domain test recordings; the audio here is synthetic.
+    private static func checkEnding(_ check: (@autoclosure () throws -> Bool, String) throws -> Void) throws {
+        func stitched(_ transcript: String, _ ending: String) -> String { TranscriptEnding.stitch(transcript, ending: ending) }
+        try check(stitched("A pound together with the compound interest accruing upon it,",
+                           "together with the compound interest accruing upon it, or all his huge fortune")
+                  == "A pound together with the compound interest accruing upon it, or all his huge fortune", "final words a short last window dropped are added")
+        try check(stitched("Produced by the touches with which he had alre", "by the touches with which he had already worked us up.")
+                  == "Produced by the touches with which he had already worked us up.", "a word cut at the end is completed")
+        try check(stitched("It was taken out of the room by the person he locked up I think it was a very important thing.",
+                           "that it was taken out of the room by the person he locked up there.")
+                  == "It was taken out of the room by the person he locked up there.", "words invented after the speech ended are replaced")
+        try check(stitched("A city that had been terraced like the seats.", "city that had been terraced like the seats of an amphitheatre")
+                  == "A city that had been terraced like the seats of an amphitheatre", "a full stop added at the cut does not survive mid-sentence")
+        let whole = "Send Sam the revised agenda before the Thursday review, and ask which slides need the new numbers."
+        try check(stitched(whole, "before the Thursday review, and ask which slides need the new numbers.") == whole, "an ending that agrees changes nothing")
+        try check(stitched("Send  Sam the agenda\nbefore Thursday.", "the agenda before Thursday.") == "Send  Sam the agenda\nbefore Thursday.",
+                  "an unchanged transcript keeps its own spacing")
+        try check(stitched(whole, "Book the room for two o'clock and bring the projector.") == whole, "an ending with no shared words changes nothing")
+        try check(stitched("Ask which slides need the new", "need the new numbers.") == "Ask which slides need the new",
+                  "three shared words are too few to anchor on")
+        try check(stitched("We said go and see the garden and then go and see the garden and", "then go and see the garden and the orchard.")
+                  == "We said go and see the garden and then go and see the garden and the orchard.", "a repeated phrase anchors on its last occurrence")
+        try check(stitched("the Saint’s day at the old mill was", "The saint's day at the old mill was quiet.") == "the Saint’s day at the old mill was quiet.",
+                  "capitals, punctuation and apostrophe style do not break the anchor")
+        let opening = (1...60).map { "word\($0)" }.joined(separator: " ")
+        try check(stitched(opening + " and the end is", "word1 word2 word3 word4 word5 something else") == opening + " and the end is",
+                  "only the last \(TranscriptEnding.comparedWords) words can be replaced")
+        try check(stitched("", "anything at all here now") == "" && stitched(whole, "") == whole, "empty text on either side changes nothing")
+
+        // Where the speech stops, in audio that ends with a pause.
+        let rate = Int(TranscriptEnding.sampleRate)
+        func tone(_ seconds: Double, level: Float = 0.2) -> [Float] { (0..<Int(seconds * Double(rate))).map { level * Float(sin(Double($0) * 0.3)) } }
+        func hiss(_ seconds: Double) -> [Float] { (0..<Int(seconds * Double(rate))).map { 0.002 * Float(sin(Double($0) * 1.7)) } }
+        try check(TranscriptEnding.speechEnd(in: tone(2) + [Float](repeating: 0, count: rate)) == 2 * rate, "speech ends where the silence begins")
+        try check(TranscriptEnding.speechEnd(in: tone(2) + hiss(1.5)) == 2 * rate, "quiet room noise after the speech is not speech")
+        try check(TranscriptEnding.speechEnd(in: tone(2)) == 2 * rate, "speech that runs to the end ends at the end")
+        try check(TranscriptEnding.speechEnd(in: [Float](repeating: 0, count: 3 * rate)) == nil && TranscriptEnding.speechEnd(in: []) == nil, "silence has no speech end")
+        let margin = Int(TranscriptEnding.marginSeconds * Double(rate)), length = Int(TranscriptEnding.windowSeconds * Double(rate))
+        let paused = tone(20) + hiss(3)
+        let window = TranscriptEnding.window(ofEnding: paused)
+        try check(window?.count == length && window?.last == paused[20 * rate + margin - 1], "the ending window stops just after the speech, not at the end of the pause")
+        let abrupt = TranscriptEnding.window(ofEnding: tone(20))
+        try check(abrupt?.count == length && abrupt?.suffix(margin).allSatisfy { $0 == 0 } == true && abrupt?[length - margin - 1] == tone(20).last,
+                  "a recording that stops with the speech is given the same quiet margin")
+        try check(TranscriptEnding.window(ofEnding: [Float](repeating: 0, count: 20 * rate)) == nil, "an ending with no speech is not read again")
+
+        // From a file: only audio longer than one window, read from its end.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("EndingChecks-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func write(_ samples: [Float], _ name: String) throws -> URL {
+            let url = folder.appendingPathComponent(name)
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44_100, channels: 1, interleaved: false)!
+            // 44.1 kHz, as a microphone records, so the window is converted as well as cut.
+            let scaled = (0..<Int(Double(samples.count) * 44_100 / Double(rate))).map { samples[min(samples.count - 1, Int(Double($0) * Double(rate) / 44_100))] }
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(scaled.count))!
+            scaled.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: scaled.count) }
+            buffer.frameLength = AVAudioFrameCount(scaled.count)
+            let file = try AVAudioFile(forWriting: url, settings: [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1,
+                                                                   AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false])
+            try file.write(from: buffer)
+            return url
+        }
+        try check(try TranscriptEnding.window(of: write(tone(14), "short.wav")) == nil, "a recording of one window is not read twice")
+        let long = try TranscriptEnding.window(of: write(tone(40) + hiss(2), "long.wav"))
+        try check(abs((long?.count ?? 0) - length) <= rate / 100, "a longer recording gives one \(TranscriptEnding.windowSeconds)-second ending, whatever its length")
+        try check((try? TranscriptEnding.window(of: folder.appendingPathComponent("missing.wav"))) == nil, "a file that cannot be read gives no ending")
     }
 
     /// Exercises the real URLSession stack against an ephemeral loopback fixture.

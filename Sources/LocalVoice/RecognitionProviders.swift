@@ -140,7 +140,15 @@ actor RecognitionEngine {
         case .parakeet:
             guard let manager else { throw VoiceError.message("The speech model is not ready. Try preparing it again.") }
             var decoderState = try TdtDecoderState(decoderLayers: 2)
-            text = try await manager.transcribe(url, decoderState: &decoderState).text
+            var transcript = try await manager.transcribe(url, decoderState: &decoderState).text
+            // A recording longer than one window gets its ending read again (TranscriptEnding).
+            // A file whose ending cannot be read keeps the transcript it has.
+            if let ending = try? TranscriptEnding.window(of: url) {
+                try Task.checkCancellation()
+                var endingState = try TdtDecoderState(decoderLayers: 2)
+                transcript = TranscriptEnding.stitch(transcript, ending: try await manager.transcribe(ending, decoderState: &endingState).text)
+            }
+            text = transcript
         case .localServer:
             let request = try LocalTranscriptionEndpoint.request(audio: url, configuration: snapshot)
             text = try LocalTranscriptionEndpoint.decode(await LocalTranscriptionTransport().send(request))
