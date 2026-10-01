@@ -139,16 +139,21 @@ struct FloatingToolbar: View {
     var viewState: ToolbarViewState {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
-        let hint = [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
+        // An unsaved Snap is reopened by every capture door, so the pill says so instead of
+        // offering sources that would each bring back the draft.
+        let draftWaiting = action.operation == .start(.snap) && snapModel.draft != nil
+        let hint = draftWaiting ? ["Your unsaved Snap · save or discard it to capture again"]
+            : [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: controls.rowAnchor, isFloating: controls.isFloating,
-            mode: live.mode, actionTitle: action.title, actionSymbol: action.symbol, isActionEnabled: action.isEnabled,
+            mode: live.mode, actionTitle: draftWaiting ? "Review Snap" : action.title, actionSymbol: draftWaiting ? "photo" : action.symbol,
+            isActionEnabled: action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: chooserChoices,
             isBusy: live.isLive(live.mode),
             status: .resolve(activity), showsAccessory: controls.accessoryFits,
             accessory: accessory(live), accessoryDescription: accessoryDescription(live),
-            captureChoices: ToolbarCaptureKind.offered(for: live), quickControl: quickControl)
+            captureChoices: draftWaiting ? [] : ToolbarCaptureKind.offered(for: live), quickControl: quickControl)
     }
 
     /// The chosen tool's one accessory (#134 part B): Snap & Talk's Review once a session is open,
