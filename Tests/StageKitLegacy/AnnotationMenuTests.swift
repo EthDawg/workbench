@@ -204,6 +204,24 @@ final class AnnotationMenuTests: XCTestCase {
         }
     }
 
+    /// The Pen key toggling drawing off with a board up leaves drawing as Stop drawing does, and
+    /// Draw's hint names the Pen key only while Draw would start the Pen.
+    func testPenKeyLeavesTheBoardAndTheHintMatchesDraw() throws {
+        try withFixture { app, menu in
+            invoke("whiteboard", in: menu)
+            XCTAssertTrue(app.isDrawing && !app.boards.isEmpty)
+            app.handleHotkey(.pen, down: true)
+            XCTAssertFalse(app.isDrawing)
+            XCTAssertTrue(app.boards.isEmpty, "the Pen key does not leave the board taking clicks")
+            app.tool = .pen
+            XCTAssertTrue(app.penShortcutGesture != nil, "Draw starts the Pen, so its key is named")
+            app.tool = .arrow
+            XCTAssertTrue(app.penShortcutGesture == nil, "Draw starts the Arrow, which the Pen key would not")
+            app.tool = .eraser
+            XCTAssertTrue(app.penShortcutGesture != nil, "Draw starts the Pen for the Eraser")
+        }
+    }
+
     func testStaleMenuCannotBypassChangedAdmission() throws {
         try withFixture { app, menu in
             XCTAssertEqual(item("pen", in: menu)?.isEnabled, true)

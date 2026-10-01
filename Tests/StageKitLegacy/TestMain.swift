@@ -375,6 +375,7 @@ struct TestRunner {
                 ("annotation menu native actions and live state", suite.testNativeActionsRefreshSelectionAndHistory),
                 ("annotation menu preserves ink and boards", suite.testBoardsAndControlsPreserveInkUntilExplicitClear),
                 ("stop drawing closes the board and keeps its ink", suite.testStopDrawingClosesTheBoardAndKeepsItsInk),
+                ("pen key leaves the board and the hint matches draw", suite.testPenKeyLeavesTheBoardAndTheHintMatchesDraw),
                 ("annotation menu rechecks admission", suite.testStaleMenuCannotBypassChangedAdmission)
             ]
             for (name, test) in tests {
@@ -900,6 +901,7 @@ struct TestRunner {
                 ("annotation menu native actions and live state", annotationMenu.testNativeActionsRefreshSelectionAndHistory),
                 ("annotation menu preserves ink and boards", annotationMenu.testBoardsAndControlsPreserveInkUntilExplicitClear),
                 ("stop drawing closes the board and keeps its ink", annotationMenu.testStopDrawingClosesTheBoardAndKeepsItsInk),
+                ("pen key leaves the board and the hint matches draw", annotationMenu.testPenKeyLeavesTheBoardAndTheHintMatchesDraw),
                 ("annotation menu rechecks admission", annotationMenu.testStaleMenuCannotBypassChangedAdmission)
             ])
         }

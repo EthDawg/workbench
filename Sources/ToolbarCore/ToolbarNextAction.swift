@@ -49,7 +49,9 @@ public struct ToolbarLiveState: Hashable, Sendable {
     /// sessions, a presentation, personas, Snap & Talk between captures or a meeting transcription,
     /// hold nothing back: a result is revealed over them as before (#134 T4).
     public var consumesInput: Bool {
-        insertingPrompt || dictation != .idle || capturingScreen || narrating || drawing || reading != .idle
+        // A paused reading belongs to Read: elsewhere it neither leads nor holds a result back.
+        insertingPrompt || dictation != .idle || capturingScreen || narrating || drawing
+            || reading == .preparing || reading == .playing || reading == .paused && mode == .read
     }
 
     /// Whether a mode's own capability is running, whichever mode is selected.

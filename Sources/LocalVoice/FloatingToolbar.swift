@@ -139,15 +139,22 @@ struct FloatingToolbar: View {
     var viewState: ToolbarViewState {
         let live = self.live
         let action = ToolbarNextAction.resolve(live)
-        // An unsaved Snap is reopened by every capture door, so the pill says so instead of
-        // offering sources that would each bring back the draft.
-        let draftWaiting = action.operation == .start(.snap) && snapModel.draft != nil
-        let hint = draftWaiting ? ["Your unsaved Snap · save or discard it to capture again"]
+        // An unfinished Snap is reopened by every capture door, so the pill offers it instead of
+        // sources that would each bring back the draft.
+        let draftWaiting = reviewsUnfinishedSnap(live)
+        // A start held back only by a dictation still processing says so, rather than a bare grey icon.
+        let waitsForDictation: Bool = {
+            guard !action.isEnabled, live.dictation != .idle else { return false }
+            if case .start = action.operation { return true }
+            return action.operation == .captureNext
+        }()
+        let hint = draftWaiting ? ["Your unfinished Snap · save or discard it to capture again"]
+            : waitsForDictation ? ["Available when dictation finishes"]
             : [elapsed(for: action.operation), action.hint(key: actionKey(action.operation))].compactMap { $0 }
         return ToolbarViewState(name: "live", tier: controls.toolbar.state.tier,
             anchor: controls.rowAnchor, isFloating: controls.isFloating,
             mode: live.mode, actionTitle: draftWaiting ? "Review unfinished Snap" : action.title, actionSymbol: draftWaiting ? "photo" : action.symbol,
-            isActionEnabled: action.isEnabled,
+            isActionEnabled: draftWaiting || action.isEnabled,
             actionHint: hint.isEmpty ? nil : hint.joined(separator: " · "),
             choices: chooserChoices,
             isBusy: live.isLive(live.mode),
@@ -256,11 +263,23 @@ struct FloatingToolbar: View {
     /// press on a label that changed since the last redraw does nothing. Internal so the host
     /// checks can press it through a completion.
     func pressPrimary() -> (() -> Void)? {
+        // The unfinished Snap reopens directly, as the chooser's Review unfinished Snap does,
+        // whatever else is running; no capture is attempted.
+        if reviewsUnfinishedSnap(live) {
+            return controls.pressGate.press({
+                var action = ToolbarNextAction.resolve(live); action.isEnabled = reviewsUnfinishedSnap(live); return action
+            }, perform: { _ in model.onShowEditor?("snap"); snapModel.reviewDraft() })
+        }
         let personaIdentity = stage.personaSessionIdentity
         return controls.pressGate.press({ ToolbarNextAction.resolve(live) }, perform: { operation in
             guard operation.mode != .persona || stage.personaSessionIdentity == personaIdentity else { return }
             perform(operation)
         })
+    }
+
+    /// Snap's start while an unfinished Snap waits: the pill offers that draft instead.
+    func reviewsUnfinishedSnap(_ live: ToolbarLiveState) -> Bool {
+        ToolbarNextAction.resolve(live).operation == .start(.snap) && snapModel.draft != nil
     }
 
     /// The source and selected tool are fixed at mouse-down. The shared operation generation

@@ -1119,7 +1119,7 @@ struct DictationResultView: View {
                 Button("Record again") { model.recordAgain() }
                     .buttonStyle(.bordered).help("Keep this audio in Saved recordings and start a new capture")
                     .focused($focused, equals: .recordAgain).resultAction("Record again", controls)
-            } else if !model.canRetry && model.microphoneAccessDenied {
+            } else if !model.canRetry && failure.hasPrefix("Microphone access is off") {
                 // The fix is in System Settings, so the failure opens it where the person acted.
                 Button { model.openMicrophoneSettings(); model.dismissCaptureFailure() } label: {
                     Text("Microphone Settings…").font(.system(size: 12)).frame(minHeight: 28)

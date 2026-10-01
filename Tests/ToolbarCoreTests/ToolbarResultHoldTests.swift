@@ -10,7 +10,7 @@ final class ToolbarResultHoldTests: XCTestCase {
     private var inputWork: [(String, ToolbarLiveState)] {
         [("a reading preparing", ToolbarLiveState(mode: .dictate, reading: .preparing)),
          ("a reading playing", ToolbarLiveState(mode: .read, reading: .playing)),
-         ("a reading paused", ToolbarLiveState(mode: .present, reading: .paused)),
+         ("a reading paused", ToolbarLiveState(mode: .read, reading: .paused)),
          ("a narration", ToolbarLiveState(mode: .snapAndTalk, narrating: true, captureCount: 1)),
          ("a recording", ToolbarLiveState(mode: .dictate, dictation: .recording)),
          ("its processing", ToolbarLiveState(mode: .dictate, dictation: .processing)),
@@ -26,7 +26,9 @@ final class ToolbarResultHoldTests: XCTestCase {
          ("a hidden Persona set", ToolbarLiveState(mode: .persona, persona: .sessionHidden)),
          ("a shown card", ToolbarLiveState(mode: .persona, persona: .shown)),
          ("a meeting transcription", ToolbarLiveState(mode: .dictate, meetingRecording: true)),
-         ("Snap & Talk between captures", ToolbarLiveState(mode: .snapAndTalk, captureCount: 2))]
+         ("Snap & Talk between captures", ToolbarLiveState(mode: .snapAndTalk, captureCount: 2)),
+         // A paused reading belongs to Read; in another tool it holds nothing back.
+         ("a reading paused in another tool", ToolbarLiveState(mode: .present, reading: .paused))]
     }
 
     /// The result pending when the work began stays out of the reveal while the work lasts, a new
