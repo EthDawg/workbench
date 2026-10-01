@@ -32,10 +32,11 @@ test('bounds long reports without silently truncating observations',()=>{
 
 test('download versions and in-page destinations remain consistent',async()=>{
   const html=renderPublishedRelease(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+  const contribute=renderPublishedRelease(await readFile(new URL('../contribute/index.html',import.meta.url),'utf8'));
   for(const app of Object.values(apps)){
     assert.ok(html.includes(`https://github.com/EthDawg/${app.repo}/releases/tag/v${app.version}`));
     assert.ok(html.includes(`https://github.com/EthDawg/${app.repo}/releases/download/v${app.version}/SHA256SUMS.txt`));
-    assert.ok(html.includes(app.guide));
+    assert.ok(contribute.includes(app.guide));
   }
-  for(const match of html.matchAll(/href="#([^" ]+)"/g)) assert.ok(html.includes(`id="${match[1]}"`),`Missing anchor ${match[1]}`);
+  for(const page of [html,contribute]) for(const match of page.matchAll(/href="#([^" ]+)"/g)) assert.ok(page.includes(`id="${match[1]}"`),`Missing anchor ${match[1]}`);
 });

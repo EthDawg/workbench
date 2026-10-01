@@ -11,7 +11,7 @@ async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'workbench-site-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   // Exact source allowlist; never copy local environment or deployment files.
-  for (const name of ['build.mjs', 'release.mjs', 'report.mjs', 'app.mjs', 'index.html', 'privacy.html', 'style.css', 'packs', 'guide', 'mobile', 'handoff', 'scenes', 'personas', 'phone-presenting', 'handbook']) {
+  for (const name of ['build.mjs', 'release.mjs', 'report.mjs', 'app.mjs', 'index.html', 'home.css', 'home.mjs', 'home-boot.js', 'contribute', 'privacy.html', 'style.css', 'packs', 'guide', 'mobile', 'handoff', 'scenes', 'personas', 'phone-presenting', 'handbook']) {
     await cp(new URL(`../${name}`, import.meta.url), join(directory, name), { recursive: true });
   }
   await mkdir(join(directory, 'assets'));
@@ -47,7 +47,11 @@ test('built HTML, browser feedback and update assets share the selected producti
   assert.equal(result.status, 0, result.stderr);
   const html = await readFile(join(directory, 'public/index.html'), 'utf8');
   const guide = await readFile(join(directory, 'public/guide/index.html'), 'utf8');
+  const contribute = await readFile(join(directory, 'public/contribute/index.html'), 'utf8');
   assert.ok(html.includes(receipt.download_url));
+  assert.ok(contribute.includes(`/tree/${receipt.tag}`));
+  assert.ok(contribute.includes('id="feedback-form"'));
+  assert.ok(!contribute.includes('{{'));
   assert.ok(guide.includes(`/tag/${receipt.tag}`));
   assert.ok(!html.includes('{{'));
   assert.ok(!guide.includes('{{'));
