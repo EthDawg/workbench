@@ -44,8 +44,9 @@ struct ContentView: View {
                     Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                     Text(error).font(.system(size: 12)).textSelection(.enabled)
                     Spacer()
-                    // The fix is in System Settings, so the page opens it, as the toolbar's failure does.
-                    if model.page != "speak", model.microphoneAccessDenied {
+                    // The fix is in System Settings, so the page opens it beside the microphone refusal
+                    // itself. The Mac's microphone setting says nothing about which problem this is.
+                    if model.page != "speak", error.hasPrefix("Microphone access is off") {
                         Button("Microphone Settings…") { model.openMicrophoneSettings() }.controlSize(.small)
                             .help("Open Privacy & Security › Microphone in System Settings")
                     }

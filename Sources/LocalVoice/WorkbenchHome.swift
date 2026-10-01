@@ -202,7 +202,7 @@ struct WorkbenchHome: View {
                 case "meeting": MeetingWorkspaceView(model: model.meetings, engineName: model.modelMessage,
                     openHistory: { id in model.openHistory(id.map { HistoryDoor(transcript: $0) } ?? HistoryDoor(filter: .transcripts)) },
                     openModels: { model.page = "models" },
-                    microphoneDenied: { model.microphoneAccessDenied }, openMicrophoneSettings: model.openMicrophoneSettings)
+                    openMicrophoneSettings: model.openMicrophoneSettings)
                 case "annotate": titled("annotate", summary: "Draw attention to what matters, right over your live demo.") { stage.controlsView }
                 case "present": titled("present", summary: "Show a device in a saved scene, with your backdrop and branding.", divided: true) { PresentWorkspaceView(model: model, stage: stage) }
                 case "personas": stage.personasView

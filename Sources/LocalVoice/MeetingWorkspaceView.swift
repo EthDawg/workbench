@@ -45,8 +45,7 @@ struct MeetingWorkspaceView: View {
     var openHistory: (UUID?) -> Void
     /// Where the speech engine is chosen and downloaded: Settings › Models.
     var openModels: () -> Void = {}
-    /// Whether macOS refuses the microphone, and the door to its setting, from the host.
-    var microphoneDenied: () -> Bool = { false }
+    /// The door to the microphone's System Settings pane, from the host.
     var openMicrophoneSettings: () -> Void = {}
     @State private var showingOptions = false
 
@@ -104,7 +103,9 @@ struct MeetingWorkspaceView: View {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
                         Text(error).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        if model.includeMicrophone, microphoneDenied() {
+                        // Only beside the microphone refusal itself: the Mac's microphone setting
+                        // says nothing about which problem this is.
+                        if error == MeetingModel.microphoneRefused {
                             Button("Microphone Settings…", action: openMicrophoneSettings).controlSize(.small)
                                 .help("Open Privacy & Security › Microphone in System Settings")
                         }

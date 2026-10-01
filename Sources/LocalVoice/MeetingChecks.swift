@@ -763,6 +763,17 @@ enum MeetingChecks {
         try expect(!trashed.contains(silent) && trashed.contains(older) && model.keptWithoutSpeech == nil && model.receipt != nil,
                    "Move to Trash removes only the chosen recording and says where it went")
         await model.prepareForShutdown()
+
+        // Microphone Settings… is offered beside the microphone refusal only, never beside another problem.
+        let refused = MeetingModel(directory: root.appendingPathComponent("refused"), defaults: defaults, processSource: ProcessFixture(),
+                                   transcribe: { _ in "unused" }, microphonePermission: { false }, captureFactory: { CaptureFixture() })
+        refused.includeMicrophone = true
+        await refused.start()
+        try expect(refused.error == MeetingModel.microphoneRefused && !refused.isBusy, "a refused microphone names the one refusal its settings fix")
+        refused.dismissError(); refused.mayStart = { "Another Workbench recording is active." }
+        await refused.start()
+        try expect(refused.error != nil && refused.error != MeetingModel.microphoneRefused, "another refusal is not the microphone's")
+        await refused.prepareForShutdown()
     }
 
     private static func waitUntil(_ condition: () -> Bool) async {
