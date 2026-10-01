@@ -17,11 +17,19 @@ struct PersonaVoiceFrame: Equatable {
     var seconds: Double
     /// Its loudness in dBFS, for measurement receipts only.
     var decibels: Float = -120
+    /// How much sound this frame holds while a voice is present, 0...1, for
+    /// the wave's height: about 0.85 at the presenter's usual level, less for
+    /// the softer sounds inside a word, and 0 in the gaps and in silence.
+    var energy: Float = 0
+    /// The voice's spectrum while a voice is present, low to high, 0...1 each
+    /// against the presenter's usual voice: the ring's bars are these. Empty
+    /// when nothing is heard.
+    var bands: [Float] = []
 
     static let quiet = PersonaVoiceFrame(level: 0, speaking: false, seconds: 0)
     func lasting(_ seconds: Double) -> PersonaVoiceFrame { var frame = self; frame.seconds = seconds; return frame }
     /// This frame as the shared voice appearance reads it.
-    var sample: VoiceSample { VoiceSample(voiced: speaking, level: Double(level)) }
+    var sample: VoiceSample { VoiceSample(voiced: speaking, level: Double(level), energy: Double(energy)) }
 }
 
 /// Microphone samples in, voice frames out. A voice is recognised by its pitch
@@ -85,6 +93,22 @@ final class PersonaVoiceAnalyzer {
     private var history: [Float]
     private var padded: [Float]
     private var real: [Float], imaginary: [Float]
+    /// The latest frame's power at each FFT bin, and where in the bins each
+    /// of the ring's bands is read: spaced as the ear hears pitch, from below
+    /// a low voice's fundamental to the body of an "s".
+    private var power: [Float]
+    private let bandBins: [(from: Float, to: Float)]
+    /// Decibels added to each band, so a voice's quieter high sounds stand as tall as its low ones.
+    private let bandLift: [Float]
+    static let waveBand = 80.0...6_500.0
+    /// A band this far (in dB) below the frame's strongest is at rest, so
+    /// only the sounds that make up the voice stand, with dots between them.
+    static let bandRange: Float = 16
+    /// Above 1, the strongest of those stand clear of the rest.
+    static let bandContrast: Float = 1.35
+    /// The frame's strongest band stands this much taller than its energy,
+    /// so a usual voice's tallest bars are nearly full.
+    static let bandGain: Float = 1.3
 
     init(sampleRate: Double) {
         let rate = sampleRate.isFinite && sampleRate >= 8_000 ? sampleRate : 48_000
@@ -103,7 +127,21 @@ final class PersonaVoiceAnalyzer {
         padded = [Float](repeating: 0, count: fftSize)
         real = [Float](repeating: 0, count: fftSize / 2)
         imaginary = [Float](repeating: 0, count: fftSize / 2)
+        power = [Float](repeating: 0, count: fftSize / 2)
         let binWidth = rate / Double(fftSize)
+        func mel(_ hertz: Double) -> Double { 2595 * log10(1 + hertz / 700) }
+        func hertz(_ mel: Double) -> Double { 700 * (pow(10, mel / 2595) - 1) }
+        let lowest = mel(Self.waveBand.lowerBound), highest = mel(min(Self.waveBand.upperBound, rate / 2 * 0.95))
+        let count = VoiceSpectrum.usualCount
+        var read: [(from: Float, to: Float)] = [], lift: [Float] = []
+        for index in 0..<count {
+            let from = hertz(lowest + (highest - lowest) * Double(index) / Double(count))
+            let to = hertz(lowest + (highest - lowest) * Double(index + 1) / Double(count))
+            read.append((Float(from / binWidth), Float(to / binWidth)))
+            // A voice falls about 5 dB an octave above 300 Hz.
+            lift.append(Float(5 * max(0, log2((from + to) / 2 / 300))))
+        }
+        bandBins = read; bandLift = lift
         band = max(1, Int((Self.voiceBand.lowerBound / binWidth).rounded(.up)))...min(fftSize / 2 - 1, Int(Self.voiceBand.upperBound / binWidth))
         let top = window - 1
         func bins(_ low: Double, _ high: Double) -> ClosedRange<Int> {
@@ -177,7 +215,48 @@ final class PersonaVoiceAnalyzer {
             level = 0.5
         }
         learnRoom(decibels, pitch: pitch, lag: lag, seconds: seconds)
-        return PersonaVoiceFrame(level: level, speaking: sinceVoice < Self.hold, seconds: seconds, decibels: decibels)
+        let speaking = sinceVoice < Self.hold
+        return PersonaVoiceFrame(level: level, speaking: speaking, seconds: seconds, decibels: decibels,
+                                 energy: speaking ? energy(decibels, above: floor) : 0,
+                                 bands: speaking ? bands(energy(decibels, above: floor)) : [])
+    }
+
+    /// The latest spectrum as the ring's bands: each band against the
+    /// frame's strongest, at the frame's `energy`. A pitch's harmonics stand
+    /// as separate peaks, a vowel's formants as groups of them, an "s" at the
+    /// far end, with dots between; a louder voice stands taller throughout.
+    private func bands(_ energy: Float) -> [Float] {
+        guard energy > 0 else { return [] }
+        let top = power.count - 1
+        var levels = [Float](repeating: -200, count: bandBins.count), strongest: Float = -200
+        for (index, bins) in bandBins.enumerated() {
+            var found: Float
+            if bins.to - bins.from < 1 {
+                // Narrower than a bin: read between the two nearest.
+                let centre = min(Float(top), max(1, (bins.from + bins.to) / 2))
+                let lower = Int(centre), upper = min(top, lower + 1)
+                found = power[lower] + (power[upper] - power[lower]) * (centre - Float(lower))
+            } else {
+                found = 0
+                for bin in max(1, Int(bins.from))...min(top, max(1, Int(bins.to))) { found = max(found, power[bin]) }
+            }
+            levels[index] = 10 * log10(max(1e-20, found)) + bandLift[index]
+            strongest = max(strongest, levels[index])
+        }
+        return levels.map { min(1, Self.bandGain * energy) * pow(min(1, max(0, 1 + ($0 - strongest) / Self.bandRange)), Self.bandContrast) }
+    }
+
+    /// The wave's height for a frame within speech: its loudness between the
+    /// quietest sound that still belongs to a word and a little over the
+    /// presenter's usual level. Consonants and soft syllables are lower and
+    /// the gaps between words fall to the room, so the wave follows speech's
+    /// own rhythm. Before a usual level is known, an opening "s" shows as a
+    /// middling wave.
+    static let waveSpan: Float = 22, waveHeadroom: Float = 4
+    private func energy(_ decibels: Float, above floor: Float) -> Float {
+        guard let usual = speakingLevel else { return 0.5 }
+        let low = max(floor + 3, usual - Self.waveSpan)
+        return min(1, max(0, (decibels - low) / max(6, usual + Self.waveHeadroom - low)))
     }
 
     /// The room is what stays steady. A quieter room is learned at once; steady
@@ -262,6 +341,7 @@ final class PersonaVoiceAnalyzer {
                 var middle: Float = 0, sibilant: Float = 0, overall: Float = 0
                 for bin in 1..<fftSize / 2 {
                     let magnitude = realPart[bin] * realPart[bin] + imaginaryPart[bin] * imaginaryPart[bin]
+                    if band != nil { power[bin] = magnitude }
                     if bands.middle.contains(bin) { middle += magnitude }
                     if bands.sibilant.contains(bin) { sibilant += magnitude }
                     if bands.overall.contains(bin) { overall += magnitude }
@@ -320,9 +400,12 @@ struct PersonaVoiceAccess {
     /// The presenter's remembered on/off choice.
     var savedChoice: () -> Bool
     var saveChoice: (Bool) -> Void
+    /// The presenter's remembered ring colour; nil until one is chosen.
+    var savedColor: () -> InkColor? = { nil }
+    var saveColor: (InkColor) -> Void = { _ in }
 
     static var system: PersonaVoiceAccess {
-        let key = "persona.voiceRing"
+        let key = "persona.voiceRing", colorKey = "persona.voiceColor"
         return PersonaVoiceAccess(
             permission: {
                 switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -336,7 +419,13 @@ struct PersonaVoiceAccess {
             },
             makeSource: { PersonaMicrophoneLevel() },
             savedChoice: { Workbench.stageDefaults.bool(forKey: key) },
-            saveChoice: { Workbench.stageDefaults.set($0, forKey: key) })
+            saveChoice: { Workbench.stageDefaults.set($0, forKey: key) },
+            savedColor: {
+                guard let parts = Workbench.stageDefaults.array(forKey: colorKey) as? [Double], parts.count == 3,
+                      parts.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else { return nil }
+                return InkColor(parts[0], parts[1], parts[2])
+            },
+            saveColor: { Workbench.stageDefaults.set([$0.r, $0.g, $0.b], forKey: colorKey) })
     }
 }
 

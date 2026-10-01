@@ -3,30 +3,35 @@ import QuartzCore
 import SwiftUI
 
 /// The compact voice trace's geometry: a 4-point recording dot, a 4-point gap,
-/// and a short continuous trace at most 24 × 10 points whose three shallow
-/// rounded lobes rise and fall with the voice in place. They never travel
-/// sideways or move on their own, and in silence the trace is a thin line.
+/// and a short waveform of seven rounded bars in at most 28 × 12 points,
+/// tallest in the middle and thinning out to each side. The bars are the
+/// voice itself: the middle one shows what the microphone hears now and each
+/// bar further out what it heard a moment before, so every syllable swells
+/// from the middle and runs out to both ends. In silence the bars rest as a
+/// row of small dots, and nothing moves on its own.
 public enum VoiceTraceGeometry {
     /// The trace's box.
-    public static let trace = CGSize(width: 24, height: 10)
+    public static let trace = CGSize(width: 28, height: 12)
     /// The recording dot, and the gap between it and the trace.
     public static let dot: CGFloat = 4, gap: CGFloat = 4
     /// The whole mark: dot, gap and trace.
     public static let size = CGSize(width: dot + gap + trace.width, height: trace.height)
-    /// The stroke at rest, and at its heaviest for a raised voice.
-    public static let stroke: CGFloat = 1.5, heaviest: CGFloat = 1.9
-    /// How far the tallest lobe reaches from the centre line: shallow, and
-    /// with the heaviest stroke's round ends well inside the box, so no peak
-    /// is ever clipped.
-    public static let reach: CGFloat = 3
-    /// With Reduce Motion the lobes hold still at this share of their reach.
-    public static let stillShare: CGFloat = 0.5
-    /// How the trace's weight follows the shared stroke.
-    public static func width(_ stroke: VoiceStyle.Stroke) -> CGFloat { Self.stroke + (heaviest - Self.stroke) * CGFloat(stroke.weight) }
-    /// How far its lobes reach for the envelope's state.
-    public static func amplitude(_ envelope: VoiceEnvelope, reduceMotion: Bool) -> CGFloat {
-        reduceMotion ? reach * stillShare : reach * CGFloat(min(1, max(0, envelope.intensity)))
-    }
+    /// The bars, each this wide, with round ends. At rest each is a dot of this size.
+    public static let bars = 7
+    public static let barWidth: CGFloat = 2
+    /// How long a syllable takes to run from the middle to either end, in seconds.
+    public static let travel = 0.14
+    /// How much of the box's height each bar may take: all of it in the
+    /// middle, thinning out to the sides.
+    public static let taper: [CGFloat] = [0.3, 0.55, 0.82, 1, 0.82, 0.55, 0.3]
+    /// A waveform's grain: neighbouring bars differ as a voice's own do, and
+    /// the difference drifts along the row so no pattern repeats.
+    public static let grain = [VoiceWave.Harmonic(cycles: 3.1, speed: 2.3, weight: 0.6),
+                               VoiceWave.Harmonic(cycles: 7.3, speed: -3.1, weight: 0.4, offset: 1.3)]
+    /// How much of a bar's height the grain may take away.
+    public static let grainDepth = 0.45
+    /// With Reduce Motion the bars hold this share of their tapered height: a still waveform.
+    public static let stillShare: CGFloat = 0.6
 
     /// The dot and trace boxes for the mark centred in `bounds`.
     public static func layout(in bounds: CGRect) -> (dot: CGRect, trace: CGRect) {
@@ -35,34 +40,37 @@ public enum VoiceTraceGeometry {
         return (dotBox, CGRect(origin: CGPoint(x: origin.x + dot + gap, y: origin.y), size: trace))
     }
 
-    /// The lobes' shape across the trace, `u` from 0 to 1: a shallow dip, a
-    /// taller rise in the middle and a shallow dip, meeting the centre line
-    /// at both ends. The middle lobe reaches 1.
-    public static func shape(_ u: CGFloat) -> CGFloat {
-        let u = min(1, max(0, u))
-        return -sin(3 * .pi * u) * pow(sin(.pi * u), 0.6)
+    /// Each bar's height for the voice `wave` holds, first beside the dot:
+    /// from a dot in silence to its share of the box for the loudest voice.
+    public static func heights(_ wave: VoiceWave, reduceMotion: Bool) -> [CGFloat] {
+        if reduceMotion { return taper.map { max(barWidth, trace.height * $0 * stillShare) } }
+        return (0..<bars).map { bar in
+            let along = Double(bar) / Double(bars - 1)
+            // 0 in the middle, 1 at either end.
+            let out = abs(2 * along - 1)
+            let grain = 1 - grainDepth + grainDepth * wave.shape(Self.grain, at: along)
+            return max(barWidth, trace.height * taper[bar] * CGFloat(wave.level(ago: out * travel) * grain))
+        }
     }
 
-    /// The trace across `box`, reaching `amplitude` points from its centre line.
-    /// Stroke it with round caps and joins; 0 draws a straight line.
-    public static func path(in box: CGRect, amplitude: CGFloat) -> CGPath {
+    /// The bars across `box` at `heights`, centred on its middle line. Fill it.
+    public static func path(in box: CGRect, heights: [CGFloat]) -> CGPath {
         let path = CGMutablePath()
-        let inset = heaviest / 2, left = box.minX + inset, span = max(0, box.width - 2 * inset)
-        let steps = 96
-        for step in 0...steps {
-            let u = CGFloat(step) / CGFloat(steps)
-            let point = CGPoint(x: left + span * u, y: box.midY + amplitude * shape(u))
-            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        let pitch = heights.count > 1 ? (box.width - barWidth) / CGFloat(heights.count - 1) : 0
+        for (bar, height) in heights.enumerated() {
+            let height = min(box.height, max(barWidth, height))
+            let rect = CGRect(x: box.minX + CGFloat(bar) * pitch, y: box.midY - height / 2, width: barWidth, height: height)
+            path.addRoundedRect(in: rect, cornerWidth: barWidth / 2, cornerHeight: barWidth / 2)
         }
         return path
     }
 }
 
 /// The compact voice trace for a capture in progress: the recording dot and the
-/// trace, drawn from the recorder's own level through the shared envelope and
-/// stroke. It takes no clicks and no focus, keeps its size, and updates the
-/// display only while the trace is moving: in silence, and whenever the level
-/// stops changing, it draws once and rests.
+/// waveform, drawn from the recorder's own level through the shared envelope,
+/// wave and brightness. It takes no clicks and no focus, keeps its size, and
+/// updates the display only while there is a voice to show: in silence it
+/// draws its row of dots once and rests.
 public final class VoiceTraceView: NSView {
     /// The voice colour, resolved for this view's appearance: Workbench's accent.
     public var color: CGColor = NSColor.systemGreen.cgColor { didSet { if color != oldValue { needsDisplay = true } } }
@@ -71,6 +79,7 @@ public final class VoiceTraceView: NSView {
     /// Measurement only: when the visible state changes, at which display time.
     public var onVisibleChange: ((VoiceEnvelope.Visible, CFTimeInterval) -> Void)?
     public private(set) var envelope = VoiceEnvelope(starvation: nil, response: .input)
+    public private(set) var wave = VoiceWave(starvation: nil, response: .input)
     private var meter = VoiceMeter()
     private var reading: Double?
     private var link: CADisplayLink?
@@ -87,9 +96,11 @@ public final class VoiceTraceView: NSView {
     public override var acceptsFirstResponder: Bool { false }
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil { link?.invalidate(); link = nil } else if envelope.isMoving { tick() }
+        if window == nil { link?.invalidate(); link = nil } else if isMoving { tick() }
     }
-    public override func viewDidUnhide() { super.viewDidUnhide(); if envelope.isMoving { tick() } }
+    public override func viewDidUnhide() { super.viewDidUnhide(); if isMoving { tick() } }
+    /// A voice is still being shown: lit, moving or settling.
+    public var isMoving: Bool { envelope.isMoving || wave.isMoving }
     /// Display updates run only while the trace moves and can be seen.
     private var onScreen: Bool { window?.isVisible == true && !isHiddenOrHasHiddenAncestor }
     public override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
@@ -102,24 +113,27 @@ public final class VoiceTraceView: NSView {
     }
     public func receive(_ samples: [VoiceSample], at time: Double) {
         envelope.receive(samples, at: time)
-        if envelope.isMoving { tick() }
+        wave.receive(samples.map(\.energy), spacing: 0, at: time)
+        if isMoving { tick() }
     }
     /// Moves the trace on to `time`, the display time of the next frame.
     /// Returns false once it is at rest.
     @discardableResult public func advance(to time: Double) -> Bool {
         // A held voice ends on time even when the level has stopped changing.
         if let ends = meter.holdEnds, time >= ends { envelope.receive([meter.sample(reading, at: time)], at: time) }
-        let before = envelope.visible, drawn = (envelope.intensity, envelope.presence)
+        let before = envelope.visible, drawn = (envelope.intensity, envelope.presence), waving = wave.isMoving
         let after = envelope.advance(to: time)
-        if drawn != (envelope.intensity, envelope.presence) { needsDisplay = true }
+        wave.advance(to: time)
+        // A moving waveform redraws every frame; with Reduce Motion only its brightness changes.
+        if drawn != (envelope.intensity, envelope.presence) || (waving && !reduceMotion) { needsDisplay = true }
         if after != before { onVisibleChange?(after, time) }
-        return envelope.isMoving
+        return isMoving
     }
 
-    /// The stroke it draws now, from the shared style.
+    /// How bright it draws now, from the shared style.
     public var stroke: VoiceStyle.Stroke { VoiceStyle.stroke(envelope, reduceMotion: reduceMotion, increaseContrast: increaseContrast) }
-    public var lineWidth: CGFloat { VoiceTraceGeometry.width(stroke) }
-    public var amplitude: CGFloat { VoiceTraceGeometry.amplitude(envelope, reduceMotion: reduceMotion) }
+    /// Each bar's height now, first beside the dot.
+    public var heights: [CGFloat] { VoiceTraceGeometry.heights(wave, reduceMotion: reduceMotion) }
 
     public override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
@@ -131,12 +145,9 @@ public final class VoiceTraceView: NSView {
         context.saveGState()
         context.setFillColor(VoiceStyle.resolved(.systemRed, in: effectiveAppearance))
         context.fillEllipse(in: layout.dot)
-        let stroke = self.stroke
-        context.addPath(VoiceTraceGeometry.path(in: layout.trace, amplitude: amplitude))
-        context.setStrokeColor(color.copy(alpha: color.alpha * CGFloat(stroke.opacity)) ?? color)
-        context.setLineWidth(VoiceTraceGeometry.width(stroke))
-        context.setLineCap(.round); context.setLineJoin(.round)
-        context.strokePath()
+        context.addPath(VoiceTraceGeometry.path(in: layout.trace, heights: heights))
+        context.setFillColor(color.copy(alpha: color.alpha * CGFloat(stroke.opacity)) ?? color)
+        context.fillPath()
         context.restoreGState()
     }
 
@@ -154,7 +165,7 @@ public final class VoiceTraceView: NSView {
     }
 }
 
-/// The compact voice trace for SwiftUI: the recording dot and the trace, fed
+/// The compact voice trace for SwiftUI: the recording dot and the waveform, fed
 /// the recorder's own level. Pass the toolbar's accent; the trace resolves it
 /// for the current appearance, and follows Reduce Motion and Increase Contrast.
 public struct VoiceTrace: NSViewRepresentable {
