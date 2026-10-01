@@ -198,10 +198,24 @@ enum NeuralVoiceChecks {
         render.start(voice: NeuralVoiceCatalog.defaultVoice, store: store)
         try await render.ready(complete: false)
         let firstAudio = Date().timeIntervalSince(started)
-        try await render.ready(complete: true)
-        let total = Date().timeIntervalSince(started)
         guard let audio = render.audio else { throw Failure(label: "rendered audio exists") }
         defer { render.discard() }
+        // Read's own player, with no audio device, plays the reading while the model makes the rest.
+        let player = try ReadingPlayer(source: audio, output: .offline)
+        var finishes = 0
+        player.onFinish = { _, success in if success { finishes += 1 } }
+        try check(!render.isFinished && player.play(), "playback starts while the model is still reading")
+        _ = try player.renderOffline(4_096)
+        player.tick()
+        try check(player.positionFrame == 4_096 && player.duration > 0, "the playback clock follows the neural audio")
+        try await render.ready(complete: true)
+        let total = Date().timeIntervalSince(started)
+        let spoken = text.original as NSString
+        try check(render.marks.range(at: player.positionFrame).map { spoken.substring(with: $0) } == sentences[0], "follow-along marks the sentence being played")
+        player.currentTime = Double(render.marks.frames.last ?? 0) / audio.format.sampleRate + 0.2
+        try check(render.marks.range(at: player.positionFrame).map { spoken.substring(with: $0) } == sentences[2], "seeking to the last sentence marks it")
+        while !player.isFinished && player.positionFrame < audio.availableFrames + 48_000 { _ = try player.renderOffline(4_096); player.tick() }
+        try check(finishes == 1 && player.isFinished, "the reading plays to its end and finishes once")
         let seconds = Double(audio.availableFrames) / audio.format.sampleRate
         try check(render.isFinished && audio.isComplete, "the reading finished")
         try check(seconds > 5 && seconds < 20, "three sentences make between 5 and 20 seconds of audio (\(String(format: "%.1f", seconds)) s)")
