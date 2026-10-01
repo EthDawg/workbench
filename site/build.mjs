@@ -22,7 +22,7 @@ await mkdir(new URL('./public/handbook/',import.meta.url),{recursive:true});
 await mkdir(new URL('./public/contribute/',import.meta.url),{recursive:true});
 // The retired feature pages (scenes, personas, phone presenting, photo handoff, mobile)
 // redirect to their Guide sections in vercel.json, so links from installed apps still land.
-for (const name of ['packs/index.html','packs/open.mjs','packs/packs.css','index.html','site.css','site.mjs','home.css','home.mjs','home-boot.js','contribute/index.html','contribute/contribute.css','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
+for (const name of ['packs/index.html','packs/open.mjs','packs/packs.css','index.html','site.css','site.mjs','home.css','home.mjs','home-boot.js','home-play.mjs','home-play.css','contribute/index.html','contribute/contribute.css','privacy.html','style.css','app.mjs','report.mjs','guide/index.html','guide/guide.css']) await copyFile(new URL(name,import.meta.url),new URL(`public/${name}`,import.meta.url));
 await mkdir(new URL('./public/updates/', import.meta.url), { recursive: true });
 for (const channel of ['production', 'preview']) for (const extension of ['json', 'xml']) {
     try {
