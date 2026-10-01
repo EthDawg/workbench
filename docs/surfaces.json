@@ -472,13 +472,13 @@
     "note": "Opens this committed meeting transcript in History without replacing the Dictate draft."
   },
   {
-    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-aeb8a4573b22",
+    "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Button.runtime-53b2ce09b5d8",
     "surface": "settings page",
     "label": null,
-    "expression": "applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"",
+    "expression": "actionTitle",
+    "note": "Quality (1 October: local model download visibility). The same Models button now says what it does: Download Parakeet before its first setup, Try download again after a failure (with the reason beside it), Use Parakeet or Use local server to switch, In use once ready; its status line shows the setup's live progress from any door.",
     "kind": "setting",
-    "belongsTo": "settings",
-    "note": "Quality: moved with Models from its own page into Settings › Models, same control (#134). Runtime label from applying ? \"Preparing…\" : draft . provider == . parakeet ? \"Use Parakeet\" : \"Use local server\"; no rendered text assumed."
+    "belongsTo": "settings"
   },
   {
     "id": "LocalVoice.ModelSettingsView.ModelSettingsView.Picker.transcribe-with",

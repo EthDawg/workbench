@@ -324,7 +324,8 @@ struct WorkbenchHome: View {
                 ScrollView { KeyboardCoachView(model: keyboard) }
             case "models":
                 ScrollView { VStack(alignment: .leading, spacing: Workbench.sectionSpacing) {
-                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions) { ready, message in
+                    ModelSettingsView(engine: model.engine, isBusy: model.phase != .idle || model.preparing || model.rendering || model.meetings.isBusy || readback.isRecording || readback.isCapturing || readback.hasPendingTranscriptions,
+                                      progress: model.modelMessage, hostPreparing: model.preparing, hostFailure: model.modelFailure) { ready, message in
                         model.ready = ready; model.modelMessage = message
                     }
                     Divider()

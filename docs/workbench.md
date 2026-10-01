@@ -177,7 +177,7 @@ Normal application menus, buttons and editable shortcuts remain available togeth
 
 ## Models stay replaceable
 
-Parakeet is the account-free, on-device default. A separately run, loopback-only transcription server is an explicit alternative. The app preserves the same capture, cleanup, history and delivery flow when recognition changes. A saved configuration is not a connectivity or quality check.
+Parakeet is the account-free, on-device default. Its first setup is visible wherever readiness shows (Home, the menu-bar panel, Dictate and Settings › Models): checking files, Downloading Parakeet with its percentage, then preparing for this Mac. Settings › Models names the failure reason beside Try download again, and its one button says what it does (Download Parakeet, Try download again, Use Parakeet or Use local server, In use). A separately run, loopback-only transcription server is an explicit alternative. The app preserves the same capture, cleanup, history and delivery flow when recognition changes. A saved configuration is not a connectivity or quality check.
 
 Mac voices are the default for reading. Workbench lists installed voices with their quality and points to free better ones in System Settings; it never downloads or changes system voices. Speko TTS is a separate online choice with its own key and usage; it can use balanced automatic routing or a user-selected compatible catalogue voice. Speko STT is not currently a Workbench recognition provider. No provider failure silently changes between Workbench's local and online choices. User-managed server software controls whether its local endpoint forwards audio beyond the Mac; Workbench cannot promise its end-to-end privacy.
 

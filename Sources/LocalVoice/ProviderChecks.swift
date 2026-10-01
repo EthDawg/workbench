@@ -1,4 +1,5 @@
 import Foundation
+import FluidAudio
 import Network
 
 enum ProviderChecks {
@@ -60,6 +61,15 @@ enum ProviderChecks {
         let handle = try FileHandle(forWritingTo: oversized)
         try handle.truncate(atOffset: UInt64(LocalTranscriptionEndpoint.maximumAudioBytes + 1)); try handle.close()
         try rejects("oversized audio rejected before reading") { _ = try LocalTranscriptionEndpoint.request(audio: oversized, configuration: local) }
+        // A first Parakeet setup says what it is doing in the one readiness line every door reads.
+        try check(RecognitionEngine.progressLine(DownloadProgress(fractionCompleted: 0, phase: .listing)) == "Checking Parakeet files…",
+                  "a setup that is listing files says it is checking them")
+        try check(RecognitionEngine.progressLine(DownloadProgress(fractionCompleted: 0.427, phase: .downloading(completedFiles: 3, totalFiles: 9)))
+                  == "Downloading Parakeet · 42%", "a download says how much has arrived, rounded down")
+        try check(RecognitionEngine.progressLine(DownloadProgress(fractionCompleted: 1.3, phase: .downloading(completedFiles: 9, totalFiles: 9)))
+                  == "Downloading Parakeet · 100%", "progress never reads past 100%")
+        try check(RecognitionEngine.progressLine(DownloadProgress(fractionCompleted: 0.95, phase: .compiling(modelName: "Encoder")))
+                  == "Preparing Parakeet for this Mac…", "the one-time compile says it is preparing for this Mac, never a file name")
         print("PROVIDER_CHECKS_OK: \(count) checks passed")
     }
 
