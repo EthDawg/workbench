@@ -207,9 +207,9 @@ struct TestRunner {
                 ("persona voice analyzer room and startup silence", suite.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
                 ("persona voice analyzer recognises a voice by its pitch", suite.testAnalyzerRecognisesAVoiceByItsPitch),
                 ("persona voice ring outline fitting", suite.testOutlineFollowsARoundBadgeACardAndAPhoto),
-                ("persona voice outline uses Workbench's accent", suite.testOutlineUsesWorkbenchsAccentWhateverTheArtwork),
-                ("persona voice outline geometry", suite.testOutlineGeometryHugsTheArtworkAndScalesWithIt),
-                ("persona voice outline sleeps in silence and lights at once", suite.testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable),
+                ("persona voice ring is the chosen colour", suite.testRingIsTheChosenColourWhateverTheArtwork),
+                ("persona voice ring geometry", suite.testRingGeometryHugsTheArtworkAndScalesWithIt),
+                ("persona voice ring sleeps in silence and rises at once", suite.testRingSleepsInSilenceAndRisesOnTheFirstSyllable),
                 ("persona voice outline latency: speech of every kind", latency.testOutlineRespondsWithinTargetsToSpeechOfEveryKind),
                 ("persona voice outline latency: long speech never becomes the room", latency.testLongSpeechNeverBecomesTheRoom),
                 ("persona voice outline: steady noise, typing and hum stay quiet", latency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
@@ -220,7 +220,7 @@ struct TestRunner {
                 ("optional Mac voices through the voice outline", latency.testSpokenSentencesFromSay),
                 ("optional offscreen voice ring renders", suite.testOffscreenVoiceRingRenders),
                 ("voice appearance: shared voice states with distinct responses", appearance.testSurfacesShareVoiceStatesWithDistinctResponse),
-                ("voice appearance: trace fits the compact mark and never travels", appearance.testTraceFitsTheCompactMarkAndNeverTravels),
+                ("voice appearance: trace fits the compact mark and peaks in the middle", appearance.testTraceFitsTheCompactMarkAndPeaksInTheMiddle),
                 ("voice appearance: input follows syllables and outline stays calm", appearance.testInputTraceFollowsSyllablesWhileTheOutlineStaysCalm),
                 ("voice appearance: soft usable input is visible", appearance.testTraceShowsSoftInputTheRecorderCanKeep),
                 ("voice appearance: trace rests when still, fixed with Reduce Motion", appearance.testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion),
@@ -839,9 +839,9 @@ struct TestRunner {
             ("persona voice analyzer room and startup silence", personaVoice.testAnalyzerLearnsTheRoomAndIgnoresStartupSilence),
             ("persona voice analyzer recognises a voice by its pitch", personaVoice.testAnalyzerRecognisesAVoiceByItsPitch),
             ("persona voice ring outline fitting", personaVoice.testOutlineFollowsARoundBadgeACardAndAPhoto),
-            ("persona voice outline uses Workbench's accent", personaVoice.testOutlineUsesWorkbenchsAccentWhateverTheArtwork),
-            ("persona voice outline geometry", personaVoice.testOutlineGeometryHugsTheArtworkAndScalesWithIt),
-            ("persona voice outline sleeps in silence and lights at once", personaVoice.testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable),
+            ("persona voice ring is the chosen colour", personaVoice.testRingIsTheChosenColourWhateverTheArtwork),
+            ("persona voice ring geometry", personaVoice.testRingGeometryHugsTheArtworkAndScalesWithIt),
+            ("persona voice ring sleeps in silence and rises at once", personaVoice.testRingSleepsInSilenceAndRisesOnTheFirstSyllable),
             ("persona voice outline latency: speech of every kind", personaVoiceLatency.testOutlineRespondsWithinTargetsToSpeechOfEveryKind),
             ("persona voice outline latency: long speech never becomes the room", personaVoiceLatency.testLongSpeechNeverBecomesTheRoom),
             ("persona voice outline: steady noise, typing and hum stay quiet", personaVoiceLatency.testSteadyNoiseTypingAndHumNeverLightTheOutline),
@@ -851,7 +851,7 @@ struct TestRunner {
             ("persona voice outline: chimes, beeps and music settle", personaVoiceLatency.testChimesBeepsAndMusicLightItOnlyWhileTheySound),
             ("optional offscreen voice ring renders", personaVoice.testOffscreenVoiceRingRenders),
             ("voice appearance: shared voice states with distinct responses", voiceAppearance.testSurfacesShareVoiceStatesWithDistinctResponse),
-            ("voice appearance: trace fits the compact mark and never travels", voiceAppearance.testTraceFitsTheCompactMarkAndNeverTravels),
+            ("voice appearance: trace fits the compact mark and peaks in the middle", voiceAppearance.testTraceFitsTheCompactMarkAndPeaksInTheMiddle),
             ("voice appearance: input follows syllables and outline stays calm", voiceAppearance.testInputTraceFollowsSyllablesWhileTheOutlineStaysCalm),
             ("voice appearance: soft usable input is visible", voiceAppearance.testTraceShowsSoftInputTheRecorderCanKeep),
             ("voice appearance: trace rests when still, fixed with Reduce Motion", voiceAppearance.testTraceRestsWhenStillAndHoldsItsShapeWithReduceMotion),
@@ -905,12 +905,17 @@ struct TestRunner {
                 ("annotation menu rechecks admission", annotationMenu.testStaleMenuCannotBypassChangedAdmission)
             ])
         }
+        var skipped = 0
         for (name, test) in tests {
             let before = assertionFailures
-            do { try test() } catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
+            do { try test() }
+            // A precondition this Mac cannot meet is reported, not failed; CI meets it.
+            catch let skip as TestSkipped { skipped += 1; print("SKIP \(name): \(skip)"); continue }
+            catch { assertionFailures += 1; print("FAIL \(name): \(error)") }
             if assertionFailures == before { print("PASS \(name)") }
         }
-        print("\(tests.count) tests · \(assertionCount) assertions · \(assertionFailures) failures")
+        if skipped > 0 { print("\(skipped) skipped") }
+        print("\(tests.count - skipped) tests · \(assertionCount) assertions · \(assertionFailures) failures")
         exit(assertionFailures == 0 ? 0 : 1)
     }
 }
