@@ -24,6 +24,8 @@ The capability update first published in Workbench 2.2.0 build `20260927101737` 
 
 ## One workflow for Ethan, Matt and coding agents
 
+Unreadable Dictate preferences use default choices for the current session, but a later save keeps the original in the same edition's preferences before replacing it. [Preference recovery](design.md#saved-state-and-migration) describes the retained value and migration marker. Recovery is manual: preserve an export of the complete preference domain before repair; replacing the app alone does not restore these settings.
+
 Run `python3 scripts/release/status.py` to inspect both Applications folders and ordinary extracted apps directly in Downloads. It labels installed and downloaded copies separately and warns when identities repeat; it never moves or deletes anything. `--json` retains the existing array and provenance fields, adding `location` and `duplicate_identity`. This inventory does not select the installer's destination: the installer still selects an existing copy only from the two Applications folders. It is a bounded inspection, not an exhaustive Spotlight index or a saved status ledger.
 
 1. Start a feature branch/worktree from current main and claim a clear outcome in the existing GitHub issue/PR. One writer per worktree. The integration owner alone updates the shared installed Preview during overlapping work.

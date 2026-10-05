@@ -53,6 +53,7 @@ harnesses() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-persistence.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-continuity.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-live-dictation.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-voice-preferences.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-remember-correction.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-reading-playback.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-selection-service.py
