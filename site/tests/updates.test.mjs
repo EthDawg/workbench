@@ -6,11 +6,11 @@ import { renderPublishedRelease, selectPublicRelease, validateRelease } from '..
 // Synthetic records exercise selection only; they are never staged for publication.
 const preview = {
   channel: 'preview', version: '2.1.0', tag: 'v2.1.0-preview.9', build: '9', source: 'a'.repeat(40), sha256: 'b'.repeat(64),
-  download_url: 'https://github.com/EthDawg/workbench/releases/download/v2.1.0-preview.9/Workbench.Preview.zip'
+  download_url: 'https://github.com/Ship-Work/workbench/releases/download/v2.1.0-preview.9/Workbench.Preview.zip'
 };
 const production = {
   ...preview, channel: 'production', tag: 'v2.1.0',
-  download_url: 'https://github.com/EthDawg/workbench/releases/download/v2.1.0/Workbench.zip',
+  download_url: 'https://github.com/Ship-Work/workbench/releases/download/v2.1.0/Workbench.zip',
   feed_url: 'https://workbench-mac.vercel.app/updates/production.xml', feed_sha256: 'c'.repeat(64)
 };
 
@@ -32,17 +32,32 @@ test('release identity, digest and immutable links must agree', () => {
   ]) assert.throws(() => validateRelease({ ...production, ...change }), /Invalid published release/);
 });
 
+test('repository transfer accepts exact historical URLs without rewriting receipts', () => {
+  for (const record of [preview, production]) {
+    const legacy = { ...record, download_url: record.download_url.replace('Ship-Work/workbench', 'EthDawg/workbench') };
+    assert.deepEqual(validateRelease(legacy), legacy);
+    assert.equal(renderPublishedRelease('{{DOWNLOAD_URL}}', legacy), legacy.download_url);
+    assert.match(renderPublishedRelease('{{RELEASE_URL}} {{CHECKSUM_URL}}', legacy), /github\.com\/Ship-Work\/workbench\//);
+    for (const url of [
+      legacy.download_url.replace('EthDawg/workbench', 'EthDawg/another-repo'),
+      legacy.download_url.replace('github.com/', 'github.com.evil.example/'),
+      legacy.download_url + '?download=other',
+      record.download_url.replace('/download/', '/download/../')
+    ]) assert.throws(() => validateRelease({ ...record, download_url: url }), /Invalid published release/);
+  }
+});
+
 test('production rebuild tag must identify the exact build and keeps immutable links together', () => {
   const tag = 'v2.1.0+9';
   const value = { ...production, tag,
-    download_url: `https://github.com/EthDawg/workbench/releases/download/${tag}/Workbench.zip` };
+    download_url: `https://github.com/Ship-Work/workbench/releases/download/${tag}/Workbench.zip` };
   assert.equal(validateRelease(value, 'production').tag, tag);
   assert.equal(renderPublishedRelease('{{RELEASE_TAG}} {{RELEASE_VERSION}} {{DOWNLOAD_URL}}', value),
     `${tag} 2.1.0 ${value.download_url}`);
   for (const invalid of ['v2.1.0+8', 'v2.2.0+9', 'v2.1.0-preview.1+9',
     'v2.1.0+local', 'v2.1.0+', 'v2.1.0+9/other']) {
     assert.throws(() => validateRelease({ ...value, tag: invalid,
-      download_url: `https://github.com/EthDawg/workbench/releases/download/${invalid}/Workbench.zip` }),
+      download_url: `https://github.com/Ship-Work/workbench/releases/download/${invalid}/Workbench.zip` }),
     /Invalid published release/);
   }
   assert.throws(() => validateRelease({ ...value, channel: 'preview' }), /Invalid published release/);

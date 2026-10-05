@@ -1,6 +1,6 @@
 # Workbench: jobs, surfaces and interaction contract
 
-Specification updated: 30 September 2026. Maintained with the code. Source, synthetic checks, installed acceptance and publication are separate claims. The [desktop cohesion record](verification/2026-09-30-desktop-cohesion/README.md) records the current candidate; the public guide lives at /guide/. [Issue #134](https://github.com/EthDawg/workbench/issues/134) remains the desktop contract and review index.
+Specification updated: 30 September 2026. Maintained with the code. Source, synthetic checks, installed acceptance and publication are separate claims. The [desktop cohesion record](verification/2026-09-30-desktop-cohesion/README.md) records the current candidate; the public guide lives at /guide/. [Issue #134](https://github.com/Ship-Work/workbench/issues/134) remains the desktop contract and review index.
 
 ## Product outcome
 
@@ -180,7 +180,7 @@ Public Workbench, internal Workbench Preview and a local source build are distin
 
 The subsequent [presenter increment](presenter-direction.md) adds Chrome profile/tab navigation to Library. It does not add a persistent notes HUD or change persona artwork, device capture or mobile input. The browser adapter and native picker share the same resource IDs and local app state. Its acceptance record distinguishes automated rules from real Chrome focus and installed release evidence.
 
-The current source includes contextual presentation controls, one persistent floating toolbar, independent Persona and Snap, shared selected history, optional bounded assistant tasks and explicit meeting recording. [Issue #112](https://github.com/EthDawg/workbench/issues/112) owns combined validation; earlier usability studies are historical evidence. Public downloads identify production Workbench. Preview is internal, and iOS/iPadOS/Chrome development remains paused.
+The current source includes contextual presentation controls, one persistent floating toolbar, independent Persona and Snap, shared selected history, optional bounded assistant tasks and explicit meeting recording. [Issue #112](https://github.com/Ship-Work/workbench/issues/112) owns combined validation; earlier usability studies are historical evidence. Public downloads identify production Workbench. Preview is internal, and iOS/iPadOS/Chrome development remains paused.
 
 ## Acceptance
 

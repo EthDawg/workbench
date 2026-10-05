@@ -91,7 +91,7 @@ def prepare(directory, tag, notes, output):
     destination = output / filename
     shutil.copy2(archive, destination)
     shutil.copy2(notes, output / (Path(filename).stem + '.html'))
-    base = f'https://github.com/EthDawg/workbench/releases/download/{tag}/'
+    base = f'https://github.com/Ship-Work/workbench/releases/download/{tag}/'
     tool = ROOT / '.build/artifacts/sparkle/Sparkle/bin/generate_appcast'
     feed = output / (receipt['channel'] + '.xml')
     previous = ROOT / 'site/updates' / feed.name

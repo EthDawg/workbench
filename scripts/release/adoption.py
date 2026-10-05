@@ -15,7 +15,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPOSITORY = 'EthDawg/workbench'
+REPOSITORY = 'Ship-Work/workbench'
 TAG = re.compile(r'^v([0-9]+\.[0-9]+\.[0-9]+)(?:-preview\.([0-9]+)|\+([0-9]+(?:\.[0-9]+)*))?$')
 ARCHIVES = {'Workbench.zip': 'production', 'Workbench.Preview.zip': 'preview',
             'Workbench.Voice.zip': 'legacy'}

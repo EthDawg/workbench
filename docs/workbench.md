@@ -4,7 +4,7 @@ Workbench is one native Mac app for speaking, explaining, presenting and shaping
 
 This contract describes the direction and current consolidation structure. [The acceptance record](unification.md) distinguishes implementation from tested and released behaviour.
 
-The current [capability delivery, issue #112](https://github.com/EthDawg/workbench/issues/112), adds independent Snap and Persona, reusable selected history, optional assistant tasks and explicit meeting transcription. These are source changes undergoing combined validation. A source check, offscreen render or earlier release does not establish their installed or public availability; the production release record remains authoritative.
+The current [capability delivery, issue #112](https://github.com/Ship-Work/workbench/issues/112), adds independent Snap and Persona, reusable selected history, optional assistant tasks and explicit meeting transcription. These are source changes undergoing combined validation. A source check, offscreen render or earlier release does not establish their installed or public availability; the production release record remains authoritative.
 
 **Mac desktop quality is the active focus. iOS, iPad and Chrome extension development and promotion are paused until the Mac experience is dependable.** Existing code and saved work are preserved. The [mobile contract](ios-preview.md) records that separate target's limits; it is not a promise of sync or mobile scope for this Mac delivery.
 

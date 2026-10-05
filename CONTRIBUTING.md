@@ -4,22 +4,22 @@ A small, useful improvement is a good first contribution. Bug reports, documenta
 
 Workbench combines Voice and StageMark into one app. Its purpose is dependable everyday Mac utilities for speaking, annotating and presenting. Improve a concrete workflow and compare against what macOS already offers before adding another feature.
 
-**Current priority: Mac desktop quality. iOS, iPadOS and Chrome extension development and releases are paused.** Work from the [Mac release gate](https://github.com/EthDawg/workbench/issues/7). Existing platform code and research are retained; do not restart paused work without an explicit scope decision. Public users install **Workbench**. Contributors use the separate **Workbench Preview** edition for integration testing.
+**Current priority: Mac desktop quality. iOS, iPadOS and Chrome extension development and releases are paused.** Work from the [Mac release gate](https://github.com/Ship-Work/workbench/issues/7). Existing platform code and research are retained; do not restart paused work without an explicit scope decision. Public users install **Workbench**. Contributors use the separate **Workbench Preview** edition for integration testing.
 
 ## Start from the current Workbench code
 
-The canonical repository is **[`EthDawg/workbench`](https://github.com/EthDawg/workbench)** and the development base is **`main`**. Start new changes from `main` and target it in your PR. StageKit and the native mobile target are included here; a separate Voice or StageMark checkout is unnecessary. The former `local-voice` repository URL redirects here, preserving existing issues, PRs and releases.
+The canonical repository is **[`Ship-Work/workbench`](https://github.com/Ship-Work/workbench)** and the development base is **`main`**. Start new changes from `main` and target it in your PR. StageKit and the native mobile target are included here; a separate Voice or StageMark checkout is unnecessary. The former `local-voice` repository URL redirects here, preserving existing issues, PRs and releases.
 
-Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contributor. His September contributions include native Screenshot handoff, Snap & Talk, accessibility, transcript export, reading cancellation, Speko voices, Quick Look and timer placement. See the [integration acceptance checklist](docs/releases/2026-09-20-integration-preview.md) for that release's testing scope. Current source adds independent capture, editing and durable [Snap History](docs/snap.md); its combined delivery and native acceptance are tracked in [issue #112](https://github.com/EthDawg/workbench/issues/112). Source implementation and a published package remain separate claims.
+Matt ([@mattywhitenz](https://github.com/mattywhitenz)) is a Workbench co-contributor. His September contributions include native Screenshot handoff, Snap & Talk, accessibility, transcript export, reading cancellation, Speko voices, Quick Look and timer placement. See the [integration acceptance checklist](docs/releases/2026-09-20-integration-preview.md) for that release's testing scope. Current source adds independent capture, editing and durable [Snap History](docs/snap.md); its combined delivery and native acceptance are tracked in [issue #112](https://github.com/Ship-Work/workbench/issues/112). Source implementation and a published package remain separate claims.
 
 Repository collaborators can push their own feature branches after accepting their GitHub invitation. No fork or shared credentials are needed. Coordinate scope in the issue or PR before touching another contributor's active work.
 
-Matt's ServiceNow branding and deck helpers originated in [#104](https://github.com/EthDawg/workbench/pull/104), whose authorship and public history remain intact. From 2.2, company content is maintained in its private pack repository; open its source link in Packs to contribute there. Changes to Workbench's generic loader and handoff contracts belong in this public repository. Preserve original artwork and credit, publish changed payloads as a new pack version, verify rendered examples in the pack repository, and leave existing sessions' snapshots unchanged. Colleagues use the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and their team's pack link.
+Matt's ServiceNow branding and deck helpers originated in [#104](https://github.com/Ship-Work/workbench/pull/104), whose authorship and public history remain intact. From 2.2, company content is maintained in its private pack repository; open its source link in Packs to contribute there. Changes to Workbench's generic loader and handoff contracts belong in this public repository. Preserve original artwork and credit, publish changed payloads as a new pack version, verify rendered examples in the pack repository, and leave existing sessions' snapshots unchanged. Colleagues use the [team guide](https://workbench-mac.vercel.app/guide/#servicenow-pack) and their team's pack link.
 
 ## Choose a first step
 
-1. Check the [open issues](https://github.com/EthDawg/workbench/issues). An unassigned [good first issue](https://github.com/EthDawg/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
-2. A typo or clear, small fix can go directly to a PR. Discuss a larger feature in an issue or [Discussions](https://github.com/EthDawg/workbench/discussions) first. Agree the smallest useful outcome and who is working on it.
+1. Check the [open issues](https://github.com/Ship-Work/workbench/issues). An unassigned [good first issue](https://github.com/Ship-Work/workbench/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22) is a useful starting point. Comment that you want to take it so others can coordinate; no repository write access is needed.
+2. A typo or clear, small fix can go directly to a PR. Discuss a larger feature in an issue or [Discussions](https://github.com/Ship-Work/workbench/discussions) first. Agree the smallest useful outcome and who is working on it.
 3. Ask for help on the issue when stuck. Incomplete attempts and draft PRs are welcome. Coordinate before replacing work another contributor has offered to do.
 
 **No Mac or no Swift experience?** Edit documentation through GitHub's pencil and fork/PR workflow. Say “documentation only” in the PR; native checks are unnecessary for that change. Hardware findings can be an issue comment with the Mac/device/OS versions and steps tried.
@@ -33,7 +33,7 @@ Clone the current source. Choose a short branch name for your contribution.
 You can run the tests with Workbench open. The suite probes exclusive global shortcuts even in its CI mode, so while Workbench, Workbench Preview or an earlier Voice/StageMark copy holds the defaults, the two checks that need them are reported as SKIP with that app's name instead of failing. Quit it to run them locally; GitHub CI, where nothing else runs, checks them in full.
 
 ```sh
-git clone https://github.com/EthDawg/workbench.git
+git clone https://github.com/Ship-Work/workbench.git
 cd workbench
 git switch -c improve/small-change
 bash scripts/doctor.sh
@@ -44,7 +44,7 @@ bash scripts/build.sh
 **Already have a fork or checkout?** Preserve any unfinished edits first. Fetch the canonical repository and create a new branch from its current `main`:
 
 ```sh
-git fetch https://github.com/EthDawg/workbench.git main
+git fetch https://github.com/Ship-Work/workbench.git main
 git switch -c feature/screenshot-annotation FETCH_HEAD
 ```
 
@@ -61,7 +61,7 @@ For persistent native testing, use the [signed Preview build/install commands](R
 
 `REQUIRE_APP_INTENTS=1` makes packaging fail if real action metadata cannot be extracted. A successful source compile does not establish Shortcuts discovery. See [the integration guide](docs/voice-integrations.md).
 
-CI runs those phases, the two galleries and packaging as five jobs on five macOS runners, so a pull request finishes in the time of its longest job, about 13 minutes; the required **Build and test** check passes only when every selected job passed. A maintainer may need to approve a fork's first workflow run. For a behavioural change, add or run focused checks for the actual risk. Record relevant manual evidence: microphone permission/cancellation, cross-app paste, device disconnect/reconnect, keyboard conflicts, light/dark layout or other affected behaviour. Use synthetic content in public screenshots and recordings. If something cannot be tested, say why.
+CI always checks the site, contracts and surface registry. Documentation/site-only changes can skip native work; other changes run those phases, the two galleries and packaging across five macOS jobs. The required **Build and test** check passes only when Site and every selected job pass. The [CI and merge queue workflow](docs/updating.md#ci-and-the-merge-queue) describes selection and the required gates. A maintainer may need to approve a fork's first workflow run. For a behavioural change, add or run focused checks for the actual risk. Record relevant manual evidence: microphone permission/cancellation, cross-app paste, device disconnect/reconnect, keyboard conflicts, light/dark layout or other affected behaviour. Use synthetic content in public screenshots and recordings. If something cannot be tested, say why.
 
 Several Python checks in `scripts/` compile exact members of `AppModel.swift` and other sources beside synthetic fixtures. Each check names the members it needs, and `scripts/swift_extract.py` reads each one whole, with its comments and attributes, so moving a method never changes what a check compiles. A missing, ambiguous or repeated name fails with that name. When a check needs another member, add it to that check's list; `python3 scripts/swift_extract.py Sources/LocalVoice/AppModel.swift AppModel` lists every member's name and selector.
 
@@ -127,7 +127,7 @@ git commit -m "Describe the user-visible improvement"
 git push -u origin improve/small-change
 ```
 
-Open **Compare & pull request** for your branch on GitHub. Set the destination to **`EthDawg/workbench` → `main`**, including when the branch is in your fork. Check the Files changed tab contains only your contribution. Explain what improves, link the issue, and describe the evidence and limitations. Use `Closes #123` only when the change fully resolves it. Draft means ready for feedback; it does not mean ready to release. Screenshots or short recordings help with UI changes.
+Open **Compare & pull request** for your branch on GitHub. Set the destination to **`Ship-Work/workbench` → `main`**, including when the branch is in your fork. Check the Files changed tab contains only your contribution. Explain what improves, link the issue, and describe the evidence and limitations. Use `Closes #123` only when the change fully resolves it. Draft means ready for feedback; it does not mean ready to release. Screenshots or short recordings help with UI changes.
 
 AI-assisted work has the same ownership and testing expectations. The submitting person must understand the change and check its claims. Never include private prompts, recordings, credentials or customer assets. There is no CLA or DCO signing step. Contributions use this repository's [MIT license](LICENSE); preserve upstream notices and contribute only material you have the right to share.
 

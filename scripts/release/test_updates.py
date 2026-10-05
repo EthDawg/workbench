@@ -21,7 +21,7 @@ class UpdatesTests(unittest.TestCase):
                                            ('preview', 'v2.0.0-preview.5', 'Workbench.Preview.zip')]:
                 receipt = dict(channel=channel, version='2.0.0', build='5', tag=tag,
                                source='a'*40, sha256='b'*64,
-                               download_url=f'https://github.com/EthDawg/workbench/releases/download/{tag}/{filename}',
+                               download_url=f'https://github.com/Ship-Work/workbench/releases/download/{tag}/{filename}',
                                feed_url=f'https://workbench-mac.vercel.app/updates/{channel}.xml',
                                notarization='private-packaging-evidence')
                 record = publish_update.website_record(receipt, feed)
@@ -155,7 +155,7 @@ class UpdatesTests(unittest.TestCase):
             directory=Path(temporary); name='Workbench.Preview.zip'; tag='v2.0.0-preview.5'
             archive=directory/name; archive.write_bytes(b'prepared package')
             receipt=dict(archive=name,tag=tag,channel='preview',version='2.0.0',sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
-                         download_url=f'https://github.com/EthDawg/workbench/releases/download/{tag}/{name}',feed_url=config['feed_base']+'/preview.xml')
+                         download_url=f'https://github.com/Ship-Work/workbench/releases/download/{tag}/{name}',feed_url=config['feed_base']+'/preview.xml')
             (directory/'release.json').write_text(json.dumps(receipt))
             (directory/'SHA256SUMS.txt').write_text(f"{receipt['sha256']}  {name}\n")
             with patch.object(prepare_update,'verify_package',side_effect=RuntimeError('receipt source differs from signed app')) as verify, patch.object(publish_update,'gh') as remote:
@@ -163,6 +163,31 @@ class UpdatesTests(unittest.TestCase):
                     publish_update.publish(directory,directory/'notes.md')
                 verify.assert_called_once()
                 remote.assert_not_called()
+
+    def test_transfer_preserves_prepared_urls_but_rejects_other_destinations(self):
+        config = json.loads((build_info.ROOT/'scripts/release/updates.json').read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            name, tag = 'Workbench.Preview.zip', 'v2.0.0-preview.5'
+            archive = directory/name
+            archive.write_bytes(b'synthetic prepared package')
+            receipt = dict(archive=name, tag=tag, channel='preview', version='2.0.0',
+                           sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
+                           feed_url=config['feed_base']+'/preview.xml')
+            (directory/'SHA256SUMS.txt').write_text(f"{receipt['sha256']}  {name}\n")
+            for repo in ('Ship-Work/workbench', 'EthDawg/workbench', 'Other/workbench',
+                         'Ship-Work/another-repo', 'Ship-Work/workbench/..'):
+                receipt['download_url'] = f'https://github.com/{repo}/releases/download/{tag}/{name}'
+                (directory/'release.json').write_text(json.dumps(receipt))
+                accepted = repo in ('Ship-Work/workbench', 'EthDawg/workbench')
+                with self.subTest(repo=repo), \
+                     patch.object(prepare_update, 'verify_package', side_effect=RuntimeError('package verification reached')) as verify, \
+                     patch.object(publish_update, 'gh') as remote:
+                    expected = 'package verification reached' if accepted else 'URL differs'
+                    with self.assertRaisesRegex(RuntimeError, expected):
+                        publish_update.publish(directory, directory/'notes.md')
+                    self.assertEqual(verify.call_count, int(accepted))
+                    remote.assert_not_called()
 
     def test_stale_prepared_release_cannot_create_or_publish_remote_assets(self):
         config = json.loads((build_info.ROOT/'scripts/release/updates.json').read_text())
@@ -179,7 +204,7 @@ class UpdatesTests(unittest.TestCase):
             archive.write_bytes(b'synthetic package; signature checks mocked')
             receipt = dict(archive=name, tag=tag, channel='production', version='2.0.0', build='10',
                            sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
-                           download_url=f'https://github.com/EthDawg/workbench/releases/download/{tag}/{name}',
+                           download_url=f'https://github.com/Ship-Work/workbench/releases/download/{tag}/{name}',
                            feed_url=config['feed_base']+'/production.xml')
             (prepared/'release.json').write_text(json.dumps(receipt))
             (prepared/'SHA256SUMS.txt').write_text(f"{receipt['sha256']}  {name}\n")
