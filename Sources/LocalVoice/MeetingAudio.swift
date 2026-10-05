@@ -31,6 +31,16 @@ struct MeetingCaptureRequest {
     /// nil means the person explicitly chose microphone only.
     var app: MeetingAudioApp?
     var includeMicrophone: Bool
+    var onAudio: (@Sendable (MeetingAudioChunk) -> Void)? = nil
+    /// Dictate supplies its existing recoverable WAV destination.
+    var microphoneFileURL: URL? = nil
+}
+
+struct MeetingAudioChunk: Sendable {
+    var source: MeetingTrackSource
+    var samples: [Float]
+    var sampleRate: Double
+    var startSeconds: Double
 }
 
 struct MeetingCaptureReport {
@@ -38,6 +48,8 @@ struct MeetingCaptureReport {
     var seconds: Double = 0
     /// Why the capture stopped itself, if it did. Recorded audio is still kept.
     var failure: String?
+    var gaps: [String] = []
+    var liveAudioComplete: Bool = true
 }
 
 /// The capture the meeting owner drives. A synthetic implementation stands in
@@ -53,6 +65,17 @@ protocol MeetingCapture: AnyObject {
     var elapsedSeconds: Double { get }
     /// Set as soon as the capture loses its source or cannot write.
     var stopReason: String? { get }
+    func pause() async throws
+    func resume() async throws
+    var isPaused: Bool { get }
+    var recoveryMessage: String? { get }
+}
+
+extension MeetingCapture {
+    func pause() async throws { throw MeetingError.message("This recording cannot be paused.") }
+    func resume() async throws { throw MeetingError.message("This recording cannot be resumed.") }
+    var isPaused: Bool { false }
+    var recoveryMessage: String? { nil }
 }
 
 /// The first received sample establishes one host-clock origin for both tracks.
@@ -78,144 +101,343 @@ struct MeetingTrackTiming: Codable {
     var source: MeetingTrackSource
     var startSeconds: Double
     var sampleRate: Double
+    var gaps: [MeetingAudioGap]? = nil
 }
 
-/// A bounded, mono original. Disk IO stays on the writer queue. Overflow or a
-/// discontinuous source stops accepting samples instead of compressing time.
+struct MeetingAudioGap: Codable, Equatable, Sendable {
+    var startSeconds: Double
+    var seconds: Double
+    var reason: String
+}
+
+/// Live delivery has its own bounded queue. A slow consumer cannot hold the
+/// audio callback or disk writer; any omitted preview audio is reported.
+final class MeetingAudioFeed: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.ethdawg.workbench.meeting.live", qos: .userInitiated)
+    private let lock = NSLock()
+    private let callback: @Sendable (MeetingAudioChunk) -> Void
+    private var pending: [MeetingAudioChunk] = []
+    private var pendingSeconds: Double = 0
+    private var running = false
+    private var closed = false
+    private var omitted = false
+
+    init(_ callback: @escaping @Sendable (MeetingAudioChunk) -> Void) { self.callback = callback }
+
+    func append(_ chunk: MeetingAudioChunk) {
+        lock.lock()
+        let seconds = Double(chunk.samples.count) / chunk.sampleRate
+        guard !closed else { lock.unlock(); return }
+        guard pendingSeconds + seconds <= MeetingDiskBudget.captureBufferSeconds else {
+            omitted = true; lock.unlock(); return
+        }
+        pending.append(chunk); pendingSeconds += seconds
+        let launch = !running
+        running = true
+        lock.unlock()
+        if launch { queue.async { [self] in drain() } }
+    }
+
+    private func drain() {
+        while true {
+            lock.lock()
+            guard !pending.isEmpty else { running = false; lock.unlock(); return }
+            let chunk = pending.removeFirst()
+            pendingSeconds -= Double(chunk.samples.count) / chunk.sampleRate
+            lock.unlock()
+            callback(chunk)
+        }
+    }
+
+    /// Normal consumers simply enqueue work and finish immediately. An
+    /// unresponsive consumer cannot prevent the original recording closing.
+    func finish() -> Bool {
+        lock.lock(); closed = true; lock.unlock()
+        let done = DispatchSemaphore(value: 0)
+        queue.async { done.signal() }
+        if done.wait(timeout: .now() + 1) == .timedOut {
+            lock.lock(); omitted = true; pending.removeAll(); pendingSeconds = 0; lock.unlock()
+        }
+        lock.lock(); defer { lock.unlock() }; return omitted
+    }
+}
+
+/// Audio callbacks copy into a bounded packet queue. Conversion, timeline gap
+/// padding, metadata and disk IO run only on the writer queue. The original
+/// file keeps its initial sample rate even when a new route has another rate.
 final class MeetingTrackRecorder: @unchecked Sendable {
+    private struct Packet {
+        var samples: [Float]
+        var sampleRate: Double
+        var hostTime: UInt64
+    }
     let source: MeetingTrackSource
     let url: URL
     let sampleRate: Double
+    private let metadataURL: URL
     private let timeline: MeetingCaptureTimeline
-    private let capacity: Int
-    private let drainFrames: Int
+    private let allowsDiscontinuities: Bool
+    private let feed: MeetingAudioFeed?
     private let queue: DispatchQueue
     private let lock = NSLock()
-    private var ring: [Float]
-    private var scratch: [Float]
-    private var head = 0
-    private var available = 0
-    private var receivedFrames = 0
-    private var droppedFrames = 0
+    private var pending: [Packet] = []
+    private var pendingSeconds: Double = 0
     private var writtenFrames = 0
+    private var droppedSeconds: Double = 0
     private var peakValue: Float = 0
     private var firstHostTime: UInt64?
     private var lastHostTime: UInt64?
     private var writeFailure: String?
     private var file: AVAudioFile?
-    private var buffer: AVAudioPCMBuffer?
     private var timer: DispatchSourceTimer?
     private var closed = false
     private var timingSaved = false
+    private var discontinuityReason: String?
+    private var savedGaps: [MeetingAudioGap] = []
+    private var previewOmitted = false
+    private var converter: AVAudioConverter?
+    private var converterRate: Double?
+    private var lastInputEnd: Double?
 
-    init(source: MeetingTrackSource, directory: URL, sampleRate: Double, timeline: MeetingCaptureTimeline) throws {
+    init(source: MeetingTrackSource, directory: URL, sampleRate: Double, timeline: MeetingCaptureTimeline,
+         allowsDiscontinuities: Bool = false, onAudio: (@Sendable (MeetingAudioChunk) -> Void)? = nil,
+         explicitFileURL: URL? = nil) throws {
         guard sampleRate.isFinite, (8_000...192_000).contains(sampleRate) else {
             throw MeetingError.message("This audio source reports an unusable sample rate.")
         }
         self.source = source; self.sampleRate = sampleRate; self.timeline = timeline
-        url = directory.appendingPathComponent("\(source.rawValue).caf")
-        capacity = max(4_096, Int(sampleRate * MeetingDiskBudget.captureBufferSeconds))
-        drainFrames = max(1_024, Int(sampleRate / 2))
+        self.allowsDiscontinuities = allowsDiscontinuities
+        feed = onAudio.map(MeetingAudioFeed.init)
+        url = explicitFileURL ?? directory.appendingPathComponent("\(source.rawValue).caf")
+        metadataURL = directory.appendingPathComponent("\(source.rawValue).json")
         queue = DispatchQueue(label: "com.ethdawg.workbench.meeting.write.\(source.rawValue)", qos: .utility)
-        ring = [Float](repeating: 0, count: capacity)
-        scratch = [Float](repeating: 0, count: drainFrames)
     }
 
     func open() throws {
         try MeetingStore.rejectSymbolicLinks(in: url)
+        try MeetingStore.rejectSymbolicLinks(in: metadataURL)
         guard !FileManager.default.fileExists(atPath: url.path),
+              !FileManager.default.fileExists(atPath: metadataURL.path),
               FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
             throw MeetingError.message("The original audio file could not be created safely.")
         }
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: sampleRate,
                                        AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16,
                                        AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
-        let audio = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
-        guard let staging = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: AVAudioFrameCount(drainFrames)) else {
-            throw MeetingError.message("The recording buffer could not be prepared.")
-        }
-        file = audio; buffer = staging
-        let source = DispatchSource.makeTimerSource(queue: queue)
-        source.schedule(deadline: .now() + 0.1, repeating: 0.1, leeway: .milliseconds(20))
-        source.setEventHandler { [weak self] in self?.drain() }
-        source.resume(); timer = source
+        file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 0.05, repeating: 0.05, leeway: .milliseconds(10))
+        timer.setEventHandler { [weak self] in self?.drain() }
+        timer.resume(); self.timer = timer
     }
 
-    func append(_ samples: UnsafePointer<Float>, count: Int, hostTime: UInt64) {
+    func append(_ samples: UnsafePointer<Float>, count: Int, hostTime: UInt64, sourceRate: Double? = nil) {
+        let rate = sourceRate ?? sampleRate
         guard count > 0 else { return }
         lock.lock(); defer { lock.unlock() }
         guard !closed, writeFailure == nil else { return }
-        timeline.observe(hostTime)
-        if firstHostTime == nil { firstHostTime = hostTime }
-        let interval = MeetingClock.interval(from: firstHostTime!, to: hostTime)
-        let expected = Double(receivedFrames) / sampleRate
-        guard abs(interval - expected) < 0.25 else {
-            droppedFrames += count
-            writeFailure = "An audio source was interrupted. Recording stopped to preserve the timing of the audio already received."
+        guard count <= 65_536, rate.isFinite, (8_000...192_000).contains(rate) else {
+            writeFailure = "The audio source supplied an unusable buffer. Audio already recorded was kept."
             return
         }
+        let seconds = Double(count) / rate
+        guard pendingSeconds + seconds <= MeetingDiskBudget.captureBufferSeconds else {
+            droppedSeconds += seconds
+            writeFailure = "The disk could not keep up with recording. Audio already written was kept."
+            return
+        }
+        timeline.observe(hostTime)
+        if firstHostTime == nil { firstHostTime = hostTime }
         lastHostTime = hostTime
-        let maximum = Int(max(0, MeetingSegmentPlan.maximumMeetingSeconds - timeline.offset(firstHostTime!)) * sampleRate)
-        let accepted = min(count, capacity - available, max(0, maximum - receivedFrames))
-        if accepted < count {
-            droppedFrames += count - accepted
-            writeFailure = receivedFrames + count > maximum
-                ? "The two-hour recording limit was reached."
-                : "The disk could not keep up with recording. Audio already written was kept."
-        }
-        for index in 0..<accepted {
-            let sample = samples[index].isFinite ? max(-1, min(1, samples[index])) : 0
-            ring[(head + available + index) % capacity] = sample
-            peakValue = max(peakValue, abs(sample))
-        }
-        available += accepted; receivedFrames += accepted
+        pending.append(Packet(samples: Array(UnsafeBufferPointer(start: samples, count: count)), sampleRate: rate, hostTime: hostTime))
+        pendingSeconds += seconds
+    }
+
+    func markDiscontinuity(_ reason: String) {
+        lock.lock(); discontinuityReason = reason; lock.unlock()
     }
 
     private func drain() {
         while true {
             lock.lock()
-            let count = min(available, drainFrames)
-            for index in 0..<count { scratch[index] = ring[(head + index) % capacity] }
-            head = (head + count) % capacity; available -= count
-            let first = firstHostTime
+            guard !pending.isEmpty else { lock.unlock(); return }
+            let packet = pending.removeFirst()
+            pendingSeconds -= Double(packet.samples.count) / packet.sampleRate
+            let reason = discontinuityReason
+            let first = firstHostTime!
             lock.unlock()
-            guard count > 0, let file, let buffer, let channel = buffer.floatChannelData?[0] else { return }
-            do {
-                if !timingSaved, let first {
-                    let timing = MeetingTrackTiming(source: source, startSeconds: timeline.offset(first), sampleRate: sampleRate)
-                    let metadata = url.deletingPathExtension().appendingPathExtension("json")
-                    guard !FileManager.default.fileExists(atPath: metadata.path) else {
-                        throw MeetingError.message("The original track's timing record already exists.")
-                    }
-                    try MeetingStore.writePrivate(JSONEncoder().encode(timing), to: metadata)
-                    timingSaved = true
-                }
-                buffer.frameLength = AVAudioFrameCount(count)
-                scratch.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: count) }
-                try file.write(from: buffer)
-                lock.lock(); writtenFrames += count; lock.unlock()
-            } catch {
+            do { try write(packet, first: first, reason: reason) }
+            catch {
                 lock.lock()
-                writeFailure = "The recording could not be saved. \(error.localizedDescription)"
-                droppedFrames += count + available; available = 0
+                if writeFailure == nil { writeFailure = "The recording could not be saved. \(error.localizedDescription)" }
+                droppedSeconds += Double(packet.samples.count) / packet.sampleRate + pendingSeconds
+                pending.removeAll(); pendingSeconds = 0
                 lock.unlock()
                 return
             }
         }
     }
 
+    private func write(_ packet: Packet, first: UInt64, reason: String?) throws {
+        guard let file else { return }
+        if let converterRate, converterRate != packet.sampleRate { try finishConversion(first: first) }
+        let inputStart = MeetingClock.interval(from: first, to: packet.hostTime)
+        let position = Int((max(0, inputStart) * sampleRate).rounded())
+        // A resampler may retain a small filter tail. Compare source clocks,
+        // not its currently emitted frames, when detecting a route gap.
+        let delta = inputStart - (lastInputEnd ?? inputStart)
+        let discontinuous = abs(delta) > (allowsDiscontinuities ? 0.025 : 0.25)
+        if discontinuous && !allowsDiscontinuities {
+            throw MeetingError.message("An audio source was interrupted. Recording stopped to preserve the timing of the audio already received.")
+        }
+        if position > Int((MeetingSegmentPlan.maximumMeetingSeconds - timeline.offset(first)) * sampleRate) {
+            throw MeetingError.message("The two-hour recording limit was reached.")
+        }
+        if discontinuous {
+            try finishConversion(first: first)
+            if delta > 0 {
+                let gap = MeetingAudioGap(startSeconds: timeline.offset(first) + Double(writtenFrames) / sampleRate,
+                                          seconds: Double(max(0, position - writtenFrames)) / sampleRate,
+                                          reason: reason ?? "The audio source temporarily stopped supplying samples.")
+                lock.lock()
+                let canSave = savedGaps.count < 256
+                if canSave { savedGaps.append(gap) }
+                if discontinuityReason == reason { discontinuityReason = nil }
+                lock.unlock()
+                guard canSave else { throw MeetingError.message("This audio source was interrupted too often to keep a reliable recording.") }
+                try saveTiming(first: first)
+                try writeSilence(max(0, position - writtenFrames), to: file)
+            } else {
+                // Never silently splice a clock that has gone backwards.
+                throw MeetingError.message("The audio source returned overlapping timestamps. Audio already recorded was kept.")
+            }
+        }
+        if !timingSaved { try saveTiming(first: first) }
+        let samples = try convert(packet)
+        let remaining = max(0, Int((MeetingSegmentPlan.maximumMeetingSeconds - timeline.offset(first)) * sampleRate) - writtenFrames)
+        guard samples.count <= remaining else { throw MeetingError.message("The two-hour recording limit was reached.") }
+        try commit(samples, first: first)
+        lastInputEnd = inputStart + Double(packet.samples.count) / packet.sampleRate
+    }
+
+    private func convert(_ packet: Packet) throws -> [Float] {
+        if packet.sampleRate == sampleRate { converter = nil; converterRate = nil; return packet.samples }
+        guard let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: packet.sampleRate, channels: 1, interleaved: false),
+              let outputFormat = file?.processingFormat,
+              let input = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(packet.samples.count)) else {
+            throw MeetingError.message("The changed audio route could not be converted.")
+        }
+        if converterRate != packet.sampleRate {
+            converter = AVAudioConverter(from: inputFormat, to: outputFormat)
+            converter?.primeMethod = .none
+            converterRate = packet.sampleRate
+        }
+        guard let converter,
+              let output = AVAudioPCMBuffer(pcmFormat: outputFormat,
+                  frameCapacity: AVAudioFrameCount(ceil(Double(packet.samples.count) * sampleRate / packet.sampleRate) + 256)),
+              let inputSamples = input.floatChannelData?[0] else {
+            throw MeetingError.message("The changed audio route could not be converted.")
+        }
+        input.frameLength = AVAudioFrameCount(packet.samples.count)
+        packet.samples.withUnsafeBufferPointer { inputSamples.update(from: $0.baseAddress!, count: $0.count) }
+        var supplied = false
+        var error: NSError?
+        let status = converter.convert(to: output, error: &error) { _, state in
+            if supplied { state.pointee = .noDataNow; return nil }
+            supplied = true; state.pointee = .haveData; return input
+        }
+        if let error { throw error }
+        guard status != .error, let values = output.floatChannelData?[0] else {
+            throw MeetingError.message("The changed audio route could not be converted.")
+        }
+        return Array(UnsafeBufferPointer(start: values, count: Int(output.frameLength)))
+    }
+
+    private func saveTiming(first: UInt64) throws {
+        lock.lock(); let gaps = savedGaps; lock.unlock()
+        let timing = MeetingTrackTiming(source: source, startSeconds: timeline.offset(first), sampleRate: sampleRate,
+                                        gaps: gaps.isEmpty ? nil : gaps)
+        try MeetingStore.writePrivate(JSONEncoder().encode(timing), to: metadataURL)
+        timingSaved = true
+    }
+
+    private func writeSamples(_ samples: [Float], to file: AVAudioFile) throws {
+        guard !samples.isEmpty,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(samples.count)),
+              let channel = buffer.floatChannelData?[0] else { return }
+        var peak: Float = 0
+        for index in samples.indices {
+            let value = samples[index].isFinite ? max(-1, min(1, samples[index])) : 0
+            channel[index] = value; peak = max(peak, abs(value))
+        }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        try file.write(from: buffer)
+        lock.lock(); writtenFrames += samples.count; peakValue = max(peakValue, peak); lock.unlock()
+    }
+
+    private func commit(_ samples: [Float], first: UInt64) throws {
+        guard let file, !samples.isEmpty else { return }
+        let start = timeline.offset(first) + Double(writtenFrames) / sampleRate
+        try writeSamples(samples, to: file)
+        feed?.append(MeetingAudioChunk(source: source, samples: samples, sampleRate: sampleRate, startSeconds: start))
+    }
+
+    private func finishConversion(first: UInt64) throws {
+        guard let converter, let format = file?.processingFormat else { return }
+        defer { self.converter = nil; converterRate = nil }
+        for _ in 0..<16 {
+            guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_096) else {
+                throw MeetingError.message("The audio conversion could not finish.")
+            }
+            var error: NSError?
+            let status = converter.convert(to: output, error: &error) { _, state in state.pointee = .endOfStream; return nil }
+            if let error { throw error }
+            guard status != .error else { throw MeetingError.message("The audio conversion could not finish.") }
+            if let channel = output.floatChannelData?[0], output.frameLength > 0 {
+                try commit(Array(UnsafeBufferPointer(start: channel, count: Int(output.frameLength))), first: first)
+            }
+            if status == .endOfStream || output.frameLength == 0 { return }
+        }
+        throw MeetingError.message("The audio conversion did not finish within its buffer limit.")
+    }
+
+    private func writeSilence(_ count: Int, to file: AVAudioFile) throws {
+        let block = [Float](repeating: 0, count: min(count, 16_384))
+        var remaining = count
+        while remaining > 0 {
+            let take = min(remaining, block.count)
+            try writeSamples(take == block.count ? block : Array(block.prefix(take)), to: file)
+            remaining -= take
+        }
+    }
+
     /// Called from the capture lifecycle queue, never the main actor.
     func close() -> MeetingTrack {
         lock.lock(); closed = true; lock.unlock()
-        queue.sync { timer?.cancel(); timer = nil; drain(); file = nil; buffer = nil }
-        lock.lock(); defer { lock.unlock() }
+        queue.sync {
+            timer?.cancel(); timer = nil; drain()
+            if let first = firstHostTime {
+                do { try finishConversion(first: first) }
+                catch { lock.lock(); if writeFailure == nil { writeFailure = error.localizedDescription }; lock.unlock() }
+            }
+            file = nil; converter = nil
+        }
+        let omitted = feed?.finish() ?? false
+        lock.lock(); previewOmitted = previewOmitted || omitted; defer { lock.unlock() }
         return MeetingTrack(source: source, file: "\(MeetingStore.tracksDirectory)/\(source.rawValue).caf",
                             startSeconds: firstHostTime.map { timeline.offset($0) } ?? 0,
                             seconds: Double(writtenFrames) / sampleRate, sampleRate: sampleRate,
-                            peak: Double(peakValue), droppedSeconds: Double(droppedFrames) / sampleRate)
+                            peak: Double(peakValue), droppedSeconds: droppedSeconds)
     }
 
+    var gaps: [String] {
+        lock.lock(); defer { lock.unlock() }
+        var notes = savedGaps.map { "\(source.rawValue): \($0.reason) Gap at \(String(format: "%.2f", $0.startSeconds))s for \(String(format: "%.2f", $0.seconds))s; the saved timeline includes silence." }
+        if previewOmitted { notes.append("Live preview could not keep up; the original audio was preserved for transcription.") }
+        return notes
+    }
     var failure: String? { lock.lock(); defer { lock.unlock() }; return writeFailure }
+    var liveAudioComplete: Bool { lock.lock(); defer { lock.unlock() }; return !previewOmitted }
     var isClosed: Bool { lock.lock(); defer { lock.unlock() }; return closed }
     var secondsSinceLastBuffer: Double? {
         lock.lock(); defer { lock.unlock() }
@@ -307,7 +529,15 @@ enum MeetingCoreAudio {
     }
 
     static func defaultOutputDeviceUID() -> String? {
-        var property = address(kAudioHardwarePropertyDefaultOutputDevice)
+        defaultDeviceUID(kAudioHardwarePropertyDefaultOutputDevice)
+    }
+
+    static func defaultInputDeviceUID() -> String? {
+        defaultDeviceUID(kAudioHardwarePropertyDefaultInputDevice)
+    }
+
+    private static func defaultDeviceUID(_ selector: AudioObjectPropertySelector) -> String? {
+        var property = address(selector)
         var device = kAudioObjectUnknown
         var size = UInt32(MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size, &device) == noErr,
@@ -537,55 +767,43 @@ final class MeetingSystemCapture: MeetingCapture, @unchecked Sendable {
     private var tapBox: AnyObject?
     private var engine: AVAudioEngine?
     private var configurationObserver: NSObjectProtocol?
+    private var routeTimer: DispatchSourceTimer?
     private var startedHost: UInt64?
     private var reason: String?
+    private var recovery: String?
     private var report: MeetingCaptureReport?
     private var stopping = false
+    private var paused = false
+    private var recoveryQueued = false
+    private var generation: UInt64 = 0
+    private var request: MeetingCaptureRequest?
     private var chosenApp: MeetingAudioApp?
     private var outputUID: String?
+    private var inputUID: String?
     private var microphoneIncluded = false
-    private var remoteScratch = [Float](repeating: 0, count: 65_536)
-    private var localScratch = [Float](repeating: 0, count: 65_536)
+    private var recoveryStarted: UInt64?
+    private var lastRecoveryAttempt: UInt64?
 
     var elapsedSeconds: Double { timeline.elapsed }
     private var isStopping: Bool { lock.lock(); defer { lock.unlock() }; return stopping }
+    var isPaused: Bool { lock.lock(); defer { lock.unlock() }; return paused }
+    var recoveryMessage: String? { lock.lock(); defer { lock.unlock() }; return recovery }
 
     var stopReason: String? {
-        lock.lock()
-        let prior = reason, remote = remote, local = local, app = chosenApp
-        let output = outputUID, microphone = microphoneIncluded, start = startedHost
-        lock.unlock()
-        if let prior { return prior }
-        if let failure = remote?.failure ?? local?.failure { return failure }
-        if microphone, AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
-            return "Microphone access was removed. The audio already recorded was kept."
-        }
-        if let app {
-            guard let object = MeetingCoreAudio.processObject(for: app.id),
-                  let bundle = MeetingCoreAudio.bundleID(of: object),
-                  (MeetingAppCatalogue.known(bundle)?.bundleID ?? bundle) == app.bundleID else {
-                return "The selected app's audio process ended or changed. Choose it again for a new recording."
-            }
-            if MeetingCoreAudio.defaultOutputDeviceUID() != output {
-                return "The Mac audio output changed. Recording stopped; select the new route before starting again."
-            }
-        }
-        if let start, MeetingClock.interval(from: start, to: MeetingClock.now()) > 12 {
-            if remote != nil, (remote?.secondsSinceLastBuffer ?? 13) > 12 {
-                return "The selected app stopped supplying audio samples. The recording may be incomplete."
-            }
-            if local != nil, (local?.secondsSinceLastBuffer ?? 13) > 12 {
-                return "The microphone stopped supplying audio samples. The recording may be incomplete."
-            }
-        }
-        return nil
+        lock.lock(); let prior = reason, recorders = [remote, local]; lock.unlock()
+        return prior ?? recorders.compactMap { $0?.failure }.first
     }
 
     private func note(_ text: String) {
         lock.lock(); if reason == nil { reason = text }; lock.unlock()
     }
 
-    func requestStop() { lock.lock(); stopping = true; lock.unlock() }
+    func requestStop() { lock.lock(); stopping = true; generation &+= 1; lock.unlock() }
+
+    private func accepts(_ token: UInt64) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !stopping && !paused && generation == token
+    }
 
     func start(_ request: MeetingCaptureRequest) async throws {
         try await withCheckedThrowingContinuation { continuation in
@@ -605,41 +823,74 @@ final class MeetingSystemCapture: MeetingCapture, @unchecked Sendable {
         guard request.app != nil || request.includeMicrophone else {
             throw MeetingError.message("Choose an app, the microphone, or both.")
         }
+        guard self.request == nil else { throw MeetingError.message("This recording has already started.") }
         try MeetingStore.createPrivateDirectory(request.tracksDirectory)
         try MeetingDiskBudget.checkStartSpace(at: request.tracksDirectory)
-        lock.lock()
+        self.request = request
         chosenApp = request.app; microphoneIncluded = request.includeMicrophone
+        try startRoutes()
+        try checkStart()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(50))
+        timer.setEventHandler { [weak self] in self?.checkRoutes() }
+        timer.resume(); routeTimer = timer
+    }
+
+    /// Only the explicitly chosen app's bundle may be rebound. A restarted
+    /// process never broadens capture to all Mac audio or a different app.
+    private func currentApp(_ original: MeetingAudioApp) throws -> MeetingAudioApp {
+        func matches(_ object: AudioObjectID) -> Bool {
+            guard let bundle = MeetingCoreAudio.bundleID(of: object), !MeetingAppCatalogue.isExcluded(bundle) else { return false }
+            return (MeetingAppCatalogue.known(bundle)?.bundleID ?? bundle) == original.bundleID
+        }
+        if let object = MeetingCoreAudio.processObject(for: original.id), matches(object) { return original }
+        for object in try MeetingCoreAudio.processObjectsChecked() where matches(object) {
+            if let pid = MeetingCoreAudio.processID(of: object), pid != ProcessInfo.processInfo.processIdentifier {
+                return MeetingAudioApp(id: pid, name: original.name, bundleID: original.bundleID)
+            }
+        }
+        throw MeetingError.message("The selected app is not supplying audio on this Mac.")
+    }
+
+    private func startRoutes() throws {
+        try checkStart()
+        guard let request else { throw CancellationError() }
+        lock.lock(); generation &+= 1; let token = generation; lock.unlock()
         outputUID = MeetingCoreAudio.defaultOutputDeviceUID()
-        lock.unlock()
-        if let app = request.app {
+        inputUID = MeetingCoreAudio.defaultInputDeviceUID()
+        startedHost = MeetingClock.now()
+        if let original = request.app {
             guard #available(macOS 14.2, *) else { throw MeetingError.message(MeetingCoreAudio.unavailableReason) }
+            let app = try currentApp(original)
             let tap = try MeetingProcessTap(app: app)
-            tapBox = tap
+            tapBox = tap; chosenApp = app
             try checkStart()
-            let recorder = try MeetingTrackRecorder(source: .remote, directory: request.tracksDirectory,
-                                                    sampleRate: tap.format.sampleRate, timeline: timeline)
-            try recorder.open()
-            lock.lock(); remote = recorder; lock.unlock()
+            let recorder: MeetingTrackRecorder
+            if let existing = remote { recorder = existing }
+            else {
+                recorder = try MeetingTrackRecorder(source: .remote, directory: request.tracksDirectory,
+                    sampleRate: tap.format.sampleRate, timeline: timeline, allowsDiscontinuities: true, onAudio: request.onAudio)
+                try recorder.open()
+                lock.lock(); remote = recorder; lock.unlock()
+            }
+            let rate = tap.format.sampleRate
+            var scratch = [Float](repeating: 0, count: 65_536)
             try tap.begin { [weak self, recorder] buffers, time in
-                guard let self, !self.isStopping, !recorder.isClosed else { return }
-                // A tap-only aggregate has no physical microphone input. Refuse
-                // any unexpected additional stream instead of recording it.
+                guard let self, self.accepts(token), !recorder.isClosed else { return }
                 guard buffers.pointee.mNumberBuffers == 1, buffers.pointee.mBuffers.mNumberChannels == 1 else {
-                    self.note("The selected app's audio format changed. Recording stopped."); return
+                    self.requestRecovery("The app audio format changed.", token: token); return
                 }
-                let frames = MeetingMono.fill(from: buffers, into: &self.remoteScratch)
+                let frames = MeetingMono.fill(from: buffers, into: &scratch)
                 guard frames > 0 else { return }
                 let host = time.pointee.mFlags.contains(.hostTimeValid) ? time.pointee.mHostTime : MeetingClock.now()
-                self.remoteScratch.withUnsafeBufferPointer { recorder.append($0.baseAddress!, count: frames, hostTime: host) }
+                scratch.withUnsafeBufferPointer { recorder.append($0.baseAddress!, count: frames, hostTime: host, sourceRate: rate) }
             }
             try checkStart()
         }
-        if request.includeMicrophone { try startMicrophone(request) }
-        try checkStart()
-        lock.lock(); startedHost = MeetingClock.now(); lock.unlock()
+        if microphoneIncluded { try startMicrophone(request, token: token) }
     }
 
-    private func startMicrophone(_ request: MeetingCaptureRequest) throws {
+    private func startMicrophone(_ request: MeetingCaptureRequest, token: UInt64) throws {
         try checkStart()
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw MeetingError.message("Microphone access is required for the selected recording.")
@@ -650,26 +901,146 @@ final class MeetingSystemCapture: MeetingCapture, @unchecked Sendable {
         guard format.sampleRate > 0, format.channelCount > 0, format.commonFormat == .pcmFormatFloat32 else {
             throw MeetingError.message("No usable microphone input is available. Choose an input in Sound settings, or record the app only.")
         }
-        let recorder = try MeetingTrackRecorder(source: .local, directory: request.tracksDirectory,
-                                                sampleRate: format.sampleRate, timeline: timeline)
-        try recorder.open()
-        lock.lock(); local = recorder; lock.unlock()
+        let recorder: MeetingTrackRecorder
+        if let existing = local { recorder = existing }
+        else {
+            recorder = try MeetingTrackRecorder(source: .local, directory: request.tracksDirectory,
+                sampleRate: request.microphoneFileURL == nil ? format.sampleRate : MeetingSegmentPlan.sampleRate,
+                timeline: timeline, allowsDiscontinuities: true,
+                onAudio: request.onAudio, explicitFileURL: request.microphoneFileURL)
+            try recorder.open()
+            lock.lock(); local = recorder; lock.unlock()
+        }
+        let rate = format.sampleRate
+        var scratch = [Float](repeating: 0, count: 65_536)
         input.installTap(onBus: 0, bufferSize: 4_096, format: format) { [weak self, recorder] buffer, time in
-            guard let self, !self.isStopping, !recorder.isClosed else { return }
-            let frames = MeetingMono.fill(from: buffer, into: &self.localScratch)
+            guard let self, self.accepts(token), !recorder.isClosed else { return }
+            let frames = MeetingMono.fill(from: buffer, into: &scratch)
             guard frames > 0 else { return }
             let host = time.isHostTimeValid ? time.hostTime : MeetingClock.now()
-            self.localScratch.withUnsafeBufferPointer { recorder.append($0.baseAddress!, count: frames, hostTime: host) }
+            scratch.withUnsafeBufferPointer { recorder.append($0.baseAddress!, count: frames, hostTime: host, sourceRate: rate) }
         }
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: audio, queue: nil) { [weak self] _ in
-                self?.note("The microphone device changed. Recording stopped; the audio already recorded was kept.")
+                self?.requestRecovery("The microphone device changed.", token: token)
             }
         engine = audio
         audio.prepare()
         try checkStart()
         do { try audio.start() }
         catch { throw MeetingError.message("The microphone could not start. \(error.localizedDescription)") }
+    }
+
+    private func requestRecovery(_ message: String, token: UInt64) {
+        lock.lock()
+        guard !stopping, !paused, generation == token, !recoveryQueued else { lock.unlock(); return }
+        recoveryQueued = true
+        lock.unlock()
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); self.recoveryQueued = false; self.lock.unlock()
+            if self.accepts(token) { self.beginRecovery(message) }
+        }
+    }
+
+    private func beginRecovery(_ message: String) {
+        guard !isStopping, !isPaused, stopReason == nil else { return }
+        guard recoveryStarted == nil else { return }
+        recoveryStarted = MeetingClock.now()
+        lock.lock(); recovery = "Reconnecting audio. \(message)"; generation &+= 1; lock.unlock()
+        remote?.markDiscontinuity(message); local?.markDiscontinuity(message)
+        restoreRoutes()
+    }
+
+    private func restoreRoutes() {
+        disconnectRoutes()
+        guard !isStopping, !isPaused else { return }
+        lastRecoveryAttempt = MeetingClock.now()
+        do { try startRoutes() }
+        catch {
+            disconnectRoutes()
+            if !isStopping {
+                lock.lock(); recovery = "Reconnecting audio. \(error.localizedDescription)"; lock.unlock()
+            }
+        }
+    }
+
+    private func checkRoutes() {
+        guard !isStopping, !isPaused, stopReason == nil else { return }
+        if microphoneIncluded, AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+            note("Microphone access was removed. The audio already recorded was kept."); return
+        }
+        let now = MeetingClock.now()
+        let recorders = [remote, local].compactMap { $0 }
+        if let started = recoveryStarted {
+            if !recorders.isEmpty, recorders.allSatisfy({ ($0.secondsSinceLastBuffer ?? .infinity) < 1.5 }),
+               engine != nil || !microphoneIncluded, tapBox != nil || request?.app == nil {
+                recoveryStarted = nil; lastRecoveryAttempt = nil
+                lock.lock(); recovery = nil; lock.unlock()
+                return
+            }
+            if MeetingClock.interval(from: started, to: now) > 15 {
+                note("The selected audio source could not reconnect. The recording was kept with its interruption marked.")
+                return
+            }
+            if lastRecoveryAttempt.map({ MeetingClock.interval(from: $0, to: now) > 2 }) ?? true { restoreRoutes() }
+            return
+        }
+        if request?.app != nil, MeetingCoreAudio.defaultOutputDeviceUID() != outputUID {
+            beginRecovery("The Mac audio output changed."); return
+        }
+        if microphoneIncluded, MeetingCoreAudio.defaultInputDeviceUID() != inputUID {
+            beginRecovery("The microphone device changed."); return
+        }
+        if let app = chosenApp, MeetingCoreAudio.processObject(for: app.id) == nil {
+            beginRecovery("The selected app's audio process changed."); return
+        }
+        if let start = startedHost, MeetingClock.interval(from: start, to: now) > 12,
+           recorders.contains(where: { ($0.secondsSinceLastBuffer ?? .infinity) > 12 }) {
+            beginRecovery("An audio source stopped supplying samples.")
+        }
+    }
+
+    func pause() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { [self] in
+                do {
+                    try checkStart()
+                    guard request != nil else { throw MeetingError.message("This recording has not started.") }
+                    guard !isPaused else { continuation.resume(); return }
+                    lock.lock(); paused = true; generation &+= 1; recovery = nil; lock.unlock()
+                    recoveryStarted = nil; lastRecoveryAttempt = nil
+                    remote?.markDiscontinuity("Recording was paused."); local?.markDiscontinuity("Recording was paused.")
+                    disconnectRoutes()
+                    continuation.resume()
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    func resume() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { [self] in
+                do {
+                    try checkStart()
+                    guard request != nil else { throw MeetingError.message("This recording has not started.") }
+                    guard isPaused else { continuation.resume(); return }
+                    lock.lock(); paused = false; lock.unlock()
+                    beginRecovery("Resuming the selected audio sources.")
+                    continuation.resume()
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    private func disconnectRoutes() {
+        lock.lock(); generation &+= 1; lock.unlock()
+        if let observer = configurationObserver { NotificationCenter.default.removeObserver(observer) }
+        configurationObserver = nil
+        if let engine { engine.inputNode.removeTap(onBus: 0); engine.stop() }
+        engine = nil
+        if #available(macOS 14.2, *), let tap = tapBox as? MeetingProcessTap { tap.destroy() }
+        tapBox = nil
     }
 
     func finish() async -> MeetingCaptureReport {
@@ -682,20 +1053,17 @@ final class MeetingSystemCapture: MeetingCapture, @unchecked Sendable {
     private func closeEverything() -> MeetingCaptureReport {
         if let report { return report }
         requestStop()
-        if let observer = configurationObserver { NotificationCenter.default.removeObserver(observer) }
-        configurationObserver = nil
-        if let engine { engine.inputNode.removeTap(onBus: 0); engine.stop() }
-        engine = nil
-        if #available(macOS 14.2, *), let tap = tapBox as? MeetingProcessTap { tap.destroy() }
-        tapBox = nil
+        routeTimer?.cancel(); routeTimer = nil
+        disconnectRoutes()
         lock.lock(); let recorders = [remote, local].compactMap { $0 }; lock.unlock()
         let tracks = recorders.map { $0.close() }.filter { $0.seconds > 0 }
         lock.lock()
         let failure = reason ?? recorders.compactMap { $0.failure }.first
         let result = MeetingCaptureReport(tracks: tracks,
                                           seconds: tracks.map { $0.startSeconds + $0.seconds }.max() ?? 0,
-                                          failure: failure)
-        report = result; remote = nil; local = nil; startedHost = nil
+                                          failure: failure, gaps: recorders.flatMap(\.gaps),
+                                          liveAudioComplete: recorders.allSatisfy(\.liveAudioComplete))
+        report = result; remote = nil; local = nil; startedHost = nil; recovery = nil
         lock.unlock()
         return result
     }
