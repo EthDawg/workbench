@@ -332,6 +332,9 @@ final class WorkbenchHistoryModel: ObservableObject {
     @Published private(set) var savedSelections: [SavedWorkbenchSelection] = []
     @Published private(set) var error: String?
     @Published private(set) var activeSelectionID: UUID?
+    /// Search depends on capture details, not which rows or saved selection
+    /// are chosen. Advance only after changed details reach the disk.
+    @Published private(set) var metadataRevision = 0
 
     let store: WorkbenchHistoryStore
     /// Set when the sidecar could not be understood. Nothing is written while it
@@ -476,10 +479,14 @@ final class WorkbenchHistoryModel: ObservableObject {
     }
 
     private func publish(_ library: WorkbenchHistoryLibrary) {
+        let metadata = Dictionary(uniqueKeysWithValues: library.transcripts.map { ($0.id, $0.metadata) })
+        if metadataByID != metadata {
+            metadataByID = metadata
+            metadataRevision &+= 1
+        }
         selected = Set(library.selected)
         savedSelections = library.savedSelections
         activeSelectionID = library.activeSelectionID
-        metadataByID = Dictionary(uniqueKeysWithValues: library.transcripts.map { ($0.id, $0.metadata) })
     }
 
     private static func describe(_ error: Error) -> String {

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ImageIO
 
@@ -18,6 +19,7 @@ enum HistoryChecks {
         let root = fm.temporaryDirectory.appendingPathComponent("Workbench-history-page-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? fm.removeItem(at: root) }
+        passed += try checkSelectionSearch(root: root.appendingPathComponent("Search invalidation"))
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         func at(_ minutes: Double) -> Date { base.addingTimeInterval(minutes * 60) }
 
@@ -205,6 +207,88 @@ enum HistoryChecks {
         return ["HISTORY_LIST_TIMING: sort \(ms(mergeTime)) ms once; search \(ms(perSearch)) ms per applied search over 5,000 transcripts, 1,500 Snaps and 250 tasks; "
                 + "off the main thread: 250 task folders \(ms(coldFiles)) ms cold, \(ms(warmFiles)) ms unchanged, 250 thumbnails \(ms(thumbnails)) ms",
                 "HISTORY_PAGE_CHECKS_OK: \(passed) checks"]
+    }
+
+    /// Exercise the real persisted details owner, matcher and row cache. The
+    /// search stays warm through selection-only publications, but a saved edit
+    /// or removal changes the visible results on the next read (#150).
+    @MainActor
+    static func checkSelectionSearch(root: URL) throws -> Int {
+        var passed = 0
+        func check(_ condition: Bool, _ name: String) throws {
+            guard condition else { throw VoiceError.message("HISTORY_CHECK_FAILED: \(name)") }
+            passed += 1
+        }
+        let library = WorkbenchHistoryModel(directory: root)
+        let transcripts = (0..<1_000).map { Transcript(date: Date(timeIntervalSince1970: Double($0)),
+                                                     text: "Synthetic capture \($0)", seconds: 1) }
+        let first = transcripts[0], second = transcripts[1]
+        let firstRef = WorkbenchItemReference(kind: .transcript, id: first.id)
+        let secondRef = WorkbenchItemReference(kind: .transcript, id: second.id)
+        let merged = HistoryList.merged(transcripts: transcripts, snaps: [], results: [])
+        let cache = HistoryRowsCache()
+        var passes = 0, revisions: [Int] = [], publishedPeople: [String] = []
+        let changes = library.$metadataRevision.dropFirst().sink { revision in
+            revisions.append(revision)
+            publishedPeople.append(library.metadata(for: first.id).person)
+        }
+        defer { changes.cancel() }
+        func shown() -> [HistoryEntry.ID] {
+            cache.shown(.init(stores: 0, search: 0, metadata: library.metadataRevision, filter: .all, query: "Avery")) {
+                passes += 1
+                return HistoryList.shown(merged, filter: .all, query: "Avery",
+                    matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { _, _ in false }, resultText: { _ in "" })
+            }.map(\.id)
+        }
+        try check(shown().isEmpty && passes == 1, "the initial search scans the synthetic history once")
+        for index in 0..<20 {
+            library.setSelected(index.isMultiple(of: 2) ? [firstRef] : [secondRef])
+            try check(shown().isEmpty && passes == 1 && revisions.isEmpty && library.error == nil,
+                      "selection click \(index + 1) reuses the search without invalidating details")
+        }
+        library.saveSelection(name: "Selected captures")
+        guard let saved = library.activeSelectionID else { throw VoiceError.message("HISTORY_CHECK_FAILED: a named selection was not saved") }
+        library.setSelected([])
+        library.loadSelection(saved)
+        library.saveSelection(name: "Renamed captures", id: saved)
+        library.removeSelection(saved)
+        try check(shown().isEmpty && passes == 1 && revisions.isEmpty && library.selected == [secondRef] && library.error == nil,
+                  "saving, loading, renaming and removing a named selection keep the search warm")
+
+        library.setMetadata(.init(person: "Avery"), for: first.id)
+        try check(shown() == [.transcript(first.id)] && passes == 2 && revisions == [1] && publishedPeople == ["Avery"],
+                  "saved details are readable when their one revision publishes and enter the cached search")
+        let reopened = WorkbenchHistoryModel(directory: root)
+        try check(reopened.matching(transcripts, query: "Avery").map(\.id) == [first.id],
+                  "the searchable details came from a successful durable save")
+        library.setMetadata(.init(person: " Avery "), for: first.id)
+        try check(shown() == [.transcript(first.id)] && passes == 2 && revisions == [1],
+                  "an equivalent normalized edit does not invalidate search")
+        library.setMetadata(.init(person: "Jordan"), for: first.id)
+        try check(shown().isEmpty && passes == 3 && revisions == [1, 2],
+                  "editing away the matching detail removes the row on the next search read")
+        library.setMetadata(.init(company: "Avery"), for: second.id)
+        try check(shown() == [.transcript(second.id)] && passes == 4 && revisions == [1, 2, 3],
+                  "editing another capture's details adds only that capture")
+        library.setMetadata(.init(), for: second.id)
+        try check(shown().isEmpty && passes == 5 && revisions == [1, 2, 3, 4],
+                  "restoring default details removes the saved search match")
+        library.setMetadata(.init(person: "Avery"), for: first.id)
+        try check(shown() == [.transcript(first.id)] && passes == 6, "details can match again after an earlier edit")
+        library.removeReferences(kind: .transcript, ids: [first.id])
+        try check(shown().isEmpty && passes == 7 && revisions == [1, 2, 3, 4, 5, 6],
+                  "removing a transcript's metadata invalidates the cached search")
+
+        let revision = library.metadataRevision
+        library.setMetadata(.init(person: String(repeating: "x", count: WorkbenchHistoryLibrary.maximumFieldCharacters + 1)), for: first.id)
+        try check(library.error != nil && library.metadataRevision == revision && shown().isEmpty && passes == 7,
+                  "a refused detail does not invalidate or change the search")
+        let otherOwner = WorkbenchHistoryModel(directory: root)
+        otherOwner.setMetadata(.init(person: "External saved detail"), for: second.id)
+        library.setMetadata(.init(person: "Avery"), for: first.id)
+        try check(otherOwner.error == nil && library.error != nil && library.metadataRevision == revision && shown().isEmpty && passes == 7,
+                  "a failed stale save does not publish an unsaved search match")
+        return passed
     }
 
     /// A screen-sized synthetic PNG, so thumbnails decode real pixels.
