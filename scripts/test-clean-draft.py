@@ -56,6 +56,9 @@ enum TextRules {
     var cancellations = 0
     func cancel() { cancellations += 1 }
 }
+@MainActor final class LiveCaptureFixture {
+    func cancelRecognition() { preconditionFailure("Draft cleanup must not own live recognition") }
+}
 @MainActor final class DelayedCleanup {
     var immediate = false
     var calls = 0
@@ -79,6 +82,7 @@ enum TextRules {
     enum Phase { case idle, requesting, recording, transcribing, cleaning, delivering, cancelling }
     var phase: Phase = .idle
     var transcriptionTask: Task<Void, Never>?
+    var liveCapture: LiveCaptureFixture?
     var transcriptionID: UUID?
     var draftRevision: UInt64 = 0
     // The production property's revision increment is part of the test.
