@@ -14,7 +14,7 @@ concurrency:
 # The native work runs as five jobs on five runners. Each phase of scripts/test.sh
 # and each gallery depends only on the source, so every job builds what it needs
 # itself and a pull request finishes in the time of the longest job (about 13
-# minutes) instead of one 34-minute chain. "Build and test" is the required check:
+# minutes) instead of one 34-minute chain. Each SwiftPM job restores its own last build first. "Build and test" is the required check:
 # it passes only when the classifier ran and every native job it selected passed.
 jobs:
   scope:
@@ -70,6 +70,16 @@ jobs:
           persist-credentials: false
       - name: Check development tools
         run: bash scripts/doctor.sh
+      - name: Restore this job's last build
+        # Keyed by job, platform and dependency pins, so each job restores only what it built last
+        # time (a pull request starts from main's). SwiftPM rebuilds what changed and nothing else;
+        # a toolchain change invalidates the lot by itself.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .build
+          key: build-package-tests-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            build-package-tests-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
       - name: Run swift test
         run: bash scripts/test.sh package-tests
   harnesses-and-stage:
@@ -100,6 +110,16 @@ jobs:
           persist-credentials: false
       - name: Check development tools
         run: bash scripts/doctor.sh
+      - name: Restore this job's last build
+        # Keyed by job, platform and dependency pins, so each job restores only what it built last
+        # time (a pull request starts from main's). SwiftPM rebuilds what changed and nothing else;
+        # a toolchain change invalidates the lot by itself.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .build
+          key: build-checks-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            build-checks-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
       - name: Build the release app and run every check
         run: bash scripts/test.sh checks
   toolbar-gallery-and-package:
@@ -115,6 +135,16 @@ jobs:
           persist-credentials: false
       - name: Check development tools
         run: bash scripts/doctor.sh
+      - name: Restore this job's last build
+        # Keyed by job, platform and dependency pins, so each job restores only what it built last
+        # time (a pull request starts from main's). SwiftPM rebuilds what changed and nothing else;
+        # a toolchain change invalidates the lot by itself.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .build
+          key: build-toolbar-gallery-and-package-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            build-toolbar-gallery-and-package-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
       - name: Render the production toolbar gallery
         run: |
           swift run --disable-sandbox ToolbarGalleryRenderer test-results/toolbar
@@ -151,6 +181,16 @@ jobs:
           persist-credentials: false
       - name: Check development tools
         run: bash scripts/doctor.sh
+      - name: Restore this job's last build
+        # Keyed by job, platform and dependency pins, so each job restores only what it built last
+        # time (a pull request starts from main's). SwiftPM rebuilds what changed and nothing else;
+        # a toolchain change invalidates the lot by itself.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .build
+          key: build-surface-gallery-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            build-surface-gallery-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
       - name: Render the menu-bar panel and every Home page
         run: |
           swift build -c release --disable-sandbox
