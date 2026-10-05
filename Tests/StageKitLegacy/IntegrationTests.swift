@@ -135,6 +135,7 @@ final class IntegrationTests: XCTestCase {
     }
     func testDrawingLifecycleAndBoardIsolation() throws {
         _ = NSApplication.shared
+        if let problem = ExclusiveShortcuts.holdingProblem() { throw TestSkipped(reason: problem) }
         let suite = FileManager.default.temporaryDirectory.appendingPathComponent("StageMarkIntegration.\(UUID().uuidString)").path
         let defaults = UserDefaults(suiteName: suite)!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -289,8 +290,9 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(app.boards[display], .white, "Recovery must preserve the visible board")
         XCTAssertEqual(app.history(for: display)?.annotations.map(\.id), boardIDs, "Recovery must preserve board ink")
     }
-    func testShortcutRegistrationAndRelease() {
+    func testShortcutRegistrationAndRelease() throws {
         _ = NSApplication.shared
+        if let problem = ExclusiveShortcuts.holdingProblem() { throw TestSkipped(reason: problem) }
         let manager = HotkeyManager()
         manager.register(Preferences())
         XCTAssertTrue(manager.failures.isEmpty, "Default shortcut conflicts: \(manager.failures)")
