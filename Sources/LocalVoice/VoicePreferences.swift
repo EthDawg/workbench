@@ -115,6 +115,9 @@ struct VoicePreferences: Codable, Equatable {
         }
     }
     static let key = "voicePreferences.v2"
+    /// Recovery copies stay in this edition's preference domain. Each failed
+    /// decode gets its own copy, so a later failure cannot replace an earlier one.
+    static let recoveryKeyPrefix = key + ".unreadable."
     static func migratingLegacyDefaults(_ preferences: VoicePreferences) -> VoicePreferences {
         var preferences = preferences
         if preferences.readbackShortcut == legacyReadbackShortcut {
@@ -160,21 +163,46 @@ struct VoicePreferences: Codable, Equatable {
         return result
     }
     static func load(from defaults: UserDefaults = .standard, reserving combinations: Set<GlobalShortcutCombination> = []) -> VoicePreferences {
-        let savedData = defaults.data(forKey: key)
-        guard let data = savedData, let saved = try? JSONDecoder().decode(Self.self, from: data) else {
+        let savedObject = defaults.object(forKey: key)
+        guard let data = savedObject as? Data, let saved = try? JSONDecoder().decode(Self.self, from: data) else {
             let preferences = movingUntouchedShortcuts(VoicePreferences(), reserving: combinations, fresh: true)
-            if savedData == nil { preferences.save(to: defaults) }
-            defaults.set(1, forKey: shortcutRevisionKey)
+            // Unreadable is not absent. Leave both the original and its migration
+            // marker alone until a save can preserve them together for recovery.
+            if savedObject == nil, preferences.save(to: defaults) {
+                defaults.set(1, forKey: shortcutRevisionKey)
+            }
             return preferences
         }
         var preferences = saved
         if defaults.integer(forKey: shortcutRevisionKey) < 1 {
             // Saved once, so a shortcut someone turns back on stays on.
             preferences = movingUntouchedShortcuts(preferences, reserving: combinations)
-            preferences.save(to: defaults)
-            defaults.set(1, forKey: shortcutRevisionKey)
+            if preferences.save(to: defaults) { defaults.set(1, forKey: shortcutRevisionKey) }
         }
         return preferences
     }
-    func save(to defaults: UserDefaults = .standard) { if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.key) } }
+    @discardableResult func save(to defaults: UserDefaults = .standard) -> Bool {
+        guard let data = try? JSONEncoder().encode(self) else { return false }
+        var replacedUnreadable = false
+        if let original = defaults.object(forKey: Self.key),
+           (original as? Data).flatMap({ try? JSONDecoder().decode(Self.self, from: $0) }) == nil {
+            var recovery: [String: Any] = ["value": original]
+            if let revision = defaults.object(forKey: Self.shortcutRevisionKey) {
+                recovery["shortcutRevision"] = revision
+            }
+            let recoveryKey = Self.recoveryKeyPrefix + UUID().uuidString
+            defaults.set(recovery, forKey: recoveryKey)
+            guard let preserved = defaults.dictionary(forKey: recoveryKey),
+                  NSDictionary(dictionary: recovery).isEqual(to: preserved) else { return false }
+            replacedUnreadable = true
+        }
+        defaults.set(data, forKey: Self.key)
+        guard defaults.data(forKey: Self.key) == data else { return false }
+        if replacedUnreadable {
+            // These are the current fallback choices. The recovery copy retains
+            // the original marker for a supported older build or manual repair.
+            defaults.set(1, forKey: Self.shortcutRevisionKey)
+        }
+        return true
+    }
 }

@@ -51,6 +51,7 @@ harnesses() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-photo-cloud.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-clean-draft.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-capture-persistence.py
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-voice-preferences.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-remember-correction.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-reading-playback.py
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-read-selection-service.py
