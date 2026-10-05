@@ -38,18 +38,22 @@ public struct ToolbarActivity: Hashable, Sendable {
     public var live: [Live]
     /// The capture stops by itself at its time limit within the last seconds (#134 T4).
     public var stopsSoon: Bool
+    /// Call audio stopped and the owner offers a cancellable finish grace period. Keep this
+    /// boolean so VoiceOver announces the warning once, rather than reading every second.
+    public var meetingFinishesSoon: Bool
     /// The capturing owner judges its microphone too quiet to use, after a stretch of near silence.
     public var quiet: Bool
 
     public init(capture: Capture? = nil, level: Double? = nil, playback: Bool = false, processing: Bool = false,
                 failure: Bool = false, pendingDelivery: Bool = false, unsavedCapture: Bool = false,
                 paused: Bool = false, live: [Live] = [], stopsSoon: Bool = false, quiet: Bool = false,
-                captureTransport: CaptureTransport = .recording) {
+                captureTransport: CaptureTransport = .recording, meetingFinishesSoon: Bool = false) {
         self.capture = capture; self.level = level; self.playback = playback; self.processing = processing
         self.captureTransport = captureTransport
         self.failure = failure; self.pendingDelivery = pendingDelivery; self.unsavedCapture = unsavedCapture
         self.paused = paused; self.live = Live.allCases.filter(live.contains); self.stopsSoon = stopsSoon
         self.quiet = quiet
+        self.meetingFinishesSoon = meetingFinishesSoon
     }
 
     public static let idle = ToolbarActivity()
@@ -142,7 +146,7 @@ public struct ToolbarStatus: Equatable, Sendable {
         else { indicator = .idle }
         let attention = activity.failure || activity.pendingDelivery || activity.unsavedCapture
         return ToolbarStatus(indicator: indicator, attentionBadge: indicator == .capture && attention,
-                             stopsSoonBadge: indicator == .capture && activity.stopsSoon,
+                             stopsSoonBadge: indicator == .capture && (activity.stopsSoon || activity.capture == .meeting && activity.meetingFinishesSoon),
                              level: indicator == .capture ? activity.level.map { min(1, max(0, $0)) } : nil,
                              quiet: indicator == .capture && activity.quiet,
                              description: describe(activity))
@@ -163,6 +167,9 @@ public struct ToolbarStatus: Equatable, Sendable {
         }
         if activity.capture != nil && activity.captureTransport == .recording && activity.stopsSoon {
             parts.append("Stops at the 5-minute limit in a few seconds")
+        }
+        if activity.capture == .meeting && activity.captureTransport == .recording && activity.meetingFinishesSoon {
+            parts.append("Call audio ended. Finishing soon. Choose Keep recording in Switch tool to continue")
         }
         if activity.playback { parts.append("Reading aloud") }
         if activity.processing { parts.append("Processing") }

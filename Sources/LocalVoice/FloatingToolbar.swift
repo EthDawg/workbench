@@ -144,6 +144,7 @@ struct FloatingToolbar: View {
         }
         if phase == .paused { activity.captureTransport = .paused }
         else if phase == .reconnecting { activity.captureTransport = .reconnecting }
+        activity.meetingFinishesSoon = meetings.isRecording && meetings.autoFinishSeconds != nil
         return activity
     }
 

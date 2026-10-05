@@ -36,6 +36,22 @@ final class ToolbarStatusTests: XCTestCase {
                        "A completed session's stale transport cannot resurrect activity")
     }
 
+    func testAutomaticMeetingFinishWarnsOnceAndOnlyForTheActiveMeeting() {
+        let recording = ToolbarStatus.resolve(.init(capture: .meeting))
+        let grace = ToolbarStatus.resolve(.init(capture: .meeting, meetingFinishesSoon: true))
+        XCTAssertTrue(grace.stopsSoonBadge)
+        XCTAssertTrue(grace.description.contains("Call audio ended") && grace.description.contains("Keep recording"))
+        XCTAssertFalse(grace.description.contains("5-minute"))
+        XCTAssertTrue(grace.announces(after: recording))
+        XCTAssertFalse(grace.announces(after: grace), "The countdown lives in the chooser; it must not announce each second")
+        for transport in [ToolbarActivity.CaptureTransport.paused, .reconnecting] {
+            let interrupted = ToolbarStatus.resolve(.init(capture: .meeting, captureTransport: transport, meetingFinishesSoon: true))
+            XCTAssertFalse(interrupted.stopsSoonBadge || interrupted.description.contains("Call audio ended"))
+        }
+        let reading = ToolbarStatus.resolve(.init(playback: true, meetingFinishesSoon: true))
+        XCTAssertEqual(reading, ToolbarStatus.resolve(.init(playback: true)), "A stale grace flag cannot change reading controls or status")
+    }
+
     /// Capture and playback, processing, failure, a pending result or capture, paused work, other
     /// live work, idle: each wins over everything after it.
     func testThePriorityIsFixed() {

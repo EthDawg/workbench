@@ -93,6 +93,12 @@ extension FloatingToolbar {
             command(end, id: "persona.end", .persona, identity: stage.personaSessionIdentity.uuidString + end + String(describing: stage.selectedPersonaCopy)) { stage.endPersona() }
         }
         if let identity = meetings.recordingIdentity {
+            if meetings.autoFinishSeconds != nil {
+                command("Keep recording", id: "meeting.keep-recording", nil, identity: identity.uuidString) {
+                    guard meetings.recordingIdentity == identity, meetings.autoFinishSeconds != nil else { return }
+                    meetings.keepRecording()
+                }
+            }
             command("Finish meeting", id: "meeting.stop", nil, identity: identity.uuidString) {
                 Task { await meetings.stop(expected: identity) }
             }
@@ -166,7 +172,9 @@ extension FloatingToolbar {
         let meeting = actions.filter { $0.id.hasPrefix("meeting.") }
         if !meeting.isEmpty {
             let detail: String
-            if meetings.isRecording {
+            if meetings.isRecording, let seconds = meetings.autoFinishSeconds {
+                detail = "Call audio ended · finishing in \(seconds)s"
+            } else if meetings.isRecording {
                 switch meetings.voiceSession.phase {
                 case .paused: detail = "Paused · recording kept"
                 case .reconnecting: detail = "Reconnecting audio · recording kept"
