@@ -125,6 +125,10 @@ struct SnapLibraryRead {
 final class SnapStore {
     let root: URL
     private let manager = FileManager.default
+    /// Digests of current review documents by key, each with the stamp of the file it was read from (#150).
+    private var organizationDigests: [String: (stamp: ReviewStamp, digest: String)] = [:]
+    private let organizationDigestLock = NSLock()
+    private struct ReviewStamp: Equatable { let modified: Date?; let size: Int? }
     static let maximumImageBytes = 100 * 1_024 * 1_024
     private var loadedRecords: [UUID: Data] = [:]
 
@@ -298,6 +302,27 @@ final class SnapStore {
         let data = try readPrivateFile(url, maximum: 8 * 1_024 * 1_024)
         guard let text = String(data: data, encoding: .utf8) else { throw SnapError.message("The current review is not readable text. Its file was kept.") }
         return (url, text, Self.digest(data))
+    }
+
+    /// The digest of the current review document, read and hashed once per change to its file.
+    /// History asks for it on every redraw, and History redraws at meter rate while dictating, so
+    /// the answer is kept against the file's modification date and size and the 8 MB read and
+    /// SHA-256 happen only when either changes (#150). A missing or unreadable file answers nil.
+    func organizationDigest(key: String) -> String? {
+        guard let url = try? organizationURL(key: key),
+              let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]),
+              values.isRegularFile == true else {
+            organizationDigestLock.withLock { organizationDigests[key] = nil }
+            return nil
+        }
+        let stamp = ReviewStamp(modified: values.contentModificationDate, size: values.fileSize)
+        if let cached = organizationDigestLock.withLock({ organizationDigests[key] }), cached.stamp == stamp { return cached.digest }
+        guard let current = try? readOrganization(key: key) else {
+            organizationDigestLock.withLock { organizationDigests[key] = nil }
+            return nil
+        }
+        organizationDigestLock.withLock { organizationDigests[key] = (stamp, current.digest) }
+        return current.digest
     }
 
     func publishOrganization(_ text: String, key: String, expectedDigest: String?) throws -> URL {

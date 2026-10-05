@@ -329,6 +329,21 @@ enum HandoffJobsChecks {
         try check(reopenedJobs.visibleJobs.filter { $0.reviewKey == context.key }.count == 1
             && reopenedJobs.currentPublishedJob(key: context.key)?.id == namedJob.id,
             "newer ready task does not hide the last published result and named history groups once")
+        // History asks for the current review's digest on every redraw (#150): the store answers
+        // from the file's stamp and reads the document again only when the file changes.
+        let reviewBefore = try snaps.readOrganization(key: context.key)!
+        try check(snaps.organizationDigest(key: context.key) == reviewBefore.digest, "the kept digest is the document's digest")
+        // Permissions are not part of the stamp, so an unreadable file with the same date and size must be answered from the kept digest.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: reviewBefore.url.path)
+        try check(snaps.organizationDigest(key: context.key) == reviewBefore.digest, "an unchanged stamp is answered without reading the file")
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: reviewBefore.url.path)
+        let sameLength = Data(String(repeating: "x", count: reviewBefore.text.utf8.count).utf8)
+        try sameLength.write(to: reviewBefore.url)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)], ofItemAtPath: reviewBefore.url.path)
+        try check(snaps.organizationDigest(key: context.key) == SnapStore.digest(sameLength), "a changed stamp reads the document again")
+        _ = try snaps.writeOrganization(reviewBefore.text, key: context.key)
+        try check(snaps.organizationDigest(key: context.key) == reviewBefore.digest, "a saved review is digested afresh")
+        try check(snaps.organizationDigest(key: String(repeating: "0", count: 64)) == nil, "a review that does not exist answers nil")
         let manualReview = "A newer human-edited review. Keep this."
         _ = try snaps.writeOrganization(manualReview, key: context.key)
         try rejects("late completion cannot overwrite a changed review") {
@@ -502,6 +517,9 @@ enum HandoffJobsChecks {
         try HandoffJobStore.write(Data("A synthetic result.".utf8), to: resultURL)
         let text = await doors.loadResult(madeFrom)
         try check(text == "A synthetic result.", "a saved result is read off the main thread")
+        // Bring the stamp current first, so removing the image is the only change the next read sees (#150).
+        await doors.loadTaskFiles([madeFrom])
+        try check(doors.files(madeFrom)?.imageBytes != nil, "the frozen image is still counted before it is removed")
         try FileManager.default.removeItem(at: doors.folder(madeFrom).appendingPathComponent(frozenImage))
         await doors.loadTaskFiles([madeFrom])
         try check(doors.inputImageURL(madeFrom, path: frozenImage) == nil && doors.files(madeFrom)?.inputs.items[1].images == [frozenImage]
