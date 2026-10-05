@@ -46,16 +46,24 @@ class AdoptionTests(unittest.TestCase):
     def test_headline_reads_the_newest_production_release_and_says_who_is_counted(self):
         rows = adoption.summarise(RELEASES, NOW)
         self.assertEqual(adoption.headline(rows),
-                         'Workbench 2.4.0 has reached 8 Macs in 4.3 days (1.84 a day). That includes our own installs and link checks.')
+                         'Workbench 2.4.0 has 8 archive downloads in 4.3 days (1.84 a day). These include repeat downloads and link checks; they do not count unique Macs.')
         one = adoption.summarise([release('v2.4.0', '2026-10-04T12:00:00Z', downloads=1)], NOW)
-        self.assertIn('reached 1 Mac in 1 days', adoption.headline(one))
+        self.assertIn('has 1 archive download in 1 day', adoption.headline(one))
         previews = adoption.summarise([release('v2.0.0-preview.4', '2026-09-20T07:14:45Z', name='Workbench.Preview.zip', downloads=5)], NOW)
         self.assertEqual(adoption.headline(previews), 'No production release has shipped yet.')
+
+    def test_same_day_releases_use_full_publication_time(self):
+        rows = adoption.summarise([
+            release('v2.4.0', '2026-10-01T01:00:00Z', downloads=8),
+            release('v2.4.1', '2026-10-01T20:00:00Z', downloads=2),
+        ], NOW)
+        self.assertEqual([row['tag'] for row in rows], ['v2.4.1', 'v2.4.0'])
+        self.assertTrue(adoption.headline(rows).startswith('Workbench 2.4.1 has 2 archive downloads'))
 
     def test_render_lists_every_row_under_the_headline(self):
         text = adoption.render(adoption.summarise(RELEASES, NOW))
         lines = text.splitlines()
-        self.assertTrue(lines[0].startswith('Workbench 2.4.0 has reached'))
+        self.assertTrue(lines[0].startswith('Workbench 2.4.0 has 8 archive downloads'))
         self.assertIn('downloads', lines[2])
         self.assertEqual(len(lines), 3 + 4)
         self.assertRegex(lines[3], r'^v2\.4\.0\s+production\s+2026-10-01\s+4\.3\s+8\s+1\.84$')
@@ -97,7 +105,7 @@ class AdoptionTests(unittest.TestCase):
                 self.assertEqual(adoption.main(['--input', str(saved), '--json']), 0)
             payload = json.loads(output.getvalue())
             self.assertEqual(payload['releases'][0]['tag'], 'v2.4.0')
-            self.assertTrue(payload['headline'].startswith('Workbench 2.4.0 has reached 8 Macs'))
+            self.assertTrue(payload['headline'].startswith('Workbench 2.4.0 has 8 archive downloads'))
 
 
 if __name__ == '__main__':
