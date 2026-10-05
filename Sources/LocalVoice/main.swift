@@ -656,11 +656,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard WorkbenchUpdates.shared.canTerminate(saveSession: { model?.saveBeforeUpdate() == true }) else { return .terminateCancel }
         if terminationPending { return .terminateLater }
         guard CaptureImagePreview.shared.canTerminate() else { return .terminateCancel }
-        guard let model, model.meetings.isBusy || model.handoffJobs.isBusy else { return .terminateNow }
+        guard let model, model.meetings.isBusy || model.handoffJobs.isBusy || model.hasActiveVoiceCapture else { return .terminateNow }
         terminationPending = true
         terminating = true
         Task {
             await model.meetings.prepareForShutdown()
+            await model.prepareVoiceForShutdown()
             await model.handoffJobs.prepareForShutdown()
             _ = model.saveBeforeUpdate()
             sender.reply(toApplicationShouldTerminate: true)
@@ -817,6 +818,10 @@ func runCLI(_ args: [String]) async -> Int32 {
             try await SubscriptionCLIChecks.runSandboxChecks()
         case "--check-meetings":
             try await MeetingChecks.run()
+            try await LiveVoiceChecks.run()
+        case "--check-live-voice-model":
+            guard args.count == 2 || (args.count == 3 && args[2] == "--two-sources") else { throw VoiceError.message("Supply one synthetic audio fixture path and optionally --two-sources.") }
+            try await LiveVoiceModelCheck.run(audio: URL(fileURLWithPath: args[1]), twoSources: args.count == 3)
         case "--check-handoff-visual":
             guard args.count == 3 else { throw VoiceError.message("Usage: --check-handoff-visual SYNTHETIC_IMAGES NEW_OUTPUT_FOLDER") }
             try await HandoffJobsChecks.runVisualFixture(images: URL(fileURLWithPath: args[1]), output: URL(fileURLWithPath: args[2]))

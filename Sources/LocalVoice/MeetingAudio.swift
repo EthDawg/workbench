@@ -362,9 +362,11 @@ final class MeetingTrackRecorder: @unchecked Sendable {
     }
 
     private func writeSamples(_ samples: [Float], to file: AVAudioFile) throws {
-        guard !samples.isEmpty,
-              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(samples.count)),
-              let channel = buffer.floatChannelData?[0] else { return }
+        guard !samples.isEmpty else { return }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(samples.count)),
+              let channel = buffer.floatChannelData?[0] else {
+            throw MeetingError.message("The audio writer could not allocate its next buffer. Original audio already written was kept.")
+        }
         var peak: Float = 0
         for index in samples.indices {
             let value = samples[index].isFinite ? max(-1, min(1, samples[index])) : 0
@@ -973,7 +975,8 @@ final class MeetingSystemCapture: MeetingCapture, @unchecked Sendable {
         let now = MeetingClock.now()
         let recorders = [remote, local].compactMap { $0 }
         if let started = recoveryStarted {
-            if !recorders.isEmpty, recorders.allSatisfy({ ($0.secondsSinceLastBuffer ?? .infinity) < 1.5 }),
+            let sinceAttempt = lastRecoveryAttempt.map { MeetingClock.interval(from: $0, to: now) } ?? 0
+            if !recorders.isEmpty, recorders.allSatisfy({ ($0.secondsSinceLastBuffer ?? .infinity) < min(1.5, sinceAttempt) }),
                engine != nil || !microphoneIncluded, tapBox != nil || request?.app == nil {
                 recoveryStarted = nil; lastRecoveryAttempt = nil
                 lock.lock(); recovery = nil; lock.unlock()

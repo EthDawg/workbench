@@ -38,6 +38,8 @@ The installer holds a per-edition OS file lock during replacement and detects a 
 
 ## Release acceptance
 
+Live meeting transcripts use format 2 as described in [live voice](live-voice.md). Their first finalized save keeps the exact format-1 manifest beside unchanged original tracks. Existing format-1 recordings remain readable without bulk conversion. Older binaries cannot review format-2 sessions, and long interruption sidecars can exceed older readers' limits; retain those folders for a compatible build when rolling back.
+
 - Confirm the clean source, edition, source revision, build number, update key and feed in the final extracted app match its release receipt.
 - Run the final extracted app executable with `--check-readback-resources`. It creates and removes only a disposable synthetic session, verifying packaged Snap & Talk skill lookup, exact companion bytes and reopening without microphone/screen access. Packaging also runs this check on the component and after signed Preview identity conversion. `--check-readback-pack` also verifies legacy pack compatibility, snapshots and preservation using synthetic temporary data. `--check-transcript-handoff` checks selected inputs, original/cleaned wording, chosen roles and screen/narration pairing in the signed Preview and final extracted archive. These checks do not replace the installed New session UI check.
 - Verify nested Sparkle code, Developer ID signature, Apple notarization, stapled ticket and Gatekeeper on the final ZIP.

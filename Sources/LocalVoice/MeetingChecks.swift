@@ -354,8 +354,61 @@ enum MeetingChecks {
         try await lifecycleChecks(root: root, expect: expect)
         try await keptRecordingChecks(root: root, expect: expect)
         try await offerLifecycleChecks(root: root, expect: expect)
+        try await liveLifecycleChecks(root: root, expect: expect)
         checks += try MeetingRemovalChecks.run(root: root.appendingPathComponent("removal-checks"))
         print("Meeting checks passed (\(checks)): synthetic detection, source timing, >30-minute segmentation, recovery, cancellation and stable history commits. No live devices were used.")
+    }
+
+    private static func liveLifecycleChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
+        let suite = root.appendingPathComponent("Workbench-LiveLifecycle-\(UUID().uuidString)").path
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ProcessFixture(), capture = CaptureFixture()
+        let model = MeetingModel(directory: root.appendingPathComponent("live-lifecycle"), defaults: defaults,
+            processSource: source, transcribe: { _ in "Fixture words" }, microphonePermission: { true }, captureFactory: { capture })
+        model.detectionEnabled = true
+        source.values = [.init(pid: 81_001, bundleID: "com.apple.avconferenced", isRunningInput: true, isRunningOutput: true, isUserFacingApp: false)]
+        for _ in 0..<3 { model.refreshDetection() }
+        let offered = model.offer!
+        await model.startOffered(offered)
+        let id = model.voiceSession.sessionID
+        try expect(model.isRecording && model.purpose == "call" && model.selectedAppID == offered.id, "one explicit Start uses the displayed call source")
+        await model.pause()
+        try expect(model.isRecording && model.isBusy && model.voiceSession.phase == .paused && capture.isPaused, "pause keeps capture admission and original session open")
+        await model.resume()
+        try expect(model.isRecording && model.voiceSession.phase == .listening && model.voiceSession.sessionID == id, "resume retains the same capture identity")
+        await model.cancel()
+        await model.startOffered(offered)
+        try expect(!model.isBusy && model.error != nil && capture.finished == 1, "stale Start cannot reopen an old call offer")
+        await model.prepareForShutdown()
+
+        var original = manifest(state: .stopped)
+        original.includesRemote = false
+        let session = try MeetingStore.create(root: root.appendingPathComponent("live-complete"), manifest: original)
+        let track = try audio(source: .local, seconds: 1, rate: 16_000, value: 0.2, offset: 0, session: session)
+        var stopped = original; stopped.tracks = [track]; stopped.seconds = 1
+        try MeetingStore.save(stopped, at: session, replacing: original)
+        let beforeLive = try Data(contentsOf: session.appendingPathComponent("meeting.json"))
+        let checkpoint = LiveVoiceCheckpoint(sessionID: original.id,
+            segments: [.init(source: .microphone, start: 0, end: 1, text: "Confirmed live words", isFinal: true)],
+            completedThrough: ["microphone": 1], complete: true)
+        try LiveVoiceJournal.save(checkpoint, to: session.appendingPathComponent("live-transcript.json"))
+        var recognitionCalls = 0, saved: [Transcript] = []
+        let processor = MeetingProcessor(session: session, transcribe: { _ in recognitionCalls += 1; return "Batch words" },
+            commit: { transcript, _, _ in saved.append(transcript) })
+        let result = try await processor.run()
+        try expect(result.committed && recognitionCalls == 0 && saved.first?.text == "Confirmed live words", "complete live checkpoint commits without batch recognition")
+        try expect(result.manifest.formatVersion == 2 && (try MeetingStore.load(from: session)).recognizedText == checkpoint.text,
+                   "live format reopens with confirmed text and original tracks")
+        try expect(try Data(contentsOf: session.appendingPathComponent("meeting-v1.json")) == beforeLive,
+                   "first live completion retains the exact prior-format record")
+        _ = try await processor.run()
+        try expect(saved.count == 1, "retry of committed live meeting cannot duplicate History")
+        var incomplete = checkpoint; incomplete.complete = false
+        try LiveVoiceJournal.save(incomplete, to: session.appendingPathComponent("live-transcript.json"))
+        try MeetingStore.save(stopped, at: session, replacing: result.manifest)
+        _ = try await processor.run()
+        try expect(recognitionCalls == 1 && saved.last?.text == "Batch words", "incomplete live checkpoint falls back to original audio")
     }
 
     private static func recordingReviewChecks(root: URL, expect: (Bool, String) throws -> Void) async throws {
@@ -848,6 +901,9 @@ enum MeetingChecks {
         var finished = 0
         var elapsedSeconds = 1.0
         var stopReason: String?
+        var isPaused = false
+        func pause() async throws { isPaused = true }
+        func resume() async throws { isPaused = false }
         private var report = MeetingCaptureReport()
         func start(_ request: MeetingCaptureRequest) async throws {
             if let startGate { _ = await startGate.wait() }

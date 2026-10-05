@@ -54,6 +54,7 @@ actor RecognitionEngine {
     private var preparation: Task<AsrManager, Error>?
     private var preparedConfiguration: RecognitionConfiguration?
     private var transcribing = false
+    private var liveSessionID: UUID?
     /// Told what a model setup is doing now, from whichever door started it: Home, Settings ›
     /// Models or a first transcription. Each word is the person's, never a file name.
     private var progressObserver: (@Sendable (String) -> Void)?
@@ -81,7 +82,7 @@ actor RecognitionEngine {
     func statusDescription() -> String { configurationError ?? (isReady ? selected.summary : "\(selected.provider.title) · needs setup") }
 
     func configure(_ configuration: RecognitionConfiguration) throws {
-        guard !transcribing, preparation == nil else {
+        guard !transcribing, preparation == nil, liveSessionID == nil else {
             throw VoiceError.message("Finish the current model setup or transcription before switching models.")
         }
         let validated = try configuration.validated()
@@ -129,7 +130,7 @@ actor RecognitionEngine {
     }
 
     func transcribe(_ url: URL) async throws -> String {
-        guard !transcribing else { throw VoiceError.message("A transcription is already running. Wait for it to finish.") }
+        guard !transcribing, liveSessionID == nil else { throw VoiceError.message("A transcription is already running. Wait for it to finish.") }
         try Task.checkCancellation()
         let snapshot = selected
         transcribing = true
@@ -155,6 +156,37 @@ actor RecognitionEngine {
         }
         try Task.checkCancellation()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Reserve the selected model for the entire capture, including the gaps between live
+    /// windows. Local servers retain their explicit file-transcription path.
+    func beginLiveSession(_ id: UUID) throws -> Bool {
+        guard !transcribing, liveSessionID == nil else { throw VoiceError.message("Finish the current transcription first.") }
+        if let configurationError { throw VoiceError.message(configurationError) }
+        liveSessionID = id
+        return selected.provider == .parakeet
+    }
+
+    func endLiveSession(_ id: UUID) { if liveSessionID == id { liveSessionID = nil } }
+
+    func transcribeLive(_ samples: [Float], sessionID: UUID) async throws -> [LiveVoiceWord] {
+        guard liveSessionID == sessionID, !transcribing else { throw VoiceError.message("The live speech session is no longer available.") }
+        guard (4_800...240_000).contains(samples.count) else { throw VoiceError.message("The live audio window has an invalid length.") }
+        transcribing = true
+        defer { transcribing = false }
+        try Task.checkCancellation()
+        try await prepare()
+        guard liveSessionID == sessionID, let manager else { throw CancellationError() }
+        // Fresh state per overlapping window and source. Its internal arrays are references.
+        var decoderState = try TdtDecoderState(decoderLayers: 2)
+        let result = try await manager.transcribe(samples, decoderState: &decoderState)
+        try Task.checkCancellation()
+        guard liveSessionID == sessionID else { throw CancellationError() }
+        let words = result.tokenTimings.map { buildWordTimings(from: $0) } ?? []
+        guard result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !words.isEmpty else {
+            throw VoiceError.message("The speech model did not return word timing. The original recording is kept for transcription.")
+        }
+        return words.map { LiveVoiceWord(text: $0.word, start: $0.startTime, end: $0.endTime) }
     }
 }
 

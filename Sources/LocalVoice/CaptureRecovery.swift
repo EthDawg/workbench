@@ -138,6 +138,8 @@ final class CaptureRecoveryStore {
         let audio = try audioURL(for: pending, requireExists: false)
         // Remove the marker last: an interrupted cleanup remains discoverable.
         if let audio, FileManager.default.fileExists(atPath: audio.path) { try FileManager.default.removeItem(at: audio) }
+        let live = directory.appendingPathComponent("live-\(id.uuidString)", isDirectory: true)
+        if FileManager.default.fileExists(atPath: live.path) { try FileManager.default.removeItem(at: live) }
         if expectedData != nil { try FileManager.default.removeItem(at: metadataURL) }
         self.pending = nil; expectedData = nil; problem = nil
     }

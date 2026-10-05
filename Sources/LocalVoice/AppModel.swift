@@ -6,7 +6,7 @@ import PhotoHandoffKit
 import ToolbarCore
 
 @MainActor
-final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioRecorderDelegate {
+final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     static weak var intentModel: AppModel?
     let shortcutRequest = DictationRequest()
     func cancelShortcut(_ id: UUID) {
@@ -315,7 +315,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
     private var photoHandoffActivation: AnyCancellable?
     private var loaded = false
     private var draftRevision: UInt64 = 0
-    private var recorder: AVAudioRecorder?
+    private var liveCapture: DictationVoiceCapture?
+    var hasActiveVoiceCapture: Bool { liveCapture != nil }
+    @Published private(set) var voiceSession = LiveVoiceSnapshot()
     private var recordURL: URL?
     private var meter: Timer?
     private var player: ReadingPlayer?
@@ -700,28 +702,51 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let url = try captureRecovery.beginRecording()
             startedAudio = url
             recordURL = url
-            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16000, AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
-            let capture = try AVAudioRecorder(url: url, settings: settings)
-            capture.delegate = self; capture.isMeteringEnabled = true
-            guard capture.prepareToRecord(), capture.record() else { throw VoiceError.message("The microphone could not start. Check that an input device is connected.") }
-            recorder = capture; recordURL = url; canRetry = false; elapsed = 0; level = 0; peakPower = -160
+            let capture = DictationVoiceCapture(id: captureRecovery.pending!.id, engine: engine)
+            liveCapture = capture
+            voiceSession = LiveVoiceSnapshot(sessionID: capture.id, phase: .preparing,
+                sources: [.init(source: .microphone, name: "Microphone")])
+            try await capture.start(url: url) { [weak self] snapshot in
+                Task { @MainActor in self?.receiveDictationSnapshot(snapshot, attempt: attempt) }
+            }
+            guard recordingAttempt == attempt else {
+                _ = await capture.finish(recognize: false)
+                if liveCapture === capture { liveCapture = nil }
+                _ = discardRecordingRecovery()
+                if phase == .cancelling { phase = .idle; onPhaseChange?() }
+                return
+            }
+            recordURL = url; canRetry = false; elapsed = 0; level = 0; peakPower = -160
             phase = .recording
+            voiceSession.phase = .listening
             status = captureUsesHoldShortcut ? "Listening… release the shortcut to finish" : "Listening… choose Finish when you are done."
             onPhaseChange?()
             meter = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
                 Task { @MainActor in
-                    guard let self, let recorder = self.recorder else { return }
-                    recorder.updateMeters(); self.elapsed = recorder.currentTime
-                    self.peakPower = max(self.peakPower, recorder.peakPower(forChannel: 0))
-                    self.level = max(0, min(1, Double(recorder.averagePower(forChannel: 0) + 55) / 55))
+                    guard let self, let capture = self.liveCapture, self.phase == .recording else { return }
+                    self.elapsed = capture.elapsed
+                    self.peakPower = capture.peak; self.level = capture.isPaused ? 0 : capture.level
+                    self.voiceSession.elapsed = self.elapsed
+                    if let message = capture.recoveryMessage {
+                        self.voiceSession.phase = .reconnecting; self.voiceSession.message = message
+                    } else if capture.isPaused { self.voiceSession.phase = .paused }
+                    else if self.voiceSession.phase == .reconnecting { self.voiceSession.phase = .listening; self.voiceSession.message = nil }
                     self.isMicrophoneQuiet = self.elapsed >= 6 && self.peakPower <= -55
-                    if self.elapsed >= 300 { self.stopRecording() }
+                    if let problem = capture.problem { self.voiceSession.message = problem; self.stopRecording() }
+                    else if self.elapsed >= 300 { self.stopRecording() }
                 }
             }
         } catch {
-            // A failed start has no usable capture; never clear a prior recovery.
+            liveCapture = nil
+            if recordingAttempt != attempt {
+                _ = discardRecordingRecovery()
+                phase = .idle; voiceSession = LiveVoiceSnapshot(); status = "Recording cancelled."; onPhaseChange?(); return
+            }
+            voiceSession.phase = .recoverableFailure
+            // Preserve even a partial start when macOS supplied audio before failing.
             if let url = startedAudio, let pending = captureRecovery.pending, pending.capture == nil,
-               url.lastPathComponent == pending.audioFilename {
+               url.lastPathComponent == pending.audioFilename,
+               ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) == 0 {
                 do { try captureRecovery.clear(pending.id); recordURL = nil }
                 catch { report(error.localizedDescription, on: .dictate) }
             }
@@ -731,8 +756,39 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
 
     func stopRecording() {
         guard phase == .recording, let url = recordURL else { return }
-        let duration = recorder?.currentTime ?? elapsed
-        recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil; level = 0
+        meter?.invalidate(); meter = nil; level = 0
+        if let capture = liveCapture {
+            phase = .transcribing; voiceSession.phase = .finishing
+            status = "Finishing your words…"; onPhaseChange?()
+            let attempt = recordingAttempt
+            transcriptionTask = Task { [weak self] in
+                guard let self else { return }
+                let (report, checkpoint) = await capture.finish()
+                guard self.recordingAttempt == attempt else { return }
+                self.liveCapture = nil; self.transcriptionTask = nil
+                if let checkpoint { self.voiceSession.segments = LiveVoiceTurns.group(checkpoint.orderedSegments) }
+                if Task.isCancelled || self.phase == .cancelling {
+                    _ = self.discardRecordingRecovery(); self.phase = .idle
+                    self.voiceSession.phase = .idle; self.status = "Recording cancelled."; self.onPhaseChange?(); return
+                }
+                let recordedPeak = report.tracks.first?.peak ?? 0
+                self.peakPower = max(capture.peak, recordedPeak > 0 ? Float(20 * log10(recordedPeak)) : -160)
+                self.voiceSession.message = report.failure ?? report.gaps.first
+                if let failure = report.failure {
+                    self.elapsed = report.seconds; self.canRetry = true
+                    self.voiceSession.phase = .recoverableFailure
+                    self.fail("Recording stopped. Original audio was kept for retry. \(failure)")
+                    return
+                }
+                self.completeStoppedRecording(url, duration: report.seconds,
+                    liveText: checkpoint?.complete == true ? checkpoint?.text : nil)
+            }
+            return
+        }
+        completeStoppedRecording(url, duration: elapsed)
+    }
+
+    private func completeStoppedRecording(_ url: URL, duration: Double, liveText: String? = nil) {
         // The recorder ran, so a shortcut press that began this attempt can be judged.
         let gesture = recordingAttempt.flatMap { attempt in holdGesture?.attempt == attempt ? holdGesture : nil }
         holdGesture = nil
@@ -741,18 +797,73 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
             let reason: CaptureCue.Reason = duration < CaptureCue.shortestSpeech ? .tooShort : .tooQuiet
             endWithoutSpeech(reason, teachesHold: HoldLesson.teaches(gesture, outcome: reason)); return
         }
-        transcribe(url, duration: duration, temporary: true, settings: recordingSettings, heldShortcut: gesture != nil)
+        transcribe(url, duration: duration, temporary: true, settings: recordingSettings, heldShortcut: gesture != nil, recognizedText: liveText)
         recordingSettings = nil
+    }
+
+    private func receiveDictationSnapshot(_ snapshot: LiveVoiceSnapshot, attempt: UUID) {
+        guard recordingAttempt == attempt, voiceSession.sessionID == snapshot.sessionID,
+              [.requesting, .recording, .transcribing].contains(phase), liveCapture != nil else { return }
+        voiceSession = snapshot
+        voiceSession.elapsed = max(elapsed, snapshot.elapsed)
+        if phase == .transcribing { voiceSession.phase = .finishing }
+        else if phase == .recording && voiceSession.phase == .recoverableFailure { voiceSession.phase = .listening }
+        else if liveCapture?.isPaused == true {
+            voiceSession.phase = .paused
+            voiceSession.sources = voiceSession.sources.map { var source = $0; source.health = .paused; source.level = 0; return source }
+        }
+        else if let message = liveCapture?.recoveryMessage {
+            voiceSession.phase = .reconnecting; voiceSession.message = message
+        }
+    }
+
+    func pause() async {
+        guard phase == .recording, let capture = liveCapture, !capture.isPaused else { return }
+        do {
+            try await capture.pause()
+            guard liveCapture === capture, phase == .recording else { return }
+            voiceSession.phase = .paused; level = 0
+        }
+        catch { report(error.localizedDescription, on: .dictate) }
+    }
+
+    func resume() async {
+        guard phase == .recording, let capture = liveCapture, capture.isPaused else { return }
+        do {
+            try await capture.resume()
+            guard liveCapture === capture, phase == .recording else { return }
+            voiceSession.phase = .listening
+        }
+        catch { report(error.localizedDescription, on: .dictate) }
     }
 
     func cancelRecording() {
         if phase == .requesting {
+            if liveCapture != nil {
+                shortcutRequest.cancel(); recordingAttempt = nil; phase = .cancelling
+                liveCapture?.requestStop(); status = "Cancelling…"; onPhaseChange?(); return
+            }
             shortcutRequest.cancel(); recordingAttempt = nil; phase = .idle; status = "Capture cancelled. Use the shortcut again when microphone permission is ready."; onPhaseChange?(); return
         }
         guard phase == .recording else { return }
+        if let capture = liveCapture {
+            shortcutRequest.cancel(); recordingAttempt = nil; holdGesture = nil
+            meter?.invalidate(); meter = nil; capture.requestStop()
+            phase = .cancelling; voiceSession.phase = .finishing; onPhaseChange?()
+            Task { [weak self] in
+                _ = await capture.finish(recognize: false)
+                guard let self, self.liveCapture === capture else { return }
+                self.liveCapture = nil
+                let discarded = self.discardRecordingRecovery()
+                self.phase = .idle; self.level = 0; self.voiceSession = LiveVoiceSnapshot()
+                self.status = discarded ? "Recording discarded." : "Recording stopped. Recovery files are kept for review."
+                self.onPhaseChange?()
+            }
+            return
+        }
         shortcutRequest.cancel()
         recordingAttempt = nil; holdGesture = nil
-        recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
+        meter?.invalidate(); meter = nil
         let discarded = discardRecordingRecovery()
         phase = .idle; level = 0
         status = discarded ? "Recording discarded." : "Recording stopped. Recovery files could not be discarded; open Workbench to review them."
@@ -765,6 +876,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         // Keep the recording gate closed until the selected engine unwinds. A
         // slow model must never finish into a newer capture after cancellation.
         shortcutRequest.cancel()
+        liveCapture?.cancelRecognition()
         transcriptionTask?.cancel()
         phase = .cancelling; status = "Cancelling…"; onPhaseChange?()
     }
@@ -817,7 +929,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         return settings
     }
 
-    private func transcribe(_ url: URL, duration: Double, temporary: Bool, settings: CaptureSettings? = nil, heldShortcut: Bool = false) {
+    private func transcribe(_ url: URL, duration: Double, temporary: Bool, settings: CaptureSettings? = nil, heldShortcut: Bool = false, recognizedText: String? = nil) {
         let settings = settings ?? captureSettings()
         let shortcutID = shortcutRequest.id
         let invocation = UUID(); transcriptionID = invocation
@@ -836,7 +948,9 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                 guard transcriptionID == invocation else { throw CancellationError() }
                 captureProcessingLabel = configuration.provider == .parakeet
                     ? "Parakeet · on this Mac" : "\(configuration.model) · local server"
-                let raw = try await engine.transcribe(url)
+                let raw: String
+                if let recognizedText { raw = recognizedText }
+                else { raw = try await engine.transcribe(url) }
                 try Task.checkCancellation()
                 guard transcriptionID == invocation else { throw CancellationError() }
                 if let shortcutID, shortcutRequest.id != shortcutID { throw CancellationError() }
@@ -880,7 +994,7 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
                     clipboardReceipt.record(outcome: outcome, wordCount: TextRules.wordCount(result))
                     undelivered.note(outcome, text: result, from: .transcript(captureID), in: deliveryRecords)
                 }
-                phase = .idle; onPhaseChange?()
+                phase = .idle; voiceSession.phase = .completed; onPhaseChange?()
             } catch {
                 guard transcriptionID == invocation else { return }
                 if Task.isCancelled || error is CancellationError {
@@ -1558,14 +1672,6 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         }
         status = flag ? "Finished reading." : "Playback interrupted."
     }
-    nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-        Task { @MainActor in
-            guard self.recorder === recorder else { return }
-            self.cancelRecording()
-            let message = error?.localizedDescription ?? "Recording was interrupted. Please try again."
-            self.captureFailure = message; self.fail(message)
-        }
-    }
     // Dictionary saves through the same validation and phrase identity as Remember
     // correction. Add never saves a phrase twice, and a new output for a saved
     // phrase needs the explicit Update. Neither rewrites the current draft.
@@ -1825,9 +1931,19 @@ final class AppModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, A
         meetings.shutdown(); handoffJobs.shutdown()
         photoHandoffRefresh?.cancel(); photoHandoffActivation = nil; readingTask?.cancel()
         shortcutRequest.cancel(); transcriptionTask?.cancel(); transcriptionID = nil; recordingAttempt = nil
-        clipboardReceipt.clear(); coach.remove(); recorder?.stop(); recorder = nil; meter?.invalidate(); meter = nil
+        clipboardReceipt.clear(); coach.remove(); liveCapture?.requestStop(); meter?.invalidate(); meter = nil
+        if let capture = liveCapture { Task { _ = await capture.finish(recognize: false) } }
         stopPlayback(); saveNow(); AudioRenderer.remove(audioURL)
         // Quit stops work. Only a durable capture commit or explicit Cancel may
         // delete the owned audio/journal; the next launch discovers unfinished work.
+    }
+
+    /// Quit waits for the original microphone file and model reservation before exiting.
+    func prepareVoiceForShutdown() async {
+        recordingAttempt = nil
+        if let capture = liveCapture {
+            _ = await capture.finish(recognize: false)
+            liveCapture = nil
+        }
     }
 }
