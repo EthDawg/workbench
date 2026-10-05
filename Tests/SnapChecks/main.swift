@@ -266,9 +266,18 @@ let trashFixture: (URL) throws -> Void = { url in
     if failTrash { failTrash = false; throw SnapError.message("Synthetic Trash failure") }
     trashCalls.append(url); try fm.moveItem(at: url, to: trashed.appendingPathComponent(url.lastPathComponent))
 }
-var known = Set<String>()
+var known: [String: UUID] = [:]
 try rejects("a Trash failure is reported") { _ = try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture) }
 try check(fm.fileExists(atPath: olderShot.path) && (try screenshotStore.load().items.count) == 1, "the Snap is stored before the file would move")
+let committedScreenshot = try screenshotStore.load().items[0]
+let savedScreenshotFile = screenshotStore.root.appendingPathComponent(committedScreenshot.id.uuidString.lowercased()).appendingPathComponent("original.png")
+try Data("Synthetic damaged image".utf8).write(to: savedScreenshotFile)
+try rejects("a retry never trusts only the saved digest when its original was damaged") {
+    _ = try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture)
+}
+try check(fm.fileExists(atPath: olderShot.path) && trashCalls.isEmpty && (try screenshotStore.load().items.count) == 1,
+          "an unverified saved original keeps the source file and creates no duplicate")
+try png.write(to: savedScreenshotFile)
 try check(try SnapScreenshots.adopt(olderShot, store: screenshotStore, known: &known, trash: trashFixture) == nil
           && (try screenshotStore.load().items.count) == 1 && trashCalls == [olderShot],
           "retrying after a failed Trash move clears the file without a duplicate Snap")
@@ -338,6 +347,79 @@ try MainActor.assumeIsolated {
 // An open editor never stalls new screenshots (#151). The draft keeps its own
 // bytes, Save's revision check still guards an edit after History reloads, and
 // a later manual location change still pauses collecting instead of fighting it.
+// The production poll rebuilds its known images from the model. A failed Trash
+// move must still publish the Snap that was already committed, or each poll
+// writes another copy while the source file remains in the inbox (#150).
+try MainActor.assumeIsolated {
+    let location = FakeScreenshotLocation(), suite = directory.appendingPathComponent("SnapInboxRetry-" + UUID().uuidString).path,
+        preferences = UserDefaults(suiteName: suite)!
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let inbox = shots.appendingPathComponent("Inbox retry"), history = directory.appendingPathComponent("inbox-retry-history")
+    try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+    var failMove = true, attempts = 0, now: TimeInterval = 100
+    let model = SnapModel(store: SnapStore(root: history), screenshotLocation: location,
+                          preferences: preferences, screenshotInbox: inbox,
+                          trash: { url in
+                              attempts += 1
+                              if failMove && url.lastPathComponent == "Screenshot retry.png" {
+                                  now += 5 // A slow failing move still gets the full delay after it ends.
+                                  throw SnapError.message("Synthetic Trash failure")
+                              }
+                              try fm.moveItem(at: url, to: trashed.appendingPathComponent(UUID().uuidString + ".png"))
+                          }, applyScreenshotLocation: {}, clock: { now })
+    defer { model.setKeepsScreenshotsOffDesktop(false) }
+    model.setKeepsScreenshotsOffDesktop(true)
+    model.draft = SnapDraft(originalPNG: ink, source: .region, title: "Keep my edit", notes: "In progress", tags: [], edit: .init())
+    let draftID = model.draft!.id
+    model.notice = "Keep the editor message."
+    let incoming = inbox.appendingPathComponent("Screenshot retry.png")
+    try png.write(to: incoming); try markScreenCapture(incoming)
+    model.importInbox(); model.importInbox()
+    try check(attempts == 1 && fm.fileExists(atPath: incoming.path) && (try SnapStore(root: history).load().items.count) == 1,
+              "failed Trash leaves both the committed Snap and source screenshot intact")
+    for _ in 0..<3 { now += 3; model.importInbox() }
+    try check((try SnapStore(root: history).load().items.count) == 1 && model.activeCount == 1,
+              "repeated automatic imports after a Trash failure keep exactly one visible Snap")
+    try check(attempts == 1 && model.draft?.id == draftID && model.draft?.originalPNG == ink && model.notice == "Keep the editor message.",
+              "an unchanged failed move waits before retrying and preserves the open draft and its notice")
+    let savedID = model.items[0].id
+    try check(try model.store.snapshot(savedID).originalPNG == png && Data(contentsOf: incoming) == png,
+              "the saved and retained originals have the exact screenshot bytes")
+    let independent = inbox.appendingPathComponent("Screenshot independent.png")
+    try cropped.write(to: independent); try markScreenCapture(independent)
+    model.importInbox(); model.importInbox()
+    try check(model.activeCount == 2 && !fm.fileExists(atPath: independent.path) && attempts == 2,
+              "one delayed file does not hold up an independent screenshot")
+    // A same-size rewrite starts a new settling check and is not held behind
+    // the unchanged file's delay. No second copy is created if its bytes match.
+    let beforeRewrite = SnapScreenshots.FileStamp(incoming)
+    try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_800_000_000)], ofItemAtPath: incoming.path)
+    try check(SnapScreenshots.FileStamp(incoming) != beforeRewrite, "same-size rewrites change the settling stamp")
+    model.importInbox()
+    try check(attempts == 2, "a changed file must settle before retrying")
+    model.importInbox()
+    try check(attempts == 3 && model.activeCount == 2, "a settled changed file retries without waiting or duplicating")
+    now += SnapModel.inboxRetryDelay - 1
+    model.importInbox()
+    try check(attempts == 3, "a slow failure gets the full retry delay after it ends")
+    now += 1
+    model.importInbox()
+    try check(attempts == 4 && (try SnapStore(root: history).load().items.count) == 2 && fm.fileExists(atPath: incoming.path),
+              "repeated unchanged failures at the retry deadline still create no duplicates")
+    let beforeReplacement = SnapScreenshots.FileStamp(incoming)
+    try png.write(to: incoming, options: .atomic); try markScreenCapture(incoming)
+    try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_800_000_000)], ofItemAtPath: incoming.path)
+    try check(SnapScreenshots.FileStamp(incoming) != beforeReplacement,
+              "a replacement with the same size and date has a different settling identity")
+    failMove = false
+    model.importInbox()
+    try check(attempts == 4, "a replaced file waits to settle")
+    model.importInbox()
+    try check(!fm.fileExists(atPath: incoming.path) && model.items.contains { $0.id == savedID } && model.activeCount == 2 && attempts == 5,
+              "successful Trash retry keeps the same saved Snap")
+    try check(try model.store.snapshot(savedID).originalPNG == png && model.draft?.id == draftID,
+              "recovery does not change saved screenshot bytes or the active edit")
+}
 try MainActor.assumeIsolated {
     let location = FakeScreenshotLocation(), suite = directory.appendingPathComponent("SnapInboxDraft-" + UUID().uuidString).path,
         preferences = UserDefaults(suiteName: suite)!
@@ -372,10 +454,14 @@ try MainActor.assumeIsolated {
               && model.items.contains { $0.title == "Renamed while a screenshot arrived" },
               "an edit opened before adoption still saves once History has reloaded")
     model.draft = SnapDraft(originalPNG: ink, source: .window, title: "Still open", notes: "", tags: [], edit: .init())
-    location.location = "/Users/example/Manual"
+    let pausedFile = try arrive("Screenshot after manual change.png", png)
     model.importInbox()
-    try check(model.screenshotRedirectPaused && location.location == "/Users/example/Manual" && model.draft?.title == "Still open",
+    location.location = "/Users/example/Manual"
+    model.importInbox(); model.importInbox()
+    try check(model.screenshotRedirectPaused && location.location == "/Users/example/Manual" && model.draft?.title == "Still open"
+              && fm.fileExists(atPath: pausedFile.path) && model.activeCount == 3,
               "a later manual location change pauses collecting with a draft open, and is kept")
+    model.setKeepsScreenshotsOffDesktop(false)
     model.draft = nil
 }
 // Saves and exports are classified where they happen (#134 T5): a full success

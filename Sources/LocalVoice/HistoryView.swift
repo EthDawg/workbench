@@ -197,6 +197,7 @@ final class HistoryRowsCache {
     struct ShownKey: Equatable {
         var stores: Int
         var search: Int
+        var metadata = 0
         var filter: HistoryFilter
         var query: String
     }
@@ -231,7 +232,8 @@ struct HistoryView: View {
     @State private var appliedQuery = ""
     /// Bumped when a store's rows change, so the list is merged and sorted again.
     @State private var storesRevision = 0
-    /// Bumped when what a search reads changes: details, image text, task files.
+    /// Bumped when image text or task files change. Capture details have their
+    /// own revision; selecting a row does not change any searchable content.
     @State private var searchRevision = 0
     @State private var rows = HistoryRowsCache()
     @State private var expandedResult: UUID?
@@ -267,7 +269,8 @@ struct HistoryView: View {
                 snaps: Dictionary(snap.items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
                 sameSecond: Dictionary(grouping: model.history) { Int($0.date.timeIntervalSince1970.rounded(.down)) })
         }
-        let entries = rows.shown(.init(stores: storesRevision, search: searchRevision, filter: filter, query: appliedQuery)) {
+        let entries = rows.shown(.init(stores: storesRevision, search: searchRevision, metadata: library.metadataRevision,
+                                      filter: filter, query: appliedQuery)) {
             HistoryList.shown(stores.merged, filter: filter, query: appliedQuery,
                 matchTranscripts: { library.matching($0, query: $1) }, matchSnap: { snap.matches($0, query: $1) },
                 resultText: { jobs.files($0)?.inputs.task ?? "" })
@@ -319,7 +322,6 @@ struct HistoryView: View {
             .onReceive(model.$history.dropFirst()) { _ in storesRevision &+= 1 }
             .onReceive(snap.$items.dropFirst()) { _ in storesRevision &+= 1 }
             .onReceive(jobs.$jobs.dropFirst()) { _ in storesRevision &+= 1 }
-            .onReceive(library.objectWillChange) { _ in searchRevision &+= 1 }
             .onReceive(snap.$recognizedText.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(jobs.$taskFiles.dropFirst()) { _ in searchRevision &+= 1 }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

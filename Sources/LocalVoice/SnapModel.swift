@@ -101,7 +101,11 @@ final class SnapModel: ObservableObject {
     private let preferences: UserDefaults
     private let applyScreenshotLocation: () -> Void
     private var inboxTimer: Timer?
-    private var inboxSizes: [URL: Int] = [:]
+    private var inboxFiles: [URL: SnapScreenshots.FileStamp] = [:]
+    private var inboxRetryAfter: [URL: TimeInterval] = [:]
+    /// Failed imports keep their source and retry at most once a minute while
+    /// that file is unchanged. Toggling collection deliberately retries sooner.
+    static let inboxRetryDelay: TimeInterval = 60
     static let redirectKey = "workbench.snap.screenshots.redirect.v1"
     static let previousLocationKey = "workbench.snap.screenshots.previous-location.v1"
     private let captureService: any SnapImageSource
@@ -230,9 +234,12 @@ final class SnapModel: ObservableObject {
             Task { @MainActor in self?.importInbox() }
         }
     }
-    private func stopInbox() { inboxTimer?.invalidate(); inboxTimer = nil; inboxSizes.removeAll() }
+    private func stopInbox() {
+        inboxTimer?.invalidate(); inboxTimer = nil
+        inboxFiles.removeAll(); inboxRetryAfter.removeAll()
+    }
 
-    /// Imports screenshots whose size has settled since the last check. A later
+    /// Imports screenshots whose size and identity have settled since the last check. A later
     /// manual location change pauses the redirect instead of fighting it. An
     /// open editor never holds this up: the draft keeps its own bytes, and
     /// Save's revision check already guards an edit after History reloads.
@@ -241,19 +248,30 @@ final class SnapModel: ObservableObject {
         // Published only when it changes, so History and the Snap page are not redrawn every tick.
         let paused = screenshotLocation.location != screenshotInbox.path
         if paused != screenshotRedirectPaused { screenshotRedirectPaused = paused }
-        var sizes: [URL: Int] = [:], added = 0, known = Set(items.map(\.originalSHA256))
+        guard !paused else { return }
+        let previousIDs = Set(items.map(\.id)), now = clock()
+        var files: [URL: SnapScreenshots.FileStamp] = [:], attempted = false
+        var known = Dictionary(items.map { ($0.originalSHA256, $0.id) }, uniquingKeysWith: { first, _ in first })
         for file in SnapScreenshots.screenCaptures(in: screenshotInbox) {
-            let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            sizes[file] = size
-            guard inboxSizes[file] == size else { continue }
+            guard let stamp = SnapScreenshots.FileStamp(file) else { continue }
+            files[file] = stamp
+            guard inboxFiles[file] == stamp else { inboxRetryAfter[file] = nil; continue }
+            guard now >= (inboxRetryAfter[file] ?? -.infinity) else { continue }
+            attempted = true
             do {
-                if try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) != nil { added += 1 }
-                sizes[file] = nil
-            } catch { /* Left in the folder; an identical retry only clears it. */ }
+                try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash)
+                files[file] = nil; inboxRetryAfter[file] = nil
+            } catch { inboxRetryAfter[file] = clock() + Self.inboxRetryDelay }
         }
-        inboxSizes = sizes
-        guard added > 0 else { return }
+        inboxFiles = files
+        inboxRetryAfter = inboxRetryAfter.filter { files[$0.key] != nil }
+        guard attempted else { return }
+        // Adoption may have committed a Snap before its Trash move failed.
+        // Reload even after failure, both to show that saved work and to keep
+        // the next poll from creating another copy of the same screenshot.
         refresh()
+        let added = items.filter { !previousIDs.contains($0.id) }.count
+        guard added > 0 else { return }
         // While a Snap is being captured or edited, its own message stays; the new screenshots appear in the grid.
         if !isBusy { notice = added == 1 ? "A new screenshot was added to History." : "\(added) new screenshots were added to History." }
     }
@@ -278,7 +296,8 @@ final class SnapModel: ObservableObject {
         guard !importingScreenshots, !isBusy else { return [] }
         importingScreenshots = true
         defer { importingScreenshots = false }
-        var moved = 0, added: [UUID] = [], kept: [String] = [], known = Set(items.map(\.originalSHA256))
+        var moved = 0, added: [UUID] = [], kept: [String] = []
+        var known = Dictionary(items.map { ($0.originalSHA256, $0.id) }, uniquingKeysWith: { first, _ in first })
         for file in files {
             do {
                 if let item = try SnapScreenshots.adopt(file, store: store, known: &known, trash: trash) { added.append(item.id) }
