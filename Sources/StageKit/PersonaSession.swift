@@ -112,6 +112,8 @@ protocol PersonaSessionDisplaying: AnyObject {
     func shutdown()
     /// Shows or removes the voice ring around this overlay.
     func setVoiceRing(_ on: Bool)
+    /// The colour its voice ring draws in.
+    func setVoiceColor(_ color: InkColor)
     func showVoice(_ frames: [PersonaVoiceFrame])
     /// The visible edge of a look that knows its shape, for the outline and handles.
     func setOutline(_ outline: PersonaArtworkOutline?)
@@ -121,6 +123,7 @@ protocol PersonaSessionDisplaying: AnyObject {
 
 extension PersonaSessionDisplaying {
     func setVoiceRing(_ on: Bool) {}
+    func setVoiceColor(_ color: InkColor) {}
     func showVoice(_ frames: [PersonaVoiceFrame]) {}
     func setOutline(_ outline: PersonaArtworkOutline?) {}
     func reshape(image: NSImage, outline: PersonaArtworkOutline?, name: String, state: PersonaOverlayState) -> PersonaOverlayState {
@@ -153,6 +156,7 @@ final class PersonaSessionController {
     private let canSave: Bool
     private let softReveal: Bool
     private(set) var voiceRing = false
+    private(set) var voiceColor = PersonaVoiceRingLayer.usualColor
     /// Draws a frozen candidate in another look for one copy. The library checks
     /// the image is unchanged since Start; without it, copies keep their looks.
     private let draw: ((PersonaSourceSnapshot, PersonaAppearance.Shape) throws -> NSImage)?
@@ -387,6 +391,7 @@ final class PersonaSessionController {
     }
     func pause() { guard phase == .active else { return }; phase = .paused; panels.values.forEach { $0.hide() }; applyVoiceRing(); onChange?() }
     func setVoiceRing(_ on: Bool) { guard voiceRing != on else { return }; voiceRing = on; applyVoiceRing() }
+    func setVoiceColor(_ color: InkColor) { voiceColor = color; panels.values.forEach { $0.setVoiceColor(color) } }
     func showVoice(_ frames: [PersonaVoiceFrame]) { if let id = voiceTargetID { panels[id]?.showVoice(frames) } }
     func resume() { guard phase == .paused else { return }; phase = .active; render(animated: false); onChange?() }
     func end() {
@@ -440,6 +445,7 @@ final class PersonaSessionController {
                 panel = makePanel(); panels[item.id] = panel
                 panel.onSelection = { [weak self] in self?.selectInstance(item.id) }
                 panel.onPlacementChange = { [weak self] position in self?.update(item.id) { $0.placement = position } }
+                panel.setVoiceColor(voiceColor)
             }
             panel.setOutline(item.shape.outline)
             if phase == .active && item.visible {

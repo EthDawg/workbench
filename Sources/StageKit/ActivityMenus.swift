@@ -45,6 +45,24 @@ final class PersonaSizeMenuView: NSView {
     private func updateLabel() { label.stringValue = "Size \(Int((slider.doubleValue * 100).rounded()))%" }
 }
 
+/// The voice ring's colour from macOS's shared picker, as ink's is chosen.
+/// The Persona library retains this receiver for the colour panel's lifetime.
+final class PersonaVoiceColourPicker: NSObject {
+    private weak var library: PersonaLibrary?
+    init(library: PersonaLibrary) { self.library = library }
+    func show() {
+        guard let library, library.voiceAvailable else { return }
+        let panel = NSColorPanel.shared
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3)
+        panel.showsAlpha = false; panel.color = library.voiceColor.nsColor
+        panel.setTarget(self); panel.setAction(#selector(changed(_:)))
+        panel.isContinuous = true
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+    @objc private func changed(_ sender: NSColorPanel) { library?.setVoiceColor(InkColor(sender.color)) }
+}
+
 /// All ink entry points use macOS's shared picker and the same SettingsStore.
 /// The AppCoordinator retains this receiver for the colour panel's lifetime.
 final class InkColourPicker: NSObject {

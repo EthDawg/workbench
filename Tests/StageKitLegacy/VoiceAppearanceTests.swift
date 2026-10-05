@@ -1,15 +1,17 @@
 import AppKit
+import AVFoundation
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 import VoiceAppearance
 
 /// One voice appearance (#134, #158): the toolbar's compact trace and the
-/// Persona outline share a colour and state model, with an input response for
-/// the speaker and a calmer outline for the audience. These checks feed both
-/// the same synthetic sequence, hold the
+/// Persona ring share a state model and one look, dots that a voice raises
+/// into bars, with an input response for the speaker and a calmer one for the
+/// audience. These checks feed both the same synthetic sequence, hold the
 /// trace to its box, and keep the recorder's level to the 150 ms and 500 ms
-/// targets; the optional gallery renders both at their native sizes.
+/// targets; the optional gallery renders both at their native sizes, and
+/// both in motion from spoken sentences.
 final class VoiceAppearanceTests {
     /// Quiet, soft, usual, raised, then a pause: one second each, delivered
     /// ten times a second as a microphone does.
@@ -30,7 +32,7 @@ final class VoiceAppearanceTests {
         let ring = PersonaVoiceRingLayer()
         ring.increaseContrast = increaseContrast; ring.reduceMotion = reduceMotion
         ring.frame = CGRect(origin: .zero, size: canvas); ring.contentsScale = 2
-        ring.colors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: appearance)
+        ring.colors = VoiceStyle.overlayColors(chosen: PersonaVoiceRingLayer.usualColor.nsColor.cgColor)
         ring.geometry = PersonaVoiceRingGeometry(outline: outline, artwork: artwork)
         ring.layoutIfNeeded()
         return ring
@@ -66,19 +68,17 @@ final class VoiceAppearanceTests {
             frames += 1
             let a = outline.state, b = pill.envelope
             if !(0...1).contains(a.intensity) || !(0...1).contains(b.intensity) { mismatches += 1 }
-            if outline.stroke.opacity < 0.18 || pill.stroke.opacity < 0.45 { mismatches += 1 }
+            if outline.stroke.opacity < 0.34 || pill.stroke.opacity < 0.45 { mismatches += 1 }
             let segment = Self.sequence.first { tick >= $0.from && tick < $0.to }?.name ?? "pause"
             reached[segment, default: []].insert(a.visible)
             traceReached[segment, default: []].insert(b.visible)
-            // Both strokes remain within their own allowed weight range.
-            let ringShare = (geometry.width(outline.stroke) - geometry.lineWidth) / (geometry.maximumWidth - geometry.lineWidth)
-            let pillShare = (pill.lineWidth - VoiceTraceGeometry.stroke) / (VoiceTraceGeometry.heaviest - VoiceTraceGeometry.stroke)
-            if !(-0.0001...1.0001).contains(ringShare) || !(-0.0001...1.0001).contains(pillShare) { mismatches += 1 }
-            // The lobes follow the shared intensity directly: no smoothing of their own.
-            if abs(pill.amplitude - VoiceTraceGeometry.reach * CGFloat(b.intensity)) > 0.000001 { mismatches += 1 }
+            // Every bar stays within its own room: the ring's reach and the trace's tapered box.
+            let ringBars = outline.heights, pillBars = pill.heights
+            if !ringBars.allSatisfy({ (0...geometry.barReach).contains($0) }) { mismatches += 1 }
+            if !zip(pillBars, VoiceTraceGeometry.taper).allSatisfy({ $0 >= VoiceTraceGeometry.barWidth && $0 <= max(VoiceTraceGeometry.barWidth, VoiceTraceGeometry.trace.height * $1) + 0.0001 }) { mismatches += 1 }
             if frames % 12 == 0 {
-                rows.append(String(format: "%.2f s %@ intensity %.3f %@ opacity %.2f · outline %.2f pt · trace %.2f pt, lobes %.2f pt", tick, segment,
-                                   a.intensity, a.visible.rawValue, outline.stroke.opacity, geometry.width(outline.stroke), pill.lineWidth, pill.amplitude))
+                rows.append(String(format: "%.2f s %@ intensity %.3f %@ opacity %.2f · ring's tallest bar %.1f pt · trace's tallest bar %.1f pt", tick, segment,
+                                   a.intensity, a.visible.rawValue, outline.stroke.opacity, ringBars.max() ?? 0, pillBars.max() ?? 0))
             }
         }
         XCTAssertEqual(mismatches, 0, "Both responses stay within their visible and geometric limits")
@@ -92,44 +92,59 @@ final class VoiceAppearanceTests {
         XCTAssertTrue(traceReached["raised"]?.contains(.loud) ?? false)
         XCTAssertEqual(pill.envelope.visible, .quiet)
         XCTAssertEqual(outline.state.visible, .quiet, "The pause returns both to rest")
-        XCTAssertFalse(outline.isMoving || pill.envelope.isMoving, "At rest, nothing moves")
-        print("Voice appearance, audience outline and responsive input trace (\(frames) display frames, 0 out-of-range values):\n  " + rows.joined(separator: "\n  "))
+        XCTAssertFalse(outline.isMoving || pill.isMoving, "At rest, nothing moves")
+        print("Voice appearance, audience ring and responsive input trace (\(frames) display frames, 0 out-of-range values):\n  " + rows.joined(separator: "\n  "))
     }
 
-    /// The trace fits its 24 × 10 box with the heaviest stroke and tallest
-    /// lobes, beside a 4-point dot and 4-point gap, inside the compact mark's
-    /// 48 × 28 target and 12-point active height. Its three lobes stay where
-    /// they are as the voice changes, and silence is a straight line.
-    func testTraceFitsTheCompactMarkAndNeverTravels() {
-        XCTAssertEqual(VoiceTraceGeometry.size, CGSize(width: 32, height: 10))
+    /// The trace fits its 28 × 12 box, beside a 4-point dot and 4-point gap,
+    /// inside the compact mark's 48 × 28 target and 12-point active height.
+    /// Its bars are tallest in the middle and thin out to each side, a
+    /// syllable swells from the middle outward, and silence is a row of dots.
+    func testTraceFitsTheCompactMarkAndPeaksInTheMiddle() {
+        XCTAssertEqual(VoiceTraceGeometry.size, CGSize(width: 36, height: 12))
         XCTAssertTrue(VoiceTraceGeometry.size.width <= 48 && VoiceTraceGeometry.size.height <= 12, "Fits the compact mark's target and active height")
         let bounds = CGRect(x: 0, y: 0, width: 48, height: 28)
         let layout = VoiceTraceGeometry.layout(in: bounds)
         XCTAssertEqual(layout.dot.width, 4); XCTAssertEqual(layout.dot.height, 4)
         XCTAssertEqual(layout.trace.minX - layout.dot.maxX, 4, "A 4-point gap")
         XCTAssertEqual(Double(layout.dot.midY), Double(layout.trace.midY), accuracy: 0.001)
-        let tallest = VoiceTraceGeometry.path(in: layout.trace, amplitude: VoiceTraceGeometry.reach)
-        let inked = tallest.copy(strokingWithWidth: VoiceTraceGeometry.heaviest, lineCap: .round, lineJoin: .round, miterLimit: 10).boundingBoxOfPath
-        XCTAssertTrue(layout.trace.insetBy(dx: -0.01, dy: -0.01).contains(inked), "The tallest, heaviest trace stays inside its box (\(inked))")
-        XCTAssertTrue(bounds.contains(inked.union(layout.dot)))
-        let flat = VoiceTraceGeometry.path(in: layout.trace, amplitude: 0).boundingBoxOfPath
-        XCTAssertTrue(flat.height < 0.0001, "Silence is a straight line (\(flat.height))")
-        // Three lobes, in place: the same crossings and peaks at every reach.
-        func extremes(_ amplitude: CGFloat) -> [CGFloat] {
-            let values: [CGFloat] = (0...240).map { step in VoiceTraceGeometry.shape(CGFloat(step) / 240) * amplitude }
-            var found: [CGFloat] = []
-            for index in 1..<240 {
-                let before: CGFloat = values[index] - values[index - 1], after: CGFloat = values[index + 1] - values[index]
-                if before * after < 0 { found.append(CGFloat(index) / 240) }
-            }
-            return found
-        }
-        let peaks = extremes(VoiceTraceGeometry.reach)
-        XCTAssertEqual(peaks.count, 3, "Three lobes (\(peaks))")
-        XCTAssertEqual(extremes(1), peaks, "A quieter voice keeps the lobes where they are")
-        XCTAssertEqual(Double(VoiceTraceGeometry.shape(0.5)), 1, accuracy: 0.0001)
-        XCTAssertTrue(VoiceTraceGeometry.shape(peaks[0]) < 0 && VoiceTraceGeometry.shape(peaks[2]) < 0, "Shallow outer lobes either side of a taller middle")
-        XCTAssertTrue(abs(VoiceTraceGeometry.shape(peaks[0])) < 0.8)
+        XCTAssertEqual(VoiceTraceGeometry.taper.count, VoiceTraceGeometry.bars)
+        let middle = VoiceTraceGeometry.bars / 2
+        XCTAssertEqual(VoiceTraceGeometry.taper[middle], 1, "The middle bar may take the whole height")
+        XCTAssertTrue((0..<middle).allSatisfy { VoiceTraceGeometry.taper[$0] < VoiceTraceGeometry.taper[$0 + 1] }, "Bars thin out to the left")
+        XCTAssertEqual(VoiceTraceGeometry.taper, Array(VoiceTraceGeometry.taper.reversed()), "And to the right alike")
+        // The tallest waveform stays inside its box, and the box inside the mark.
+        let tallest = VoiceTraceGeometry.path(in: layout.trace, heights: VoiceTraceGeometry.taper.map { $0 * 100 }).boundingBoxOfPath
+        XCTAssertTrue(layout.trace.insetBy(dx: -0.01, dy: -0.01).contains(tallest), "The tallest bars stay inside the box (\(tallest))")
+        XCTAssertTrue(bounds.contains(tallest.union(layout.dot)))
+        // Silence is a row of dots: every bar as tall as it is wide.
+        var wave = VoiceWave(starvation: nil, response: .input)
+        XCTAssertTrue(VoiceTraceGeometry.heights(wave, reduceMotion: false).allSatisfy { $0 == VoiceTraceGeometry.barWidth }, "Silence is a row of dots")
+        let dots = VoiceTraceGeometry.path(in: layout.trace, heights: VoiceTraceGeometry.heights(wave, reduceMotion: false)).boundingBoxOfPath
+        XCTAssertEqual(Double(dots.height), Double(VoiceTraceGeometry.barWidth), accuracy: 0.0001)
+        XCTAssertEqual(Double(dots.width), Double(layout.trace.width), accuracy: 0.0001)
+        // A syllable swells from the middle and reaches the ends a moment later.
+        wave.receive(1, at: 0)
+        wave.advance(to: 0.05)
+        let early = VoiceTraceGeometry.heights(wave, reduceMotion: false)
+        XCTAssertTrue(early[middle] > VoiceTraceGeometry.barWidth * 2 && early[0] == VoiceTraceGeometry.barWidth, "The middle rises first (\(early))")
+        for step in 4...36 { wave.advance(to: Double(step) / 60) }
+        let full = VoiceTraceGeometry.heights(wave, reduceMotion: false)
+        XCTAssertTrue(full[middle] > full[0] && full[middle] > full[VoiceTraceGeometry.bars - 1] && full[0] > VoiceTraceGeometry.barWidth, "Then the whole row stands, tallest in the middle (\(full))")
+        XCTAssertTrue(Set(full.map { ($0 * 4).rounded() }).count >= 4, "Bars differ: never one bar repeated")
+        // The voice ends: the row sinks back to dots and the wave rests.
+        wave.receive(0, at: 0.6)
+        for step in 37...100 { wave.advance(to: Double(step) / 60) }
+        XCTAssertFalse(wave.isMoving, "Without a voice nothing moves")
+        XCTAssertTrue(VoiceTraceGeometry.heights(wave, reduceMotion: false).allSatisfy { $0 == VoiceTraceGeometry.barWidth })
+        // Energies that arrive together play in turn, and a stalled source never builds a backlog.
+        var batched = VoiceWave(starvation: 0.35, response: .speaker)
+        batched.receive([1, 0, 1, 0, 1], spacing: 0.02, at: 10)
+        var seen: [Double] = []
+        for step in 1...8 { batched.advance(to: 10 + Double(step) * 0.0125); seen.append(batched.level()) }
+        XCTAssertTrue(zip(seen, seen.dropFirst()).contains { $1 < $0 } && zip(seen, seen.dropFirst()).contains { $1 > $0 }, "Each energy of a buffer shows in its turn (\(seen))")
+        for step in 0..<80 { batched.advance(to: 10.1 + Double(step) / 60) }
+        XCTAssertFalse(batched.isMoving, "A source that stops sending settles")
     }
 
     /// The same syllables give prompt input feedback and a calmer audience outline.
@@ -165,11 +180,11 @@ final class VoiceAppearanceTests {
         let level = Double(-50 + 55) / 55
         view.receive(level: level, at: 1)
         for step in 1...6 { view.advance(to: 1 + Double(step) / 60) }
-        XCTAssertTrue(view.amplitude > 0.8, "Soft microphone input visibly moves the trace")
+        XCTAssertTrue((view.heights.max() ?? 0) > VoiceTraceGeometry.barWidth + 0.3, "Soft microphone input visibly raises the trace (\(view.heights))")
         XCTAssertTrue(view.envelope.visible != .quiet, "Input appears within 100 ms")
         view.receive(level: 0, at: 1.1)
         for step in 1...30 { view.advance(to: 1.1 + Double(step) / 60) }
-        XCTAssertEqual(view.amplitude, 0, "Silence settles the input trace")
+        XCTAssertTrue(view.heights.allSatisfy { $0 == VoiceTraceGeometry.barWidth }, "Silence settles the input trace to dots")
         view.receive(level: nil, at: 1.7)
         XCTAssertFalse(view.envelope.isMoving, "Missing input never creates motion")
     }
@@ -192,11 +207,11 @@ final class VoiceAppearanceTests {
         }
         run(1, level: 0.05)
         XCTAssertFalse(view.envelope.isMoving, "A quiet room never moves the trace")
-        XCTAssertEqual(view.amplitude, 0); XCTAssertEqual(view.lineWidth, VoiceTraceGeometry.stroke)
+        XCTAssertTrue(view.heights.allSatisfy { $0 == VoiceTraceGeometry.barWidth }, "A row of dots")
         run(1, level: nil)
         XCTAssertFalse(view.envelope.isMoving, "No level, no motion")
         run(0.6, level: 0.55)
-        XCTAssertTrue(view.envelope.isMoving && view.amplitude > VoiceTraceGeometry.reach * 0.6, "A voice raises the lobes")
+        XCTAssertTrue(view.envelope.isMoving && (view.heights.max() ?? 0) > VoiceTraceGeometry.trace.height * 0.4, "A voice raises the bars (\(view.heights))")
         // The level stops changing but stays loud: the voice is still shown.
         view.receive(level: 0.55, at: clock)
         for _ in 0..<60 { clock += 1.0 / 60; view.advance(to: clock) }
@@ -206,16 +221,16 @@ final class VoiceAppearanceTests {
         var stoppedAt: Double?
         for _ in 0..<60 where stoppedAt == nil { clock += 1.0 / 60; if !view.advance(to: clock) { stoppedAt = clock } }
         XCTAssertTrue(stoppedAt != nil, "After a voice it settles and display updates stop")
-        XCTAssertEqual(view.amplitude, 0)
-        // Reduce Motion: the lobes hold one shape; brightness alone says a voice is heard.
+        XCTAssertTrue(view.heights.allSatisfy { $0 == VoiceTraceGeometry.barWidth })
+        // Reduce Motion: the bars hold one still waveform; brightness alone says a voice is heard.
         view.reduceMotion = true
-        let still = view.amplitude
+        let still = view.heights
+        XCTAssertTrue(still[VoiceTraceGeometry.bars / 2] > still[0], "A still waveform, tallest in the middle")
         run(0.6, level: 0.7)
-        XCTAssertEqual(view.amplitude, still, "Reduce Motion keeps the trace's shape")
-        XCTAssertEqual(view.lineWidth, VoiceTraceGeometry.stroke)
+        XCTAssertEqual(view.heights, still, "Reduce Motion keeps the trace's shape")
         XCTAssertTrue(view.stroke.opacity > 0.9, "A voice brightens it")
         run(1, level: 0)
-        XCTAssertEqual(view.amplitude, still)
+        XCTAssertEqual(view.heights, still)
         XCTAssertEqual(view.stroke.opacity, VoiceStyle.restOpacity(increaseContrast: false), accuracy: 0.0001)
     }
 
@@ -358,7 +373,7 @@ final class VoiceAppearanceTests {
         let circleImage: CGImage, cardImage: CGImage
         let circleRect: CGRect, cardRect: CGRect, markRect: CGRect, zoomRect: CGRect
         let circleCanvas: CGRect, cardCanvas: CGRect
-        static let size = CGSize(width: 660, height: 480)
+        static let size = CGSize(width: 720, height: 540)
         let busyImage: CGImage?
         var clock = 100.0
 
@@ -379,11 +394,11 @@ final class VoiceAppearanceTests {
             let circleInsets = PersonaVoiceRingGeometry(outline: circleOutline, artwork: CGRect(x: 0, y: 0, width: 96, height: 96)).outsets
             let cardSize = CGSize(width: 300, height: 375)
             let cardInsets = PersonaVoiceRingGeometry(outline: cardOutline, artwork: CGRect(origin: .zero, size: cardSize)).outsets
-            circleCanvas = CGRect(x: 40, y: 240, width: 96 + circleInsets.left + circleInsets.right, height: 96 + circleInsets.top + circleInsets.bottom)
+            circleCanvas = CGRect(x: 30, y: 250, width: 96 + circleInsets.left + circleInsets.right, height: 96 + circleInsets.top + circleInsets.bottom)
             circleRect = CGRect(x: circleInsets.left, y: circleInsets.bottom, width: 96, height: 96)
-            cardCanvas = CGRect(x: 300, y: 40, width: cardSize.width + cardInsets.left + cardInsets.right, height: cardSize.height + cardInsets.top + cardInsets.bottom)
+            cardCanvas = CGRect(x: 310, y: 30, width: cardSize.width + cardInsets.left + cardInsets.right, height: cardSize.height + cardInsets.top + cardInsets.bottom)
             cardRect = CGRect(x: cardInsets.left, y: cardInsets.bottom, width: cardSize.width, height: cardSize.height)
-            markRect = CGRect(x: 64, y: 400, width: 48, height: 28)
+            markRect = CGRect(x: 64, y: 460, width: 48, height: 28)
             zoomRect = CGRect(x: 40, y: 80, width: 48 * 4, height: 28 * 4)
             circle = tests.ring(circleOutline, artwork: circleRect, canvas: circleCanvas.size, appearance: appearance, increaseContrast: increaseContrast, reduceMotion: reduceMotion)
             card = tests.ring(cardOutline, artwork: cardRect, canvas: cardCanvas.size, appearance: appearance, increaseContrast: increaseContrast, reduceMotion: reduceMotion)
@@ -489,6 +504,70 @@ final class VoiceAppearanceTests {
             print("Voice appearance gallery: " + url.path)
         }
         try recordMotion(to: directory.appendingPathComponent("voice-appearance-motion.gif"))
+        try recordSpeech(to: directory)
+    }
+
+    /// Sentences spoken by the Mac's own voice (written with `say -o`, never
+    /// played) through both surfaces as each really hears a voice: the Persona
+    /// analyser from 100 ms microphone buffers, and the trace from a recorder's
+    /// level read every 80 ms. Writes the motion at 30 frames a second, each
+    /// frame as a still, and a sheet of moments a quarter of a second apart.
+    private func recordSpeech(to directory: URL) throws {
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/say") else { return }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("VoiceWaveSay-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("speech.wav")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+        process.arguments = ["-v", "Samantha", "--file-format=WAVE", "--data-format=LEF32@48000", "-o", file.path,
+                             "So, here is the plan. First, open the settings. Then look at the numbers: seven of them are ready."]
+        try process.run(); process.waitUntilExit()
+        guard process.terminationStatus == 0, let audio = try? AVAudioFile(forReading: file),
+              let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: AVAudioFrameCount(audio.length)) else { return }
+        try audio.read(into: buffer)
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        var fixture = PersonaVoiceLatencyTests.Fixture("speech")
+        fixture.room(0.7, -62)
+        fixture.recorded(Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))), -28, room: -62)
+        fixture.room(1.2, -62)
+        let samples = fixture.samples, rate = fixture.rate
+        let analyzer = PersonaVoiceAnalyzer(sampleRate: rate)
+        let microphone = Int(rate * 0.1), meter = Int(rate * 0.08)
+        let top = try Scene(background: .dark, appearance: Self.dark), bottom = try Scene(background: .busy, appearance: Self.light)
+        let frames = Int(Double(samples.count) / rate * 60)
+        let url = directory.appendingPathComponent("voice-appearance-speech.gif")
+        guard let gif = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, (frames + 1) / 2, nil) else { throw PersonaError.unreadableImage }
+        CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let stills = directory.appendingPathComponent("speech-frames")
+        try FileManager.default.createDirectory(at: stills, withIntermediateDirectories: true)
+        var heard = 0, metered = 0, strip: [CGImage] = []
+        for frame in 0..<frames {
+            let sample = Int(Double(frame) / 60 * rate)
+            // A microphone buffer arrives once its last sample has been heard.
+            while heard + microphone <= sample {
+                let voice = samples[heard..<heard + microphone].withUnsafeBufferPointer { analyzer.process($0) }
+                for scene in [top, bottom] { scene.circle.receive(voice, at: scene.clock); scene.card.receive(voice, at: scene.clock) }
+                heard += microphone
+            }
+            // The recorder's meter: the average power of the last 80 ms, over 55 dB.
+            while metered + meter <= sample {
+                let power = samples[metered..<metered + meter].reduce(Float(0)) { $0 + $1 * $1 } / Float(meter)
+                let level = Double(max(0, min(1, (10 * log10(max(1e-12, power)) + 55) / 55)))
+                for scene in [top, bottom] { scene.pill.receive(level: level, at: scene.clock); scene.pillZoom.receive(level: level, at: scene.clock) }
+                metered += meter
+            }
+            top.advance(1.0 / 60); bottom.advance(1.0 / 60)
+            guard frame % 2 == 0 else { continue }
+            let image = try Self.grid([try top.snapshot(scale: 1), try bottom.snapshot(scale: 1)], columns: 1)
+            CGImageDestinationAddImage(gif, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / 30]] as CFDictionary)
+            try png(try top.snapshot(scale: 2), to: stills.appendingPathComponent(String(format: "frame-%04d.png", frame / 2)))
+            // Eight moments from inside the sentences, a quarter of a second apart.
+            if frame >= 66 && (frame - 66) % 16 == 0 && strip.count < 8 { strip.append(try top.snapshot(scale: 1)) }
+        }
+        guard CGImageDestinationFinalize(gif) else { throw PersonaError.unreadableImage }
+        try png(Self.grid(strip, columns: 4), to: directory.appendingPathComponent("voice-appearance-speech-strip.png"))
+        print("Voice appearance, spoken sentences: " + url.path)
     }
 
     /// The shared sequence through both surfaces at 30 frames a second, dark

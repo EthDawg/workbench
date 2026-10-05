@@ -126,6 +126,7 @@ final class PersonaOverlayController: NSWindowController, PersonaSessionDisplayi
         artwork.ringOn = on
         if window?.isVisible == true { position() }
     }
+    func setVoiceColor(_ color: InkColor) { artwork.ringColor = color }
     func showVoice(_ frames: [PersonaVoiceFrame]) { artwork.showVoice(frames) }
     /// The visible edge the voice outline follows. nil measures it from the
     /// artwork's pixels; an appearance that knows its shape passes it in.
@@ -352,6 +353,8 @@ private final class PersonaArtworkView: NSView {
     var onSelection: (() -> Void)?
     /// Off leaves the artwork exactly as it was: no room, layer or microphone.
     var ringOn = false { didSet { if ringOn != oldValue { ringChanged() } } }
+    /// The colour the presenter chose for the ring.
+    var ringColor = PersonaVoiceRingLayer.usualColor { didSet { if ringColor != oldValue, ringOn { applyDisplayOptions() } } }
     /// A live source drawn in the artwork's place, with the proportions the
     /// window is sized from: its owner keeps the layer running and releases it.
     var live: (layer: CALayer, aspect: CGSize)? {
@@ -421,7 +424,6 @@ private final class PersonaArtworkView: NSView {
         super.viewDidChangeBackingProperties()
         artworkChanged()
     }
-    /// The voice colour follows Workbench's appearance, light or dark.
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         if ringOn { applyDisplayOptions() }
@@ -511,12 +513,12 @@ private final class PersonaArtworkView: NSView {
         needsLayout = true
     }
 
-    /// Reduce Motion, Increase Contrast and the voice colour: Workbench's accent
-    /// in this persona's appearance, the same colour as every voice surface.
+    /// Reduce Motion, Increase Contrast and the ring's colour: the one the
+    /// presenter chose, with a rim that keeps it readable on any content.
     private func applyDisplayOptions() {
         ring.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         ring.increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        ring.colors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: effectiveAppearance)
+        ring.colors = VoiceStyle.overlayColors(chosen: ringColor.nsColor.cgColor)
     }
 
     /// The display link runs only while the outline is lit or easing.
