@@ -32,23 +32,26 @@ final class PersonaVoiceTests {
         var onSelection: (() -> Void)?
         var frame: CGRect? = CGRect(x: 0, y: 0, width: 80, height: 80)
         var ring = false
+        var color: InkColor?
         var heard: [PersonaVoiceFrame] = []
         func show(image: NSImage, name: String, state: PersonaOverlayState, animated: Bool) -> PersonaOverlayState { state }
         func configure(image: NSImage, name: String, state: PersonaOverlayState) {}
         func hide() {}
         func shutdown() { ring = false }
         func setVoiceRing(_ on: Bool) { ring = on }
+        func setVoiceColor(_ color: InkColor) { self.color = color }
         func showVoice(_ frames: [PersonaVoiceFrame]) { heard += frames }
     }
     private final class Displays { var made: [Display] = [] }
     /// The remembered choice, in memory: no preference file is written (#128).
-    private final class Choice { var saved = false }
+    private final class Choice { var saved = false; var color: InkColor? }
 
     private func access(_ microphones: Microphones, _ defaults: Choice) -> PersonaVoiceAccess {
         PersonaVoiceAccess(permission: { microphones.permission },
                            requestPermission: { microphones.requests.append($0) },
                            makeSource: { let microphone = Microphone(); microphone.failure = microphones.failure; microphones.made.append(microphone); return microphone },
-                           savedChoice: { defaults.saved }, saveChoice: { defaults.saved = $0 })
+                           savedChoice: { defaults.saved }, saveChoice: { defaults.saved = $0 },
+                           savedColor: { defaults.color }, saveColor: { defaults.color = $0 })
     }
     private func fixture(_ microphones: Microphones, _ defaults: Choice, _ displays: Displays) throws -> (URL, PersonaLibrary, UUID, [UUID]) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("PersonaVoice-" + UUID().uuidString)
@@ -207,7 +210,7 @@ final class PersonaVoiceTests {
         let geometry = PersonaVoiceRingGeometry(outline: .roundedRect(CGRect(x: 0, y: 0, width: 1, height: 1.25), radius: 0.06),
                                                 artwork: CGRect(origin: .zero, size: placed.size))
         let insets = geometry.outsets
-        XCTAssertGreaterThan(insets.left, geometry.gap + geometry.maximumWidth, "The outline has room beyond a full-bleed card")
+        XCTAssertGreaterThan(insets.left, geometry.gap + geometry.barWidth + geometry.barReach, "The ring's tallest bar has room beyond a full-bleed card")
         for (x, y) in [(0.0, 0.0), (0.98, 0.02), (0.5, 0.5), (1.0, 1.0)] {
             let frame = PersonaOverlayController.placedFrame(placed, insets: insets, x: x, y: y, in: available)
             XCTAssertTrue(available.insetBy(dx: -0.5, dy: -0.5).contains(frame), "The ring stays on screen at \(x), \(y)")
@@ -399,51 +402,99 @@ final class PersonaVoiceTests {
     /// One voice colour: Workbench's accent as the appearance shows it, whatever
     /// the artwork's colours, with a rim of the accent as the opposite appearance
     /// shows it, so the line reads on light and dark content.
-    func testOutlineUsesWorkbenchsAccentWhateverTheArtwork() throws {
+    /// The ring is the colour the presenter chose, mint to begin with,
+    /// whatever the artwork, and the choice is remembered and reaches every
+    /// overlay without touching the microphone.
+    func testRingIsTheChosenColourWhateverTheArtwork() throws {
         func rgb(_ color: CGColor) -> [Double] {
             (color.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)?.components ?? []).prefix(3).map { (Double($0) * 1000).rounded() / 1000 }
         }
-        let light = NSAppearance(named: .aqua)!, dark = NSAppearance(named: .darkAqua)!
-        let lightColors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: light)
-        let darkColors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: dark)
-        XCTAssertEqual(rgb(lightColors.line), [0.04, 0.43, 0.32], "Light appearance: the deep accent")
-        XCTAssertEqual(rgb(darkColors.line), [0.43, 0.89, 0.73], "Dark appearance: the bright accent")
-        XCTAssertEqual(rgb(lightColors.rim), rgb(darkColors.line), "Its rim is the accent of the other appearance")
-        XCTAssertEqual(rgb(darkColors.rim), rgb(lightColors.line))
-        // The artwork's own colours no longer choose the outline's.
+        let mint = VoiceStyle.overlayColors(chosen: InkColor.mint.nsColor.cgColor)
+        XCTAssertEqual(rgb(mint.line), [0.24, 0.89, 0.66], "Mint draws as mint")
+        XCTAssertTrue(rgb(mint.rim).max()! < 0.3, "A light colour gets a dark rim of its own hue (\(rgb(mint.rim)))")
+        let black = VoiceStyle.overlayColors(chosen: InkColor.black.nsColor.cgColor)
+        XCTAssertTrue(rgb(black.rim).min()! > 0.75, "A dark colour gets a light rim (\(rgb(black.rim)))")
+        // The artwork's own colours never choose the ring's.
         let controller = PersonaOverlayController(pointer: PersonaTestPointer())
         defer { controller.shutdown() }
-        controller.window?.appearance = dark
         controller.setVoiceRing(true)
+        func ring() -> PersonaVoiceRingLayer? { controller.window?.contentView?.layer?.sublayers?.compactMap({ $0 as? PersonaVoiceRingLayer }).first }
         for artwork in [Self.badge(), NSImage(size: CGSize(width: 120, height: 120), flipped: false) { rect in NSColor.systemPurple.setFill(); rect.fill(); return true }] {
             _ = controller.show(image: artwork, name: "Synthetic persona", state: PersonaOverlayState(x: 0.5, y: 0.5, width: 0.1))
             controller.window?.contentView?.layoutSubtreeIfNeeded()
-            guard let ring = controller.window?.contentView?.layer?.sublayers?.compactMap({ $0 as? PersonaVoiceRingLayer }).first else {
-                XCTAssertTrue(false, "The outline layer is there"); return
-            }
-            XCTAssertEqual(rgb(ring.colors.line), rgb(darkColors.line), "Every persona's outline is the accent")
+            guard let ring = ring() else { XCTAssertTrue(false, "The ring layer is there"); return }
+            XCTAssertEqual(rgb(ring.colors.line), rgb(mint.line), "Every persona's ring starts mint")
         }
+        controller.setVoiceColor(.coral)
+        XCTAssertEqual(ring().map { rgb($0.colors.line) } ?? [], [1, 0.29, 0.31], "A chosen colour reaches the shown ring at once")
+
+        // The library remembers the choice and hands it to every overlay of a set.
+        let defaults = Choice(), microphones = Microphones(), displays = Displays()
+        let (root, library, group, _) = try fixture(microphones, defaults, displays)
+        defer { library.shutdown(); try? FileManager.default.removeItem(at: root) }
+        XCTAssertEqual(library.voiceColor, .mint)
+        library.setVoiceColor(.violet)
+        XCTAssertEqual(defaults.color, .violet, "The choice is remembered")
+        XCTAssertTrue(microphones.made.isEmpty, "Choosing a colour never opens the microphone")
+        try library.startOverlaySession(groupIDs: [group], initialGroupID: group)
+        XCTAssertTrue(!displays.made.isEmpty && displays.made.allSatisfy { $0.color == .violet }, "Every overlay in a set gets the chosen colour")
+        library.setVoiceColor(.blue)
+        XCTAssertTrue(displays.made.allSatisfy { $0.color == .blue }, "A new choice reaches a running set")
+        let again = PersonaLibrary(root: root, sessionPanelFactory: { Display() }, sessionHUDEnabled: false, voice: access(microphones, defaults))
+        defer { again.shutdown() }
+        XCTAssertEqual(again.voiceColor, .blue, "The next launch starts with it")
     }
 
-    func testOutlineGeometryHugsTheArtworkAndScalesWithIt() {
+    func testRingGeometryHugsTheArtworkAndScalesWithIt() {
         let small = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 0, y: 0, width: 120, height: 120))
         let large = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 0, y: 0, width: 480, height: 480))
-        XCTAssertGreaterThan(large.lineWidth, small.lineWidth, "A larger persona gets a heavier line")
-        XCTAssertTrue([small, large].allSatisfy { (1.25...3).contains($0.lineWidth) && $0.maximumWidth <= $0.lineWidth * 1.9 + 0.001 }, "The line stays fine at any size")
-        // The line's inner edge keeps a clear gap from the artwork at every width.
-        for width in [small.lineWidth, small.maximumWidth] {
-            let path = small.path(width: width).boundingBoxOfPath
-            XCTAssertEqual(Double(path.width / 2 - width / 2), Double(60 + small.gap), accuracy: 0.01)
+        XCTAssertTrue(large.barWidth > small.barWidth && large.barReach > small.barReach, "A larger persona gets bolder dots and taller bars")
+        XCTAssertTrue([small, large].allSatisfy { (2...3.5).contains($0.barWidth) && $0.barReach <= 34 }, "Dots stay fine and bars bounded at any size")
+        for geometry in [small, large] {
+            // The dots share the edge exactly: no seam where the ring closes.
+            let around = geometry.outline.perimeter(outset: geometry.foot).length
+            XCTAssertEqual(Double(geometry.barPitch * CGFloat(geometry.barCount)), Double(around), accuracy: 0.001)
+            XCTAssertTrue(geometry.barPitch >= geometry.barWidth * 2, "Dots stand clear of each other (\(geometry.barPitch))")
         }
+        // At rest the dots keep a clear gap from the artwork, and nothing reaches toward it.
+        let resting = small.ring(nil).copy(strokingWithWidth: small.barWidth, lineCap: .round, lineJoin: .round, miterLimit: 10).boundingBoxOfPath
+        XCTAssertEqual(Double(resting.width / 2), Double(60 + small.gap + small.barWidth), accuracy: 0.1)
+        // The loudest voice: every bar at its full reach still fits the room the window makes.
+        var loudest = VoiceSpectrum()
+        loudest.receive([[Double](repeating: 1, count: loudest.count)], spacing: 0, at: 0)
+        for step in 1...12 { loudest.advance(to: Double(step) / 60) }
+        let tallest = small.ring(loudest).copy(strokingWithWidth: small.barWidth + 2 * PersonaVoiceRingGeometry.rimWidth(increaseContrast: true),
+                                               lineCap: .round, lineJoin: .round, miterLimit: 10).boundingBoxOfPath
+        let room = CGRect(x: -small.outsets.left, y: -small.outsets.bottom, width: 120 + small.outsets.left + small.outsets.right, height: 120 + small.outsets.top + small.outsets.bottom)
+        XCTAssertTrue(room.contains(tallest), "Nothing is clipped at the loudest (\(tallest) in \(room))")
+        XCTAssertGreaterThan(Double(tallest.width), Double(resting.width + small.barReach), "Bars reach outward")
+        let inner = (0..<small.barCount).map { bar in small.outline.perimeter(outset: small.foot).point(at: 0.5 + (CGFloat(bar) + 0.5) / CGFloat(small.barCount)).point }
+        XCTAssertTrue(inner.allSatisfy { hypot($0.x - 60, $0.y - 60) >= 60 + small.gap }, "Every bar starts outside the gap")
         XCTAssertEqual(Double(small.outsets.left), Double(small.outsets.right), accuracy: 1)
         XCTAssertEqual(Double(small.outsets.top), Double(small.outsets.bottom), accuracy: 1)
-        XCTAssertTrue([small, large].allSatisfy { $0.outsets.left <= 20 }, "The window grows by a few points, not by long bars (\(large.outsets.left))")
-        let extent = small.gap + small.maximumWidth + PersonaVoiceRingGeometry.rimWidth(increaseContrast: true) + small.glowRadius
-        XCTAssertGreaterThan(Double(small.outsets.left), Double(extent), "Nothing is clipped at the loudest")
+        // The voice's range wanders around the ring and closes on itself, with no seam and no gaps.
+        XCTAssertEqual(PersonaVoiceRingGeometry.range(at: 0), PersonaVoiceRingGeometry.range(at: 1), accuracy: 0.000001)
+        let places = (0...720).map { PersonaVoiceRingGeometry.range(at: Double($0) / 720) }
+        XCTAssertTrue(places.min()! < 0.08 && places.max()! > 0.92, "The whole range is shown (\(places.min()!)...\(places.max()!))")
+        XCTAssertTrue(zip(places, places.dropFirst()).allSatisfy { abs($0 - $1) < 0.04 }, "Neighbouring bars show neighbouring sounds")
         // A badge circle inside its picture needs less room than a full-bleed card.
         let badge = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.536), radius: 0.357), artwork: CGRect(x: 0, y: 0, width: 240, height: 240))
         let card = PersonaVoiceRingGeometry(outline: .roundedRect(CGRect(x: 0, y: 0, width: 1, height: 1), radius: 0.06), artwork: CGRect(x: 0, y: 0, width: 240, height: 240))
         XCTAssertGreaterThan(card.outsets.left, badge.outsets.left)
+        // A rounded rectangle's edge is walked once around, outward all the way.
+        let edge = PersonaArtworkOutline.roundedRect(CGRect(x: 0, y: 0, width: 100, height: 60), radius: 20).perimeter(outset: 4)
+        // Grown by 4 the corners round by 24: two 60-point and two 20-point sides between them.
+        XCTAssertEqual(Double(edge.length), Double(2 * 60 + 2 * 20 + 2 * CGFloat.pi * 24), accuracy: 0.001)
+        var corners: [CGFloat] = []
+        for step in 0..<200 {
+            let (point, outward, corner) = edge.point(at: CGFloat(step) / 200)
+            corners.append(corner)
+            XCTAssertTrue(CGRect(x: -4.001, y: -4.001, width: 108.002, height: 68.002).contains(point), "On the grown edge (\(point))")
+            XCTAssertEqual(Double(hypot(outward.dx, outward.dy)), 1, accuracy: 0.0001)
+            XCTAssertTrue((point.x - 50) * outward.dx + (point.y - 30) * outward.dy > 0, "Outward points away from the artwork")
+        }
+        XCTAssertTrue(corners.allSatisfy { (0...1).contains($0) } && corners.max()! > 0.95 && corners.filter { $0 == 0 }.count > 80, "Corners are known, so bars can stand shorter where they fan apart")
+        XCTAssertEqual(small.outline.perimeter(outset: 0).point(at: 0.3).corner, 0, "A circle has no corners")
         // The outline value the handles share: containment and bounds.
         let circle = PersonaArtworkOutline.circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.4).placed(in: CGRect(x: 10, y: 20, width: 100, height: 100))
         XCTAssertEqual(circle.bounds, CGRect(x: 20, y: 30, width: 80, height: 80))
@@ -454,30 +505,34 @@ final class PersonaVoiceTests {
         XCTAssertFalse(rounded.contains(CGPoint(x: 2, y: 2)), "A rounded corner's outside is not artwork")
     }
 
-    func testOutlineSleepsInSilenceAndLightsOnTheFirstSyllable() {
+    func testRingSleepsInSilenceAndRisesOnTheFirstSyllable() {
         let ring = PersonaVoiceRingLayer()
         // Both default to the Mac's own accessibility settings; CI's runner may have Reduce Motion on.
         ring.increaseContrast = false; ring.reduceMotion = false
         ring.frame = CGRect(x: 0, y: 0, width: 300, height: 300)
         ring.geometry = PersonaVoiceRingGeometry(outline: .circle(center: CGPoint(x: 0.5, y: 0.5), radius: 0.5), artwork: CGRect(x: 50, y: 50, width: 200, height: 200))
         let paths = { ring.sublayers?.compactMap { $0 as? CAShapeLayer } ?? [] }
-        let line = { paths().last! }
-        let resting = (width: line().lineWidth, opacity: line().opacity)
-        XCTAssertEqual(paths().filter { $0.path != nil }.count, 2, "At rest a still line and its rim show it is listening")
-        XCTAssertEqual(line().shadowOpacity, 0, "No glow at rest")
+        let bars = { paths().last! }
+        let resting = (opacity: bars().opacity, box: bars().path?.boundingBoxOfPath ?? .zero)
+        XCTAssertEqual(paths().filter { $0.path != nil }.count, 2, "At rest a ring of dots and its rim show it is listening")
+        XCTAssertTrue(ring.heights.allSatisfy { $0 == 0 }, "At rest every bar is a dot")
         let quiet = PersonaVoiceFrame.quiet.lasting(0.021)
         var changes: [VoiceEnvelope.Visible] = []
         ring.onVisibleChange = { state, _ in changes.append(state) }
         var clock = 100.0
         for _ in 0..<40 { ring.receive([quiet, quiet, quiet, quiet, quiet], at: clock); clock += 0.1; ring.advance(to: clock) }
         XCTAssertFalse(ring.isMoving, "Silence never wakes the display link")
-        XCTAssertEqual(line().lineWidth, resting.width); XCTAssertEqual(line().opacity, resting.opacity)
-        let voice = PersonaVoiceFrame(level: 0.5, speaking: true, seconds: 0.021)
-        ring.receive([quiet, voice], at: clock)
+        XCTAssertEqual(bars().opacity, resting.opacity); XCTAssertEqual(bars().path?.boundingBoxOfPath, resting.box)
+        // A voice: a vowel's spectrum at a usual level, as the analyser hands it over.
+        func voice(_ level: Float, _ energy: Float) -> PersonaVoiceFrame {
+            // A vowel has no sound in the upper part of the voice's range.
+            PersonaVoiceFrame(level: level, speaking: true, seconds: 0.021, energy: energy,
+                              bands: VoiceSpectrum.vowel(Double(energy)).enumerated().map { $0.offset < VoiceSpectrum.usualCount * 3 / 5 ? Float($0.element) : 0 })
+        }
+        ring.receive([quiet, voice(0.5, 0.8)], at: clock)
         XCTAssertTrue(ring.isMoving)
         ring.advance(to: clock + 1.0 / 60)
-        XCTAssertEqual(changes, [.normal], "The first syllable lights the outline by the next display frame")
-        XCTAssertTrue(line().opacity > resting.opacity + 0.15 && line().lineWidth > resting.width * 1.2, "Brighter and a little thicker")
+        XCTAssertEqual(changes, [.normal], "The first syllable lights the ring by the next display frame")
         // A microphone delivers about ten times a second.
         func speak(_ frame: PersonaVoiceFrame, steps: ClosedRange<Int>) {
             for step in steps {
@@ -485,47 +540,54 @@ final class PersonaVoiceTests {
                 ring.advance(to: clock + Double(step) / 60)
             }
         }
-        speak(voice, steps: 2...30)
-        let usual = (width: line().lineWidth, opacity: line().opacity, glow: line().shadowOpacity)
-        XCTAssertEqual(usual.glow, 0, "No glow for a usual voice")
-        speak(PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021), steps: 31...90)
+        speak(voice(0.5, 0.8), steps: 2...30)
+        let usual = ring.heights
+        XCTAssertTrue(bars().opacity > resting.opacity + 0.3, "Brighter while a voice is heard")
+        XCTAssertTrue((usual.max() ?? 0) > ring.geometry!.barReach * 0.4, "The voice's strongest sounds stand tall (\(usual.max() ?? 0))")
+        XCTAssertTrue(usual.filter { $0 < 1 }.count > usual.count / 8, "Where the voice has no sound the ring stays dots (\(usual.filter { $0 < 1 }.count) of \(usual.count))")
+        XCTAssertTrue(Set(usual.map { ($0 * 2).rounded() }).count > 6, "Bars differ: never one line repeated")
+        XCTAssertTrue((bars().path?.boundingBoxOfPath.width ?? 0) > resting.box.width + 8, "Bars reach outward from the dots")
+        // In place: the same bars stand for the same sound a moment later.
+        speak(voice(0.5, 0.8), steps: 31...60)
+        XCTAssertTrue(zip(usual, ring.heights).allSatisfy { abs($0 - $1) < 0.5 }, "A steady sound holds its bars where they are")
+        speak(voice(1, 1), steps: 61...120)
         XCTAssertEqual(ring.visible, .loud)
-        XCTAssertTrue(line().lineWidth > usual.width && line().shadowOpacity > 0.5 && line().shadowPath != nil, "A raised voice widens it further and adds a glow")
-        ring.receive([PersonaVoiceFrame(level: 0, speaking: false, seconds: 0.021)], at: clock + 1.5)
-        for step in 91...150 { ring.advance(to: clock + Double(step) / 60) }
+        XCTAssertTrue((ring.heights.max() ?? 0) > (usual.max() ?? 0), "A raised voice stands taller")
+        ring.receive([PersonaVoiceFrame(level: 0, speaking: false, seconds: 0.021)], at: clock + 2)
+        for step in 121...200 { ring.advance(to: clock + Double(step) / 60) }
         XCTAssertFalse(ring.isMoving, "Without a voice it settles and sleeps")
-        XCTAssertEqual(line().lineWidth, resting.width); XCTAssertEqual(line().opacity, resting.opacity)
+        XCTAssertTrue(ring.heights.allSatisfy { $0 == 0 }); XCTAssertEqual(bars().opacity, resting.opacity)
+        XCTAssertEqual(bars().path?.boundingBoxOfPath, resting.box, "Back to the ring of dots")
         XCTAssertEqual(changes, [.normal, .loud, .normal, .quiet], "A raised voice fades back through the usual look to rest")
-        // Reduce Motion: the width holds still and only brightness says a voice is heard.
+        // Reduce Motion: the dots hold still and only brightness says a voice is heard.
         ring.reduceMotion = true
         for step in 0...30 {
-            if step % 6 == 0 { ring.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021)], at: clock + 3 + Double(step) / 60) }
-            ring.advance(to: clock + 3 + Double(step + 1) / 60)
+            if step % 6 == 0 { ring.receive([voice(1, 1)], at: clock + 4 + Double(step) / 60) }
+            ring.advance(to: clock + 4 + Double(step + 1) / 60)
         }
         XCTAssertEqual(ring.visible, .loud)
-        XCTAssertEqual(line().lineWidth, resting.width, "Reduce Motion keeps the width still")
-        XCTAssertTrue(line().opacity > resting.opacity + 0.4 && line().shadowOpacity == 0, "A voice brightens it, with no glow")
+        XCTAssertEqual(bars().path?.boundingBoxOfPath, resting.box, "Reduce Motion keeps the dots still")
+        XCTAssertTrue(bars().opacity > resting.opacity + 0.4, "A voice brightens them")
         XCTAssertEqual(paths().filter { $0.path != nil }.count, 2)
         ring.reset()
         XCTAssertEqual(ring.visible, .quiet); XCTAssertFalse(ring.isMoving)
-        // Reduce Motion keeps both lines equally lit across soft and raised speech.
-        // A loudness-based rim can freeze at its soft level once the style cache settles.
+        // Reduce Motion keeps dots and rim equally lit across soft and raised speech.
         for step in 0...40 {
-            ring.receive([PersonaVoiceFrame(level: 0.1, speaking: true, seconds: 0.021)], at: clock + 5 + Double(step) / 60)
-            ring.advance(to: clock + 5 + Double(step + 1) / 60)
+            ring.receive([voice(0.1, 0.3)], at: clock + 6 + Double(step) / 60)
+            ring.advance(to: clock + 6 + Double(step + 1) / 60)
         }
         let softRim = paths()[0].opacity
-        XCTAssertTrue(abs(Double(softRim) - 0.7) < 0.001, "The whole outline shows voice presence with Reduce Motion")
+        XCTAssertTrue(abs(Double(softRim) - 0.7) < 0.001, "The whole ring shows voice presence with Reduce Motion")
         for step in 0...40 {
-            ring.receive([PersonaVoiceFrame(level: 1, speaking: true, seconds: 0.021)], at: clock + 6 + Double(step) / 60)
-            ring.advance(to: clock + 6 + Double(step + 1) / 60)
+            ring.receive([voice(1, 1)], at: clock + 7 + Double(step) / 60)
+            ring.advance(to: clock + 7 + Double(step + 1) / 60)
         }
         XCTAssertEqual(paths()[0].opacity, softRim, "Syllable volume does not animate the reduced-motion rim")
         ring.reset()
-        // Increase Contrast strengthens the resting line and its rim.
+        // Increase Contrast strengthens the resting dots and their rim.
         let plainEdge = paths()[0].lineWidth
         ring.increaseContrast = true
-        XCTAssertTrue(line().opacity > resting.opacity && paths()[0].lineWidth > plainEdge)
+        XCTAssertTrue(bars().opacity > resting.opacity && paths()[0].lineWidth > plainEdge)
     }
 
     /// Set WORKBENCH_LAYOUT_EVIDENCE to write synthetic renders of the outline:
@@ -605,7 +667,7 @@ final class PersonaVoiceTests {
             artworkRect = CGRect(x: insets.left + 20, y: insets.bottom + 20, width: size.width, height: size.height)
             ring.increaseContrast = increaseContrast; ring.reduceMotion = false
             ring.frame = CGRect(origin: .zero, size: canvas); ring.contentsScale = 2
-            ring.colors = VoiceStyle.overlayColors(WorkbenchPalette.nativeAccent, in: NSAppearance(named: .darkAqua)!)
+            ring.colors = VoiceStyle.overlayColors(chosen: PersonaVoiceRingLayer.usualColor.nsColor.cgColor)
             ring.geometry = PersonaVoiceRingGeometry(outline: outline, artwork: artworkRect)
             ring.layoutIfNeeded()
         }

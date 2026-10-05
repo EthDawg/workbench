@@ -45,7 +45,7 @@ Develop on `main` in **EthDawg/workbench**. Branch from current `main` and retur
 
 Source development requires an Apple Silicon Mac, macOS 14+, Swift 6.2+ and the macOS 26 SDK. Full Xcode is required for distributable Shortcuts metadata. The deployment target is not evidence of testing every older OS or device.
 
-Quit all Workbench editions and legacy Voice/StageMark copies before the full suite: exclusive shortcut checks conflict with running copies.
+The suite runs with Workbench open. Two StageKit checks need the exclusive default shortcuts free; while Workbench, Workbench Preview or a legacy Voice/StageMark copy holds them, those two are reported as SKIP, naming that app, and the rest still counts. Quit the app to run them here; CI runs them in full.
 
 ```sh
 bash scripts/doctor.sh
