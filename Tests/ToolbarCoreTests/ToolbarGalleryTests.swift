@@ -125,9 +125,9 @@ final class ToolbarGalleryTests: XCTestCase {
     /// next action stops, pauses or resumes them, and at rest they are the compact mark.
     func testRecordingAndReadingRenderInTheSameRow() {
         func state(_ name: String) -> ToolbarViewState? { ToolbarGallery.states.first { $0.name == name } }
-        XCTAssertEqual(state("recording-dictation")?.actionTitle, "Stop")
+        XCTAssertEqual(state("recording-dictation")?.actionTitle, "Finish dictation")
         XCTAssertEqual(state("recording-dictation")?.status.indicator, .capture)
-        XCTAssertEqual(state("recording-dictation-in-present")?.actionTitle, "Stop", "the recording claims the button in any tool")
+        XCTAssertEqual(state("recording-dictation-in-present")?.actionTitle, "Finish dictation", "the recording claims the button in any tool")
         XCTAssertEqual(state("recording-processing")?.isActionEnabled, false)
         XCTAssertEqual(state("recording-narration")?.actionTitle, "Stop narration")
         XCTAssertEqual(state("reading-playing")?.actionTitle, "Pause reading")

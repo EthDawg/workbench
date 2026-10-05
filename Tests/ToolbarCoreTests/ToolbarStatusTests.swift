@@ -13,6 +13,29 @@ final class ToolbarStatusTests: XCTestCase {
         XCTAssertEqual(status, .idle)
     }
 
+    func testPausedAndReconnectingCapturesNeverClaimLiveAudio() {
+        for capture in [ToolbarActivity.Capture.dictation, .meeting] {
+            let recording = ToolbarStatus.resolve(.init(capture: capture, level: 0.7))
+            for transport in [ToolbarActivity.CaptureTransport.paused, .reconnecting] {
+                let status = ToolbarStatus.resolve(.init(capture: capture, level: 0.7, stopsSoon: true, quiet: true,
+                                                        captureTransport: transport))
+                XCTAssertEqual(status.indicator, transport == .paused ? .paused : .processing)
+                XCTAssertNil(status.level, "A stale input sample must not animate a paused or reconnecting capture")
+                XCTAssertNil(status.levelWords)
+                XCTAssertFalse(status.quiet || status.stopsSoonBadge)
+                XCTAssertFalse(status.description.contains("Recording") || status.description.contains("5-minute"))
+                XCTAssertTrue(status.description.lowercased().contains(capture.rawValue))
+                XCTAssertTrue(status.description.contains(transport == .paused ? "paused" : "Reconnecting"))
+                XCTAssertTrue(status.announces(after: recording))
+                XCTAssertFalse(status.announces(after: status), "Transport changes announce once, not on each elapsed tick")
+            }
+        }
+        XCTAssertEqual(ToolbarStatus.resolve(.init(capture: .dictation, playback: true, captureTransport: .paused)).indicator,
+                       .playback, "A paused recording does not hide independent live playback")
+        XCTAssertEqual(ToolbarStatus.resolve(.init(captureTransport: .reconnecting)), .idle,
+                       "A completed session's stale transport cannot resurrect activity")
+    }
+
     /// Capture and playback, processing, failure, a pending result or capture, paused work, other
     /// live work, idle: each wins over everything after it.
     func testThePriorityIsFixed() {

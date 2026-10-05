@@ -20,7 +20,8 @@ final class ToolbarActivityChooserTests: XCTestCase {
     }
 
     @MainActor func testEveryDestructiveActivityRejectsAReplacementOperation() {
-        for id in ["meeting.stop", "draw.stop", "present.end", "present.stop-inserting", "snap-talk.stop", "snap-talk.cancel", "persona.end", "persona.visibility"] {
+        for id in ["dictate.stop", "dictate.pause", "dictate.resume", "meeting.stop", "meeting.pause", "meeting.resume",
+                   "draw.stop", "present.end", "present.stop-inserting", "snap-talk.stop", "snap-talk.cancel", "persona.end", "persona.visibility"] {
             let first = ToolbarChooserAction(id, "Unchanged label", identity: UUID().uuidString)
             var row = ToolbarToolChoice(mode: .present); row.actions = [first]
             let model = ToolbarChooserModel(choices: [row])
@@ -31,6 +32,40 @@ final class ToolbarActivityChooserTests: XCTestCase {
             XCTAssertEqual(performed, 0, "A held \(id) must not target its replacement")
             model.press(row.actions[0])?()
             XCTAssertEqual(performed, 1)
+        }
+    }
+
+    @MainActor func testVoiceTransportCommandsStayReachableAtLargerTextWithoutChangingThePill() {
+        _ = NSApplication.shared
+        for paused in [false, true] {
+            var dictate = ToolbarToolChoice(mode: .dictate, isSelected: true, isLive: true)
+            let transport = paused ? "Resume" : "Pause"
+            dictate.actions = [.init("dictate.stop", "Finish dictation", identity: "dictation-1"),
+                                .init("dictate.transport", transport + " dictation", identity: "dictation-1"),
+                                .init("dictate.cancel", "Cancel", identity: "dictation-1")]
+            let model = ToolbarChooserModel(choices: [dictate])
+            model.refreshActivities(.init([.init(id: "meeting", title: "Meetings", symbol: "person.2.wave.2",
+                detail: paused ? "Paused · recording kept" : "Recording", actions: [
+                    .init("meeting.stop", "Finish meeting", identity: "meeting-1"),
+                    .init("meeting.transport", transport + " meeting", identity: "meeting-1"),
+                    .init("meeting.review", "Open Meetings…")])]))
+            for scale in [CGFloat(1), 1.35] {
+                let host = NSHostingView(rootView: ToolbarChooserView(model: model, textScale: scale, available: 360, availableWidth: 280))
+                host.frame = NSRect(origin: .zero, size: host.fittingSize); host.layoutSubtreeIfNeeded()
+                func buttons(_ view: NSView) -> [NSButton] { ((view as? NSButton).map { [$0] } ?? []) + view.subviews.flatMap(buttons) }
+                let commands = buttons(host).filter { $0.accessibilityIdentifier().hasPrefix("chooser.action.") }
+                XCTAssertEqual(commands.count, 7, "Both captures retain their own transport and workspace access")
+                XCTAssertTrue(commands.contains { $0.title == transport + " dictation" })
+                XCTAssertTrue(commands.contains { $0.title == transport + " meeting" })
+                XCTAssertTrue(commands.allSatisfy(\.acceptsFirstResponder))
+                XCTAssertLessThanOrEqual(host.fittingSize.width, 281)
+                XCTAssertLessThanOrEqual(host.fittingSize.height, 361)
+                for command in commands {
+                    let frame = command.convert(command.bounds, to: host)
+                    XCTAssertGreaterThanOrEqual(frame.minX, -1)
+                    XCTAssertLessThanOrEqual(frame.maxX, host.bounds.maxX + 1)
+                }
+            }
         }
     }
 

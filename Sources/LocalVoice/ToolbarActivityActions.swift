@@ -16,7 +16,28 @@ extension FloatingToolbar {
             commands.append(.init(value: .init(id, title, identity: owner + ":" + identity), mode: mode, run: run))
         }
         let phase = String(describing: model.phase)
-        if model.phase == .recording { command("Stop dictating", id: "dictate.stop", .dictate, identity: phase) { model.stopRecording() } }
+        if model.phase == .recording {
+            let identity = model.toolbarCaptureIdentity
+            let voicePhase = model.voiceSession.phase
+            command("Finish dictation", id: "dictate.stop", .dictate, identity: phase) { model.stopRecording() }
+            if voicePhase == .listening {
+                command("Pause dictation", id: "dictate.pause", .dictate, identity: voicePhase.rawValue) {
+                    Task {
+                        guard model.phase == .recording, model.toolbarCaptureIdentity == identity,
+                              model.voiceSession.phase == voicePhase else { return }
+                        await model.pause()
+                    }
+                }
+            } else if voicePhase == .paused {
+                command("Resume dictation", id: "dictate.resume", .dictate, identity: voicePhase.rawValue) {
+                    Task {
+                        guard model.phase == .recording, model.toolbarCaptureIdentity == identity,
+                              model.voiceSession.phase == voicePhase else { return }
+                        await model.resume()
+                    }
+                }
+            }
+        }
         if model.waitingForDrawing { command("Copy now", id: "dictate.copy-now", .dictate) { model.copyWaitingDelivery() } }
         if model.phase != .idle, model.canCancelCurrentCapture {
             command("Cancel", id: "dictate.cancel", .dictate, identity: phase) { model.cancelCurrentCapture() }
@@ -72,8 +93,24 @@ extension FloatingToolbar {
             command(end, id: "persona.end", .persona, identity: stage.personaSessionIdentity.uuidString + end + String(describing: stage.selectedPersonaCopy)) { stage.endPersona() }
         }
         if let identity = meetings.recordingIdentity {
-            command("Stop & transcribe", id: "meeting.stop", nil, identity: identity.uuidString) {
+            command("Finish meeting", id: "meeting.stop", nil, identity: identity.uuidString) {
                 Task { await meetings.stop(expected: identity) }
+            }
+            let voicePhase = meetings.voiceSession.phase
+            if voicePhase == .listening {
+                command("Pause meeting", id: "meeting.pause", nil, identity: identity.uuidString + voicePhase.rawValue) {
+                    Task {
+                        guard meetings.recordingIdentity == identity, meetings.voiceSession.phase == voicePhase else { return }
+                        await meetings.pause()
+                    }
+                }
+            } else if voicePhase == .paused {
+                command("Resume meeting", id: "meeting.resume", nil, identity: identity.uuidString + voicePhase.rawValue) {
+                    Task {
+                        guard meetings.recordingIdentity == identity, meetings.voiceSession.phase == voicePhase else { return }
+                        await meetings.resume()
+                    }
+                }
             }
         }
         if meetings.isBusy || meetings.hasRecovery {
@@ -97,7 +134,14 @@ extension FloatingToolbar {
             choice.actions = commands.filter { $0.mode == choice.mode }.map(\.value)
             switch choice.mode {
             case .dictate:
-                if model.waitingForDrawing { choice.detail = "Words ready · waiting for Draw" }
+                if model.phase == .recording {
+                    switch model.voiceSession.phase {
+                    case .paused: choice.detail = "Paused · recording kept"
+                    case .reconnecting: choice.detail = "Reconnecting audio · recording kept"
+                    default: choice.detail = "Recording"
+                    }
+                }
+                else if model.waitingForDrawing { choice.detail = "Words ready · waiting for Draw" }
                 else if model.captureFailure != nil { choice.detail = "Dictation needs attention" }
                 else if model.hasCaptureRecovery { choice.detail = "Recording kept for recovery" }
                 else if model.unresolvedDelivery != nil { choice.detail = "Delivery needs attention" }
@@ -121,8 +165,16 @@ extension FloatingToolbar {
         var rows: [ToolbarChooserActivity] = []
         let meeting = actions.filter { $0.id.hasPrefix("meeting.") }
         if !meeting.isEmpty {
+            let detail: String
+            if meetings.isRecording {
+                switch meetings.voiceSession.phase {
+                case .paused: detail = "Paused · recording kept"
+                case .reconnecting: detail = "Reconnecting audio · recording kept"
+                default: detail = "Recording"
+                }
+            } else { detail = meetings.isBusy ? "Processing" : "Recording kept for recovery" }
             rows.append(.init(id: "meeting", title: "Meetings", symbol: "person.2.wave.2",
-                detail: meetings.isRecording ? "Recording" : meetings.isBusy ? "Processing" : "Recording kept for recovery", actions: meeting))
+                detail: detail, actions: meeting))
         }
         let timer = actions.filter { $0.id.hasPrefix("timer.") }
         if !timer.isEmpty { rows.append(.init(id: "timer", title: "Timer", symbol: "timer", detail: stage.timerStateDetail, actions: timer)) }

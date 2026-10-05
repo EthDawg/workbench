@@ -33,7 +33,9 @@ enum WorkbenchRowAction: Hashable {
         case .hidePersona, .pauseOverlays, .resumeOverlays,
              .cancelPersonaCamera, .hidePersonaCamera, .showPersonaCamera, .retryPersonaCamera: stage.togglePersona()
         case .captureNext: start(.snapAndTalk)
-        case .stopMeetingTranscription: Task { await meetings.stop() }
+        case .stopMeetingTranscription:
+            guard let identity = meetings.recordingIdentity else { return }
+            Task { await meetings.stop(expected: identity) }
         case .endPresentation: stage.endDeviceScene()
         case .wait: break
         case .start(let mode):
