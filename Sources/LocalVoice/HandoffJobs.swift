@@ -91,7 +91,9 @@ struct HandoffTaskFiles: Equatable {
                     "\((attributes[.posixPermissions] as? NSNumber)?.intValue ?? -1)", "\((attributes[.systemFileNumber] as? NSNumber)?.intValue ?? -1)"]
                 .joined(separator: ":")
         }
-        return [directory, folder, folder.appendingPathComponent("selection.json"), folder.appendingPathComponent("result.md")]
+        // inputs/ is flat, so its own date changes when a frozen image is added, removed or renamed (#150).
+        return [directory, folder, folder.appendingPathComponent("selection.json"), folder.appendingPathComponent("result.md"),
+                folder.appendingPathComponent("inputs")]
             .map(describe).joined(separator: "|")
     }
 
