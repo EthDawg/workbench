@@ -1,6 +1,6 @@
 import { mkdir, copyFile, cp, rm, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { renderPublishedRelease, currentRelease } from './release.mjs';
+import { renderPublishedRelease, currentRelease, siteOrigin } from './release.mjs';
 import { renderHandbook, validateContract, agentBrief } from './handbook/render.mjs';
 if (process.argv.slice(2).some(argument => argument !== '--require-production')) throw new Error('Unknown site build option');
 if (process.argv.includes('--require-production') && currentRelease.channel !== 'production') {
@@ -46,9 +46,18 @@ const partials = {
     menubar: await readFile(new URL('./partials/menubar.html', import.meta.url), 'utf8'),
     footer: await readFile(new URL('./partials/footer.html', import.meta.url), 'utf8')
 };
-for (const name of ['index.html', 'contribute/index.html', 'guide/index.html', 'privacy.html', 'packs/index.html', 'handbook/index.html']) {
+const pages = ['index.html', 'contribute/index.html', 'guide/index.html', 'privacy.html', 'packs/index.html', 'handbook/index.html'];
+for (const name of pages) {
     const path = new URL(`public/${name}`, import.meta.url);
     const html = (await readFile(path, 'utf8')).replace(/<!-- (menubar|footer) -->/g, (marker, key) => partials[key].trim());
     await writeFile(path, renderPublishedRelease(html));
 }
+// Search engines and link previews: every page has a canonical address and a share
+// card (stamped above through {{SITE_ORIGIN}}); the sitemap lists the same pages and
+// robots.txt points at it. The update feeds are for the app, not for indexing.
+const built = new Date().toISOString().slice(0, 10);
+const locations = pages.map(name => `${siteOrigin}/${name.replace(/index\.html$/, '')}`);
+await writeFile(new URL('./public/sitemap.xml', import.meta.url),
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${locations.map(location => `  <url><loc>${location}</loc><lastmod>${built}</lastmod></url>`).join('\n')}\n</urlset>\n`);
+await writeFile(new URL('./public/robots.txt', import.meta.url), `User-agent: *\nAllow: /\nDisallow: /updates/\n\nSitemap: ${siteOrigin}/sitemap.xml\n`);
 console.log(`Built Workbench site for ${currentRelease.channel} ${currentRelease.tag} (build ${currentRelease.build}) in site/public`);

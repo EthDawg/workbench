@@ -15,6 +15,8 @@ The earlier feature essays (`/scenes/`, `/scenes/ambient/`, `/personas/`, `/phon
 
 Headline and handwriting fonts (Bricolage Grotesque and Caveat, SIL Open Font License, files and licences in `assets/fonts/`) are self-hosted because the Content Security Policy allows no font host. Hero persona, backdrops and portraits are resized copies of the app's bundled resources in `assets/home/`. GitHub Releases own binaries and issues own feedback. No backend, analytics or stored feedback.
 
+Every page carries a canonical address, a share card and a page title for link previews, so a pasted link shows the product in Teams, Slack, Messages and LinkedIn instead of a bare address. The cards are `assets/share/workbench.png` (most pages) and `assets/share/team-pack.png` (`/packs/`), drawn from the homepage's own tokens in `share/*.html` and `share/card.css` and rendered with `bash share/render.sh` (headless Chrome, 1200×630 points at twice the density). The `share/` sources never ship. `build.mjs` also writes `robots.txt` and `sitemap.xml` from the page list. The site's public address lives once, as `siteOrigin` in `release.mjs`; the canonical links, share cards and sitemap all read it, so a domain move is that one edit plus the separate update-feed decision.
+
 ## Local development
 
 Requires Node.js 22+ for checks/build and Python 3 for the local web server. No dependency installation is needed.
